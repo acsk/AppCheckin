@@ -1,15 +1,16 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { IonicModule } from '@ionic/angular';
 import { CheckinService } from '../../services/checkin.service';
 import { Checkin } from '../../models/api.models';
+import { ToastService } from '../../services/toast.service';
 
 @Component({
   selector: 'app-historico',
   standalone: true,
   imports: [
     CommonModule,
-    MatSnackBarModule
+    IonicModule
   ],
   template: `
     <div class="space-y-6">
@@ -62,7 +63,7 @@ export class HistoricoComponent implements OnInit {
 
   constructor(
     private checkinService: CheckinService,
-    private snackBar: MatSnackBar
+    private toast: ToastService
   ) {}
 
   ngOnInit(): void {
@@ -78,7 +79,7 @@ export class HistoricoComponent implements OnInit {
       },
       error: (error) => {
         this.loading = false;
-        this.snackBar.open('Erro ao carregar check-ins', 'Fechar', { duration: 3000 });
+        this.toast.show('Erro ao carregar check-ins', 'danger');
       }
     });
   }
@@ -87,12 +88,12 @@ export class HistoricoComponent implements OnInit {
     if (confirm(`Deseja realmente cancelar o check-in do dia ${this.formatarData(checkin.data)} às ${checkin.hora.substring(0, 5)}?`)) {
       this.checkinService.cancelarCheckin(checkin.id).subscribe({
         next: (response) => {
-          this.snackBar.open(response.message, 'Fechar', { duration: 3000 });
+          this.toast.show(response.message, 'success');
           this.carregarCheckins();
         },
         error: (error) => {
           const message = error.error?.error || 'Erro ao cancelar check-in';
-          this.snackBar.open(message, 'Fechar', { duration: 5000 });
+          this.toast.show(message, 'danger', 5000);
         }
       });
     }

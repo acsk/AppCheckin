@@ -22,6 +22,7 @@ class AuthController
     public function register(Request $request, Response $response): Response
     {
         $data = $request->getParsedBody();
+        $tenantId = $request->getAttribute('tenantId', 1);
 
         // Validações
         $errors = [];
@@ -39,7 +40,7 @@ class AuthController
         }
 
         // Verificar se email já existe
-        if (!empty($data['email']) && $this->usuarioModel->emailExists($data['email'])) {
+        if (!empty($data['email']) && $this->usuarioModel->emailExists($data['email'], null, $tenantId)) {
             $errors[] = 'Email já cadastrado';
         }
 
@@ -51,7 +52,7 @@ class AuthController
         }
 
         // Criar usuário
-        $userId = $this->usuarioModel->create($data);
+        $userId = $this->usuarioModel->create($data, $tenantId);
 
         if (!$userId) {
             $response->getBody()->write(json_encode([
@@ -63,7 +64,8 @@ class AuthController
         // Gerar token
         $token = $this->jwtService->encode([
             'user_id' => $userId,
-            'email' => $data['email']
+            'email' => $data['email'],
+            'tenant_id' => $tenantId
         ]);
 
         $usuario = $this->usuarioModel->findById($userId);
@@ -80,6 +82,7 @@ class AuthController
     public function login(Request $request, Response $response): Response
     {
         $data = $request->getParsedBody();
+        $tenantId = $request->getAttribute('tenantId', 1);
 
         // Validações
         if (empty($data['email']) || empty($data['senha'])) {
@@ -90,7 +93,7 @@ class AuthController
         }
 
         // Buscar usuário
-        $usuario = $this->usuarioModel->findByEmail($data['email']);
+        $usuario = $this->usuarioModel->findByEmail($data['email'], $tenantId);
 
         if (!$usuario || !password_verify($data['senha'], $usuario['senha_hash'])) {
             $response->getBody()->write(json_encode([
@@ -102,7 +105,8 @@ class AuthController
         // Gerar token
         $token = $this->jwtService->encode([
             'user_id' => $usuario['id'],
-            'email' => $usuario['email']
+            'email' => $usuario['email'],
+            'tenant_id' => $tenantId
         ]);
 
         // Remover senha do retorno

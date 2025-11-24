@@ -6,8 +6,12 @@ use App\Controllers\CheckinController;
 use App\Controllers\UsuarioController;
 use App\Controllers\TurmaController;
 use App\Middlewares\AuthMiddleware;
+use App\Middlewares\TenantMiddleware;
 
 return function ($app) {
+    // Aplicar TenantMiddleware globalmente
+    $app->add(TenantMiddleware::class);
+    
     // Rotas públicas
     $app->post('/auth/register', [AuthController::class, 'register']);
     $app->post('/auth/login', [AuthController::class, 'login']);
@@ -17,9 +21,12 @@ return function ($app) {
         // Usuário
         $group->get('/me', [UsuarioController::class, 'me']);
         $group->put('/me', [UsuarioController::class, 'update']);
+        $group->get('/usuarios/{id}/estatisticas', [UsuarioController::class, 'estatisticas']);
         
         // Dias disponíveis
         $group->get('/dias', [DiaController::class, 'index']);
+        $group->get('/dias/proximos', [DiaController::class, 'diasProximos']);
+        $group->get('/dias/horarios', [DiaController::class, 'horariosPorData']);
         $group->get('/dias/{id}/horarios', [DiaController::class, 'horarios']);
         
         // Check-ins

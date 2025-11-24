@@ -38,6 +38,23 @@ services:
     networks:
       - appcheckin_network
 
+  adminer:
+    image: phpmyadmin/phpmyadmin
+    container_name: appcheckin_phpmyadmin
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    depends_on:
+      - mysql
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: root
+      MYSQL_ROOT_PASSWORD: root
+    networks:
+      - appcheckin_network
+
 volumes:
   mysql_data:
 

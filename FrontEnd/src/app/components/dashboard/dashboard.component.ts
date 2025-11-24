@@ -4,7 +4,8 @@ import { RouterLink } from '@angular/router';
 import { AuthService } from '../../services/auth.service';
 import { TurmaService } from '../../services/turma.service';
 import { CheckinService } from '../../services/checkin.service';
-import { TurmaDia, Turma, AlunoTurma } from '../../models/api.models';
+import { DiaService } from '../../services/dia.service';
+import { TurmaDia, Turma, AlunoTurma, Dia } from '../../models/api.models';
 
 @Component({
   selector: 'app-dashboard',
@@ -15,6 +16,67 @@ import { TurmaDia, Turma, AlunoTurma } from '../../models/api.models';
   ],
   template: `
     <div class="space-y-8">
+      <div *ngIf="loadingDias" class="flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-6 text-slate-300">
+        <svg class="h-5 w-5 animate-spin text-emerald-300" viewBox="0 0 24 24" fill="none">
+          <circle class="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+          <path class="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 000 16v-4l-3 3 3 3v-4a8 8 0 01-8-8z"></path>
+        </svg>
+        Carregando dias...
+      </div>
+
+      <div *ngIf="!loadingDias && diasDisponiveis.length === 0" class="rounded-2xl border border-slate-800 bg-slate-900/60 px-6 py-10 text-center text-slate-400">
+        Nenhum dia disponível no momento.
+      </div>
+
+      <div *ngIf="!loadingDias && diasDisponiveis.length > 0" class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <p class="text-sm font-semibold text-slate-200">Dias</p>
+          <button (click)="loadDiasProximos()" class="text-xs text-emerald-300">Atualizar</button>
+        </div>
+        <div class="flex items-center gap-2 py-3">
+          <!-- Seta para dias anteriores -->
+          <button
+            (click)="carregarDiasAnteriores()"
+            [disabled]="loadingDias"
+            class="flex h-12 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-300 transition hover:border-emerald-400/70 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-40"
+            title="Dias anteriores"
+          >
+            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
+            </svg>
+          </button>
+
+          <!-- Lista de dias -->
+          <div class="flex flex-1 items-center justify-center gap-2">
+            <button
+              *ngFor="let dia of diasExibicao"
+              (click)="dia.disponivel ? selecionarDia(dia) : null"
+              [disabled]="!dia.disponivel"
+              class="w-[80px] flex-shrink-0 rounded-xl px-3 py-2 text-center text-xs font-semibold transition"
+              [ngClass]="dia.disponivel ? (selectedDia?.data === dia.data
+                ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/50'
+                : 'bg-slate-900 text-slate-300 border border-slate-800 hover:border-slate-700')
+                : 'bg-slate-950 text-slate-600 border border-slate-900 cursor-not-allowed opacity-50'"
+            >
+              <div class="text-[11px] uppercase tracking-wide">{{ dia.disponivel ? formatarSemanaCurto(dia.data) : '---' }}</div>
+              <div class="text-base font-bold">{{ dia.disponivel ? formatarDiaNumero(dia.data) : '--' }}</div>
+            </button>
+          </div>
+
+          <!-- Seta para dias posteriores -->
+          <button
+            (click)="carregarDiasPosteriores()"
+            [disabled]="loadingDias"
+            class="flex h-12 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-300 transition hover:border-emerald-400/70 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-40"
+            title="Dias posteriores"
+          >
+            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+
       <div *ngIf="loadingTurmas" class="flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-6 text-slate-300">
         <svg class="h-5 w-5 animate-spin text-emerald-300" viewBox="0 0 24 24" fill="none">
           <circle class="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -23,26 +85,22 @@ import { TurmaDia, Turma, AlunoTurma } from '../../models/api.models';
         Carregando turmas...
       </div>
 
-      <div *ngIf="!loadingTurmas && turmasPorDia.length === 0" class="rounded-2xl border border-slate-800 bg-slate-900/60 px-6 py-10 text-center text-slate-400">
-        Nenhuma turma disponível no momento.
-      </div>
-
-      <div class="grid gap-6" *ngIf="!loadingTurmas && turmasPorDia.length > 0">
-        <div *ngFor="let dia of turmasPorDia" class="rounded-2xl border border-slate-800 bg-slate-900/60 p-6 space-y-4">
+      <div class="grid gap-6" *ngIf="!loadingTurmas && selectedDia && turmasDia">
+        <div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-6 space-y-4">
           <div class="flex items-center justify-between">
             <div>
               <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Data</p>
-              <p class="text-xl font-semibold text-slate-50">{{ formatarData(dia.data) }}</p>
+              <p class="text-xl font-semibold text-slate-50">{{ formatarData(selectedDia.data) }}</p>
             </div>
             <span class="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-200">
-              {{ dia.dia_ativo ? 'Dia ativo' : 'Inativo' }}
+              {{ turmasDia.dia.ativo ? 'Dia ativo' : 'Inativo' }}
             </span>
           </div>
 
           <div class="space-y-3">
             <div
-              *ngFor="let turma of dia.turmas"
-              (click)="selecionarTurma(turma, dia.data)"
+              *ngFor="let turma of turmasDia.turmas"
+              (click)="selecionarTurma(turma, selectedDia.data)"
               class="group cursor-pointer rounded-xl border p-4 transition"
               [ngClass]="turma.usuario_registrado
                 ? 'border-emerald-400/80 bg-emerald-500/10 hover:bg-emerald-500/15 hover:border-emerald-300/80 shadow-[0_8px_30px_rgba(16,185,129,0.18)]'
@@ -78,7 +136,7 @@ import { TurmaDia, Turma, AlunoTurma } from '../../models/api.models';
                 <span class="rounded-full border border-slate-800 px-3 py-1">Fim {{ turma.horario_fim.substring(0,5) }}</span>
               </div>
               <div class="mt-3 flex justify-end">
-                <a [routerLink]="['/turmas', turma.id]" [queryParams]="{ data: dia.data, hora: turma.hora }"
+                <a [routerLink]="['/turmas', turma.id]" [queryParams]="{ data: selectedDia.data, hora: turma.hora }"
                    class="rounded-lg border border-emerald-400/50 px-4 py-2 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-400/10">
                   Ver
                 </a>
@@ -169,11 +227,11 @@ import { TurmaDia, Turma, AlunoTurma } from '../../models/api.models';
         </div>
         <div class="flex flex-1 justify-end gap-3">
           <button
-            (click)="loadTurmasHoje()"
-            [disabled]="loadingTurmas"
+            (click)="loadDiasProximos()"
+            [disabled]="loadingDias"
             class="rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-emerald-400/70 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {{ loadingTurmas ? 'Atualizando...' : 'Atualizar' }}
+            {{ loadingDias ? 'Atualizando...' : 'Atualizar' }}
           </button>
         </div>
       </div>
@@ -181,11 +239,15 @@ import { TurmaDia, Turma, AlunoTurma } from '../../models/api.models';
   `
 })
 export class DashboardComponent implements OnInit {
-  turmasPorDia: TurmaDia[] = [];
+  diasDisponiveis: Dia[] = [];
+  diasExibicao: (Dia & { disponivel: boolean })[] = [];
+  turmasDia: TurmaDia | null = null;
   totalTurmas = 0;
   ocupacaoMedia = 0;
   selectedTurma: (Turma & { data?: string }) | null = null;
+  selectedDia: Dia | null = null;
   alunos: AlunoTurma[] = [];
+  loadingDias = false;
   loadingTurmas = false;
   loadingAlunos = false;
   checkinLoading = false;
@@ -195,28 +257,111 @@ export class DashboardComponent implements OnInit {
   constructor(
     public authService: AuthService,
     private turmaService: TurmaService,
-    private checkinService: CheckinService
+    private checkinService: CheckinService,
+    private diaService: DiaService
   ) {}
 
   ngOnInit(): void {
-    this.loadTurmasHoje();
+    this.loadDiasProximos();
   }
 
-  loadTurmasHoje(): void {
-    this.loadingTurmas = true;
-    this.turmaService.getTurmasHoje().subscribe({
+  loadDiasProximos(): void {
+    this.loadingDias = true;
+    this.diaService.getDiasProximos().subscribe({
       next: (response) => {
-        const hoje = response?.turmas?.length
-          ? [{ data: response.data, dia_ativo: true, turmas: response.turmas }]
-          : [];
-        this.turmasPorDia = hoje;
-        this.totalTurmas = response?.turmas?.length || 0;
-        this.ocupacaoMedia = this.calcularOcupacaoMedia(hoje);
+        this.diasDisponiveis = response.dias || [];
+        this.prepararDiasExibicao();
+        if (this.diasDisponiveis.length > 0) {
+          // Seleciona o dia do meio (dia atual)
+          const diaAtual = this.diasDisponiveis[Math.floor(this.diasDisponiveis.length / 2)];
+          this.selecionarDia(diaAtual);
+        }
+        this.loadingDias = false;
+      },
+      error: (error) => {
+        this.loadingDias = false;
+        console.error('Erro ao carregar dias próximos:', error);
+      }
+    });
+  }
+
+  prepararDiasExibicao(): void {
+    const TOTAL_SLOTS = 5;
+    this.diasExibicao = [];
+    
+    // Preenche com os dias disponíveis
+    for (let i = 0; i < this.diasDisponiveis.length && i < TOTAL_SLOTS; i++) {
+      this.diasExibicao.push({
+        ...this.diasDisponiveis[i],
+        disponivel: true
+      });
+    }
+    
+    // Preenche os slots vazios restantes
+    const slotsVazios = TOTAL_SLOTS - this.diasExibicao.length;
+    for (let i = 0; i < slotsVazios; i++) {
+      this.diasExibicao.push({
+        id: 0,
+        data: '',
+        ativo: false,
+        created_at: '',
+        updated_at: '',
+        disponivel: false
+      });
+    }
+  }
+
+  loadTurmasDia(data: string): void {
+    this.loadingTurmas = true;
+    this.diaService.getHorariosPorData(data).subscribe({
+      next: (response) => {
+        this.turmasDia = response;
+        this.totalTurmas = response.turmas?.length || 0;
         this.loadingTurmas = false;
       },
       error: (error) => {
         this.loadingTurmas = false;
-        console.error('Erro ao carregar turmas de hoje:', error);
+        console.error('Erro ao carregar turmas do dia:', error);
+      }
+    });
+  }
+
+  carregarDiasAnteriores(): void {
+    if (this.diasDisponiveis.length === 0) return;
+    
+    // Pega o primeiro dia da lista e busca dias anteriores a ele
+    const primeiroDia = this.diasDisponiveis[0];
+    this.loadingDias = true;
+    
+    this.diaService.getDiasProximos(primeiroDia.data).subscribe({
+      next: (response) => {
+        this.diasDisponiveis = response.dias || [];
+        this.prepararDiasExibicao();
+        this.loadingDias = false;
+      },
+      error: (error) => {
+        this.loadingDias = false;
+        console.error('Erro ao carregar dias anteriores:', error);
+      }
+    });
+  }
+
+  carregarDiasPosteriores(): void {
+    if (this.diasDisponiveis.length === 0) return;
+    
+    // Pega o último dia da lista e busca dias posteriores a ele
+    const ultimoDia = this.diasDisponiveis[this.diasDisponiveis.length - 1];
+    this.loadingDias = true;
+    
+    this.diaService.getDiasProximos(ultimoDia.data).subscribe({
+      next: (response) => {
+        this.diasDisponiveis = response.dias || [];
+        this.prepararDiasExibicao();
+        this.loadingDias = false;
+      },
+      error: (error) => {
+        this.loadingDias = false;
+        console.error('Erro ao carregar dias posteriores:', error);
       }
     });
   }
@@ -245,6 +390,16 @@ export class DashboardComponent implements OnInit {
     this.alunos = [];
   }
 
+  selecionarDia(dia: Dia): void {
+    this.selectedDia = dia;
+    this.selectedTurma = null;
+    this.alunos = [];
+    this.turmasDia = null;
+    
+    // Carregar turmas do dia selecionado
+    this.loadTurmasDia(dia.data);
+  }
+
   fazerCheckin(): void {
     if (!this.selectedTurma || this.selectedTurma.usuario_registrado) return;
 
@@ -263,7 +418,10 @@ export class DashboardComponent implements OnInit {
           vagas_disponiveis: Math.max(0, (this.selectedTurma!.vagas_disponiveis || 0) - 1)
         };
         this.selecionarTurma(this.selectedTurma, this.selectedTurma.data || '');
-        this.loadTurmasHoje();
+        // Recarregar as turmas do dia para atualizar os dados
+        if (this.selectedDia) {
+          this.loadTurmasDia(this.selectedDia.data);
+        }
       },
       error: (error) => {
         this.checkinLoading = false;
@@ -273,16 +431,20 @@ export class DashboardComponent implements OnInit {
     });
   }
 
-  calcularOcupacaoMedia(dias: TurmaDia[]): number {
-    const turmas = dias.flatMap(dia => dia.turmas);
-    if (!turmas.length) return 0;
-    const soma = turmas.reduce((acc, turma) => acc + (turma.percentual_ocupacao || 0), 0);
-    return soma / turmas.length;
-  }
-
   formatarData(data: string): string {
     const date = new Date(data + 'T00:00:00');
     return date.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' });
+  }
+
+  formatarSemanaCurto(data: string): string {
+    const date = new Date(data + 'T00:00:00');
+    const dias = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    return dias[date.getDay()].toUpperCase();
+  }
+
+  formatarDiaNumero(data: string): string {
+    const d = new Date(data + 'T00:00:00');
+    return d.getDate().toString().padStart(2, '0');
   }
 
   formatarDataHora(data: string): string {

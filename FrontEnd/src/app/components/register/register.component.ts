@@ -2,8 +2,9 @@ import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { AuthService } from '../../services/auth.service';
+import { IonicModule } from '@ionic/angular';
+import { ToastService } from '../../services/toast.service';
 
 @Component({
   selector: 'app-register',
@@ -12,7 +13,7 @@ import { AuthService } from '../../services/auth.service';
     CommonModule,
     ReactiveFormsModule,
     RouterLink,
-    MatSnackBarModule
+    IonicModule
   ],
   template: `
     <div class="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-900">
@@ -110,7 +111,7 @@ export class RegisterComponent {
     private fb: FormBuilder,
     private authService: AuthService,
     private router: Router,
-    private snackBar: MatSnackBar
+    private toast: ToastService
   ) {
     this.registerForm = this.fb.group({
       nome: ['', Validators.required],
@@ -126,14 +127,14 @@ export class RegisterComponent {
       this.authService.register(this.registerForm.value).subscribe({
         next: (response) => {
           this.loading = false;
-          this.snackBar.open(response.message, 'Fechar', { duration: 3000 });
+          this.toast.show(response.message, 'success');
           this.router.navigate(['/dashboard']);
         },
         error: (error) => {
           this.loading = false;
           const messages = error.error?.errors || [error.error?.error || 'Erro ao cadastrar'];
           this.serverError = messages.join(', ');
-          this.snackBar.open(messages.join(', '), 'Fechar', { duration: 5000 });
+          this.toast.show(messages.join(', '), 'danger', 5000);
         }
       });
     }

@@ -19,8 +19,9 @@ class UsuarioController
     public function me(Request $request, Response $response): Response
     {
         $userId = $request->getAttribute('userId');
+        $tenantId = $request->getAttribute('tenantId', 1);
         
-        $usuario = $this->usuarioModel->findById($userId);
+        $usuario = $this->usuarioModel->findById($userId, $tenantId);
 
         if (!$usuario) {
             $response->getBody()->write(json_encode([
@@ -36,6 +37,7 @@ class UsuarioController
     public function update(Request $request, Response $response): Response
     {
         $userId = $request->getAttribute('userId');
+        $tenantId = $request->getAttribute('tenantId', 1);
         $data = $request->getParsedBody();
 
         $errors = [];
@@ -44,7 +46,7 @@ class UsuarioController
         if (isset($data['email'])) {
             if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
                 $errors[] = 'Email inválido';
-            } elseif ($this->usuarioModel->emailExists($data['email'], $userId)) {
+            } elseif ($this->usuarioModel->emailExists($data['email'], $userId, $tenantId)) {
                 $errors[] = 'Email já cadastrado';
             }
         }
@@ -70,13 +72,34 @@ class UsuarioController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
 
-        $usuario = $this->usuarioModel->findById($userId);
+        $usuario = $this->usuarioModel->findById($userId, $tenantId);
 
         $response->getBody()->write(json_encode([
             'message' => 'Usuário atualizado com sucesso',
             'user' => $usuario
         ]));
 
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * Retorna estatísticas de um usuário específico
+     */
+    public function estatisticas(Request $request, Response $response, array $args): Response
+    {
+        $usuarioId = (int) $args['id'];
+        $tenantId = $request->getAttribute('tenantId', 1);
+        
+        $estatisticas = $this->usuarioModel->getEstatisticas($usuarioId, $tenantId);
+
+        if (!$estatisticas) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Usuário não encontrado'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        $response->getBody()->write(json_encode($estatisticas));
         return $response->withHeader('Content-Type', 'application/json');
     }
 }

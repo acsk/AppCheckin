@@ -76,8 +76,7 @@ export interface Turma {
 }
 
 export interface TurmaDia {
-  data: string;
-  dia_ativo: boolean;
+  dia: Dia;
   turmas: Turma[];
 }
 
@@ -105,4 +104,15 @@ export interface TurmaAlunosResponse {
 export interface TurmasHojeResponse {
   data: string;
   turmas: Turma[];
+}
+
+export interface UsuarioEstatisticas {
+  id: number;
+  nome: string;
+  email: string;
+  foto_url: string | null;
+  total_checkins: number;
+  total_prs: number;
+  created_at: string;
+  updated_at: string;
 }

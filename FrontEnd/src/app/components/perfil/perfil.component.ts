@@ -1,9 +1,10 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { IonicModule } from '@ionic/angular';
 import { UserService } from '../../services/user.service';
 import { AuthService } from '../../services/auth.service';
+import { ToastService } from '../../services/toast.service';
 
 @Component({
   selector: 'app-perfil',
@@ -11,7 +12,7 @@ import { AuthService } from '../../services/auth.service';
   imports: [
     CommonModule,
     ReactiveFormsModule,
-    MatSnackBarModule
+    IonicModule
   ],
   template: `
     <div class="mx-auto max-w-3xl space-y-6">
@@ -88,7 +89,7 @@ export class PerfilComponent implements OnInit {
     private fb: FormBuilder,
     private userService: UserService,
     private authService: AuthService,
-    private snackBar: MatSnackBar
+    private toast: ToastService
   ) {
     this.perfilForm = this.fb.group({
       nome: ['', Validators.required],
@@ -110,7 +111,7 @@ export class PerfilComponent implements OnInit {
         });
       },
       error: (error) => {
-        this.snackBar.open('Erro ao carregar dados', 'Fechar', { duration: 3000 });
+        this.toast.show('Erro ao carregar dados', 'danger');
       }
     });
   }
@@ -130,7 +131,7 @@ export class PerfilComponent implements OnInit {
       this.userService.updateMe(data).subscribe({
         next: (response) => {
           this.loading = false;
-          this.snackBar.open(response.message, 'Fechar', { duration: 3000 });
+          this.toast.show(response.message, 'success');
           
           // Atualizar dados do usuário no localStorage
           const currentUser = this.authService.currentUserValue;
@@ -145,7 +146,7 @@ export class PerfilComponent implements OnInit {
         error: (error) => {
           this.loading = false;
           const messages = error.error?.errors || [error.error?.error || 'Erro ao atualizar perfil'];
-          this.snackBar.open(messages.join(', '), 'Fechar', { duration: 5000 });
+          this.toast.show(messages.join(', '), 'danger', 5000);
         }
       });
     }

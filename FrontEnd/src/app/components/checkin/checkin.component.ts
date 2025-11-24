@@ -1,83 +1,72 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
+import { IonicModule } from '@ionic/angular';
 import { DiaService } from '../../services/dia.service';
 import { CheckinService } from '../../services/checkin.service';
 import { Dia, Horario } from '../../models/api.models';
+import { ToastService } from '../../services/toast.service';
 
 @Component({
   selector: 'app-checkin',
   standalone: true,
   imports: [
     CommonModule,
-    MatSnackBarModule
+    IonicModule
   ],
   template: `
-    <div class="space-y-8">
-      <div class="rounded-3xl border border-slate-800 bg-slate-900/70 p-6 shadow-xl shadow-emerald-500/5">
-        <p class="text-xs uppercase tracking-[0.25em] text-emerald-300">Check-in</p>
-        <h1 class="text-3xl font-bold text-slate-50">Escolha um dia e horário</h1>
-        <p class="text-slate-400">Selecione um dia ativo, escolha um horário disponível e confirme seu check-in.</p>
+    <div class="space-y-4">
+      <div class="rounded-3xl border border-slate-800 bg-slate-900/80 p-4 shadow-xl shadow-emerald-500/5">
+        <p class="text-lg font-semibold text-slate-100">Check-in</p>
+        <p class="text-sm text-slate-400">Escolha o dia e confirme seu horário.</p>
       </div>
 
-      <div *ngIf="loading" class="flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-6 text-slate-300">
-        <svg class="h-5 w-5 animate-spin text-emerald-300" viewBox="0 0 24 24" fill="none">
-          <circle class="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 000 16v-4l-3 3 3 3v-4a8 8 0 01-8-8z"></path>
-        </svg>
-        Carregando opções...
-      </div>
-
-      <div *ngIf="!loading && !diaSelecionado" class="space-y-4">
-        <div class="flex items-center justify-between">
-          <div>
-            <p class="text-xs uppercase tracking-[0.25em] text-slate-500">Passo 1</p>
-            <h2 class="text-xl font-semibold text-slate-50">Selecione um dia</h2>
-          </div>
-          <button (click)="carregarDias()" class="rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-emerald-400 hover:text-emerald-300">
-            Atualizar
-          </button>
+      <div class="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/80">
+        <div class="flex items-center justify-between border-b border-slate-800 px-4 py-3 text-slate-200">
+          <p class="text-sm font-semibold">Dias</p>
+          <button (click)="carregarDias()" class="text-xs text-emerald-300">Atualizar</button>
         </div>
-
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <button *ngFor="let dia of dias" (click)="selecionarDia(dia)" class="group rounded-2xl border border-slate-800 bg-slate-950/60 p-5 text-left transition hover:border-emerald-400/60 hover:bg-slate-900">
-            <p class="text-sm uppercase tracking-[0.2em] text-slate-500">{{ getDiaSemana(dia.data) }}</p>
-            <p class="text-2xl font-semibold text-slate-50">{{ formatarData(dia.data) }}</p>
-            <p class="mt-2 text-xs text-slate-400">Clique para ver horários</p>
+        <div class="flex items-center justify-between gap-2 overflow-x-auto px-3 py-2">
+          <button (click)="navegarDias('prev')" class="rounded-full border border-slate-800 bg-slate-900 px-2 py-2 text-xs text-slate-200">‹</button>
+          <button
+            *ngFor="let dia of dias"
+            (click)="selecionarDia(dia)"
+            class="min-w-[70px] rounded-xl px-3 py-2 text-center text-xs font-semibold transition"
+            [ngClass]="diaSelecionado?.id === dia.id
+              ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/50'
+              : 'bg-slate-900 text-slate-300 border border-slate-800'"
+          >
+            <div class="text-[11px] uppercase tracking-wide">{{ getDiaSemanaCurto(dia.data) }}</div>
+            <div class="text-base font-bold">{{ formatarDiaNumero(dia.data) }}</div>
           </button>
+          <button (click)="navegarDias('next')" class="rounded-full border border-slate-800 bg-slate-900 px-2 py-2 text-xs text-slate-200">›</button>
         </div>
       </div>
 
-      <div *ngIf="!loading && diaSelecionado" class="space-y-5">
-        <div class="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p class="text-xs uppercase tracking-[0.25em] text-slate-500">Passo 2</p>
-            <h2 class="text-xl font-semibold text-slate-50">Horários de {{ formatarData(diaSelecionado.data) }}</h2>
-          </div>
-          <button (click)="voltarParaDias()" class="rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:border-rose-400 hover:text-rose-200">
-            ← Voltar para dias
-          </button>
+      <div class="rounded-2xl border border-slate-800 bg-slate-950/80">
+        <div class="border-b border-slate-800 px-4 py-3">
+          <p class="text-sm font-semibold text-slate-200">Horários</p>
+          <p class="text-xs text-slate-400">{{ diaSelecionado ? formatarData(diaSelecionado.data) : 'Escolha um dia acima' }}</p>
         </div>
 
-        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div *ngIf="loading" class="px-4 py-4 text-slate-300">Carregando opções...</div>
+        <div *ngIf="!loading && horarios.length === 0" class="px-4 py-4 text-slate-400">Nenhum horário disponível.</div>
+
+        <div *ngIf="!loading && horarios.length > 0" class="divide-y divide-slate-800">
           <button
             *ngFor="let horario of horarios"
             [disabled]="horario.vagas_disponiveis === 0 || loading"
             (click)="realizarCheckin(horario)"
-            class="group rounded-2xl border border-slate-800 bg-slate-950/60 p-5 text-left transition hover:border-emerald-400/60 hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
+            class="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm uppercase tracking-[0.2em] text-slate-500">Horário</p>
-                <p class="text-2xl font-semibold text-slate-50">{{ horario.hora.substring(0, 5) }}</p>
-              </div>
-              <span [class]="badgeClass(horario.vagas_disponiveis)" class="rounded-full border px-3 py-1 text-xs font-semibold">
-                {{ horario.vagas_disponiveis }} vagas
-              </span>
+            <div class="text-2xl font-bold text-slate-100 w-16">{{ horario.hora.substring(0,5) }}</div>
+            <div class="flex-1">
+              <p class="text-sm font-semibold text-slate-200">Aula</p>
+              <p class="text-xs text-slate-400">Janela {{ (horario.horario_inicio || horario.hora).substring(0,5) }} - {{ (horario.horario_fim || horario.hora).substring(0,5) }}</p>
             </div>
-            <p class="mt-2 text-xs text-slate-400">
-              Janela {{ (horario.horario_inicio || horario.hora).substring(0,5) }} - {{ (horario.horario_fim || horario.hora).substring(0,5) }}
-            </p>
+            <div class="text-right">
+              <p class="text-sm font-bold text-slate-50">{{ horario.vagas_disponiveis }}/{{ horario.vagas }}</p>
+              <p class="text-[11px] text-slate-400">vagas</p>
+            </div>
           </button>
         </div>
       </div>
@@ -89,27 +78,29 @@ export class CheckinComponent implements OnInit {
   horarios: Horario[] = [];
   diaSelecionado: Dia | null = null;
   loading = false;
+  anchorDate: string | null = null;
 
   constructor(
     private diaService: DiaService,
     private checkinService: CheckinService,
-    private snackBar: MatSnackBar
+    private toast: ToastService
   ) {}
 
   ngOnInit(): void {
     this.carregarDias();
   }
 
-  carregarDias(): void {
+  carregarDias(dataReferencia?: string): void {
     this.loading = true;
-    this.diaService.getDias().subscribe({
+    this.diaService.getDiasProximos(dataReferencia || undefined).subscribe({
       next: (response) => {
         this.dias = response.dias;
+        this.anchorDate = dataReferencia || this.dias[0]?.data || null;
         this.loading = false;
       },
       error: (error) => {
         this.loading = false;
-        this.snackBar.open('Erro ao carregar dias', 'Fechar', { duration: 3000 });
+        this.toast.show('Erro ao carregar dias', 'danger');
       }
     });
   }
@@ -124,7 +115,7 @@ export class CheckinComponent implements OnInit {
       },
       error: (error) => {
         this.loading = false;
-        this.snackBar.open('Erro ao carregar horários', 'Fechar', { duration: 3000 });
+        this.toast.show('Erro ao carregar horários', 'danger');
       }
     });
   }
@@ -134,9 +125,25 @@ export class CheckinComponent implements OnInit {
     this.horarios = [];
   }
 
+  navegarDias(direcao: 'prev' | 'next'): void {
+    if (!this.dias.length) {
+      this.carregarDias();
+      return;
+    }
+    const base = direcao === 'prev' ? this.dias[0].data : this.dias[this.dias.length - 1].data;
+    const refDate = this.ajustarData(base, direcao === 'prev' ? -1 : 1);
+    this.carregarDias(refDate);
+  }
+
+  private ajustarData(data: string, deltaDias: number): string {
+    const d = new Date(data + 'T00:00:00');
+    d.setDate(d.getDate() + deltaDias);
+    return d.toISOString().split('T')[0];
+  }
+
   realizarCheckin(horario: Horario): void {
     if (horario.vagas_disponiveis === 0) {
-      this.snackBar.open('Não há vagas disponíveis para este horário', 'Fechar', { duration: 3000 });
+      this.toast.show('Não há vagas disponíveis para este horário', 'warning');
       return;
     }
 
@@ -144,14 +151,14 @@ export class CheckinComponent implements OnInit {
     this.checkinService.realizarCheckin({ horario_id: horario.id }).subscribe({
       next: (response) => {
         this.loading = false;
-        this.snackBar.open(response.message, 'Fechar', { duration: 3000 });
+        this.toast.show(response.message, 'success');
         this.voltarParaDias();
         this.carregarDias();
       },
       error: (error) => {
         this.loading = false;
         const message = error.error?.error || 'Erro ao realizar check-in';
-        this.snackBar.open(message, 'Fechar', { duration: 5000 });
+        this.toast.show(message, 'danger', 5000);
       }
     });
   }
@@ -165,6 +172,17 @@ export class CheckinComponent implements OnInit {
     const date = new Date(data + 'T00:00:00');
     const dias = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
     return dias[date.getDay()];
+  }
+
+  getDiaSemanaCurto(data: string): string {
+    const date = new Date(data + 'T00:00:00');
+    const dias = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+    return dias[date.getDay()];
+  }
+
+  formatarDiaNumero(data: string): string {
+    const d = new Date(data + 'T00:00:00');
+    return d.getDate().toString().padStart(2, '0');
   }
 
   badgeClass(vagas: number): string {

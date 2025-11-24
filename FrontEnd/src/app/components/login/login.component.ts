@@ -2,8 +2,9 @@ import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
-import { MatSnackBar, MatSnackBarModule } from '@angular/material/snack-bar';
 import { AuthService } from '../../services/auth.service';
+import { IonicModule } from '@ionic/angular';
+import { ToastService } from '../../services/toast.service';
 
 @Component({
   selector: 'app-login',
@@ -12,7 +13,7 @@ import { AuthService } from '../../services/auth.service';
     CommonModule,
     ReactiveFormsModule,
     RouterLink,
-    MatSnackBarModule
+    IonicModule
   ],
   template: `
     <div class="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-900">
@@ -125,7 +126,7 @@ export class LoginComponent {
     private fb: FormBuilder,
     private authService: AuthService,
     private router: Router,
-    private snackBar: MatSnackBar
+    private toast: ToastService
   ) {
     this.loginForm = this.fb.group({
       email: ['', [Validators.required, Validators.email]],
@@ -140,14 +141,14 @@ export class LoginComponent {
       this.authService.login(this.loginForm.value).subscribe({
         next: (response) => {
           this.loading = false;
-          this.snackBar.open(response.message, 'Fechar', { duration: 3000 });
+          this.toast.show(response.message, 'success');
           this.router.navigate(['/dashboard']);
         },
         error: (error) => {
           this.loading = false;
           const message = error.error?.error || 'Erro ao fazer login';
           this.serverError = message;
-          this.snackBar.open(message, 'Fechar', { duration: 5000 });
+          this.toast.show(message, 'danger', 5000);
         }
       });
     }
