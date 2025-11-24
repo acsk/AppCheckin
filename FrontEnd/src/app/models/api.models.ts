@@ -2,6 +2,7 @@ export interface User {
   id: number;
   nome: string;
   email: string;
+  foto_base64?: string | null;
   created_at: string;
   updated_at: string;
 }

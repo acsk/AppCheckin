@@ -6,7 +6,7 @@ import { CheckinService } from '../../services/checkin.service';
 import { UserService } from '../../services/user.service';
 import { TurmaAlunosResponse, AlunoTurma, UsuarioEstatisticas } from '../../models/api.models';
 import { AuthService } from '../../services/auth.service';
-import { IonicModule, AlertController } from '@ionic/angular';
+import { IonicModule, AlertController, ActionSheetController } from '@ionic/angular';
 import { ToastService } from '../../services/toast.service';
 
 @Component({
@@ -55,8 +55,8 @@ import { ToastService } from '../../services/toast.service';
         <div *ngIf="!loading && alunos.length > 0" class="divide-y divide-slate-800">
           <div 
             *ngFor="let aluno of alunos" 
-            (click)="abrirEstatisticasUsuario(aluno.usuario_id!)"
-            class="flex items-center gap-3 px-5 py-3 cursor-pointer hover:bg-slate-900/50 transition"
+            (click)="abrirEstatisticasUsuario(aluno)"
+            class="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-slate-900/50 transition"
           >
             <img [src]="avatar(aluno)" [alt]="aluno.nome" class="h-10 w-10 rounded-full border border-slate-800 object-cover">
             <div class="flex-1">
@@ -69,65 +69,6 @@ import { ToastService } from '../../services/toast.service';
       </div>
     </div>
 
-    <!-- Modal de Estatísticas do Usuário -->
-    <div 
-      *ngIf="mostrarModalEstatisticas" 
-      (click)="fecharModalEstatisticas()"
-      class="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm"
-    >
-      <div 
-        (click)="$event.stopPropagation()"
-        class="w-full max-w-lg rounded-t-3xl bg-gradient-to-b from-slate-900 to-slate-950 pb-8 shadow-2xl"
-      >
-        <!-- Botão Fechar -->
-        <button 
-          (click)="fecharModalEstatisticas()"
-          class="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-slate-800/50 text-slate-300 hover:bg-slate-700"
-        >
-          <ion-icon name="close" class="text-2xl"></ion-icon>
-        </button>
-
-        <div *ngIf="loadingEstatisticas" class="flex items-center justify-center py-20">
-          <ion-spinner name="crescent" class="text-emerald-400"></ion-spinner>
-        </div>
-
-        <div *ngIf="!loadingEstatisticas && usuarioEstatisticas" class="space-y-6 px-6 pt-12">
-          <!-- Foto e Nome -->
-          <div class="flex flex-col items-center gap-4">
-            <div class="relative">
-              <img 
-                [src]="usuarioEstatisticas.foto_url || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(usuarioEstatisticas.nome) + '&background=10b981&color=fff&size=200'"
-                [alt]="usuarioEstatisticas.nome"
-                class="h-32 w-32 rounded-full border-4 border-emerald-500/30 object-cover shadow-lg shadow-emerald-500/20"
-              >
-            </div>
-            <h2 class="text-center text-2xl font-bold uppercase tracking-wide text-white">
-              {{ usuarioEstatisticas.nome }}
-            </h2>
-          </div>
-
-          <!-- Estatísticas -->
-          <div class="space-y-3">
-            <div class="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/50 px-6 py-4">
-              <span class="text-sm text-slate-400">Check-ins</span>
-              <span class="text-3xl font-bold text-emerald-400">{{ usuarioEstatisticas.total_checkins }}</span>
-            </div>
-            <div class="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/50 px-6 py-4">
-              <span class="text-sm text-slate-400">PR's</span>
-              <span class="text-3xl font-bold text-cyan-400">{{ usuarioEstatisticas.total_prs }}</span>
-            </div>
-          </div>
-
-          <!-- Botão Fechar -->
-          <button
-            (click)="fecharModalEstatisticas()"
-            class="w-full rounded-full bg-slate-800 py-3 text-sm font-bold text-slate-200 transition hover:bg-slate-700"
-          >
-            Fechar
-          </button>
-        </div>
-      </div>
-    </div>
 
     <div class="fixed bottom-0 left-0 right-0 border-t border-slate-800/80 bg-slate-950/95 backdrop-blur supports-[backdrop-filter]:backdrop-blur-lg">
       <div class="mx-auto flex max-w-5xl items-center justify-center px-6 py-4">
@@ -159,9 +100,6 @@ export class TurmaDetailComponent implements OnInit {
   loading = false;
   checkinLoading = false;
   myCheckinId: number | null = null;
-  mostrarModalEstatisticas = false;
-  loadingEstatisticas = false;
-  usuarioEstatisticas: UsuarioEstatisticas | null = null;
 
   constructor(
     private route: ActivatedRoute,
@@ -170,7 +108,8 @@ export class TurmaDetailComponent implements OnInit {
     private toast: ToastService,
     private authService: AuthService,
     private alertController: AlertController,
-    private userService: UserService
+    private userService: UserService,
+    private actionSheetController: ActionSheetController
   ) {}
 
   ngOnInit(): void {
@@ -290,33 +229,42 @@ export class TurmaDetailComponent implements OnInit {
     return `https://i.pravatar.cc/80?u=${seed}`;
   }
 
-  abrirEstatisticasUsuario(usuarioId: number): void {
+  abrirEstatisticasUsuario(aluno: AlunoTurma): void {
+    const usuarioId = (aluno as any).usuario_id;
     if (!usuarioId) return;
-    
-    this.mostrarModalEstatisticas = true;
-    this.loadingEstatisticas = true;
-    this.usuarioEstatisticas = null;
 
     this.userService.getEstatisticas(usuarioId).subscribe({
-      next: (estatisticas) => {
-        this.usuarioEstatisticas = estatisticas;
-        this.loadingEstatisticas = false;
+      next: async (estatisticas) => {
+        const foto = estatisticas.foto_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(estatisticas.nome)}&background=10b981&color=fff&size=200`;
+        const actionSheet = await this.actionSheetController.create({
+          header: estatisticas.nome,
+          cssClass: 'ion-alert-vibrant ion-action-large',
+          buttons: [
+            { text: `Check-ins: ${estatisticas.total_checkins}`, role: 'info' },
+            { text: 'Fechar', role: 'cancel' }
+          ],
+          translucent: true,
+          backdropDismiss: true
+        });
+        // Override inner html for richer header
+        (actionSheet as any).header = '';
+        setTimeout(() => {
+          const el = document.querySelector('.ion-action-large .action-sheet-group') as HTMLElement;
+          if (el) {
+            el.insertAdjacentHTML('afterbegin', `
+              <div class="action-avatar-block">
+                <img src="${foto}" alt="${estatisticas.nome}" class="action-avatar-img"/>
+                <p class="name">${estatisticas.nome}</p>
+              </div>
+            `);
+          }
+        });
+        await actionSheet.present();
       },
-      error: (error) => {
-        this.loadingEstatisticas = false;
+      error: () => {
         this.toast.show('Erro ao carregar estatísticas do usuário', 'danger');
-        this.mostrarModalEstatisticas = false;
       }
     });
-  }
-
-  fecharModalEstatisticas(): void {
-    this.mostrarModalEstatisticas = false;
-    this.usuarioEstatisticas = null;
-  }
-
-  encodeURIComponent(str: string): string {
-    return encodeURIComponent(str);
   }
 
   formatarDataParaDia(data: string) {

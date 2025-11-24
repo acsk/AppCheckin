@@ -19,28 +19,28 @@ import { AuthService } from './services/auth.service';
   template: `
     <ion-app>
       <ion-header *ngIf="authService.isAuthenticated()">
-        <ion-toolbar color="dark">
+        <ion-toolbar class="app-toolbar">
           <ion-buttons slot="start">
             <ion-menu-button autoHide="false"></ion-menu-button>
           </ion-buttons>
-          <ion-title>App Check-in</ion-title>
+          <ion-title class="text-base font-semibold">App Check-in</ion-title>
         </ion-toolbar>
       </ion-header>
 
-      <ion-menu contentId="main-content" *ngIf="authService.isAuthenticated()">
+      <ion-menu contentId="main-content" *ngIf="authService.isAuthenticated()" class="app-menu">
         <ion-header>
-          <ion-toolbar color="dark">
-            <ion-title>Menu</ion-title>
+          <ion-toolbar class="app-toolbar">
+            <ion-title class="text-sm tracking-wide">Menu</ion-title>
           </ion-toolbar>
         </ion-header>
-        <ion-content>
-          <ion-list>
-            <ion-item button (click)="navigateAndClose('/dashboard')" routerLinkActive="ion-activated">Dashboard</ion-item>
-            <ion-item button (click)="navigateAndClose('/checkin')" routerLinkActive="ion-activated">Check-in</ion-item>
-            <ion-item button (click)="navigateAndClose('/historico')" routerLinkActive="ion-activated">Histórico</ion-item>
-            <ion-item button (click)="navigateAndClose('/perfil')" routerLinkActive="ion-activated">Perfil</ion-item>
+        <ion-content class="app-menu-content">
+          <ion-list class="app-menu-list">
+            <ion-item button detail="false" class="menu-item" (click)="navigateAndClose('/dashboard')" routerLinkActive="ion-activated">Dashboard</ion-item>
+            <ion-item button detail="false" class="menu-item" (click)="navigateAndClose('/checkin')" routerLinkActive="ion-activated">Check-in</ion-item>
+            <ion-item button detail="false" class="menu-item" (click)="navigateAndClose('/historico')" routerLinkActive="ion-activated">Histórico</ion-item>
+            <ion-item button detail="false" class="menu-item" (click)="navigateAndClose('/perfil')" routerLinkActive="ion-activated">Perfil</ion-item>
           </ion-list>
-          <ion-item button color="danger" (click)="logout()">Sair</ion-item>
+          <ion-item button detail="false" class="menu-item text-rose-300" (click)="logout()">Sair</ion-item>
         </ion-content>
       </ion-menu>
 

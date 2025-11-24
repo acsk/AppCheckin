@@ -1,6 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
+import { IonicModule, ActionSheetController } from '@ionic/angular';
 import { AuthService } from '../../services/auth.service';
 import { TurmaService } from '../../services/turma.service';
 import { CheckinService } from '../../services/checkin.service';
@@ -12,7 +13,8 @@ import { TurmaDia, Turma, AlunoTurma, Dia } from '../../models/api.models';
   standalone: true,
   imports: [
     CommonModule,
-    RouterLink
+    RouterLink,
+    IonicModule
   ],
   template: `
     <div class="space-y-8">
@@ -31,7 +33,10 @@ import { TurmaDia, Turma, AlunoTurma, Dia } from '../../models/api.models';
       <div *ngIf="!loadingDias && diasDisponiveis.length > 0" class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
         <div class="flex items-center justify-between border-b border-slate-800 pb-3">
           <p class="text-sm font-semibold text-slate-200">Dias</p>
-          <button (click)="loadDiasProximos()" class="text-xs text-emerald-300">Atualizar</button>
+          <div class="flex items-center gap-3">
+            <button (click)="abrirStats()" class="text-xs font-semibold text-emerald-200">Estatísticas</button>
+            <button (click)="loadDiasProximos()" class="text-xs text-emerald-300">Atualizar</button>
+          </div>
         </div>
         <div class="flex items-center gap-2 py-3">
           <!-- Seta para dias anteriores -->
@@ -134,12 +139,6 @@ import { TurmaDia, Turma, AlunoTurma, Dia } from '../../models/api.models';
                 <span class="rounded-full border border-slate-800 px-3 py-1">Vagas: {{ turma.vagas_disponiveis }}</span>
                 <span class="rounded-full border border-slate-800 px-3 py-1">Início {{ turma.horario_inicio.substring(0,5) }}</span>
                 <span class="rounded-full border border-slate-800 px-3 py-1">Fim {{ turma.horario_fim.substring(0,5) }}</span>
-              </div>
-              <div class="mt-3 flex justify-end">
-                <a [routerLink]="['/turmas', turma.id]" [queryParams]="{ data: selectedDia.data, hora: turma.hora }"
-                   class="rounded-lg border border-emerald-400/50 px-4 py-2 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-400/10">
-                  Ver
-                </a>
               </div>
             </div>
           </div>
@@ -258,7 +257,8 @@ export class DashboardComponent implements OnInit {
     public authService: AuthService,
     private turmaService: TurmaService,
     private checkinService: CheckinService,
-    private diaService: DiaService
+    private diaService: DiaService,
+    private actionSheetCtrl: ActionSheetController
   ) {}
 
   ngOnInit(): void {
@@ -450,5 +450,27 @@ export class DashboardComponent implements OnInit {
   formatarDataHora(data: string): string {
     const date = new Date(data.replace(' ', 'T'));
     return date.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  }
+
+  async abrirStats(): Promise<void> {
+    const diasCount = this.diasDisponiveis.length;
+    const turmasCount = this.turmasDia?.turmas?.length || 0;
+    const totalRegistrados = this.turmasDia?.turmas?.reduce((acc, t) => acc + (t.alunos_registrados || 0), 0) || 0;
+    const totalLimite = this.turmasDia?.turmas?.reduce((acc, t) => acc + (t.limite_alunos || 0), 0) || 0;
+    const ocupacaoPct = totalLimite ? ((totalRegistrados / totalLimite) * 100).toFixed(1) : '0';
+
+    const actionSheet = await this.actionSheetCtrl.create({
+      header: 'Estatísticas do dia',
+      cssClass: 'ion-alert-vibrant',
+      buttons: [
+        { text: `Dias carregados: ${diasCount}`, role: 'info' },
+        { text: `Turmas no dia: ${turmasCount}`, role: 'info' },
+        { text: `Total registrados: ${totalRegistrados}/${totalLimite || '?'}`, role: 'info' },
+        { text: `Ocupação geral: ${ocupacaoPct}%`, role: 'info' },
+        { text: 'Fechar', role: 'cancel' }
+      ]
+    });
+
+    await actionSheet.present();
   }
 }

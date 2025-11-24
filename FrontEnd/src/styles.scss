@@ -24,6 +24,30 @@ ion-content {
                  #0b1224;
 }
 
+.app-toolbar {
+  --background: rgba(11, 18, 36, 0.95);
+  --color: #e2e8f0;
+  --border-color: rgba(148, 163, 184, 0.2);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.app-menu, .app-menu-content, .app-menu-list {
+  --background: #0b1224;
+  background: #0b1224;
+  color: #e2e8f0;
+}
+
+.menu-item {
+  --background: transparent;
+  --color: #e2e8f0;
+  --border-color: rgba(148, 163, 184, 0.2);
+  border-bottom: 1px solid var(--border-color);
+}
+.menu-item.ion-activated {
+  --background: rgba(16, 185, 129, 0.15);
+  --color: #a7f3d0;
+}
+
 /* Snackbars maiores e destacadas */
 .mdc-snackbar__surface {
   border-radius: 18px !important;
@@ -126,4 +150,38 @@ ion-content {
 
 .ion-alert-vibrant .alert-button-role-cancel {
   color: #93c5fd;
+}
+
+.ion-action-large .action-sheet-wrapper {
+  max-width: 520px;
+  margin: 0 auto;
+  border-radius: 24px;
+  overflow: hidden;
+}
+
+.ion-action-large .action-sheet-group {
+  padding-top: 16px;
+}
+
+.ion-action-large .action-avatar-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+}
+
+.ion-action-large .action-avatar-img {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.15);
+}
+
+.ion-action-large .action-avatar-info .name {
+  margin: 0;
+  font-weight: 900;
+  color: #e5fdf5;
+  line-height: 1.2;
+  text-align: center;
 }

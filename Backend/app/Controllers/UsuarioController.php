@@ -55,6 +55,33 @@ class UsuarioController
             $errors[] = 'Senha deve ter no mínimo 6 caracteres';
         }
 
+        // Validar foto em base64
+        if (isset($data['foto_base64'])) {
+            // Se vier vazio, permitir (para remover foto)
+            if ($data['foto_base64'] !== null && $data['foto_base64'] !== '') {
+                // Verificar se é base64 válido
+                if (!preg_match('/^data:image\/(jpeg|jpg|png|gif|webp);base64,/', $data['foto_base64'])) {
+                    $errors[] = 'Formato de imagem inválido. Use data:image/[tipo];base64,[dados]';
+                } else {
+                    // Extrair apenas os dados base64
+                    $base64Data = preg_replace('/^data:image\/\w+;base64,/', '', $data['foto_base64']);
+                    
+                    // Verificar se é base64 válido
+                    if (!base64_decode($base64Data, true)) {
+                        $errors[] = 'Dados base64 da imagem são inválidos';
+                    } else {
+                        // Verificar tamanho (máximo 5MB)
+                        $imageSizeInBytes = strlen(base64_decode($base64Data));
+                        $maxSizeInBytes = 5 * 1024 * 1024; // 5MB
+                        
+                        if ($imageSizeInBytes > $maxSizeInBytes) {
+                            $errors[] = 'Imagem muito grande. Tamanho máximo: 5MB';
+                        }
+                    }
+                }
+            }
+        }
+
         if (!empty($errors)) {
             $response->getBody()->write(json_encode([
                 'errors' => $errors

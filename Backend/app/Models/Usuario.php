@@ -48,7 +48,7 @@ class Usuario
 
     public function findById(int $id, ?int $tenantId = null): ?array
     {
-        $sql = "SELECT id, tenant_id, nome, email, created_at, updated_at FROM usuarios WHERE id = :id";
+        $sql = "SELECT id, tenant_id, nome, email, foto_base64, created_at, updated_at FROM usuarios WHERE id = :id";
         $params = ['id' => $id];
         
         if ($tenantId) {
@@ -81,6 +81,11 @@ class Usuario
         if (isset($data['senha'])) {
             $fields[] = 'senha_hash = :senha_hash';
             $params['senha_hash'] = password_hash($data['senha'], PASSWORD_BCRYPT);
+        }
+
+        if (isset($data['foto_base64'])) {
+            $fields[] = 'foto_base64 = :foto_base64';
+            $params['foto_base64'] = $data['foto_base64'];
         }
 
         if (empty($fields)) {
@@ -139,7 +144,7 @@ class Usuario
             'id' => $usuario['id'],
             'nome' => $usuario['nome'],
             'email' => $usuario['email'],
-            'foto_url' => null, // Pode ser implementado depois se houver upload de fotos
+            'foto_url' => $usuario['foto_base64'] ?? null,
             'total_checkins' => (int) $totalCheckins,
             'total_prs' => 0, // Implementar se houver sistema de PRs
             'created_at' => $usuario['created_at'],
