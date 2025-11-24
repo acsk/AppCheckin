@@ -1,111 +1,112 @@
-<ion-header>
+<ion-header class="page-header">
   <ion-toolbar>
     <ion-buttons slot="start">
       <ion-back-button defaultHref="/dashboard"></ion-back-button>
     </ion-buttons>
-    <ion-title>Meu Perfil</ion-title>
+    <div class="title-wrap">
+      <p class="eyebrow">Minha conta</p>
+      <ion-title>Informações da conta</ion-title>
+    </div>
   </ion-toolbar>
 </ion-header>
 
 <ion-content class="ion-padding">
-  <div class="perfil-container">
-    <!-- Foto de Perfil -->
-    <div class="foto-perfil-section">
-      <div class="foto-wrapper">
-        <img 
-          [src]="fotoPreview || 'assets/default-avatar.png'" 
-          alt="Foto de perfil"
-          class="foto-perfil"
-        />
-        <ion-button 
-          fill="clear" 
-          class="btn-editar-foto"
-          (click)="selecionarFoto()"
-        >
-          <ion-icon slot="icon-only" name="camera"></ion-icon>
-        </ion-button>
-      </div>
-      <input 
-        type="file" 
-        #fileInput 
-        accept="image/*" 
-        (change)="onFotoSelecionada($event)"
-        style="display: none"
-      />
+  <div class="perfil-container form-shell">
+    <div class="header-info form-header">
+      <p class="eyebrow">Configurações</p>
+      <h2 class="title">Configurações da Academia</h2>
+      <p class="subtitle">Atualize as informações do seu negócio</p>
     </div>
 
-    <!-- Formulário -->
-    <form [formGroup]="perfilForm" (ngSubmit)="salvar()">
-      <ion-list>
-        <ion-item>
-          <ion-label position="floating">Nome</ion-label>
-          <ion-input 
-            formControlName="nome"
-            type="text"
-            placeholder="Digite seu nome"
-          ></ion-input>
-        </ion-item>
-        <div class="error-message" *ngIf="perfilForm.get('nome')?.invalid && perfilForm.get('nome')?.touched">
-          <small *ngIf="perfilForm.get('nome')?.errors?.['required']">Nome é obrigatório</small>
+    <ion-card class="profile-card form-panel glass profile-card-accent">
+      <ion-card-content>
+        <!-- Foto de Perfil -->
+        <div class="avatar-wrapper form-avatar-stack">
+          <div class="avatar-ring form-avatar-ring dotted">
+            <ion-avatar class="logo-avatar form-avatar-img">
+              <img 
+                [src]="fotoPreview || 'assets/default-avatar.png'" 
+                alt="Foto de perfil"
+              />
+            </ion-avatar>
+            <button type="button" class="camera-btn form-camera-btn" (click)="selecionarFoto()">
+              <ion-icon name="camera"></ion-icon>
+            </button>
+          </div>
+          <input 
+            type="file" 
+            #fileInput 
+            accept="image/*" 
+            (change)="onFotoSelecionada($event)"
+            style="display: none"
+          />
+          <ion-note class="form-hint">JPG ou PNG até 5MB</ion-note>
         </div>
 
-        <ion-item>
-          <ion-label position="floating">Email</ion-label>
-          <ion-input 
-            formControlName="email"
-            type="email"
-            placeholder="Digite seu email"
-          ></ion-input>
-        </ion-item>
-        <div class="error-message" *ngIf="perfilForm.get('email')?.invalid && perfilForm.get('email')?.touched">
-          <small *ngIf="perfilForm.get('email')?.errors?.['required']">Email é obrigatório</small>
-          <small *ngIf="perfilForm.get('email')?.errors?.['email']">Email inválido</small>
-        </div>
+        <!-- Formulário -->
+        <form [formGroup]="perfilForm" (ngSubmit)="salvar()" class="form-fields">
+          <ion-item class="form-item" lines="none">
+            <ion-label position="stacked">Nome</ion-label>
+            <ion-input 
+              formControlName="nome"
+              type="text"
+              placeholder="Digite seu nome"
+            ></ion-input>
+          </ion-item>
+          <div class="error-message" *ngIf="perfilForm.get('nome')?.invalid && perfilForm.get('nome')?.touched">
+            <small *ngIf="perfilForm.get('nome')?.errors?.['required']">Nome é obrigatório</small>
+          </div>
 
-        <ion-item>
-          <ion-label position="floating">Nova Senha (deixe em branco para manter)</ion-label>
-          <ion-input 
-            formControlName="senha"
-            type="password"
-            placeholder="Digite a nova senha"
-          ></ion-input>
-        </ion-item>
-        <div class="error-message" *ngIf="perfilForm.get('senha')?.invalid && perfilForm.get('senha')?.touched">
-          <small *ngIf="perfilForm.get('senha')?.errors?.['minlength']">Senha deve ter no mínimo 6 caracteres</small>
-        </div>
-      </ion-list>
+          <ion-item class="form-item" lines="none">
+            <ion-label position="stacked">Email</ion-label>
+            <ion-input 
+              formControlName="email"
+              type="email"
+              placeholder="Digite seu email"
+            ></ion-input>
+          </ion-item>
+          <div class="error-message" *ngIf="perfilForm.get('email')?.invalid && perfilForm.get('email')?.touched">
+            <small *ngIf="perfilForm.get('email')?.errors?.['required']">Email é obrigatório</small>
+            <small *ngIf="perfilForm.get('email')?.errors?.['email']">Email inválido</small>
+          </div>
 
-      <!-- Mensagens de erro da API -->
-      <ion-text color="danger" *ngIf="erroMensagem">
-        <p class="ion-padding">{{ erroMensagem }}</p>
-      </ion-text>
+          <ion-item class="form-item" lines="none">
+            <ion-label position="stacked">Nova Senha (deixe em branco para manter)</ion-label>
+            <ion-input 
+              formControlName="senha"
+              type="password"
+              placeholder="Digite a nova senha"
+            ></ion-input>
+          </ion-item>
+          <div class="error-message" *ngIf="perfilForm.get('senha')?.invalid && perfilForm.get('senha')?.touched">
+            <small *ngIf="perfilForm.get('senha')?.errors?.['minlength']">Senha deve ter no mínimo 6 caracteres</small>
+          </div>
 
-      <!-- Mensagem de sucesso -->
-      <ion-text color="success" *ngIf="sucessoMensagem">
-        <p class="ion-padding">{{ sucessoMensagem }}</p>
-      </ion-text>
+          <!-- Mensagens de erro da API -->
+          <ion-text color="danger" *ngIf="erroMensagem">
+            <p class="ion-padding">{{ erroMensagem }}</p>
+          </ion-text>
 
-      <!-- Botões -->
-      <div class="buttons-container">
-        <ion-button 
-          expand="block" 
-          type="submit"
-          [disabled]="salvando || perfilForm.invalid"
-        >
-          <ion-spinner *ngIf="salvando" name="crescent"></ion-spinner>
-          <span *ngIf="!salvando">Salvar Alterações</span>
-        </ion-button>
+          <!-- Mensagem de sucesso -->
+          <ion-text color="success" *ngIf="sucessoMensagem">
+            <p class="ion-padding">{{ sucessoMensagem }}</p>
+          </ion-text>
 
-        <ion-button 
-          expand="block" 
-          fill="outline"
-          color="medium"
-          (click)="cancelar()"
-          [disabled]="salvando"
-        >
-          Cancelar
-        </ion-button>
-      </div>
-    </form>
+          <!-- Botões -->
+          <div class="buttons-container">
+            <ion-button 
+              expand="block" 
+              type="submit"
+              [disabled]="salvando || perfilForm.invalid"
+              class="profile-button"
+            >
+              <ion-icon slot="start" name="save"></ion-icon>
+              <ion-spinner *ngIf="salvando" name="crescent"></ion-spinner>
+              <span *ngIf="!salvando">SALVAR ALTERAÇÕES</span>
+            </ion-button>
+          </div>
+        </form>
+      </ion-card-content>
+    </ion-card>
   </div>
 </ion-content>

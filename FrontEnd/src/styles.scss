@@ -1,6 +1,7 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+@import './styles/forms';
 
 * {
   margin: 0;
@@ -32,20 +33,170 @@ ion-content {
 }
 
 .app-menu, .app-menu-content, .app-menu-list {
-  --background: #0b1224;
-  background: #0b1224;
+  --background: linear-gradient(180deg, #0f172a 0%, #0b1224 100%);
+  background: linear-gradient(180deg, #0f172a 0%, #0b1224 100%);
   color: #e2e8f0;
 }
 
+.app-menu ion-header {
+  box-shadow: 0 1px 0 rgba(148, 163, 184, 0.1);
+}
+
+.user-profile-header {
+  padding: 24px 20px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(59, 130, 246, 0.05));
+  border-bottom: 1px solid rgba(148, 163, 184, 0.1);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.avatar-wrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.user-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 2px solid rgba(16, 185, 129, 0.3);
+  object-fit: cover;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.status-indicator {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 12px;
+  height: 12px;
+  background: #22c55e;
+  border-radius: 50%;
+  border: 2px solid #0f172a;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+}
+
+.user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #f1f5f9;
+  margin: 0 0 4px 0;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-email {
+  font-size: 13px;
+  color: #94a3b8;
+  margin: 0 0 8px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.15), rgba(59, 130, 246, 0.15));
+  border: 1px solid rgba(168, 85, 247, 0.3);
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #c4b5fd;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.user-badge ion-icon {
+  font-size: 14px;
+  color: #a78bfa;
+}
+
+
 .menu-item {
   --background: transparent;
-  --color: #e2e8f0;
-  --border-color: rgba(148, 163, 184, 0.2);
-  border-bottom: 1px solid var(--border-color);
+  --color: #cbd5e1;
+  --border-color: transparent;
+  --padding-start: 20px;
+  --inner-padding-end: 20px;
+  --min-height: 52px;
+  margin: 4px 12px;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+  font-size: 15px;
+  font-weight: 500;
 }
-.menu-item.ion-activated {
-  --background: rgba(16, 185, 129, 0.15);
+
+.menu-item:hover {
+  --background: rgba(148, 163, 184, 0.08);
+  --color: #f1f5f9;
+}
+
+.menu-item.ion-activated,
+.menu-item[aria-current="page"] {
+  --background: linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(59, 130, 246, 0.12));
   --color: #a7f3d0;
+  font-weight: 600;
+  box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.2);
+}
+
+.menu-item ion-icon {
+  font-size: 22px;
+  margin-right: 16px;
+  opacity: 0.9;
+}
+
+.menu-item.ion-activated ion-icon,
+.menu-item[aria-current="page"] ion-icon {
+  opacity: 1;
+  color: #34d399;
+}
+
+.menu-divider {
+  --background: transparent;
+  --color: #64748b;
+  --padding-start: 20px;
+  --inner-padding-end: 20px;
+  margin-top: 20px;
+  margin-bottom: 8px;
+  min-height: 32px;
+}
+
+.menu-divider ion-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.menu-item.text-rose-300 {
+  --color: #fda4af;
+  margin-top: 24px;
+  border-top: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 0;
+  margin-left: 0;
+  margin-right: 0;
+  padding-top: 16px;
+}
+
+.menu-item.text-rose-300:hover {
+  --background: rgba(248, 113, 113, 0.1);
+  --color: #fecdd3;
+}
+
+.menu-item.text-rose-300 ion-icon {
+  color: #fda4af;
 }
 
 /* Snackbars maiores e destacadas */

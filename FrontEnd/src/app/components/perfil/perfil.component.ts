@@ -1,7 +1,6 @@
 import { Component, OnInit, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, FormGroup, Validators, ReactiveFormsModule } from '@angular/forms';
-import { IonicModule } from '@ionic/angular';
 import { UserService } from '../../services/user.service';
 import { AuthService } from '../../services/auth.service';
 import { ToastService } from '../../services/toast.service';
@@ -11,100 +10,108 @@ import { ToastService } from '../../services/toast.service';
   standalone: true,
   imports: [
     CommonModule,
-    ReactiveFormsModule,
-    IonicModule
+    ReactiveFormsModule
   ],
   template: `
-    <div class="mx-auto max-w-3xl space-y-6">
-      <div class="rounded-3xl border border-slate-800 bg-slate-900/70 p-6 shadow-lg shadow-emerald-500/5">
-        <p class="text-xs uppercase tracking-[0.25em] text-slate-500">Perfil</p>
-        <h1 class="text-3xl font-bold text-slate-50">Informações da conta</h1>
-        <p class="text-slate-400">Atualize seu nome, email, senha ou foto de perfil.</p>
-      </div>
+    <div class="min-h-screen bg-slate-100 text-slate-800">
+      <header class="mx-auto flex max-w-4xl items-center gap-3 px-4 pt-6">
+        <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-100 text-blue-600">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14c-4.418 0-8 1.79-8 4v2h16v-2c0-2.21-3.582-4-8-4z" />
+          </svg>
+        </div>
+        <div>
+          <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Configurações</p>
+          <h1 class="text-3xl font-extrabold text-slate-900">Informações da conta</h1>
+          <p class="text-sm text-slate-500">Atualize seu nome, email, senha ou foto de perfil.</p>
+        </div>
+      </header>
 
-      <div class="rounded-3xl border border-slate-800 bg-slate-950/70 p-6">
-        <form [formGroup]="perfilForm" (ngSubmit)="onSubmit()" class="space-y-5">
-          <!-- Foto de Perfil -->
-          <div class="flex justify-center mb-6">
-            <div class="relative">
-              <img 
-                [src]="fotoPreview || 'assets/default-avatar.png'" 
-                alt="Foto de perfil"
-                class="w-32 h-32 rounded-full object-cover border-4 border-emerald-400"
-              />
-              <button 
-                type="button"
-                (click)="selecionarFoto()"
-                class="absolute bottom-0 right-0 bg-emerald-400 text-slate-950 p-2 rounded-full hover:bg-emerald-500 transition"
-              >
-                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
-                </svg>
-              </button>
-              <input 
-                type="file" 
-                #fileInput 
-                accept="image/*" 
-                (change)="onFotoSelecionada($event)"
-                style="display: none"
-              />
-            </div>
-          </div>
-
-          <div class="grid gap-4 md:grid-cols-2">
-            <div class="space-y-2 md:col-span-2">
-              <label class="text-sm font-semibold text-slate-100" for="nome">Nome</label>
-              <input
-                id="nome"
-                type="text"
-                formControlName="nome"
-                class="w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-slate-50 outline-none ring-emerald-400/30 transition focus:border-emerald-400 focus:ring-4"
-              />
-              <p class="text-xs text-rose-400" *ngIf="perfilForm.get('nome')?.touched && perfilForm.get('nome')?.hasError('required')">
-                Nome é obrigatório
-              </p>
+      <div class="mx-auto mt-4 max-w-4xl px-4 pb-10">
+        <div class="rounded-3xl border border-slate-200 bg-white p-8 shadow-xl shadow-slate-200/70">
+          <form [formGroup]="perfilForm" (ngSubmit)="onSubmit()" class="space-y-6">
+            <!-- Foto de Perfil -->
+            <div class="flex justify-center">
+              <div class="relative">
+                <img 
+                  [src]="fotoPreview || 'assets/default-avatar.png'" 
+                  alt="Foto de perfil"
+                  class="h-32 w-32 rounded-full object-cover border-4 border-blue-400 bg-blue-50"
+                />
+                <button 
+                  type="button"
+                  (click)="selecionarFoto()"
+                  class="absolute bottom-0 right-0 rounded-full bg-blue-500 p-2 text-white shadow-lg transition hover:bg-blue-600"
+                >
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                  </svg>
+                </button>
+                <input 
+                  type="file" 
+                  #fileInput 
+                  accept="image/*" 
+                  (change)="onFotoSelecionada($event)"
+                  style="display: none"
+                />
+              </div>
             </div>
 
-            <div class="space-y-2 md:col-span-2">
-              <label class="text-sm font-semibold text-slate-100" for="email">Email</label>
-              <input
-                id="email"
-                type="email"
-                formControlName="email"
-                class="w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-slate-50 outline-none ring-emerald-400/30 transition focus:border-emerald-400 focus:ring-4"
-              />
-              <p class="text-xs text-rose-400" *ngIf="perfilForm.get('email')?.touched && perfilForm.get('email')?.hasError('required')">
-                Email é obrigatório
-              </p>
-              <p class="text-xs text-rose-400" *ngIf="perfilForm.get('email')?.touched && perfilForm.get('email')?.hasError('email')">
-                Email inválido
-              </p>
+            <div class="grid gap-4 md:grid-cols-2">
+              <div class="space-y-2 md:col-span-2">
+                <label class="text-sm font-semibold text-slate-700" for="nome">Nome</label>
+                <input
+                  id="nome"
+                  type="text"
+                  formControlName="nome"
+                  class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none ring-blue-300 transition focus:border-blue-500 focus:bg-white focus:ring-4"
+                />
+                <p class="text-xs text-rose-500" *ngIf="perfilForm.get('nome')?.touched && perfilForm.get('nome')?.hasError('required')">
+                  Nome é obrigatório
+                </p>
+              </div>
+
+              <div class="space-y-2 md:col-span-2">
+                <label class="text-sm font-semibold text-slate-700" for="email">Email</label>
+                <input
+                  id="email"
+                  type="email"
+                  formControlName="email"
+                  class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none ring-blue-300 transition focus:border-blue-500 focus:bg-white focus:ring-4"
+                />
+                <p class="text-xs text-rose-500" *ngIf="perfilForm.get('email')?.touched && perfilForm.get('email')?.hasError('required')">
+                  Email é obrigatório
+                </p>
+                <p class="text-xs text-rose-500" *ngIf="perfilForm.get('email')?.touched && perfilForm.get('email')?.hasError('email')">
+                  Email inválido
+                </p>
+              </div>
+
+              <div class="space-y-2 md:col-span-2">
+                <label class="text-sm font-semibold text-slate-700" for="senha">Nova Senha (opcional)</label>
+                <input
+                  id="senha"
+                  type="password"
+                  formControlName="senha"
+                  class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-900 outline-none ring-blue-300 transition focus:border-blue-500 focus:bg-white focus:ring-4"
+                  placeholder="Mínimo 6 caracteres"
+                />
+                <p class="text-xs text-rose-500" *ngIf="perfilForm.get('senha')?.touched && perfilForm.get('senha')?.hasError('minlength')">
+                  Senha deve ter no mínimo 6 caracteres
+                </p>
+              </div>
             </div>
 
-            <div class="space-y-2 md:col-span-2">
-              <label class="text-sm font-semibold text-slate-100" for="senha">Nova Senha (opcional)</label>
-              <input
-                id="senha"
-                type="password"
-                formControlName="senha"
-                class="w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-slate-50 outline-none ring-emerald-400/30 transition focus:border-emerald-400 focus:ring-4"
-                placeholder="Mínimo 6 caracteres"
-              />
-              <p class="text-xs text-rose-400" *ngIf="perfilForm.get('senha')?.touched && perfilForm.get('senha')?.hasError('minlength')">
-                Senha deve ter no mínimo 6 caracteres
-              </p>
-            </div>
-          </div>
-
-          <button type="submit" [disabled]="perfilForm.invalid || loading" class="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-400 via-blue-500 to-cyan-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60">
-            <svg *ngIf="loading" class="h-5 w-5 animate-spin text-slate-900" viewBox="0 0 24 24" fill="none">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 000 16v-4l-3 3 3 3v-4a8 8 0 01-8-8z"></path>
-            </svg>
-            <span>{{ loading ? 'Salvando...' : 'Salvar alterações' }}</span>
-          </button>
-        </form>
+            <button type="submit" [disabled]="perfilForm.invalid || loading" class="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-500 via-cyan-500 to-sky-400 px-5 py-3 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-not-allowed disabled:opacity-60">
+              <svg *ngIf="loading" class="h-5 w-5 animate-spin text-white" viewBox="0 0 24 24" fill="none">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 000 16v-4l-3 3 3 3v-4a8 8 0 01-8-8z"></path>
+              </svg>
+              <span>{{ loading ? 'Salvando...' : 'Salvar alterações' }}</span>
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   `

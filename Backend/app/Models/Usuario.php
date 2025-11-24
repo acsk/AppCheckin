@@ -48,11 +48,18 @@ class Usuario
 
     public function findById(int $id, ?int $tenantId = null): ?array
     {
-        $sql = "SELECT id, tenant_id, nome, email, foto_base64, created_at, updated_at FROM usuarios WHERE id = :id";
+        $sql = "
+            SELECT u.id, u.tenant_id, u.nome, u.email, u.role_id, u.plano_id, 
+                   u.data_vencimento_plano, u.foto_base64, u.created_at, u.updated_at,
+                   r.nome as role_nome, r.descricao as role_descricao
+            FROM usuarios u
+            LEFT JOIN roles r ON u.role_id = r.id
+            WHERE u.id = :id
+        ";
         $params = ['id' => $id];
         
         if ($tenantId) {
-            $sql .= " AND tenant_id = :tenant_id";
+            $sql .= " AND u.tenant_id = :tenant_id";
             $params['tenant_id'] = $tenantId;
         }
         
@@ -60,7 +67,21 @@ class Usuario
         $stmt->execute($params);
         $user = $stmt->fetch();
         
-        return $user ?: null;
+        if (!$user) {
+            return null;
+        }
+        
+        // Estruturar com objeto role se existir
+        if ($user['role_id']) {
+            $user['role'] = [
+                'id' => $user['role_id'],
+                'nome' => $user['role_nome'],
+                'descricao' => $user['role_descricao']
+            ];
+            unset($user['role_nome'], $user['role_descricao']);
+        }
+        
+        return $user;
     }
 
     public function update(int $id, array $data): bool
@@ -86,6 +107,21 @@ class Usuario
         if (isset($data['foto_base64'])) {
             $fields[] = 'foto_base64 = :foto_base64';
             $params['foto_base64'] = $data['foto_base64'];
+        }
+
+        if (isset($data['role_id'])) {
+            $fields[] = 'role_id = :role_id';
+            $params['role_id'] = $data['role_id'];
+        }
+
+        if (isset($data['plano_id'])) {
+            $fields[] = 'plano_id = :plano_id';
+            $params['plano_id'] = $data['plano_id'];
+        }
+
+        if (isset($data['data_vencimento_plano'])) {
+            $fields[] = 'data_vencimento_plano = :data_vencimento_plano';
+            $params['data_vencimento_plano'] = $data['data_vencimento_plano'];
         }
 
         if (empty($fields)) {

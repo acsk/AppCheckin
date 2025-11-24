@@ -1,0 +1,115 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/admin"></ion-back-button>
+    </ion-buttons>
+    <ion-title>Gerenciar Alunos</ion-title>
+    <ion-buttons slot="end">
+      <ion-button (click)="abrirModal()">
+        <ion-icon slot="icon-only" name="person-add"></ion-icon>
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="ion-padding">
+  <div class="alunos-container">
+    <div class="page-header">
+      <div class="title-group">
+        <div class="icon-bubble">
+          <ion-icon name="people"></ion-icon>
+        </div>
+        <div>
+          <p class="eyebrow">Painel administrativo</p>
+          <h1>Gerenciar Alunos</h1>
+          <span class="subtitle">Busque, edite e acompanhe os planos dos alunos em um só lugar.</span>
+        </div>
+      </div>
+      <ion-button color="success" (click)="abrirModal()">
+        <ion-icon name="person-add" slot="start"></ion-icon>
+        Novo aluno
+      </ion-button>
+    </div>
+
+    <div class="filters-card">
+      <ion-searchbar
+        [(ngModel)]="searchTerm"
+        (ionInput)="filtrarAlunos()"
+        placeholder="Buscar por nome ou email"
+        animated
+      ></ion-searchbar>
+      <div class="meta">
+        <div class="meta-item">
+          <ion-icon name="list"></ion-icon>
+          <span>{{ alunosFiltrados.length }} aluno(s) listado(s)</span>
+        </div>
+        <div class="meta-item" *ngIf="loading">
+          <ion-spinner name="crescent"></ion-spinner>
+          <span>Carregando registros...</span>
+        </div>
+      </div>
+    </div>
+
+    <ion-card class="list-card">
+      <ion-card-header>
+        <ion-card-subtitle>Lista completa</ion-card-subtitle>
+        <ion-card-title>Alunos</ion-card-title>
+      </ion-card-header>
+
+      <ion-card-content>
+        <ion-spinner *ngIf="loading" name="crescent"></ion-spinner>
+
+        <ion-list *ngIf="!loading" lines="full">
+          <ion-item *ngFor="let aluno of alunosFiltrados">
+            <ion-avatar slot="start">
+              <img [src]="getAvatarUrl(aluno)" />
+            </ion-avatar>
+
+            <ion-label class="aluno-row">
+              <div class="col name-email">
+                <div class="label-header">
+                  <h2>{{ aluno.nome }}</h2>
+                  <ion-badge color="primary" class="checkins-badge">{{ aluno.total_checkins || 0 }} check-ins</ion-badge>
+                </div>
+                <p class="email">{{ aluno.email }}</p>
+              </div>
+
+              <div class="col plano-col">
+                <p class="plano-info">
+                  <ion-icon name="pricetag"></ion-icon>
+                  <span class="plano-nome">{{ getNomePlano(aluno) }}</span>
+                  <ion-badge [color]="getStatusPlano(aluno) === 'vencido' ? 'danger' : getStatusPlano(aluno) === 'proximo-vencimento' ? 'warning' : 'success'">
+                    {{ getStatusPlano(aluno) === 'sem-plano' ? 'Sem plano' : 
+                       getStatusPlano(aluno) === 'vencido' ? 'Vencido' : 
+                       getStatusPlano(aluno) === 'proximo-vencimento' ? 'Vence em breve' : 'Ativo' }}
+                  </ion-badge>
+                </p>
+              </div>
+
+              <div class="col vencimento" *ngIf="aluno.data_vencimento_plano">
+                <span class="label">Vencimento</span>
+                <span class="valor">{{ formatarData(aluno.data_vencimento_plano) }}</span>
+              </div>
+            </ion-label>
+
+            <ion-buttons slot="end" class="actions">
+              <ion-button (click)="abrirModal(aluno)" fill="outline" size="small">
+                <ion-icon slot="start" name="create"></ion-icon>
+                Editar
+              </ion-button>
+              <ion-button (click)="excluirAluno(aluno)" fill="clear" color="danger">
+                <ion-icon slot="icon-only" name="trash"></ion-icon>
+              </ion-button>
+            </ion-buttons>
+          </ion-item>
+
+          <ion-item *ngIf="alunosFiltrados.length === 0" lines="none">
+            <ion-label class="ion-text-center">
+              <p>Nenhum aluno encontrado</p>
+            </ion-label>
+          </ion-item>
+        </ion-list>
+      </ion-card-content>
+    </ion-card>
+  </div>
+</ion-content>

@@ -120,4 +120,15 @@ class AuthController
 
         return $response->withHeader('Content-Type', 'application/json');
     }
+
+    public function logout(Request $request, Response $response): Response
+    {
+        // No backend stateless (JWT), apenas confirmamos o logout
+        // O cliente irá remover o token do localStorage
+        $response->getBody()->write(json_encode([
+            'message' => 'Logout realizado com sucesso'
+        ]));
+
+        return $response->withHeader('Content-Type', 'application/json');
+    }
 }

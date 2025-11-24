@@ -17,12 +17,37 @@ class Checkin
     {
         try {
             $stmt = $this->db->prepare(
-                "INSERT INTO checkins (usuario_id, horario_id) VALUES (:usuario_id, :horario_id)"
+                "INSERT INTO checkins (usuario_id, horario_id, registrado_por_admin) 
+                 VALUES (:usuario_id, :horario_id, 0)"
             );
             
             $stmt->execute([
                 'usuario_id' => $usuarioId,
                 'horario_id' => $horarioId
+            ]);
+
+            return (int) $this->db->lastInsertId();
+        } catch (\PDOException $e) {
+            // Viola constraint de unique (usuário já tem check-in nesse horário)
+            if ($e->getCode() == 23000) {
+                return null;
+            }
+            throw $e;
+        }
+    }
+
+    public function createByAdmin(int $usuarioId, int $horarioId, int $adminId): ?int
+    {
+        try {
+            $stmt = $this->db->prepare(
+                "INSERT INTO checkins (usuario_id, horario_id, registrado_por_admin, admin_id) 
+                 VALUES (:usuario_id, :horario_id, 1, :admin_id)"
+            );
+            
+            $stmt->execute([
+                'usuario_id' => $usuarioId,
+                'horario_id' => $horarioId,
+                'admin_id' => $adminId
             ]);
 
             return (int) $this->db->lastInsertId();

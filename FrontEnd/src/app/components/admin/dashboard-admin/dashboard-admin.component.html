@@ -1,0 +1,190 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-menu-button></ion-menu-button>
+    </ion-buttons>
+    <ion-title>Painel Administrativo</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="ion-padding">
+  <div class="admin-dashboard">
+    <h1 class="page-title">Dashboard</h1>
+    <p class="subtitle">Visão geral da academia</p>
+
+    <ion-spinner *ngIf="loading" name="crescent"></ion-spinner>
+
+    <div class="stats-grid" *ngIf="!loading">
+      <!-- Card: Total de Alunos -->
+      <ion-card class="stat-card">
+        <ion-card-content>
+          <div class="stat-icon alunos">
+            <ion-icon name="people"></ion-icon>
+          </div>
+          <h3>{{ stats.total_alunos }}</h3>
+          <p>Total de Alunos</p>
+          <small>{{ stats.alunos_ativos }} ativos</small>
+        </ion-card-content>
+      </ion-card>
+
+      <!-- Card: Check-ins Hoje -->
+      <ion-card class="stat-card">
+        <ion-card-content>
+          <div class="stat-icon checkins">
+            <ion-icon name="checkmark-circle"></ion-icon>
+          </div>
+          <h3>{{ stats.total_checkins_hoje }}</h3>
+          <p>Check-ins Hoje</p>
+        </ion-card-content>
+      </ion-card>
+
+      <!-- Card: Check-ins do Mês -->
+      <ion-card class="stat-card">
+        <ion-card-content>
+          <div class="stat-icon mes">
+            <ion-icon name="calendar"></ion-icon>
+          </div>
+          <h3>{{ stats.total_checkins_mes }}</h3>
+          <p>Check-ins do Mês</p>
+        </ion-card-content>
+      </ion-card>
+
+      <!-- Card: Planos Vencendo -->
+      <ion-card class="stat-card">
+        <ion-card-content>
+          <div class="stat-icon alerta">
+            <ion-icon name="warning"></ion-icon>
+          </div>
+          <h3>{{ stats.planos_vencendo }}</h3>
+          <p>Planos Vencendo</p>
+          <small>Próximos 7 dias</small>
+        </ion-card-content>
+      </ion-card>
+
+      <!-- Card: Receita Mensal -->
+      <ion-card class="stat-card receita-card">
+        <ion-card-content>
+          <div class="stat-icon receita">
+            <ion-icon name="cash"></ion-icon>
+          </div>
+          <h3>{{ formatarMoeda(stats.receita_mensal) }}</h3>
+          <p>Receita Mensal</p>
+        </ion-card-content>
+      </ion-card>
+    </div>
+
+    <!-- Estatísticas Detalhadas -->
+    <div class="detailed-stats" *ngIf="!loading">
+      <h2>Estatísticas Detalhadas</h2>
+      <div class="stats-grid-small">
+        <ion-card class="stat-card-small">
+          <ion-card-content>
+            <ion-icon name="person-add" color="success"></ion-icon>
+            <div class="stat-info">
+              <h4>{{ stats.novos_alunos_mes }}</h4>
+              <p>Novos este mês</p>
+            </div>
+          </ion-card-content>
+        </ion-card>
+
+        <ion-card class="stat-card-small">
+          <ion-card-content>
+            <ion-icon name="person-remove" color="medium"></ion-icon>
+            <div class="stat-info">
+              <h4>{{ stats.alunos_inativos }}</h4>
+              <p>Alunos inativos</p>
+            </div>
+          </ion-card-content>
+        </ion-card>
+
+        <ion-card class="stat-card-small">
+          <ion-card-content>
+            <ion-icon name="trending-up" color="primary"></ion-icon>
+            <div class="stat-info">
+              <h4>{{ calcularPercentualAtivos() }}%</h4>
+              <p>Taxa de atividade</p>
+            </div>
+          </ion-card-content>
+        </ion-card>
+      </div>
+    </div>
+
+    <!-- Perfil do Tenant -->
+    <div class="tenant-profile" *ngIf="!loading">
+      <ion-card>
+        <ion-card-content>
+          <div class="tenant-header">
+            <div class="tenant-info">
+              <ion-icon name="business" class="tenant-icon"></ion-icon>
+              <div>
+                <h3>Minha Academia</h3>
+                <p>Perfil do Tenant</p>
+              </div>
+            </div>
+            <ion-button fill="outline" size="small" routerLink="/admin/perfil-tenant">
+              <ion-icon slot="start" name="settings"></ion-icon>
+              Configurar
+            </ion-button>
+          </div>
+        </ion-card-content>
+      </ion-card>
+    </div>
+
+    <!-- Ações Rápidas - Cadastros -->
+    <div class="quick-actions">
+      <h2>Cadastros</h2>
+      <p class="section-description">Gerencie os cadastros principais do sistema</p>
+      <div class="actions-grid">
+        <ion-card class="action-card" routerLink="/admin/alunos">
+          <ion-card-content>
+            <div class="action-icon alunos">
+              <ion-icon name="people"></ion-icon>
+            </div>
+            <h4>Alunos</h4>
+            <p>Cadastrar e gerenciar alunos</p>
+          </ion-card-content>
+        </ion-card>
+
+        <ion-card class="action-card" routerLink="/admin/gerenciar-horarios">
+          <ion-card-content>
+            <div class="action-icon horarios">
+              <ion-icon name="calendar"></ion-icon>
+            </div>
+            <h4>Planejamento</h4>
+            <p>Horários semanais e mensais</p>
+          </ion-card-content>
+        </ion-card>
+
+        <ion-card class="action-card" routerLink="/admin/dias">
+          <ion-card-content>
+            <div class="action-icon dias">
+              <ion-icon name="today"></ion-icon>
+            </div>
+            <h4>Dias</h4>
+            <p>Gerenciar dias de aula</p>
+          </ion-card-content>
+        </ion-card>
+
+        <ion-card class="action-card" routerLink="/admin/turmas">
+          <ion-card-content>
+            <div class="action-icon turmas">
+              <ion-icon name="time"></ion-icon>
+            </div>
+            <h4>Turmas</h4>
+            <p>Gerenciar horários de turmas</p>
+          </ion-card-content>
+        </ion-card>
+
+        <ion-card class="action-card" routerLink="/admin/checkin-manual">
+          <ion-card-content>
+            <div class="action-icon checkin">
+              <ion-icon name="checkmark-done"></ion-icon>
+            </div>
+            <h4>Check-in Manual</h4>
+            <p>Registrar check-in de alunos</p>
+          </ion-card-content>
+        </ion-card>
+      </div>
+    </div>
+  </div>
+</ion-content>

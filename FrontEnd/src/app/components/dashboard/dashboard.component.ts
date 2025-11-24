@@ -4,9 +4,8 @@ import { RouterLink } from '@angular/router';
 import { IonicModule, ActionSheetController } from '@ionic/angular';
 import { AuthService } from '../../services/auth.service';
 import { TurmaService } from '../../services/turma.service';
-import { CheckinService } from '../../services/checkin.service';
 import { DiaService } from '../../services/dia.service';
-import { TurmaDia, Turma, AlunoTurma, Dia } from '../../models/api.models';
+import { TurmaDia, Turma, Dia } from '../../models/api.models';
 
 @Component({
   selector: 'app-dashboard',
@@ -103,10 +102,11 @@ import { TurmaDia, Turma, AlunoTurma, Dia } from '../../models/api.models';
           </div>
 
           <div class="space-y-3">
-            <div
+            <a
               *ngFor="let turma of turmasDia.turmas"
-              (click)="selecionarTurma(turma, selectedDia.data)"
-              class="group cursor-pointer rounded-xl border p-4 transition"
+              [routerLink]="['/turmas', turma.id]"
+              [queryParams]="{ data: selectedDia.data, hora: turma.hora }"
+              class="group block cursor-pointer rounded-xl border p-4 transition"
               [ngClass]="turma.usuario_registrado
                 ? 'border-emerald-400/80 bg-emerald-500/10 hover:bg-emerald-500/15 hover:border-emerald-300/80 shadow-[0_8px_30px_rgba(16,185,129,0.18)]'
                 : 'border-slate-800/70 bg-slate-950/60 hover:border-emerald-400/60 hover:bg-slate-900'"
@@ -140,98 +140,8 @@ import { TurmaDia, Turma, AlunoTurma, Dia } from '../../models/api.models';
                 <span class="rounded-full border border-slate-800 px-3 py-1">Início {{ turma.horario_inicio.substring(0,5) }}</span>
                 <span class="rounded-full border border-slate-800 px-3 py-1">Fim {{ turma.horario_fim.substring(0,5) }}</span>
               </div>
-            </div>
+            </a>
           </div>
-        </div>
-      </div>
-
-      <section *ngIf="selectedTurma" class="grid gap-6 md:grid-cols-3">
-        <div class="md:col-span-1 rounded-2xl border border-emerald-500/40 bg-emerald-500/5 p-6">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-xs uppercase tracking-[0.2em] text-emerald-300">Turma selecionada</p>
-                <p class="text-xl font-semibold text-slate-50">{{ selectedTurma!.hora.substring(0,5) }}</p>
-                <p class="text-sm text-slate-400">{{ formatarData(selectedTurma!.data || '') }}</p>
-              </div>
-            <div class="flex gap-2">
-              <button
-                (click)="fazerCheckin()"
-                [disabled]="selectedTurma?.usuario_registrado || checkinLoading"
-                class="rounded-lg border px-3 py-1 text-xs font-semibold transition"
-                [ngClass]="selectedTurma?.usuario_registrado
-                  ? 'border-emerald-400/30 text-emerald-200 opacity-70 cursor-not-allowed'
-                  : 'border-emerald-400/70 text-emerald-100 hover:bg-emerald-400/10'"
-              >
-                {{ checkinLoading ? 'Enviando...' : (selectedTurma?.usuario_registrado ? 'Check-in feito' : 'Fazer check-in') }}
-              </button>
-              <button (click)="limparSelecao()" class="rounded-lg border border-emerald-400/50 px-3 py-1 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-400/10">
-                Limpar
-              </button>
-            </div>
-          </div>
-          <div class="mt-5 space-y-2 text-sm text-slate-200">
-            <p><span class="text-slate-500">Limite:</span> {{ selectedTurma!.limite_alunos }} alunos</p>
-            <p><span class="text-slate-500">Registrados:</span> {{ selectedTurma!.alunos_registrados }}</p>
-            <p><span class="text-slate-500">Vagas:</span> {{ selectedTurma!.vagas_disponiveis }}</p>
-            <p><span class="text-slate-500">Ocupação:</span> {{ selectedTurma!.percentual_ocupacao?.toFixed(1) }}%</p>
-            <p><span class="text-slate-500">Janela:</span> {{ selectedTurma!.horario_inicio.substring(0,5) }} - {{ selectedTurma!.horario_fim.substring(0,5) }}</p>
-          </div>
-          <div *ngIf="checkinMessage" class="mt-4 rounded-lg border px-3 py-2 text-xs font-semibold"
-            [ngClass]="checkinErro ? 'border-rose-400/50 bg-rose-500/10 text-rose-100' : 'border-emerald-400/50 bg-emerald-500/10 text-emerald-100'">
-            {{ checkinMessage }}
-          </div>
-        </div>
-
-        <div class="md:col-span-2 space-y-4">
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Alunos na turma</p>
-              <h3 class="text-xl font-semibold text-slate-50">Presenças confirmadas</h3>
-            </div>
-            <div class="text-sm text-slate-400">
-              Total: <span class="font-semibold text-slate-100">{{ alunos.length }}</span>
-            </div>
-          </div>
-
-          <div *ngIf="loadingAlunos" class="rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-6 text-slate-300">
-            Buscando alunos...
-          </div>
-
-          <div *ngIf="!loadingAlunos && alunos.length === 0" class="rounded-2xl border border-slate-800 bg-slate-900/60 px-6 py-8 text-slate-400">
-            Nenhum aluno realizou check-in para este horário ainda.
-          </div>
-
-          <div *ngIf="!loadingAlunos && alunos.length > 0" class="grid gap-3">
-            <div *ngFor="let aluno of alunos" class="rounded-xl border border-slate-800 bg-slate-950/70 px-4 py-3">
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="text-sm font-semibold text-slate-50">{{ aluno.nome }}</p>
-                  <p class="text-xs text-slate-400">{{ aluno.email }}</p>
-                </div>
-                <span class="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-200">
-                  {{ formatarDataHora(aluno.data_checkin) }}
-                </span>
-              </div>
-              <p class="mt-2 text-xs text-slate-500">Criado em {{ formatarDataHora(aluno.created_at) }}</p>
-            </div>
-          </div>
-        </div>
-      </section>
-    </div>
-
-    <div class="fixed bottom-0 left-0 right-0 border-t border-slate-800/80 bg-slate-950/90 backdrop-blur supports-[backdrop-filter]:backdrop-blur-lg">
-      <div class="mx-auto flex max-w-6xl items-center justify-between gap-3 px-6 py-4">
-        <div class="text-xs text-slate-400">
-          {{ selectedTurma ? ('Turma ' + selectedTurma.hora.substring(0,5)) : 'Selecione uma turma para agir' }}
-        </div>
-        <div class="flex flex-1 justify-end gap-3">
-          <button
-            (click)="loadDiasProximos()"
-            [disabled]="loadingDias"
-            class="rounded-lg border border-slate-700 bg-slate-900 px-4 py-2 text-xs font-semibold text-slate-200 transition hover:border-emerald-400/70 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {{ loadingDias ? 'Atualizando...' : 'Atualizar' }}
-          </button>
         </div>
       </div>
     </div>
@@ -243,20 +153,13 @@ export class DashboardComponent implements OnInit {
   turmasDia: TurmaDia | null = null;
   totalTurmas = 0;
   ocupacaoMedia = 0;
-  selectedTurma: (Turma & { data?: string }) | null = null;
   selectedDia: Dia | null = null;
-  alunos: AlunoTurma[] = [];
   loadingDias = false;
   loadingTurmas = false;
-  loadingAlunos = false;
-  checkinLoading = false;
-  checkinMessage = '';
-  checkinErro = false;
 
   constructor(
     public authService: AuthService,
     private turmaService: TurmaService,
-    private checkinService: CheckinService,
     private diaService: DiaService,
     private actionSheetCtrl: ActionSheetController
   ) {}
@@ -272,9 +175,9 @@ export class DashboardComponent implements OnInit {
         this.diasDisponiveis = response.dias || [];
         this.prepararDiasExibicao();
         if (this.diasDisponiveis.length > 0) {
-          // Seleciona o dia do meio (dia atual)
-          const diaAtual = this.diasDisponiveis[Math.floor(this.diasDisponiveis.length / 2)];
-          this.selecionarDia(diaAtual);
+          const hoje = new Date().toISOString().split('T')[0];
+          const diaHoje = this.diasDisponiveis.find(d => d.data === hoje);
+          this.selecionarDia(diaHoje || this.diasDisponiveis[0]);
         }
         this.loadingDias = false;
       },
@@ -366,69 +269,12 @@ export class DashboardComponent implements OnInit {
     });
   }
 
-  selecionarTurma(turma: Turma, data: string): void {
-    this.checkinMessage = '';
-    this.checkinErro = false;
-    this.selectedTurma = { ...turma, data };
-    this.loadingAlunos = true;
-    this.alunos = [];
-
-    this.turmaService.getAlunos(turma.id).subscribe({
-      next: (response) => {
-        this.alunos = response.alunos;
-        this.loadingAlunos = false;
-      },
-      error: (error) => {
-        this.loadingAlunos = false;
-        console.error('Erro ao carregar alunos:', error);
-      }
-    });
-  }
-
-  limparSelecao(): void {
-    this.selectedTurma = null;
-    this.alunos = [];
-  }
-
   selecionarDia(dia: Dia): void {
     this.selectedDia = dia;
-    this.selectedTurma = null;
-    this.alunos = [];
     this.turmasDia = null;
     
     // Carregar turmas do dia selecionado
     this.loadTurmasDia(dia.data);
-  }
-
-  fazerCheckin(): void {
-    if (!this.selectedTurma || this.selectedTurma.usuario_registrado) return;
-
-    this.checkinLoading = true;
-    this.checkinMessage = '';
-    this.checkinErro = false;
-
-    this.checkinService.realizarCheckin({ horario_id: this.selectedTurma.id }).subscribe({
-      next: (response) => {
-        this.checkinLoading = false;
-        this.checkinMessage = response.message || 'Check-in realizado com sucesso!';
-        this.selectedTurma = {
-          ...this.selectedTurma!,
-          usuario_registrado: true,
-          alunos_registrados: (this.selectedTurma!.alunos_registrados || 0) + 1,
-          vagas_disponiveis: Math.max(0, (this.selectedTurma!.vagas_disponiveis || 0) - 1)
-        };
-        this.selecionarTurma(this.selectedTurma, this.selectedTurma.data || '');
-        // Recarregar as turmas do dia para atualizar os dados
-        if (this.selectedDia) {
-          this.loadTurmasDia(this.selectedDia.data);
-        }
-      },
-      error: (error) => {
-        this.checkinLoading = false;
-        this.checkinErro = true;
-        this.checkinMessage = error.error?.error || 'Erro ao realizar check-in';
-      }
-    });
   }
 
   formatarData(data: string): string {
@@ -445,11 +291,6 @@ export class DashboardComponent implements OnInit {
   formatarDiaNumero(data: string): string {
     const d = new Date(data + 'T00:00:00');
     return d.getDate().toString().padStart(2, '0');
-  }
-
-  formatarDataHora(data: string): string {
-    const date = new Date(data.replace(' ', 'T'));
-    return date.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   }
 
   async abrirStats(): Promise<void> {

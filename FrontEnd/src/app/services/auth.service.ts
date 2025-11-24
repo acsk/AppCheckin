@@ -54,10 +54,15 @@ export class AuthService {
       );
   }
 
-  logout(): void {
-    localStorage.removeItem('token');
-    localStorage.removeItem('currentUser');
-    this.currentUserSubject.next(null);
+  logout(): Observable<{ message: string }> {
+    return this.http.post<{ message: string }>(`${this.apiUrl}/auth/logout`, {})
+      .pipe(
+        tap(() => {
+          localStorage.removeItem('token');
+          localStorage.removeItem('currentUser');
+          this.currentUserSubject.next(null);
+        })
+      );
   }
 
   isAuthenticated(): boolean {

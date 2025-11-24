@@ -1,0 +1,100 @@
+<ion-header class="page-header">
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button defaultHref="/admin"></ion-back-button>
+    </ion-buttons>
+    <div class="title-wrap">
+      <p class="eyebrow">Configurações</p>
+      <ion-title>Perfil do Tenant</ion-title>
+    </div>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content class="ion-padding">
+    <div class="perfil-container form-shell">
+    <div class="header-info form-header">
+      <p class="eyebrow">Configurações</p>
+      <h2 class="title">Configurações da Academia</h2>
+      <p>Atualize as informações do seu negócio</p>
+    </div>
+
+    <ion-spinner *ngIf="loading" name="crescent"></ion-spinner>
+
+    <form [formGroup]="tenantForm" *ngIf="!loading" class="form-grid">
+      <ion-card class="profile-card glass form-panel tenant-card">
+        <ion-card-content>
+          <div class="avatar-wrapper form-avatar-stack">
+            <div class="avatar-ring form-avatar-ring dotted">
+              <ion-avatar *ngIf="logoPreview" class="logo-avatar form-avatar-img">
+                <img [src]="logoPreview" alt="Logo">
+              </ion-avatar>
+              <div *ngIf="!logoPreview" class="logo-placeholder form-avatar-placeholder">
+                <ion-icon name="business"></ion-icon>
+                <p>Nenhuma logo</p>
+              </div>
+              <button type="button" class="camera-btn form-camera-btn" (click)="logoInput.click()">
+                <ion-icon name="camera"></ion-icon>
+              </button>
+            </div>
+            <input 
+              type="file" 
+              #logoInput
+              accept="image/*" 
+              (change)="onFileSelected($event)"
+              style="display: none;"
+            />
+            <ion-note class="hint form-hint">JPG ou PNG até 5MB</ion-note>
+          </div>
+
+          <div class="fields form-fields">
+            <ion-item lines="none" class="form-item">
+              <ion-label position="stacked">Nome da Academia *</ion-label>
+              <ion-input 
+                formControlName="nome" 
+                placeholder="Ex: Academia Fitness Pro"
+              ></ion-input>
+            </ion-item>
+
+            <ion-item lines="none" class="form-item">
+              <ion-label position="stacked">E-mail de contato *</ion-label>
+              <ion-input 
+                formControlName="email" 
+                type="email"
+                placeholder="contato@academia.com"
+              ></ion-input>
+            </ion-item>
+
+            <ion-item lines="none" class="form-item">
+              <ion-label position="stacked">Telefone *</ion-label>
+              <ion-input 
+                formControlName="telefone" 
+                type="tel"
+                placeholder="(11) 98765-4321"
+              ></ion-input>
+            </ion-item>
+
+            <ion-item lines="none" class="form-item">
+              <ion-label position="stacked">Endereço completo *</ion-label>
+              <ion-textarea 
+                formControlName="endereco" 
+                rows="3"
+                placeholder="Rua, número, bairro, cidade/estado"
+              ></ion-textarea>
+            </ion-item>
+          </div>
+
+          <ion-button 
+            expand="block" 
+            size="large"
+            (click)="salvarPerfil()"
+            [disabled]="tenantForm.invalid || loading"
+            class="save-button form-button-primary wide-btn"
+          >
+            <ion-icon slot="start" name="save"></ion-icon>
+            SALVAR ALTERAÇÕES
+          </ion-button>
+        </ion-card-content>
+      </ion-card>
+    </form>
+  </div>
+</ion-content>
