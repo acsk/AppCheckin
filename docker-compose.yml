@@ -1,0 +1,46 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: appcheckin_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: appcheckin
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./Backend/database/migrations:/docker-entrypoint-initdb.d
+    networks:
+      - appcheckin_network
+
+  php:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+    container_name: appcheckin_php
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - mysql
+    volumes:
+      - ./Backend:/var/www/html
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: appcheckin
+      DB_USER: root
+      DB_PASS: root
+      JWT_SECRET: seu_secret_super_seguro_aqui_change_me
+      JWT_EXPIRATION: 86400
+      APP_ENV: development
+    networks:
+      - appcheckin_network
+
+volumes:
+  mysql_data:
+
+networks:
+  appcheckin_network:
+    driver: bridge

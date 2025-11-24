@@ -1,0 +1,50 @@
+-- Tabela de Usuários
+CREATE TABLE IF NOT EXISTS usuarios (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    nome VARCHAR(255) NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    senha_hash VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Tabela de Dias
+CREATE TABLE IF NOT EXISTS dias (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    data DATE NOT NULL UNIQUE,
+    ativo BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Tabela de Horários
+CREATE TABLE IF NOT EXISTS horarios (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    dia_id INT NOT NULL,
+    hora TIME NOT NULL,
+    vagas INT DEFAULT 0,
+    ativo BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (dia_id) REFERENCES dias(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_dia_hora (dia_id, hora)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Tabela de Check-ins
+CREATE TABLE IF NOT EXISTS checkins (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    usuario_id INT NOT NULL,
+    horario_id INT NOT NULL,
+    data_checkin TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+    FOREIGN KEY (horario_id) REFERENCES horarios(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_usuario_horario (usuario_id, horario_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Índices para melhor performance
+CREATE INDEX idx_checkins_usuario ON checkins(usuario_id);
+CREATE INDEX idx_checkins_horario ON checkins(horario_id);
+CREATE INDEX idx_horarios_dia ON horarios(dia_id);
+CREATE INDEX idx_dias_data ON dias(data);
