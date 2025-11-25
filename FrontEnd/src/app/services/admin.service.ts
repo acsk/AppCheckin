@@ -47,6 +47,10 @@ export class AdminService {
     return this.http.delete<{ message: string }>(`${this.apiUrl}/admin/alunos/${id}`);
   }
 
+  historicoPlanos(alunoId: number): Observable<{ historico: any[], total: number }> {
+    return this.http.get<{ historico: any[], total: number }>(`${this.apiUrl}/admin/alunos/${alunoId}/historico-planos`);
+  }
+
   // Planos
   listarPlanos(apenasAtivos = false): Observable<{ planos: Plano[], total: number }> {
     const url = apenasAtivos ? `${this.apiUrl}/planos?ativos=true` : `${this.apiUrl}/planos`;

@@ -1,115 +1,93 @@
-<ion-header>
-  <ion-toolbar>
-    <ion-buttons slot="start">
-      <ion-back-button defaultHref="/admin"></ion-back-button>
-    </ion-buttons>
-    <ion-title>Gerenciar Alunos</ion-title>
-    <ion-buttons slot="end">
-      <ion-button (click)="abrirModal()">
-        <ion-icon slot="icon-only" name="person-add"></ion-icon>
-      </ion-button>
-    </ion-buttons>
-  </ion-toolbar>
-</ion-header>
-
-<ion-content class="ion-padding">
-  <div class="alunos-container">
-    <div class="page-header">
-      <div class="title-group">
-        <div class="icon-bubble">
-          <ion-icon name="people"></ion-icon>
-        </div>
-        <div>
-          <p class="eyebrow">Painel administrativo</p>
-          <h1>Gerenciar Alunos</h1>
-          <span class="subtitle">Busque, edite e acompanhe os planos dos alunos em um só lugar.</span>
-        </div>
-      </div>
-      <ion-button color="success" (click)="abrirModal()">
-        <ion-icon name="person-add" slot="start"></ion-icon>
-        Novo aluno
-      </ion-button>
+<div class="page">
+  <div class="page-header">
+    <div>
+      <p class="eyebrow">Painel administrativo</p>
+      <h1>Gerenciar Alunos</h1>
+      <p class="muted">Busque, edite e acompanhe os planos dos alunos em um só lugar.</p>
     </div>
-
-    <div class="filters-card">
-      <ion-searchbar
-        [(ngModel)]="searchTerm"
-        (ionInput)="filtrarAlunos()"
-        placeholder="Buscar por nome ou email"
-        animated
-      ></ion-searchbar>
-      <div class="meta">
-        <div class="meta-item">
-          <ion-icon name="list"></ion-icon>
-          <span>{{ alunosFiltrados.length }} aluno(s) listado(s)</span>
-        </div>
-        <div class="meta-item" *ngIf="loading">
-          <ion-spinner name="crescent"></ion-spinner>
-          <span>Carregando registros...</span>
-        </div>
-      </div>
-    </div>
-
-    <ion-card class="list-card">
-      <ion-card-header>
-        <ion-card-subtitle>Lista completa</ion-card-subtitle>
-        <ion-card-title>Alunos</ion-card-title>
-      </ion-card-header>
-
-      <ion-card-content>
-        <ion-spinner *ngIf="loading" name="crescent"></ion-spinner>
-
-        <ion-list *ngIf="!loading" lines="full">
-          <ion-item *ngFor="let aluno of alunosFiltrados">
-            <ion-avatar slot="start">
-              <img [src]="getAvatarUrl(aluno)" />
-            </ion-avatar>
-
-            <ion-label class="aluno-row">
-              <div class="col name-email">
-                <div class="label-header">
-                  <h2>{{ aluno.nome }}</h2>
-                  <ion-badge color="primary" class="checkins-badge">{{ aluno.total_checkins || 0 }} check-ins</ion-badge>
-                </div>
-                <p class="email">{{ aluno.email }}</p>
-              </div>
-
-              <div class="col plano-col">
-                <p class="plano-info">
-                  <ion-icon name="pricetag"></ion-icon>
-                  <span class="plano-nome">{{ getNomePlano(aluno) }}</span>
-                  <ion-badge [color]="getStatusPlano(aluno) === 'vencido' ? 'danger' : getStatusPlano(aluno) === 'proximo-vencimento' ? 'warning' : 'success'">
-                    {{ getStatusPlano(aluno) === 'sem-plano' ? 'Sem plano' : 
-                       getStatusPlano(aluno) === 'vencido' ? 'Vencido' : 
-                       getStatusPlano(aluno) === 'proximo-vencimento' ? 'Vence em breve' : 'Ativo' }}
-                  </ion-badge>
-                </p>
-              </div>
-
-              <div class="col vencimento" *ngIf="aluno.data_vencimento_plano">
-                <span class="label">Vencimento</span>
-                <span class="valor">{{ formatarData(aluno.data_vencimento_plano) }}</span>
-              </div>
-            </ion-label>
-
-            <ion-buttons slot="end" class="actions">
-              <ion-button (click)="abrirModal(aluno)" fill="outline" size="small">
-                <ion-icon slot="start" name="create"></ion-icon>
-                Editar
-              </ion-button>
-              <ion-button (click)="excluirAluno(aluno)" fill="clear" color="danger">
-                <ion-icon slot="icon-only" name="trash"></ion-icon>
-              </ion-button>
-            </ion-buttons>
-          </ion-item>
-
-          <ion-item *ngIf="alunosFiltrados.length === 0" lines="none">
-            <ion-label class="ion-text-center">
-              <p>Nenhum aluno encontrado</p>
-            </ion-label>
-          </ion-item>
-        </ion-list>
-      </ion-card-content>
-    </ion-card>
+    <button mat-flat-button color="primary" type="button" (click)="abrirModal()">
+      <mat-icon>person_add</mat-icon>
+      Novo aluno
+    </button>
   </div>
-</ion-content>
+
+  <mat-card class="filters-card">
+    <div class="filters-row">
+      <mat-form-field appearance="outline" class="search-field">
+        <mat-label>Buscar por nome ou email</mat-label>
+        <mat-icon matPrefix>search</mat-icon>
+        <input matInput type="search" [(ngModel)]="searchTerm" (input)="filtrarAlunos()" />
+      </mat-form-field>
+      <div class="meta">
+        <mat-chip *ngIf="loading" color="accent" selected>Carregando...</mat-chip>
+      </div>
+    </div>
+  </mat-card>
+
+  <mat-card class="list-card">
+    <div class="list-head">
+      <div>
+        <p class="eyebrow">Lista completa</p>
+        <h2>Alunos</h2>
+      </div>
+    </div>
+
+    <div class="loading" *ngIf="loading">
+      <mat-progress-spinner diameter="36" mode="indeterminate"></mat-progress-spinner>
+    </div>
+
+    <div *ngIf="!loading && alunosFiltrados.length > 0" class="aluno-list">
+      <div class="aluno-row" *ngFor="let aluno of alunosFiltrados">
+        <div class="avatar-block">
+          <img [src]="getAvatarUrl(aluno)" alt="Foto do aluno" />
+          <mat-chip disableRipple>{{ aluno.total_checkins || 0 }} check-ins</mat-chip>
+        </div>
+
+        <div class="info">
+          <div class="name-line">
+            <mat-icon class="inline-icon" aria-hidden="true">person</mat-icon>
+            <h3>{{ aluno.nome }}</h3>
+          </div>
+          <p class="muted">
+            <mat-icon class="inline-icon" aria-hidden="true">mail</mat-icon>
+            {{ aluno.email }}
+          </p>
+        </div>
+
+        <div class="plano">
+          <p class="label">Plano</p>
+          <ng-container *ngIf="getNomePlano(aluno); else semPlano">
+            <mat-chip class="plano-chip" color="primary" selected>{{ getNomePlano(aluno) }}</mat-chip>
+          </ng-container>
+          <ng-template #semPlano></ng-template>
+          <mat-chip class="status-chip" [ngClass]="getStatusPlano(aluno)">
+            {{ getStatusPlano(aluno) === 'vencido' ? 'Vencido' :
+               getStatusPlano(aluno) === 'proximo-vencimento' ? 'Vence em breve' :
+               getStatusPlano(aluno) === 'ativo' ? 'Ativo' : 'Inativo' }}
+          </mat-chip>
+        </div>
+
+        <div class="vencimento" *ngIf="aluno.data_vencimento_plano">
+          <p class="label">Vencimento</p>
+          <p class="valor">{{ formatarData(aluno.data_vencimento_plano) }}</p>
+        </div>
+
+        <div class="actions">
+          <button mat-icon-button color="accent" type="button" (click)="abrirModalMatricula(aluno)" aria-label="Matricular aluno">
+            <mat-icon>school</mat-icon>
+          </button>
+          <button mat-icon-button color="primary" type="button" (click)="abrirModal(aluno)" aria-label="Editar aluno">
+            <mat-icon>edit</mat-icon>
+          </button>
+          <button mat-icon-button color="warn" type="button" (click)="excluirAluno(aluno)" aria-label="Excluir aluno">
+            <mat-icon>delete</mat-icon>
+          </button>
+        </div>
+      </div>
+  </div>
+
+  <div *ngIf="!loading && alunosFiltrados.length === 0" class="empty">
+    Nenhum aluno encontrado.
+  </div>
+  </mat-card>
+</div>

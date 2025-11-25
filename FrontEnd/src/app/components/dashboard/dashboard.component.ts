@@ -1,7 +1,6 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
-import { IonicModule, ActionSheetController } from '@ionic/angular';
 import { AuthService } from '../../services/auth.service';
 import { TurmaService } from '../../services/turma.service';
 import { DiaService } from '../../services/dia.service';
@@ -12,140 +11,185 @@ import { TurmaDia, Turma, Dia } from '../../models/api.models';
   standalone: true,
   imports: [
     CommonModule,
-    RouterLink,
-    IonicModule
+    RouterLink
   ],
   template: `
-    <div class="space-y-8">
-      <div *ngIf="loadingDias" class="flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-6 text-slate-300">
-        <svg class="h-5 w-5 animate-spin text-emerald-300" viewBox="0 0 24 24" fill="none">
-          <circle class="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 000 16v-4l-3 3 3 3v-4a8 8 0 01-8-8z"></path>
-        </svg>
-        Carregando dias...
-      </div>
-
-      <div *ngIf="!loadingDias && diasDisponiveis.length === 0" class="rounded-2xl border border-slate-800 bg-slate-900/60 px-6 py-10 text-center text-slate-400">
-        Nenhum dia disponível no momento.
-      </div>
-
-      <div *ngIf="!loadingDias && diasDisponiveis.length > 0" class="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
-        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
-          <p class="text-sm font-semibold text-slate-200">Dias</p>
-          <div class="flex items-center gap-3">
-            <button (click)="abrirStats()" class="text-xs font-semibold text-emerald-200">Estatísticas</button>
-            <button (click)="loadDiasProximos()" class="text-xs text-emerald-300">Atualizar</button>
-          </div>
-        </div>
-        <div class="flex items-center gap-2 py-3">
-          <!-- Seta para dias anteriores -->
-          <button
-            (click)="carregarDiasAnteriores()"
-            [disabled]="loadingDias"
-            class="flex h-12 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-300 transition hover:border-emerald-400/70 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-40"
-            title="Dias anteriores"
-          >
-            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path>
-            </svg>
-          </button>
-
-          <!-- Lista de dias -->
-          <div class="flex flex-1 items-center justify-center gap-2">
-            <button
-              *ngFor="let dia of diasExibicao"
-              (click)="dia.disponivel ? selecionarDia(dia) : null"
-              [disabled]="!dia.disponivel"
-              class="w-[80px] flex-shrink-0 rounded-xl px-3 py-2 text-center text-xs font-semibold transition"
-              [ngClass]="dia.disponivel ? (selectedDia?.data === dia.data
-                ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/50'
-                : 'bg-slate-900 text-slate-300 border border-slate-800 hover:border-slate-700')
-                : 'bg-slate-950 text-slate-600 border border-slate-900 cursor-not-allowed opacity-50'"
-            >
-              <div class="text-[11px] uppercase tracking-wide">{{ dia.disponivel ? formatarSemanaCurto(dia.data) : '---' }}</div>
-              <div class="text-base font-bold">{{ dia.disponivel ? formatarDiaNumero(dia.data) : '--' }}</div>
-            </button>
-          </div>
-
-          <!-- Seta para dias posteriores -->
-          <button
-            (click)="carregarDiasPosteriores()"
-            [disabled]="loadingDias"
-            class="flex h-12 w-10 flex-shrink-0 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-300 transition hover:border-emerald-400/70 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-40"
-            title="Dias posteriores"
-          >
-            <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      <div *ngIf="loadingTurmas" class="flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 px-4 py-6 text-slate-300">
-        <svg class="h-5 w-5 animate-spin text-emerald-300" viewBox="0 0 24 24" fill="none">
-          <circle class="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-          <path class="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 000 16v-4l-3 3 3 3v-4a8 8 0 01-8-8z"></path>
-        </svg>
-        Carregando turmas...
-      </div>
-
-      <div class="grid gap-6" *ngIf="!loadingTurmas && selectedDia && turmasDia">
-        <div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-6 space-y-4">
-          <div class="flex items-center justify-between">
+    <div class="page-shell">
+      <div class="content-shell space-y-12">
+        <div class="page-header">
+          <div class="page-title">
+            <div class="pill-icon">📅</div>
             <div>
-              <p class="text-xs uppercase tracking-[0.2em] text-slate-500">Data</p>
-              <p class="text-xl font-semibold text-slate-50">{{ formatarData(selectedDia.data) }}</p>
+              <p class="eyebrow">Dashboard</p>
+              <h1>Escolha um dia para ver as turmas</h1>
+              <p class="lead">Consulte horários, disponibilidade e veja se você já está inscrito.</p>
             </div>
-            <span class="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-200">
-              {{ turmasDia.dia.ativo ? 'Dia ativo' : 'Inativo' }}
-            </span>
+          </div>
+          <button class="btn btn-ghost" (click)="loadDiasProximos()">Atualizar</button>
+        </div>
+
+        <div *ngIf="loadingDias" class="card muted-card">Carregando dias...</div>
+        <div *ngIf="!loadingDias && diasDisponiveis.length === 0" class="card muted-card">Nenhum dia disponível no momento.</div>
+
+        <div *ngIf="!loadingDias && diasDisponiveis.length > 0" class="card days-card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Dias</p>
+              <p class="muted">Selecione um dia para ver as turmas.</p>
+            </div>
+            <div class="meta">
+              <span class="badge">Carregados: {{ diasDisponiveis.length }}</span>
+              <span class="badge" [class.success]="selectedDia">Selecionado: {{ selectedDia?.data || '---' }}</span>
+            </div>
           </div>
 
-          <div class="space-y-3">
+          <div class="days-nav">
+            <button class="icon-btn" (click)="carregarDiasAnteriores()" [disabled]="loadingDias">‹</button>
+            <div class="days-list">
+              <button
+                *ngFor="let dia of diasExibicao"
+                class="day-tile"
+                [class.active]="selectedDia?.data === dia.data"
+                [class.disabled]="!dia.disponivel"
+                (click)="dia.disponivel ? selecionarDia(dia) : null"
+              >
+                <span class="muted small">{{ dia.disponivel ? formatarSemanaCurto(dia.data) : '---' }}</span>
+                <strong>{{ dia.disponivel ? formatarDiaNumero(dia.data) : '--' }}</strong>
+              </button>
+            </div>
+            <button class="icon-btn" (click)="carregarDiasPosteriores()" [disabled]="loadingDias">›</button>
+          </div>
+        </div>
+
+        <div *ngIf="loadingTurmas" class="card muted-card">Carregando turmas...</div>
+
+        <div *ngIf="!loadingTurmas && selectedDia && turmasDia" class="card turmas-card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Data</p>
+              <h2>{{ formatarData(selectedDia.data) }}</h2>
+            </div>
+            <div class="meta">
+              <span class="badge" [class.success]="turmasDia.dia.ativo">Dia {{ turmasDia.dia.ativo ? 'ativo' : 'inativo' }}</span>
+              <span class="badge">Turmas: {{ turmasDia.turmas?.length || 0 }}</span>
+              <span class="badge">Ocupação: {{ ocupacaoGeral }}%</span>
+            </div>
+          </div>
+
+          <div class="turma-list">
             <a
               *ngFor="let turma of turmasDia.turmas"
               [routerLink]="['/turmas', turma.id]"
               [queryParams]="{ data: selectedDia.data, hora: turma.hora }"
-              class="group block cursor-pointer rounded-xl border p-4 transition"
-              [ngClass]="turma.usuario_registrado
-                ? 'border-emerald-400/80 bg-emerald-500/10 hover:bg-emerald-500/15 hover:border-emerald-300/80 shadow-[0_8px_30px_rgba(16,185,129,0.18)]'
-                : 'border-slate-800/70 bg-slate-950/60 hover:border-emerald-400/60 hover:bg-slate-900'"
+              class="turma-card"
+              [class.selected]="turma.usuario_registrado"
             >
-              <div class="flex items-center justify-between">
+              <div class="turma-head">
                 <div>
-                  <p class="text-sm uppercase tracking-[0.15em] text-slate-500">Horário</p>
-                  <p class="text-lg font-semibold text-slate-50">{{ turma.hora.substring(0,5) }}</p>
+                  <p class="eyebrow small">Horário</p>
+                  <h3>{{ turma.hora.substring(0,5) }}</h3>
                 </div>
-                <div class="flex items-center gap-2">
-                  <span *ngIf="turma.usuario_registrado" class="rounded-full border border-emerald-400/50 bg-emerald-400/10 px-3 py-1 text-[11px] font-semibold text-emerald-200">
-                    Você já está nesta turma
-                  </span>
-                  <p class="text-sm font-semibold text-emerald-300">{{ turma.alunos_registrados }}/{{ turma.limite_alunos }} alunos</p>
+                <div class="meta">
+                  <span *ngIf="turma.usuario_registrado" class="badge success">Você está nesta turma</span>
+                  <span class="badge">{{ turma.alunos_registrados }}/{{ turma.limite_alunos }} alunos</span>
                 </div>
               </div>
 
-              <div class="mt-3 flex items-center gap-3">
-                <div class="h-2 flex-1 overflow-hidden rounded-full bg-slate-800">
-                  <div
-                    class="h-full rounded-full transition-all"
-                    [ngClass]="turma.usuario_registrado ? 'bg-gradient-to-r from-emerald-300 via-emerald-400 to-cyan-300' : 'bg-gradient-to-r from-emerald-400 to-cyan-400'"
-                    [style.width.%]="turma.percentual_ocupacao || 0"
-                  ></div>
-                </div>
-                <span class="text-xs font-semibold text-slate-200">{{ turma.percentual_ocupacao?.toFixed(0) }}%</span>
+              <div class="progress">
+                <div class="bar" [style.width.%]="turma.percentual_ocupacao || 0"></div>
+                <span class="muted small">{{ turma.percentual_ocupacao?.toFixed(0) || 0 }}%</span>
               </div>
 
-              <div class="mt-3 flex items-center justify-between text-xs text-slate-400">
-                <span class="rounded-full border border-slate-800 px-3 py-1">Vagas: {{ turma.vagas_disponiveis }}</span>
-                <span class="rounded-full border border-slate-800 px-3 py-1">Início {{ turma.horario_inicio.substring(0,5) }}</span>
-                <span class="rounded-full border border-slate-800 px-3 py-1">Fim {{ turma.horario_fim.substring(0,5) }}</span>
+              <div class="turma-footer">
+                <span>Vagas: {{ turma.vagas_disponiveis }}</span>
+                <span>Início {{ turma.horario_inicio.substring(0,5) }}</span>
+                <span>Fim {{ turma.horario_fim.substring(0,5) }}</span>
               </div>
             </a>
           </div>
         </div>
       </div>
     </div>
-  `
+  `,
+  styles: [`
+    .muted-card {
+      padding: 12px 14px;
+      color: var(--text-soft);
+      background: linear-gradient(120deg, #f8fafc, #eef2ff);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+    }
+    .days-card { padding: 18px; background: linear-gradient(145deg, #ffffff, #f5f8ff); }
+    .card-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+      margin-bottom: 12px;
+    }
+    .days-nav {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 12px;
+      align-items: center;
+    }
+    .days-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+      gap: 10px;
+    }
+    .day-tile {
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: #fff;
+      padding: 12px 10px;
+      text-align: center;
+      transition: var(--transition);
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+    }
+    .day-tile strong { font-size: 18px; color: var(--text-strong); }
+    .day-tile.active { border-color: var(--brand-primary); box-shadow: 0 12px 26px rgba(37,99,235,0.18), var(--ring); }
+    .day-tile.disabled { opacity: 0.45; cursor: not-allowed; }
+    .icon-btn {
+      width: 42px;
+      height: 42px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: #fff;
+      cursor: pointer;
+      transition: var(--transition);
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+    }
+    .icon-btn:hover { border-color: var(--brand-primary); color: var(--brand-primary); }
+    .icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .turmas-card { padding: 18px; background: linear-gradient(180deg, #ffffff, #f7f9fc); }
+    .turma-list { display: flex; flex-direction: column; gap: 12px; }
+    .turma-card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 16px;
+      background: #fff;
+      color: var(--text-strong);
+      display: block;
+      text-decoration: none;
+      transition: var(--transition);
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+    }
+    .turma-card:hover { border-color: var(--brand-primary); box-shadow: 0 16px 34px rgba(37, 99, 235, 0.16); }
+    .turma-card.selected { border-color: rgba(34, 197, 94, 0.4); box-shadow: 0 16px 36px rgba(34, 197, 94, 0.18); background: linear-gradient(135deg, #f8fffb, #ecfdf3); }
+    .turma-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .turma-head h3 { margin: 0; font-size: 20px; }
+    .progress { display: flex; align-items: center; gap: 10px; }
+    .progress .bar {
+      flex: 1;
+      height: 10px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, var(--brand-primary), var(--brand-accent));
+      transition: width 0.2s ease;
+    }
+    .turma-footer { display: flex; gap: 12px; flex-wrap: wrap; color: var(--text-soft); font-size: 13px; }
+    .badge.success { background: #ecfdf3; border-color: rgba(22, 163, 74, 0.3); color: #166534; }
+  `]
 })
 export class DashboardComponent implements OnInit {
   diasDisponiveis: Dia[] = [];
@@ -160,8 +204,7 @@ export class DashboardComponent implements OnInit {
   constructor(
     public authService: AuthService,
     private turmaService: TurmaService,
-    private diaService: DiaService,
-    private actionSheetCtrl: ActionSheetController
+    private diaService: DiaService
   ) {}
 
   ngOnInit(): void {
@@ -292,26 +335,10 @@ export class DashboardComponent implements OnInit {
     const d = new Date(data + 'T00:00:00');
     return d.getDate().toString().padStart(2, '0');
   }
-
-  async abrirStats(): Promise<void> {
-    const diasCount = this.diasDisponiveis.length;
-    const turmasCount = this.turmasDia?.turmas?.length || 0;
+  get ocupacaoGeral(): string {
     const totalRegistrados = this.turmasDia?.turmas?.reduce((acc, t) => acc + (t.alunos_registrados || 0), 0) || 0;
     const totalLimite = this.turmasDia?.turmas?.reduce((acc, t) => acc + (t.limite_alunos || 0), 0) || 0;
-    const ocupacaoPct = totalLimite ? ((totalRegistrados / totalLimite) * 100).toFixed(1) : '0';
-
-    const actionSheet = await this.actionSheetCtrl.create({
-      header: 'Estatísticas do dia',
-      cssClass: 'ion-alert-vibrant',
-      buttons: [
-        { text: `Dias carregados: ${diasCount}`, role: 'info' },
-        { text: `Turmas no dia: ${turmasCount}`, role: 'info' },
-        { text: `Total registrados: ${totalRegistrados}/${totalLimite || '?'}`, role: 'info' },
-        { text: `Ocupação geral: ${ocupacaoPct}%`, role: 'info' },
-        { text: 'Fechar', role: 'cancel' }
-      ]
-    });
-
-    await actionSheet.present();
+    if (!totalLimite) return '0';
+    return ((totalRegistrados / totalLimite) * 100).toFixed(1);
   }
 }

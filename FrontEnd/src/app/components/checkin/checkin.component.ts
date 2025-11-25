@@ -1,6 +1,5 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { IonicModule } from '@ionic/angular';
 import { DiaService } from '../../services/dia.service';
 import { CheckinService } from '../../services/checkin.service';
 import { Dia, Horario } from '../../models/api.models';
@@ -10,68 +9,104 @@ import { ToastService } from '../../services/toast.service';
   selector: 'app-checkin',
   standalone: true,
   imports: [
-    CommonModule,
-    IonicModule
+    CommonModule
   ],
   template: `
-    <div class="space-y-4">
-      <div class="rounded-3xl border border-slate-800 bg-slate-900/80 p-4 shadow-xl shadow-emerald-500/5">
-        <p class="text-lg font-semibold text-slate-100">Check-in</p>
-        <p class="text-sm text-slate-400">Escolha o dia e confirme seu horário.</p>
-      </div>
-
-      <div class="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/80">
-        <div class="flex items-center justify-between border-b border-slate-800 px-4 py-3 text-slate-200">
-          <p class="text-sm font-semibold">Dias</p>
-          <button (click)="carregarDias()" class="text-xs text-emerald-300">Atualizar</button>
-        </div>
-        <div class="flex items-center justify-between gap-2 overflow-x-auto px-3 py-2">
-          <button (click)="navegarDias('prev')" class="rounded-full border border-slate-800 bg-slate-900 px-2 py-2 text-xs text-slate-200">‹</button>
-          <button
-            *ngFor="let dia of dias"
-            (click)="selecionarDia(dia)"
-            class="min-w-[70px] rounded-xl px-3 py-2 text-center text-xs font-semibold transition"
-            [ngClass]="diaSelecionado?.id === dia.id
-              ? 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/50'
-              : 'bg-slate-900 text-slate-300 border border-slate-800'"
-          >
-            <div class="text-[11px] uppercase tracking-wide">{{ getDiaSemanaCurto(dia.data) }}</div>
-            <div class="text-base font-bold">{{ formatarDiaNumero(dia.data) }}</div>
-          </button>
-          <button (click)="navegarDias('next')" class="rounded-full border border-slate-800 bg-slate-900 px-2 py-2 text-xs text-slate-200">›</button>
-        </div>
-      </div>
-
-      <div class="rounded-2xl border border-slate-800 bg-slate-950/80">
-        <div class="border-b border-slate-800 px-4 py-3">
-          <p class="text-sm font-semibold text-slate-200">Horários</p>
-          <p class="text-xs text-slate-400">{{ diaSelecionado ? formatarData(diaSelecionado.data) : 'Escolha um dia acima' }}</p>
-        </div>
-
-        <div *ngIf="loading" class="px-4 py-4 text-slate-300">Carregando opções...</div>
-        <div *ngIf="!loading && horarios.length === 0" class="px-4 py-4 text-slate-400">Nenhum horário disponível.</div>
-
-        <div *ngIf="!loading && horarios.length > 0" class="divide-y divide-slate-800">
-          <button
-            *ngFor="let horario of horarios"
-            [disabled]="horario.vagas_disponiveis === 0 || loading"
-            (click)="realizarCheckin(horario)"
-            class="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <div class="text-2xl font-bold text-slate-100 w-16">{{ horario.hora.substring(0,5) }}</div>
-            <div class="flex-1">
-              <p class="text-sm font-semibold text-slate-200">Aula</p>
-              <p class="text-xs text-slate-400">Janela {{ (horario.horario_inicio || horario.hora).substring(0,5) }} - {{ (horario.horario_fim || horario.hora).substring(0,5) }}</p>
+    <div class="page-shell">
+      <div class="content-shell space-y-10">
+        <div class="page-header">
+          <div class="page-title">
+            <div class="pill-icon">✅</div>
+            <div>
+              <p class="eyebrow">Check-in</p>
+              <h1>Escolha o dia e confirme seu horário</h1>
+              <p class="lead">Veja vagas disponíveis e confirme sua presença rapidamente.</p>
             </div>
-            <div class="text-right">
-              <p class="text-sm font-bold text-slate-50">{{ horario.vagas_disponiveis }}/{{ horario.vagas }}</p>
-              <p class="text-[11px] text-slate-400">vagas</p>
+          </div>
+          <button class="btn btn-ghost" (click)="carregarDias()">Atualizar</button>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Dias</p>
+              <p class="muted">Navegue entre as datas disponíveis.</p>
             </div>
-          </button>
+            <div class="meta">
+              <span class="badge">Total: {{ dias.length }}</span>
+              <span class="badge" [class.success]="diaSelecionado">Selecionado: {{ diaSelecionado?.data || '---' }}</span>
+            </div>
+          </div>
+          <div class="days-nav">
+            <button class="icon-btn" (click)="navegarDias('prev')">‹</button>
+            <div class="days-list">
+              <button
+                *ngFor="let dia of dias"
+                (click)="selecionarDia(dia)"
+                class="day-tile"
+                [class.active]="diaSelecionado?.id === dia.id"
+              >
+                <span class="muted small">{{ getDiaSemanaCurto(dia.data) }}</span>
+                <strong>{{ formatarDiaNumero(dia.data) }}</strong>
+              </button>
+            </div>
+            <button class="icon-btn" (click)="navegarDias('next')">›</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Horários</p>
+              <p class="muted">{{ diaSelecionado ? formatarData(diaSelecionado.data) : 'Escolha um dia acima' }}</p>
+            </div>
+          </div>
+
+          <div *ngIf="loading" class="muted-card">Carregando opções...</div>
+          <div *ngIf="!loading && horarios.length === 0" class="muted-card">Nenhum horário disponível.</div>
+
+          <div *ngIf="!loading && horarios.length > 0" class="horario-list">
+            <button
+              *ngFor="let horario of horarios"
+              [disabled]="horario.vagas_disponiveis === 0 || loading"
+              (click)="realizarCheckin(horario)"
+              class="horario-card"
+              [class.disabled]="horario.vagas_disponiveis === 0"
+            >
+              <div class="hora">{{ horario.hora.substring(0,5) }}</div>
+              <div class="info">
+                <p class="title">Aula</p>
+                <p class="muted small">Janela {{ (horario.horario_inicio || horario.hora).substring(0,5) }} - {{ (horario.horario_fim || horario.hora).substring(0,5) }}</p>
+              </div>
+              <div class="vagas" [ngClass]="badgeClass(horario.vagas_disponiveis)">
+                {{ horario.vagas_disponiveis }}/{{ horario.vagas }} vagas
+              </div>
+            </button>
+          </div>
         </div>
       </div>
     </div>
-  `
+  `,
+  styles: [`
+    .card { padding: 16px; }
+    .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 10px; }
+    .muted-card { color: var(--text-soft); padding: 10px 0; }
+    .days-nav { display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; }
+    .days-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(80px, 1fr)); gap: 8px; }
+    .day-tile { border: 1px solid var(--border); border-radius: var(--radius-md); background: #fff; padding: 10px 8px; text-align: center; transition: var(--transition); }
+    .day-tile.active { border-color: var(--brand-primary); box-shadow: var(--ring); }
+    .icon-btn { width: 38px; height: 38px; border: 1px solid var(--border); border-radius: 12px; background: #fff; }
+    .horario-list { display: flex; flex-direction: column; gap: 10px; }
+    .horario-card { display: grid; grid-template-columns: 70px 1fr auto; gap: 12px; align-items: center; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: #fff; transition: var(--transition); text-align: left; }
+    .horario-card:hover { border-color: var(--brand-primary); box-shadow: var(--shadow-soft); }
+    .horario-card.disabled { opacity: 0.6; cursor: not-allowed; }
+    .hora { font-size: 20px; font-weight: 800; color: var(--text-strong); }
+    .title { margin: 0; font-weight: 700; }
+    .vagas { font-weight: 700; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--border); background: #f8fafc; color: var(--text-strong); }
+    .border-rose-400\\/50 { border-color: rgba(244,63,94,0.5) !important; color: #9f1239 !important; background: #fff1f2; }
+    .border-amber-400\\/50 { border-color: rgba(251,191,36,0.5) !important; color: #92400e !important; background: #fffbeb; }
+    .border-emerald-400\\/50 { border-color: rgba(52,211,153,0.5) !important; color: #065f46 !important; background: #ecfdf3; }
+  `]
 })
 export class CheckinComponent implements OnInit {
   dias: Dia[] = [];

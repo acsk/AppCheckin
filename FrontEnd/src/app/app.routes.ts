@@ -83,6 +83,10 @@ export const routes: Routes = [
       {
         path: 'checkin-manual',
         loadComponent: () => import('./components/admin/checkin-manual/checkin-manual.component').then(m => m.CheckinManualComponent)
+      },
+      {
+        path: 'contas-receber',
+        loadComponent: () => import('./components/contas-receber/contas-receber.component').then(m => m.ContasReceberComponent)
       }
     ]
   },

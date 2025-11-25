@@ -8,6 +8,9 @@ use App\Controllers\TurmaController;
 use App\Controllers\AdminController;
 use App\Controllers\PlanoController;
 use App\Controllers\PlanejamentoController;
+use App\Controllers\ContasReceberController;
+use App\Controllers\MatriculaController;
+use App\Controllers\ConfigController;
 use App\Middlewares\AuthMiddleware;
 use App\Middlewares\TenantMiddleware;
 
@@ -49,10 +52,15 @@ return function ($app) {
         $group->get('/planos', [PlanoController::class, 'index']);
         $group->get('/planos/{id}', [PlanoController::class, 'show']);
         
+        // Configurações (formas de pagamento e status)
+        $group->get('/config/formas-pagamento', [ConfigController::class, 'listarFormasPagamento']);
+        $group->get('/config/status-conta', [ConfigController::class, 'listarStatusConta']);
+        
         // Admin - Protegido (TODO: adicionar AdminMiddleware)
         $group->get('/admin/dashboard', [AdminController::class, 'dashboard']);
         $group->get('/admin/alunos', [AdminController::class, 'listarAlunos']);
         $group->get('/admin/alunos/{id}', [AdminController::class, 'buscarAluno']);
+        $group->get('/admin/alunos/{id}/historico-planos', [AdminController::class, 'historicoPlanos']);
         $group->post('/admin/alunos', [AdminController::class, 'criarAluno']);
         $group->put('/admin/alunos/{id}', [AdminController::class, 'atualizarAluno']);
         $group->delete('/admin/alunos/{id}', [AdminController::class, 'desativarAluno']);
@@ -72,6 +80,18 @@ return function ($app) {
         
         // Admin - Registrar check-in para aluno
         $group->post('/admin/checkins/registrar', [CheckinController::class, 'registrarPorAdmin']);
+        
+        // Admin - Contas a Receber
+        $group->get('/admin/contas-receber', [ContasReceberController::class, 'index']);
+        $group->get('/admin/contas-receber/estatisticas', [ContasReceberController::class, 'estatisticas']);
+        $group->post('/admin/contas-receber/{id}/baixa', [ContasReceberController::class, 'darBaixa']);
+        $group->post('/admin/contas-receber/{id}/cancelar', [ContasReceberController::class, 'cancelar']);
+        
+        // Admin - Matrículas
+        $group->post('/admin/matriculas', [MatriculaController::class, 'criar']);
+        $group->get('/admin/matriculas', [MatriculaController::class, 'listar']);
+        $group->post('/admin/matriculas/{id}/cancelar', [MatriculaController::class, 'cancelar']);
+        $group->post('/admin/matriculas/contas/{id}/baixa', [MatriculaController::class, 'darBaixaConta']);
     })->add(AuthMiddleware::class);
 
     // Rota de teste

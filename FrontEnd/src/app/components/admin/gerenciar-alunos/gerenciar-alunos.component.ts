@@ -1,59 +1,99 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { IonicModule, ToastController, ModalController } from '@ionic/angular';
 import { FormsModule } from '@angular/forms';
 import { AdminService } from '../../../services/admin.service';
-import { AlunoAdmin, Plano } from '../../../models/api.models';
-import { AlunoModalComponent } from './aluno-modal/aluno-modal.component';
+import { MatriculaService } from '../../../services/matricula.service';
+import { ConfigService } from '../../../services/config.service';
+import { AlunoAdmin, FormaPagamento } from '../../../models/api.models';
+import { ToastService } from '../../../services/toast.service';
+import { MatCardModule } from '@angular/material/card';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { MatIconModule } from '@angular/material/icon';
+import { MatButtonModule } from '@angular/material/button';
+import { MatChipsModule } from '@angular/material/chips';
+import { MatDividerModule } from '@angular/material/divider';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
+import { MatDialogModule, MatDialog } from '@angular/material/dialog';
+import { MatSelectModule } from '@angular/material/select';
+import { LoadingController } from '@ionic/angular/standalone';
+import { AlunoDialogComponent } from './aluno-dialog/aluno-dialog.component';
+import { ConfirmarExclusaoDialogComponent } from './confirmar-exclusao-dialog/confirmar-exclusao-dialog.component';
+import { ConfirmarBaixaDialogComponent } from './confirmar-baixa-dialog/confirmar-baixa-dialog.component';
+import { MatriculaDialogComponent } from '../../matricula-dialog/matricula-dialog.component';
 
 @Component({
   selector: 'app-gerenciar-alunos',
   standalone: true,
-  imports: [CommonModule, IonicModule, FormsModule],
+  imports: [
+    CommonModule,
+    FormsModule,
+    MatCardModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatIconModule,
+    MatButtonModule,
+    MatChipsModule,
+    MatDividerModule,
+    MatProgressSpinnerModule,
+    MatDialogModule,
+    MatSelectModule
+  ],
   templateUrl: './gerenciar-alunos.component.html',
   styleUrls: ['./gerenciar-alunos.component.scss']
 })
 export class GerenciarAlunosComponent implements OnInit {
   alunos: AlunoAdmin[] = [];
   alunosFiltrados: AlunoAdmin[] = [];
-  planos: Plano[] = [];
   searchTerm = '';
   loading = true;
+  formasPagamento: FormaPagamento[] = [];
 
   constructor(
     private adminService: AdminService,
-    private toastController: ToastController,
-    private modalController: ModalController
+    private matriculaService: MatriculaService,
+    private configService: ConfigService,
+    private toast: ToastService,
+    private loadingController: LoadingController,
+    private dialog: MatDialog
   ) {}
 
   ngOnInit(): void {
     this.carregarAlunos();
-    this.carregarPlanos();
+    this.carregarFormasPagamento();
   }
 
-  carregarAlunos(): void {
-    this.loading = true;
-    this.adminService.listarAlunos().subscribe({
-      next: (response) => {
-        this.alunos = response.alunos;
-        this.alunosFiltrados = this.alunos;
-        this.loading = false;
+  carregarFormasPagamento(): void {
+    this.configService.listarFormasPagamento().subscribe({
+      next: (formas) => {
+        this.formasPagamento = formas;
       },
-      error: async (error) => {
-        console.error('Erro ao carregar alunos:', error);
-        this.loading = false;
-        await this.mostrarToast('Erro ao carregar alunos', 'danger');
+      error: (error) => {
+        console.error('Erro ao carregar formas de pagamento:', error);
       }
     });
   }
 
-  carregarPlanos(): void {
-    this.adminService.listarPlanos(true).subscribe({
-      next: (response) => {
-        this.planos = response.planos;
+  async carregarAlunos(): Promise<void> {
+    const loading = await this.loadingController.create({
+      message: 'Carregando alunos...',
+      spinner: 'crescent'
+    });
+    await loading.present();
+    this.loading = true;
+
+    this.adminService.listarAlunos().subscribe({
+      next: async (response) => {
+        this.alunos = response.alunos;
+        this.filtrarAlunos();
+        this.loading = false;
+        await loading.dismiss();
       },
-      error: (error) => {
-        console.error('Erro ao carregar planos:', error);
+      error: async (error) => {
+        console.error('Erro ao carregar alunos:', error);
+        this.loading = false;
+        await loading.dismiss();
+        this.toast.show('Erro ao carregar alunos', 'danger');
       }
     });
   }
@@ -70,23 +110,17 @@ export class GerenciarAlunosComponent implements OnInit {
     );
   }
 
-  async abrirModal(aluno?: AlunoAdmin): Promise<void> {
-    const modal = await this.modalController.create({
-      component: AlunoModalComponent,
-      componentProps: {
-        aluno,
-        planos: this.planos
-      },
-      cssClass: 'aluno-modal'
+  abrirModal(aluno?: AlunoAdmin): void {
+    const dialogRef = this.dialog.open(AlunoDialogComponent, {
+      width: '500px',
+      data: { aluno }
     });
 
-    await modal.present();
-
-    const { data, role } = await modal.onWillDismiss();
-
-    if (role === 'confirm' && data) {
-      await this.salvarAluno(data);
-    }
+    dialogRef.afterClosed().subscribe(result => {
+      if (result) {
+        this.salvarAluno(result);
+      }
+    });
   }
 
   async salvarAluno(modalData: { dados: any; modoEdicao: boolean; alunoId?: number }): Promise<void> {
@@ -96,77 +130,69 @@ export class GerenciarAlunosComponent implements OnInit {
       this.adminService.atualizarAluno(alunoId, dados).subscribe({
         next: async () => {
           this.carregarAlunos();
-          await this.mostrarToast('Aluno atualizado com sucesso!', 'success');
+          this.toast.show('Aluno atualizado com sucesso!', 'success');
         },
         error: async (error) => {
           console.error('Erro ao atualizar aluno:', error);
           const mensagem = error.error?.errors?.join(', ') || error.error?.error || 'Erro ao atualizar aluno';
-          await this.mostrarToast(mensagem, 'danger');
+          this.toast.show(mensagem, 'danger');
         }
       });
     } else {
       this.adminService.criarAluno(dados).subscribe({
         next: async () => {
           this.carregarAlunos();
-          await this.mostrarToast('Aluno criado com sucesso!', 'success');
+          this.toast.show('Aluno criado com sucesso!', 'success');
         },
         error: async (error) => {
           console.error('Erro ao criar aluno:', error);
           const mensagem = error.error?.errors?.join(', ') || error.error?.error || 'Erro ao criar aluno';
-          await this.mostrarToast(mensagem, 'danger');
+          this.toast.show(mensagem, 'danger');
         }
       });
     }
   }
 
   excluirAluno(aluno: AlunoAdmin): void {
-    const confirmar = confirm(`Deseja realmente excluir o aluno ${aluno.nome}?`);
-    if (!confirmar) return;
-
-    this.adminService.desativarAluno(aluno.id).subscribe({
-      next: async () => {
-        this.carregarAlunos();
-        await this.mostrarToast('Aluno excluído com sucesso!', 'success');
-      },
-      error: async (error) => {
-        console.error('Erro ao excluir aluno:', error);
-        const mensagem = error.error?.error || 'Erro ao excluir aluno';
-        await this.mostrarToast(mensagem, 'danger');
-      }
+    const dialogRef = this.dialog.open(ConfirmarExclusaoDialogComponent, {
+      width: '450px',
+      data: { aluno }
     });
-  }
 
-  async mostrarToast(mensagem: string, cor: 'success' | 'danger' | 'warning' = 'success'): Promise<void> {
-    const toast = await this.toastController.create({
-      message: mensagem,
-      duration: 3000,
-      position: 'top',
-      color: cor,
-      buttons: [
-        {
-          text: 'OK',
-          role: 'cancel'
+    dialogRef.afterClosed().subscribe(confirmar => {
+      if (!confirmar) return;
+
+      this.adminService.desativarAluno(aluno.id).subscribe({
+        next: async () => {
+          this.carregarAlunos();
+          this.toast.show('Aluno excluído com sucesso!', 'success');
+        },
+        error: async (error) => {
+          console.error('Erro ao excluir aluno:', error);
+          const mensagem = error.error?.error || 'Erro ao excluir aluno';
+          this.toast.show(mensagem, 'danger');
         }
-      ]
+      });
     });
-    await toast.present();
   }
 
   getNomePlano(aluno: AlunoAdmin): string {
-    return aluno.plano?.nome || 'Sem plano';
+    return aluno.plano?.nome || '';
   }
 
   getStatusPlano(aluno: AlunoAdmin): string {
-    if (!aluno.plano_id) return 'sem-plano';
-    if (!aluno.data_vencimento_plano) return 'ativo';
+    // Verifica se tem pagamento ativo (lógica de negócio correta)
+    if (aluno.status_ativo) {
+      return 'ativo';
+    }
     
-    const hoje = new Date();
-    const vencimento = new Date(aluno.data_vencimento_plano);
-    const diffDias = Math.floor((vencimento.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+    // Se tem plano mas não tem pagamento
+    if (aluno.plano_id) {
+      return 'vencido';
+    }
     
-    if (diffDias < 0) return 'vencido';
-    if (diffDias <= 7) return 'proximo-vencimento';
-    return 'ativo';
+    // Sem plano
+    return 'inativo';
   }
 
   formatarData(data: string | null | undefined): string {
@@ -176,5 +202,97 @@ export class GerenciarAlunosComponent implements OnInit {
 
   getAvatarUrl(aluno: AlunoAdmin): string {
     return aluno.foto_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(aluno.nome)}&background=6366f1&color=fff`;
+  }
+
+  abrirModalMatricula(aluno: AlunoAdmin): void {
+    const dialogRef = this.dialog.open(MatriculaDialogComponent, {
+      width: '600px',
+      data: { aluno }
+    });
+
+    dialogRef.afterClosed().subscribe(dados => {
+      if (dados) {
+        this.salvarMatricula(dados);
+      }
+    });
+  }
+
+  async salvarMatricula(dados: any): Promise<void> {
+    const loading = await this.loadingController.create({
+      message: 'Criando matrícula...',
+      spinner: 'crescent'
+    });
+    await loading.present();
+
+    this.matriculaService.criar(dados).subscribe({
+      next: async (response) => {
+        await loading.dismiss();
+        
+        // Pergunta se quer dar baixa imediatamente usando dialog
+        if (response.conta_criada) {
+          this.toast.show(
+            'Matrícula realizada com sucesso!',
+            'success',
+            3000
+          );
+          
+          const dialogRef = this.dialog.open(ConfirmarBaixaDialogComponent, {
+            width: '500px',
+            data: { 
+              valor: +response.conta_criada.valor,
+              formasPagamento: this.formasPagamento
+            }
+          });
+
+          const contaId = response.conta_criada.id;
+          dialogRef.afterClosed().subscribe(formaPagamentoId => {
+            if (formaPagamentoId) {
+              this.darBaixaImediata(contaId, formaPagamentoId);
+            } else {
+              this.carregarAlunos();
+            }
+          });
+        } else {
+          this.carregarAlunos();
+        }
+      },
+      error: async (error) => {
+        await loading.dismiss();
+        console.error('Erro ao criar matrícula:', error);
+        const mensagem = error.error?.errors?.join(', ') || error.error?.error || 'Erro ao criar matrícula';
+        this.toast.show(mensagem, 'danger');
+      }
+    });
+  }
+
+  darBaixaImediata(contaId: number, formaPagamentoId: number): void {
+    this.processarBaixaImediata(contaId, formaPagamentoId);
+  }
+
+  private async processarBaixaImediata(contaId: number, formaPagamentoId: number): Promise<void> {
+    const hoje = new Date().toISOString().split('T')[0];
+
+    const loading = await this.loadingController.create({
+      message: 'Processando pagamento...',
+      spinner: 'crescent'
+    });
+    await loading.present();
+
+    this.matriculaService.darBaixaConta(contaId, {
+      data_pagamento: hoje,
+      forma_pagamento_id: formaPagamentoId
+    }).subscribe({
+      next: async () => {
+        await loading.dismiss();
+        this.carregarAlunos();
+        this.toast.show('Matrícula realizada e primeira mensalidade paga com sucesso!', 'success');
+      },
+      error: async (error) => {
+        await loading.dismiss();
+        console.error('Erro ao dar baixa:', error);
+        this.carregarAlunos();
+        this.toast.show('Matrícula criada, mas erro ao dar baixa: ' + (error.error?.error || 'Erro desconhecido'), 'warning');
+      }
+    });
   }
 }

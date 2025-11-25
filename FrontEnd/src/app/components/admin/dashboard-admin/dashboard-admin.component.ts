@@ -1,14 +1,24 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { IonicModule } from '@ionic/angular';
 import { RouterModule } from '@angular/router';
+import { MatCardModule } from '@angular/material/card';
+import { MatIconModule } from '@angular/material/icon';
+import { MatButtonModule } from '@angular/material/button';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { AdminService } from '../../../services/admin.service';
 import { DashboardAdminStats } from '../../../models/api.models';
 
 @Component({
   selector: 'app-dashboard-admin',
   standalone: true,
-  imports: [CommonModule, IonicModule, RouterModule],
+  imports: [
+    CommonModule,
+    RouterModule,
+    MatCardModule,
+    MatIconModule,
+    MatButtonModule,
+    MatProgressSpinnerModule
+  ],
   templateUrl: './dashboard-admin.component.html',
   styleUrls: ['./dashboard-admin.component.scss']
 })
@@ -21,7 +31,11 @@ export class DashboardAdminComponent implements OnInit {
     total_checkins_hoje: 0,
     total_checkins_mes: 0,
     planos_vencendo: 0,
-    receita_mensal: 0
+    receita_mensal: 0,
+    contas_pendentes_qtd: 0,
+    contas_pendentes_valor: 0,
+    contas_vencidas_qtd: 0,
+    contas_vencidas_valor: 0
   };
 
   loading = true;

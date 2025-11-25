@@ -149,6 +149,9 @@ export interface AlunoAdmin extends User {
   plano?: Plano | null;
   total_checkins?: number;
   ultimo_checkin?: string | null;
+  status_ativo?: boolean;
+  ultima_conta_pendente_id?: number | null;
+  ultima_conta_pendente_valor?: string | null;
 }
 
 export interface DashboardAdminStats {
@@ -160,6 +163,10 @@ export interface DashboardAdminStats {
   total_checkins_mes: number;
   planos_vencendo: number;
   receita_mensal: number;
+  contas_pendentes_qtd: number;
+  contas_pendentes_valor: number;
+  contas_vencidas_qtd: number;
+  contas_vencidas_valor: number;
 }
 
 export interface Role {
@@ -222,4 +229,162 @@ export interface CheckinAdminResponse {
     registrado_por_admin: boolean;
     admin_id: number | null;
   };
+}
+
+export interface HistoricoPlano {
+  id: number;
+  usuario_id: number;
+  plano_anterior_id: number | null;
+  plano_novo_id: number | null;
+  plano_anterior_nome: string | null;
+  plano_anterior_valor: number | null;
+  plano_novo_nome: string | null;
+  plano_novo_valor: number | null;
+  data_inicio: string;
+  data_vencimento: string | null;
+  valor_pago: number | null;
+  motivo: 'novo' | 'renovacao' | 'upgrade' | 'downgrade' | 'cancelamento';
+  observacoes: string | null;
+  criado_por: number | null;
+  criado_por_nome: string | null;
+  created_at: string;
+}
+
+export interface HistoricoPlanoResponse {
+  historico: HistoricoPlano[];
+  total: number;
+}
+
+export interface ContaReceber {
+  id: number;
+  tenant_id: number;
+  usuario_id: number;
+  plano_id: number;
+  historico_plano_id: number | null;
+  valor: string;  // DECIMAL vem como string do backend
+  data_vencimento: string;
+  data_pagamento: string | null;
+  status: 'pendente' | 'pago' | 'vencido' | 'cancelado';
+  forma_pagamento_id: number | null;
+  valor_liquido: string | null;  // DECIMAL vem como string
+  valor_desconto: string | null;  // DECIMAL vem como string
+  referencia_mes: string;
+  recorrente: boolean;
+  intervalo_dias: number | null;
+  proxima_conta_id: number | null;
+  conta_origem_id: number | null;
+  observacoes: string | null;
+  criado_por: number | null;
+  baixa_por: number | null;
+  created_at: string;
+  updated_at: string;
+  // Campos joined
+  aluno_nome?: string;
+  aluno_email?: string;
+  plano_nome?: string;
+  duracao_dias?: number;
+  criado_por_nome?: string | null;
+  baixa_por_nome?: string | null;
+}
+
+export interface ContasReceberResponse {
+  contas: ContaReceber[];
+  total: number;
+}
+
+export interface DarBaixaRequest {
+  data_pagamento?: string;
+  forma_pagamento?: string;
+  observacoes?: string;
+}
+
+export interface DarBaixaResponse {
+  message: string;
+  conta: ContaReceber;
+  proxima_conta_id: number | null;
+  proxima_vencimento: string | null;
+}
+
+export interface ContasReceberEstatisticas {
+  por_status: {
+    status: string;
+    quantidade: number;
+    total: number;
+  }[];
+  vencidas: {
+    quantidade: number;
+    total: number;
+  };
+  a_vencer_7_dias: {
+    quantidade: number;
+    total: number;
+  };
+  mes_referencia: string;
+}
+
+export interface Matricula {
+  id: number;
+  tenant_id: number;
+  usuario_id: number;
+  plano_id: number;
+  data_matricula: string;
+  data_inicio: string;
+  data_vencimento: string;
+  valor: number;
+  status: 'ativa' | 'vencida' | 'cancelada' | 'finalizada';
+  motivo: 'nova' | 'renovacao' | 'upgrade' | 'downgrade';
+  matricula_anterior_id: number | null;
+  plano_anterior_id: number | null;
+  observacoes: string | null;
+  criado_por: number | null;
+  cancelado_por: number | null;
+  data_cancelamento: string | null;
+  motivo_cancelamento: string | null;
+  created_at: string;
+  updated_at: string;
+  // Campos joined
+  aluno_nome?: string;
+  aluno_email?: string;
+  plano_nome?: string;
+  plano_valor?: number;
+  duracao_dias?: number;
+  criado_por_nome?: string | null;
+}
+
+export interface MatriculaRequest {
+  usuario_id: number;
+  plano_id: number;
+  data_inicio?: string;
+  valor?: number;
+  motivo?: 'nova' | 'renovacao' | 'upgrade' | 'downgrade';
+  observacoes?: string;
+}
+
+export interface BaixaContaRequest {
+  data_pagamento?: string;
+  forma_pagamento_id?: number;
+  observacoes?: string;
+}
+
+export interface FormaPagamento {
+  id: number;
+  nome: string;
+  percentual_desconto: string;  // DECIMAL vem como string
+}
+
+export interface StatusConta {
+  id: number;
+  nome: string;
+  cor: string;
+}
+
+export interface MatriculaResponse {
+  message: string;
+  matricula: Matricula;
+  conta_criada?: ContaReceber;
+}
+
+export interface MatriculasListResponse {
+  matriculas: Matricula[];
+  total: number;
 }

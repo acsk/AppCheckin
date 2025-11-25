@@ -1,10 +1,11 @@
 -- Script para criar massa de dados para testar o Dashboard Admin
 -- Data base: 24 de novembro de 2025
 
-USE checkin_db;
+USE appcheckin;
 
 -- Garantir que temos planos cadastrados
 INSERT INTO planos (tenant_id, nome, descricao, valor, duracao_dias, checkins_mensais, ativo) VALUES
+(1, 'FREE', 'Plano gratuito - acesso limitado', 0.00, 30, 4, 1),
 (1, 'Plano Mensal Básico', 'Acesso ilimitado por 30 dias', 99.90, 30, NULL, 1),
 (1, 'Plano Trimestral', 'Acesso ilimitado por 90 dias com desconto', 259.90, 90, NULL, 1),
 (1, 'Plano Semestral', 'Acesso ilimitado por 180 dias - melhor custo/benefício', 479.90, 180, NULL, 1),

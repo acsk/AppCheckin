@@ -4,93 +4,115 @@ import { ActivatedRoute, RouterLink } from '@angular/router';
 import { TurmaService } from '../../services/turma.service';
 import { CheckinService } from '../../services/checkin.service';
 import { UserService } from '../../services/user.service';
-import { TurmaAlunosResponse, AlunoTurma, UsuarioEstatisticas } from '../../models/api.models';
+import { TurmaAlunosResponse, AlunoTurma } from '../../models/api.models';
 import { AuthService } from '../../services/auth.service';
-import { IonicModule, AlertController, ActionSheetController } from '@ionic/angular';
 import { ToastService } from '../../services/toast.service';
 
 @Component({
   selector: 'app-turma-detail',
   standalone: true,
-  imports: [CommonModule, RouterLink, IonicModule],
+  imports: [CommonModule, RouterLink],
   template: `
-    <div class="space-y-4">
-      <div class="flex items-center justify-between text-slate-200">
-        <button routerLink="/dashboard" class="flex items-center gap-2 text-sm font-semibold text-slate-200">
-          <ion-icon name="chevron-back" class="text-lg"></ion-icon>
-          Voltar
-        </button>
-        <ion-icon name="refresh" (click)="recarregarAlunos()" class="text-xl cursor-pointer"></ion-icon>
-      </div>
+    <div class="page-shell">
+      <div class="content-shell space-y-10">
+        <div class="page-header">
+          <div class="page-title">
+            <div class="pill-icon">📘</div>
+            <div>
+              <p class="eyebrow">Turma</p>
+              <h1>Detalhes da turma</h1>
+              <p class="lead">Veja os alunos registrados e faça ou cancele seu check-in.</p>
+            </div>
+          </div>
+          <div class="actions">
+            <a routerLink="/dashboard" class="btn btn-ghost">Voltar</a>
+            <button class="btn btn-ghost" (click)="recarregarAlunos()">Recarregar</button>
+          </div>
+        </div>
 
-      <div class="rounded-3xl border border-slate-800 bg-slate-900/80 p-4 shadow-lg shadow-emerald-500/10">
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-4">
-            <div class="rounded-2xl bg-slate-800 px-3 py-2 text-center text-slate-100">
-              <p class="text-[11px] uppercase tracking-wide">{{ formatarDataParaDia(turmaData).mes }}</p>
-              <p class="text-2xl font-bold leading-tight">{{ formatarDataParaDia(turmaData).dia }}</p>
+        <div class="card resumo">
+          <div class="resumo-date">
+            <div class="box">
+              <span class="muted small">{{ formatarDataParaDia(turmaData).mes }}</span>
+              <strong>{{ formatarDataParaDia(turmaData).dia }}</strong>
             </div>
             <div>
-              <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Horário</p>
-              <p class="text-2xl font-bold text-slate-50">{{ turmaHora }}</p>
-              <p class="text-sm text-slate-300">{{ formatarDataParaDia(turmaData).semana }}</p>
+              <p class="eyebrow">Horário</p>
+              <h2>{{ turmaHora }}</h2>
+              <p class="muted">{{ formatarDataParaDia(turmaData).semana }}</p>
             </div>
           </div>
-          <div class="rounded-full border border-slate-700 px-4 py-2 text-center">
-            <p class="text-xs text-slate-400">Registrados</p>
-            <p class="text-lg font-semibold text-slate-50">{{ alunos.length }}</p>
+          <div class="badges">
+            <span class="badge success">Registrados: {{ alunos.length }}</span>
+            <span class="badge">ID: {{ turmaId }}</span>
           </div>
         </div>
-      </div>
 
-      <div class="rounded-3xl border border-slate-800 bg-slate-950/80 shadow-xl shadow-emerald-500/5">
-        <div class="flex items-center justify-between border-b border-slate-800 px-5 py-3 text-slate-200">
-          <p class="text-xs font-semibold tracking-[0.18em] text-slate-400">Lista de presença</p>
-          <span class="text-xs text-slate-400">{{ alunos.length }} alunos</span>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Lista de presença</p>
+              <p class="muted">{{ alunos.length }} aluno(s)</p>
+            </div>
+          </div>
+
+          <div *ngIf="loading" class="muted-card">Carregando alunos...</div>
+          <div *ngIf="!loading && alunos.length === 0" class="muted-card">Nenhum aluno registrado nesta turma.</div>
+
+          <div *ngIf="!loading && alunos.length > 0" class="aluno-list">
+            <div 
+              *ngFor="let aluno of alunos" 
+              (click)="abrirEstatisticasUsuario(aluno)"
+              class="aluno-row"
+            >
+              <img [src]="avatar(aluno)" [alt]="aluno.nome">
+              <div class="info">
+                <p class="nome">{{ aluno.nome }}</p>
+                <p class="muted small">{{ aluno.email }}</p>
+              </div>
+              <span class="badge success">Check-in {{ aluno.data_checkin }}</span>
+            </div>
+          </div>
         </div>
 
-        <div *ngIf="loading" class="px-5 py-4 text-slate-300">Carregando alunos...</div>
-        <div *ngIf="!loading && alunos.length === 0" class="px-5 py-4 text-slate-400">Nenhum aluno registrado nesta turma.</div>
-
-        <div *ngIf="!loading && alunos.length > 0" class="divide-y divide-slate-800">
-          <div 
-            *ngFor="let aluno of alunos" 
-            (click)="abrirEstatisticasUsuario(aluno)"
-            class="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-slate-900/50 transition"
+        <div class="cta">
+          <button
+            *ngIf="!myCheckinId"
+            (click)="abrirConfirmacaoCheckin()"
+            [disabled]="checkinLoading"
+            class="btn btn-primary full"
           >
-            <img [src]="avatar(aluno)" [alt]="aluno.nome" class="h-10 w-10 rounded-full border border-slate-800 object-cover">
-            <div class="flex-1">
-              <p class="text-sm font-semibold text-slate-50">{{ aluno.nome }}</p>
-              <p class="text-xs text-slate-400">{{ aluno.email }}</p>
-            </div>
-            <span class="text-[11px] font-semibold text-emerald-300">Check-in {{ aluno.data_checkin }}</span>
-          </div>
+            {{ checkinLoading ? 'Enviando...' : 'Fazer check-in' }}
+          </button>
+          <button
+            *ngIf="myCheckinId"
+            (click)="cancelarCheckin()"
+            [disabled]="checkinLoading"
+            class="btn danger full"
+          >
+            {{ checkinLoading ? 'Cancelando...' : 'Cancelar check-in' }}
+          </button>
         </div>
       </div>
     </div>
-
-
-    <div class="fixed bottom-0 left-0 right-0 border-t border-slate-800/80 bg-slate-950/95 backdrop-blur supports-[backdrop-filter]:backdrop-blur-lg">
-      <div class="mx-auto flex max-w-5xl items-center justify-center px-6 py-4">
-        <button
-          *ngIf="!myCheckinId"
-          (click)="abrirConfirmacaoCheckin()"
-          [disabled]="checkinLoading"
-          class="w-full max-w-md rounded-full bg-gradient-to-r from-emerald-400 via-emerald-500 to-lime-400 px-8 py-3 text-base font-extrabold text-slate-950 shadow-lg shadow-emerald-500/30 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {{ checkinLoading ? 'Enviando...' : 'Fazer check-in' }}
-        </button>
-        <button
-          *ngIf="myCheckinId"
-          (click)="cancelarCheckin()"
-          [disabled]="checkinLoading"
-          class="w-full max-w-md rounded-full bg-gradient-to-r from-rose-400 via-rose-500 to-orange-400 px-8 py-3 text-base font-extrabold text-rose-50 shadow-lg shadow-rose-500/30 transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {{ checkinLoading ? 'Cancelando...' : 'Cancelar check-in' }}
-        </button>
-      </div>
-    </div>
-  `
+  `,
+  styles: [`
+    .resumo { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+    .resumo-date { display: flex; align-items: center; gap: 14px; }
+    .resumo .box { width: 68px; height: 68px; border-radius: var(--radius-md); border: 1px solid var(--border); display: grid; place-items: center; background: #fff; box-shadow: var(--shadow-soft); }
+    .resumo .box strong { font-size: 22px; color: var(--text-strong); }
+    .badges { display: flex; gap: 10px; flex-wrap: wrap; }
+    .card { padding: 16px; }
+    .card-head { display: flex; justify-content: space-between; align-items: center; }
+    .aluno-list { display: flex; flex-direction: column; gap: 8px; }
+    .aluno-row { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 10px; border: 1px solid var(--border); border-radius: var(--radius-md); background: #fff; cursor: pointer; transition: var(--transition); }
+    .aluno-row:hover { border-color: var(--brand-primary); box-shadow: var(--shadow-soft); }
+    .aluno-row img { width: 44px; height: 44px; border-radius: 50%; object-fit: cover; border: 1px solid var(--border); }
+    .aluno-row .nome { margin: 0; font-weight: 700; color: var(--text-strong); }
+    .cta .btn { max-width: 420px; }
+    .btn.danger { border-color: rgba(220,38,38,0.25); background: #fef2f2; color: #b91c1c; }
+    .btn.danger:hover { border-color: #dc2626; }
+  `]
 })
 export class TurmaDetailComponent implements OnInit {
   turmaData = '';
@@ -107,9 +129,7 @@ export class TurmaDetailComponent implements OnInit {
     private checkinService: CheckinService,
     private toast: ToastService,
     private authService: AuthService,
-    private alertController: AlertController,
-    private userService: UserService,
-    private actionSheetController: ActionSheetController
+    private userService: UserService
   ) {}
 
   ngOnInit(): void {
@@ -155,27 +175,10 @@ export class TurmaDetailComponent implements OnInit {
     });
   }
 
-  async abrirConfirmacaoCheckin(): Promise<void> {
+  abrirConfirmacaoCheckin(): void {
     if (!this.turmaId || this.checkinLoading || this.myCheckinId) return;
-
-    const alert = await this.alertController.create({
-      header: 'Confirmar check-in',
-      message: `Deseja fazer check-in na turma das ${this.turmaHora}?`,
-      cssClass: 'ion-alert-vibrant',
-      buttons: [
-        {
-          text: 'Cancelar',
-          role: 'cancel'
-        },
-        {
-          text: 'Confirmar',
-          role: 'confirm',
-          handler: () => this.fazerCheckin()
-        }
-      ]
-    });
-
-    await alert.present();
+    const ok = confirm(`Deseja fazer check-in na turma das ${this.turmaHora}?`);
+    if (ok) this.fazerCheckin();
   }
 
   cancelarCheckin(): void {
@@ -235,31 +238,7 @@ export class TurmaDetailComponent implements OnInit {
 
     this.userService.getEstatisticas(usuarioId).subscribe({
       next: async (estatisticas) => {
-        const foto = estatisticas.foto_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(estatisticas.nome)}&background=10b981&color=fff&size=200`;
-        const actionSheet = await this.actionSheetController.create({
-          header: estatisticas.nome,
-          cssClass: 'ion-alert-vibrant ion-action-large',
-          buttons: [
-            { text: `Check-ins: ${estatisticas.total_checkins}`, role: 'info' },
-            { text: 'Fechar', role: 'cancel' }
-          ],
-          translucent: true,
-          backdropDismiss: true
-        });
-        // Override inner html for richer header
-        (actionSheet as any).header = '';
-        setTimeout(() => {
-          const el = document.querySelector('.ion-action-large .action-sheet-group') as HTMLElement;
-          if (el) {
-            el.insertAdjacentHTML('afterbegin', `
-              <div class="action-avatar-block">
-                <img src="${foto}" alt="${estatisticas.nome}" class="action-avatar-img"/>
-                <p class="name">${estatisticas.nome}</p>
-              </div>
-            `);
-          }
-        });
-        await actionSheet.present();
+        alert(`${estatisticas.nome}\nCheck-ins: ${estatisticas.total_checkins}`);
       },
       error: () => {
         this.toast.show('Erro ao carregar estatísticas do usuário', 'danger');
