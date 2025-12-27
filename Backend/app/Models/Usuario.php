@@ -187,4 +187,136 @@ class Usuario
             'updated_at' => $usuario['updated_at']
         ];
     }
+
+    /**
+     * Buscar todos os tenants/academias de um usuário
+     */
+    public function getTenantsByUsuario(int $usuarioId): array
+    {
+        $sql = "
+            SELECT 
+                ut.id as vinculo_id,
+                ut.status,
+                ut.data_inicio,
+                ut.data_fim,
+                t.id as tenant_id,
+                t.nome as tenant_nome,
+                t.slug as tenant_slug,
+                t.email as tenant_email,
+                t.telefone as tenant_telefone,
+                p.id as plano_id,
+                p.nome as plano_nome,
+                p.valor as plano_valor,
+                p.duracao_dias as plano_duracao_dias
+            FROM usuario_tenant ut
+            INNER JOIN tenants t ON ut.tenant_id = t.id
+            LEFT JOIN planos p ON ut.plano_id = p.id
+            WHERE ut.usuario_id = :usuario_id
+            AND t.ativo = 1
+            ORDER BY ut.status = 'ativo' DESC, t.nome ASC
+        ";
+        
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute(['usuario_id' => $usuarioId]);
+        $tenants = $stmt->fetchAll();
+        
+        // Estruturar os dados
+        return array_map(function($row) {
+            return [
+                'vinculo_id' => $row['vinculo_id'],
+                'status' => $row['status'],
+                'data_inicio' => $row['data_inicio'],
+                'data_fim' => $row['data_fim'],
+                'tenant' => [
+                    'id' => $row['tenant_id'],
+                    'nome' => $row['tenant_nome'],
+                    'slug' => $row['tenant_slug'],
+                    'email' => $row['tenant_email'],
+                    'telefone' => $row['tenant_telefone']
+                ],
+                'plano' => $row['plano_id'] ? [
+                    'id' => $row['plano_id'],
+                    'nome' => $row['plano_nome'],
+                    'valor' => $row['plano_valor'],
+                    'duracao_dias' => $row['plano_duracao_dias']
+                ] : null
+            ];
+        }, $tenants);
+    }
+
+    /**
+     * Criar vínculo entre usuário e tenant
+     */
+    public function vincularTenant(int $usuarioId, int $tenantId, ?int $planoId = null): bool
+    {
+        $sql = "
+            INSERT INTO usuario_tenant (usuario_id, tenant_id, plano_id, status, data_inicio)
+            VALUES (:usuario_id, :tenant_id, :plano_id, 'ativo', CURRENT_DATE)
+            ON DUPLICATE KEY UPDATE status = 'ativo', updated_at = CURRENT_TIMESTAMP
+        ";
+        
+        $stmt = $this->db->prepare($sql);
+        return $stmt->execute([
+            'usuario_id' => $usuarioId,
+            'tenant_id' => $tenantId,
+            'plano_id' => $planoId
+        ]);
+    }
+
+    /**
+     * Verificar se usuário tem acesso a um tenant específico
+     */
+    public function temAcessoTenant(int $usuarioId, int $tenantId): bool
+    {
+        $sql = "
+            SELECT COUNT(*) 
+            FROM usuario_tenant 
+            WHERE usuario_id = :usuario_id 
+            AND tenant_id = :tenant_id 
+            AND status = 'ativo'
+        ";
+        
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            'usuario_id' => $usuarioId,
+            'tenant_id' => $tenantId
+        ]);
+        
+        return $stmt->fetchColumn() > 0;
+    }
+
+    /**
+     * Buscar usuário por email global (independente de tenant)
+     */
+    public function findByEmailGlobal(string $email): ?array
+    {
+        // Tentar primeiro com email_global, se não existir usar email
+        $sql = "SELECT * FROM usuarios WHERE ";
+        
+        // Verificar se coluna email_global existe
+        try {
+            $checkColumn = $this->db->query("SHOW COLUMNS FROM usuarios LIKE 'email_global'");
+            $hasEmailGlobal = $checkColumn->fetch() !== false;
+            
+            if ($hasEmailGlobal) {
+                $sql .= "(email_global = :email OR email = :email2)";
+                $params = ['email' => $email, 'email2' => $email];
+            } else {
+                $sql .= "email = :email";
+                $params = ['email' => $email];
+            }
+        } catch (\PDOException $e) {
+            // Se falhar, usar apenas email
+            $sql .= "email = :email";
+            $params = ['email' => $email];
+        }
+        
+        $sql .= " LIMIT 1";
+        
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        $user = $stmt->fetch();
+        
+        return $user ?: null;
+    }
 }

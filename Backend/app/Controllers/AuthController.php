@@ -82,7 +82,6 @@ class AuthController
     public function login(Request $request, Response $response): Response
     {
         $data = $request->getParsedBody();
-        $tenantId = $request->getAttribute('tenantId', 1);
 
         // Validações
         if (empty($data['email']) || empty($data['senha'])) {
@@ -92,8 +91,8 @@ class AuthController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
         }
 
-        // Buscar usuário
-        $usuario = $this->usuarioModel->findByEmail($data['email'], $tenantId);
+        // Buscar usuário por email global (independente de tenant)
+        $usuario = $this->usuarioModel->findByEmailGlobal($data['email']);
 
         if (!$usuario || !password_verify($data['senha'], $usuario['senha_hash'])) {
             $response->getBody()->write(json_encode([
@@ -102,20 +101,47 @@ class AuthController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(401);
         }
 
-        // Gerar token
-        $token = $this->jwtService->encode([
-            'user_id' => $usuario['id'],
-            'email' => $usuario['email'],
-            'tenant_id' => $tenantId
-        ]);
+        // Buscar todos os tenants/academias do usuário
+        $tenants = $this->usuarioModel->getTenantsByUsuario($usuario['id']);
+
+        if (empty($tenants)) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Usuário não possui vínculo com nenhuma academia'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+
+        // Se usuário tem apenas um tenant, já retorna o token com ele
+        // Se tem múltiplos, retorna a lista para o usuário escolher
+        $tenantId = null;
+        $token = null;
+
+        if (count($tenants) === 1) {
+            $tenantId = $tenants[0]['tenant']['id'];
+            
+            // Gerar token com tenant único
+            $token = $this->jwtService->encode([
+                'user_id' => $usuario['id'],
+                'email' => $usuario['email'],
+                'tenant_id' => $tenantId
+            ]);
+        }
 
         // Remover senha do retorno
         unset($usuario['senha_hash']);
 
         $response->getBody()->write(json_encode([
             'message' => 'Login realizado com sucesso',
-            'token' => $token,
-            'user' => $usuario
+            'token' => $token, // null se múltiplos tenants
+            'user' => [
+                'id' => $usuario['id'],
+                'nome' => $usuario['nome'],
+                'email' => $usuario['email'],
+                'email_global' => $usuario['email_global'] ?? $usuario['email'], // fallback para email se email_global não existir
+                'foto_base64' => $usuario['foto_base64'] ?? null
+            ],
+            'tenants' => $tenants,
+            'requires_tenant_selection' => count($tenants) > 1
         ]));
 
         return $response->withHeader('Content-Type', 'application/json');
@@ -127,6 +153,61 @@ class AuthController
         // O cliente irá remover o token do localStorage
         $response->getBody()->write(json_encode([
             'message' => 'Logout realizado com sucesso'
+        ]));
+
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * Selecionar tenant/academia após login (quando usuário tem múltiplos contratos)
+     */
+    public function selectTenant(Request $request, Response $response): Response
+    {
+        $data = $request->getParsedBody();
+        $userId = $request->getAttribute('userId'); // Do JWT
+
+        if (empty($data['tenant_id'])) {
+            $response->getBody()->write(json_encode([
+                'error' => 'tenant_id é obrigatório'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+        }
+
+        $tenantId = (int) $data['tenant_id'];
+
+        // Verificar se usuário tem acesso a este tenant
+        if (!$this->usuarioModel->temAcessoTenant($userId, $tenantId)) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Você não tem acesso a esta academia'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+
+        // Buscar dados do usuário
+        $usuario = $this->usuarioModel->findById($userId);
+
+        // Gerar novo token com o tenant selecionado
+        $token = $this->jwtService->encode([
+            'user_id' => $usuario['id'],
+            'email' => $usuario['email'],
+            'tenant_id' => $tenantId
+        ]);
+
+        // Buscar informações do tenant selecionado
+        $tenants = $this->usuarioModel->getTenantsByUsuario($userId);
+        $tenantSelecionado = null;
+        
+        foreach ($tenants as $t) {
+            if ($t['tenant']['id'] === $tenantId) {
+                $tenantSelecionado = $t;
+                break;
+            }
+        }
+
+        $response->getBody()->write(json_encode([
+            'message' => 'Academia selecionada com sucesso',
+            'token' => $token,
+            'tenant' => $tenantSelecionado
         ]));
 
         return $response->withHeader('Content-Type', 'application/json');

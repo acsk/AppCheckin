@@ -249,6 +249,33 @@ class AdminController
     }
 
     /**
+     * Listar alunos (dados básicos) - nome/email
+     */
+    public function listarAlunosBasico(Request $request, Response $response): Response
+    {
+        $tenantId = $request->getAttribute('tenantId', 1);
+        $db = require __DIR__ . '/../../config/database.php';
+
+        $stmt = $db->prepare("
+            SELECT u.id, u.nome, u.email
+            FROM usuarios u
+            WHERE u.tenant_id = ? 
+            AND u.role_id = 1
+            AND u.plano_id IS NOT NULL
+            AND (u.data_vencimento_plano IS NULL OR u.data_vencimento_plano >= CURDATE())
+            ORDER BY u.nome ASC
+        ");
+        $stmt->execute([$tenantId]);
+        $alunos = $stmt->fetchAll();
+
+        $response->getBody()->write(json_encode([
+            'alunos' => $alunos,
+            'total' => count($alunos)
+        ]));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
      * Criar novo aluno
      */
     public function criarAluno(Request $request, Response $response): Response

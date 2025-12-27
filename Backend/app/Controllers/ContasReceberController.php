@@ -68,6 +68,150 @@ class ContasReceberController
     }
 
     /**
+     * Relatório de contas a receber com filtros de período
+     */
+    public function relatorio(Request $request, Response $response): Response
+    {
+        $tenantId = $request->getAttribute('tenantId', 1);
+        $db = require __DIR__ . '/../../config/database.php';
+        
+        $params = $request->getQueryParams();
+        $dataInicio = $params['data_inicio'] ?? null;
+        $dataFim = $params['data_fim'] ?? null;
+        $status = $params['status'] ?? null;
+        $formasPagamento = $params['formas_pagamento'] ?? null;
+        
+        $sql = "
+            SELECT 
+                cr.*,
+                u.nome as aluno_nome,
+                u.email as aluno_email,
+                p.nome as plano_nome,
+                p.valor as plano_valor,
+                fp.nome as forma_pagamento_nome,
+                fp.percentual_desconto,
+                sc.nome as status_nome,
+                sc.cor as status_cor
+            FROM contas_receber cr
+            INNER JOIN usuarios u ON cr.usuario_id = u.id
+            INNER JOIN planos p ON cr.plano_id = p.id
+            LEFT JOIN formas_pagamento fp ON cr.forma_pagamento_id = fp.id
+            LEFT JOIN status_conta sc ON cr.status COLLATE utf8mb4_unicode_ci = sc.nome COLLATE utf8mb4_unicode_ci
+            WHERE cr.tenant_id = ?
+        ";
+        
+        $executeParams = [$tenantId];
+        
+        // Filtro por período de vencimento
+        if ($dataInicio && $dataFim) {
+            $sql .= " AND cr.data_vencimento BETWEEN ? AND ?";
+            $executeParams[] = $dataInicio;
+            $executeParams[] = $dataFim;
+        } elseif ($dataInicio) {
+            $sql .= " AND cr.data_vencimento >= ?";
+            $executeParams[] = $dataInicio;
+        } elseif ($dataFim) {
+            $sql .= " AND cr.data_vencimento <= ?";
+            $executeParams[] = $dataFim;
+        }
+        
+        // Filtro por status
+        if ($status && $status !== 'todos') {
+            $sql .= " AND cr.status = ?";
+            $executeParams[] = $status;
+        }
+        
+        // Filtro por formas de pagamento (pode ser múltiplas separadas por vírgula)
+        if ($formasPagamento && $formasPagamento !== 'todas') {
+            $formasArray = explode(',', $formasPagamento);
+            $placeholders = str_repeat('?,', count($formasArray) - 1) . '?';
+            $sql .= " AND cr.forma_pagamento_id IN ($placeholders)";
+            $executeParams = array_merge($executeParams, $formasArray);
+        }
+        
+        $sql .= " ORDER BY cr.data_vencimento DESC";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute($executeParams);
+        $contas = $stmt->fetchAll();
+        
+        // Calcular totalizadores
+        $totalGeral = 0;
+        $totalPago = 0;
+        $totalPendente = 0;
+        $totalCancelado = 0;
+        $totalDescontos = 0;
+        $totalLiquido = 0;
+        
+        $contasPorStatus = [
+            'pago' => 0,
+            'pendente' => 0,
+            'cancelado' => 0,
+            'vencido' => 0
+        ];
+        
+        $contasPorFormaPagamento = [];
+        
+        foreach ($contas as $conta) {
+            $valor = (float) $conta['valor'];
+            $valorDesconto = (float) ($conta['valor_desconto'] ?? 0);
+            $valorLiquido = (float) ($conta['valor_liquido'] ?? $valor);
+            
+            $totalGeral += $valor;
+            
+            if ($conta['status'] === 'pago') {
+                $totalPago += $valorLiquido;
+                $totalDescontos += $valorDesconto;
+                $totalLiquido += $valorLiquido;
+                $contasPorStatus['pago']++;
+                
+                // Agrupar por forma de pagamento
+                $formaNome = $conta['forma_pagamento_nome'] ?? 'Não informado';
+                if (!isset($contasPorFormaPagamento[$formaNome])) {
+                    $contasPorFormaPagamento[$formaNome] = [
+                        'quantidade' => 0,
+                        'total' => 0,
+                        'total_liquido' => 0,
+                        'total_desconto' => 0
+                    ];
+                }
+                $contasPorFormaPagamento[$formaNome]['quantidade']++;
+                $contasPorFormaPagamento[$formaNome]['total'] += $valor;
+                $contasPorFormaPagamento[$formaNome]['total_liquido'] += $valorLiquido;
+                $contasPorFormaPagamento[$formaNome]['total_desconto'] += $valorDesconto;
+                
+            } elseif ($conta['status'] === 'pendente') {
+                $totalPendente += $valor;
+                $contasPorStatus['pendente']++;
+                
+                // Verificar se está vencido
+                if ($conta['data_vencimento'] < date('Y-m-d')) {
+                    $contasPorStatus['vencido']++;
+                }
+            } elseif ($conta['status'] === 'cancelado') {
+                $totalCancelado += $valor;
+                $contasPorStatus['cancelado']++;
+            }
+        }
+        
+        $response->getBody()->write(json_encode([
+            'contas' => $contas,
+            'resumo' => [
+                'total_contas' => count($contas),
+                'total_geral' => number_format($totalGeral, 2, '.', ''),
+                'total_pago' => number_format($totalPago, 2, '.', ''),
+                'total_pendente' => number_format($totalPendente, 2, '.', ''),
+                'total_cancelado' => number_format($totalCancelado, 2, '.', ''),
+                'total_descontos' => number_format($totalDescontos, 2, '.', ''),
+                'total_liquido' => number_format($totalLiquido, 2, '.', ''),
+                'contas_por_status' => $contasPorStatus,
+                'contas_por_forma_pagamento' => $contasPorFormaPagamento
+            ]
+        ]));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
      * Dar baixa em uma conta
      */
     public function darBaixa(Request $request, Response $response, array $args): Response

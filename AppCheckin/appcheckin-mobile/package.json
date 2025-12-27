@@ -1,0 +1,19 @@
+{
+  "name": "appcheckin-mobile",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "NODE_OPTIONS='-r ./polyfill-toReversed.js' expo start --port 9200",
+    "android": "NODE_OPTIONS='-r ./polyfill-toReversed.js' expo start --android --port 9200",
+    "ios": "NODE_OPTIONS='-r ./polyfill-toReversed.js' expo start --ios --port 9200",
+    "web": "NODE_OPTIONS='-r ./polyfill-toReversed.js' expo start --web --port 9200"
+  },
+  "dependencies": {
+    "expo": "~54.0.30",
+    "expo-linear-gradient": "^15.0.8",
+    "expo-status-bar": "~3.0.9",
+    "react": "19.1.0",
+    "react-native": "0.81.5"
+  },
+  "private": true
+}

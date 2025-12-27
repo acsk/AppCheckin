@@ -1,0 +1,64 @@
+import React, { useEffect, useState } from 'react';
+import { NavigationContainer } from '@react-navigation/native';
+import { createStackNavigator } from '@react-navigation/stack';
+import LoginScreen from './src/screens/Login';
+import SuperAdminHomeScreen from './src/screens/SuperAdminHomeScreen';
+import Dashboard from './src/screens/Dashboard';
+import EditarAcademiaScreen from './src/screens/EditarAcademiaScreen';
+import AcademiasScreen from './src/screens/AcademiasScreen';
+import { authService } from './src/services/authService';
+import { View, ActivityIndicator } from 'react-native';
+
+const Stack = createStackNavigator();
+
+export default function App() {
+  const [initialRoute, setInitialRoute] = useState(null);
+
+  const linking = {
+    prefixes: ['http://localhost:8082', 'http://localhost:8082/'],
+    config: {
+      screens: {
+        Login: 'login',
+        Dashboard: { path: 'dashboard', alias: [''] },
+        Academias: 'academias',
+        EditarAcademia: 'academias/editar/:academiaId',
+        CadastrarAcademia: 'academias/novo',
+        SuperAdminHome: 'superadmin',
+      },
+    },
+  };
+
+  useEffect(() => {
+    const bootstrap = async () => {
+      const token = await authService.getToken();
+      setInitialRoute(token ? 'Dashboard' : 'Login');
+    };
+    bootstrap();
+  }, []);
+
+  if (!initialRoute) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0f0f12' }}>
+        <ActivityIndicator color="#f97316" />
+      </View>
+    );
+  }
+
+  return (
+    <NavigationContainer linking={linking} fallback={<View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0f0f12' }} />}>
+      <Stack.Navigator
+        initialRouteName={initialRoute}
+        screenOptions={{
+          headerShown: false,
+        }}
+      >
+        <Stack.Screen name="Login" component={LoginScreen} />
+        <Stack.Screen name="Dashboard" component={Dashboard} />
+        <Stack.Screen name="Academias" component={AcademiasScreen} />
+        <Stack.Screen name="CadastrarAcademia" component={Dashboard} />
+        <Stack.Screen name="SuperAdminHome" component={SuperAdminHomeScreen} />
+        <Stack.Screen name="EditarAcademia" component={EditarAcademiaScreen} />
+      </Stack.Navigator>
+    </NavigationContainer>
+  );
+}

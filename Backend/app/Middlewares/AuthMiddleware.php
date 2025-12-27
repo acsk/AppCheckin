@@ -35,9 +35,24 @@ class AuthMiddleware
             return $this->unauthorizedResponse('Token inválido ou expirado');
         }
 
+        // Buscar dados completos do usuário
+        $db = require __DIR__ . '/../../config/database.php';
+        $stmt = $db->prepare("
+            SELECT u.id, u.tenant_id, u.nome, u.email, u.email_global, u.role_id, u.plano_id, u.foto_base64
+            FROM usuarios u
+            WHERE u.id = :user_id
+        ");
+        $stmt->execute(['user_id' => $decoded->user_id]);
+        $usuario = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$usuario) {
+            return $this->unauthorizedResponse('Usuário não encontrado');
+        }
+
         // Adicionar dados do usuário ao request
         $request = $request->withAttribute('userId', $decoded->user_id);
         $request = $request->withAttribute('userEmail', $decoded->email);
+        $request = $request->withAttribute('usuario', $usuario);
 
         return $handler->handle($request);
     }
