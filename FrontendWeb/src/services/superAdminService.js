@@ -74,4 +74,26 @@ export const superAdminService = {
       throw error.response?.data || error;
     }
   },
+
+  // ========================================
+  // Gestão de Usuários (SuperAdmin)
+  // ========================================
+
+  /**
+   * Listar todos os usuários de todos os tenants
+   * @returns {Promise<Object>} Objeto com total e array de usuários
+   */
+  async listarTodosUsuarios() {
+    try {
+      console.log('👥 Fazendo requisição GET /superadmin/usuarios');
+      const response = await api.get('/superadmin/usuarios');
+      console.log('✅ Usuários carregados:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao listar usuários:', error.response?.data || error.message);
+      throw error.response?.data || { error: 'Erro ao listar usuários' };
+    }
+  }
 };
+
+export default superAdminService;

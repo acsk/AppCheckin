@@ -12,6 +12,7 @@ use App\Controllers\ContasReceberController;
 use App\Controllers\MatriculaController;
 use App\Controllers\ConfigController;
 use App\Controllers\SuperAdminController;
+use App\Controllers\CepController;
 use App\Middlewares\AuthMiddleware;
 use App\Middlewares\TenantMiddleware;
 use App\Middlewares\AdminMiddleware;
@@ -24,6 +25,9 @@ return function ($app) {
     // Rotas públicas
     $app->post('/auth/register', [AuthController::class, 'register']);
     $app->post('/auth/login', [AuthController::class, 'login']);
+    
+    // Rota pública de consulta CEP
+    $app->get('/cep/{cep}', [CepController::class, 'buscar']);
     
     // Logout (protegido para validar token)
     $app->post('/auth/logout', [AuthController::class, 'logout'])->add(AuthMiddleware::class);
@@ -42,6 +46,20 @@ return function ($app) {
         $group->put('/academias/{id}', [SuperAdminController::class, 'atualizarAcademia']);
         $group->delete('/academias/{id}', [SuperAdminController::class, 'excluirAcademia']);
         $group->post('/academias/{tenantId}/admin', [SuperAdminController::class, 'criarAdminAcademia']);
+        
+        // Gerenciar contratos de planos
+        $group->get('/contratos', [SuperAdminController::class, 'listarTodosContratos']);
+        $group->post('/academias/{id}/contrato', [SuperAdminController::class, 'criarContrato']);
+        $group->post('/academias/{id}/trocar-plano', [SuperAdminController::class, 'trocarPlano']);
+        $group->get('/academias/{id}/contratos', [SuperAdminController::class, 'listarContratos']);
+        $group->post('/contratos/{id}/renovar', [SuperAdminController::class, 'renovarContrato']);
+        $group->delete('/contratos/{id}', [SuperAdminController::class, 'cancelarContrato']);
+        $group->get('/contratos/proximos-vencimento', [SuperAdminController::class, 'contratosProximosVencimento']);
+        $group->get('/contratos/vencidos', [SuperAdminController::class, 'contratosVencidos']);
+        
+        // Gerenciar usuários de todos os tenants
+        $group->get('/usuarios', [UsuarioController::class, 'listarTodos']);
+        $group->delete('/usuarios/{id}', [UsuarioController::class, 'excluir']);
     })->add(SuperAdminMiddleware::class)->add(AuthMiddleware::class);
 
     // ========================================
@@ -78,6 +96,18 @@ return function ($app) {
         $group->get('/config/formas-pagamento', [ConfigController::class, 'listarFormasPagamento']);
         $group->get('/config/status-conta', [ConfigController::class, 'listarStatusConta']);
     })->add(AuthMiddleware::class);
+
+    // ========================================
+    // Rotas Tenant - Gestão de Usuários (Admin/Alunos)
+    // ========================================
+    $app->group('/tenant', function ($group) {
+        // CRUD de Usuários do Tenant
+        $group->get('/usuarios', [UsuarioController::class, 'listar']);
+        $group->get('/usuarios/{id}', [UsuarioController::class, 'buscar']);
+        $group->post('/usuarios', [UsuarioController::class, 'criar']);
+        $group->put('/usuarios/{id}', [UsuarioController::class, 'atualizar']);
+        $group->delete('/usuarios/{id}', [UsuarioController::class, 'excluir']);
+    })->add(AdminMiddleware::class)->add(AuthMiddleware::class);
 
     // ========================================
     // Rotas Admin (role_id = 2 ou 3)

@@ -16,6 +16,7 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { authService } from '../../services/authService';
 import { superAdminService } from '../../services/superAdminService';
+import LayoutBase from '../../components/LayoutBase';
 import styles, { MENU, KPI, BAR_VALUES, MONTHS, FEED, CAL_DAYS, CAL_NUMS } from './styles';
 import LoaderOverlay from './components/LoaderOverlay';
 import AcademiaList from './components/AcademiaList';
@@ -332,82 +333,10 @@ export default function Dashboard() {
   );
 
   return (
-    <View style={styles.app}>
-      <View style={styles.sidebar}>
-        <View style={styles.brand}>
-          <Image source={require('../../../assets/img/logo.png')} style={styles.logo} />
-          <Text style={styles.brandSub}>CHECK-IN</Text>
-        </View>
-
-        <View style={styles.menu}>
-          {MENU.map((item) => {
-            const selected = active === item.key;
-            return (
-              <Pressable
-                key={item.label}
-                onPress={() => {
-                  setShowForm(false);
-                  if (item.key === 'academias') {
-                    router.push('/academias');
-                  } else {
-                    router.push('/');
-                  }
-                }}
-                style={[styles.menuItem, selected && styles.menuItemActive]}
-              >
-                <View style={styles.menuItemLeft}>
-                  <Feather name={item.icon} size={16} color={selected ? '#fff' : '#d1d5db'} />
-                  <Text style={[styles.menuText, selected && styles.menuTextActive]}>{item.label}</Text>
-                </View>
-                {item.badge ? (
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>{item.badge}</Text>
-                  </View>
-                ) : null}
-              </Pressable>
-            );
-          })}
-        </View>
-
-    </View>
-
-      <LinearGradient
-        colors={['#f1e7d9ff', '#a0a0a0ff', '#f3eaf8ff']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.main}
-      >
-        <View style={styles.topbar}>
-          <View>
-            <Text style={styles.topTitle}>Dashboard</Text>
-            <Text style={styles.topSubtitle}>Overview</Text>
-          </View>
-          <View style={styles.topRight}>
-            <View style={styles.iconChip}>
-              <Feather name="bell" size={16} color="#2b1a04" />
-            </View>
-            <View style={styles.iconChip}>
-              <Feather name="settings" size={16} color="#2b1a04" />
-            </View>
-            <Pressable style={styles.iconChip} onPress={handleLogout}>
-              <Feather name="log-out" size={16} color="#2b1a04" />
-            </Pressable>
-            <View style={styles.flag}>
-              <Text style={styles.flagText}>🇺🇸</Text>
-            </View>
-            <Text style={styles.profileName}>{nome}</Text>
-            <View style={styles.profileAvatar}>
-              <Text style={styles.avatarText}>{nome.slice(0, 2).toUpperCase()}</Text>
-            </View>
-          </View>
-        </View>
-
-        <ScrollView contentContainerStyle={styles.content}>
-          {active === 'academias' ? (showForm ? renderAcademiaForm() : renderAcademias()) : renderDashboard()}
-        </ScrollView>
-        {(loadingAcademias || saving) && <LoaderOverlay />}
-      </LinearGradient>
-    </View>
+    <LayoutBase title="Dashboard" subtitle="Overview">
+      {renderDashboard()}
+      {(loadingAcademias || saving) && <LoaderOverlay />}
+    </LayoutBase>
   );
 }
 

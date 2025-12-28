@@ -319,4 +319,212 @@ class Usuario
         
         return $user ?: null;
     }
-}
+
+    /**
+     * Listar todos os usuários (com ou sem filtro de tenant)
+     * 
+     * @param bool $isSuperAdmin Se true, lista TODOS os usuários sem filtro
+     * @param int|null $tenantId ID do tenant para filtrar (usado quando não é SuperAdmin)
+     * @param bool $apenasAtivos Filtrar apenas usuários ativos
+     * @return array Lista de usuários com informações de tenant, role e plano
+     */
+    public function listarTodos(bool $isSuperAdmin = false, ?int $tenantId = null, bool $apenasAtivos = false): array
+    {
+        $sql = "
+            SELECT 
+                u.id, 
+                u.tenant_id,
+                u.nome, 
+                u.email, 
+                u.role_id,
+                u.plano_id,
+                u.data_vencimento_plano,
+                u.foto_base64,
+                u.created_at,
+                u.updated_at,
+                COALESCE(u.ativo, TRUE) as ativo,
+                r.nome as role_nome,
+                p.nome as plano_nome,
+                t.nome as tenant_nome,
+                t.slug as tenant_slug
+            FROM usuarios u
+            LEFT JOIN roles r ON u.role_id = r.id
+            LEFT JOIN planos p ON u.plano_id = p.id
+            LEFT JOIN tenants t ON u.tenant_id = t.id
+        ";
+        
+        $conditions = [];
+        $params = [];
+        
+        // Se NÃO for SuperAdmin, filtrar por tenant
+        if (!$isSuperAdmin && $tenantId !== null) {
+            $conditions[] = "u.tenant_id = :tenant_id";
+            $params['tenant_id'] = $tenantId;
+        }
+        
+        // Filtrar apenas ativos se solicitado
+        if ($apenasAtivos) {
+            $conditions[] = "COALESCE(u.ativo, TRUE) = TRUE";
+        }
+        
+        if (!empty($conditions)) {
+            $sql .= " WHERE " . implode(' AND ', $conditions);
+        }
+        
+        $sql .= " ORDER BY t.nome ASC, u.nome ASC";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        
+        $result = $stmt->fetchAll();
+        
+        error_log("DEBUG listarTodos() - isSuperAdmin: " . ($isSuperAdmin ? 'true' : 'false'));
+        error_log("DEBUG listarTodos() - tenantId: " . ($tenantId ?? 'null'));
+        error_log("DEBUG listarTodos() - apenasAtivos: " . ($apenasAtivos ? 'true' : 'false'));
+        error_log("DEBUG listarTodos() - Total rows: " . count($result));
+        
+        // Estruturar dados incluindo tenant e status ativo
+        return array_map(function($row) {
+            return [
+                'id' => $row['id'],
+                'nome' => $row['nome'],
+                'email' => $row['email'],
+                'role_id' => $row['role_id'],
+                'role_nome' => $row['role_nome'],
+                'plano_id' => $row['plano_id'],
+                'plano_nome' => $row['plano_nome'],
+                'data_vencimento_plano' => $row['data_vencimento_plano'],
+                'ativo' => (bool) $row['ativo'],
+                'status' => $row['ativo'] ? 'ativo' : 'inativo',
+                'created_at' => $row['created_at'],
+                'updated_at' => $row['updated_at'],
+                'tenant' => [
+                    'id' => $row['tenant_id'],
+                    'nome' => $row['tenant_nome'],
+                    'slug' => $row['tenant_slug']
+                ]
+            ];
+        }, $result);
+    }
+
+    /**
+     * Listar usuários do tenant
+     * 
+     * @param int $tenantId ID do tenant
+     * @param bool $apenasAtivos Filtrar apenas usuários ativos
+     * @return array Lista de usuários do tenant
+     */
+    public function listarPorTenant(int $tenantId, bool $apenasAtivos = false): array
+    {
+        $sql = "
+            SELECT 
+                u.id, 
+                u.nome, 
+                u.email, 
+                u.role_id,
+                u.plano_id,
+                u.data_vencimento_plano,
+                u.foto_base64,
+                u.created_at,
+                u.updated_at,
+                r.nome as role_nome,
+                p.nome as plano_nome,
+                ut.status,
+                COALESCE(u.ativo, TRUE) as ativo
+            FROM usuarios u
+            LEFT JOIN roles r ON u.role_id = r.id
+            LEFT JOIN planos p ON u.plano_id = p.id
+            LEFT JOIN usuario_tenant ut ON u.id = ut.usuario_id AND ut.tenant_id = ?
+            WHERE u.tenant_id = ?
+        ";
+
+        if ($apenasAtivos) {
+            $sql .= " AND (ut.status = 'ativo' OR ut.status IS NULL) AND COALESCE(u.ativo, TRUE) = TRUE";
+        }
+
+        $sql .= " ORDER BY u.nome ASC";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([$tenantId, $tenantId]);
+        
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * Criar usuário completo com todos os campos
+     */
+    public function criarUsuarioCompleto(array $data, int $tenantId): ?int
+    {
+        $sql = "
+            INSERT INTO usuarios 
+            (tenant_id, nome, email, senha_hash, role_id, plano_id, data_vencimento_plano) 
+            VALUES 
+            (:tenant_id, :nome, :email, :senha_hash, :role_id, :plano_id, :data_vencimento_plano)
+        ";
+        
+        $stmt = $this->db->prepare($sql);
+        
+        $stmt->execute([
+            'tenant_id' => $tenantId,
+            'nome' => $data['nome'],
+            'email' => $data['email'],
+            'senha_hash' => password_hash($data['senha'], PASSWORD_BCRYPT),
+            'role_id' => $data['role_id'] ?? 1, // Default: Aluno
+            'plano_id' => $data['plano_id'] ?? null,
+            'data_vencimento_plano' => $data['data_vencimento_plano'] ?? null
+        ]);
+
+        $usuarioId = (int) $this->db->lastInsertId();
+
+        // Criar vínculo na tabela usuario_tenant se existir
+        if ($usuarioId) {
+            try {
+                $this->vincularTenant($usuarioId, $tenantId, $data['plano_id'] ?? null);
+            } catch (\PDOException $e) {
+                // Se falhar, não é crítico (pode ser que a tabela não exista ainda)
+            }
+        }
+
+        return $usuarioId;
+    }
+
+    /**
+     * Desativar usuário no tenant (soft delete)
+     */
+    public function desativarUsuarioTenant(int $usuarioId, int $tenantId): bool
+    {
+        // Atualizar status na tabela usuario_tenant
+        $sqlVinculo = "
+            UPDATE usuario_tenant 
+            SET status = 'inativo', data_fim = CURRENT_DATE, updated_at = CURRENT_TIMESTAMP
+            WHERE usuario_id = :usuario_id AND tenant_id = :tenant_id
+        ";
+        
+        try {
+            $stmt = $this->db->prepare($sqlVinculo);
+            $stmt->execute([
+                'usuario_id' => $usuarioId,
+                'tenant_id' => $tenantId
+            ]);
+        } catch (\PDOException $e) {
+            // Se tabela não existir, apenas continuar
+        }
+
+        // Marcar o usuário como inativo na tabela principal (soft delete global)
+        $sqlUsuario = "
+            UPDATE usuarios 
+            SET ativo = FALSE, updated_at = CURRENT_TIMESTAMP
+            WHERE id = :usuario_id
+        ";
+        
+        try {
+            $stmt = $this->db->prepare($sqlUsuario);
+            $stmt->execute(['usuario_id' => $usuarioId]);
+        } catch (\PDOException $e) {
+            // Se coluna não existir, apenas continuar (para backward compatibility)
+            error_log("Aviso: Campo 'ativo' não existe na tabela usuarios. Execute a migration 017.");
+        }
+
+        return true;
+    }
+};

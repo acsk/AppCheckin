@@ -8,21 +8,17 @@ use App\Models\Plano;
 
 class PlanoController
 {
-    private Plano $planoModel;
-
-    public function __construct()
-    {
-        $db = require __DIR__ . '/../../config/database.php';
-        $this->planoModel = new Plano($db, 1); // TODO: Obter tenant do middleware
-    }
-
     /**
      * Listar todos os planos
      */
     public function index(Request $request, Response $response): Response
     {
+        $db = require __DIR__ . '/../../config/database.php';
+        $tenantId = $request->getAttribute('tenant_id') ?? 1;
+        $planoModel = new Plano($db, $tenantId);
+        
         $apenasAtivos = $request->getQueryParams()['ativos'] ?? false;
-        $planos = $this->planoModel->getAll((bool) $apenasAtivos);
+        $planos = $planoModel->getAll((bool) $apenasAtivos);
 
         $response->getBody()->write(json_encode([
             'planos' => $planos,
@@ -36,8 +32,12 @@ class PlanoController
      */
     public function show(Request $request, Response $response, array $args): Response
     {
+        $db = require __DIR__ . '/../../config/database.php';
+        $tenantId = $request->getAttribute('tenant_id') ?? 1;
+        $planoModel = new Plano($db, $tenantId);
+        
         $planoId = (int) $args['id'];
-        $plano = $this->planoModel->findById($planoId);
+        $plano = $planoModel->findById($planoId);
 
         if (!$plano) {
             $response->getBody()->write(json_encode(['error' => 'Plano não encontrado']));
@@ -53,6 +53,10 @@ class PlanoController
      */
     public function create(Request $request, Response $response): Response
     {
+        $db = require __DIR__ . '/../../config/database.php';
+        $tenantId = $request->getAttribute('tenant_id') ?? 1;
+        $planoModel = new Plano($db, $tenantId);
+        
         $data = $request->getParsedBody();
 
         $errors = [];
@@ -65,8 +69,8 @@ class PlanoController
             $errors[] = 'Valor deve ser maior ou igual a zero';
         }
 
-        if (empty($data['duracao_dias']) || $data['duracao_dias'] < 1) {
-            $errors[] = 'Duração deve ser maior que zero';
+        if (empty($data['max_alunos']) || $data['max_alunos'] < 1) {
+            $errors[] = 'Capacidade de alunos deve ser maior que zero';
         }
 
         if (!empty($errors)) {
@@ -74,8 +78,8 @@ class PlanoController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
         }
 
-        $planoId = $this->planoModel->create($data);
-        $plano = $this->planoModel->findById($planoId);
+        $planoId = $planoModel->create($data);
+        $plano = $planoModel->findById($planoId);
 
         $response->getBody()->write(json_encode([
             'message' => 'Plano criado com sucesso',
@@ -89,24 +93,28 @@ class PlanoController
      */
     public function update(Request $request, Response $response, array $args): Response
     {
+        $db = require __DIR__ . '/../../config/database.php';
+        $tenantId = $request->getAttribute('tenant_id') ?? 1;
+        $planoModel = new Plano($db, $tenantId);
+        
         $planoId = (int) $args['id'];
         $data = $request->getParsedBody();
 
-        $plano = $this->planoModel->findById($planoId);
+        $plano = $planoModel->findById($planoId);
 
         if (!$plano) {
             $response->getBody()->write(json_encode(['error' => 'Plano não encontrado']));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
         }
 
-        $updated = $this->planoModel->update($planoId, $data);
+        $updated = $planoModel->update($planoId, $data);
 
         if (!$updated) {
             $response->getBody()->write(json_encode(['error' => 'Nenhum dado foi atualizado']));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
 
-        $planoAtualizado = $this->planoModel->findById($planoId);
+        $planoAtualizado = $planoModel->findById($planoId);
 
         $response->getBody()->write(json_encode([
             'message' => 'Plano atualizado com sucesso',
@@ -120,10 +128,14 @@ class PlanoController
      */
     public function delete(Request $request, Response $response, array $args): Response
     {
+        $db = require __DIR__ . '/../../config/database.php';
+        $tenantId = $request->getAttribute('tenant_id') ?? 1;
+        $planoModel = new Plano($db, $tenantId);
+        
         $planoId = (int) $args['id'];
 
         // Verificar se há usuários usando o plano
-        $totalUsuarios = $this->planoModel->countUsuarios($planoId);
+        $totalUsuarios = $planoModel->countUsuarios($planoId);
 
         if ($totalUsuarios > 0) {
             $response->getBody()->write(json_encode([
@@ -132,7 +144,7 @@ class PlanoController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
 
-        $deleted = $this->planoModel->delete($planoId);
+        $deleted = $planoModel->delete($planoId);
 
         if (!$deleted) {
             $response->getBody()->write(json_encode(['error' => 'Erro ao desativar plano']));

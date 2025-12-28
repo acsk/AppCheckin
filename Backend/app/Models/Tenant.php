@@ -60,16 +60,26 @@ class Tenant
     public function create(array $data): int
     {
         $stmt = $this->db->prepare(
-            "INSERT INTO tenants (nome, slug, email, telefone, endereco, ativo) 
-             VALUES (:nome, :slug, :email, :telefone, :endereco, :ativo)"
+            "INSERT INTO tenants (nome, slug, email, cnpj, telefone, endereco, 
+                                cep, logradouro, numero, complemento, bairro, cidade, estado, ativo) 
+             VALUES (:nome, :slug, :email, :cnpj, :telefone, :endereco,
+                     :cep, :logradouro, :numero, :complemento, :bairro, :cidade, :estado, :ativo)"
         );
         
         $stmt->execute([
             'nome' => $data['nome'],
             'slug' => $data['slug'],
             'email' => $data['email'],
+            'cnpj' => $data['cnpj'] ?? null,
             'telefone' => $data['telefone'] ?? null,
             'endereco' => $data['endereco'] ?? null,
+            'cep' => $data['cep'] ?? null,
+            'logradouro' => $data['logradouro'] ?? null,
+            'numero' => $data['numero'] ?? null,
+            'complemento' => $data['complemento'] ?? null,
+            'bairro' => $data['bairro'] ?? null,
+            'cidade' => $data['cidade'] ?? null,
+            'estado' => $data['estado'] ?? null,
             'ativo' => $data['ativo'] ?? true
         ]);
 
@@ -83,8 +93,11 @@ class Tenant
     {
         $stmt = $this->db->prepare(
             "UPDATE tenants 
-             SET nome = :nome, slug = :slug, email = :email, 
-                 telefone = :telefone, endereco = :endereco, ativo = :ativo
+             SET nome = :nome, slug = :slug, email = :email, cnpj = :cnpj,
+                 telefone = :telefone, endereco = :endereco, 
+                 cep = :cep, logradouro = :logradouro, numero = :numero,
+                 complemento = :complemento, bairro = :bairro, cidade = :cidade, estado = :estado,
+                 plano_id = :plano_id, ativo = :ativo
              WHERE id = :id"
         );
         
@@ -93,8 +106,17 @@ class Tenant
             'nome' => $data['nome'],
             'slug' => $data['slug'],
             'email' => $data['email'],
+            'cnpj' => $data['cnpj'] ?? null,
             'telefone' => $data['telefone'] ?? null,
             'endereco' => $data['endereco'] ?? null,
+            'cep' => $data['cep'] ?? null,
+            'logradouro' => $data['logradouro'] ?? null,
+            'numero' => $data['numero'] ?? null,
+            'complemento' => $data['complemento'] ?? null,
+            'bairro' => $data['bairro'] ?? null,
+            'cidade' => $data['cidade'] ?? null,
+            'estado' => $data['estado'] ?? null,
+            'plano_id' => $data['plano_id'] ?? null,
             'ativo' => $data['ativo'] ?? true
         ]);
     }

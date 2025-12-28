@@ -138,7 +138,8 @@ class AuthController
                 'nome' => $usuario['nome'],
                 'email' => $usuario['email'],
                 'email_global' => $usuario['email_global'] ?? $usuario['email'], // fallback para email se email_global não existir
-                'foto_base64' => $usuario['foto_base64'] ?? null
+                'foto_base64' => $usuario['foto_base64'] ?? null,
+                'role_id' => $usuario['role_id'] ?? null
             ],
             'tenants' => $tenants,
             'requires_tenant_selection' => count($tenants) > 1
@@ -204,9 +205,20 @@ class AuthController
             }
         }
 
+        // Remover senha do retorno
+        unset($usuario['senha_hash']);
+
         $response->getBody()->write(json_encode([
             'message' => 'Academia selecionada com sucesso',
             'token' => $token,
+            'user' => [
+                'id' => $usuario['id'],
+                'nome' => $usuario['nome'],
+                'email' => $usuario['email'],
+                'email_global' => $usuario['email_global'] ?? $usuario['email'],
+                'foto_base64' => $usuario['foto_base64'] ?? null,
+                'role_id' => $usuario['role_id'] ?? null
+            ],
             'tenant' => $tenantSelecionado
         ]));
 

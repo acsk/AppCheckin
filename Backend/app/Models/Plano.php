@@ -56,8 +56,8 @@ class Plano
     {
         $stmt = $this->db->prepare("
             INSERT INTO planos 
-            (tenant_id, nome, descricao, valor, duracao_dias, checkins_mensais, ativo) 
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (tenant_id, nome, descricao, valor, duracao_dias, checkins_mensais, max_alunos, ativo) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ");
         
         $stmt->execute([
@@ -65,8 +65,9 @@ class Plano
             $data['nome'],
             $data['descricao'] ?? null,
             $data['valor'],
-            $data['duracao_dias'],
+            $data['duracao_dias'] ?? 30,
             $data['checkins_mensais'] ?? null,
+            $data['max_alunos'] ?? null,
             $data['ativo'] ?? true
         ]);
 
@@ -104,6 +105,11 @@ class Plano
         if (isset($data['checkins_mensais'])) {
             $fields[] = 'checkins_mensais = ?';
             $params[] = $data['checkins_mensais'];
+        }
+
+        if (isset($data['max_alunos'])) {
+            $fields[] = 'max_alunos = ?';
+            $params[] = $data['max_alunos'];
         }
 
         if (isset($data['ativo'])) {
