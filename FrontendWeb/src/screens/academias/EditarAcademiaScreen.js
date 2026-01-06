@@ -13,8 +13,8 @@ import { Feather } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { superAdminService } from '../../services/superAdminService';
-import planoService from '../../services/planoService';
 import cepService from '../../services/cepService';
+import estadosService from '../../services/estadosService';
 import LayoutBase from '../../components/LayoutBase';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { showSuccess, showError } from '../../utils/toast';
@@ -24,6 +24,13 @@ import {
   validarCEP, 
   validarObrigatorio 
 } from '../../utils/validators';
+import { 
+  mascaraCNPJ, 
+  mascaraCPF,
+  mascaraTelefone, 
+  apenasNumeros,
+  validarCPF 
+} from '../../utils/masks';
 
 export default function EditarAcademiaScreen() {
   const router = useRouter();
@@ -34,7 +41,7 @@ export default function EditarAcademiaScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [buscandoCep, setBuscandoCep] = useState(false);
-  const [planos, setPlanos] = useState([]);
+  const [estados, setEstados] = useState([]);
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [formData, setFormData] = useState({
@@ -42,6 +49,10 @@ export default function EditarAcademiaScreen() {
     email: '',
     cnpj: '',
     telefone: '',
+    responsavel_nome: '',
+    responsavel_cpf: '',
+    responsavel_telefone: '',
+    responsavel_email: '',
     cep: '',
     logradouro: '',
     numero: '',
@@ -49,7 +60,6 @@ export default function EditarAcademiaScreen() {
     bairro: '',
     cidade: '',
     estado: '',
-    plano_id: '',
     ativo: true,
   });
 
@@ -61,18 +71,26 @@ export default function EditarAcademiaScreen() {
   const loadData = async () => {
     try {
       setLoading(true);
+      
+      // Carregar lista de estados
+      const estadosList = estadosService.listarEstados();
+      setEstados(estadosList);
+      
       // Carregar dados da academia
       const response = await superAdminService.buscarAcademia(academiaId);
       const academia = response.academia;
       
       console.log('📋 Academia carregada:', academia);
-      console.log('📋 Plano ID:', academia.plano_id, 'Tipo:', typeof academia.plano_id);
       
       setFormData({
         nome: academia.nome || '',
         email: academia.email || '',
-        cnpj: academia.cnpj || '',
-        telefone: academia.telefone || '',
+        cnpj: mascaraCNPJ(academia.cnpj || ''),
+        telefone: mascaraTelefone(academia.telefone || ''),
+        responsavel_nome: academia.responsavel_nome || '',
+        responsavel_cpf: mascaraCPF(academia.responsavel_cpf || ''),
+        responsavel_telefone: mascaraTelefone(academia.responsavel_telefone || ''),
+        responsavel_email: academia.responsavel_email || '',
         cep: academia.cep || '',
         logradouro: academia.logradouro || '',
         numero: academia.numero || '',
@@ -80,16 +98,8 @@ export default function EditarAcademiaScreen() {
         bairro: academia.bairro || '',
         cidade: academia.cidade || '',
         estado: academia.estado || '',
-        plano_id: academia.plano_id ? Number(academia.plano_id) : '',
         ativo: academia.ativo === 1 || academia.ativo === true,
       });
-
-      // Carregar planos via API
-      const planosResponse = await planoService.listar(true);
-      setPlanos(planosResponse.planos || []);
-      
-      console.log('📋 Planos carregados:', planosResponse.planos);
-      console.log('📋 FormData plano_id após set:', formData.plano_id);
     } catch (error) {
       showError('Não foi possível carregar os dados da academia');
       router.back();
@@ -131,6 +141,28 @@ export default function EditarAcademiaScreen() {
       case 'cnpj':
         if (value && !validarCNPJ(value)) {
           error = 'CNPJ inválido';
+        }
+        break;
+      case 'responsavel_nome':
+        if (!validarObrigatorio(value)) {
+          error = 'Nome do responsável é obrigatório';
+        }
+        break;
+      case 'responsavel_cpf':
+        if (!validarObrigatorio(value)) {
+          error = 'CPF do responsável é obrigatório';
+        } else if (!validarCPF(value)) {
+          error = 'CPF inválido';
+        }
+        break;
+      case 'responsavel_telefone':
+        if (!validarObrigatorio(value)) {
+          error = 'Telefone do responsável é obrigatório';
+        }
+        break;
+      case 'responsavel_email':
+        if (value && !validarEmail(value)) {
+          error = 'E-mail inválido';
         }
         break;
       case 'cep':
@@ -234,10 +266,13 @@ export default function EditarAcademiaScreen() {
     setSaving(true);
     
     try {
-      // Converter plano_id para número antes de enviar
+      // Remover máscaras antes de enviar
       const dadosParaEnviar = {
         ...formData,
-        plano_id: formData.plano_id ? Number(formData.plano_id) : null,
+        cnpj: apenasNumeros(formData.cnpj),
+        telefone: apenasNumeros(formData.telefone),
+        responsavel_cpf: apenasNumeros(formData.responsavel_cpf),
+        responsavel_telefone: apenasNumeros(formData.responsavel_telefone),
       };
       
       console.log('📤 Enviando para API:', dadosParaEnviar);
@@ -274,7 +309,7 @@ export default function EditarAcademiaScreen() {
         <View style={styles.headerActions}>
           <TouchableOpacity 
             style={styles.backButton}
-            onPress={() => router.back()}
+            onPress={() => router.push('/academias')}
             disabled={saving}
           >
             <Feather name="arrow-left" size={18} color="#fff" />
@@ -329,9 +364,10 @@ export default function EditarAcademiaScreen() {
                 placeholder="00.000.000/0000-00"
                 placeholderTextColor="#aaa"
                 value={formData.cnpj}
-                onChangeText={(value) => handleChange('cnpj', value)}
+                onChangeText={(value) => handleChange('cnpj', mascaraCNPJ(value))}
                 onBlur={() => handleBlur('cnpj')}
                 keyboardType="numeric"
+                maxLength={18}
                 editable={!saving}
               />
               {errors.cnpj && touched.cnpj && (
@@ -348,11 +384,87 @@ export default function EditarAcademiaScreen() {
                 placeholder="(11) 99999-9999"
                 placeholderTextColor="#aaa"
                 value={formData.telefone}
-                onChangeText={(value) => handleChange('telefone', value)}
+                onChangeText={(value) => handleChange('telefone', mascaraTelefone(value))}
                 keyboardType="phone-pad"
+                maxLength={15}
                 editable={!saving}
               />
             </View>
+          </View>
+
+          {/* Seção: Dados do Responsável */}
+          <Text style={styles.sectionTitle}>Dados do Responsável</Text>
+          
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Nome do Responsável *</Text>
+            <TextInput
+              style={[styles.input, errors.responsavel_nome && touched.responsavel_nome && styles.inputError]}
+              placeholder="Nome completo do responsável"
+              placeholderTextColor="#aaa"
+              value={formData.responsavel_nome}
+              onChangeText={(value) => handleChange('responsavel_nome', value)}
+              onBlur={() => handleBlur('responsavel_nome')}
+              editable={!saving}
+            />
+            {errors.responsavel_nome && touched.responsavel_nome && (
+              <Text style={styles.errorText}>{errors.responsavel_nome}</Text>
+            )}
+          </View>
+
+          <View style={styles.row}>
+            <View style={[styles.inputGroup, styles.halfWidth]}>
+              <Text style={styles.label}>CPF do Responsável *</Text>
+              <TextInput
+                style={[styles.input, errors.responsavel_cpf && touched.responsavel_cpf && styles.inputError]}
+                placeholder="000.000.000-00"
+                placeholderTextColor="#aaa"
+                value={formData.responsavel_cpf}
+                onChangeText={(value) => handleChange('responsavel_cpf', mascaraCPF(value))}
+                onBlur={() => handleBlur('responsavel_cpf')}
+                keyboardType="numeric"
+                maxLength={14}
+                editable={!saving}
+              />
+              {errors.responsavel_cpf && touched.responsavel_cpf && (
+                <Text style={styles.errorText}>{errors.responsavel_cpf}</Text>
+              )}
+            </View>
+
+            <View style={[styles.inputGroup, styles.halfWidth]}>
+              <Text style={styles.label}>Telefone do Responsável *</Text>
+              <TextInput
+                style={[styles.input, errors.responsavel_telefone && touched.responsavel_telefone && styles.inputError]}
+                placeholder="(11) 99999-9999"
+                placeholderTextColor="#aaa"
+                value={formData.responsavel_telefone}
+                onChangeText={(value) => handleChange('responsavel_telefone', mascaraTelefone(value))}
+                onBlur={() => handleBlur('responsavel_telefone')}
+                keyboardType="phone-pad"
+                maxLength={15}
+                editable={!saving}
+              />
+              {errors.responsavel_telefone && touched.responsavel_telefone && (
+                <Text style={styles.errorText}>{errors.responsavel_telefone}</Text>
+              )}
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>E-mail do Responsável (Opcional)</Text>
+            <TextInput
+              style={[styles.input, errors.responsavel_email && touched.responsavel_email && styles.inputError]}
+              placeholder="responsavel@email.com"
+              placeholderTextColor="#aaa"
+              value={formData.responsavel_email}
+              onChangeText={(value) => handleChange('responsavel_email', value)}
+              onBlur={() => handleBlur('responsavel_email')}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              editable={!saving}
+            />
+            {errors.responsavel_email && touched.responsavel_email && (
+              <Text style={styles.errorText}>{errors.responsavel_email}</Text>
+            )}
           </View>
 
           {/* Seção: Endereço */}
@@ -390,12 +502,11 @@ export default function EditarAcademiaScreen() {
             <View style={[styles.inputGroup, styles.halfWidth]}>
               <Text style={styles.label}>Logradouro</Text>
               <TextInput
-                style={styles.input}
-                placeholder="Rua, Av, etc"
+                style={[styles.input, styles.inputDisabled]}
+                placeholder="Preenchido automaticamente pelo CEP"
                 placeholderTextColor="#aaa"
                 value={formData.logradouro}
-                onChangeText={(value) => handleChange('logradouro', value)}
-                editable={!saving}
+                editable={false}
               />
             </View>
           </View>
@@ -430,12 +541,11 @@ export default function EditarAcademiaScreen() {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Bairro</Text>
             <TextInput
-              style={styles.input}
-              placeholder="Nome do bairro"
+              style={[styles.input, styles.inputDisabled]}
+              placeholder="Preenchido automaticamente pelo CEP"
               placeholderTextColor="#aaa"
               value={formData.bairro}
-              onChangeText={(value) => handleChange('bairro', value)}
-              editable={!saving}
+              editable={false}
             />
           </View>
 
@@ -443,53 +553,38 @@ export default function EditarAcademiaScreen() {
             <View style={[styles.inputGroup, { flex: 0.7 }]}>
               <Text style={styles.label}>Cidade</Text>
               <TextInput
-                style={styles.input}
-                placeholder="Nome da cidade"
+                style={[styles.input, styles.inputDisabled]}
+                placeholder="Preenchido automaticamente pelo CEP"
                 placeholderTextColor="#aaa"
                 value={formData.cidade}
-                onChangeText={(value) => handleChange('cidade', value)}
-                editable={!saving}
+                editable={false}
               />
             </View>
 
             <View style={[styles.inputGroup, { flex: 0.3 }]}>
               <Text style={styles.label}>Estado</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="UF"
-                placeholderTextColor="#aaa"
-                value={formData.estado}
-                onChangeText={(value) => handleChange('estado', value.toUpperCase())}
-                maxLength={2}
-                autoCapitalize="characters"
-                editable={!saving}
-              />
+              <View style={[styles.pickerContainer, styles.inputDisabled]}>
+                <Picker
+                  selectedValue={formData.estado}
+                  onValueChange={(value) => handleChange('estado', value)}
+                  enabled={false}
+                  style={styles.picker}
+                >
+                  <Picker.Item label="UF" value="" />
+                  {estados.map((estado) => (
+                    <Picker.Item
+                      key={estado.sigla}
+                      label={estado.sigla}
+                      value={estado.sigla}
+                    />
+                  ))}
+                </Picker>
+              </View>
             </View>
           </View>
 
-          {/* Seção: Plano e Status */}
-          <Text style={styles.sectionTitle}>Plano e Status</Text>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Plano</Text>
-            <View style={styles.pickerContainer}>
-              <Picker
-                selectedValue={formData.plano_id}
-                onValueChange={(value) => handleChange('plano_id', value)}
-                enabled={!saving}
-                style={styles.picker}
-              >
-                <Picker.Item label="Nenhum plano selecionado" value="" />
-                {planos.map((plano) => (
-                  <Picker.Item
-                    key={plano.id}
-                    label={`${plano.nome} - R$ ${parseFloat(plano.valor).toFixed(2)}`}
-                    value={plano.id}
-                  />
-                ))}
-              </Picker>
-            </View>
-          </View>
+          {/* Seção: Status */}
+          <Text style={styles.sectionTitle}>Status</Text>
 
           <View style={styles.inputGroup}>
             <View style={styles.switchContainer}>
@@ -615,6 +710,10 @@ const styles = StyleSheet.create({
   inputError: {
     borderColor: '#ef4444',
     borderWidth: 2,
+  },
+  inputDisabled: {
+    backgroundColor: 'rgba(240, 240, 240, 0.9)',
+    color: '#666',
   },
   errorText: {
     color: '#ef4444',

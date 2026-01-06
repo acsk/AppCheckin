@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   ScrollView,
   useWindowDimensions,
+  TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -22,21 +23,37 @@ export default function AcademiasScreen() {
   const [loading, setLoading] = useState(true);
   const [academias, setAcademias] = useState([]);
   const [confirmDelete, setConfirmDelete] = useState({ visible: false, id: null, nome: '' });
+  const [searchText, setSearchText] = useState('');
 
   useEffect(() => {
     loadAcademias();
   }, []);
 
-  const loadAcademias = async () => {
+  const loadAcademias = async (busca = '') => {
     try {
       setLoading(true);
-      const response = await superAdminService.listarAcademias();
+      console.log('🔍 Buscando academias com termo:', busca);
+      const response = await superAdminService.listarAcademias(busca);
+      console.log('✅ Academias encontradas:', response.academias?.length);
       setAcademias(response.academias || []);
     } catch (error) {
-      console.error('Erro ao carregar academias:', error);
+      console.error('❌ Erro ao carregar academias:', error);
+      showError('Erro ao carregar academias');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSearch = () => {
+    const termo = searchText.trim();
+    console.log('🔎 Executando busca com termo:', termo);
+    loadAcademias(termo);
+  };
+
+  const handleClearSearch = () => {
+    console.log('🗑️ Limpando busca');
+    setSearchText('');
+    loadAcademias('');
   };
 
   const handleDelete = async (id, nome) => {
@@ -236,19 +253,40 @@ export default function AcademiasScreen() {
     <LayoutBase title="Academias" subtitle="Gerenciar academias">
       <View style={styles.container}>
         <View style={[styles.header, isMobile && styles.headerMobile]}>
-          <View>
+          <View style={styles.headerLeft}>
             <Text style={[styles.headerTitle, isMobile && styles.headerTitleMobile]}>Academias</Text>
             <Text style={styles.headerSubtitle}>
               {academias.length} {academias.length === 1 ? 'academia' : 'academias'} cadastradas
             </Text>
           </View>
-          <TouchableOpacity
-            style={[styles.addButton, isMobile && styles.addButtonMobile]}
-            onPress={() => router.push('/academias/novo')}
-          >
-            <Feather name="plus" size={18} color="#fff" />
-            {!isMobile && <Text style={styles.addButtonText}>Nova Academia</Text>}
-          </TouchableOpacity>
+          <View style={styles.headerRight}>
+            <View style={[styles.searchContainer, isMobile && styles.searchContainerMobile]}>
+              <Feather name="search" size={18} color="#666" style={styles.searchIcon} />
+              <TextInput
+                style={[styles.searchInput, isMobile && styles.searchInputMobile]}
+                placeholder="Buscar por nome, email ou CNPJ..."
+                value={searchText}
+                onChangeText={setSearchText}
+                onSubmitEditing={handleSearch}
+                returnKeyType="search"
+              />
+              {searchText.length > 0 && (
+                <TouchableOpacity onPress={handleClearSearch} style={styles.clearButton}>
+                  <Feather name="x" size={18} color="#666" />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity onPress={handleSearch} style={styles.searchButton}>
+                <Text style={styles.searchButtonText}>Buscar</Text>
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              style={[styles.addButton, isMobile && styles.addButtonMobile]}
+              onPress={() => router.push('/academias/novo')}
+            >
+              <Feather name="plus" size={18} color="#fff" />
+              {!isMobile && <Text style={styles.addButtonText}>Nova Academia</Text>}
+            </TouchableOpacity>
+          </View>
         </View>
 
         {academias.length === 0 ? (
@@ -305,9 +343,69 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#e5e5e5',
+    gap: 16,
+    flexWrap: 'wrap',
+    rowGap: 12,
   },
   headerMobile: {
+    flexDirection: 'column',
     padding: 16,
+    gap: 12,
+  },
+  headerLeft: {
+    flexShrink: 0,
+    minWidth: 220,
+    paddingRight: 12,
+  },
+  headerRight: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  searchContainer: {
+    flexGrow: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f3f4f6',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    height: 44,
+    maxWidth: 500,
+    minWidth: 280,
+  },
+  searchContainerMobile: {
+    maxWidth: '100%',
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#333',
+    outlineStyle: 'none',
+  },
+  searchInputMobile: {
+    fontSize: 14,
+  },
+  clearButton: {
+    padding: 4,
+    marginLeft: 4,
+  },
+  searchButton: {
+    backgroundColor: '#3b82f6',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 6,
+    marginLeft: 8,
+  },
+  searchButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   headerTitle: {
     fontSize: 24,
@@ -331,6 +429,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 8,
     gap: 8,
+    flexShrink: 0,
   },
   addButtonMobile: {
     paddingVertical: 10,

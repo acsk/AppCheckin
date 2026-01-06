@@ -12,6 +12,12 @@ use App\Controllers\ContasReceberController;
 use App\Controllers\MatriculaController;
 use App\Controllers\ConfigController;
 use App\Controllers\SuperAdminController;
+use App\Controllers\PlanosSistemaController;
+use App\Controllers\TenantPlanosSistemaController;
+use App\Controllers\PagamentoContratoController;
+use App\Controllers\FormaPagamentoController;
+use App\Controllers\ModalidadeController;
+use App\Controllers\TenantFormaPagamentoController;
 use App\Controllers\CepController;
 use App\Middlewares\AuthMiddleware;
 use App\Middlewares\TenantMiddleware;
@@ -28,6 +34,9 @@ return function ($app) {
     
     // Rota pública de consulta CEP
     $app->get('/cep/{cep}', [CepController::class, 'buscar']);
+    
+    // Rota pública de formas de pagamento
+    $app->get('/formas-pagamento', [FormaPagamentoController::class, 'index']);
     
     // Logout (protegido para validar token)
     $app->post('/auth/logout', [AuthController::class, 'logout'])->add(AuthMiddleware::class);
@@ -47,15 +56,36 @@ return function ($app) {
         $group->delete('/academias/{id}', [SuperAdminController::class, 'excluirAcademia']);
         $group->post('/academias/{tenantId}/admin', [SuperAdminController::class, 'criarAdminAcademia']);
         
-        // Gerenciar contratos de planos
-        $group->get('/contratos', [SuperAdminController::class, 'listarTodosContratos']);
-        $group->post('/academias/{id}/contrato', [SuperAdminController::class, 'criarContrato']);
-        $group->post('/academias/{id}/trocar-plano', [SuperAdminController::class, 'trocarPlano']);
-        $group->get('/academias/{id}/contratos', [SuperAdminController::class, 'listarContratos']);
-        $group->post('/contratos/{id}/renovar', [SuperAdminController::class, 'renovarContrato']);
-        $group->delete('/contratos/{id}', [SuperAdminController::class, 'cancelarContrato']);
-        $group->get('/contratos/proximos-vencimento', [SuperAdminController::class, 'contratosProximosVencimento']);
-        $group->get('/contratos/vencidos', [SuperAdminController::class, 'contratosVencidos']);
+        // === PLANOS DO SISTEMA (CRUD) ===
+        $group->get('/planos-sistema', [PlanosSistemaController::class, 'index']);
+        $group->get('/planos-sistema/disponiveis', [PlanosSistemaController::class, 'disponiveis']);
+        $group->get('/planos-sistema/{id}', [PlanosSistemaController::class, 'show']);
+        $group->get('/planos-sistema/{id}/academias', [PlanosSistemaController::class, 'listarAcademias']);
+        $group->post('/planos-sistema', [PlanosSistemaController::class, 'create']);
+        $group->put('/planos-sistema/{id}', [PlanosSistemaController::class, 'update']);
+        $group->post('/planos-sistema/{id}/marcar-historico', [PlanosSistemaController::class, 'marcarHistorico']);
+        $group->delete('/planos-sistema/{id}', [PlanosSistemaController::class, 'delete']);
+        
+        // === CONTRATOS (Associação Academia + Plano Sistema) ===
+        $group->get('/contratos', [TenantPlanosSistemaController::class, 'index']);
+        $group->get('/contratos/proximos-vencimento', [TenantPlanosSistemaController::class, 'proximosVencimento']);
+        $group->get('/contratos/vencidos', [TenantPlanosSistemaController::class, 'vencidos']);
+        $group->get('/contratos/{id}', [TenantPlanosSistemaController::class, 'show']);
+        $group->get('/academias/{tenantId}/contratos', [TenantPlanosSistemaController::class, 'contratosPorAcademia']);
+        $group->get('/academias/{tenantId}/contrato-ativo', [TenantPlanosSistemaController::class, 'contratoAtivo']);
+        $group->post('/academias/{tenantId}/contratos', [TenantPlanosSistemaController::class, 'associarPlano']);
+        $group->post('/academias/{tenantId}/trocar-plano', [TenantPlanosSistemaController::class, 'trocarPlano']);
+        $group->post('/contratos/{id}/renovar', [TenantPlanosSistemaController::class, 'renovar']);
+        $group->delete('/contratos/{id}', [TenantPlanosSistemaController::class, 'cancelar']);
+        
+        // === PAGAMENTOS DE CONTRATOS ===
+        $group->get('/pagamentos', [PagamentoContratoController::class, 'index']);
+        $group->get('/pagamentos/resumo', [PagamentoContratoController::class, 'resumo']);
+        $group->get('/contratos/{id}/pagamentos', [PagamentoContratoController::class, 'listarPorContrato']);
+        $group->post('/contratos/{id}/pagamentos', [PagamentoContratoController::class, 'criar']);
+        $group->post('/pagamentos/{id}/confirmar', [PagamentoContratoController::class, 'confirmar']);
+        $group->delete('/pagamentos/{id}', [PagamentoContratoController::class, 'cancelar']);
+        $group->post('/pagamentos/marcar-atrasados', [PagamentoContratoController::class, 'marcarAtrasados']);
         
         // Gerenciar usuários de todos os tenants
         $group->get('/usuarios', [UsuarioController::class, 'listarTodos']);
@@ -94,6 +124,7 @@ return function ($app) {
         
         // Configurações (formas de pagamento e status)
         $group->get('/config/formas-pagamento', [ConfigController::class, 'listarFormasPagamento']);
+        $group->get('/config/formas-pagamento-ativas', [TenantFormaPagamentoController::class, 'listarAtivas']);
         $group->get('/config/status-conta', [ConfigController::class, 'listarStatusConta']);
     })->add(AuthMiddleware::class);
 
@@ -153,6 +184,20 @@ return function ($app) {
         $group->get('/matriculas', [MatriculaController::class, 'listar']);
         $group->post('/matriculas/{id}/cancelar', [MatriculaController::class, 'cancelar']);
         $group->post('/matriculas/contas/{id}/baixa', [MatriculaController::class, 'darBaixaConta']);
+        
+        // Modalidades
+        $group->get('/modalidades', [ModalidadeController::class, 'index']);
+        $group->get('/modalidades/{id}', [ModalidadeController::class, 'show']);
+        $group->post('/modalidades', [ModalidadeController::class, 'create']);
+        $group->put('/modalidades/{id}', [ModalidadeController::class, 'update']);
+        $group->delete('/modalidades/{id}', [ModalidadeController::class, 'delete']);
+        
+        // Formas de Pagamento por Tenant (Configurações)
+        $group->get('/formas-pagamento-config', [TenantFormaPagamentoController::class, 'listar']);
+        $group->get('/formas-pagamento-config/{id}', [TenantFormaPagamentoController::class, 'buscar']);
+        $group->put('/formas-pagamento-config/{id}', [TenantFormaPagamentoController::class, 'atualizar']);
+        $group->post('/formas-pagamento-config/calcular-taxas', [TenantFormaPagamentoController::class, 'calcularTaxas']);
+        $group->post('/formas-pagamento-config/calcular-parcelas', [TenantFormaPagamentoController::class, 'calcularParcelas']);
     })->add(AdminMiddleware::class)->add(AuthMiddleware::class);
 
     // Rota de teste

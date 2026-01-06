@@ -183,7 +183,6 @@ export default function ContratosAcademiaScreen() {
       <View style={styles.tableHeader}>
         <Text style={[styles.headerText, { flex: 2 }]}>Plano</Text>
         <Text style={[styles.headerText, { flex: 1.5 }]}>Período</Text>
-        <Text style={[styles.headerText, { flex: 1 }]}>Pagamento</Text>
         <Text style={[styles.headerText, { flex: 1 }]}>Valor</Text>
         <Text style={[styles.headerText, { flex: 1 }]}>Status</Text>
         <Text style={[styles.headerText, { flex: 1 }]}>Ações</Text>
@@ -203,10 +202,7 @@ export default function ContratosAcademiaScreen() {
                 {formatarData(contrato.data_vencimento)}
               </Text>
             </View>
-            <View style={[styles.tableCell, { flex: 1 }]}>
-              <Text style={styles.cellText}>{getFormaPagamentoLabel(contrato.forma_pagamento)}</Text>
-            </View>
-            <View style={[styles.tableCell, { flex: 1 }]}>
+                 <View style={[styles.tableCell, { flex: 1 }]}>
               <Text style={styles.cellText}>{formatarValor(contrato.valor)}</Text>
             </View>
             <View style={[styles.tableCell, { flex: 1 }]}>

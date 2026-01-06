@@ -56,6 +56,27 @@ export const showError = (message) => {
   });
 };
 
+export const showWarning = (message) => {
+  const text = typeof message === 'object' 
+    ? (message?.message || message?.error || JSON.stringify(message))
+    : message;
+  
+  toast(text, {
+    duration: 4000,
+    position: 'top-right',
+    icon: '⚠️',
+    style: {
+      ...baseStyle,
+      background: 'rgba(245, 158, 11, 0.92)',
+      color: '#fff',
+    },
+    iconTheme: {
+      primary: '#fff',
+      secondary: 'rgba(245, 158, 11, 0.92)',
+    },
+  });
+};
+
 export const showLoading = (message = 'Carregando...') => {
   return toast.loading(message, {
     position: 'top-right',

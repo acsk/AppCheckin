@@ -7,18 +7,21 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Models\Tenant;
 use App\Models\Usuario;
 use App\Models\TenantPlano;
+use App\Models\PlanoSistema;
 
 /**
  * Controller para operações exclusivas do Super Admin
  * - Criar academias/tenants
  * - Criar admins para academias
  * - Visualizar todas as academias
+ * - Gerenciar planos do sistema
  */
 class SuperAdminController
 {
     private Tenant $tenantModel;
     private Usuario $usuarioModel;
     private TenantPlano $tenantPlanoModel;
+    private PlanoSistema $planoSistemaModel;
 
     public function __construct()
     {
@@ -26,6 +29,7 @@ class SuperAdminController
         $this->tenantModel = new Tenant($db);
         $this->usuarioModel = new Usuario($db);
         $this->tenantPlanoModel = new TenantPlano($db);
+        $this->planoSistemaModel = new PlanoSistema($db);
     }
 
     /**
@@ -45,11 +49,32 @@ class SuperAdminController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
         }
 
-        $academias = $this->tenantModel->getAll();
+        $queryParams = $request->getQueryParams();
+        $semContratoAtivo = isset($queryParams['sem_contrato_ativo']) && $queryParams['sem_contrato_ativo'] === 'true';
+        
+        // Preparar filtros
+        $filtros = [];
+        if (!empty($queryParams['busca'])) {
+            $filtros['busca'] = $queryParams['busca'];
+        }
+        if (isset($queryParams['ativo'])) {
+            $filtros['ativo'] = $queryParams['ativo'] === 'true' || $queryParams['ativo'] === '1';
+        }
+
+        $academias = $this->tenantModel->getAll($filtros);
+
+        // Se solicitado, filtrar apenas academias sem contrato ativo
+        if ($semContratoAtivo) {
+            $academias = array_filter($academias, function($academia) {
+                $contratoAtivo = $this->tenantPlanoModel->buscarContratoAtivo($academia['id']);
+                return !$contratoAtivo;
+            });
+            $academias = array_values($academias); // Reindexar array
+        }
 
         $response->getBody()->write(json_encode([
             'academias' => $academias
-        ]));
+        ], JSON_UNESCAPED_UNICODE));
 
         return $response->withHeader('Content-Type', 'application/json');
     }
@@ -120,7 +145,11 @@ class SuperAdminController
             'slug' => $slug,
             'email' => $data['email'],
             'cnpj' => isset($data['cnpj']) ? preg_replace('/[^0-9]/', '', $data['cnpj']) : null,
-            'telefone' => $data['telefone'] ?? null,
+            'telefone' => isset($data['telefone']) ? preg_replace('/[^0-9]/', '', $data['telefone']) : null,
+            'responsavel_nome' => $data['responsavel_nome'] ?? null,
+            'responsavel_cpf' => isset($data['responsavel_cpf']) ? preg_replace('/[^0-9]/', '', $data['responsavel_cpf']) : null,
+            'responsavel_telefone' => isset($data['responsavel_telefone']) ? preg_replace('/[^0-9]/', '', $data['responsavel_telefone']) : null,
+            'responsavel_email' => $data['responsavel_email'] ?? null,
             'cep' => $data['cep'] ?? null,
             'logradouro' => $data['logradouro'] ?? null,
             'numero' => $data['numero'] ?? null,
@@ -141,10 +170,10 @@ class SuperAdminController
         }
 
         // Criar contrato de plano se fornecido
-        if (!empty($data['plano_id'])) {
+        if (!empty($data['plano_sistema_id'])) {
             $contratoData = [
                 'tenant_id' => $tenantId,
-                'plano_id' => $data['plano_id'],
+                'plano_sistema_id' => $data['plano_sistema_id'],
                 'data_inicio' => date('Y-m-d'),
                 'data_vencimento' => date('Y-m-d', strtotime('+1 month')),
                 'forma_pagamento' => $data['forma_pagamento'] ?? 'pix',
@@ -165,7 +194,7 @@ class SuperAdminController
             'email' => $data['email'],
             'senha' => $data['senha_admin'],
             'role_id' => 2, // Admin
-            'plano_id' => null
+            'plano_sistema_id' => null
         ];
 
         $adminId = $this->usuarioModel->criarUsuarioCompleto($adminData, $tenantId);
@@ -241,8 +270,9 @@ class SuperAdminController
         // Verificar se é super admin
         if ($user['role_id'] != 3) {
             $response->getBody()->write(json_encode([
-                'error' => 'Acesso negado. Apenas Super Admin pode atualizar academias'
-            ]));
+                'type' => 'error',
+                'message' => 'Acesso negado. Apenas Super Admin pode atualizar academias'
+            ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
         }
 
@@ -250,8 +280,9 @@ class SuperAdminController
         $academia = $this->tenantModel->findById($tenantId);
         if (!$academia) {
             $response->getBody()->write(json_encode([
-                'error' => 'Academia não encontrada'
-            ]));
+                'type' => 'error',
+                'message' => 'Academia não encontrada'
+            ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
         }
 
@@ -276,7 +307,10 @@ class SuperAdminController
         }
 
         if (!empty($errors)) {
-            $response->getBody()->write(json_encode(['errors' => $errors]));
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => implode(', ', $errors)
+            ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
         }
 
@@ -289,7 +323,10 @@ class SuperAdminController
         }
 
         if (!empty($errors)) {
-            $response->getBody()->write(json_encode(['errors' => $errors]));
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => implode(', ', $errors)
+            ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
         }
 
@@ -299,7 +336,11 @@ class SuperAdminController
             'slug' => $slug,
             'email' => $data['email'],
             'cnpj' => isset($data['cnpj']) ? preg_replace('/[^0-9]/', '', $data['cnpj']) : $academia['cnpj'],
-            'telefone' => $data['telefone'] ?? null,
+            'telefone' => isset($data['telefone']) ? preg_replace('/[^0-9]/', '', $data['telefone']) : $academia['telefone'],
+            'responsavel_nome' => $data['responsavel_nome'] ?? $academia['responsavel_nome'],
+            'responsavel_cpf' => isset($data['responsavel_cpf']) ? preg_replace('/[^0-9]/', '', $data['responsavel_cpf']) : $academia['responsavel_cpf'],
+            'responsavel_telefone' => isset($data['responsavel_telefone']) ? preg_replace('/[^0-9]/', '', $data['responsavel_telefone']) : $academia['responsavel_telefone'],
+            'responsavel_email' => $data['responsavel_email'] ?? $academia['responsavel_email'],
             'cep' => $data['cep'] ?? $academia['cep'],
             'logradouro' => $data['logradouro'] ?? $academia['logradouro'],
             'numero' => $data['numero'] ?? $academia['numero'],
@@ -308,22 +349,24 @@ class SuperAdminController
             'cidade' => $data['cidade'] ?? $academia['cidade'],
             'estado' => $data['estado'] ?? $academia['estado'],
             'endereco' => $data['endereco'] ?? null,
-            'ativo' => $data['ativo'] ?? true
+            'ativo' => isset($data['ativo']) ? (filter_var($data['ativo'], FILTER_VALIDATE_BOOLEAN) ? 1 : 0) : 1
         ];
 
         $success = $this->tenantModel->update($tenantId, $academiaData);
 
         if (!$success) {
             $response->getBody()->write(json_encode([
-                'error' => 'Erro ao atualizar academia'
-            ]));
+                'type' => 'error',
+                'message' => 'Erro ao atualizar academia'
+            ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
 
         $response->getBody()->write(json_encode([
+            'type' => 'success',
             'message' => 'Academia atualizada com sucesso',
             'academia' => $this->tenantModel->findById($tenantId)
-        ]));
+        ], JSON_UNESCAPED_UNICODE));
 
         return $response->withHeader('Content-Type', 'application/json');
     }
@@ -341,8 +384,9 @@ class SuperAdminController
         // Verificar se é super admin
         if ($user['role_id'] != 3) {
             $response->getBody()->write(json_encode([
-                'error' => 'Acesso negado. Apenas Super Admin pode excluir academias'
-            ]));
+                'type' => 'error',
+                'message' => 'Acesso negado. Apenas Super Admin pode excluir academias'
+            ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
         }
 
@@ -350,16 +394,18 @@ class SuperAdminController
         $academia = $this->tenantModel->findById($tenantId);
         if (!$academia) {
             $response->getBody()->write(json_encode([
-                'error' => 'Academia não encontrada'
-            ]));
+                'type' => 'error',
+                'message' => 'Academia não encontrada'
+            ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
         }
 
         // Verificar se é a academia do sistema (id = 1)
         if ($tenantId == 1) {
             $response->getBody()->write(json_encode([
-                'error' => 'Não é possível excluir a academia do sistema'
-            ]));
+                'type' => 'error',
+                'message' => 'Não é possível excluir a academia do sistema'
+            ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
 
@@ -368,14 +414,16 @@ class SuperAdminController
 
         if (!$success) {
             $response->getBody()->write(json_encode([
-                'error' => 'Erro ao excluir academia'
-            ]));
+                'type' => 'error',
+                'message' => 'Erro ao excluir academia'
+            ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
 
         $response->getBody()->write(json_encode([
+            'type' => 'success',
             'message' => 'Academia desativada com sucesso'
-        ]));
+        ], JSON_UNESCAPED_UNICODE));
 
         return $response->withHeader('Content-Type', 'application/json');
     }
@@ -524,7 +572,7 @@ class SuperAdminController
 
         // Validações
         $errors = [];
-        if (empty($data['plano_id'])) {
+        if (empty($data['plano_sistema_sistema_id'])) {
             $errors[] = 'Plano é obrigatório';
         }
         if (empty($data['forma_pagamento']) || !in_array($data['forma_pagamento'], ['cartao', 'pix', 'operadora'])) {
@@ -543,7 +591,7 @@ class SuperAdminController
             // Criar novo contrato
             $contratoData = [
                 'tenant_id' => $tenantId,
-                'plano_id' => $data['plano_id'],
+                'plano_sistema_id' => $data['plano_sistema_id'],
                 'data_inicio' => $data['data_inicio'] ?? date('Y-m-d'),
                 'data_vencimento' => $data['data_vencimento'] ?? date('Y-m-d', strtotime('+1 month')),
                 'forma_pagamento' => $data['forma_pagamento'],
@@ -611,7 +659,7 @@ class SuperAdminController
         try {
             $resultado = $this->tenantPlanoModel->trocarPlano(
                 $tenantId,
-                $data['plano_id'],
+                $data['plano_sistema_id'],
                 $data['forma_pagamento'],
                 $data['observacoes'] ?? 'Troca de plano realizada pelo Super Admin'
             );
@@ -827,5 +875,234 @@ class SuperAdminController
         ]));
 
         return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    // ==================== PLANOS DO SISTEMA ====================
+
+    /**
+     * Listar todos os planos do sistema
+     * GET /superadmin/planos-sistema
+     */
+    public function listarPlanosSistema(Request $request, Response $response): Response
+    {
+        $userId = $request->getAttribute('userId');
+        $user = $this->usuarioModel->findById($userId);
+
+        // Verificar se é super admin
+        if ($user['role_id'] != 3) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Acesso negado. Apenas Super Admin'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+
+        $apenasAtivos = $request->getQueryParams()['ativos'] ?? false;
+        $planos = $this->planoSistemaModel->listarTodos((bool) $apenasAtivos);
+
+        $response->getBody()->write(json_encode([
+            'planos' => $planos,
+            'total' => count($planos)
+        ]));
+
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * Listar planos disponíveis para novos contratos
+     * GET /superadmin/planos-sistema/disponiveis
+     */
+    public function listarPlanosDisponiveis(Request $request, Response $response): Response
+    {
+        $userId = $request->getAttribute('userId');
+        $user = $this->usuarioModel->findById($userId);
+
+        // Verificar se é super admin
+        if ($user['role_id'] != 3) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Acesso negado. Apenas Super Admin'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+
+        $planos = $this->planoSistemaModel->listarDisponiveis();
+
+        $response->getBody()->write(json_encode([
+            'planos' => $planos,
+            'total' => count($planos)
+        ]));
+
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * Criar novo plano do sistema
+     * POST /superadmin/planos-sistema
+     */
+    public function criarPlanoSistema(Request $request, Response $response): Response
+    {
+        $userId = $request->getAttribute('userId');
+        $user = $this->usuarioModel->findById($userId);
+        $data = $request->getParsedBody();
+
+        // Verificar se é super admin
+        if ($user['role_id'] != 3) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Acesso negado. Apenas Super Admin'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+
+        // Validações
+        $errors = [];
+        if (empty($data['nome'])) {
+            $errors[] = 'Nome é obrigatório';
+        }
+        if (!isset($data['valor']) || $data['valor'] < 0) {
+            $errors[] = 'Valor deve ser maior ou igual a zero';
+        }
+
+        if (!empty($errors)) {
+            $response->getBody()->write(json_encode(['errors' => $errors]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+        }
+
+        try {
+            $planoId = $this->planoSistemaModel->criar($data);
+            $plano = $this->planoSistemaModel->buscarPorId($planoId);
+
+            $response->getBody()->write(json_encode([
+                'message' => 'Plano criado com sucesso',
+                'plano' => $plano
+            ]));
+
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(201);
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Erro ao criar plano: ' . $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * Atualizar plano do sistema
+     * PUT /superadmin/planos-sistema/{id}
+     */
+    public function atualizarPlanoSistema(Request $request, Response $response, array $args): Response
+    {
+        $userId = $request->getAttribute('userId');
+        $user = $this->usuarioModel->findById($userId);
+        $planoId = (int) $args['id'];
+        $data = $request->getParsedBody();
+
+        // Verificar se é super admin
+        if ($user['role_id'] != 3) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Acesso negado. Apenas Super Admin'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+
+        $plano = $this->planoSistemaModel->buscarPorId($planoId);
+        if (!$plano) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Plano não encontrado'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        try {
+            $this->planoSistemaModel->atualizar($planoId, $data);
+            $planoAtualizado = $this->planoSistemaModel->buscarPorId($planoId);
+
+            $response->getBody()->write(json_encode([
+                'message' => 'Plano atualizado com sucesso',
+                'plano' => $planoAtualizado
+            ]));
+
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'error' => $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
+    }
+
+    /**
+     * Marcar plano como histórico
+     * POST /superadmin/planos-sistema/{id}/marcar-historico
+     */
+    public function marcarPlanoComoHistorico(Request $request, Response $response, array $args): Response
+    {
+        $userId = $request->getAttribute('userId');
+        $user = $this->usuarioModel->findById($userId);
+        $planoId = (int) $args['id'];
+
+        // Verificar se é super admin
+        if ($user['role_id'] != 3) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Acesso negado. Apenas Super Admin'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+
+        $plano = $this->planoSistemaModel->buscarPorId($planoId);
+        if (!$plano) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Plano não encontrado'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        $this->planoSistemaModel->marcarComoHistorico($planoId);
+
+        $response->getBody()->write(json_encode([
+            'message' => 'Plano marcado como histórico. Não estará mais disponível para novos contratos.'
+        ]));
+
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * Desativar plano do sistema
+     * DELETE /superadmin/planos-sistema/{id}
+     */
+    public function desativarPlanoSistema(Request $request, Response $response, array $args): Response
+    {
+        $userId = $request->getAttribute('userId');
+        $user = $this->usuarioModel->findById($userId);
+        $planoId = (int) $args['id'];
+
+        // Verificar se é super admin
+        if ($user['role_id'] != 3) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Acesso negado. Apenas Super Admin'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+
+        $plano = $this->planoSistemaModel->buscarPorId($planoId);
+        if (!$plano) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Plano não encontrado'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        try {
+            $this->planoSistemaModel->desativar($planoId);
+
+            $response->getBody()->write(json_encode([
+                'message' => 'Plano desativado com sucesso'
+            ]));
+
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'error' => $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
     }
 }

@@ -12,8 +12,8 @@ import { Feather } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import { useRouter } from 'expo-router';
 import { superAdminService } from '../../services/superAdminService';
-import planoService from '../../services/planoService';
 import cepService from '../../services/cepService';
+import estadosService from '../../services/estadosService';
 import LayoutBase from '../../components/LayoutBase';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { showSuccess, showError } from '../../utils/toast';
@@ -24,13 +24,20 @@ import {
   validarSenha, 
   validarObrigatorio 
 } from '../../utils/validators';
+import { 
+  mascaraCNPJ, 
+  mascaraCPF,
+  mascaraTelefone, 
+  apenasNumeros,
+  validarCPF 
+} from '../../utils/masks';
 
 export default function CadastrarAcademiaScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [buscandoCep, setBuscandoCep] = useState(false);
-  const [planos, setPlanos] = useState([]);
+  const [estados, setEstados] = useState([]);
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
   const [formData, setFormData] = useState({
@@ -39,6 +46,10 @@ export default function CadastrarAcademiaScreen() {
     senha_admin: '',
     cnpj: '',
     telefone: '',
+    responsavel_nome: '',
+    responsavel_cpf: '',
+    responsavel_telefone: '',
+    responsavel_email: '',
     cep: '',
     logradouro: '',
     numero: '',
@@ -46,25 +57,12 @@ export default function CadastrarAcademiaScreen() {
     bairro: '',
     cidade: '',
     estado: '',
-    plano_id: '',
   });
 
   useEffect(() => {
-    loadPlanos();
+    const estadosList = estadosService.listarEstados();
+    setEstados(estadosList);
   }, []);
-
-  const loadPlanos = async () => {
-    try {
-      setLoading(true);
-      const response = await planoService.listar(true);
-      setPlanos(response.planos || []);
-    } catch (error) {
-      showError('Não foi possível carregar os planos');
-      console.error('Erro ao carregar planos:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleChange = (field, value) => {
     setFormData({ ...formData, [field]: value });
@@ -108,14 +106,31 @@ export default function CadastrarAcademiaScreen() {
           error = 'CNPJ inválido';
         }
         break;
+      case 'responsavel_nome':
+        if (!validarObrigatorio(value)) {
+          error = 'Nome do responsável é obrigatório';
+        }
+        break;
+      case 'responsavel_cpf':
+        if (!validarObrigatorio(value)) {
+          error = 'CPF do responsável é obrigatório';
+        } else if (!validarCPF(value)) {
+          error = 'CPF inválido';
+        }
+        break;
+      case 'responsavel_telefone':
+        if (!validarObrigatorio(value)) {
+          error = 'Telefone do responsável é obrigatório';
+        }
+        break;
+      case 'responsavel_email':
+        if (value && !validarEmail(value)) {
+          error = 'E-mail inválido';
+        }
+        break;
       case 'cep':
         if (value && !validarCEP(value)) {
           error = 'CEP inválido';
-        }
-        break;
-      case 'plano_id':
-        if (!value) {
-          error = 'Selecione um plano';
         }
         break;
     }
@@ -172,8 +187,24 @@ export default function CadastrarAcademiaScreen() {
       showError('CNPJ inválido. Deve conter 14 dígitos');
       return false;
     }
-    if (!formData.plano_id) {
-      showError('Selecione um plano');
+    if (!formData.responsavel_nome.trim()) {
+      showError('Nome do responsável é obrigatório');
+      return false;
+    }
+    if (!formData.responsavel_cpf.trim()) {
+      showError('CPF do responsável é obrigatório');
+      return false;
+    }
+    if (!validarCPF(formData.responsavel_cpf)) {
+      showError('CPF do responsável inválido');
+      return false;
+    }
+    if (!formData.responsavel_telefone.trim()) {
+      showError('Telefone do responsável é obrigatório');
+      return false;
+    }
+    if (formData.responsavel_email && !validarEmail(formData.responsavel_email)) {
+      showError('E-mail do responsável inválido');
       return false;
     }
     return true;
@@ -184,10 +215,13 @@ export default function CadastrarAcademiaScreen() {
 
     setSaving(true);
     try {
-      // Converter plano_id para número antes de enviar
+      // Remover máscaras antes de enviar
       const dadosParaEnviar = {
         ...formData,
-        plano_id: formData.plano_id ? Number(formData.plano_id) : null,
+        cnpj: apenasNumeros(formData.cnpj),
+        telefone: apenasNumeros(formData.telefone),
+        responsavel_cpf: apenasNumeros(formData.responsavel_cpf),
+        responsavel_telefone: apenasNumeros(formData.responsavel_telefone),
       };
       
       const result = await superAdminService.criarAcademia(dadosParaEnviar);
@@ -209,7 +243,7 @@ export default function CadastrarAcademiaScreen() {
         <View style={styles.headerActions}>
           <TouchableOpacity 
             style={styles.backButton}
-            onPress={() => router.back()}
+            onPress={() => router.push('/academias')}
             disabled={saving}
           >
             <Feather name="arrow-left" size={18} color="#fff" />
@@ -283,9 +317,10 @@ export default function CadastrarAcademiaScreen() {
                 placeholder="00.000.000/0000-00"
                 placeholderTextColor="#999"
                 value={formData.cnpj}
-                onChangeText={(value) => handleChange('cnpj', value)}
+                onChangeText={(value) => handleChange('cnpj', mascaraCNPJ(value))}
                 onBlur={() => handleBlur('cnpj')}
                 keyboardType="numeric"
+                maxLength={18}
                 editable={!saving}
               />
               {errors.cnpj && touched.cnpj && (
@@ -300,11 +335,87 @@ export default function CadastrarAcademiaScreen() {
                 placeholder="(11) 99999-9999"
                 placeholderTextColor="#999"
                 value={formData.telefone}
-                onChangeText={(value) => handleChange('telefone', value)}
+                onChangeText={(value) => handleChange('telefone', mascaraTelefone(value))}
                 keyboardType="phone-pad"
+                maxLength={15}
                 editable={!saving}
               />
             </View>
+          </View>
+
+          {/* Seção: Dados do Responsável */}
+          <Text style={styles.sectionTitle}>Dados do Responsável</Text>
+          
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Nome do Responsável *</Text>
+            <TextInput
+              style={[styles.input, errors.responsavel_nome && touched.responsavel_nome && styles.inputError]}
+              placeholder="Nome completo do responsável"
+              placeholderTextColor="#999"
+              value={formData.responsavel_nome}
+              onChangeText={(value) => handleChange('responsavel_nome', value)}
+              onBlur={() => handleBlur('responsavel_nome')}
+              editable={!saving}
+            />
+            {errors.responsavel_nome && touched.responsavel_nome && (
+              <Text style={styles.errorText}>{errors.responsavel_nome}</Text>
+            )}
+          </View>
+
+          <View style={styles.row}>
+            <View style={[styles.inputGroup, styles.halfWidth]}>
+              <Text style={styles.label}>CPF do Responsável *</Text>
+              <TextInput
+                style={[styles.input, errors.responsavel_cpf && touched.responsavel_cpf && styles.inputError]}
+                placeholder="000.000.000-00"
+                placeholderTextColor="#999"
+                value={formData.responsavel_cpf}
+                onChangeText={(value) => handleChange('responsavel_cpf', mascaraCPF(value))}
+                onBlur={() => handleBlur('responsavel_cpf')}
+                keyboardType="numeric"
+                maxLength={14}
+                editable={!saving}
+              />
+              {errors.responsavel_cpf && touched.responsavel_cpf && (
+                <Text style={styles.errorText}>{errors.responsavel_cpf}</Text>
+              )}
+            </View>
+
+            <View style={[styles.inputGroup, styles.halfWidth]}>
+              <Text style={styles.label}>Telefone do Responsável *</Text>
+              <TextInput
+                style={[styles.input, errors.responsavel_telefone && touched.responsavel_telefone && styles.inputError]}
+                placeholder="(11) 99999-9999"
+                placeholderTextColor="#999"
+                value={formData.responsavel_telefone}
+                onChangeText={(value) => handleChange('responsavel_telefone', mascaraTelefone(value))}
+                onBlur={() => handleBlur('responsavel_telefone')}
+                keyboardType="phone-pad"
+                maxLength={15}
+                editable={!saving}
+              />
+              {errors.responsavel_telefone && touched.responsavel_telefone && (
+                <Text style={styles.errorText}>{errors.responsavel_telefone}</Text>
+              )}
+            </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>E-mail do Responsável (Opcional)</Text>
+            <TextInput
+              style={[styles.input, errors.responsavel_email && touched.responsavel_email && styles.inputError]}
+              placeholder="responsavel@email.com"
+              placeholderTextColor="#999"
+              value={formData.responsavel_email}
+              onChangeText={(value) => handleChange('responsavel_email', value)}
+              onBlur={() => handleBlur('responsavel_email')}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              editable={!saving}
+            />
+            {errors.responsavel_email && touched.responsavel_email && (
+              <Text style={styles.errorText}>{errors.responsavel_email}</Text>
+            )}
           </View>
 
           {/* Seção: Endereço */}
@@ -342,12 +453,11 @@ export default function CadastrarAcademiaScreen() {
             <View style={[styles.inputGroup, styles.halfWidth]}>
               <Text style={styles.label}>Logradouro</Text>
               <TextInput
-                style={styles.input}
-                placeholder="Rua, Av, etc"
+                style={[styles.input, styles.inputDisabled]}
+                placeholder="Preenchido automaticamente pelo CEP"
                 placeholderTextColor="#999"
                 value={formData.logradouro}
-                onChangeText={(value) => handleChange('logradouro', value)}
-                editable={!saving}
+                editable={false}
               />
             </View>
           </View>
@@ -382,12 +492,11 @@ export default function CadastrarAcademiaScreen() {
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Bairro</Text>
             <TextInput
-              style={styles.input}
-              placeholder="Nome do bairro"
+              style={[styles.input, styles.inputDisabled]}
+              placeholder="Preenchido automaticamente pelo CEP"
               placeholderTextColor="#999"
               value={formData.bairro}
-              onChangeText={(value) => handleChange('bairro', value)}
-              editable={!saving}
+              editable={false}
             />
           </View>
 
@@ -395,55 +504,37 @@ export default function CadastrarAcademiaScreen() {
             <View style={[styles.inputGroup, { flex: 0.7 }]}>
               <Text style={styles.label}>Cidade</Text>
               <TextInput
-                style={styles.input}
-                placeholder="Nome da cidade"
+                style={[styles.input, styles.inputDisabled]}
+                placeholder="Preenchido automaticamente pelo CEP"
                 placeholderTextColor="#999"
                 value={formData.cidade}
-                onChangeText={(value) => handleChange('cidade', value)}
-                editable={!saving}
+                editable={false}
               />
             </View>
 
             <View style={[styles.inputGroup, { flex: 0.3 }]}>
               <Text style={styles.label}>Estado</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="UF"
-                placeholderTextColor="#999"
-                value={formData.estado}
-                onChangeText={(value) => handleChange('estado', value.toUpperCase())}
-                maxLength={2}
-                autoCapitalize="characters"
-                editable={!saving}
-              />
+              <View style={[styles.pickerContainer, styles.inputDisabled]}>
+                <Picker
+                  selectedValue={formData.estado}
+                  onValueChange={(value) => handleChange('estado', value)}
+                  enabled={false}
+                  style={styles.picker}
+                >
+                  <Picker.Item label="UF" value="" />
+                  {estados.map((estado) => (
+                    <Picker.Item
+                      key={estado.sigla}
+                      label={estado.sigla}
+                      value={estado.sigla}
+                    />
+                  ))}
+                </Picker>
+              </View>
             </View>
           </View>
 
-          {/* Seção: Plano */}
-          <Text style={styles.sectionTitle}>Plano</Text>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>Plano *</Text>
-          <View style={styles.pickerContainer}>
-            <Picker
-              selectedValue={formData.plano_id}
-              onValueChange={(value) => handleChange('plano_id', value)}
-              enabled={!saving}
-              style={styles.picker}
-            >
-              <Picker.Item label="Selecione um plano" value="" />
-              {planos.map((plano) => (
-                <Picker.Item
-                  key={plano.id}
-                  label={`${plano.nome} - R$ ${parseFloat(plano.valor).toFixed(2)}`}
-                  value={plano.id}
-                />
-              ))}
-            </Picker>
-          </View>
-        </View>
-
-        {/* Info Box */}
+          {/* Info Box */}
         <View style={styles.infoBox}>
           <Text style={styles.infoTitle}>ℹ️ Informações importantes:</Text>
           <Text style={styles.infoText}>
@@ -460,6 +551,9 @@ export default function CadastrarAcademiaScreen() {
           </Text>
           <Text style={styles.infoText}>
             • O CNPJ deve conter 14 dígitos (apenas números)
+          </Text>
+          <Text style={styles.infoText}>
+            • A associação ao plano do sistema será feita posteriormente
           </Text>
         </View>
 
@@ -555,6 +649,10 @@ const styles = StyleSheet.create({
   inputError: {
     borderColor: '#ef4444',
     borderWidth: 2,
+  },
+  inputDisabled: {
+    backgroundColor: 'rgba(240, 240, 240, 0.9)',
+    color: '#666',
   },
   errorText: {
     color: '#ef4444',

@@ -65,7 +65,7 @@ class CepController
             $response->getBody()->write(json_encode([
                 'type' => 'error',
                 'message' => 'CEP inválido. Deve conter 8 dígitos.'
-            ]));
+            ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
         
@@ -100,8 +100,33 @@ class CepController
                 $response->getBody()->write(json_encode([
                     'type' => 'error',
                     'message' => 'CEP não encontrado'
-                ]));
+                ], JSON_UNESCAPED_UNICODE));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+            
+            // Verificar se os dados estão vazios (CEP válido mas sem informações)
+            $dadosVazios = empty($dados['logradouro']) && 
+                          empty($dados['bairro']) && 
+                          empty($dados['localidade']);
+            
+            if ($dadosVazios) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'warning',
+                    'message' => 'CEP válido, mas não há dados disponíveis. Tente outro CEP.',
+                    'data' => [
+                        'cep' => $dados['cep'] ?? $cepLimpo,
+                        'logradouro' => '',
+                        'complemento' => '',
+                        'bairro' => '',
+                        'cidade' => '',
+                        'estado' => '',
+                        'ibge' => '',
+                        'gia' => '',
+                        'ddd' => '',
+                        'siafi' => ''
+                    ]
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json');
             }
             
             // Retornar dados do endereço
@@ -119,7 +144,7 @@ class CepController
                     'ddd' => $dados['ddd'] ?? '',
                     'siafi' => $dados['siafi'] ?? ''
                 ]
-            ]));
+            ], JSON_UNESCAPED_UNICODE));
             
             return $response->withHeader('Content-Type', 'application/json');
             
@@ -129,7 +154,7 @@ class CepController
             $response->getBody()->write(json_encode([
                 'type' => 'error',
                 'message' => 'Erro ao consultar CEP. Tente novamente mais tarde.'
-            ]));
+            ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
     }

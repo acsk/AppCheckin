@@ -42,14 +42,32 @@ class Tenant
     }
 
     /**
-     * Listar todos os tenants
+     * Listar todos os tenants com filtros opcionais
      */
-    public function getAll(): array
+    public function getAll(array $filtros = []): array
     {
-        $stmt = $this->db->prepare(
-            "SELECT * FROM tenants ORDER BY nome ASC"
-        );
-        $stmt->execute();
+        $sql = "SELECT * FROM tenants WHERE id != 1";
+        $params = [];
+        
+        // Filtro por busca (nome, email ou CNPJ)
+        if (!empty($filtros['busca'])) {
+            $sql .= " AND (nome LIKE :busca1 OR email LIKE :busca2 OR cnpj LIKE :busca3)";
+            $buscaValue = '%' . $filtros['busca'] . '%';
+            $params['busca1'] = $buscaValue;
+            $params['busca2'] = $buscaValue;
+            $params['busca3'] = $buscaValue;
+        }
+        
+        // Filtro por status ativo
+        if (isset($filtros['ativo'])) {
+            $sql .= " AND ativo = :ativo";
+            $params['ativo'] = $filtros['ativo'] ? 1 : 0;
+        }
+        
+        $sql .= " ORDER BY nome ASC";
+        
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
         
         return $stmt->fetchAll();
     }
@@ -60,10 +78,12 @@ class Tenant
     public function create(array $data): int
     {
         $stmt = $this->db->prepare(
-            "INSERT INTO tenants (nome, slug, email, cnpj, telefone, endereco, 
-                                cep, logradouro, numero, complemento, bairro, cidade, estado, ativo) 
-             VALUES (:nome, :slug, :email, :cnpj, :telefone, :endereco,
-                     :cep, :logradouro, :numero, :complemento, :bairro, :cidade, :estado, :ativo)"
+            "INSERT INTO tenants (nome, slug, email, cnpj, telefone, 
+                                responsavel_nome, responsavel_cpf, responsavel_telefone, responsavel_email,
+                                endereco, cep, logradouro, numero, complemento, bairro, cidade, estado, ativo) 
+             VALUES (:nome, :slug, :email, :cnpj, :telefone, 
+                     :responsavel_nome, :responsavel_cpf, :responsavel_telefone, :responsavel_email,
+                     :endereco, :cep, :logradouro, :numero, :complemento, :bairro, :cidade, :estado, :ativo)"
         );
         
         $stmt->execute([
@@ -72,6 +92,10 @@ class Tenant
             'email' => $data['email'],
             'cnpj' => $data['cnpj'] ?? null,
             'telefone' => $data['telefone'] ?? null,
+            'responsavel_nome' => $data['responsavel_nome'] ?? null,
+            'responsavel_cpf' => $data['responsavel_cpf'] ?? null,
+            'responsavel_telefone' => $data['responsavel_telefone'] ?? null,
+            'responsavel_email' => $data['responsavel_email'] ?? null,
             'endereco' => $data['endereco'] ?? null,
             'cep' => $data['cep'] ?? null,
             'logradouro' => $data['logradouro'] ?? null,
@@ -94,10 +118,13 @@ class Tenant
         $stmt = $this->db->prepare(
             "UPDATE tenants 
              SET nome = :nome, slug = :slug, email = :email, cnpj = :cnpj,
-                 telefone = :telefone, endereco = :endereco, 
+                 telefone = :telefone, 
+                 responsavel_nome = :responsavel_nome, responsavel_cpf = :responsavel_cpf, 
+                 responsavel_telefone = :responsavel_telefone, responsavel_email = :responsavel_email,
+                 endereco = :endereco, 
                  cep = :cep, logradouro = :logradouro, numero = :numero,
                  complemento = :complemento, bairro = :bairro, cidade = :cidade, estado = :estado,
-                 plano_id = :plano_id, ativo = :ativo
+                 ativo = :ativo
              WHERE id = :id"
         );
         
@@ -108,6 +135,10 @@ class Tenant
             'email' => $data['email'],
             'cnpj' => $data['cnpj'] ?? null,
             'telefone' => $data['telefone'] ?? null,
+            'responsavel_nome' => $data['responsavel_nome'] ?? null,
+            'responsavel_cpf' => $data['responsavel_cpf'] ?? null,
+            'responsavel_telefone' => $data['responsavel_telefone'] ?? null,
+            'responsavel_email' => $data['responsavel_email'] ?? null,
             'endereco' => $data['endereco'] ?? null,
             'cep' => $data['cep'] ?? null,
             'logradouro' => $data['logradouro'] ?? null,
@@ -116,7 +147,6 @@ class Tenant
             'bairro' => $data['bairro'] ?? null,
             'cidade' => $data['cidade'] ?? null,
             'estado' => $data['estado'] ?? null,
-            'plano_id' => $data['plano_id'] ?? null,
             'ativo' => $data['ativo'] ?? true
         ]);
     }

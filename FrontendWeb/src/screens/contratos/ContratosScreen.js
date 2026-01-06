@@ -60,9 +60,10 @@ export default function ContratosScreen() {
   };
 
   const getStatusColor = (status) => {
-    switch (status) {
+    const statusLower = status?.toLowerCase() || '';
+    switch (statusLower) {
       case 'ativo': return '#10b981';
-      case 'inativo': return '#6b7280';
+      case 'pendente': return '#f59e0b';
       case 'cancelado': return '#ef4444';
       default: return '#6b7280';
     }
@@ -98,12 +99,13 @@ export default function ContratosScreen() {
         <View key={contrato.id} style={styles.card}>
           <View style={styles.cardHeader}>
             <View style={{ flex: 1 }}>
+              <Text style={styles.cardId}>ID: #{contrato.id}</Text>
               <Text style={styles.cardAcademia}>{contrato.academia_nome}</Text>
               <Text style={styles.cardPlano}>{contrato.plano_nome}</Text>
               <Text style={styles.cardValor}>{formatarValor(contrato.valor)}</Text>
             </View>
-            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(contrato.status) }]}>
-              <Text style={styles.statusText}>{contrato.status.toUpperCase()}</Text>
+            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(contrato.status_nome) }]}>
+              <Text style={styles.statusText}>{contrato.status_nome?.toUpperCase() || 'N/A'}</Text>
             </View>
           </View>
 
@@ -121,6 +123,12 @@ export default function ContratosScreen() {
           </View>
 
           <View style={styles.cardActions}>
+            <TouchableOpacity
+              style={styles.cardButton}
+              onPress={() => router.push(`/contratos/detalhe?id=${contrato.id}`)}
+            >
+              <Feather name="file-text" size={16} color="#10b981" />
+            </TouchableOpacity>
             <TouchableOpacity
               style={styles.cardButton}
               onPress={() => router.push(`/contratos/academia?id=${contrato.academia_id}&nome=${encodeURIComponent(contrato.academia_nome)}`)}
@@ -142,6 +150,7 @@ export default function ContratosScreen() {
   const renderDesktopTable = () => (
     <View style={styles.tableContainer}>
       <View style={styles.tableHeader}>
+        <Text style={[styles.headerText, { flex: 0.5 }]}>ID</Text>
         <Text style={[styles.headerText, { flex: 2 }]}>Academia</Text>
         <Text style={[styles.headerText, { flex: 1.5 }]}>Plano</Text>
         <Text style={[styles.headerText, { flex: 1.5 }]}>Período</Text>
@@ -154,6 +163,9 @@ export default function ContratosScreen() {
       <ScrollView style={styles.tableBody}>
         {contratosFiltrados.map((contrato) => (
           <View key={contrato.id} style={styles.tableRow}>
+            <View style={[styles.tableCell, { flex: 0.5 }]}>
+              <Text style={[styles.cellText, styles.cellTextBold]}>#{contrato.id}</Text>
+            </View>
             <View style={[styles.tableCell, { flex: 2 }]}>
               <Text style={styles.cellText}>{contrato.academia_nome}</Text>
             </View>
@@ -171,12 +183,18 @@ export default function ContratosScreen() {
               <Text style={styles.cellText}>{formatarValor(contrato.valor)}</Text>
             </View>
             <View style={[styles.tableCell, { flex: 1 }]}>
-              <View style={[styles.statusBadge, { backgroundColor: getStatusColor(contrato.status) }]}>
-                <Text style={styles.statusText}>{contrato.status}</Text>
+              <View style={[styles.statusBadge, { backgroundColor: getStatusColor(contrato.status_nome) }]}>
+                <Text style={styles.statusText}>{contrato.status_nome || 'N/A'}</Text>
               </View>
             </View>
             <View style={[styles.tableCell, { flex: 1 }]}>
               <View style={styles.actionCell}>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.btnInfo]}
+                  onPress={() => router.push(`/contratos/detalhe?id=${contrato.id}`)}
+                >
+                  <Feather name="file-text" size={16} color="#fff" />
+                </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.actionButton, styles.btnView]}
                   onPress={() => router.push(`/contratos/academia?id=${contrato.academia_id}&nome=${encodeURIComponent(contrato.academia_nome)}`)}
@@ -206,6 +224,14 @@ export default function ContratosScreen() {
             <Text style={styles.title}>Contratos de Planos</Text>
             <Text style={styles.subtitle}>{contratos.length} contrato(s) cadastrado(s)</Text>
           </View>
+          <TouchableOpacity
+            style={[styles.addButton, isMobile && styles.addButtonMobile]}
+            onPress={() => router.push('/contratos/novo')}
+            activeOpacity={0.8}
+          >
+            <Feather name="plus" size={18} color="#fff" />
+            {!isMobile && <Text style={styles.addButtonText}>Novo Contrato</Text>}
+          </TouchableOpacity>
         </View>
 
         {/* Busca */}
@@ -262,6 +288,25 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 24, fontWeight: 'bold', color: '#111827' },
   subtitle: { fontSize: 14, color: '#6b7280', marginTop: 4 },
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#10b981',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    gap: 8,
+  },
+  addButtonMobile: {
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 50,
+  },
+  addButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
 
   searchContainer: {
     flexDirection: 'row',
@@ -293,6 +338,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 12,
   },
+  cardId: { fontSize: 10, color: '#f97316', fontWeight: 'bold', marginBottom: 2 },
   cardAcademia: { fontSize: 12, color: '#6b7280', marginBottom: 4 },
   cardPlano: { fontSize: 16, fontWeight: 'bold', color: '#111827', marginBottom: 4 },
   cardValor: { fontSize: 14, color: '#10b981', fontWeight: '600' },
@@ -352,6 +398,7 @@ const styles = StyleSheet.create({
   },
   tableCell: { justifyContent: 'center', paddingHorizontal: 4 },
   cellText: { fontSize: 14, color: '#333' },
+  cellTextBold: { fontWeight: '700', color: '#f97316' },
   cellTextSmall: { fontSize: 12, color: '#6b7280' },
   actionCell: { flexDirection: 'row', gap: 8, justifyContent: 'center' },
   actionButton: {
@@ -362,6 +409,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   btnView: { backgroundColor: '#f97316' },
+  btnInfo: { backgroundColor: '#10b981' },
   btnDelete: { backgroundColor: '#ef4444' },
 
   emptyContainer: {

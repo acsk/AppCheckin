@@ -21,7 +21,9 @@ const MENU = [
   { label: 'Academias', path: '/academias', icon: 'briefcase' },
   { label: 'Contratos', path: '/contratos', icon: 'file-text' },
   { label: 'Planos', path: '/planos', icon: 'package' },
+  { label: 'Planos Sistema', path: '/planos-sistema', icon: 'layers' },
   { label: 'Usuários', path: '/usuarios', icon: 'users' },
+  { label: 'Formas de Pagamento', path: '/formas-pagamento', icon: 'credit-card' },
 ];
 
 const BREAKPOINT_MOBILE = 768;
@@ -108,26 +110,9 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
       <ScrollView style={styles.menuScroll} showsVerticalScrollIndicator={false}>
         <View style={styles.menu}>
           {MENU.map((item) => {
-            const selected = pathname === item.path || (item.path !== '/' && pathname.startsWith(item.path));
-            const scaleAnim = useRef(new Animated.Value(1)).current;
-
-            const handlePressIn = () => {
-              Animated.spring(scaleAnim, {
-                toValue: 0.95,
-                useNativeDriver: true,
-                speed: 50,
-                bounciness: 4,
-              }).start();
-            };
-
-            const handlePressOut = () => {
-              Animated.spring(scaleAnim, {
-                toValue: 1,
-                useNativeDriver: true,
-                speed: 50,
-                bounciness: 8,
-              }).start();
-            };
+            // Evita que /planos-sistema ative o menu /planos
+            const selected = pathname === item.path || 
+              (item.path !== '/' && pathname.startsWith(item.path + '/'));
 
             return (
               <Pressable
@@ -136,22 +121,19 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
                   router.push(item.path);
                   if (isMobile) closeDrawer();
                 }}
-                onPressIn={handlePressIn}
-                onPressOut={handlePressOut}
-                style={[styles.menuItem, selected && styles.menuItemActive]}
+                style={({ pressed }) => [
+                  styles.menuItem, 
+                  selected && styles.menuItemActive,
+                  pressed && { opacity: 0.8 }
+                ]}
               >
-                <Animated.View 
-                  style={[
-                    styles.menuItemContent,
-                    { transform: [{ scale: scaleAnim }] }
-                  ]}
-                >
+                <View style={styles.menuItemContent}>
                   <View style={styles.menuItemLeft}>
                     <Feather name={item.icon} size={18} color={selected ? '#fff' : '#d1d5db'} />
                     <Text style={[styles.menuText, selected && styles.menuTextActive]}>{item.label}</Text>
                   </View>
                   {selected && <View style={styles.menuItemIndicator} />}
-                </Animated.View>
+                </View>
               </Pressable>
             );
           })}

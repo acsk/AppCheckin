@@ -2,10 +2,11 @@ import api from './api';
 
 export const superAdminService = {
   // Listar todas as academias
-  async listarAcademias() {
+  async listarAcademias(busca = '') {
     try {
-      console.log('🌐 Fazendo requisição GET /superadmin/academias');
-      const response = await api.get('/superadmin/academias');
+      const params = busca ? `?busca=${encodeURIComponent(busca)}` : '';
+      console.log(`🌐 Fazendo requisição GET /superadmin/academias${params}`);
+      const response = await api.get(`/superadmin/academias${params}`);
       console.log('✅ Status:', response.status);
       console.log('📦 Data:', response.data);
       return response.data;

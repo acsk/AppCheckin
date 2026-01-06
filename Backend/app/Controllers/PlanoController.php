@@ -61,6 +61,10 @@ class PlanoController
 
         $errors = [];
 
+        if (empty($data['modalidade_id'])) {
+            $errors[] = 'Modalidade é obrigatória';
+        }
+
         if (empty($data['nome'])) {
             $errors[] = 'Nome é obrigatório';
         }
@@ -105,6 +109,14 @@ class PlanoController
         if (!$plano) {
             $response->getBody()->write(json_encode(['error' => 'Plano não encontrado']));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        // Verificar se o plano possui contratos ativos
+        if ($planoModel->possuiContratos($planoId)) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Não é possível modificar este plano pois existem contratos vinculados a ele. Crie um novo plano ou marque este como histórico.'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
 
         $updated = $planoModel->update($planoId, $data);
