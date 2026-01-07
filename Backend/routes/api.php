@@ -15,10 +15,12 @@ use App\Controllers\SuperAdminController;
 use App\Controllers\PlanosSistemaController;
 use App\Controllers\TenantPlanosSistemaController;
 use App\Controllers\PagamentoContratoController;
+use App\Controllers\PagamentoPlanoController;
 use App\Controllers\FormaPagamentoController;
 use App\Controllers\ModalidadeController;
 use App\Controllers\TenantFormaPagamentoController;
 use App\Controllers\CepController;
+use App\Controllers\StatusController;
 use App\Middlewares\AuthMiddleware;
 use App\Middlewares\TenantMiddleware;
 use App\Middlewares\AdminMiddleware;
@@ -34,6 +36,11 @@ return function ($app) {
     
     // Rota pública de consulta CEP
     $app->get('/cep/{cep}', [CepController::class, 'buscar']);
+    
+    // Rotas públicas de Status (apenas leitura)
+    $app->get('/status/{tipo}', [StatusController::class, 'listar']);
+    $app->get('/status/{tipo}/{id}', [StatusController::class, 'buscar']);
+    $app->get('/status/{tipo}/codigo/{codigo}', [StatusController::class, 'buscarPorCodigo']);
     
     // Rota pública de formas de pagamento
     $app->get('/formas-pagamento', [FormaPagamentoController::class, 'index']);
@@ -89,6 +96,8 @@ return function ($app) {
         
         // Gerenciar usuários de todos os tenants
         $group->get('/usuarios', [UsuarioController::class, 'listarTodos']);
+        $group->get('/usuarios/{id}', [UsuarioController::class, 'buscarSuperAdmin']);
+        $group->put('/usuarios/{id}', [UsuarioController::class, 'atualizarSuperAdmin']);
         $group->delete('/usuarios/{id}', [UsuarioController::class, 'excluir']);
     })->add(SuperAdminMiddleware::class)->add(AuthMiddleware::class);
 
@@ -138,6 +147,10 @@ return function ($app) {
         $group->post('/usuarios', [UsuarioController::class, 'criar']);
         $group->put('/usuarios/{id}', [UsuarioController::class, 'atualizar']);
         $group->delete('/usuarios/{id}', [UsuarioController::class, 'excluir']);
+        
+        // Buscar e associar usuário existente
+        $group->get('/usuarios/buscar-cpf/{cpf}', [UsuarioController::class, 'buscarPorCpf']);
+        $group->post('/usuarios/associar', [UsuarioController::class, 'associarUsuario']);
     })->add(AdminMiddleware::class)->add(AuthMiddleware::class);
 
     // ========================================
@@ -157,6 +170,7 @@ return function ($app) {
         $group->delete('/alunos/{id}', [AdminController::class, 'desativarAluno']);
         
         // Gestão de Planos
+        $group->get('/planos/{id}', [PlanoController::class, 'show']);
         $group->post('/planos', [PlanoController::class, 'create']);
         $group->put('/planos/{id}', [PlanoController::class, 'update']);
         $group->delete('/planos/{id}', [PlanoController::class, 'delete']);
@@ -182,8 +196,21 @@ return function ($app) {
         // Matrículas
         $group->post('/matriculas', [MatriculaController::class, 'criar']);
         $group->get('/matriculas', [MatriculaController::class, 'listar']);
+        $group->get('/matriculas/{id}', [MatriculaController::class, 'buscar']);
+        $group->get('/matriculas/{id}/pagamentos', [MatriculaController::class, 'buscarPagamentos']);
         $group->post('/matriculas/{id}/cancelar', [MatriculaController::class, 'cancelar']);
         $group->post('/matriculas/contas/{id}/baixa', [MatriculaController::class, 'darBaixaConta']);
+        
+        // Pagamentos de Planos/Matrículas
+        $group->get('/pagamentos-plano', [PagamentoPlanoController::class, 'index']);
+        $group->get('/pagamentos-plano/resumo', [PagamentoPlanoController::class, 'resumo']);
+        $group->get('/pagamentos-plano/{id}', [PagamentoPlanoController::class, 'buscar']);
+        $group->get('/matriculas/{id}/pagamentos-plano', [PagamentoPlanoController::class, 'listarPorMatricula']);
+        $group->get('/usuarios/{id}/pagamentos-plano', [PagamentoPlanoController::class, 'listarPorUsuario']);
+        $group->post('/matriculas/{id}/pagamentos-plano', [PagamentoPlanoController::class, 'criar']);
+        $group->post('/pagamentos-plano/{id}/confirmar', [PagamentoPlanoController::class, 'confirmar']);
+        $group->delete('/pagamentos-plano/{id}', [PagamentoPlanoController::class, 'cancelar']);
+        $group->post('/pagamentos-plano/marcar-atrasados', [PagamentoPlanoController::class, 'marcarAtrasados']);
         
         // Modalidades
         $group->get('/modalidades', [ModalidadeController::class, 'index']);

@@ -17,13 +17,15 @@ import { useRouter, usePathname } from 'expo-router';
 import { authService } from '../services/authService';
 
 const MENU = [
-  { label: 'Dashboard', path: '/', icon: 'home' },
-  { label: 'Academias', path: '/academias', icon: 'briefcase' },
-  { label: 'Contratos', path: '/contratos', icon: 'file-text' },
-  { label: 'Planos', path: '/planos', icon: 'package' },
-  { label: 'Planos Sistema', path: '/planos-sistema', icon: 'layers' },
-  { label: 'Usuários', path: '/usuarios', icon: 'users' },
-  { label: 'Formas de Pagamento', path: '/formas-pagamento', icon: 'credit-card' },
+  { label: 'Dashboard', path: '/', icon: 'home', roles: [1, 2, 3] }, // Todos
+  { label: 'Academias', path: '/academias', icon: 'briefcase', roles: [3] }, // SuperAdmin apenas
+  { label: 'Contratos', path: '/contratos', icon: 'file-text', roles: [3] }, // SuperAdmin apenas
+  { label: 'Matrículas', path: '/matriculas', icon: 'user-check', roles: [2, 3] }, // Admin e SuperAdmin
+  { label: 'Planos', path: '/planos', icon: 'package', roles: [2, 3] }, // Admin e SuperAdmin
+  { label: 'Modalidades', path: '/modalidades', icon: 'activity', roles: [2, 3] }, // Admin e SuperAdmin
+  { label: 'Planos Sistema', path: '/planos-sistema', icon: 'layers', roles: [3] }, // SuperAdmin apenas
+  { label: 'Usuários', path: '/usuarios', icon: 'users', roles: [2, 3] }, // Admin e SuperAdmin
+  { label: 'Formas de Pagamento', path: '/formas-pagamento', icon: 'credit-card', roles: [2, 3] }, // Admin e SuperAdmin
 ];
 
 const BREAKPOINT_MOBILE = 768;
@@ -109,7 +111,11 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
 
       <ScrollView style={styles.menuScroll} showsVerticalScrollIndicator={false}>
         <View style={styles.menu}>
-          {MENU.map((item) => {
+          {MENU.filter(item => {
+            // Filtrar menu baseado no role do usuário
+            const userRole = usuarioInfo?.role_id || 1;
+            return item.roles.includes(userRole);
+          }).map((item) => {
             // Evita que /planos-sistema ative o menu /planos
             const selected = pathname === item.path || 
               (item.path !== '/' && pathname.startsWith(item.path + '/'));
@@ -148,7 +154,9 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
           </View>
           <View style={styles.userDetails}>
             <Text style={styles.userName}>{nome}</Text>
-            <Text style={styles.userRole}>Super Admin</Text>
+            <Text style={styles.userRole}>
+              {usuarioInfo?.role_id === 3 ? 'Super Admin' : usuarioInfo?.role_id === 2 ? 'Admin' : 'Usuário'}
+            </Text>
           </View>
         </View>
         <Pressable style={styles.logoutButton} onPress={handleLogout}>

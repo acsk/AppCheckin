@@ -38,9 +38,19 @@ class AuthMiddleware
         // Buscar dados completos do usuário
         $db = require __DIR__ . '/../../config/database.php';
         $stmt = $db->prepare("
-            SELECT u.id, u.tenant_id, u.nome, u.email, u.email_global, u.role_id, u.plano_id, u.foto_base64
+            SELECT 
+                u.id, 
+                u.nome, 
+                u.email, 
+                u.email_global, 
+                u.role_id, 
+                u.foto_base64,
+                ut.tenant_id,
+                ut.status as tenant_status
             FROM usuarios u
+            LEFT JOIN usuario_tenant ut ON ut.usuario_id = u.id AND ut.status = 'ativo'
             WHERE u.id = :user_id
+            LIMIT 1
         ");
         $stmt->execute(['user_id' => $decoded->user_id]);
         $usuario = $stmt->fetch(\PDO::FETCH_ASSOC);

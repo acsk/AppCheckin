@@ -5,6 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import LayoutBase from '../../components/LayoutBase';
 import { buscarContratos, criarContrato, trocarPlano, renovarContrato } from '../../services/contratoService';
 import { buscarPlanos } from '../../services/planoService';
+import { authService } from '../../services/authService';
+import { showError } from '../../utils/toast';
 
 export default function ContratosAcademiaScreen() {
   const router = useRouter();
@@ -16,6 +18,19 @@ export default function ContratosAcademiaScreen() {
   const [loading, setLoading] = useState(true);
   const [contratos, setContratos] = useState([]);
   const [planos, setPlanos] = useState([]);
+
+  useEffect(() => {
+    checkAccess();
+  }, []);
+
+  const checkAccess = async () => {
+    const user = await authService.getCurrentUser();
+    if (!user || user.role_id !== 3) {
+      showError('Acesso negado. Apenas Super Admin pode acessar esta página.');
+      router.replace('/');
+      return;
+    }
+  };
   
   // Modais
   const [modalCriar, setModalCriar] = useState(false);

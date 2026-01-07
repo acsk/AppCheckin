@@ -19,13 +19,13 @@ class PagamentoContrato
     public function criar(array $dados): int
     {
         $sql = "INSERT INTO pagamentos_contrato 
-                (contrato_id, valor, data_vencimento, data_pagamento, status_pagamento_id, forma_pagamento_id, comprovante, observacoes)
+                (tenant_plano_id, valor, data_vencimento, data_pagamento, status_pagamento_id, forma_pagamento_id, comprovante, observacoes)
                 VALUES 
-                (:contrato_id, :valor, :data_vencimento, :data_pagamento, :status_pagamento_id, :forma_pagamento_id, :comprovante, :observacoes)";
+                (:tenant_plano_id, :valor, :data_vencimento, :data_pagamento, :status_pagamento_id, :forma_pagamento_id, :comprovante, :observacoes)";
         
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([
-            'contrato_id' => $dados['contrato_id'],
+            'tenant_plano_id' => $dados['tenant_plano_id'] ?? $dados['contrato_id'],
             'valor' => $dados['valor'],
             'data_vencimento' => $dados['data_vencimento'],
             'data_pagamento' => $dados['data_pagamento'] ?? null,
@@ -47,11 +47,11 @@ class PagamentoContrato
                 FROM pagamentos_contrato p
                 INNER JOIN status_pagamento sp ON p.status_pagamento_id = sp.id
                 LEFT JOIN formas_pagamento fp ON p.forma_pagamento_id = fp.id
-                WHERE p.contrato_id = :contrato_id
+                WHERE p.tenant_plano_id = :tenant_plano_id
                 ORDER BY p.data_vencimento DESC";
         
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute(['contrato_id' => $contratoId]);
+        $stmt->execute(['tenant_plano_id' => $contratoId]);
         
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
@@ -138,11 +138,11 @@ class PagamentoContrato
     {
         $sql = "SELECT COUNT(*) as total
                 FROM pagamentos_contrato
-                WHERE contrato_id = :contrato_id
+                WHERE tenant_plano_id = :tenant_plano_id
                 AND status_pagamento_id IN (1, 3)";
         
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute(['contrato_id' => $contratoId]);
+        $stmt->execute(['tenant_plano_id' => $contratoId]);
         
         return (int) $stmt->fetch(PDO::FETCH_ASSOC)['total'] > 0;
     }
@@ -155,12 +155,12 @@ class PagamentoContrato
         $sql = "SELECT p.*, sp.nome as status_nome
                 FROM pagamentos_contrato p
                 INNER JOIN status_pagamento sp ON p.status_pagamento_id = sp.id
-                WHERE p.contrato_id = :contrato_id
+                WHERE p.tenant_plano_id = :tenant_plano_id
                 ORDER BY p.data_vencimento DESC
                 LIMIT 1";
         
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute(['contrato_id' => $contratoId]);
+        $stmt->execute(['tenant_plano_id' => $contratoId]);
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
         
         return $result ?: null;
@@ -179,7 +179,7 @@ class PagamentoContrato
                        c.data_vencimento as contrato_vencimento
                 FROM pagamentos_contrato p
                 INNER JOIN status_pagamento sp ON p.status_pagamento_id = sp.id
-                INNER JOIN tenant_planos_sistema c ON p.contrato_id = c.id
+                INNER JOIN tenant_planos_sistema c ON p.tenant_plano_id = c.id
                 INNER JOIN tenants t ON c.tenant_id = t.id
                 INNER JOIN planos_sistema ps ON c.plano_sistema_id = ps.id
                 WHERE 1=1";
@@ -229,7 +229,7 @@ class PagamentoContrato
                     SUM(CASE WHEN p.data_vencimento < CURDATE() AND p.status_pagamento_id != 2 THEN p.valor ELSE 0 END) as total_atrasado
                 FROM pagamentos_contrato p
                 INNER JOIN status_pagamento sp ON p.status_pagamento_id = sp.id
-                INNER JOIN tenant_planos_sistema c ON p.contrato_id = c.id
+                INNER JOIN tenant_planos_sistema c ON p.tenant_plano_id = c.id
                 WHERE 1=1";
         
         $params = [];

@@ -1,5 +1,5 @@
-import EditarPlanoScreen from '../../src/screens/planos/EditarPlanoScreen';
+import FormPlanoScreen from '../../src/screens/planos/FormPlanoScreen';
 
 export default function EditarPlanoRoute() {
-  return <EditarPlanoScreen />;
+  return <FormPlanoScreen />;
 }

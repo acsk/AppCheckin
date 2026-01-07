@@ -329,7 +329,7 @@ export default function FormasPagamentoConfigScreen() {
         {/* Modal de Edição */}
         <Modal
           visible={modalVisible}
-          animationType="slide"
+          animationType="fade"
           transparent={true}
           onRequestClose={fecharModal}
         >

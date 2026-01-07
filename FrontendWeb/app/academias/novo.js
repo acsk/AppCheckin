@@ -1,5 +1,5 @@
-import CadastrarAcademiaScreen from '../../src/screens/academias/CadastrarAcademiaScreen';
+import AcademiaFormScreen from '../../src/screens/academias/AcademiaFormScreen';
 
 export default function NovaAcademiaRoute() {
-  return <CadastrarAcademiaScreen />;
+  return <AcademiaFormScreen />;
 }

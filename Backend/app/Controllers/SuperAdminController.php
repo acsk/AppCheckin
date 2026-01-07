@@ -188,13 +188,21 @@ class SuperAdminController
             }
         }
 
-        // Criar usuário administrador da academia automaticamente
+        // Criar usuário administrador da academia usando dados do responsável
         $adminData = [
-            'nome' => $data['nome'], // Usa o nome da academia
-            'email' => $data['email'],
+            'nome' => $data['responsavel_nome'] ?? $data['nome'], // Usa nome do responsável ou nome da academia
+            'email' => $data['responsavel_email'] ?? $data['email'], // Email do responsável ou email da academia
             'senha' => $data['senha_admin'],
-            'role_id' => 2, // Admin
-            'plano_sistema_id' => null
+            'telefone' => isset($data['responsavel_telefone']) ? preg_replace('/[^0-9]/', '', $data['responsavel_telefone']) : null,
+            'cpf' => isset($data['responsavel_cpf']) ? preg_replace('/[^0-9]/', '', $data['responsavel_cpf']) : null,
+            'cep' => $data['cep'] ?? null,
+            'logradouro' => $data['logradouro'] ?? null,
+            'numero' => $data['numero'] ?? null,
+            'complemento' => $data['complemento'] ?? null,
+            'bairro' => $data['bairro'] ?? null,
+            'cidade' => $data['cidade'] ?? null,
+            'estado' => $data['estado'] ?? null,
+            'role_id' => 2 // Admin
         ];
 
         $adminId = $this->usuarioModel->criarUsuarioCompleto($adminData, $tenantId);

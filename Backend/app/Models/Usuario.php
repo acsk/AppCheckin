@@ -15,28 +15,68 @@ class Usuario
 
     public function create(array $data, int $tenantId = 1): ?int
     {
-        $stmt = $this->db->prepare(
-            "INSERT INTO usuarios (tenant_id, nome, email, senha_hash) VALUES (:tenant_id, :nome, :email, :senha_hash)"
-        );
-        
-        $stmt->execute([
-            'tenant_id' => $tenantId,
-            'nome' => $data['nome'],
-            'email' => $data['email'],
-            'senha_hash' => password_hash($data['senha'], PASSWORD_BCRYPT)
-        ]);
-
-        return (int) $this->db->lastInsertId();
+        try {
+            // 1. Inserir usuário (sem tenant_id, pois isso vai para usuario_tenant)
+            $stmt = $this->db->prepare(
+                "INSERT INTO usuarios (nome, email, email_global, senha_hash, role_id, cpf, cep, logradouro, numero, complemento, bairro, cidade, estado, telefone, ativo) 
+                 VALUES (:nome, :email, :email_global, :senha_hash, :role_id, :cpf, :cep, :logradouro, :numero, :complemento, :bairro, :cidade, :estado, :telefone, :ativo)"
+            );
+            
+            $stmt->execute([
+                'nome' => $data['nome'],
+                'email' => $data['email'],
+                'email_global' => $data['email_global'] ?? $data['email'],
+                'senha_hash' => password_hash($data['senha'], PASSWORD_BCRYPT),
+                'role_id' => $data['role_id'] ?? 1,
+                'cpf' => $data['cpf'] ?? null,
+                'cep' => $data['cep'] ?? null,
+                'logradouro' => $data['logradouro'] ?? null,
+                'numero' => $data['numero'] ?? null,
+                'complemento' => $data['complemento'] ?? null,
+                'bairro' => $data['bairro'] ?? null,
+                'cidade' => $data['cidade'] ?? null,
+                'estado' => $data['estado'] ?? null,
+                'telefone' => $data['telefone'] ?? null,
+                'ativo' => $data['ativo'] ?? 1
+            ]);
+            
+            $usuarioId = (int) $this->db->lastInsertId();
+            
+            // 2. Criar vínculo com tenant em usuario_tenant
+            $stmtTenant = $this->db->prepare(
+                "INSERT INTO usuario_tenant (usuario_id, tenant_id, status, data_inicio) 
+                 VALUES (:usuario_id, :tenant_id, 'ativo', CURDATE())"
+            );
+            
+            $stmtTenant->execute([
+                'usuario_id' => $usuarioId,
+                'tenant_id' => $tenantId
+            ]);
+            
+            return $usuarioId;
+        } catch (\PDOException $e) {
+            error_log("Erro ao criar usuário: " . $e->getMessage());
+            return null;
+        }
     }
 
     public function findByEmail(string $email, ?int $tenantId = null): ?array
     {
-        $sql = "SELECT * FROM usuarios WHERE email = :email";
-        $params = ['email' => $email];
-        
         if ($tenantId) {
-            $sql .= " AND tenant_id = :tenant_id";
-            $params['tenant_id'] = $tenantId;
+            // Se tenantId fornecido, verificar se usuário pertence ao tenant
+            $sql = "
+                SELECT u.* 
+                FROM usuarios u
+                INNER JOIN usuario_tenant ut ON ut.usuario_id = u.id
+                WHERE u.email = :email 
+                AND ut.tenant_id = :tenant_id
+                AND ut.status = 'ativo'
+            ";
+            $params = ['email' => $email, 'tenant_id' => $tenantId];
+        } else {
+            // Busca global por email
+            $sql = "SELECT * FROM usuarios WHERE email = :email";
+            $params = ['email' => $email];
         }
         
         $stmt = $this->db->prepare($sql);
@@ -48,20 +88,31 @@ class Usuario
 
     public function findById(int $id, ?int $tenantId = null): ?array
     {
+        // Se tenantId for fornecido, usar INNER JOIN para garantir que o usuário pertence ao tenant
+        // Se não, usar LEFT JOIN para retornar dados mesmo sem tenant associado
+        $joinType = $tenantId ? "INNER JOIN" : "LEFT JOIN";
+        
         $sql = "
-            SELECT u.id, u.tenant_id, u.nome, u.email, u.role_id, u.plano_id, 
-                   u.data_vencimento_plano, u.foto_base64, u.created_at, u.updated_at,
+            SELECT u.id, ut.tenant_id, u.nome, u.email, u.role_id, 
+                   u.foto_base64, u.telefone,
+                   u.cpf, u.cep, u.logradouro, u.numero, u.complemento, u.bairro, u.cidade, u.estado,
+                   u.created_at, u.updated_at,
                    r.nome as role_nome, r.descricao as role_descricao
             FROM usuarios u
             LEFT JOIN roles r ON u.role_id = r.id
-            WHERE u.id = :id
+            {$joinType} usuario_tenant ut ON ut.usuario_id = u.id 
+                AND ut.status = 'ativo'
         ";
+        
+        $conditions = ["u.id = :id"];
         $params = ['id' => $id];
         
         if ($tenantId) {
-            $sql .= " AND u.tenant_id = :tenant_id";
+            $conditions[] = "ut.tenant_id = :tenant_id";
             $params['tenant_id'] = $tenantId;
         }
+        
+        $sql .= " WHERE " . implode(' AND ', $conditions);
         
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
@@ -114,14 +165,49 @@ class Usuario
             $params['role_id'] = $data['role_id'];
         }
 
-        if (isset($data['plano_id'])) {
-            $fields[] = 'plano_id = :plano_id';
-            $params['plano_id'] = $data['plano_id'];
+        if (isset($data['telefone'])) {
+            $fields[] = 'telefone = :telefone';
+            $params['telefone'] = $data['telefone'];
         }
 
-        if (isset($data['data_vencimento_plano'])) {
-            $fields[] = 'data_vencimento_plano = :data_vencimento_plano';
-            $params['data_vencimento_plano'] = $data['data_vencimento_plano'];
+        if (isset($data['cpf'])) {
+            $fields[] = 'cpf = :cpf';
+            $params['cpf'] = $data['cpf'];
+        }
+
+        if (isset($data['cep'])) {
+            $fields[] = 'cep = :cep';
+            $params['cep'] = $data['cep'];
+        }
+
+        if (isset($data['logradouro'])) {
+            $fields[] = 'logradouro = :logradouro';
+            $params['logradouro'] = $data['logradouro'];
+        }
+
+        if (isset($data['numero'])) {
+            $fields[] = 'numero = :numero';
+            $params['numero'] = $data['numero'];
+        }
+
+        if (isset($data['complemento'])) {
+            $fields[] = 'complemento = :complemento';
+            $params['complemento'] = $data['complemento'];
+        }
+
+        if (isset($data['bairro'])) {
+            $fields[] = 'bairro = :bairro';
+            $params['bairro'] = $data['bairro'];
+        }
+
+        if (isset($data['cidade'])) {
+            $fields[] = 'cidade = :cidade';
+            $params['cidade'] = $data['cidade'];
+        }
+
+        if (isset($data['estado'])) {
+            $fields[] = 'estado = :estado';
+            $params['estado'] = $data['estado'];
         }
 
         if (empty($fields)) {
@@ -136,17 +222,32 @@ class Usuario
 
     public function emailExists(string $email, ?int $excludeId = null, ?int $tenantId = null): bool
     {
-        $sql = "SELECT COUNT(*) FROM usuarios WHERE email = :email";
-        $params = ['email' => $email];
-
+        // Verificar email_global (único no sistema) ou email em combinação com tenant
         if ($tenantId) {
-            $sql .= " AND tenant_id = :tenant_id";
-            $params['tenant_id'] = $tenantId;
-        }
-
-        if ($excludeId) {
-            $sql .= " AND id != :id";
-            $params['id'] = $excludeId;
+            // Verificar se email já existe no tenant específico
+            $sql = "
+                SELECT COUNT(*) 
+                FROM usuarios u
+                INNER JOIN usuario_tenant ut ON ut.usuario_id = u.id
+                WHERE u.email = :email 
+                AND ut.tenant_id = :tenant_id
+                AND ut.status = 'ativo'
+            ";
+            $params = ['email' => $email, 'tenant_id' => $tenantId];
+            
+            if ($excludeId) {
+                $sql .= " AND u.id != :id";
+                $params['id'] = $excludeId;
+            }
+        } else {
+            // Verificar email_global (único no sistema inteiro)
+            $sql = "SELECT COUNT(*) FROM usuarios WHERE email_global = :email";
+            $params = ['email' => $email];
+            
+            if ($excludeId) {
+                $sql .= " AND id != :id";
+                $params['id'] = $excludeId;
+            }
         }
 
         $stmt = $this->db->prepare($sql);
@@ -333,24 +434,27 @@ class Usuario
         $sql = "
             SELECT 
                 u.id, 
-                u.tenant_id,
                 u.nome, 
-                u.email, 
+                u.email,
+                u.telefone,
+                u.cpf,
                 u.role_id,
-                u.plano_id,
-                u.data_vencimento_plano,
                 u.foto_base64,
                 u.created_at,
                 u.updated_at,
-                COALESCE(u.ativo, TRUE) as ativo,
                 r.nome as role_nome,
-                p.nome as plano_nome,
+                ut.status,
+                ut.tenant_id,
                 t.nome as tenant_nome,
-                t.slug as tenant_slug
+                t.slug as tenant_slug,
+                CASE 
+                    WHEN ut.status = 'ativo' THEN 1
+                    ELSE 0
+                END as ativo
             FROM usuarios u
             LEFT JOIN roles r ON u.role_id = r.id
-            LEFT JOIN planos p ON u.plano_id = p.id
-            LEFT JOIN tenants t ON u.tenant_id = t.id
+            INNER JOIN usuario_tenant ut ON u.id = ut.usuario_id
+            LEFT JOIN tenants t ON ut.tenant_id = t.id
         ";
         
         $conditions = [];
@@ -358,13 +462,13 @@ class Usuario
         
         // Se NÃO for SuperAdmin, filtrar por tenant
         if (!$isSuperAdmin && $tenantId !== null) {
-            $conditions[] = "u.tenant_id = :tenant_id";
+            $conditions[] = "ut.tenant_id = :tenant_id";
             $params['tenant_id'] = $tenantId;
         }
         
         // Filtrar apenas ativos se solicitado
         if ($apenasAtivos) {
-            $conditions[] = "COALESCE(u.ativo, TRUE) = TRUE";
+            $conditions[] = "ut.status = 'ativo'";
         }
         
         if (!empty($conditions)) {
@@ -378,24 +482,18 @@ class Usuario
         
         $result = $stmt->fetchAll();
         
-        error_log("DEBUG listarTodos() - isSuperAdmin: " . ($isSuperAdmin ? 'true' : 'false'));
-        error_log("DEBUG listarTodos() - tenantId: " . ($tenantId ?? 'null'));
-        error_log("DEBUG listarTodos() - apenasAtivos: " . ($apenasAtivos ? 'true' : 'false'));
-        error_log("DEBUG listarTodos() - Total rows: " . count($result));
-        
         // Estruturar dados incluindo tenant e status ativo
         return array_map(function($row) {
             return [
                 'id' => $row['id'],
                 'nome' => $row['nome'],
                 'email' => $row['email'],
+                'telefone' => $row['telefone'] ?? null,
+                'cpf' => $row['cpf'] ?? null,
                 'role_id' => $row['role_id'],
                 'role_nome' => $row['role_nome'],
-                'plano_id' => $row['plano_id'],
-                'plano_nome' => $row['plano_nome'],
-                'data_vencimento_plano' => $row['data_vencimento_plano'],
                 'ativo' => (bool) $row['ativo'],
-                'status' => $row['ativo'] ? 'ativo' : 'inativo',
+                'status' => $row['status'],
                 'created_at' => $row['created_at'],
                 'updated_at' => $row['updated_at'],
                 'tenant' => [
@@ -421,33 +519,53 @@ class Usuario
                 u.id, 
                 u.nome, 
                 u.email, 
+                u.telefone,
+                u.cpf,
                 u.role_id,
-                u.plano_id,
-                u.data_vencimento_plano,
                 u.foto_base64,
                 u.created_at,
                 u.updated_at,
                 r.nome as role_nome,
-                p.nome as plano_nome,
                 ut.status,
-                COALESCE(u.ativo, TRUE) as ativo
+                CASE 
+                    WHEN ut.status = 'ativo' THEN 1
+                    ELSE 0
+                END as ativo
             FROM usuarios u
             LEFT JOIN roles r ON u.role_id = r.id
-            LEFT JOIN planos p ON u.plano_id = p.id
-            LEFT JOIN usuario_tenant ut ON u.id = ut.usuario_id AND ut.tenant_id = ?
-            WHERE u.tenant_id = ?
+            INNER JOIN usuario_tenant ut ON u.id = ut.usuario_id
+            WHERE ut.tenant_id = :tenant_id
         ";
 
+        $params = ['tenant_id' => $tenantId];
+
         if ($apenasAtivos) {
-            $sql .= " AND (ut.status = 'ativo' OR ut.status IS NULL) AND COALESCE(u.ativo, TRUE) = TRUE";
+            $sql .= " AND ut.status = 'ativo'";
         }
 
         $sql .= " ORDER BY u.nome ASC";
 
         $stmt = $this->db->prepare($sql);
-        $stmt->execute([$tenantId, $tenantId]);
+        $stmt->execute($params);
         
-        return $stmt->fetchAll();
+        $result = $stmt->fetchAll();
+        
+        // Adicionar informações do tenant para consistência
+        return array_map(function($row) use ($tenantId) {
+            return [
+                'id' => $row['id'],
+                'nome' => $row['nome'],
+                'email' => $row['email'],
+                'telefone' => $row['telefone'] ?? null,
+                'cpf' => $row['cpf'] ?? null,
+                'role_id' => $row['role_id'],
+                'role_nome' => $row['role_nome'],
+                'ativo' => (bool) $row['ativo'],
+                'status' => $row['status'],
+                'created_at' => $row['created_at'],
+                'updated_at' => $row['updated_at']
+            ];
+        }, $result);
     }
 
     /**
@@ -457,9 +575,9 @@ class Usuario
     {
         $sql = "
             INSERT INTO usuarios 
-            (tenant_id, nome, email, senha_hash, role_id, plano_id, data_vencimento_plano) 
+            (tenant_id, nome, email, senha_hash, telefone, cpf, role_id) 
             VALUES 
-            (:tenant_id, :nome, :email, :senha_hash, :role_id, :plano_id, :data_vencimento_plano)
+            (:tenant_id, :nome, :email, :senha_hash, :telefone, :cpf, :role_id)
         ";
         
         $stmt = $this->db->prepare($sql);
@@ -469,9 +587,9 @@ class Usuario
             'nome' => $data['nome'],
             'email' => $data['email'],
             'senha_hash' => password_hash($data['senha'], PASSWORD_BCRYPT),
+            'telefone' => $data['telefone'] ?? null,
+            'cpf' => $data['cpf'] ?? null,
             'role_id' => $data['role_id'] ?? 1, // Default: Aluno
-            'plano_id' => $data['plano_id'] ?? null,
-            'data_vencimento_plano' => $data['data_vencimento_plano'] ?? null
         ]);
 
         $usuarioId = (int) $this->db->lastInsertId();
@@ -526,5 +644,86 @@ class Usuario
         }
 
         return true;
+    }
+
+    /**
+     * Buscar usuário por CPF (busca global, sem filtro de tenant)
+     */
+    public function findByCpf(string $cpf): ?array
+    {
+        $cpfLimpo = preg_replace('/[^0-9]/', '', $cpf);
+        
+        $sql = "
+            SELECT u.id, u.nome, u.email, u.email_global, u.role_id, u.telefone,
+                   u.cpf, u.cep, u.logradouro, u.numero, u.complemento, 
+                   u.bairro, u.cidade, u.estado, u.ativo,
+                   u.created_at, u.updated_at
+            FROM usuarios u
+            WHERE u.cpf = :cpf
+            LIMIT 1
+        ";
+        
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute(['cpf' => $cpfLimpo]);
+        $user = $stmt->fetch();
+        
+        return $user ?: null;
+    }
+
+    /**
+     * Verificar se usuário já está associado a um tenant
+     */
+    public function isAssociatedWithTenant(int $usuarioId, int $tenantId): bool
+    {
+        $sql = "
+            SELECT COUNT(*) as count
+            FROM usuario_tenant
+            WHERE usuario_id = :usuario_id
+            AND tenant_id = :tenant_id
+        ";
+        
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            'usuario_id' => $usuarioId,
+            'tenant_id' => $tenantId
+        ]);
+        
+        $result = $stmt->fetch();
+        return $result['count'] > 0;
+    }
+
+    /**
+     * Associar usuário existente a um tenant
+     */
+    public function associateToTenant(int $usuarioId, int $tenantId, string $status = 'ativo'): bool
+    {
+        try {
+            // Verificar se já existe associação
+            if ($this->isAssociatedWithTenant($usuarioId, $tenantId)) {
+                // Atualizar status se já existir
+                $sql = "
+                    UPDATE usuario_tenant 
+                    SET status = :status, data_inicio = CURDATE()
+                    WHERE usuario_id = :usuario_id 
+                    AND tenant_id = :tenant_id
+                ";
+            } else {
+                // Criar nova associação
+                $sql = "
+                    INSERT INTO usuario_tenant (usuario_id, tenant_id, status, data_inicio)
+                    VALUES (:usuario_id, :tenant_id, :status, CURDATE())
+                ";
+            }
+            
+            $stmt = $this->db->prepare($sql);
+            return $stmt->execute([
+                'usuario_id' => $usuarioId,
+                'tenant_id' => $tenantId,
+                'status' => $status
+            ]);
+        } catch (\PDOException $e) {
+            error_log("Erro ao associar usuário ao tenant: " . $e->getMessage());
+            return false;
+        }
     }
 };

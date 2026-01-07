@@ -7,6 +7,7 @@ import BaixaPagamentoModal from '../../components/BaixaPagamentoModal';
 import LayoutBase from '../../components/LayoutBase';
 import { showSuccess, showError } from '../../utils/toast';
 import { Feather } from '@expo/vector-icons';
+import { authService } from '../../services/authService';
 
 export default function ContratoDetalheScreen() {
   const { id } = useLocalSearchParams();
@@ -20,8 +21,18 @@ export default function ContratoDetalheScreen() {
   const [pagamentoSelecionado, setPagamentoSelecionado] = useState(null);
 
   useEffect(() => {
+    checkAccess();
+  }, []);
+
+  const checkAccess = async () => {
+    const user = await authService.getCurrentUser();
+    if (!user || user.role_id !== 3) {
+      showError('Acesso negado. Apenas Super Admin pode acessar esta página.');
+      router.replace('/');
+      return;
+    }
     carregarDados();
-  }, [id]);
+  };
 
   const carregarDados = async () => {
     try {

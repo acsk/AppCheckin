@@ -21,7 +21,7 @@ const planoService = {
    */
   async buscar(id) {
     try {
-      const response = await api.get(`/planos/${id}`);
+      const response = await api.get(`/admin/planos/${id}`);
       return response.data;
     } catch (error) {
       console.error('❌ Erro ao buscar plano:', error.response?.data || error.message);

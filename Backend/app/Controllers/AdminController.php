@@ -62,8 +62,7 @@ class AdminController
         $stmtCheckinsHoje = $db->prepare("
             SELECT COUNT(*) as total 
             FROM checkins c
-            INNER JOIN usuarios u ON c.usuario_id = u.id
-            WHERE u.tenant_id = ? 
+            WHERE c.tenant_id = ? 
             AND DATE(c.created_at) = CURDATE()
         ");
         $stmtCheckinsHoje->execute([$tenantId]);
@@ -73,45 +72,46 @@ class AdminController
         $stmtCheckinsMes = $db->prepare("
             SELECT COUNT(*) as total 
             FROM checkins c
-            INNER JOIN usuarios u ON c.usuario_id = u.id
-            WHERE u.tenant_id = ? 
+            WHERE c.tenant_id = ? 
             AND YEAR(c.created_at) = YEAR(CURDATE())
             AND MONTH(c.created_at) = MONTH(CURDATE())
         ");
         $stmtCheckinsMes->execute([$tenantId]);
         $checkinsMes = $stmtCheckinsMes->fetch()['total'];
 
-        // Planos vencendo nos próximos 7 dias
+        // Contas a vencer nos próximos 7 dias
         $stmtPlanosVencendo = $db->prepare("
-            SELECT COUNT(*) as total 
-            FROM usuarios 
-            WHERE tenant_id = ? 
-            AND role_id = 1
-            AND data_vencimento_plano BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+            SELECT COUNT(DISTINCT cr.usuario_id) as total 
+            FROM contas_receber cr
+            INNER JOIN usuario_tenant ut ON ut.usuario_id = cr.usuario_id AND ut.status = 'ativo'
+            WHERE ut.tenant_id = ? 
+            AND cr.vencimento BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+            AND cr.status IN ('pendente', 'vencido')
         ");
         $stmtPlanosVencendo->execute([$tenantId]);
         $planosVencendo = $stmtPlanosVencendo->fetch()['total'];
 
-        // Receita mensal (soma dos valores dos planos ativos)
+        // Receita mensal esperada (soma das contas a receber do mês)
         $stmtReceita = $db->prepare("
-            SELECT SUM(p.valor) as receita
-            FROM usuarios u
-            INNER JOIN planos p ON u.plano_id = p.id
-            WHERE u.tenant_id = ?
+            SELECT SUM(cr.valor) as receita
+            FROM contas_receber cr
+            WHERE cr.tenant_id = ?
             AND u.role_id = 1
-            AND (u.data_vencimento_plano IS NULL OR u.data_vencimento_plano >= CURDATE())
+            AND cr.referencia_mes >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
+            AND cr.referencia_mes < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 MONTH)
         ");
         $stmtReceita->execute([$tenantId]);
         $receitaMensal = $stmtReceita->fetch()['receita'] ?? 0;
 
         // Novos alunos no mês
         $stmtNovosAlunos = $db->prepare("
-            SELECT COUNT(*) as total 
-            FROM usuarios 
-            WHERE tenant_id = ? 
-            AND role_id = 1
-            AND YEAR(created_at) = YEAR(CURDATE())
-            AND MONTH(created_at) = MONTH(CURDATE())
+            SELECT COUNT(DISTINCT ut.usuario_id) as total 
+            FROM usuario_tenant ut
+            INNER JOIN usuarios u ON u.id = ut.usuario_id
+            WHERE ut.tenant_id = ? 
+            AND u.role_id = 1
+            AND YEAR(ut.created_at) = YEAR(CURDATE())
+            AND MONTH(ut.created_at) = MONTH(CURDATE())
         ");
         $stmtNovosAlunos->execute([$tenantId]);
         $novosAlunos = $stmtNovosAlunos->fetch()['total'];
@@ -169,9 +169,9 @@ class AdminController
 
         $stmt = $db->prepare("
             SELECT 
-                u.id, u.nome, u.email, u.role_id, u.plano_id, 
-                u.data_vencimento_plano, u.foto_base64, u.created_at, u.updated_at,
-                p.nome as plano_nome, p.valor as plano_valor,
+                u.id, u.nome, u.email, u.role_id, 
+                u.foto_base64, u.created_at, u.updated_at,
+                m.plano_id, p.nome as plano_nome, p.valor as plano_valor,
                 COUNT(DISTINCT c.id) as total_checkins,
                 MAX(c.created_at) as ultimo_checkin,
                 
@@ -180,10 +180,10 @@ class AdminController
                     WHEN EXISTS (
                         SELECT 1 FROM contas_receber cr
                         WHERE cr.usuario_id = u.id
-                        AND cr.tenant_id = u.tenant_id
+                        AND cr.tenant_id = ut.tenant_id
                         AND cr.status = 'pago'
-                        AND cr.data_vencimento <= CURDATE()
-                        AND DATE_ADD(cr.data_vencimento, INTERVAL COALESCE(cr.intervalo_dias, 30) DAY) >= CURDATE()
+                        AND cr.vencimento <= CURDATE()
+                        AND DATE_ADD(cr.vencimento, INTERVAL COALESCE(cr.intervalo_dias, 30) DAY) >= CURDATE()
                     ) THEN 1
                     ELSE 0
                 END as possui_pagamento_ativo,
@@ -192,9 +192,9 @@ class AdminController
                 (
                     SELECT cr2.id FROM contas_receber cr2
                     WHERE cr2.usuario_id = u.id
-                    AND cr2.tenant_id = u.tenant_id
+                    AND cr2.tenant_id = ut.tenant_id
                     AND cr2.status = 'pendente'
-                    ORDER BY cr2.data_vencimento ASC
+                    ORDER BY cr2.vencimento ASC
                     LIMIT 1
                 ) as ultima_conta_pendente_id,
                 
@@ -202,16 +202,18 @@ class AdminController
                 (
                     SELECT cr3.valor FROM contas_receber cr3
                     WHERE cr3.usuario_id = u.id
-                    AND cr3.tenant_id = u.tenant_id
+                    AND cr3.tenant_id = ut.tenant_id
                     AND cr3.status = 'pendente'
-                    ORDER BY cr3.data_vencimento ASC
+                    ORDER BY cr3.vencimento ASC
                     LIMIT 1
                 ) as ultima_conta_pendente_valor
                 
             FROM usuarios u
-            LEFT JOIN planos p ON u.plano_id = p.id
+            INNER JOIN usuario_tenant ut ON ut.usuario_id = u.id AND ut.status = 'ativo'
+            LEFT JOIN matriculas m ON m.usuario_id = u.id AND m.status = 'ativa'
+            LEFT JOIN planos p ON p.id = m.plano_id
             LEFT JOIN checkins c ON u.id = c.usuario_id
-            WHERE u.tenant_id = ? AND u.role_id = 1
+            WHERE ut.tenant_id = ? AND u.role_id = 1
             GROUP BY u.id
             ORDER BY u.nome ASC
         ");
@@ -259,10 +261,11 @@ class AdminController
         $stmt = $db->prepare("
             SELECT u.id, u.nome, u.email
             FROM usuarios u
-            WHERE u.tenant_id = ? 
+            INNER JOIN usuario_tenant ut ON ut.usuario_id = u.id AND ut.status = 'ativo'
+            LEFT JOIN matriculas m ON m.usuario_id = u.id AND m.status = 'ativa'
+            WHERE ut.tenant_id = ? 
             AND u.role_id = 1
-            AND u.plano_id IS NOT NULL
-            AND (u.data_vencimento_plano IS NULL OR u.data_vencimento_plano >= CURDATE())
+            AND m.id IS NOT NULL
             ORDER BY u.nome ASC
         ");
         $stmt->execute([$tenantId]);
@@ -427,8 +430,12 @@ class AdminController
                 'message' => 'Aluno desativado com sucesso (plano removido)'
             ]));
         } else {
-            // Pode deletar completamente
-            $stmt = $db->prepare("DELETE FROM usuarios WHERE id = ? AND tenant_id = ?");
+            // Pode deletar completamente - mas precisa verificar tenant via usuario_tenant
+            $stmt = $db->prepare("
+                DELETE u FROM usuarios u
+                INNER JOIN usuario_tenant ut ON ut.usuario_id = u.id
+                WHERE u.id = ? AND ut.tenant_id = ?
+            ");
             $stmt->execute([$alunoId, $tenantId]);
 
             $response->getBody()->write(json_encode([

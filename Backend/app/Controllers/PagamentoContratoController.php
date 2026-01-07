@@ -136,7 +136,7 @@ class PagamentoContratoController
         
         try {
             $pagamentoData = [
-                'contrato_id' => $contratoId,
+                'tenant_plano_id' => $contratoId,
                 'valor' => $data['valor'],
                 'data_vencimento' => $data['data_vencimento'],
                 'data_pagamento' => $data['data_pagamento'] ?? null,
@@ -193,10 +193,10 @@ class PagamentoContratoController
             );
             
             // Verificar se deve desbloquear o contrato
-            $temPendentes = $this->pagamentoModel->temPagamentosPendentes($pagamento['contrato_id']);
+            $temPendentes = $this->pagamentoModel->temPagamentosPendentes($pagamento['tenant_plano_id']);
             if (!$temPendentes) {
                 // Desbloquear contrato (status_id = 1 - Ativo)
-                $this->contratoModel->atualizarStatus($pagamento['contrato_id'], 1);
+                $this->contratoModel->atualizarStatus($pagamento['tenant_plano_id'], 1);
             }
             
             // Gerar próximo pagamento automaticamente
@@ -205,7 +205,7 @@ class PagamentoContratoController
             $proximaDataVencimento->modify('+1 month');
             
             // Verificar se já existe pagamento para esta data
-            $pagamentos = $this->pagamentoModel->listarPorContrato($pagamento['contrato_id']);
+            $pagamentos = $this->pagamentoModel->listarPorContrato($pagamento['tenant_plano_id']);
             $jaExisteProximo = false;
             foreach ($pagamentos as $p) {
                 if ($p['data_vencimento'] === $proximaDataVencimento->format('Y-m-d')) {
@@ -217,7 +217,7 @@ class PagamentoContratoController
             // Se não existe, criar o próximo pagamento
             if (!$jaExisteProximo) {
                 $proximoPagamento = [
-                    'contrato_id' => $pagamento['contrato_id'],
+                    'tenant_plano_id' => $pagamento['tenant_plano_id'],
                     'valor' => $pagamento['valor'],
                     'data_vencimento' => $proximaDataVencimento->format('Y-m-d'),
                     'status_pagamento_id' => 1, // Aguardando
@@ -320,7 +320,7 @@ class PagamentoContratoController
                 WHERE c.status_id = 1
                 AND EXISTS (
                     SELECT 1 FROM pagamentos_contrato p
-                    WHERE p.contrato_id = c.id
+                    WHERE p.tenant_plano_id = c.id
                     AND p.status_pagamento_id = 3
                 )";
         

@@ -18,11 +18,25 @@ import { showSuccess, showError, showWarning } from '../../utils/toast';
 import { associarPlano, buscarContratoAtivo } from '../../services/contratoService';
 import planosSistemaService from '../../services/planosSistemaService';
 import api from '../../services/api';
+import { authService } from '../../services/authService';
 
 export default function NovoContratoScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    checkAccess();
+  }, []);
+
+  const checkAccess = async () => {
+    const user = await authService.getCurrentUser();
+    if (!user || user.role_id !== 3) {
+      showError('Acesso negado. Apenas Super Admin pode acessar esta página.');
+      router.replace('/');
+      return;
+    }
+  };
   const [planos, setPlanos] = useState([]);
   const [academias, setAcademias] = useState([]);
   const [contratoAtivo, setContratoAtivo] = useState(null);

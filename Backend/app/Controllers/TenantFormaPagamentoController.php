@@ -21,7 +21,7 @@ class TenantFormaPagamentoController
      */
     public function listar(Request $request, Response $response): Response
     {
-        $tenantId = $request->getAttribute('tenant_id');
+        $tenantId = $request->getAttribute('tenantId');
         $apenasAtivas = $request->getQueryParams()['apenas_ativas'] ?? false;
 
         $formas = $this->model->listar($tenantId, (bool) $apenasAtivas);
@@ -38,7 +38,7 @@ class TenantFormaPagamentoController
      */
     public function buscar(Request $request, Response $response, array $args): Response
     {
-        $tenantId = $request->getAttribute('tenant_id');
+        $tenantId = $request->getAttribute('tenantId');
         $id = (int) $args['id'];
 
         $forma = $this->model->buscar($id, $tenantId);
@@ -60,7 +60,7 @@ class TenantFormaPagamentoController
      */
     public function atualizar(Request $request, Response $response, array $args): Response
     {
-        $tenantId = $request->getAttribute('tenant_id');
+        $tenantId = $request->getAttribute('tenantId');
         $id = (int) $args['id'];
         $data = $request->getParsedBody();
 
@@ -123,7 +123,7 @@ class TenantFormaPagamentoController
      */
     public function calcularTaxas(Request $request, Response $response): Response
     {
-        $tenantId = $request->getAttribute('tenant_id');
+        $tenantId = $request->getAttribute('tenantId');
         $data = $request->getParsedBody();
 
         $formaPagamentoId = $data['forma_pagamento_id'] ?? null;
@@ -148,7 +148,7 @@ class TenantFormaPagamentoController
      */
     public function calcularParcelas(Request $request, Response $response): Response
     {
-        $tenantId = $request->getAttribute('tenant_id');
+        $tenantId = $request->getAttribute('tenantId');
         $data = $request->getParsedBody();
 
         $formaPagamentoId = $data['forma_pagamento_id'] ?? null;
@@ -182,7 +182,7 @@ class TenantFormaPagamentoController
      */
     public function listarAtivas(Request $request, Response $response): Response
     {
-        $tenantId = $request->getAttribute('tenant_id');
+        $tenantId = $request->getAttribute('tenantId');
         
         $formas = $this->model->listar($tenantId, true); // apenas ativas
 

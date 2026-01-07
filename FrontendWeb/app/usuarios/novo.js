@@ -1,5 +1,5 @@
-import CadastrarUsuarioScreen from '../../src/screens/usuarios/CadastrarUsuarioScreen';
+import FormUsuarioScreen from '../../src/screens/usuarios/FormUsuarioScreen';
 
 export default function NovoUsuarioRoute() {
-  return <CadastrarUsuarioScreen />;
+  return <FormUsuarioScreen />;
 }

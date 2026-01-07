@@ -39,7 +39,12 @@ class MatriculaController
         $planoId = $data['plano_id'];
         
         // Buscar aluno
-        $stmtUsuario = $db->prepare("SELECT * FROM usuarios WHERE id = ? AND tenant_id = ? AND role_id = 1");
+        $stmtUsuario = $db->prepare("
+            SELECT u.* 
+            FROM usuarios u
+            INNER JOIN usuario_tenant ut ON ut.usuario_id = u.id
+            WHERE u.id = ? AND ut.tenant_id = ? AND u.role_id = 1 AND ut.status = 'ativo'
+        ");
         $stmtUsuario->execute([$usuarioId, $tenantId]);
         $usuario = $stmtUsuario->fetch();
         
@@ -156,14 +161,6 @@ class MatriculaController
         
         $matriculaId = (int) $db->lastInsertId();
 
-        // Atualizar dados do aluno
-        $stmtUpdateUsuario = $db->prepare("
-            UPDATE usuarios 
-            SET plano_id = ?, data_vencimento_plano = ?, updated_at = NOW()
-            WHERE id = ?
-        ");
-        $stmtUpdateUsuario->execute([$planoId, $dataVencimento, $usuarioId]);
-
         // Registrar no histórico de planos
         $stmtHistorico = $db->prepare("
             INSERT INTO historico_planos 
@@ -186,28 +183,25 @@ class MatriculaController
         
         $historicoId = (int) $db->lastInsertId();
 
-        // Criar conta a receber
-        $referenciaMes = date('Y-m', strtotime($dataInicio));
-        $stmtConta = $db->prepare("
-            INSERT INTO contas_receber 
-            (tenant_id, usuario_id, plano_id, historico_plano_id, valor, data_vencimento, 
-             status, referencia_mes, recorrente, intervalo_dias, criado_por)
-            VALUES (?, ?, ?, ?, ?, ?, 'pendente', ?, true, ?, ?)
+        // Criar primeiro pagamento do plano
+        $stmtPagamento = $db->prepare("
+            INSERT INTO pagamentos_plano
+            (tenant_id, matricula_id, usuario_id, plano_id, valor, data_vencimento, 
+             status_pagamento_id, observacoes, criado_por)
+            VALUES (?, ?, ?, ?, ?, ?, 1, 'Primeiro pagamento da matrícula', ?)
         ");
         
-        $stmtConta->execute([
+        $stmtPagamento->execute([
             $tenantId,
+            $matriculaId,
             $usuarioId,
             $planoId,
-            $historicoId,
             $valor,
-            $dataInicio, // primeira conta vence na data de início
-            $referenciaMes,
-            $plano['duracao_dias'],
+            $dataInicio, // primeiro pagamento vence na data de início
             $adminId
         ]);
         
-        $contaId = (int) $db->lastInsertId();
+        $pagamentoId = (int) $db->lastInsertId();
 
         // Buscar matrícula criada
         $stmtMatricula = $db->prepare("
@@ -254,15 +248,20 @@ class MatriculaController
         $sql = "
             SELECT 
                 m.*,
-                u.nome as aluno_nome,
-                u.email as aluno_email,
+                u.nome as usuario_nome,
+                u.email as usuario_email,
                 p.nome as plano_nome,
                 p.valor as plano_valor,
                 p.duracao_dias,
+                p.checkins_semanais,
+                modalidade.nome as modalidade_nome,
+                modalidade.icone as modalidade_icone,
+                modalidade.cor as modalidade_cor,
                 admin_criou.nome as criado_por_nome
             FROM matriculas m
             INNER JOIN usuarios u ON m.usuario_id = u.id
             INNER JOIN planos p ON m.plano_id = p.id
+            LEFT JOIN modalidades modalidade ON p.modalidade_id = modalidade.id
             LEFT JOIN usuarios admin_criou ON m.criado_por = admin_criou.id
             WHERE m.tenant_id = ?
         ";
@@ -288,6 +287,100 @@ class MatriculaController
         $response->getBody()->write(json_encode([
             'matriculas' => $matriculas,
             'total' => count($matriculas)
+        ]));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * Buscar matrícula por ID
+     */
+    public function buscar(Request $request, Response $response, array $args): Response
+    {
+        $matriculaId = (int) $args['id'];
+        $tenantId = $request->getAttribute('tenantId', 1);
+        $db = require __DIR__ . '/../../config/database.php';
+        
+        $sql = "
+            SELECT 
+                m.*,
+                u.nome as usuario_nome,
+                u.email as usuario_email,
+                p.nome as plano_nome,
+                p.valor,
+                p.duracao_dias,
+                p.checkins_semanais,
+                modalidade.nome as modalidade_nome,
+                modalidade.icone as modalidade_icone,
+                modalidade.cor as modalidade_cor,
+                admin_criou.nome as criado_por_nome
+            FROM matriculas m
+            INNER JOIN usuarios u ON m.usuario_id = u.id
+            INNER JOIN planos p ON m.plano_id = p.id
+            LEFT JOIN modalidades modalidade ON p.modalidade_id = modalidade.id
+            LEFT JOIN usuarios admin_criou ON m.criado_por = admin_criou.id
+            WHERE m.id = ? AND m.tenant_id = ?
+        ";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute([$matriculaId, $tenantId]);
+        $matricula = $stmt->fetch();
+        
+        if (!$matricula) {
+            $response->getBody()->write(json_encode(['error' => 'Matrícula não encontrada']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+        
+        $response->getBody()->write(json_encode(['matricula' => $matricula]));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * Buscar pagamentos de uma matrícula
+     */
+    public function buscarPagamentos(Request $request, Response $response, array $args): Response
+    {
+        $matriculaId = (int) $args['id'];
+        $tenantId = $request->getAttribute('tenantId', 1);
+        $db = require __DIR__ . '/../../config/database.php';
+        
+        // Verificar se a matrícula existe e pertence ao tenant
+        $stmtMatricula = $db->prepare("SELECT * FROM matriculas WHERE id = ? AND tenant_id = ?");
+        $stmtMatricula->execute([$matriculaId, $tenantId]);
+        $matricula = $stmtMatricula->fetch();
+        
+        if (!$matricula) {
+            $response->getBody()->write(json_encode(['error' => 'Matrícula não encontrada']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+        
+        // Buscar pagamentos relacionados à matrícula
+        $sql = "
+            SELECT 
+                pp.*,
+                sp.nome as status_pagamento_nome,
+                fp.nome as forma_pagamento_nome,
+                u.nome as aluno_nome,
+                pl.nome as plano_nome,
+                criador.nome as criado_por_nome,
+                baixador.nome as baixado_por_nome
+            FROM pagamentos_plano pp
+            INNER JOIN status_pagamento sp ON pp.status_pagamento_id = sp.id
+            LEFT JOIN formas_pagamento fp ON pp.forma_pagamento_id = fp.id
+            INNER JOIN usuarios u ON pp.usuario_id = u.id
+            INNER JOIN planos pl ON pp.plano_id = pl.id
+            LEFT JOIN usuarios criador ON pp.criado_por = criador.id
+            LEFT JOIN usuarios baixador ON pp.baixado_por = baixador.id
+            WHERE pp.matricula_id = ? AND pp.tenant_id = ?
+            ORDER BY pp.data_vencimento ASC
+        ";
+        
+        $stmt = $db->prepare($sql);
+        $stmt->execute([$matriculaId, $tenantId]);
+        $pagamentos = $stmt->fetchAll();
+        
+        $response->getBody()->write(json_encode([
+            'pagamentos' => $pagamentos,
+            'total' => count($pagamentos)
         ]));
         return $response->withHeader('Content-Type', 'application/json');
     }

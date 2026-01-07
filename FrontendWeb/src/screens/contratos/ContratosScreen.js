@@ -6,6 +6,7 @@ import LayoutBase from '../../components/LayoutBase';
 import ConfirmModal from '../../components/ConfirmModal';
 import { showSuccess, showError } from '../../utils/toast';
 import api from '../../services/api';
+import { authService } from '../../services/authService';
 
 export default function ContratosScreen() {
   const router = useRouter();
@@ -17,8 +18,18 @@ export default function ContratosScreen() {
   const [confirmDelete, setConfirmDelete] = useState({ visible: false, id: null, nome: '' });
 
   useEffect(() => {
-    loadContratos();
+    checkAccess();
   }, []);
+
+  const checkAccess = async () => {
+    const user = await authService.getCurrentUser();
+    if (!user || user.role_id !== 3) {
+      showError('Acesso negado. Apenas Super Admin pode acessar esta página.');
+      router.replace('/');
+      return;
+    }
+    loadContratos();
+  };
 
   const loadContratos = async () => {
     try {

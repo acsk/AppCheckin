@@ -16,6 +16,7 @@ import planosSistemaService from '../../services/planosSistemaService';
 import LayoutBase from '../../components/LayoutBase';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import { showSuccess, showError } from '../../utils/toast';
+import { authService } from '../../services/authService';
 
 export default function EditarPlanoSistemaScreen() {
   const router = useRouter();
@@ -23,6 +24,19 @@ export default function EditarPlanoSistemaScreen() {
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
   const planoId = parseInt(id);
+
+  useEffect(() => {
+    checkAccess();
+  }, []);
+
+  const checkAccess = async () => {
+    const user = await authService.getCurrentUser();
+    if (!user || user.role_id !== 3) {
+      showError('Acesso negado. Apenas Super Admin pode acessar esta página.');
+      router.replace('/');
+      return;
+    }
+  };
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);

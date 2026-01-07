@@ -6,6 +6,7 @@ import planosSistemaService from '../../services/planosSistemaService';
 import LayoutBase from '../../components/LayoutBase';
 import ConfirmModal from '../../components/ConfirmModal';
 import { showSuccess, showError } from '../../utils/toast';
+import { authService } from '../../services/authService';
 
 export default function PlanosSistemaScreen() {
   const router = useRouter();
@@ -16,8 +17,18 @@ export default function PlanosSistemaScreen() {
   const [confirmDelete, setConfirmDelete] = useState({ visible: false, id: null, nome: '' });
 
   useEffect(() => {
-    loadPlanos();
+    checkAccess();
   }, []);
+
+  const checkAccess = async () => {
+    const user = await authService.getCurrentUser();
+    if (!user || user.role_id !== 3) {
+      showError('Acesso negado. Apenas Super Admin pode acessar esta página.');
+      router.replace('/');
+      return;
+    }
+    loadPlanos();
+  };
 
   const loadPlanos = async () => {
     try {

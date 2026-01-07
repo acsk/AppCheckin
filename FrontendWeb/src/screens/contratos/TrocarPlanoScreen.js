@@ -16,6 +16,7 @@ import LoadingOverlay from '../../components/LoadingOverlay';
 import { showSuccess, showError } from '../../utils/toast';
 import { trocarPlano, buscarContratoAtivo } from '../../services/contratoService';
 import planosSistemaService from '../../services/planosSistemaService';
+import { authService } from '../../services/authService';
 
 export default function TrocarPlanoScreen() {
   const router = useRouter();
@@ -23,6 +24,19 @@ export default function TrocarPlanoScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [planos, setPlanos] = useState([]);
+
+  useEffect(() => {
+    checkAccess();
+  }, []);
+
+  const checkAccess = async () => {
+    const user = await authService.getCurrentUser();
+    if (!user || user.role_id !== 3) {
+      showError('Acesso negado. Apenas Super Admin pode acessar esta página.');
+      router.replace('/');
+      return;
+    }
+  };
   const [contratoAtual, setContratoAtual] = useState(null);
   const [errors, setErrors] = useState({});
   

@@ -17,10 +17,14 @@ const usuarioService = {
 
   /**
    * Buscar usuário por ID
+   * Usa a rota SuperAdmin se o usuário for SuperAdmin
    */
-  async buscar(id) {
+  async buscar(id, isSuperAdmin = false) {
     try {
-      const response = await api.get(`/tenant/usuarios/${id}`);
+      const endpoint = isSuperAdmin 
+        ? `/superadmin/usuarios/${id}` 
+        : `/tenant/usuarios/${id}`;
+      const response = await api.get(endpoint);
       return response.data;
     } catch (error) {
       console.error('❌ Erro ao buscar usuário:', error.response?.data || error.message);
@@ -43,10 +47,14 @@ const usuarioService = {
 
   /**
    * Atualizar usuário
+   * Usa a rota SuperAdmin se o usuário for SuperAdmin
    */
-  async atualizar(id, dados) {
+  async atualizar(id, dados, isSuperAdmin = false) {
     try {
-      const response = await api.put(`/tenant/usuarios/${id}`, dados);
+      const endpoint = isSuperAdmin 
+        ? `/superadmin/usuarios/${id}` 
+        : `/tenant/usuarios/${id}`;
+      const response = await api.put(endpoint, dados);
       return response.data;
     } catch (error) {
       console.error('❌ Erro ao atualizar usuário:', error.response?.data || error.message);

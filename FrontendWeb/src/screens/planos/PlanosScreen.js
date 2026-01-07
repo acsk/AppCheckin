@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, useWindowDimensions } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import planoService from '../../services/planoService';
 import LayoutBase from '../../components/LayoutBase';
@@ -66,17 +66,29 @@ export default function PlanosScreen() {
     <View key={plano.id} style={styles.card}>
       <View style={styles.cardHeader}>
         <View style={styles.cardHeaderLeft}>
-          <Text style={styles.cardName}>{plano.nome}</Text>
-          <View style={[
-            styles.statusBadge,
-            plano.ativo ? styles.statusActive : styles.statusInactive
-          ]}>
-            <Text style={[
-              styles.statusText,
-              plano.ativo ? styles.statusTextActive : styles.statusTextInactive
-            ]}>
-              {plano.ativo ? 'Ativo' : 'Inativo'}
-            </Text>
+          <View style={styles.cardTitleRow}>
+            {plano.modalidade_icone && (
+              <View style={[styles.cardIconBadge, { backgroundColor: plano.modalidade_cor || '#f97316' }]}>
+                <MaterialCommunityIcons name={plano.modalidade_icone} size={16} color="#fff" />
+              </View>
+            )}
+            <View>
+              <View style={styles.idNomeRow}>
+                <Text style={styles.cardId}>#{plano.id}</Text>
+                <Text style={styles.cardName}>{plano.nome}</Text>
+              </View>
+              <View style={[
+                styles.statusBadge,
+                plano.ativo ? styles.statusActive : styles.statusInactive
+              ]}>
+                <Text style={[
+                  styles.statusText,
+                  plano.ativo ? styles.statusTextActive : styles.statusTextInactive
+                ]}>
+                  {plano.ativo ? 'Ativo' : 'Inativo'}
+                </Text>
+              </View>
+            </View>
           </View>
         </View>
         <View style={styles.cardActions}>
@@ -96,6 +108,14 @@ export default function PlanosScreen() {
       </View>
 
       <View style={styles.cardBody}>
+        {plano.modalidade_nome && (
+          <View style={styles.cardRow}>
+            <Feather name="grid" size={14} color="#666" />
+            <Text style={styles.cardLabel}>Modalidade:</Text>
+            <Text style={styles.cardValue}>{plano.modalidade_nome}</Text>
+          </View>
+        )}
+
         <View style={styles.cardRow}>
           <Feather name="dollar-sign" size={14} color="#666" />
           <Text style={styles.cardLabel}>Valor:</Text>
@@ -103,14 +123,24 @@ export default function PlanosScreen() {
         </View>
 
         <View style={styles.cardRow}>
-          <Feather name="users" size={14} color="#666" />
-          <Text style={styles.cardLabel}>Capacidade:</Text>
+          <Feather name="check-circle" size={14} color="#666" />
+          <Text style={styles.cardLabel}>Checkins/Semana:</Text>
           <Text style={styles.cardValue}>
-            {!plano.max_alunos || plano.max_alunos >= 9999 
+            {plano.checkins_semanais >= 999 
               ? 'Ilimitado' 
-              : `${plano.max_alunos} alunos`}
+              : `${plano.checkins_semanais}x`}
           </Text>
         </View>
+
+        {plano.atual !== undefined && (
+          <View style={styles.cardRow}>
+            <Feather name={plano.atual ? "unlock" : "lock"} size={14} color="#666" />
+            <Text style={styles.cardLabel}>Novos Contratos:</Text>
+            <Text style={[styles.cardValue, !plano.atual && styles.cardValueInactive]}>
+              {plano.atual ? 'Disponível' : 'Bloqueado'}
+            </Text>
+          </View>
+        )}
       </View>
     </View>
   );
@@ -119,9 +149,12 @@ export default function PlanosScreen() {
     <View style={styles.tableContainer}>
       {/* Table Header */}
       <View style={styles.tableHeader}>
+        <Text style={[styles.headerText, styles.colId]}>ID</Text>
         <Text style={[styles.headerText, styles.colNome]}>NOME</Text>
-        <Text style={[styles.headerText, styles.colValor]}>VALOR MENSAL</Text>
-        <Text style={[styles.headerText, styles.colCapacidade]}>CAPACIDADE</Text>
+        <Text style={[styles.headerText, styles.colModalidade]}>MODALIDADE</Text>
+        <Text style={[styles.headerText, styles.colValor]}>VALOR</Text>
+        <Text style={[styles.headerText, styles.colCheckins]}>CHECKINS/SEM</Text>
+        <Text style={[styles.headerText, styles.colAtual]}>NOVOS CONTR.</Text>
         <Text style={[styles.headerText, styles.colStatus]}>STATUS</Text>
         <Text style={[styles.headerText, styles.colAcoes]}>AÇÕES</Text>
       </View>
@@ -130,17 +163,43 @@ export default function PlanosScreen() {
       <ScrollView style={styles.tableBody} showsVerticalScrollIndicator={true}>
         {planos.map((plano) => (
           <View key={plano.id} style={styles.tableRow}>
-            <Text style={[styles.cellText, styles.colNome]} numberOfLines={2}>
-              {plano.nome}
+            <View style={[styles.cellText, styles.colId]}>
+              <Text style={styles.tableIdText}>#{plano.id}</Text>
+            </View>
+            <View style={[styles.cellText, styles.colNome, styles.nomeCell]}>
+              {plano.modalidade_icone && (
+                <View style={[styles.tableIconBadge, { backgroundColor: plano.modalidade_cor || '#f97316' }]}>
+                  <MaterialCommunityIcons name={plano.modalidade_icone} size={14} color="#fff" />
+                </View>
+              )}
+              <Text style={styles.cellTextNome} numberOfLines={2}>
+                {plano.nome}
+              </Text>
+            </View>
+            <Text style={[styles.cellText, styles.colModalidade]} numberOfLines={1}>
+              {plano.modalidade_nome || '-'}
             </Text>
             <Text style={[styles.cellText, styles.colValor]} numberOfLines={1}>
               {formatCurrency(plano.valor)}
             </Text>
-            <Text style={[styles.cellText, styles.colCapacidade]} numberOfLines={1}>
-              {!plano.max_alunos || plano.max_alunos >= 9999 
+            <Text style={[styles.cellText, styles.colCheckins]} numberOfLines={1}>
+              {plano.checkins_semanais >= 999 
                 ? 'Ilimitado' 
-                : `${plano.max_alunos} alunos`}
+                : `${plano.checkins_semanais}x`}
             </Text>
+            <View style={[styles.cellText, styles.colAtual]}>
+              <View style={[
+                styles.atualBadge,
+                plano.atual ? styles.atualAvailable : styles.atualLocked,
+              ]}>
+                <Text style={[
+                  styles.atualText,
+                  plano.atual ? styles.atualTextAvailable : styles.atualTextLocked,
+                ]}>
+                  {plano.atual ? 'Sim' : 'Não'}
+                </Text>
+              </View>
+            </View>
             <View style={[styles.cellText, styles.colStatus]}>
               <View style={[
                 styles.statusBadge,
@@ -341,12 +400,6 @@ const styles = StyleSheet.create({
   },
   cardHeaderLeft: {
     flex: 1,
-    gap: 8,
-  },
-  cardName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
   },
   cardActions: {
     flexDirection: 'row',
@@ -417,11 +470,69 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 4,
   },
+  colId: { flex: 0.6, minWidth: 60 },
   colNome: { flex: 2, minWidth: 150 },
-  colValor: { flex: 1.5, minWidth: 120 },
-  colCapacidade: { flex: 1.5, minWidth: 120 },
+  colModalidade: { flex: 1.5, minWidth: 120 },
+  colValor: { flex: 1.2, minWidth: 100 },
+  colCheckins: { flex: 1.2, minWidth: 110 },
+  colAtual: { flex: 1.2, minWidth: 110 },
   colStatus: { flex: 1, minWidth: 100 },
   colAcoes: { flex: 1, minWidth: 100 },
+  tableIdText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  nomeCell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  cellTextNome: {
+    fontSize: 14,
+    color: '#333',
+    flex: 1,
+  },
+  tableIconBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  cardIconBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  idNomeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  cardId: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  cardName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1e293b',
+    flex: 1,
+  },
   statusBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -443,6 +554,32 @@ const styles = StyleSheet.create({
   },
   statusTextInactive: {
     color: '#ef4444',
+  },
+  atualBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  atualAvailable: {
+    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+  },
+  atualLocked: {
+    backgroundColor: 'rgba(156, 163, 175, 0.1)',
+  },
+  atualText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  atualTextAvailable: {
+    color: '#3b82f6',
+  },
+  atualTextLocked: {
+    color: '#6b7280',
+  },
+  cardValueInactive: {
+    color: '#9ca3af',
+    fontStyle: 'italic',
   },
   actionCell: {
     flexDirection: 'row',

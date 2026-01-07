@@ -1,5 +1,5 @@
-import EditarUsuarioScreen from '../../src/screens/usuarios/EditarUsuarioScreen';
+import FormUsuarioScreen from '../../src/screens/usuarios/FormUsuarioScreen';
 
 export default function EditarUsuarioRoute() {
-  return <EditarUsuarioScreen />;
+  return <FormUsuarioScreen />;
 }

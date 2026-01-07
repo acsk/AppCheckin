@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, useWindowDimensions, TextInput } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import superAdminService from '../../services/superAdminService';
@@ -14,9 +14,11 @@ export default function UsuariosScreen() {
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
   const [usuarios, setUsuarios] = useState([]);
+  const [usuariosFiltrados, setUsuariosFiltrados] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState({ visible: false, id: null, nome: '' });
+  const [searchText, setSearchText] = useState('');
 
   useEffect(() => {
     checkUserRole();
@@ -33,18 +35,28 @@ export default function UsuariosScreen() {
     }
   };
 
-  const loadUsuarios = async () => {
+  const loadUsuarios = async (termo = '') => {
     try {
       setLoading(true);
       const user = await authService.getCurrentUser();
       const isSuper = user?.role_id === 3;
       
+      let response;
       if (isSuper) {
-        const response = await superAdminService.listarTodosUsuarios();
-        setUsuarios(response.usuarios || []);
+        response = await superAdminService.listarTodosUsuarios();
       } else {
-        const response = await usuarioService.listar();
-        setUsuarios(response.usuarios || []);
+        response = await usuarioService.listar();
+      }
+      
+      // Response pode vir como array direto ou objeto com propriedade usuarios
+      const lista = Array.isArray(response) ? response : (response.usuarios || []);
+      setUsuarios(lista);
+      
+      // Aplicar filtro local se houver termo de busca
+      if (termo) {
+        filtrarUsuariosLocal(lista, termo);
+      } else {
+        setUsuariosFiltrados(lista);
       }
     } catch (error) {
       console.error('Erro ao carregar usuários:', error);
@@ -52,6 +64,40 @@ export default function UsuariosScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const filtrarUsuariosLocal = (lista, termo) => {
+    const termoLower = termo.toLowerCase();
+    const filtrados = lista.filter(usuario => 
+      usuario.nome?.toLowerCase().includes(termoLower) ||
+      usuario.email?.toLowerCase().includes(termoLower) ||
+      usuario.cpf?.includes(termo) ||
+      usuario.telefone?.includes(termo)
+    );
+    setUsuariosFiltrados(filtrados);
+  };
+
+  const handleSearchChange = (text) => {
+    setSearchText(text);
+    // Filtro local ao digitar
+    if (text.trim()) {
+      filtrarUsuariosLocal(usuarios, text.trim());
+    } else {
+      setUsuariosFiltrados(usuarios);
+    }
+  };
+
+  const handleSearch = () => {
+    // Busca na API ao clicar no botão
+    const termo = searchText.trim();
+    console.log('🔎 Executando busca na API com termo:', termo);
+    loadUsuarios(termo);
+  };
+
+  const handleClearSearch = () => {
+    console.log('🗑️ Limpando busca');
+    setSearchText('');
+    loadUsuarios('');
   };
 
   const handleDelete = (usuario) => {
@@ -73,11 +119,29 @@ export default function UsuariosScreen() {
     }
   };
 
-  const renderMobileCard = (usuario) => (
+  const getRoleBadge = (roleId) => {
+    const roles = {
+      1: { label: 'Aluno', color: '#10b981', icon: 'user' },
+      2: { label: 'Admin', color: '#f97316', icon: 'shield' },
+      3: { label: 'SuperAdmin', color: '#8b5cf6', icon: 'star' }
+    };
+    return roles[roleId] || roles[1];
+  };
+
+  const renderMobileCard = (usuario) => {
+    const roleBadge = getRoleBadge(usuario.role_id);
+    
+    return (
     <View key={usuario.id} style={styles.card}>
       <View style={styles.cardHeader}>
         <View style={styles.cardHeaderLeft}>
-          <Text style={styles.cardName}>{usuario.nome}</Text>
+          <View style={styles.nameWithRole}>
+            <Text style={styles.cardName}>{usuario.nome}</Text>
+            <View style={[styles.roleBadge, { backgroundColor: roleBadge.color }]}>
+              <Feather name={roleBadge.icon} size={12} color="#fff" />
+              <Text style={styles.roleText}>{roleBadge.label}</Text>
+            </View>
+          </View>
           <View style={[
             styles.statusBadge,
             (usuario.status === 'ativo' || usuario.ativo) ? styles.statusAtivo : styles.statusInativo
@@ -118,14 +182,11 @@ export default function UsuariosScreen() {
           </View>
         )}
 
-        <View style={styles.cardRow}>
-          <Feather name="credit-card" size={14} color="#666" />
-          <Text style={styles.cardLabel}>Plano:</Text>
-          <Text style={styles.cardValue}>{usuario.plano_nome || 'Sem plano'}</Text>
-        </View>
+      
       </View>
     </View>
-  );
+    );
+  };
 
   const renderTable = () => (
     <View style={styles.tableContainer}>
@@ -133,28 +194,35 @@ export default function UsuariosScreen() {
       <View style={styles.tableHeader}>
         <Text style={[styles.tableHeaderText, styles.colNome]}>NOME</Text>
         <Text style={[styles.tableHeaderText, styles.colEmail]}>EMAIL</Text>
+        <Text style={[styles.tableHeaderText, styles.colTipo]}>TIPO</Text>
         {isSuperAdmin && (
           <Text style={[styles.tableHeaderText, styles.colTenant]}>ACADEMIA</Text>
         )}
-        <Text style={[styles.tableHeaderText, styles.colPlano]}>PLANO</Text>
-        <Text style={[styles.tableHeaderText, styles.colStatus]}>STATUS</Text>
+             <Text style={[styles.tableHeaderText, styles.colStatus]}>STATUS</Text>
         <Text style={[styles.tableHeaderText, styles.colAcoes]}>AÇÕES</Text>
       </View>
 
       {/* Linhas da Tabela */}
       <ScrollView style={styles.tableBody} showsVerticalScrollIndicator={true}>
-        {usuarios.map((usuario) => (
+        {usuariosFiltrados.map((usuario) => {
+          const roleBadge = getRoleBadge(usuario.role_id);
+          
+          return (
           <View key={usuario.id} style={styles.tableRow}>
             <Text style={[styles.tableCell, styles.colNome]} numberOfLines={2}>{usuario.nome}</Text>
             <Text style={[styles.tableCell, styles.colEmail]} numberOfLines={1}>{usuario.email}</Text>
+            <View style={[styles.tableCell, styles.colTipo]}>
+              <View style={[styles.roleBadge, { backgroundColor: roleBadge.color }]}>
+                <Feather name={roleBadge.icon} size={10} color="#fff" />
+                <Text style={styles.roleText}>{roleBadge.label}</Text>
+              </View>
+            </View>
             {isSuperAdmin && (
               <Text style={[styles.tableCell, styles.colTenant]} numberOfLines={1}>
                 {usuario.tenant?.nome || '-'}
               </Text>
             )}
-            <Text style={[styles.tableCell, styles.colPlano]} numberOfLines={1}>
-              {usuario.plano_nome || 'Sem plano'}
-            </Text>
+   
             <View style={[styles.tableCell, styles.colStatus]}>
               <View style={[
                 styles.statusBadge,
@@ -182,7 +250,8 @@ export default function UsuariosScreen() {
               </View>
             </View>
           </View>
-        ))}
+          );
+        })}
       </ScrollView>
     </View>
   );
@@ -190,14 +259,42 @@ export default function UsuariosScreen() {
   return (
     <LayoutBase title="Usuários" subtitle="Gerenciar usuários do sistema">
       <View style={styles.container}>
-        {/* Header com botão Novo */}
+        {/* Header com título, busca e botões */}
         <View style={[styles.header, isMobile && styles.headerMobile]}>
-          <View>
+          <View style={styles.headerLeft}>
             <Text style={[styles.headerTitle, isMobile && styles.headerTitleMobile]}>Lista de Usuários</Text>
             <Text style={styles.headerSubtitle}>
-              {usuarios.length} {usuarios.length === 1 ? 'usuário cadastrado' : 'usuários cadastrados'}
+              {usuariosFiltrados.length} {usuariosFiltrados.length === 1 ? 'usuário encontrado' : 'usuários encontrados'}
             </Text>
           </View>
+          
+          {!isMobile && (
+            <View style={styles.searchContainer}>
+              <View style={styles.searchInputContainer}>
+                <Feather name="search" size={20} color="#999" style={styles.searchIcon} />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Buscar por nome, email, CPF ou telefone..."
+                  placeholderTextColor="#999"
+                  value={searchText}
+                  onChangeText={handleSearchChange}
+                />
+                {searchText.length > 0 && (
+                  <TouchableOpacity onPress={handleClearSearch} style={styles.clearButton}>
+                    <Feather name="x" size={18} color="#999" />
+                  </TouchableOpacity>
+                )}
+              </View>
+              <TouchableOpacity
+                style={styles.searchButton}
+                onPress={handleSearch}
+              >
+                <Feather name="search" size={18} color="#fff" />
+                <Text style={styles.searchButtonText}>Buscar</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          
           <TouchableOpacity
             style={[styles.newButton, isMobile && styles.newButtonMobile]}
             onPress={() => router.push('/usuarios/novo')}
@@ -206,6 +303,33 @@ export default function UsuariosScreen() {
             {!isMobile && <Text style={styles.newButtonText}>Novo Usuário</Text>}
           </TouchableOpacity>
         </View>
+
+        {/* Barra de Busca Mobile */}
+        {isMobile && (
+          <View style={styles.searchContainerMobile}>
+            <View style={styles.searchInputContainer}>
+              <Feather name="search" size={20} color="#999" style={styles.searchIcon} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Buscar..."
+                placeholderTextColor="#999"
+                value={searchText}
+                onChangeText={handleSearchChange}
+              />
+              {searchText.length > 0 && (
+                <TouchableOpacity onPress={handleClearSearch} style={styles.clearButton}>
+                  <Feather name="x" size={18} color="#999" />
+                </TouchableOpacity>
+              )}
+            </View>
+            <TouchableOpacity
+              style={styles.searchButton}
+              onPress={handleSearch}
+            >
+              <Feather name="search" size={18} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Loading */}
         {loading && (
@@ -216,18 +340,22 @@ export default function UsuariosScreen() {
         )}
 
         {/* Lista de Usuários */}
-        {!loading && usuarios.length === 0 && (
+        {!loading && usuariosFiltrados.length === 0 && (
           <View style={styles.emptyState}>
             <Feather name="users" size={48} color="#ccc" />
-            <Text style={styles.emptyText}>Nenhum usuário cadastrado</Text>
-            <Text style={styles.emptySubtext}>Clique em "Novo Usuário" para começar</Text>
+            <Text style={styles.emptyText}>
+              {searchText ? 'Nenhum usuário encontrado' : 'Nenhum usuário cadastrado'}
+            </Text>
+            <Text style={styles.emptySubtext}>
+              {searchText ? 'Tente buscar com outros termos' : 'Clique em "Novo Usuário" para começar'}
+            </Text>
           </View>
         )}
 
-        {!loading && usuarios.length > 0 && (
+        {!loading && usuariosFiltrados.length > 0 && (
           isMobile ? (
             <ScrollView style={styles.cardsContainer} showsVerticalScrollIndicator={false}>
-              {usuarios.map(renderMobileCard)}
+              {usuariosFiltrados.map(renderMobileCard)}
             </ScrollView>
           ) : (
             renderTable()
@@ -260,9 +388,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#e5e5e5',
+    gap: 20,
   },
   headerMobile: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 12,
     padding: 16,
+  },
+  headerLeft: {
+    flex: 0,
+    minWidth: 200,
   },
   headerTitle: {
     fontSize: 24,
@@ -276,6 +412,55 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginTop: 4,
+  },
+  searchContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    gap: 12,
+    maxWidth: 600,
+  },
+  searchContainerMobile: {
+    flexDirection: 'row',
+    padding: 20,
+    paddingTop: 0,
+    gap: 12,
+  },
+  searchInputContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e5e5',
+    paddingHorizontal: 12,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 12,
+    fontSize: 14,
+    color: '#333',
+  },
+  clearButton: {
+    padding: 4,
+  },
+  searchButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#3b82f6',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    gap: 8,
+  },
+  searchButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   newButton: {
     flexDirection: 'row',
@@ -336,10 +521,32 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 8,
   },
+  nameWithRole: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexWrap: 'wrap',
+  },
   cardName: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#333',
+  },
+  roleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+  },
+  roleText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#fff',
+    textAlign: 'center',
   },
   cardActions: {
     flexDirection: 'row',
@@ -407,11 +614,14 @@ const styles = StyleSheet.create({
   },
   colNome: { flex: 2, minWidth: 150 },
   colEmail: { flex: 2.5, minWidth: 180 },
+  colTipo: { flex: 1.2, minWidth: 110 },
   colTenant: { flex: 1.5, minWidth: 120 },
-  colPlano: { flex: 1.5, minWidth: 120 },
   colStatus: { flex: 1, minWidth: 100 },
   colAcoes: { flex: 1, minWidth: 100 },
   statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingVertical: 4,
     paddingHorizontal: 12,
     borderRadius: 12,
@@ -426,6 +636,7 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 12,
     fontWeight: '600',
+    textAlign: 'center',
   },
   actions: {
     flexDirection: 'row',

@@ -15,6 +15,7 @@ import { superAdminService } from '../../services/superAdminService';
 import LayoutBase from '../../components/LayoutBase';
 import ConfirmModal from '../../components/ConfirmModal';
 import { showSuccess, showError } from '../../utils/toast';
+import { authService } from '../../services/authService';
 
 export default function AcademiasScreen() {
   const router = useRouter();
@@ -26,8 +27,18 @@ export default function AcademiasScreen() {
   const [searchText, setSearchText] = useState('');
 
   useEffect(() => {
-    loadAcademias();
+    checkAccess();
   }, []);
+
+  const checkAccess = async () => {
+    const user = await authService.getCurrentUser();
+    if (!user || user.role_id !== 3) {
+      showError('Acesso negado. Apenas Super Admin pode acessar esta página.');
+      router.replace('/');
+      return;
+    }
+    loadAcademias();
+  };
 
   const loadAcademias = async (busca = '') => {
     try {

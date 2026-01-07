@@ -78,8 +78,8 @@ class Plano
     {
         $stmt = $this->db->prepare("
             INSERT INTO planos 
-            (tenant_id, modalidade_id, nome, descricao, valor, duracao_dias, checkins_mensais, max_alunos, ativo, atual) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (tenant_id, modalidade_id, nome, descricao, valor, duracao_dias, checkins_semanais, ativo, atual) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         
         $stmt->execute([
@@ -89,8 +89,7 @@ class Plano
             $data['descricao'] ?? null,
             $data['valor'],
             $data['duracao_dias'] ?? 30,
-            $data['checkins_mensais'] ?? null,
-            $data['max_alunos'] ?? null,
+            $data['checkins_semanais'],
             $data['ativo'] ?? true,
             $data['atual'] ?? true
         ]);
@@ -131,14 +130,9 @@ class Plano
             $params[] = $data['duracao_dias'];
         }
 
-        if (isset($data['checkins_mensais'])) {
-            $fields[] = 'checkins_mensais = ?';
-            $params[] = $data['checkins_mensais'];
-        }
-
-        if (isset($data['max_alunos'])) {
-            $fields[] = 'max_alunos = ?';
-            $params[] = $data['max_alunos'];
+        if (isset($data['checkins_semanais'])) {
+            $fields[] = 'checkins_semanais = ?';
+            $params[] = $data['checkins_semanais'];
         }
 
         if (isset($data['ativo'])) {
@@ -178,14 +172,14 @@ class Plano
     }
 
     /**
-     * Conta quantos usuários estão usando um plano
+     * Conta quantos usuários têm matrículas ativas neste plano
      */
     public function countUsuarios(int $planoId): int
     {
         $stmt = $this->db->prepare("
-            SELECT COUNT(*) as total
-            FROM usuarios 
-            WHERE plano_id = ? AND tenant_id = ?
+            SELECT COUNT(DISTINCT usuario_id) as total
+            FROM matriculas 
+            WHERE plano_id = ? AND tenant_id = ? AND status = 'ativa'
         ");
         $stmt->execute([$planoId, $this->tenantId]);
         
@@ -193,17 +187,17 @@ class Plano
     }
 
     /**
-     * Verifica se um plano possui contratos ativos ou inativos (não cancelados)
-     * Retorna true se houver contratos vinculados
+     * Verifica se um plano possui matrículas (não canceladas)
+     * Retorna true se houver matrículas vinculadas
      */
     public function possuiContratos(int $planoId): bool
     {
         $stmt = $this->db->prepare("
             SELECT COUNT(*) as total
-            FROM tenant_planos_sistema 
-            WHERE plano_id = ? AND status != 'cancelado'
+            FROM matriculas 
+            WHERE plano_id = ? AND tenant_id = ? AND status != 'cancelada'
         ");
-        $stmt->execute([$planoId]);
+        $stmt->execute([$planoId, $this->tenantId]);
         
         return (int) $stmt->fetch()['total'] > 0;
     }

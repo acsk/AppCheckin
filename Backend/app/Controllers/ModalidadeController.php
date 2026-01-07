@@ -5,6 +5,7 @@ namespace App\Controllers;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Models\Modalidade;
+use PDO;
 
 class ModalidadeController
 {
@@ -22,7 +23,7 @@ class ModalidadeController
      */
     public function index(Request $request, Response $response): Response
     {
-        $tenantId = $request->getAttribute('tenant_id');
+        $tenantId = $request->getAttribute('tenantId');
         $queryParams = $request->getQueryParams();
         $apenasAtivas = isset($queryParams['apenas_ativas']) && $queryParams['apenas_ativas'] === 'true';
         
@@ -42,7 +43,7 @@ class ModalidadeController
     public function show(Request $request, Response $response, array $args): Response
     {
         $id = (int) $args['id'];
-        $tenantId = $request->getAttribute('tenant_id');
+        $tenantId = $request->getAttribute('tenantId');
         
         $modalidade = $this->modalidadeModel->buscarPorId($id);
         
@@ -76,16 +77,13 @@ class ModalidadeController
      */
     public function create(Request $request, Response $response): Response
     {
-        $tenantId = $request->getAttribute('tenant_id');
+        $tenantId = $request->getAttribute('tenantId');
         $data = $request->getParsedBody();
         
         // Validações
         $errors = [];
         if (empty($data['nome'])) {
             $errors[] = 'Nome é obrigatório';
-        }
-        if (isset($data['valor_mensalidade']) && !is_numeric($data['valor_mensalidade'])) {
-            $errors[] = 'Valor da mensalidade inválido';
         }
         
         if (!empty($errors)) {
@@ -107,16 +105,51 @@ class ModalidadeController
         
         try {
             $data['tenant_id'] = $tenantId;
-            $id = $this->modalidadeModel->criar($data);
-            $modalidade = $this->modalidadeModel->buscarPorId($id);
             
-            $response->getBody()->write(json_encode([
-                'type' => 'success',
-                'message' => 'Modalidade criada com sucesso',
-                'modalidade' => $modalidade
-            ], JSON_UNESCAPED_UNICODE));
+            // Iniciar transação para criar modalidade + planos
+            $db = require __DIR__ . '/../../config/database.php';
+            $db->beginTransaction();
             
-            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(201);
+            try {
+                // 1. Criar modalidade
+                $modalidadeId = $this->modalidadeModel->criar($data);
+                
+                // 2. Criar planos se foram enviados
+                if (!empty($data['planos']) && is_array($data['planos'])) {
+                    $stmt = $db->prepare("
+                        INSERT INTO planos 
+                        (tenant_id, modalidade_id, nome, valor, checkins_semanais, duracao_dias, ativo, atual) 
+                        VALUES (?, ?, ?, ?, ?, ?, 1, 1)
+                    ");
+                    
+                    foreach ($data['planos'] as $plano) {
+                        $stmt->execute([
+                            $tenantId,
+                            $modalidadeId,
+                            $plano['nome'],
+                            $plano['valor'],
+                            $plano['checkins_semanais'],
+                            $plano['duracao_dias'] ?? 30
+                        ]);
+                    }
+                }
+                
+                $db->commit();
+                
+                $modalidade = $this->modalidadeModel->buscarPorId($modalidadeId);
+                
+                $response->getBody()->write(json_encode([
+                    'type' => 'success',
+                    'message' => 'Modalidade criada com sucesso',
+                    'modalidade' => $modalidade
+                ], JSON_UNESCAPED_UNICODE));
+                
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(201);
+                
+            } catch (\Exception $e) {
+                $db->rollBack();
+                throw $e;
+            }
         } catch (\Exception $e) {
             $response->getBody()->write(json_encode([
                 'type' => 'error',
@@ -133,7 +166,7 @@ class ModalidadeController
     public function update(Request $request, Response $response, array $args): Response
     {
         $id = (int) $args['id'];
-        $tenantId = $request->getAttribute('tenant_id');
+        $tenantId = $request->getAttribute('tenantId');
         $data = $request->getParsedBody();
         
         $modalidade = $this->modalidadeModel->buscarPorId($id);
@@ -160,9 +193,6 @@ class ModalidadeController
         if (empty($data['nome'])) {
             $errors[] = 'Nome é obrigatório';
         }
-        if (isset($data['valor_mensalidade']) && !is_numeric($data['valor_mensalidade'])) {
-            $errors[] = 'Valor da mensalidade inválido';
-        }
         
         if (!empty($errors)) {
             $response->getBody()->write(json_encode([
@@ -182,16 +212,115 @@ class ModalidadeController
         }
         
         try {
-            $this->modalidadeModel->atualizar($id, $data);
-            $modalidade = $this->modalidadeModel->buscarPorId($id);
+            // Iniciar transação para atualizar modalidade + planos
+            $db = require __DIR__ . '/../../config/database.php';
+            $db->beginTransaction();
             
-            $response->getBody()->write(json_encode([
-                'type' => 'success',
-                'message' => 'Modalidade atualizada com sucesso',
-                'modalidade' => $modalidade
-            ], JSON_UNESCAPED_UNICODE));
-            
-            return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+            try {
+                // 1. Atualizar modalidade
+                $this->modalidadeModel->atualizar($id, $data);
+                
+                // 2. Gerenciar planos se foram enviados
+                if (!empty($data['planos']) && is_array($data['planos'])) {
+                    // Buscar IDs dos planos atuais
+                    $stmtExistentes = $db->prepare("SELECT id FROM planos WHERE modalidade_id = ?");
+                    $stmtExistentes->execute([$id]);
+                    $idsExistentes = array_column($stmtExistentes->fetchAll(PDO::FETCH_ASSOC), 'id');
+                    
+                    $idsEnviados = [];
+                    
+                    foreach ($data['planos'] as $plano) {
+                        // Validar se já existe um plano com as mesmas características
+                        $stmtCheck = $db->prepare("
+                            SELECT id FROM planos 
+                            WHERE modalidade_id = ? 
+                            AND nome = ? 
+                            AND valor = ? 
+                            AND checkins_semanais = ? 
+                            AND duracao_dias = ?
+                            AND id != ?
+                        ");
+                        $stmtCheck->execute([
+                            $id,
+                            $plano['nome'],
+                            $plano['valor'],
+                            $plano['checkins_semanais'],
+                            $plano['duracao_dias'] ?? 30,
+                            $plano['id'] ?? 0
+                        ]);
+                        
+                        if ($stmtCheck->fetch()) {
+                            throw new \Exception("Já existe um plano com essas características: {$plano['nome']}");
+                        }
+                        
+                        if (!empty($plano['id'])) {
+                            // Atualizar plano existente
+                            $stmt = $db->prepare("
+                                UPDATE planos SET 
+                                    nome = ?, 
+                                    valor = ?, 
+                                    checkins_semanais = ?, 
+                                    duracao_dias = ?,
+                                    ativo = ?,
+                                    atual = ?
+                                WHERE id = ? AND modalidade_id = ?
+                            ");
+                            $stmt->execute([
+                                $plano['nome'],
+                                $plano['valor'],
+                                $plano['checkins_semanais'],
+                                $plano['duracao_dias'] ?? 30,
+                                $plano['ativo'] ?? 1,
+                                $plano['atual'] ?? 1,
+                                $plano['id'],
+                                $id
+                            ]);
+                            $idsEnviados[] = $plano['id'];
+                        } else {
+                            // Criar novo plano
+                            $stmt = $db->prepare("
+                                INSERT INTO planos 
+                                (tenant_id, modalidade_id, nome, valor, checkins_semanais, duracao_dias, ativo, atual) 
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            ");
+                            $stmt->execute([
+                                $tenantId,
+                                $id,
+                                $plano['nome'],
+                                $plano['valor'],
+                                $plano['checkins_semanais'],
+                                $plano['duracao_dias'] ?? 30,
+                                $plano['ativo'] ?? 1,
+                                $plano['atual'] ?? 1
+                            ]);
+                        }
+                    }
+                    
+                    // Remover planos que não foram enviados (foram excluídos)
+                    $idsParaRemover = array_diff($idsExistentes, $idsEnviados);
+                    if (!empty($idsParaRemover)) {
+                        $placeholders = str_repeat('?,', count($idsParaRemover) - 1) . '?';
+                        $stmt = $db->prepare("DELETE FROM planos WHERE id IN ($placeholders)");
+                        $stmt->execute($idsParaRemover);
+                    }
+                }
+                
+                $db->commit();
+                
+                $modalidade = $this->modalidadeModel->buscarPorId($id);
+                
+                $response->getBody()->write(json_encode([
+                    'type' => 'success',
+                    'message' => 'Modalidade e planos atualizados com sucesso',
+                    'modalidade' => $modalidade
+                ], JSON_UNESCAPED_UNICODE));
+                
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+                
+            } catch (\Exception $e) {
+                $db->rollBack();
+                throw $e;
+            }
         } catch (\Exception $e) {
             $response->getBody()->write(json_encode([
                 'type' => 'error',
@@ -208,7 +337,7 @@ class ModalidadeController
     public function delete(Request $request, Response $response, array $args): Response
     {
         $id = (int) $args['id'];
-        $tenantId = $request->getAttribute('tenant_id');
+        $tenantId = $request->getAttribute('tenantId');
         
         $modalidade = $this->modalidadeModel->buscarPorId($id);
         

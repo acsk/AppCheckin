@@ -1,5 +1,5 @@
-import EditarAcademiaScreen from '../../src/screens/academias/EditarAcademiaScreen';
+import AcademiaFormScreen from '../../src/screens/academias/AcademiaFormScreen';
 
 export default function EditarAcademiaRoute() {
-  return <EditarAcademiaScreen />;
+  return <AcademiaFormScreen />;
 }

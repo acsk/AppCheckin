@@ -249,11 +249,31 @@ class UsuarioController
      */
     public function listar(Request $request, Response $response): Response
     {
+        $usuarioLogado = $request->getAttribute('usuario');
         $tenantId = $request->getAttribute('tenantId');
         $queryParams = $request->getQueryParams();
         $apenasAtivos = isset($queryParams['ativos']) && $queryParams['ativos'] === 'true';
+        
+        // SuperAdmin (role_id = 3) pode listar usuários de todos os tenants
+        $isSuperAdmin = isset($usuarioLogado['role_id']) && $usuarioLogado['role_id'] == 3;
 
-        $usuarios = $this->usuarioModel->listarPorTenant($tenantId, $apenasAtivos);
+        if ($isSuperAdmin) {
+            // SuperAdmin: listar todos os usuários
+            $usuarios = $this->usuarioModel->listarTodos(true, null, $apenasAtivos);
+        } else {
+            // Admin/Aluno: listar apenas do próprio tenant
+            $usuarios = $this->usuarioModel->listarPorTenant($tenantId, $apenasAtivos);
+        }
+
+        // Filtrar apenas alunos (role_id = 1) - Admins não aparecem na tela de usuários (exceto para SuperAdmin)
+        if (!$isSuperAdmin) {
+            $usuarios = array_filter($usuarios, function($usuario) {
+                return $usuario['role_id'] == 1;
+            });
+        }
+
+        // Reindexar array
+        $usuarios = array_values($usuarios);
 
         $response->getBody()->write(json_encode($usuarios));
         return $response->withHeader('Content-Type', 'application/json');
@@ -279,15 +299,28 @@ class UsuarioController
     public function buscar(Request $request, Response $response, array $args): Response
     {
         $id = (int) $args['id'];
+        $usuarioLogado = $request->getAttribute('usuario');
         $tenantId = $request->getAttribute('tenantId');
-
-        $usuario = $this->usuarioModel->findById($id, $tenantId);
+        
+        // SuperAdmin (role_id = 3) pode acessar usuários de qualquer tenant
+        $isSuperAdmin = isset($usuarioLogado['role_id']) && $usuarioLogado['role_id'] == 3;
+        
+        // Se for SuperAdmin, não filtra por tenant
+        $usuario = $this->usuarioModel->findById($id, $isSuperAdmin ? null : $tenantId);
 
         if (!$usuario) {
             $response->getBody()->write(json_encode([
                 'error' => 'Usuário não encontrado'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        // Bloquear visualização de usuários Admin (role_id >= 2) pela tela de usuários (exceto SuperAdmin)
+        if (!$isSuperAdmin && $usuario['role_id'] >= 2) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Usuários administradores só podem ser visualizados pela tela de Academia'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
         }
 
         $response->getBody()->write(json_encode($usuario));
@@ -387,17 +420,30 @@ class UsuarioController
     public function atualizar(Request $request, Response $response, array $args): Response
     {
         $id = (int) $args['id'];
+        $usuarioLogado = $request->getAttribute('usuario');
         $tenantId = $request->getAttribute('tenantId');
         $data = $request->getParsedBody();
+        
+        // SuperAdmin (role_id = 3) pode editar usuários de qualquer tenant
+        $isSuperAdmin = isset($usuarioLogado['role_id']) && $usuarioLogado['role_id'] == 3;
 
-        // Verificar se usuário pertence ao tenant
-        $usuarioExistente = $this->usuarioModel->findById($id, $tenantId);
+        // Verificar se usuário pertence ao tenant (ou se é SuperAdmin)
+        $usuarioExistente = $this->usuarioModel->findById($id, $isSuperAdmin ? null : $tenantId);
         if (!$usuarioExistente) {
             $response->getBody()->write(json_encode([
                 'type' => 'error',
                 'message' => 'Usuário não encontrado'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        // Bloquear edição de usuários Admin (role_id >= 2) pela tela de usuários (exceto SuperAdmin)
+        if (!$isSuperAdmin && $usuarioExistente['role_id'] >= 2) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Usuários administradores só podem ser editados pela tela de Academia'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
         }
 
         $errors = $this->validarDadosUsuario($data, $tenantId, $id);
@@ -578,6 +624,123 @@ class UsuarioController
         return $response->withHeader('Content-Type', 'application/json');
     }
 
+    /**
+     * Buscar um usuário específico (SuperAdmin - sem restrição de tenant)
+     * 
+     * @param Request $request Requisição HTTP
+     * @param Response $response Resposta HTTP
+     * @param array $args Argumentos da rota (id)
+     * @return Response JSON com dados do usuário
+     * 
+     * @api GET /superadmin/usuarios/{id}
+     * @apiGroup SuperAdmin
+     * @apiPermission superadmin
+     * 
+     * @apiParam {Number} id ID do usuário
+     * 
+     * @apiSuccess {Object} usuario Dados completos do usuário
+     * @apiError (404) UsuarioNaoEncontrado Usuário não existe
+     */
+    public function buscarSuperAdmin(Request $request, Response $response, array $args): Response
+    {
+        $id = (int) $args['id'];
+
+        // SuperAdmin pode buscar usuário de qualquer tenant (passa null no tenantId)
+        $usuario = $this->usuarioModel->findById($id, null);
+
+        if (!$usuario) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Usuário não encontrado'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        $response->getBody()->write(json_encode($usuario));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * Atualizar usuário (SuperAdmin - sem restrição de tenant)
+     * 
+     * @param Request $request Requisição HTTP com dados a atualizar
+     * @param Response $response Resposta HTTP
+     * @param array $args Argumentos da rota (id)
+     * @return Response JSON com usuário atualizado
+     * 
+     * @api PUT /superadmin/usuarios/{id}
+     * @apiGroup SuperAdmin
+     * @apiPermission superadmin
+     * 
+     * @apiParam {Number} id ID do usuário
+     * @apiParam {String} [nome] Nome completo
+     * @apiParam {String} [email] Email
+     * @apiParam {String} [senha] Nova senha
+     * @apiParam {String} [telefone] Telefone
+     * @apiParam {String} [cpf] CPF
+     * @apiParam {String} [cep] CEP
+     * @apiParam {String} [logradouro] Logradouro
+     * @apiParam {String} [numero] Número
+     * @apiParam {String} [complemento] Complemento
+     * @apiParam {String} [bairro] Bairro
+     * @apiParam {String} [cidade] Cidade
+     * @apiParam {String} [estado] Estado (UF)
+     * @apiParam {Number} [plano_id] ID do plano
+     * @apiParam {Number} [role_id] ID da role
+     * 
+     * @apiSuccess {String} message Mensagem de sucesso
+     * @apiSuccess {Object} usuario Dados do usuário atualizado
+     * @apiError (404) UsuarioNaoEncontrado Usuário não existe
+     * @apiError (422) ValidacaoFalhou Erros de validação
+     */
+    public function atualizarSuperAdmin(Request $request, Response $response, array $args): Response
+    {
+        $id = (int) $args['id'];
+        $data = $request->getParsedBody();
+
+        // Buscar usuário sem restrição de tenant
+        $usuario = $this->usuarioModel->findById($id, null);
+
+        if (!$usuario) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Usuário não encontrado'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        // Validar usando o tenant_id do usuário que está sendo editado
+        $errors = $this->validarDadosUsuario($data, $usuario['tenant_id'], $id);
+
+        if (!empty($errors)) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => implode(', ', $errors)
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+        }
+
+        // Atualizar
+        $updated = $this->usuarioModel->update($id, $data);
+
+        if (!$updated) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Nenhum dado foi atualizado'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
+
+        $usuario = $this->usuarioModel->findById($id, null);
+
+        $response->getBody()->write(json_encode([
+            'type' => 'success',
+            'message' => 'Usuário atualizado com sucesso',
+            'usuario' => $usuario
+        ]));
+
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
     // ========================================
     // Métodos Privados de Validação
     // ========================================
@@ -618,13 +781,27 @@ class UsuarioController
             $errors[] = 'Senha deve ter no mínimo 6 caracteres';
         }
 
-        // Validar plano_id se fornecido
-        if (isset($data['plano_id']) && !empty($data['plano_id'])) {
-            // Verificar se plano existe (implementar se necessário)
-            // Por enquanto, apenas aceita números
-            if (!is_numeric($data['plano_id'])) {
-                $errors[] = 'Plano inválido';
+        // Validar CPF se fornecido
+        if (!empty($data['cpf'])) {
+            $cpfLimpo = preg_replace('/[^0-9]/', '', $data['cpf']);
+            if (strlen($cpfLimpo) !== 11) {
+                $errors[] = 'CPF deve conter 11 dígitos';
+            } elseif (!$this->validarCPF($cpfLimpo)) {
+                $errors[] = 'CPF inválido';
             }
+        }
+
+        // Validar CEP se fornecido
+        if (!empty($data['cep'])) {
+            $cepLimpo = preg_replace('/[^0-9]/', '', $data['cep']);
+            if (strlen($cepLimpo) !== 8) {
+                $errors[] = 'CEP deve conter 8 dígitos';
+            }
+        }
+
+        // Validar Estado se fornecido
+        if (!empty($data['estado']) && strlen($data['estado']) !== 2) {
+            $errors[] = 'Estado deve ter 2 caracteres (sigla UF)';
         }
 
         // Validar role_id se fornecido
@@ -636,5 +813,167 @@ class UsuarioController
         }
 
         return $errors;
+    }
+
+    /**
+     * Validar CPF
+     * 
+     * @param string $cpf CPF sem formatação (apenas números)
+     * @return bool True se válido
+     */
+    private function validarCPF(string $cpf): bool
+    {
+        // Eliminar CPFs conhecidos como inválidos
+        if (strlen($cpf) != 11 || preg_match('/(\d)\1{10}/', $cpf)) {
+            return false;
+        }
+
+        // Validar primeiro dígito verificador
+        for ($t = 9; $t < 11; $t++) {
+            for ($d = 0, $c = 0; $c < $t; $c++) {
+                $d += $cpf[$c] * (($t + 1) - $c);
+            }
+            $d = ((10 * $d) % 11) % 10;
+            if ($cpf[$c] != $d) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // ========================================
+    // Rotas para Busca e Associação de Usuário
+    // ========================================
+
+    /**
+     * Buscar usuário por CPF (global, sem filtro de tenant)
+     * 
+     * @api GET /tenant/usuarios/buscar-cpf/{cpf}
+     * @apiGroup Usuario
+     * @apiDescription Busca usuário por CPF em toda a base (todos os tenants)
+     * 
+     * @param Request $request
+     * @param Response $response
+     * @param array $args ['cpf' => string]
+     * @return Response
+     */
+    public function buscarPorCpf(Request $request, Response $response, array $args): Response
+    {
+        $cpf = $args['cpf'] ?? '';
+        $cpfLimpo = preg_replace('/[^0-9]/', '', $cpf);
+        
+        if (strlen($cpfLimpo) !== 11) {
+            $response->getBody()->write(json_encode([
+                'error' => 'CPF deve conter 11 dígitos'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
+        
+        if (!$this->validarCPF($cpfLimpo)) {
+            $response->getBody()->write(json_encode([
+                'error' => 'CPF inválido'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
+        
+        $usuario = $this->usuarioModel->findByCpf($cpfLimpo);
+        
+        if (!$usuario) {
+            $response->getBody()->write(json_encode([
+                'found' => false,
+                'message' => 'Usuário não encontrado. Você pode cadastrar um novo usuário.'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json');
+        }
+        
+        // Buscar tenants aos quais o usuário está associado
+        $tenants = $this->usuarioModel->getTenantsByUsuario($usuario['id']);
+        
+        // Verificar se já está associado ao tenant atual
+        $tenantId = $request->getAttribute('tenantId');
+        $jaAssociado = $this->usuarioModel->isAssociatedWithTenant($usuario['id'], $tenantId);
+        
+        $response->getBody()->write(json_encode([
+            'found' => true,
+            'usuario' => [
+                'id' => $usuario['id'],
+                'nome' => $usuario['nome'],
+                'email' => $usuario['email'],
+                'telefone' => $usuario['telefone'],
+                'cpf' => $usuario['cpf']
+            ],
+            'tenants' => $tenants,
+            'ja_associado' => $jaAssociado,
+            'pode_associar' => !$jaAssociado
+        ]));
+        
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * Associar usuário existente ao tenant atual
+     * 
+     * @api POST /tenant/usuarios/associar
+     * @apiGroup Usuario
+     * @apiDescription Associa um usuário existente ao tenant atual
+     * 
+     * @apiParam {Number} usuario_id ID do usuário a ser associado
+     * @apiParam {String} [status=ativo] Status da associação
+     * 
+     * @param Request $request
+     * @param Response $response
+     * @return Response
+     */
+    public function associarUsuario(Request $request, Response $response): Response
+    {
+        $data = $request->getParsedBody();
+        $tenantId = $request->getAttribute('tenantId');
+        
+        if (empty($data['usuario_id'])) {
+            $response->getBody()->write(json_encode([
+                'error' => 'ID do usuário é obrigatório'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
+        
+        $usuarioId = (int) $data['usuario_id'];
+        $status = $data['status'] ?? 'ativo';
+        
+        // Verificar se usuário existe
+        $usuario = $this->usuarioModel->findById($usuarioId, null); // null = busca global
+        if (!$usuario) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Usuário não encontrado'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+        
+        // Verificar se já está associado
+        if ($this->usuarioModel->isAssociatedWithTenant($usuarioId, $tenantId)) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Usuário já está associado a esta academia'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(409);
+        }
+        
+        // Associar usuário ao tenant
+        $success = $this->usuarioModel->associateToTenant($usuarioId, $tenantId, $status);
+        
+        if (!$success) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Erro ao associar usuário'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+        
+        // Buscar dados atualizados do usuário
+        $usuarioAtualizado = $this->usuarioModel->findById($usuarioId, $tenantId);
+        
+        $response->getBody()->write(json_encode([
+            'message' => 'Usuário associado com sucesso',
+            'usuario' => $usuarioAtualizado
+        ]));
+        
+        return $response->withHeader('Content-Type', 'application/json');
     }
 }
