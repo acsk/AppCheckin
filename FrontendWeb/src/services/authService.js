@@ -13,7 +13,8 @@ export const authService = {
       
       return response.data;
     } catch (error) {
-      throw error.response?.data || error;
+      const errorData = error.response?.data || error;
+      throw errorData;
     }
   },
 

@@ -2,7 +2,7 @@ import api from './api';
 
 const planoService = {
   /**
-   * Listar todos os planos
+   * Listar todos os planos (para Admin do tenant)
    */
   async listar(apenasAtivos = false) {
     try {
@@ -12,6 +12,23 @@ const planoService = {
       return response.data;
     } catch (error) {
       console.error('❌ Erro ao listar planos:', error.response?.data || error.message);
+      throw error.response?.data || { error: 'Erro ao listar planos' };
+    }
+  },
+
+  /**
+   * Listar planos de todas as academias (para SuperAdmin)
+   */
+  async listarTodos(tenantId = null, apenasAtivos = false) {
+    try {
+      const params = {};
+      if (tenantId) params.tenant_id = tenantId;
+      if (apenasAtivos) params.ativos = 'true';
+      
+      const response = await api.get('/superadmin/planos', { params });
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao listar planos (SuperAdmin):', error.response?.data || error.message);
       throw error.response?.data || { error: 'Erro ao listar planos' };
     }
   },

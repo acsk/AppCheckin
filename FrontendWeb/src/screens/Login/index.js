@@ -5,7 +5,6 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  Alert,
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
@@ -15,6 +14,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, FontAwesome } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import toast from 'react-hot-toast';
 import { authService } from '../../services/authService';
 import styles from './styles';
 
@@ -28,26 +28,48 @@ export default function LoginScreen() {
   const isDisabled = useMemo(() => email.trim().length === 0 || senha.trim().length === 0, [email, senha]);
 
   const handleLogin = async () => {
-    console.log('🔐 Tentando fazer login...');
     if (isDisabled) {
-      Alert.alert('Erro', 'Preencha email e senha');
+      toast.error('Preencha email e senha', {
+        style: {
+          background: '#ef4444',
+          color: '#fff',
+          padding: '16px',
+          borderRadius: '8px',
+          fontSize: '14px',
+          fontWeight: '500',
+          fontFamily: 'system-ui, -apple-system, sans-serif',
+        },
+      });
       return;
     }
 
     setLoading(true);
     try {
-      console.log('📤 Enviando credenciais para API...');
       const response = await authService.login(email, senha);
-      console.log('✅ Login bem sucedido:', response);
 
       // Pequeno delay para garantir que o token foi salvo
       setTimeout(() => {
-        console.log('🚀 Redirecionando para dashboard...');
         router.replace('/');
       }, 100);
     } catch (error) {
-      console.error('❌ Erro no login:', error);
-      Alert.alert('Erro no Login', error.erro || error.error || 'Credenciais inválidas');
+      const mensagemErro = error.error || error.message || 'Credenciais inválidas';
+      toast.error(mensagemErro, {
+        duration: 5000,
+        position: 'top-center',
+        style: {
+          background: '#ef4444',
+          color: '#fff',
+          padding: '16px',
+          borderRadius: '8px',
+          fontSize: '14px',
+          fontWeight: '500',
+          fontFamily: 'system-ui, -apple-system, sans-serif',
+        },
+        iconTheme: {
+          primary: '#fff',
+          secondary: '#ef4444',
+        },
+      });
     } finally {
       setLoading(false);
     }

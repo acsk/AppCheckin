@@ -21,6 +21,7 @@ use App\Controllers\ModalidadeController;
 use App\Controllers\TenantFormaPagamentoController;
 use App\Controllers\CepController;
 use App\Controllers\StatusController;
+use App\Controllers\FeatureFlagController;
 use App\Middlewares\AuthMiddleware;
 use App\Middlewares\TenantMiddleware;
 use App\Middlewares\AdminMiddleware;
@@ -44,6 +45,12 @@ return function ($app) {
     
     // Rota pública de formas de pagamento
     $app->get('/formas-pagamento', [FormaPagamentoController::class, 'index']);
+
+    // Rotas públicas de feature flags (somente leitura)
+    $app->get('/feature-flags/{key}', function($request, $response, $args) {
+        $controller = new FeatureFlagController(require __DIR__ . '/../config/database.php');
+        return $controller->get($request, $response, $args);
+    });
     
     // Logout (protegido para validar token)
     $app->post('/auth/logout', [AuthController::class, 'logout'])->add(AuthMiddleware::class);
@@ -62,6 +69,9 @@ return function ($app) {
         $group->put('/academias/{id}', [SuperAdminController::class, 'atualizarAcademia']);
         $group->delete('/academias/{id}', [SuperAdminController::class, 'excluirAcademia']);
         $group->post('/academias/{tenantId}/admin', [SuperAdminController::class, 'criarAdminAcademia']);
+        
+        // === PLANOS DE ALUNOS (de todas as academias) ===
+        $group->get('/planos', [SuperAdminController::class, 'listarPlanosAlunos']);
         
         // === PLANOS DO SISTEMA (CRUD) ===
         $group->get('/planos-sistema', [PlanosSistemaController::class, 'index']);
@@ -157,6 +167,15 @@ return function ($app) {
     // Rotas Admin (role_id = 2 ou 3)
     // ========================================
     $app->group('/admin', function ($group) {
+        // Feature Flags (admin)
+        $group->get('/feature-flags', function($request, $response) {
+            $controller = new FeatureFlagController(require __DIR__ . '/../config/database.php');
+            return $controller->list($request, $response);
+        });
+        $group->get('/feature-flags/{key}', function($request, $response, $args) {
+            $controller = new FeatureFlagController(require __DIR__ . '/../config/database.php');
+            return $controller->get($request, $response, $args);
+        });
         // Dashboard e estatísticas
         $group->get('/dashboard', [AdminController::class, 'dashboard']);
         

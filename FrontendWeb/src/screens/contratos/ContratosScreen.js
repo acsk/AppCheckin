@@ -80,6 +80,16 @@ export default function ContratosScreen() {
     }
   };
 
+  const getStatusBgColor = (status) => {
+    const statusLower = status?.toLowerCase() || '';
+    switch (statusLower) {
+      case 'ativo': return 'rgba(16, 185, 129, 0.1)';
+      case 'pendente': return 'rgba(245, 158, 11, 0.1)';
+      case 'cancelado': return 'rgba(239, 68, 68, 0.1)';
+      default: return 'rgba(107, 114, 128, 0.1)';
+    }
+  };
+
   const getFormaPagamentoLabel = (forma) => {
     switch (forma) {
       case 'cartao': return 'Cartão';
@@ -107,17 +117,27 @@ export default function ContratosScreen() {
   const renderMobileCards = () => (
     <ScrollView style={styles.mobileContainer}>
       {contratosFiltrados.map((contrato) => (
-        <View key={contrato.id} style={styles.card}>
+        <TouchableOpacity 
+          key={contrato.id} 
+          style={styles.card}
+          onPress={() => router.push(`/contratos/detalhe?id=${contrato.id}`)}
+          activeOpacity={0.7}
+        >
           <View style={styles.cardHeader}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.cardId}>ID: #{contrato.id}</Text>
+              <View style={styles.cardIdRow}>
+                <Text style={styles.cardId}>#{contrato.id}</Text>
+                <View style={[styles.statusBadgeNew, { backgroundColor: getStatusBgColor(contrato.status_nome) }]}>
+                  <View style={[styles.statusDot, { backgroundColor: getStatusColor(contrato.status_nome) }]} />
+                  <Text style={[styles.statusTextNew, { color: getStatusColor(contrato.status_nome) }]}>
+                    {contrato.status_nome || 'N/A'}
+                  </Text>
+                </View>
+              </View>
               <Text style={styles.cardAcademia}>{contrato.academia_nome}</Text>
               <Text style={styles.cardPlano}>{contrato.plano_nome}</Text>
-              <Text style={styles.cardValor}>{formatarValor(contrato.valor)}</Text>
             </View>
-            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(contrato.status_nome) }]}>
-              <Text style={styles.statusText}>{contrato.status_nome?.toUpperCase() || 'N/A'}</Text>
-            </View>
+            <Feather name="chevron-right" size={20} color="#9ca3af" />
           </View>
 
           <View style={styles.cardInfo}>
@@ -128,32 +148,11 @@ export default function ContratosScreen() {
               </Text>
             </View>
             <View style={styles.infoRow}>
-              <Feather name="credit-card" size={14} color="#6b7280" />
-              <Text style={styles.infoText}>{getFormaPagamentoLabel(contrato.forma_pagamento)}</Text>
+              <Feather name="dollar-sign" size={14} color="#10b981" />
+              <Text style={styles.cardValor}>{formatarValor(contrato.valor)}</Text>
             </View>
           </View>
-
-          <View style={styles.cardActions}>
-            <TouchableOpacity
-              style={styles.cardButton}
-              onPress={() => router.push(`/contratos/detalhe?id=${contrato.id}`)}
-            >
-              <Feather name="file-text" size={16} color="#10b981" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.cardButton}
-              onPress={() => router.push(`/contratos/academia?id=${contrato.academia_id}&nome=${encodeURIComponent(contrato.academia_nome)}`)}
-            >
-              <Feather name="eye" size={16} color="#f97316" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.cardButton}
-              onPress={() => handleDelete(contrato.id, contrato.plano_nome)}
-            >
-              <Feather name="trash-2" size={16} color="#ef4444" />
-            </TouchableOpacity>
-          </View>
-        </View>
+        </TouchableOpacity>
       ))}
     </ScrollView>
   );
@@ -162,99 +161,128 @@ export default function ContratosScreen() {
     <View style={styles.tableContainer}>
       <View style={styles.tableHeader}>
         <Text style={[styles.headerText, { flex: 0.5 }]}>ID</Text>
-        <Text style={[styles.headerText, { flex: 2 }]}>Academia</Text>
-        <Text style={[styles.headerText, { flex: 1.5 }]}>Plano</Text>
-        <Text style={[styles.headerText, { flex: 1.5 }]}>Período</Text>
-        <Text style={[styles.headerText, { flex: 1 }]}>Pagamento</Text>
-        <Text style={[styles.headerText, { flex: 1 }]}>Valor</Text>
-        <Text style={[styles.headerText, { flex: 1 }]}>Status</Text>
-        <Text style={[styles.headerText, { flex: 1 }]}>Ações</Text>
+        <Text style={[styles.headerText, { flex: 2 }]}>ACADEMIA</Text>
+        <Text style={[styles.headerText, { flex: 1.5 }]}>PLANO</Text>
+        <Text style={[styles.headerText, { flex: 1.5 }]}>PERÍODO</Text>
+        <Text style={[styles.headerText, { flex: 1 }]}>VALOR</Text>
+        <Text style={[styles.headerText, { flex: 1.2 }]}>STATUS</Text>
+        <Text style={[styles.headerText, { flex: 0.8, textAlign: 'center' }]}>AÇÕES</Text>
       </View>
 
       <ScrollView style={styles.tableBody}>
         {contratosFiltrados.map((contrato) => (
-          <View key={contrato.id} style={styles.tableRow}>
+          <TouchableOpacity 
+            key={contrato.id} 
+            style={styles.tableRow}
+            onPress={() => router.push(`/contratos/detalhe?id=${contrato.id}`)}
+            activeOpacity={0.7}
+          >
             <View style={[styles.tableCell, { flex: 0.5 }]}>
-              <Text style={[styles.cellText, styles.cellTextBold]}>#{contrato.id}</Text>
+              <Text style={styles.tableIdText}>#{contrato.id}</Text>
             </View>
             <View style={[styles.tableCell, { flex: 2 }]}>
-              <Text style={styles.cellText}>{contrato.academia_nome}</Text>
+              <Text style={styles.cellText} numberOfLines={1}>{contrato.academia_nome}</Text>
             </View>
             <View style={[styles.tableCell, { flex: 1.5 }]}>
-              <Text style={styles.cellText}>{contrato.plano_nome}</Text>
+              <Text style={styles.cellText} numberOfLines={1}>{contrato.plano_nome}</Text>
             </View>
             <View style={[styles.tableCell, { flex: 1.5 }]}>
               <Text style={styles.cellTextSmall}>{formatarData(contrato.data_inicio)}</Text>
               <Text style={styles.cellTextSmall}>{formatarData(contrato.data_vencimento)}</Text>
             </View>
             <View style={[styles.tableCell, { flex: 1 }]}>
-              <Text style={styles.cellText}>{getFormaPagamentoLabel(contrato.forma_pagamento)}</Text>
+              <Text style={styles.cellTextValor}>{formatarValor(contrato.valor)}</Text>
             </View>
-            <View style={[styles.tableCell, { flex: 1 }]}>
-              <Text style={styles.cellText}>{formatarValor(contrato.valor)}</Text>
-            </View>
-            <View style={[styles.tableCell, { flex: 1 }]}>
-              <View style={[styles.statusBadge, { backgroundColor: getStatusColor(contrato.status_nome) }]}>
-                <Text style={styles.statusText}>{contrato.status_nome || 'N/A'}</Text>
+            <View style={[styles.tableCell, { flex: 1.2 }]}>
+              <View style={[styles.statusBadgeNew, { backgroundColor: getStatusBgColor(contrato.status_nome) }]}>
+                <View style={[styles.statusDot, { backgroundColor: getStatusColor(contrato.status_nome) }]} />
+                <Text style={[styles.statusTextNew, { color: getStatusColor(contrato.status_nome) }]}>
+                  {contrato.status_nome || 'N/A'}
+                </Text>
               </View>
             </View>
-            <View style={[styles.tableCell, { flex: 1 }]}>
-              <View style={styles.actionCell}>
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.btnInfo]}
-                  onPress={() => router.push(`/contratos/detalhe?id=${contrato.id}`)}
-                >
-                  <Feather name="file-text" size={16} color="#fff" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.btnView]}
-                  onPress={() => router.push(`/contratos/academia?id=${contrato.academia_id}&nome=${encodeURIComponent(contrato.academia_nome)}`)}
-                >
-                  <Feather name="eye" size={16} color="#fff" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.actionButton, styles.btnDelete]}
-                  onPress={() => handleDelete(contrato.id, contrato.plano_nome)}
-                >
-                  <Feather name="trash-2" size={16} color="#fff" />
-                </TouchableOpacity>
-              </View>
+            <View style={[styles.tableCell, { flex: 0.8, alignItems: 'center' }]}>
+              <TouchableOpacity
+                style={styles.viewButton}
+                onPress={() => router.push(`/contratos/detalhe?id=${contrato.id}`)}
+              >
+                <Feather name="arrow-right" size={18} color="#f97316" />
+              </TouchableOpacity>
             </View>
-          </View>
+          </TouchableOpacity>
         ))}
       </ScrollView>
     </View>
   );
 
   return (
-    <LayoutBase>
+    <LayoutBase noPadding>
       <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.title}>Contratos de Planos</Text>
-            <Text style={styles.subtitle}>{contratos.length} contrato(s) cadastrado(s)</Text>
+        {/* Banner Header */}
+        <View style={styles.bannerContainer}>
+          <View style={styles.banner}>
+            <View style={styles.bannerContent}>
+              <View style={styles.bannerIconContainer}>
+                <View style={styles.bannerIconOuter}>
+                  <View style={styles.bannerIconInner}>
+                    <Feather name="file-text" size={28} color="#fff" />
+                  </View>
+                </View>
+              </View>
+              <View style={styles.bannerTextContainer}>
+                <Text style={styles.bannerTitle}>Contratos de Planos</Text>
+                <Text style={styles.bannerSubtitle}>
+                  Gerencie todos os contratos das academias parceiras
+                </Text>
+              </View>
+            </View>
+            <View style={styles.bannerDecoration}>
+              <View style={styles.decorCircle1} />
+              <View style={styles.decorCircle2} />
+              <View style={styles.decorCircle3} />
+            </View>
           </View>
-          <TouchableOpacity
-            style={[styles.addButton, isMobile && styles.addButtonMobile]}
-            onPress={() => router.push('/contratos/novo')}
-            activeOpacity={0.8}
-          >
-            <Feather name="plus" size={18} color="#fff" />
-            {!isMobile && <Text style={styles.addButtonText}>Novo Contrato</Text>}
-          </TouchableOpacity>
-        </View>
 
-        {/* Busca */}
-        <View style={styles.searchContainer}>
-          <Feather name="search" size={20} color="#9ca3af" />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Buscar por academia ou plano..."
-            placeholderTextColor="#9ca3af"
-            value={busca}
-            onChangeText={setBusca}
-          />
+          {/* Card de Busca e Ações */}
+          <View style={[styles.searchCard, isMobile && styles.searchCardMobile]}>
+            <View style={styles.searchCardHeader}>
+              <View style={styles.searchCardInfo}>
+                <View style={styles.searchCardIconContainer}>
+                  <Feather name="search" size={20} color="#f97316" />
+                </View>
+                <View>
+                  <Text style={styles.searchCardTitle}>Buscar Contratos</Text>
+                  <Text style={styles.searchCardSubtitle}>
+                    {contratos.length} {contratos.length === 1 ? 'contrato' : 'contratos'} cadastrado(s)
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={[styles.addButton, isMobile && styles.addButtonMobile]}
+                onPress={() => router.push('/contratos/novo')}
+                activeOpacity={0.8}
+              >
+                <Feather name="plus" size={18} color="#fff" />
+                {!isMobile && <Text style={styles.addButtonText}>Novo Contrato</Text>}
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.searchInputContainer}>
+              <Feather name="search" size={20} color="#9ca3af" style={styles.searchInputIcon} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Buscar por academia ou plano..."
+                placeholderTextColor="#9ca3af"
+                value={busca}
+                onChangeText={setBusca}
+              />
+              {busca.length > 0 && (
+                <TouchableOpacity onPress={() => setBusca('')} style={styles.clearButton}>
+                  <Feather name="x-circle" size={20} color="#9ca3af" />
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
         </View>
 
         {/* Conteúdo */}
@@ -285,20 +313,172 @@ export default function ContratosScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f9fafb' },
+  container: { flex: 1, backgroundColor: '#f8fafc' },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  header: {
+  // Banner Header
+  bannerContainer: {
+    backgroundColor: '#f8fafc',
+  },
+  banner: {
+    backgroundColor: '#f97316',
+    paddingVertical: 28,
+    paddingHorizontal: 24,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  bannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 18,
+    zIndex: 2,
+  },
+  bannerIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerIconOuter: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerIconInner: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerTextContainer: {
+    flex: 1,
+  },
+  bannerTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.5,
+  },
+  bannerSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.85)',
+    marginTop: 4,
+    lineHeight: 20,
+  },
+  bannerDecoration: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: 200,
+    zIndex: 1,
+  },
+  decorCircle1: {
+    position: 'absolute',
+    top: -30,
+    right: -30,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  decorCircle2: {
+    position: 'absolute',
+    top: 40,
+    right: 60,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  decorCircle3: {
+    position: 'absolute',
+    bottom: -20,
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  // Search Card
+  searchCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    marginHorizontal: 20,
+    marginTop: -24,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+    zIndex: 10,
+  },
+  searchCardMobile: {
+    marginHorizontal: 16,
+    padding: 16,
+  },
+  searchCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 20,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    marginBottom: 16,
+    gap: 12,
+    flexWrap: 'wrap',
   },
-  title: { fontSize: 24, fontWeight: 'bold', color: '#111827' },
-  subtitle: { fontSize: 14, color: '#6b7280', marginTop: 4 },
+  searchCardInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  searchCardIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(249, 115, 22, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchCardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1f2937',
+  },
+  searchCardSubtitle: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  searchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    paddingHorizontal: 14,
+    height: 52,
+  },
+  searchInputIcon: {
+    marginRight: 10,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#1f2937',
+    outlineStyle: 'none',
+    height: '100%',
+  },
+  clearButton: {
+    padding: 6,
+  },
   addButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -315,26 +495,12 @@ const styles = StyleSheet.create({
   },
   addButtonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
   },
 
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    margin: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  searchInput: { flex: 1, fontSize: 15, color: '#111827' },
-
   // Mobile Cards
-  mobileContainer: { flex: 1, paddingHorizontal: 20 },
+  mobileContainer: { flex: 1, paddingHorizontal: 20, paddingTop: 8 },
   card: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -349,17 +515,49 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 12,
   },
-  cardId: { fontSize: 10, color: '#f97316', fontWeight: 'bold', marginBottom: 2 },
+  cardIdRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 6,
+  },
+  cardId: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#f97316',
+    backgroundColor: 'rgba(249, 115, 22, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
   cardAcademia: { fontSize: 12, color: '#6b7280', marginBottom: 4 },
-  cardPlano: { fontSize: 16, fontWeight: 'bold', color: '#111827', marginBottom: 4 },
-  cardValor: { fontSize: 14, color: '#10b981', fontWeight: '600' },
+  cardPlano: { fontSize: 16, fontWeight: 'bold', color: '#111827' },
+  cardValor: { fontSize: 14, color: '#10b981', fontWeight: '700' },
+  statusBadgeNew: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    gap: 6,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusTextNew: {
+    fontSize: 12,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
   statusBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 6,
   },
   statusText: { fontSize: 10, fontWeight: 'bold', color: '#fff' },
-  cardInfo: { marginBottom: 12 },
+  cardInfo: { marginBottom: 0 },
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
   infoText: { fontSize: 13, color: '#6b7280' },
   cardActions: {
@@ -402,26 +600,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   headerText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
-    color: '#666',
+    color: '#6b7280',
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   tableCell: { justifyContent: 'center', paddingHorizontal: 4 },
+  tableIdText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#f97316',
+  },
   cellText: { fontSize: 14, color: '#333' },
-  cellTextBold: { fontWeight: '700', color: '#f97316' },
+  cellTextValor: { fontSize: 14, color: '#10b981', fontWeight: '600' },
   cellTextSmall: { fontSize: 12, color: '#6b7280' },
-  actionCell: { flexDirection: 'row', gap: 8, justifyContent: 'center' },
-  actionButton: {
-    width: 36,
-    height: 36,
+  viewButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: 'rgba(249, 115, 22, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(249, 115, 22, 0.2)',
   },
-  btnView: { backgroundColor: '#f97316' },
-  btnInfo: { backgroundColor: '#10b981' },
-  btnDelete: { backgroundColor: '#ef4444' },
 
   emptyContainer: {
     padding: 80,

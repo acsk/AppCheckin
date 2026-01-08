@@ -51,13 +51,13 @@ class PagamentoPlano
     {
         $sql = "SELECT 
                     p.*,
-                    sp.nome as status_nome,
-                    sp.cor as status_cor,
+                    sp.nome as status_pagamento_nome,
                     fp.nome as forma_pagamento_nome,
                     u.nome as aluno_nome,
                     pl.nome as plano_nome,
                     criador.nome as criado_por_nome,
-                    baixador.nome as baixado_por_nome
+                    baixador.nome as baixado_por_nome,
+                    tb.nome as tipo_baixa_nome
                 FROM pagamentos_plano p
                 INNER JOIN status_pagamento sp ON p.status_pagamento_id = sp.id
                 LEFT JOIN formas_pagamento fp ON p.forma_pagamento_id = fp.id
@@ -65,6 +65,7 @@ class PagamentoPlano
                 INNER JOIN planos pl ON p.plano_id = pl.id
                 LEFT JOIN usuarios criador ON p.criado_por = criador.id
                 LEFT JOIN usuarios baixador ON p.baixado_por = baixador.id
+                LEFT JOIN tipos_baixa tb ON p.tipo_baixa_id = tb.id
                 WHERE p.tenant_id = :tenant_id AND p.matricula_id = :matricula_id
                 ORDER BY p.data_vencimento ASC";
         
@@ -85,7 +86,6 @@ class PagamentoPlano
         $sql = "SELECT 
                     p.*,
                     sp.nome as status_nome,
-                    sp.cor as status_cor,
                     fp.nome as forma_pagamento_nome,
                     pl.nome as plano_nome,
                     m.data_inicio as matricula_data_inicio
@@ -122,7 +122,6 @@ class PagamentoPlano
         $sql = "SELECT 
                     p.*,
                     sp.nome as status_nome,
-                    sp.cor as status_cor,
                     fp.nome as forma_pagamento_nome,
                     u.nome as aluno_nome,
                     pl.nome as plano_nome
@@ -171,7 +170,6 @@ class PagamentoPlano
         $sql = "SELECT 
                     p.*,
                     sp.nome as status_nome,
-                    sp.cor as status_cor,
                     fp.nome as forma_pagamento_nome,
                     u.nome as aluno_nome,
                     pl.nome as plano_nome,
@@ -205,7 +203,8 @@ class PagamentoPlano
         ?string $dataPagamento = null,
         ?int $formaPagamentoId = null,
         ?string $comprovante = null,
-        ?string $observacoes = null
+        ?string $observacoes = null,
+        ?int $tipoBaixaId = 1
     ): bool {
         $sql = "UPDATE pagamentos_plano 
                 SET status_pagamento_id = 2,
@@ -214,19 +213,23 @@ class PagamentoPlano
                     comprovante = COALESCE(:comprovante, comprovante),
                     observacoes = COALESCE(:observacoes, observacoes),
                     baixado_por = :baixado_por,
+                    tipo_baixa_id = :tipo_baixa_id,
                     updated_at = NOW()
                 WHERE tenant_id = :tenant_id AND id = :id";
         
         $stmt = $this->pdo->prepare($sql);
-        return $stmt->execute([
+        $result = $stmt->execute([
             'tenant_id' => $tenantId,
             'id' => $id,
             'data_pagamento' => $dataPagamento ?? date('Y-m-d'),
             'forma_pagamento_id' => $formaPagamentoId,
             'comprovante' => $comprovante,
             'observacoes' => $observacoes,
-            'baixado_por' => $adminId
+            'baixado_por' => $adminId,
+            'tipo_baixa_id' => $tipoBaixaId
         ]);
+        
+        return $result;
     }
 
     /**
@@ -234,6 +237,16 @@ class PagamentoPlano
      */
     public function cancelar(int $tenantId, int $id, ?string $observacoes = null): bool
     {
+        // Buscar dados do pagamento antes de cancelar
+        $sqlBusca = "SELECT matricula_id FROM pagamentos_plano WHERE tenant_id = :tenant_id AND id = :id";
+        $stmtBusca = $this->pdo->prepare($sqlBusca);
+        $stmtBusca->execute(['tenant_id' => $tenantId, 'id' => $id]);
+        $pagamento = $stmtBusca->fetch(\PDO::FETCH_ASSOC);
+        
+        if (!$pagamento) {
+            return false;
+        }
+
         $sql = "UPDATE pagamentos_plano 
                 SET status_pagamento_id = 4,
                     observacoes = COALESCE(:observacoes, observacoes),
@@ -241,10 +254,65 @@ class PagamentoPlano
                 WHERE tenant_id = :tenant_id AND id = :id";
         
         $stmt = $this->pdo->prepare($sql);
-        return $stmt->execute([
+        $result = $stmt->execute([
             'tenant_id' => $tenantId,
             'id' => $id,
             'observacoes' => $observacoes
+        ]);
+
+        // Verificar se há pagamentos pendentes para atualizar status da matrícula
+        if ($result && $pagamento['matricula_id']) {
+            $this->atualizarStatusMatricula($tenantId, $pagamento['matricula_id']);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Atualizar status da matrícula baseado nos pagamentos
+     */
+    private function atualizarStatusMatricula(int $tenantId, int $matriculaId): void
+    {
+        // Verificar se ainda há pagamentos pendentes ou atrasados
+        $sqlVerifica = "
+            SELECT 
+                MAX(CASE WHEN status_pagamento_id IN (1, 3) AND data_vencimento < CURDATE() THEN DATEDIFF(CURDATE(), data_vencimento) ELSE 0 END) as dias_atraso,
+                SUM(CASE WHEN status_pagamento_id IN (1, 3) THEN 1 ELSE 0 END) as pendentes
+            FROM pagamentos_plano
+            WHERE tenant_id = :tenant_id AND matricula_id = :matricula_id
+        ";
+        
+        $stmtVerifica = $this->pdo->prepare($sqlVerifica);
+        $stmtVerifica->execute(['tenant_id' => $tenantId, 'matricula_id' => $matriculaId]);
+        $resultado = $stmtVerifica->fetch(\PDO::FETCH_ASSOC);
+
+        $novoStatus = 'ativa';
+        $diasAtraso = (int) $resultado['dias_atraso'];
+        $pendentes = (int) $resultado['pendentes'];
+
+        if ($pendentes > 0) {
+            if ($diasAtraso >= 5) {
+                $novoStatus = 'cancelada';
+            } elseif ($diasAtraso >= 1) {
+                $novoStatus = 'vencida';
+            }
+        }
+
+        // Atualizar matrícula
+        $sqlUpdate = "
+            UPDATE matriculas 
+            SET status = :status,
+                status_id = (SELECT id FROM status_matricula WHERE codigo = :status_codigo LIMIT 1),
+                updated_at = NOW()
+            WHERE tenant_id = :tenant_id AND id = :matricula_id
+        ";
+        
+        $stmtUpdate = $this->pdo->prepare($sqlUpdate);
+        $stmtUpdate->execute([
+            'status' => $novoStatus,
+            'status_codigo' => $novoStatus,
+            'tenant_id' => $tenantId,
+            'matricula_id' => $matriculaId
         ]);
     }
 

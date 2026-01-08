@@ -336,8 +336,8 @@ export default function AcademiaFormScreen() {
     <LayoutBase title={isEdit ? "Editar Academia" : "Nova Academia"} subtitle="Preencha os campos obrigatórios">
       {saving && <LoadingOverlay message={`${isEdit ? 'Atualizando' : 'Cadastrando'} academia...`} />}
       
-      <ScrollView style={styles.container}>
-        {/* Botão Voltar */}
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+        {/* Header com botão voltar e status */}
         <View style={styles.headerActions}>
           <TouchableOpacity 
             style={styles.backButton}
@@ -347,324 +347,384 @@ export default function AcademiaFormScreen() {
             <Feather name="arrow-left" size={18} color="#fff" />
             <Text style={styles.backButtonText}>Voltar</Text>
           </TouchableOpacity>
+
+          {isEdit && (
+            <View style={[styles.statusIndicator, formData.ativo ? styles.statusActive : styles.statusInactive]}>
+              <View style={[styles.statusDot, formData.ativo ? styles.statusDotActive : styles.statusDotInactive]} />
+              <Text style={[styles.statusIndicatorText, formData.ativo ? styles.statusTextActive : styles.statusTextInactive]}>
+                {formData.ativo ? 'Academia Ativa' : 'Academia Inativa'}
+              </Text>
+            </View>
+          )}
         </View>
 
-        {/* Form */}
-        <View style={styles.form}>
-          {/* Seção: Dados Gerais */}
-          <Text style={styles.sectionTitle}>Dados da Academia</Text>
+        {/* Form Container */}
+        <View style={styles.formContainer}>
+          {/* Card: Dados da Academia */}
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <View style={styles.cardHeaderIcon}>
+                <Feather name="home" size={20} color="#f97316" />
+              </View>
+              <Text style={styles.cardTitle}>Dados da Academia</Text>
+            </View>
           
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Nome da Academia *</Text>
-            <TextInput
-              style={[styles.input, errors.nome && touched.nome && styles.inputError]}
-              placeholder="Ex: Academia Fitness Pro"
-              placeholderTextColor="#999"
-              value={formData.nome}
-              onChangeText={(value) => handleChange('nome', value)}
-              onBlur={() => handleBlur('nome')}
-              editable={!saving}
-            />
-            {errors.nome && touched.nome && (
-              <Text style={styles.errorText}>{errors.nome}</Text>
-            )}
-          </View>
-
-          <View style={styles.row}>
-            <View style={[styles.inputGroup, styles.halfWidth]}>
-              <Text style={styles.label}>E-mail *</Text>
-              <TextInput
-                style={[styles.input, errors.email && touched.email && styles.inputError]}
-                placeholder="contato@academia.com"
-                placeholderTextColor="#999"
-                value={formData.email}
-                onChangeText={(value) => handleChange('email', value)}
-                onBlur={() => handleBlur('email')}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                editable={!saving}
-              />
-              {errors.email && touched.email && (
-                <Text style={styles.errorText}>{errors.email}</Text>
-              )}
-            </View>
-
-            <View style={[styles.inputGroup, styles.halfWidth]}>
-              <Text style={styles.label}>
-                {isEdit ? 'Nova Senha (Opcional)' : 'Senha do Admin *'}
-              </Text>
-              <TextInput
-                style={[styles.input, errors.senha_admin && touched.senha_admin && styles.inputError]}
-                placeholder={isEdit ? "Deixe vazio para manter" : "Mínimo 6 caracteres"}
-                placeholderTextColor="#999"
-                value={formData.senha_admin}
-                onChangeText={(value) => handleChange('senha_admin', value)}
-                onBlur={() => handleBlur('senha_admin')}
-                secureTextEntry
-                editable={!saving}
-              />
-              {errors.senha_admin && touched.senha_admin && (
-                <Text style={styles.errorText}>{errors.senha_admin}</Text>
-              )}
-            </View>
-          </View>
-
-          <View style={styles.row}>
-            <View style={[styles.inputGroup, styles.halfWidth]}>
-              <Text style={styles.label}>CNPJ</Text>
-              <TextInput
-                style={[styles.input, errors.cnpj && touched.cnpj && styles.inputError]}
-                placeholder="00.000.000/0000-00"
-                placeholderTextColor="#999"
-                value={formData.cnpj}
-                onChangeText={(value) => handleChange('cnpj', value)}
-                onBlur={() => handleBlur('cnpj')}
-                keyboardType="numeric"
-                maxLength={18}
-                editable={!saving}
-              />
-              {errors.cnpj && touched.cnpj && (
-                <Text style={styles.errorText}>{errors.cnpj}</Text>
-              )}
-            </View>
-
-            <View style={[styles.inputGroup, styles.halfWidth]}>
-              <Text style={styles.label}>Telefone</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="(00) 00000-0000"
-                placeholderTextColor="#999"
-                value={formData.telefone}
-                onChangeText={(value) => handleChange('telefone', value)}
-                keyboardType="phone-pad"
-                maxLength={15}
-                editable={!saving}
-              />
-            </View>
-          </View>
-
-          {/* Seção: Responsável */}
-          <Text style={styles.sectionTitle}>Dados do Responsável</Text>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Nome Completo *</Text>
-            <TextInput
-              style={[styles.input, errors.responsavel_nome && touched.responsavel_nome && styles.inputError]}
-              placeholder="Nome do responsável pela academia"
-              placeholderTextColor="#999"
-              value={formData.responsavel_nome}
-              onChangeText={(value) => handleChange('responsavel_nome', value)}
-              onBlur={() => handleBlur('responsavel_nome')}
-              editable={!saving}
-            />
-            {errors.responsavel_nome && touched.responsavel_nome && (
-              <Text style={styles.errorText}>{errors.responsavel_nome}</Text>
-            )}
-          </View>
-
-          <View style={styles.row}>
-            <View style={[styles.inputGroup, styles.halfWidth]}>
-              <Text style={styles.label}>CPF *</Text>
-              <TextInput
-                style={[styles.input, errors.responsavel_cpf && touched.responsavel_cpf && styles.inputError]}
-                placeholder="000.000.000-00"
-                placeholderTextColor="#999"
-                value={formData.responsavel_cpf}
-                onChangeText={(value) => handleChange('responsavel_cpf', value)}
-                onBlur={() => handleBlur('responsavel_cpf')}
-                keyboardType="numeric"
-                maxLength={14}
-                editable={!saving}
-              />
-              {errors.responsavel_cpf && touched.responsavel_cpf && (
-                <Text style={styles.errorText}>{errors.responsavel_cpf}</Text>
-              )}
-            </View>
-
-            <View style={[styles.inputGroup, styles.halfWidth]}>
-              <Text style={styles.label}>Telefone *</Text>
-              <TextInput
-                style={[styles.input, errors.responsavel_telefone && touched.responsavel_telefone && styles.inputError]}
-                placeholder="(00) 00000-0000"
-                placeholderTextColor="#999"
-                value={formData.responsavel_telefone}
-                onChangeText={(value) => handleChange('responsavel_telefone', value)}
-                onBlur={() => handleBlur('responsavel_telefone')}
-                keyboardType="phone-pad"
-                maxLength={15}
-                editable={!saving}
-              />
-              {errors.responsavel_telefone && touched.responsavel_telefone && (
-                <Text style={styles.errorText}>{errors.responsavel_telefone}</Text>
-              )}
-            </View>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>E-mail</Text>
-            <TextInput
-              style={[styles.input, errors.responsavel_email && touched.responsavel_email && styles.inputError]}
-              placeholder="email@responsavel.com"
-              placeholderTextColor="#999"
-              value={formData.responsavel_email}
-              onChangeText={(value) => handleChange('responsavel_email', value)}
-              onBlur={() => handleBlur('responsavel_email')}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              editable={!saving}
-            />
-            {errors.responsavel_email && touched.responsavel_email && (
-              <Text style={styles.errorText}>{errors.responsavel_email}</Text>
-            )}
-          </View>
-
-          {/* Seção: Endereço */}
-          <Text style={styles.sectionTitle}>Endereço</Text>
-
-          <View style={styles.row}>
-            <View style={[styles.inputGroup, styles.halfWidth]}>
-              <Text style={styles.label}>CEP</Text>
-              <View style={styles.cepInputContainer}>
+            <View style={styles.cardBody}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Nome da Academia <Text style={styles.required}>*</Text></Text>
                 <TextInput
-                  style={[styles.input, buscandoCep && styles.inputLoading, errors.cep && touched.cep && styles.inputError]}
-                  placeholder="00000-000"
+                  style={[styles.input, errors.nome && touched.nome && styles.inputError]}
+                  placeholder="Ex: Academia Fitness Pro"
                   placeholderTextColor="#999"
-                  value={formData.cep}
-                  onChangeText={(value) => handleChange('cep', value)}
-                  onBlur={() => handleBlur('cep')}
-                  keyboardType="numeric"
-                  maxLength={9}
-                  editable={!saving && !buscandoCep}
+                  value={formData.nome}
+                  onChangeText={(value) => handleChange('nome', value)}
+                  onBlur={() => handleBlur('nome')}
+                  editable={!saving}
                 />
-                {buscandoCep && (
-                  <ActivityIndicator 
-                    size="small" 
-                    color="#f97316" 
-                    style={styles.cepLoader}
-                  />
+                {errors.nome && touched.nome && (
+                  <Text style={styles.errorText}>{errors.nome}</Text>
                 )}
               </View>
-              {errors.cep && touched.cep && (
-                <Text style={styles.errorText}>{errors.cep}</Text>
-              )}
-            </View>
 
-            <View style={[styles.inputGroup, styles.halfWidth]}>
-              <Text style={styles.label}>Estado</Text>
-              <View style={styles.pickerContainer}>
-                <Picker
-                  selectedValue={formData.estado}
-                  onValueChange={(value) => handleChange('estado', value)}
-                  style={styles.picker}
-                  enabled={!saving}
-                >
-                  <Picker.Item label="Selecione" value="" />
-                  {estados.map((estado) => (
-                    <Picker.Item 
-                      key={estado.sigla} 
-                      label={`${estado.sigla} - ${estado.nome}`} 
-                      value={estado.sigla} 
-                    />
-                  ))}
-                </Picker>
+              <View style={styles.row}>
+                <View style={[styles.inputGroup, styles.flex1]}>
+                  <Text style={styles.label}>E-mail <Text style={styles.required}>*</Text></Text>
+                  <TextInput
+                    style={[styles.input, errors.email && touched.email && styles.inputError]}
+                    placeholder="contato@academia.com"
+                    placeholderTextColor="#999"
+                    value={formData.email}
+                    onChangeText={(value) => handleChange('email', value)}
+                    onBlur={() => handleBlur('email')}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    editable={!saving}
+                  />
+                  {errors.email && touched.email && (
+                    <Text style={styles.errorText}>{errors.email}</Text>
+                  )}
+                </View>
+
+                <View style={[styles.inputGroup, styles.flex1]}>
+                  <Text style={styles.label}>
+                    {isEdit ? 'Nova Senha' : 'Senha do Admin'} {!isEdit && <Text style={styles.required}>*</Text>}
+                  </Text>
+                  <TextInput
+                    style={[styles.input, errors.senha_admin && touched.senha_admin && styles.inputError]}
+                    placeholder={isEdit ? "Deixe vazio para manter" : "Mínimo 6 caracteres"}
+                    placeholderTextColor="#999"
+                    value={formData.senha_admin}
+                    onChangeText={(value) => handleChange('senha_admin', value)}
+                    onBlur={() => handleBlur('senha_admin')}
+                    secureTextEntry
+                    editable={!saving}
+                  />
+                  {errors.senha_admin && touched.senha_admin && (
+                    <Text style={styles.errorText}>{errors.senha_admin}</Text>
+                  )}
+                </View>
+              </View>
+
+              <View style={styles.row}>
+                <View style={[styles.inputGroup, styles.flex1]}>
+                  <Text style={styles.label}>CNPJ</Text>
+                  <TextInput
+                    style={[styles.input, errors.cnpj && touched.cnpj && styles.inputError]}
+                    placeholder="00.000.000/0000-00"
+                    placeholderTextColor="#999"
+                    value={formData.cnpj}
+                    onChangeText={(value) => handleChange('cnpj', value)}
+                    onBlur={() => handleBlur('cnpj')}
+                    keyboardType="numeric"
+                    maxLength={18}
+                    editable={!saving}
+                  />
+                  {errors.cnpj && touched.cnpj && (
+                    <Text style={styles.errorText}>{errors.cnpj}</Text>
+                  )}
+                </View>
+
+                <View style={[styles.inputGroup, styles.flex1]}>
+                  <Text style={styles.label}>Telefone</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="(00) 00000-0000"
+                    placeholderTextColor="#999"
+                    value={formData.telefone}
+                    onChangeText={(value) => handleChange('telefone', value)}
+                    keyboardType="phone-pad"
+                    maxLength={15}
+                    editable={!saving}
+                  />
+                </View>
               </View>
             </View>
           </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Logradouro</Text>
-            <TextInput
-              style={[styles.input, buscandoCep && styles.inputDisabled]}
-              placeholder="Rua, Avenida, etc."
-              placeholderTextColor="#999"
-              value={formData.logradouro}
-              onChangeText={(value) => handleChange('logradouro', value)}
-              editable={!saving && !buscandoCep}
-            />
-          </View>
-
-          <View style={styles.row}>
-            <View style={[styles.inputGroup, styles.halfWidth]}>
-              <Text style={styles.label}>Número</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="123"
-                placeholderTextColor="#999"
-                value={formData.numero}
-                onChangeText={(value) => handleChange('numero', value)}
-                keyboardType="numeric"
-                editable={!saving}
-              />
+          {/* Card: Dados do Responsável */}
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <View style={styles.cardHeaderIcon}>
+                <Feather name="user" size={20} color="#f97316" />
+              </View>
+              <Text style={styles.cardTitle}>Dados do Responsável</Text>
             </View>
-
-            <View style={[styles.inputGroup, styles.halfWidth]}>
-              <Text style={styles.label}>Complemento</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Apto, Sala, etc."
-                placeholderTextColor="#999"
-                value={formData.complemento}
-                onChangeText={(value) => handleChange('complemento', value)}
-                editable={!saving}
-              />
-            </View>
-          </View>
-
-          <View style={styles.row}>
-            <View style={[styles.inputGroup, styles.halfWidth]}>
-              <Text style={styles.label}>Bairro</Text>
-              <TextInput
-                style={[styles.input, buscandoCep && styles.inputDisabled]}
-                placeholder="Nome do bairro"
-                placeholderTextColor="#999"
-                value={formData.bairro}
-                onChangeText={(value) => handleChange('bairro', value)}
-                editable={!saving && !buscandoCep}
-              />
-            </View>
-
-            <View style={[styles.inputGroup, styles.halfWidth]}>
-              <Text style={styles.label}>Cidade</Text>
-              <TextInput
-                style={[styles.input, buscandoCep && styles.inputDisabled]}
-                placeholder="Nome da cidade"
-                placeholderTextColor="#999"
-                value={formData.cidade}
-                onChangeText={(value) => handleChange('cidade', value)}
-                editable={!saving && !buscandoCep}
-              />
-            </View>
-          </View>
-
-          {/* Status (apenas na edição) */}
-          {isEdit && (
-            <>
-              <Text style={styles.sectionTitle}>Status</Text>
+          
+            <View style={styles.cardBody}>
               <View style={styles.inputGroup}>
-                <View style={styles.switchContainer}>
-                  <Text style={styles.label}>Academia Ativa</Text>
+                <Text style={styles.label}>Nome Completo <Text style={styles.required}>*</Text></Text>
+                <TextInput
+                  style={[styles.input, errors.responsavel_nome && touched.responsavel_nome && styles.inputError]}
+                  placeholder="Nome do responsável pela academia"
+                  placeholderTextColor="#999"
+                  value={formData.responsavel_nome}
+                  onChangeText={(value) => handleChange('responsavel_nome', value)}
+                  onBlur={() => handleBlur('responsavel_nome')}
+                  editable={!saving}
+                />
+                {errors.responsavel_nome && touched.responsavel_nome && (
+                  <Text style={styles.errorText}>{errors.responsavel_nome}</Text>
+                )}
+              </View>
+
+              <View style={styles.row}>
+                <View style={[styles.inputGroup, styles.flex1]}>
+                  <Text style={styles.label}>CPF <Text style={styles.required}>*</Text></Text>
+                  <TextInput
+                    style={[styles.input, errors.responsavel_cpf && touched.responsavel_cpf && styles.inputError]}
+                    placeholder="000.000.000-00"
+                    placeholderTextColor="#999"
+                    value={formData.responsavel_cpf}
+                    onChangeText={(value) => handleChange('responsavel_cpf', value)}
+                    onBlur={() => handleBlur('responsavel_cpf')}
+                    keyboardType="numeric"
+                    maxLength={14}
+                    editable={!saving}
+                  />
+                  {errors.responsavel_cpf && touched.responsavel_cpf && (
+                    <Text style={styles.errorText}>{errors.responsavel_cpf}</Text>
+                  )}
+                </View>
+
+                <View style={[styles.inputGroup, styles.flex1]}>
+                  <Text style={styles.label}>Telefone <Text style={styles.required}>*</Text></Text>
+                  <TextInput
+                    style={[styles.input, errors.responsavel_telefone && touched.responsavel_telefone && styles.inputError]}
+                    placeholder="(00) 00000-0000"
+                    placeholderTextColor="#999"
+                    value={formData.responsavel_telefone}
+                    onChangeText={(value) => handleChange('responsavel_telefone', value)}
+                    onBlur={() => handleBlur('responsavel_telefone')}
+                    keyboardType="phone-pad"
+                    maxLength={15}
+                    editable={!saving}
+                  />
+                  {errors.responsavel_telefone && touched.responsavel_telefone && (
+                    <Text style={styles.errorText}>{errors.responsavel_telefone}</Text>
+                  )}
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>E-mail</Text>
+                <TextInput
+                  style={[styles.input, errors.responsavel_email && touched.responsavel_email && styles.inputError]}
+                  placeholder="email@responsavel.com"
+                  placeholderTextColor="#999"
+                  value={formData.responsavel_email}
+                  onChangeText={(value) => handleChange('responsavel_email', value)}
+                  onBlur={() => handleBlur('responsavel_email')}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  editable={!saving}
+                />
+                {errors.responsavel_email && touched.responsavel_email && (
+                  <Text style={styles.errorText}>{errors.responsavel_email}</Text>
+                )}
+              </View>
+            </View>
+          </View>
+
+          {/* Card: Endereço */}
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <View style={styles.cardHeaderIcon}>
+                <Feather name="map-pin" size={20} color="#f97316" />
+              </View>
+              <Text style={styles.cardTitle}>Endereço</Text>
+            </View>
+          
+            <View style={styles.cardBody}>
+              <View style={styles.row}>
+                <View style={[styles.inputGroup, styles.flex1]}>
+                  <Text style={styles.label}>CEP</Text>
+                  <View style={styles.cepInputContainer}>
+                    <TextInput
+                      style={[styles.input, buscandoCep && styles.inputLoading, errors.cep && touched.cep && styles.inputError]}
+                      placeholder="00000-000"
+                      placeholderTextColor="#999"
+                      value={formData.cep}
+                      onChangeText={(value) => handleChange('cep', value)}
+                      onBlur={() => handleBlur('cep')}
+                      keyboardType="numeric"
+                      maxLength={9}
+                      editable={!saving && !buscandoCep}
+                    />
+                    {buscandoCep && (
+                      <ActivityIndicator 
+                        size="small" 
+                        color="#f97316" 
+                        style={styles.cepLoader}
+                      />
+                    )}
+                  </View>
+                  {errors.cep && touched.cep && (
+                    <Text style={styles.errorText}>{errors.cep}</Text>
+                  )}
+                </View>
+
+                <View style={[styles.inputGroup, styles.flex1]}>
+                  <Text style={styles.label}>Estado</Text>
+                  <View style={styles.pickerContainer}>
+                    <Picker
+                      selectedValue={formData.estado}
+                      onValueChange={(value) => handleChange('estado', value)}
+                      style={styles.picker}
+                      enabled={!saving}
+                    >
+                      <Picker.Item label="Selecione" value="" />
+                      {estados.map((estado) => (
+                        <Picker.Item 
+                          key={estado.sigla} 
+                          label={`${estado.sigla} - ${estado.nome}`} 
+                          value={estado.sigla} 
+                        />
+                      ))}
+                    </Picker>
+                  </View>
+                </View>
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Logradouro</Text>
+                <TextInput
+                  style={[styles.input, buscandoCep && styles.inputDisabled]}
+                  placeholder="Rua, Avenida, etc."
+                  placeholderTextColor="#999"
+                  value={formData.logradouro}
+                  onChangeText={(value) => handleChange('logradouro', value)}
+                  editable={!saving && !buscandoCep}
+                />
+              </View>
+
+              <View style={styles.row}>
+                <View style={[styles.inputGroup, { flex: 0.3 }]}>
+                  <Text style={styles.label}>Número</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="123"
+                    placeholderTextColor="#999"
+                    value={formData.numero}
+                    onChangeText={(value) => handleChange('numero', value)}
+                    keyboardType="numeric"
+                    editable={!saving}
+                  />
+                </View>
+
+                <View style={[styles.inputGroup, { flex: 0.7 }]}>
+                  <Text style={styles.label}>Complemento</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Apto, Sala, etc."
+                    placeholderTextColor="#999"
+                    value={formData.complemento}
+                    onChangeText={(value) => handleChange('complemento', value)}
+                    editable={!saving}
+                  />
+                </View>
+              </View>
+
+              <View style={styles.row}>
+                <View style={[styles.inputGroup, styles.flex1]}>
+                  <Text style={styles.label}>Bairro</Text>
+                  <TextInput
+                    style={[styles.input, buscandoCep && styles.inputDisabled]}
+                    placeholder="Nome do bairro"
+                    placeholderTextColor="#999"
+                    value={formData.bairro}
+                    onChangeText={(value) => handleChange('bairro', value)}
+                    editable={!saving && !buscandoCep}
+                  />
+                </View>
+
+                <View style={[styles.inputGroup, styles.flex1]}>
+                  <Text style={styles.label}>Cidade</Text>
+                  <TextInput
+                    style={[styles.input, buscandoCep && styles.inputDisabled]}
+                    placeholder="Nome da cidade"
+                    placeholderTextColor="#999"
+                    value={formData.cidade}
+                    onChangeText={(value) => handleChange('cidade', value)}
+                    editable={!saving && !buscandoCep}
+                  />
+                </View>
+              </View>
+            </View>
+          </View>
+
+          {/* Card: Status (apenas edição) */}
+          {isEdit && (
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardHeaderIcon}>
+                  <Feather name="toggle-right" size={20} color="#f97316" />
+                </View>
+                <Text style={styles.cardTitle}>Status da Academia</Text>
+              </View>
+            
+              <View style={styles.cardBody}>
+                <View style={styles.switchRow}>
+                  <View style={styles.switchInfo}>
+                    <Text style={styles.switchLabel}>Academia Ativa</Text>
+                    <Text style={styles.switchDescription}>
+                      {formData.ativo 
+                        ? 'A academia está ativa e funcionando normalmente.' 
+                        : 'A academia está desativada e não pode ser acessada.'}
+                    </Text>
+                  </View>
                   <Switch
                     value={formData.ativo}
                     onValueChange={(value) => handleChange('ativo', value)}
-                    trackColor={{ false: '#ccc', true: '#f97316' }}
-                    thumbColor={formData.ativo ? '#fff' : '#f4f3f4'}
+                    trackColor={{ false: '#d1d5db', true: '#86efac' }}
+                    thumbColor={formData.ativo ? '#22c55e' : '#9ca3af'}
                     disabled={saving}
                   />
                 </View>
               </View>
-            </>
+            </View>
           )}
 
-          {/* Botão Submit */}
-          <TouchableOpacity
-            style={[styles.submitButton, saving && styles.submitButtonDisabled]}
-            onPress={handleSubmit}
-            disabled={saving}
-          >
-            <Text style={styles.submitButtonText}>
-              {saving ? 'Salvando...' : isEdit ? 'Atualizar Academia' : 'Cadastrar Academia'}
-            </Text>
-          </TouchableOpacity>
+          {/* Botões de Ação */}
+          <View style={styles.actionButtons}>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => router.push('/academias')}
+              disabled={saving}
+            >
+              <Text style={styles.cancelButtonText}>Cancelar</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.submitButton, saving && styles.submitButtonDisabled]}
+              onPress={handleSubmit}
+              disabled={saving}
+            >
+              <Feather name={saving ? 'loader' : 'check'} size={18} color="#fff" />
+              <Text style={styles.submitButtonText}>
+                {saving ? 'Salvando...' : isEdit ? 'Salvar Alterações' : 'Cadastrar Academia'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
     </LayoutBase>
@@ -688,90 +748,146 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   headerActions: {
-    padding: 20,
-    paddingBottom: 0,
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 16,
   },
   backButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     paddingVertical: 10,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     backgroundColor: '#f97316',
     borderRadius: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   backButtonText: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#fff',
     fontWeight: '600',
   },
-  form: {
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+  statusIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+  },
+  statusActive: {
+    backgroundColor: '#dcfce7',
+  },
+  statusInactive: {
+    backgroundColor: '#fee2e2',
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusDotActive: {
+    backgroundColor: '#22c55e',
+  },
+  statusDotInactive: {
+    backgroundColor: '#ef4444',
+  },
+  statusIndicatorText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  statusTextActive: {
+    color: '#166534',
+  },
+  statusTextInactive: {
+    color: '#991b1b',
+  },
+  formContainer: {
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+  },
+  card: {
+    backgroundColor: '#fff',
     borderRadius: 12,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    overflow: 'hidden',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    backgroundColor: '#fef7f0',
+    borderBottomWidth: 1,
+    borderBottomColor: '#fed7aa',
+  },
+  cardHeaderIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  cardBody: {
     padding: 20,
-    paddingTop: 10,
-    margin: 20,
-    marginTop: 10,
   },
   row: {
     flexDirection: 'row',
-    gap: 15,
-    marginBottom: 0,
+    gap: 16,
   },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  halfWidth: {
+  flex1: {
     flex: 1,
   },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#f97316',
-    marginTop: 10,
-    marginBottom: 15,
-    borderBottomWidth: 2,
-    borderBottomColor: '#f97316',
-    paddingBottom: 5,
+  inputGroup: {
+    marginBottom: 16,
   },
   label: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#2b1a04',
-    marginBottom: 8,
+    color: '#374151',
+    marginBottom: 6,
+  },
+  required: {
+    color: '#ef4444',
   },
   input: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: '#f9fafb',
     borderWidth: 1,
-    borderColor: 'rgba(43,26,4,0.2)',
-    borderRadius: 10,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
     padding: 12,
-    fontSize: 16,
-    color: '#2b1a04',
+    fontSize: 15,
+    color: '#111827',
   },
   inputError: {
     borderColor: '#ef4444',
     borderWidth: 2,
+    backgroundColor: '#fef2f2',
   },
   inputDisabled: {
-    backgroundColor: 'rgba(240, 240, 240, 0.9)',
-    color: '#666',
+    backgroundColor: '#f3f4f6',
+    color: '#6b7280',
+  },
+  inputLoading: {
+    backgroundColor: '#f9fafb',
   },
   errorText: {
     color: '#ef4444',
     fontSize: 12,
     marginTop: 4,
-    marginLeft: 4,
-  },
-  inputLoading: {
-    backgroundColor: 'rgba(249, 249, 249, 0.9)',
   },
   cepInputContainer: {
     position: 'relative',
@@ -782,37 +898,73 @@ const styles = StyleSheet.create({
     top: 12,
   },
   pickerContainer: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    backgroundColor: '#f9fafb',
     borderWidth: 1,
-    borderColor: 'rgba(43,26,4,0.2)',
-    borderRadius: 10,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
     overflow: 'hidden',
   },
   picker: {
-    height: 50,
-    color: '#2b1a04',
+    height: 48,
+    color: '#111827',
   },
-  switchContainer: {
+  switchRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 8,
   },
-  submitButton: {
-    backgroundColor: '#f97316',
-    padding: 16,
+  switchInfo: {
+    flex: 1,
+    marginRight: 16,
+  },
+  switchLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  switchDescription: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 4,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 8,
+  },
+  cancelButton: {
+    flex: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
     borderRadius: 10,
     alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 20,
+  },
+  cancelButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  submitButton: {
+    flex: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    backgroundColor: '#f97316',
+    borderRadius: 10,
   },
   submitButtonDisabled: {
-    backgroundColor: '#fbbf24',
-    opacity: 0.6,
+    backgroundColor: '#fdba74',
   },
   submitButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
     color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
   },
 });

@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { mascaraCPF, apenasNumeros } from '../utils/masks';
+import { showError } from '../utils/toast';
 
 export default function BuscarUsuarioCpfModal({ visible, onClose, onUsuarioEncontrado, onCriarNovoUsuario }) {
   const [cpf, setCpf] = useState('');
@@ -22,7 +23,7 @@ export default function BuscarUsuarioCpfModal({ visible, onClose, onUsuarioEncon
     const cpfLimpo = apenasNumeros(cpf);
     
     if (cpfLimpo.length !== 11) {
-      alert('CPF deve conter 11 dígitos');
+      showError('CPF deve conter 11 dígitos');
       return;
     }
 
@@ -38,6 +39,14 @@ export default function BuscarUsuarioCpfModal({ visible, onClose, onUsuarioEncon
       
       const data = await response.json();
       
+      if (!response.ok) {
+        // Tratamento de erros HTTP (400, 404, etc)
+        showError(data.error || data.message || 'Erro ao buscar usuário');
+        setUsuario(null);
+        setSearched(false);
+        return;
+      }
+      
       if (data.found) {
         setUsuario(data);
         setSearched(true);
@@ -47,7 +56,7 @@ export default function BuscarUsuarioCpfModal({ visible, onClose, onUsuarioEncon
       }
     } catch (error) {
       console.error('Erro ao buscar usuário:', error);
-      alert('Erro ao buscar usuário');
+      showError('Erro ao buscar usuário');
     } finally {
       setLoading(false);
     }

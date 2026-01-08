@@ -269,13 +269,22 @@ class PagamentoPlanoController
     public function confirmar(Request $request, Response $response, array $args): Response
     {
         $tenantId = $request->getAttribute('tenant_id');
-        $adminId = $request->getAttribute('usuario_id');
+        $adminId = $request->getAttribute('userId'); // Corrigido: usar 'userId' conforme definido no AuthMiddleware
         $pagamentoId = (int) $args['id'];
         $data = $request->getParsedBody();
         
+        // Validar que temos um adminId
+        if (!$adminId) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Usuário não autenticado'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(401);
+        }
+        
         $db = require __DIR__ . '/../../config/database.php';
         $pagamentoModel = new PagamentoPlano($db);
-        $planoModel = new Plano($db);
+        $planoModel = new Plano($db, $tenantId);
         
         try {
             $db->beginTransaction();
@@ -294,15 +303,28 @@ class PagamentoPlanoController
             $pagamentoModel->confirmarPagamento(
                 $tenantId,
                 $pagamentoId,
-                $adminId,
+                (int) $adminId,
                 $data['data_pagamento'] ?? null,
                 $data['forma_pagamento_id'] ?? null,
                 $data['comprovante'] ?? null,
-                $data['observacoes'] ?? null
+                $data['observacoes'] ?? null,
+                1 // tipo_baixa_id = 1 (Manual)
             );
             
+            // Verificar se é o PRIMEIRO pagamento da matrícula (está em status PENDENTE)
+            // Se for, liberar a matrícula (mudar para ATIVA)
+            $stmtMatricula = $db->prepare("SELECT status FROM matriculas WHERE id = ?");
+            $stmtMatricula->execute([$pagamento['matricula_id']]);
+            $matricula = $stmtMatricula->fetch(\PDO::FETCH_ASSOC);
+            
+            if ($matricula && $matricula['status'] === 'pendente') {
+                    // Primeira parcela foi paga - liberar a matrícula e atualizar status_id
+                    $stmtAtualizar = $db->prepare("\n                    UPDATE matriculas \n                    SET \n                        status = 'ativa',\n                        status_id = (SELECT sm.id FROM status_matricula sm WHERE sm.codigo = 'ativa' AND sm.ativo = TRUE),\n                        updated_at = NOW()\n                    WHERE id = ?\n                ");
+                    $stmtAtualizar->execute([$pagamento['matricula_id']]);
+            }
+            
             // Buscar informações do plano para calcular próximo vencimento
-            $plano = $planoModel->buscarPorId($tenantId, $pagamento['plano_id']);
+            $plano = $planoModel->findById($pagamento['plano_id']);
             
             if ($plano && $plano['duracao_dias'] > 0) {
                 // Calcular próxima data de vencimento

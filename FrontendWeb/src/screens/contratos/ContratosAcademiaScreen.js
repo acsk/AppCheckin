@@ -2,9 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, Alert, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import LayoutBase from '../../components/LayoutBase';
 import { buscarContratos, criarContrato, trocarPlano, renovarContrato } from '../../services/contratoService';
-import { buscarPlanos } from '../../services/planoService';
+import planoService from '../../services/planoService';
 import { authService } from '../../services/authService';
 import { showError } from '../../utils/toast';
 
@@ -55,12 +56,15 @@ export default function ContratosAcademiaScreen() {
     
     const resultContratos = await buscarContratos(academiaId);
     if (resultContratos.success) {
-      setContratos(resultContratos.data.historico || []);
+      // A API retorna { contratos: [...] } ou { historico: [...] }
+      setContratos(resultContratos.data.contratos || resultContratos.data.historico || []);
     }
 
-    const resultPlanos = await buscarPlanos();
-    if (resultPlanos.success) {
-      setPlanos(resultPlanos.data.planos || []);
+    try {
+      const planosData = await planoService.listar();
+      setPlanos(planosData.planos || planosData || []);
+    } catch (error) {
+      console.error('Erro ao carregar planos:', error);
     }
 
     setLoading(false);
@@ -244,23 +248,56 @@ export default function ContratosAcademiaScreen() {
   );
 
   return (
-    <LayoutBase>
+    <LayoutBase noPadding>
       <View style={styles.container}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-              <Ionicons name="arrow-back" size={20} color="#666" />
-            </TouchableOpacity>
-            <View>
-              <Text style={styles.title}>Contratos - {academiaNome}</Text>
-              <Text style={styles.subtitle}>Gerenciar contratos de planos</Text>
+        {/* Banner Header */}
+        <View style={styles.bannerContainer}>
+          <View style={styles.banner}>
+            <View style={styles.bannerContent}>
+              <TouchableOpacity onPress={() => router.back()} style={styles.backButtonBanner}>
+                <Feather name="arrow-left" size={24} color="#fff" />
+              </TouchableOpacity>
+              <View style={styles.bannerIconContainer}>
+                <View style={styles.bannerIconOuter}>
+                  <View style={styles.bannerIconInner}>
+                    <Feather name="file-text" size={28} color="#fff" />
+                  </View>
+                </View>
+              </View>
+              <View style={styles.bannerTextContainer}>
+                <Text style={styles.bannerTitle}>Contratos</Text>
+                <Text style={styles.bannerSubtitle} numberOfLines={1}>
+                  {academiaNome || 'Gerenciar contratos da academia'}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.bannerDecoration}>
+              <View style={styles.decorCircle1} />
+              <View style={styles.decorCircle2} />
+              <View style={styles.decorCircle3} />
             </View>
           </View>
-          <TouchableOpacity style={styles.btnNovo} onPress={() => setModalCriar(true)}>
-            <Ionicons name="add" size={20} color="#fff" />
-            <Text style={styles.btnNovoText}>Novo Contrato</Text>
-          </TouchableOpacity>
+
+          {/* Card de Ações */}
+          <View style={[styles.actionCard, isMobile && styles.actionCardMobile]}>
+            <View style={styles.actionCardHeader}>
+              <View style={styles.actionCardInfo}>
+                <View style={styles.actionCardIconContainer}>
+                  <Feather name="layers" size={20} color="#f97316" />
+                </View>
+                <View>
+                  <Text style={styles.actionCardTitle}>Contratos da Academia</Text>
+                  <Text style={styles.actionCardSubtitle}>
+                    {contratos.length} {contratos.length === 1 ? 'contrato' : 'contratos'} encontrado(s)
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity style={[styles.btnNovo, isMobile && styles.btnNovoMobile]} onPress={() => setModalCriar(true)}>
+                <Feather name="plus" size={18} color="#fff" />
+                {!isMobile && <Text style={styles.btnNovoText}>Novo Contrato</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
 
         {/* Conteúdo */}
@@ -365,37 +402,169 @@ export default function ContratosAcademiaScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f9fafb' },
+  container: { flex: 1, backgroundColor: '#f8fafc' },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
 
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+  // Banner Header
+  bannerContainer: {
+    backgroundColor: '#f8fafc',
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 16, flex: 1 },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: '#f3f4f6',
+  banner: {
+    backgroundColor: '#f97316',
+    paddingVertical: 28,
+    paddingHorizontal: 24,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  bannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    zIndex: 2,
+  },
+  backButtonBanner: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  title: { fontSize: 20, fontWeight: 'bold', color: '#111827' },
-  subtitle: { fontSize: 13, color: '#6b7280', marginTop: 2 },
+  bannerIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerIconOuter: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerIconInner: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerTextContainer: {
+    flex: 1,
+  },
+  bannerTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.5,
+  },
+  bannerSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.85)',
+    marginTop: 4,
+    lineHeight: 20,
+  },
+  bannerDecoration: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: 200,
+    zIndex: 1,
+  },
+  decorCircle1: {
+    position: 'absolute',
+    top: -30,
+    right: -30,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  decorCircle2: {
+    position: 'absolute',
+    top: 40,
+    right: 60,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  decorCircle3: {
+    position: 'absolute',
+    bottom: -20,
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  // Action Card
+  actionCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    marginHorizontal: 20,
+    marginTop: -24,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+    zIndex: 10,
+  },
+  actionCardMobile: {
+    marginHorizontal: 16,
+    padding: 16,
+  },
+  actionCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  actionCardInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  actionCardIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(249, 115, 22, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionCardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1f2937',
+  },
+  actionCardSubtitle: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 2,
+  },
   btnNovo: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#f97316',
-    paddingVertical: 10,
+    backgroundColor: '#10b981',
+    paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 8,
+  },
+  btnNovoMobile: {
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 50,
   },
   btnNovoText: { color: '#fff', fontSize: 14, fontWeight: '600' },
 

@@ -78,27 +78,27 @@ export default function ContratoDetalheScreen() {
 
   const getStatusColor = (statusId) => {
     switch (statusId) {
-      case 1: return '#FFA500'; // Pendente
-      case 2: return '#4CAF50'; // Confirmado
-      case 3: return '#F44336'; // Cancelado
-      case 4: return '#FF9800'; // Atrasado
+      case 1: return '#3B82F6'; // Aguardando (azul)
+      case 2: return '#4CAF50'; // Pago (verde)
+      case 3: return '#F44336'; // Atrasado (vermelho)
+      case 4: return '#6B7280'; // Cancelado (cinza)
       default: return '#999';
     }
   };
 
   const getStatusNome = (statusId) => {
     switch (statusId) {
-      case 1: return 'Pendente';
-      case 2: return 'Confirmado';
-      case 3: return 'Cancelado';
-      case 4: return 'Atrasado';
+      case 1: return 'Aguardando';
+      case 2: return 'Pago';
+      case 3: return 'Atrasado';
+      case 4: return 'Cancelado';
       default: return 'Desconhecido';
     }
   };
 
   if (loading) {
     return (
-      <LayoutBase title="Detalhes do Contrato">
+      <LayoutBase title="Detalhes do Contrato" noPadding>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#FF6B00" />
           <Text style={styles.loadingText}>Carregando dados do contrato...</Text>
@@ -109,11 +109,11 @@ export default function ContratoDetalheScreen() {
 
   if (!contrato) {
     return (
-      <LayoutBase title="Detalhes do Contrato">
+      <LayoutBase title="Detalhes do Contrato" noPadding>
         <View style={styles.errorContainer}>
           <Text style={styles.errorText}>Contrato não encontrado</Text>
-          <TouchableOpacity style={styles.voltarButton} onPress={() => router.back()}>
-            <Text style={styles.voltarButtonText}>Voltar</Text>
+          <TouchableOpacity style={styles.voltarButtonError} onPress={() => router.back()}>
+            <Text style={styles.voltarButtonErrorText}>Voltar</Text>
           </TouchableOpacity>
         </View>
       </LayoutBase>
@@ -123,15 +123,76 @@ export default function ContratoDetalheScreen() {
   const resumo = calcularResumo();
 
   return (
-    <LayoutBase title={`Contrato #${contrato.id}`}>
-      <ScrollView style={styles.container}>
-      <View style={[styles.content, isDesktop && styles.contentDesktop]}>
-        {/* Botão Voltar */}
-        <TouchableOpacity style={styles.voltarButton} onPress={() => router.push('/contratos')}>
-          <Text style={styles.voltarButtonText}>← Voltar</Text>
-        </TouchableOpacity>
+    <LayoutBase title={`Contrato #${contrato.id}`} noPadding>
+      <View style={styles.container}>
+        {/* Banner Header */}
+        <View style={styles.bannerContainer}>
+          <View style={styles.banner}>
+            <View style={styles.bannerContent}>
+              <TouchableOpacity onPress={() => router.push('/contratos')} style={styles.backButtonBanner}>
+                <Feather name="arrow-left" size={24} color="#fff" />
+              </TouchableOpacity>
+              <View style={styles.bannerIconContainer}>
+                <View style={styles.bannerIconOuter}>
+                  <View style={styles.bannerIconInner}>
+                    <Feather name="file-text" size={28} color="#fff" />
+                  </View>
+                </View>
+              </View>
+              <View style={styles.bannerTextContainer}>
+                <Text style={styles.bannerTitle}>Contrato #{contrato.id}</Text>
+                <Text style={styles.bannerSubtitle} numberOfLines={1}>
+                  {contrato.tenant_nome} • {contrato.plano_nome}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.bannerDecoration}>
+              <View style={styles.decorCircle1} />
+              <View style={styles.decorCircle2} />
+              <View style={styles.decorCircle3} />
+            </View>
+          </View>
 
-        {/* Card com informações do contrato */}
+          {/* Card de Resumo Rápido */}
+          <View style={[styles.summaryCard, !isDesktop && styles.summaryCardMobile]}>
+            <View style={styles.summaryCardHeader}>
+              <View style={styles.summaryCardInfo}>
+                <View style={styles.summaryCardIconContainer}>
+                  <Feather name="info" size={20} color="#f97316" />
+                </View>
+                <View>
+                  <Text style={styles.summaryCardTitle}>Detalhes do Contrato</Text>
+                  <Text style={styles.summaryCardSubtitle}>
+                    Status: {contrato.status_nome}
+                  </Text>
+                </View>
+              </View>
+              <View style={[styles.statusBadgeLarge, { backgroundColor: getStatusColor(contrato.status_id) }]}>
+                <Text style={styles.statusTextLarge}>{contrato.status_nome?.toUpperCase()}</Text>
+              </View>
+            </View>
+            
+            {/* Botão de Ações Rápidas */}
+            {contrato.status_nome?.toLowerCase() === 'ativo' && pagamentos.some(p => p.status_pagamento_id === 1) && (
+              <View style={styles.quickActionsRow}>
+                <TouchableOpacity 
+                  style={styles.quickActionButton}
+                  onPress={() => {
+                    const pendente = pagamentos.find(p => p.status_pagamento_id === 1);
+                    if (pendente) handleBaixaPagamento(pendente);
+                  }}
+                >
+                  <Feather name="check-circle" size={18} color="#fff" />
+                  <Text style={styles.quickActionText}>Baixa Manual</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+
+        <ScrollView style={styles.scrollContent} contentContainerStyle={styles.scrollContentContainer}>
+
+        {/* Card com informações do contrato - Layout Compacto */}
         <View style={styles.card}>
           <View style={styles.cardTitleRow}>
             <View style={styles.cardTitleIcon}>
@@ -140,39 +201,46 @@ export default function ContratoDetalheScreen() {
             <Text style={styles.cardTitle}>Informações do Contrato</Text>
           </View>
           
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Academia</Text>
-            <Text style={styles.infoValue}>{contrato.tenant_nome}</Text>
-          </View>
-          
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Plano</Text>
-            <Text style={styles.infoValue}>{contrato.plano_nome}</Text>
-          </View>
-          
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Valor do Plano</Text>
-            <Text style={[styles.infoValue, styles.valorDestaque]}>
-              {formatarValorMonetario(contrato.plano_valor)}
-            </Text>
-          </View>
-          
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Status</Text>
-            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(contrato.status_id) }]}>
-              <Text style={styles.statusText}>{contrato.status_nome}</Text>
+          <View style={styles.infoGrid}>
+            <View style={styles.infoGridItem}>
+              <Feather name="home" size={16} color="#6b7280" />
+              <View style={styles.infoGridContent}>
+                <Text style={styles.infoGridLabel}>Academia</Text>
+                <Text style={styles.infoGridValue}>{contrato.tenant_nome}</Text>
+              </View>
+            </View>
+            
+            <View style={styles.infoGridItem}>
+              <Feather name="package" size={16} color="#6b7280" />
+              <View style={styles.infoGridContent}>
+                <Text style={styles.infoGridLabel}>Plano</Text>
+                <Text style={styles.infoGridValue}>{contrato.plano_nome}</Text>
+              </View>
+            </View>
+            
+            <View style={styles.infoGridItem}>
+              <Feather name="dollar-sign" size={16} color="#10b981" />
+              <View style={styles.infoGridContent}>
+                <Text style={styles.infoGridLabel}>Valor</Text>
+                <Text style={[styles.infoGridValue, styles.infoGridValueDestaque]}>
+                  {formatarValorMonetario(contrato.plano_valor)}
+                </Text>
+              </View>
+            </View>
+            
+            <View style={styles.infoGridItem}>
+              <Feather name="calendar" size={16} color="#6b7280" />
+              <View style={styles.infoGridContent}>
+                <Text style={styles.infoGridLabel}>Início</Text>
+                <Text style={styles.infoGridValue}>{formatarData(contrato.data_inicio)}</Text>
+              </View>
             </View>
           </View>
           
-          <View style={styles.infoRow}>
-            <Text style={styles.infoLabel}>Data de Início</Text>
-            <Text style={styles.infoValue}>{formatarData(contrato.data_inicio)}</Text>
-          </View>
-          
           {contrato.observacoes && (
-            <View style={styles.infoRow}>
-              <Text style={styles.infoLabel}>Observações</Text>
-              <Text style={styles.infoValue}>{contrato.observacoes}</Text>
+            <View style={styles.obsContainer}>
+              <Feather name="message-square" size={14} color="#6b7280" />
+              <Text style={styles.obsText}>{contrato.observacoes}</Text>
             </View>
           )}
         </View>
@@ -313,7 +381,6 @@ export default function ContratoDetalheScreen() {
             </Text>
           </View>
         </View>
-      </View>
 
       {/* Modal de baixa manual */}
       {pagamentoSelecionado && (
@@ -327,7 +394,8 @@ export default function ContratoDetalheScreen() {
           onSuccess={handleBaixaSuccess}
         />
       )}
-      </ScrollView>
+        </ScrollView>
+      </View>
     </LayoutBase>
   );
 }
@@ -335,16 +403,197 @@ export default function ContratoDetalheScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffffff',
+    backgroundColor: '#f8fafc',
   },
-  content: {
+  // Banner Header
+  bannerContainer: {
+    backgroundColor: '#f8fafc',
+  },
+  banner: {
+    backgroundColor: '#f97316',
+    paddingVertical: 28,
+    paddingHorizontal: 24,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  bannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    zIndex: 2,
+  },
+  backButtonBanner: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  bannerIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerIconOuter: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerIconInner: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerTextContainer: {
+    flex: 1,
+  },
+  bannerTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.5,
+  },
+  bannerSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.85)',
+    marginTop: 4,
+    lineHeight: 20,
+  },
+  bannerDecoration: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: 200,
+    zIndex: 1,
+  },
+  decorCircle1: {
+    position: 'absolute',
+    top: -30,
+    right: -30,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  decorCircle2: {
+    position: 'absolute',
+    top: 40,
+    right: 60,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  decorCircle3: {
+    position: 'absolute',
+    bottom: -20,
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  // Summary Card
+  summaryCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    marginHorizontal: 20,
+    marginTop: -24,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+    zIndex: 10,
+  },
+  summaryCardMobile: {
+    marginHorizontal: 16,
+    padding: 16,
+  },
+  summaryCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  summaryCardInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  summaryCardIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(249, 115, 22, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  summaryCardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1f2937',
+  },
+  summaryCardSubtitle: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  quickActionsRow: {
+    flexDirection: 'row',
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    gap: 12,
+  },
+  quickActionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#10b981',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    gap: 8,
+  },
+  quickActionText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  statusBadgeLarge: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  statusTextLarge: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  // Scroll Content
+  scrollContent: {
+    flex: 1,
+  },
+  scrollContentContainer: {
     padding: 20,
     gap: 16,
-  },
-  contentDesktop: {
-   
-    alignSelf: 'center',
-    width: '100%',
   },
   loadingContainer: {
     flex: 1,
@@ -367,17 +616,15 @@ const styles = StyleSheet.create({
     color: '#F44336',
     marginBottom: 20,
   },
-  voltarButton: {
-    alignSelf: 'flex-start',
-    marginBottom: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: 'rgba(249,115,22,0.12)',
+  voltarButtonError: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#f97316',
   },
-  voltarButtonText: {
+  voltarButtonErrorText: {
     fontSize: 15,
-    color: '#f97316',
+    color: '#fff',
     fontWeight: '700',
   },
   card: {
@@ -448,6 +695,61 @@ const styles = StyleSheet.create({
     color: '#111827',
     flex: 1,
     fontWeight: '600',
+  },
+  // Grid Compacto de Informações
+  infoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  infoGridItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#f9fafb',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    minWidth: '48%',
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  infoGridContent: {
+    flex: 1,
+  },
+  infoGridLabel: {
+    fontSize: 11,
+    color: '#6b7280',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
+  },
+  infoGridValue: {
+    fontSize: 14,
+    color: '#111827',
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  infoGridValueDestaque: {
+    color: '#10b981',
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  obsContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  obsText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#6b7280',
+    lineHeight: 18,
   },
   valorDestaque: {
     fontWeight: '800',

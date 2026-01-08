@@ -124,11 +124,11 @@ class Modalidade
     }
 
     /**
-     * Excluir modalidade (soft delete)
+     * Alternar status da modalidade (ativar/desativar)
      */
     public function excluir(int $id): bool
     {
-        $sql = "UPDATE modalidades SET ativo = 0 WHERE id = :id";
+        $sql = "UPDATE modalidades SET ativo = NOT ativo WHERE id = :id";
         
         $stmt = $this->pdo->prepare($sql);
         return $stmt->execute(['id' => $id]);

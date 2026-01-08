@@ -1113,4 +1113,70 @@ class SuperAdminController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
     }
+
+    /**
+     * Listar planos de alunos de todos os tenants ou filtrado por tenant
+     * GET /superadmin/planos?tenant_id=X&ativos=true
+     */
+    public function listarPlanosAlunos(Request $request, Response $response): Response
+    {
+        $userId = $request->getAttribute('userId');
+        $user = $this->usuarioModel->findById($userId);
+
+        // Verificar se é super admin
+        if ($user['role_id'] != 3) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Acesso negado. Apenas Super Admin'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+
+        $queryParams = $request->getQueryParams();
+        $tenantId = isset($queryParams['tenant_id']) ? (int) $queryParams['tenant_id'] : null;
+        $apenasAtivos = isset($queryParams['ativos']) && $queryParams['ativos'] === 'true';
+
+        // Se não tem tenant_id, retorna apenas a lista de tenants
+        if (!$tenantId) {
+            $tenants = $this->tenantModel->getAll(['ativo' => true]);
+            $response->getBody()->write(json_encode([
+                'planos' => [],
+                'total' => 0,
+                'tenants' => $tenants,
+                'message' => 'Selecione uma academia para ver os planos'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json');
+        }
+
+        $db = require __DIR__ . '/../../config/database.php';
+        
+        $sql = "SELECT p.*, t.nome as academia_nome,
+                       m.nome as modalidade_nome, m.icone as modalidade_icone, m.cor as modalidade_cor
+                FROM planos p
+                INNER JOIN tenants t ON p.tenant_id = t.id
+                LEFT JOIN modalidades m ON p.modalidade_id = m.id
+                WHERE p.tenant_id = :tenant_id";
+        $params = ['tenant_id' => $tenantId];
+
+        if ($apenasAtivos) {
+            $sql .= " AND p.ativo = 1";
+        }
+
+        $sql .= " ORDER BY p.nome ASC";
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        $planos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        // Buscar lista de tenants para o filtro
+        $tenants = $this->tenantModel->getAll(['ativo' => true]);
+
+        $response->getBody()->write(json_encode([
+            'planos' => $planos,
+            'total' => count($planos),
+            'tenants' => $tenants
+        ], JSON_UNESCAPED_UNICODE));
+
+        return $response->withHeader('Content-Type', 'application/json');
+    }
 }
+

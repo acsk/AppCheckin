@@ -199,30 +199,39 @@ class PagamentoContratoController
                 $this->contratoModel->atualizarStatus($pagamento['tenant_plano_id'], 1);
             }
             
-            // Gerar próximo pagamento automaticamente
+            // Buscar contrato para obter a duração de dias do plano
+            $contrato = $this->contratoModel->buscarPorId($pagamento['tenant_plano_id']);
+            $duracaoDias = 30; // Padrão: 30 dias
+            
+            if ($contrato && !empty($contrato['duracao_dias'])) {
+                $duracaoDias = (int) $contrato['duracao_dias'];
+            }
+            
+            // Gerar próximo pagamento automaticamente usando a duração do plano
             $dataVencimentoAtual = new \DateTime($pagamento['data_vencimento']);
             $proximaDataVencimento = clone $dataVencimentoAtual;
-            $proximaDataVencimento->modify('+1 month');
+            $proximaDataVencimento->modify("+{$duracaoDias} days");
             
-            // Verificar se já existe pagamento para esta data
+            // Verificar se já existe pagamento pendente para este contrato
             $pagamentos = $this->pagamentoModel->listarPorContrato($pagamento['tenant_plano_id']);
-            $jaExisteProximo = false;
+            $jaExistePendente = false;
             foreach ($pagamentos as $p) {
-                if ($p['data_vencimento'] === $proximaDataVencimento->format('Y-m-d')) {
-                    $jaExisteProximo = true;
+                // Verificar se já existe algum pagamento pendente (status_pagamento_id = 1)
+                if ($p['status_pagamento_id'] == 1) {
+                    $jaExistePendente = true;
                     break;
                 }
             }
             
-            // Se não existe, criar o próximo pagamento
-            if (!$jaExisteProximo) {
+            // Se não existe pagamento pendente, criar o próximo
+            if (!$jaExistePendente) {
                 $proximoPagamento = [
                     'tenant_plano_id' => $pagamento['tenant_plano_id'],
                     'valor' => $pagamento['valor'],
                     'data_vencimento' => $proximaDataVencimento->format('Y-m-d'),
-                    'status_pagamento_id' => 1, // Aguardando
-                    'forma_pagamento' => $pagamento['forma_pagamento'],
-                    'observacoes' => 'Pagamento gerado automaticamente após confirmação'
+                    'status_pagamento_id' => 1, // Pendente
+                    'forma_pagamento_id' => $pagamento['forma_pagamento_id'],
+                    'observacoes' => "Pagamento gerado automaticamente ({$duracaoDias} dias)"
                 ];
                 $this->pagamentoModel->criar($proximoPagamento);
             }

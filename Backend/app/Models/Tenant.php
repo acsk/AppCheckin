@@ -107,7 +107,12 @@ class Tenant
             'ativo' => $data['ativo'] ?? true
         ]);
 
-        return (int) $this->db->lastInsertId();
+        $tenantId = (int) $this->db->lastInsertId();
+
+        // Inicializar configurações padrão de formas de pagamento
+        $this->inicializarFormasPagamento($tenantId);
+
+        return $tenantId;
     }
 
     /**
@@ -161,5 +166,81 @@ class Tenant
         );
         
         return $stmt->execute(['id' => $id]);
+    }
+
+    /**
+     * Inicializar configurações padrão de formas de pagamento para o tenant
+     */
+    public function inicializarFormasPagamento(int $tenantId): void
+    {
+        // Verificar se já existem configurações
+        $stmt = $this->db->prepare(
+            "SELECT COUNT(*) as total FROM tenant_formas_pagamento WHERE tenant_id = :tenant_id"
+        );
+        $stmt->execute(['tenant_id' => $tenantId]);
+        $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+        
+        if ($result['total'] > 0) {
+            return; // Já tem configurações, não precisa criar
+        }
+
+        // Criar configurações padrão baseadas nas formas de pagamento ativas
+        $sql = "INSERT INTO tenant_formas_pagamento 
+                (tenant_id, forma_pagamento_id, ativo, taxa_percentual, taxa_fixa, 
+                 aceita_parcelamento, parcelas_minimas, parcelas_maximas, juros_parcelamento, 
+                 parcelas_sem_juros, dias_compensacao, valor_minimo)
+                SELECT 
+                    :tenant_id,
+                    id, 
+                    0, 
+                    percentual_desconto, 
+                    0.00, 
+                    0, 
+                    1, 
+                    12, 
+                    0.00, 
+                    1, 
+                    0, 
+                    0.00 
+                FROM formas_pagamento 
+                WHERE ativo = 1";
+        
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute(['tenant_id' => $tenantId]);
+    }
+
+    /**
+     * Verificar se tenant tem usuário Admin ativo
+     */
+    public function verificarUsuarioAdmin(int $tenantId): bool
+    {
+        $stmt = $this->db->prepare(
+            "SELECT COUNT(*) as total 
+             FROM usuarios 
+             WHERE tenant_id = :tenant_id 
+             AND role_id = 2 
+             AND ativo = 1"
+        );
+        $stmt->execute(['tenant_id' => $tenantId]);
+        $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+        
+        return $result['total'] > 0;
+    }
+
+    /**
+     * Verificar se tenant tem contrato ativo
+     */
+    public function verificarContratoAtivo(int $tenantId): bool
+    {
+        $stmt = $this->db->prepare(
+            "SELECT COUNT(*) as total 
+             FROM tenant_planos_sistema 
+             WHERE tenant_id = :tenant_id 
+             AND status_id = 1"
+        );
+        $stmt->execute(['tenant_id' => $tenantId]);
+        $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+        
+        return $result['total'] > 0;
     }
 }

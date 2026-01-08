@@ -17,7 +17,7 @@ export default function UsuariosScreen() {
   const [usuariosFiltrados, setUsuariosFiltrados] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState({ visible: false, id: null, nome: '' });
+  const [confirmDelete, setConfirmDelete] = useState({ visible: false, id: null, nome: '', status: '', acao: '' });
   const [searchText, setSearchText] = useState('');
 
   useEffect(() => {
@@ -100,22 +100,26 @@ export default function UsuariosScreen() {
     loadUsuarios('');
   };
 
-  const handleDelete = (usuario) => {
+  const handleToggleStatus = (usuario) => {
+    const acao = (usuario.status === 'ativo' || usuario.ativo) ? 'desativar' : 'ativar';
     setConfirmDelete({
       visible: true,
       id: usuario.id,
-      nome: usuario.nome
+      nome: usuario.nome,
+      status: usuario.status || (usuario.ativo ? 'ativo' : 'inativo'),
+      acao: acao
     });
   };
 
   const confirmDeleteUsuario = async () => {
     try {
       await usuarioService.desativar(confirmDelete.id, isSuperAdmin);
-      showSuccess('Usuário desativado com sucesso');
-      setConfirmDelete({ visible: false, id: null, nome: '' });
+      const acao = confirmDelete.acao === 'desativar' ? 'desativado' : 'ativado';
+      showSuccess(`Usuário ${acao} com sucesso`);
+      setConfirmDelete({ visible: false, id: null, nome: '', status: '', acao: '' });
       loadUsuarios();
     } catch (error) {
-      showError(error.error || error.message || 'Erro ao desativar usuário');
+      showError(error.error || error.message || 'Erro ao alterar status do usuário');
     }
   };
 
@@ -160,9 +164,13 @@ export default function UsuariosScreen() {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.cardActionButton}
-            onPress={() => handleDelete(usuario)}
+            onPress={() => handleToggleStatus(usuario)}
           >
-            <Feather name="trash-2" size={18} color="#ef4444" />
+            <Feather 
+              name={(usuario.status === 'ativo' || usuario.ativo) ? "toggle-right" : "toggle-left"} 
+              size={20} 
+              color={(usuario.status === 'ativo' || usuario.ativo) ? '#16a34a' : '#ef4444'} 
+            />
           </TouchableOpacity>
         </View>
       </View>
@@ -243,9 +251,13 @@ export default function UsuariosScreen() {
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.actionButton}
-                  onPress={() => handleDelete(usuario)}
+                  onPress={() => handleToggleStatus(usuario)}
                 >
-                  <Feather name="trash-2" size={16} color="#ef4444" />
+                  <Feather 
+                    name={(usuario.status === 'ativo' || usuario.ativo) ? "toggle-right" : "toggle-left"} 
+                    size={18} 
+                    color={(usuario.status === 'ativo' || usuario.ativo) ? '#16a34a' : '#ef4444'} 
+                  />
                 </TouchableOpacity>
               </View>
             </View>
@@ -366,10 +378,10 @@ export default function UsuariosScreen() {
       {/* Modal de Confirmação */}
       <ConfirmModal
         visible={confirmDelete.visible}
-        title="Desativar Usuário"
-        message={`Tem certeza que deseja desativar o usuário "${confirmDelete.nome}"?`}
+        title={confirmDelete.acao === 'desativar' ? 'Confirmar Desativação' : 'Confirmar Ativação'}
+        message={`Deseja realmente ${confirmDelete.acao} o usuário "${confirmDelete.nome}"?`}
         onConfirm={confirmDeleteUsuario}
-        onCancel={() => setConfirmDelete({ visible: false, id: null, nome: '' })}
+        onCancel={() => setConfirmDelete({ visible: false, id: null, nome: '', status: '', acao: '' })}
       />
     </LayoutBase>
   );

@@ -9,6 +9,7 @@ import {
   Alert,
   Platform,
   ToastAndroid,
+  TextInput,
 } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -21,8 +22,23 @@ export default function MatriculasScreen() {
   const { width } = useWindowDimensions();
   const [matriculas, setMatriculas] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ativa');
 
   const isMobile = width < 768;
+
+  // Função de filtro
+  const filteredMatriculas = matriculas.filter(matricula => {
+    const matchSearch = searchTerm === '' || 
+      matricula.usuario_nome?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      matricula.usuario_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      matricula.plano_nome?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      matricula.modalidade_nome?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchStatus = statusFilter === 'todos' || matricula.status === statusFilter;
+    
+    return matchSearch && matchStatus;
+  });
 
   useEffect(() => {
     carregarMatriculas();
@@ -48,19 +64,22 @@ export default function MatriculasScreen() {
   const handleCancelar = async (matricula) => {
     Alert.alert(
       'Cancelar Matrícula',
-      `Deseja realmente cancelar a matrícula de ${matricula.usuario_nome}?`,
+      `Deseja realmente cancelar a matrícula de ${matricula.usuario_nome} no plano ${matricula.plano_nome} (${matricula.modalidade_nome})?`,
       [
         { text: 'Não', style: 'cancel' },
         {
-          text: 'Sim',
+          text: 'Sim, Cancelar',
           style: 'destructive',
           onPress: async () => {
             try {
-              await matriculaService.cancelar(matricula.id);
+              console.log('Cancelando matrícula ID:', matricula.id);
+              const resultado = await matriculaService.cancelar(matricula.id);
+              console.log('Resultado cancelamento:', resultado);
               showToast('Matrícula cancelada com sucesso');
-              carregarMatriculas();
+              await carregarMatriculas();
             } catch (error) {
-              showAlert('Erro', error.error || 'Não foi possível cancelar a matrícula');
+              console.error('Erro ao cancelar:', error);
+              showAlert('Erro', error.message || error.error || 'Não foi possível cancelar a matrícula');
             }
           },
         },
@@ -112,7 +131,9 @@ export default function MatriculasScreen() {
 
   const formatDate = (dateString) => {
     if (!dateString) return '-';
-    const date = new Date(dateString);
+    // Evita problema de timezone criando a data diretamente com os valores
+    const [year, month, day] = dateString.split('-');
+    const date = new Date(year, month - 1, day);
     return date.toLocaleDateString('pt-BR');
   };
 
@@ -177,19 +198,19 @@ export default function MatriculasScreen() {
         </View>
       </View>
 
-      {matricula.status !== 'cancelada' && (
-        <View style={styles.cardActions}>
-          <Pressable
-            onPress={() => router.push(`/matriculas/detalhe?id=${matricula.id}`)}
-            style={({ pressed }) => [
-              styles.btnAction,
-              styles.btnDetalhes,
-              pressed && { opacity: 0.7 },
-            ]}
-          >
-            <Feather name="file-text" size={16} color="#3b82f6" />
-            <Text style={styles.btnDetalhesText}>Detalhes</Text>
-          </Pressable>
+      <View style={styles.cardActions}>
+        <Pressable
+          onPress={() => router.push(`/matriculas/detalhe?id=${matricula.id}`)}
+          style={({ pressed }) => [
+            styles.btnAction,
+            styles.btnDetalhes,
+            pressed && { opacity: 0.7 },
+          ]}
+        >
+          <Feather name="file-text" size={16} color="#3b82f6" />
+          <Text style={styles.btnDetalhesText}>Detalhes</Text>
+        </Pressable>
+        {matricula.status !== 'cancelada' && matricula.status !== 'finalizada' && (
           <Pressable
             onPress={() => handleCancelar(matricula)}
             style={({ pressed }) => [
@@ -201,15 +222,14 @@ export default function MatriculasScreen() {
             <Feather name="x-circle" size={16} color="#ef4444" />
             <Text style={styles.btnCancelarText}>Cancelar</Text>
           </Pressable>
-        </View>
-      )}
+        )}
+      </View>
     </View>
   );
 
   const renderTable = () => (
     <View style={styles.tableContainer}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={styles.table}>
+      <View style={styles.table}>
           {/* Header */}
           <View style={styles.tableHeader}>
             <Text style={[styles.tableHeaderText, styles.colAluno]}>Aluno</Text>
@@ -223,7 +243,7 @@ export default function MatriculasScreen() {
           </View>
 
           {/* Body */}
-          {matriculas.map((matricula) => (
+          {filteredMatriculas.map((matricula) => (
             <View key={matricula.id} style={styles.tableRow}>
               <View style={styles.colAluno}>
                 <Text style={styles.cellTextBold}>{matricula.usuario_nome}</Text>
@@ -269,34 +289,31 @@ export default function MatriculasScreen() {
                 </View>
               </View>
               <View style={styles.colAcoes}>
-                {matricula.status !== 'cancelada' && (
-                  <>
-                    <Pressable
-                      onPress={() => router.push(`/matriculas/detalhe?id=${matricula.id}`)}
-                      style={({ pressed }) => [
-                        styles.btnTableAction,
-                        pressed && { opacity: 0.7 },
-                      ]}
-                    >
-                      <Feather name="file-text" size={18} color="#3b82f6" />
-                    </Pressable>
-                    <Pressable
-                      onPress={() => handleCancelar(matricula)}
-                      style={({ pressed }) => [
-                        styles.btnTableAction,
-                        { marginLeft: 8 },
-                        pressed && { opacity: 0.7 },
-                      ]}
-                    >
-                      <Feather name="x-circle" size={18} color="#ef4444" />
-                    </Pressable>
-                  </>
+                <Pressable
+                  onPress={() => router.push(`/matriculas/detalhe?id=${matricula.id}`)}
+                  style={({ pressed }) => [
+                    styles.btnTableAction,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <Feather name="file-text" size={18} color="#3b82f6" />
+                </Pressable>
+                {matricula.status !== 'cancelada' && matricula.status !== 'finalizada' && (
+                  <Pressable
+                    onPress={() => handleCancelar(matricula)}
+                    style={({ pressed }) => [
+                      styles.btnTableAction,
+                      { marginLeft: 8 },
+                      pressed && { opacity: 0.7 },
+                    ]}
+                  >
+                    <Feather name="x-circle" size={18} color="#ef4444" />
+                  </Pressable>
                 )}
               </View>
             </View>
           ))}
         </View>
-      </ScrollView>
     </View>
   );
 
@@ -304,7 +321,7 @@ export default function MatriculasScreen() {
     <LayoutBase title="Matrículas" subtitle="Gerencie as matrículas dos alunos">
       <View style={styles.container}>
         <View style={styles.header}>
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={styles.title}>Matrículas</Text>
             <Text style={styles.subtitle}>Gerencie as matrículas dos alunos</Text>
           </View>
@@ -315,6 +332,45 @@ export default function MatriculasScreen() {
             <Feather name="plus" size={20} color="#fff" />
             <Text style={styles.btnPrimaryText}>Nova Matrícula</Text>
           </Pressable>
+        </View>
+
+        {/* Barra de Pesquisa e Filtros */}
+        <View style={styles.searchContainer}>
+          <View style={styles.searchInputWrapper}>
+            <Feather name="search" size={20} color="#9ca3af" style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Buscar por aluno, email, plano ou modalidade..."
+              placeholderTextColor="#9ca3af"
+              value={searchTerm}
+              onChangeText={setSearchTerm}
+            />
+            {searchTerm !== '' && (
+              <Pressable onPress={() => setSearchTerm('')} style={styles.clearButton}>
+                <Feather name="x" size={18} color="#9ca3af" />
+              </Pressable>
+            )}
+          </View>
+          
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+            <View style={styles.filterContainer}>
+              {['todos', 'ativa', 'vencida', 'cancelada', 'finalizada'].map(status => (
+                <Pressable
+                  key={status}
+                  onPress={() => setStatusFilter(status)}
+                  style={[styles.filterChip, statusFilter === status && styles.filterChipActive]}
+                >
+                  <Text style={[styles.filterChipText, statusFilter === status && styles.filterChipTextActive]}>
+                    {status === 'todos' ? 'Todas' : status.charAt(0).toUpperCase() + status.slice(1)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </ScrollView>
+          
+          <Text style={styles.resultCount}>
+            {filteredMatriculas.length} {filteredMatriculas.length === 1 ? 'matrícula' : 'matrículas'}
+          </Text>
         </View>
 
         {loading ? (
@@ -330,11 +386,19 @@ export default function MatriculasScreen() {
               Clique em "Nova Matrícula" para matricular um aluno
             </Text>
           </View>
+        ) : filteredMatriculas.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Feather name="search" size={64} color="#d1d5db" />
+            <Text style={styles.emptyText}>Nenhum resultado encontrado</Text>
+            <Text style={styles.emptySubtext}>
+              Tente ajustar os filtros ou termo de busca
+            </Text>
+          </View>
         ) : (
           <ScrollView showsVerticalScrollIndicator={false}>
             {isMobile ? (
               <View style={styles.cardsContainer}>
-                {matriculas.map(renderMobileCard)}
+                {filteredMatriculas.map(renderMobileCard)}
               </View>
             ) : (
               renderTable()
@@ -360,6 +424,67 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
+  },
+  searchContainer: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  searchInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f9fafb',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    paddingHorizontal: 12,
+    marginBottom: 12,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#111827',
+  },
+  clearButton: {
+    padding: 4,
+  },
+  filterScroll: {
+    marginBottom: 12,
+  },
+  filterContainer: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  filterChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#f3f4f6',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  filterChipActive: {
+    backgroundColor: '#3b82f6',
+    borderColor: '#3b82f6',
+  },
+  filterChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  filterChipTextActive: {
+    color: '#fff',
+  },
+  resultCount: {
+    fontSize: 13,
+    color: '#6b7280',
+    fontWeight: '500',
   },
   title: {
     fontSize: 24,
@@ -529,7 +654,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   table: {
-    minWidth: 1000,
+    width: '100%',
   },
   tableHeader: {
     flexDirection: 'row',
@@ -553,13 +678,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: 'center',
   },
-  colAluno: { flex: 2, minWidth: 200 },
-  colPlano: { flex: 1.5, minWidth: 150 },
-  colModalidade: { flex: 1.5, minWidth: 150 },
-  colValor: { flex: 1, minWidth: 100 },
-  colDatas: { flex: 1, minWidth: 100 },
-  colStatus: { flex: 1, minWidth: 100 },
-  colAcoes: { flex: 1, minWidth: 100, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  colAluno: { flex: 2.5 },
+  colPlano: { flex: 1.5 },
+  colModalidade: { flex: 1.5 },
+  colValor: { flex: 1 },
+  colDatas: { flex: 1 },
+  colStatus: { flex: 1 },
+  colAcoes: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   cellText: {
     fontSize: 14,
     color: '#374151',

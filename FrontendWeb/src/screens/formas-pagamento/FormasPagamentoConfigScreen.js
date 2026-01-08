@@ -22,9 +22,12 @@ export default function FormasPagamentoConfigScreen() {
   const isMobile = width < 768;
   const [loading, setLoading] = useState(true);
   const [formasPagamento, setFormasPagamento] = useState([]);
+  const [formasFiltradas, setFormasFiltradas] = useState([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedForma, setSelectedForma] = useState(null);
   const [formData, setFormData] = useState({});
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ativo');
 
   useEffect(() => {
     carregarFormasPagamento();
@@ -47,12 +50,50 @@ export default function FormasPagamentoConfigScreen() {
       });
       
       setFormasPagamento(formasOrdenadas);
+      aplicarFiltros(formasOrdenadas, searchTerm, statusFilter);
     } catch (error) {
       console.error('Erro ao carregar formas de pagamento:', error);
       showError('Não foi possível carregar as formas de pagamento');
     } finally {
       setLoading(false);
     }
+  };
+
+  const aplicarFiltros = (formas, termo, status) => {
+    let filtradas = [...formas];
+
+    // Filtro de status
+    if (status === 'ativo') {
+      filtradas = filtradas.filter(f => f.ativo === 1);
+    } else if (status === 'inativo') {
+      filtradas = filtradas.filter(f => f.ativo === 0);
+    }
+
+    // Filtro de pesquisa
+    if (termo) {
+      const termoLower = termo.toLowerCase();
+      filtradas = filtradas.filter(f =>
+        f.forma_pagamento_nome?.toLowerCase().includes(termoLower) ||
+        f.observacoes?.toLowerCase().includes(termoLower)
+      );
+    }
+
+    setFormasFiltradas(filtradas);
+  };
+
+  const handleSearchChange = (text) => {
+    setSearchTerm(text);
+    aplicarFiltros(formasPagamento, text, statusFilter);
+  };
+
+  const handleStatusFilter = (status) => {
+    setStatusFilter(status);
+    aplicarFiltros(formasPagamento, searchTerm, status);
+  };
+
+  const handleClearSearch = () => {
+    setSearchTerm('');
+    aplicarFiltros(formasPagamento, '', statusFilter);
   };
 
   const abrirModal = (forma) => {
@@ -218,7 +259,7 @@ export default function FormasPagamentoConfigScreen() {
 
       {/* Linhas da Tabela */}
       <ScrollView style={styles.tableBody} showsVerticalScrollIndicator={true}>
-        {formasPagamento.map((item) => (
+        {formasFiltradas.map((item) => (
           <View key={item.id} style={styles.tableRow}>
             <View style={[styles.tableCell, styles.colForma]}>
               <View style={styles.formaNomeContainer}>
@@ -305,21 +346,74 @@ export default function FormasPagamentoConfigScreen() {
               Configuração de Formas de Pagamento
             </Text>
             <Text style={styles.headerSubtitle}>
-              {formasPagamento.length} {formasPagamento.length === 1 ? 'forma cadastrada' : 'formas cadastradas'}
+              {formasFiltradas.length} de {formasPagamento.length} {formasPagamento.length === 1 ? 'forma' : 'formas'}
             </Text>
           </View>
         </View>
 
+        {/* Barra de Pesquisa e Filtros */}
+        <View style={styles.searchFilterContainer}>
+          {/* Campo de Pesquisa */}
+          <View style={styles.searchContainer}>
+            <Feather name="search" size={18} color="#64748b" style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Buscar por nome..."
+              value={searchTerm}
+              onChangeText={handleSearchChange}
+              placeholderTextColor="#94a3b8"
+            />
+            {searchTerm ? (
+              <TouchableOpacity onPress={handleClearSearch} style={styles.clearButton}>
+                <Feather name="x" size={18} color="#64748b" />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          {/* Filtros de Status */}
+          <View style={styles.filterChips}>
+            <TouchableOpacity
+              style={[styles.filterChip, statusFilter === 'todos' && styles.filterChipActive]}
+              onPress={() => handleStatusFilter('todos')}
+            >
+              <Text style={[styles.filterChipText, statusFilter === 'todos' && styles.filterChipTextActive]}>
+                Todos
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterChip, statusFilter === 'ativo' && styles.filterChipActive]}
+              onPress={() => handleStatusFilter('ativo')}
+            >
+              <Text style={[styles.filterChipText, statusFilter === 'ativo' && styles.filterChipTextActive]}>
+                Ativos
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterChip, statusFilter === 'inativo' && styles.filterChipActive]}
+              onPress={() => handleStatusFilter('inativo')}
+            >
+              <Text style={[styles.filterChipText, statusFilter === 'inativo' && styles.filterChipTextActive]}>
+                Inativos
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
         {/* Lista */}
-        {formasPagamento.length === 0 ? (
+        {formasFiltradas.length === 0 ? (
           <View style={styles.emptyState}>
             <Feather name="credit-card" size={48} color="#ccc" />
-            <Text style={styles.emptyText}>Nenhuma forma de pagamento disponível</Text>
+            <Text style={styles.emptyText}>
+              {searchTerm || statusFilter !== 'todos' 
+                ? 'Nenhuma forma de pagamento encontrada' 
+                : 'Nenhuma forma de pagamento disponível'
+              }
+            </Text>
           </View>
         ) : (
           isMobile ? (
             <ScrollView style={styles.cardsContainer} showsVerticalScrollIndicator={false}>
-              {formasPagamento.map(renderMobileCard)}
+              {formasFiltradas.map(renderMobileCard)}
             </ScrollView>
           ) : (
             renderTable()
@@ -549,6 +643,60 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginTop: 4,
+  },
+  
+  // Pesquisa e Filtros
+  searchFilterContainer: {
+    padding: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    gap: 12,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    height: 40,
+    fontSize: 14,
+    color: '#1e293b',
+  },
+  clearButton: {
+    padding: 4,
+  },
+  filterChips: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  filterChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: '#f1f5f9',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  filterChipActive: {
+    backgroundColor: '#f97316',
+    borderColor: '#f97316',
+  },
+  filterChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  filterChipTextActive: {
+    color: '#fff',
   },
   
   // Cards Mobile

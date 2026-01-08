@@ -3,6 +3,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_URL = 'http://localhost:8080';
 
+// Event emitter simples para notificar logout
+let onUnauthorizedCallback = null;
+
+export const setOnUnauthorized = (callback) => {
+  onUnauthorizedCallback = callback;
+};
+
 const api = axios.create({
   baseURL: API_URL,
   headers: {
@@ -34,9 +41,14 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     if (error.response?.status === 401) {
+      console.warn('🚫 Token inválido ou expirado - redirecionando para login...');
       await AsyncStorage.removeItem('@appcheckin:token');
       await AsyncStorage.removeItem('@appcheckin:user');
-      // Redirecionar para login se necessário
+      
+      // Notificar o app para redirecionar
+      if (onUnauthorizedCallback) {
+        onUnauthorizedCallback();
+      }
     }
     return Promise.reject(error);
   }

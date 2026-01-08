@@ -24,6 +24,7 @@ export default function AcademiasScreen() {
   const [loading, setLoading] = useState(true);
   const [academias, setAcademias] = useState([]);
   const [confirmDelete, setConfirmDelete] = useState({ visible: false, id: null, nome: '' });
+  const [confirmToggle, setConfirmToggle] = useState({ visible: false, id: null, nome: '', ativo: false });
   const [searchText, setSearchText] = useState('');
 
   useEffect(() => {
@@ -90,11 +91,41 @@ export default function AcademiasScreen() {
     setConfirmDelete({ visible: false, id: null, nome: '' });
   };
 
+  const handleToggleAtivo = (id, nome, ativoAtual) => {
+    setConfirmToggle({ visible: true, id, nome, ativo: !ativoAtual });
+  };
+
+  const confirmToggleAction = async () => {
+    const { id, nome, ativo } = confirmToggle;
+    setConfirmToggle({ visible: false, id: null, nome: '', ativo: false });
+    
+    try {
+      await superAdminService.toggleAtivoAcademia(id, ativo);
+      showSuccess(`Academia "${nome}" ${ativo ? 'ativada' : 'desativada'} com sucesso!`);
+      loadAcademias();
+    } catch (error) {
+      console.error('Erro ao alterar status:', error);
+      const errorMessage = error.response?.data?.error || error.message || 'Erro ao alterar status';
+      showError(errorMessage);
+    }
+  };
+
+  const cancelToggle = () => {
+    setConfirmToggle({ visible: false, id: null, nome: '', ativo: false });
+  };
+
   const renderMobileCard = (item) => (
     <View key={item.id} style={styles.card}>
-      <View style={styles.cardHeader}>
+      <TouchableOpacity
+        style={styles.cardHeader}
+        onPress={() => router.push(`/academias/${item.id}`)}
+        activeOpacity={0.7}
+      >
         <View style={styles.cardHeaderLeft}>
-          <Text style={styles.cardName}>{item.nome}</Text>
+          <View style={styles.cardIdRow}>
+            <Text style={styles.cardId}>#{item.id}</Text>
+            <Text style={styles.cardName}>{item.nome}</Text>
+          </View>
           <View style={[
             styles.statusBadge,
             item.ativo ? styles.badgeActive : styles.badgeInactive
@@ -104,21 +135,8 @@ export default function AcademiasScreen() {
             </Text>
           </View>
         </View>
-        <View style={styles.cardActions}>
-          <TouchableOpacity
-            style={styles.cardActionButton}
-            onPress={() => router.push(`/academias/${item.id}`)}
-          >
-            <Feather name="edit-2" size={18} color="#3b82f6" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.cardActionButton}
-            onPress={() => handleDelete(item.id, item.nome)}
-          >
-            <Feather name="trash-2" size={18} color="#ef4444" />
-          </TouchableOpacity>
-        </View>
-      </View>
+        <Feather name="chevron-right" size={20} color="#9ca3af" />
+      </TouchableOpacity>
 
       <View style={styles.cardBody}>
         <View style={styles.cardRow}>
@@ -139,16 +157,25 @@ export default function AcademiasScreen() {
   const renderTable = () => (
     <View style={styles.tableContainer}>
       <View style={styles.tableHeader}>
+        <Text style={[styles.headerText, styles.colId]}>ID</Text>
         <Text style={[styles.headerText, styles.colNome]}>NOME</Text>
         <Text style={[styles.headerText, styles.colEmail]}>EMAIL</Text>
         <Text style={[styles.headerText, styles.colTelefone]}>TELEFONE</Text>
         <Text style={[styles.headerText, styles.colStatus]}>STATUS</Text>
-        <Text style={[styles.headerText, styles.colAcoes]}>AÇÕES</Text>
+        <Text style={[styles.headerText, styles.colAcoes, styles.headerTextCenter]}>AÇÕES</Text>
       </View>
 
       <ScrollView style={styles.tableBody} showsVerticalScrollIndicator={true}>
         {academias.map((item) => (
-          <View key={item.id} style={styles.tableRow}>
+          <TouchableOpacity 
+            key={item.id} 
+            style={styles.tableRow}
+            onPress={() => router.push(`/academias/${item.id}`)}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.cellText, styles.colId]}>
+              <Text style={styles.tableIdText}>#{item.id}</Text>
+            </View>
             <Text style={[styles.cellText, styles.colNome]} numberOfLines={2}>
               {item.nome}
             </Text>
@@ -168,32 +195,10 @@ export default function AcademiasScreen() {
                 </Text>
               </View>
             </View>
-            <View style={[styles.cellText, styles.colAcoes]}>
-              <View style={styles.actionCell}>
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={() => router.push({
-                    pathname: '/contratos/academia',
-                    params: { id: item.id, nome: item.nome }
-                  })}
-                >
-                  <Feather name="file-text" size={16} color="#10b981" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={() => router.push(`/academias/${item.id}`)}
-                >
-                  <Feather name="edit-2" size={16} color="#3b82f6" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={() => handleDelete(item.id, item.nome)}
-                >
-                  <Feather name="trash-2" size={16} color="#ef4444" />
-                </TouchableOpacity>
-              </View>
+            <View style={[styles.cellText, styles.colAcoes, styles.colAcoesCenter]}>
+              <Feather name="edit-2" size={18} color="#3b82f6" />
             </View>
-          </View>
+          </TouchableOpacity>
         ))}
       </ScrollView>
     </View>
@@ -210,9 +215,6 @@ export default function AcademiasScreen() {
       <View style={styles.tableCell}>
         <Text style={styles.cellText}>{item.telefone || '-'}</Text>
       </View>
-      {/* <View style={styles.tableCell}>
-        <Text style={styles.cellText}>{item.endereco || '-'}</Text>
-      </View> */}
       <View style={styles.tableCell}>
         <View style={[
           styles.statusBadge,
@@ -225,25 +227,16 @@ export default function AcademiasScreen() {
       </View>
       <View style={[styles.tableCell, styles.actionCell]}>
         <TouchableOpacity
-          style={[styles.actionButton, styles.contractButton]}
-          onPress={() => router.push({
-            pathname: '/contratos/academia',
-            params: { id: item.id, nome: item.nome }
-          })}
-        >
-          <Feather name="file-text" size={16} color="#fff" />
-        </TouchableOpacity>
-        <TouchableOpacity
           style={[styles.actionButton, styles.editButton]}
           onPress={() => router.push(`/academias/${item.id}`)}
         >
           <Feather name="edit-2" size={16} color="#fff" />
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.actionButton, styles.deleteButton]}
-          onPress={() => handleDelete(item.id, item.nome)}
+          style={[styles.actionButton, item.ativo ? styles.toggleActiveButton : styles.toggleInactiveButton]}
+          onPress={() => handleToggleAtivo(item.id, item.nome, item.ativo)}
         >
-          <Feather name="trash-2" size={16} color="#fff" />
+          <Feather name={item.ativo ? 'toggle-right' : 'toggle-left'} size={16} color="#fff" />
         </TouchableOpacity>
       </View>
     </View>
@@ -261,21 +254,62 @@ export default function AcademiasScreen() {
   }
 
   return (
-    <LayoutBase title="Academias" subtitle="Gerenciar academias">
+    <LayoutBase title="Academias" subtitle="Gerenciar academias" noPadding> 
       <View style={styles.container}>
-        <View style={[styles.header, isMobile && styles.headerMobile]}>
-          <View style={styles.headerLeft}>
-            <Text style={[styles.headerTitle, isMobile && styles.headerTitleMobile]}>Academias</Text>
-            <Text style={styles.headerSubtitle}>
-              {academias.length} {academias.length === 1 ? 'academia' : 'academias'} cadastradas
-            </Text>
+        {/* Banner Header */}
+        <View style={styles.bannerContainer}>
+          <View style={styles.banner}>
+            <View style={styles.bannerContent}>
+              <View style={styles.bannerIconContainer}>
+                <View style={styles.bannerIconOuter}>
+                  <View style={styles.bannerIconInner}>
+                    <Feather name="home" size={28} color="#fff" />
+                  </View>
+                </View>
+              </View>
+              <View style={styles.bannerTextContainer}>
+                <Text style={styles.bannerTitle}>Academias Parceiras</Text>
+                <Text style={styles.bannerSubtitle}>
+                  Gerencie todas as academias cadastradas no sistema
+                </Text>
+              </View>
+            </View>
+            <View style={styles.bannerDecoration}>
+              <View style={styles.decorCircle1} />
+              <View style={styles.decorCircle2} />
+              <View style={styles.decorCircle3} />
+            </View>
           </View>
-          <View style={styles.headerRight}>
-            <View style={[styles.searchContainer, isMobile && styles.searchContainerMobile]}>
-              <Feather name="search" size={18} color="#666" style={styles.searchIcon} />
+
+          {/* Card de Busca e Ações */}
+          <View style={[styles.searchCard, isMobile && styles.searchCardMobile]}>
+            <View style={styles.searchCardHeader}>
+              <View style={styles.searchCardInfo}>
+                <View style={styles.searchCardIconContainer}>
+                  <Feather name="search" size={20} color="#f97316" />
+                </View>
+                <View>
+                  <Text style={styles.searchCardTitle}>Buscar Academia</Text>
+                  <Text style={styles.searchCardSubtitle}>
+                    {academias.length} {academias.length === 1 ? 'academia' : 'academias'} cadastradas
+                  </Text>
+                </View>
+              </View>
+              <TouchableOpacity
+                style={[styles.addButton, isMobile && styles.addButtonMobile]}
+                onPress={() => router.push('/academias/novo')}
+              >
+                <Feather name="plus" size={18} color="#fff" />
+                {!isMobile && <Text style={styles.addButtonText}>Nova Academia</Text>}
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.searchInputContainer}>
+              <Feather name="search" size={20} color="#9ca3af" style={styles.searchInputIcon} />
               <TextInput
-                style={[styles.searchInput, isMobile && styles.searchInputMobile]}
+                style={styles.searchInput}
                 placeholder="Buscar por nome, email ou CNPJ..."
+                placeholderTextColor="#9ca3af"
                 value={searchText}
                 onChangeText={setSearchText}
                 onSubmitEditing={handleSearch}
@@ -283,20 +317,13 @@ export default function AcademiasScreen() {
               />
               {searchText.length > 0 && (
                 <TouchableOpacity onPress={handleClearSearch} style={styles.clearButton}>
-                  <Feather name="x" size={18} color="#666" />
+                  <Feather name="x-circle" size={20} color="#9ca3af" />
                 </TouchableOpacity>
               )}
               <TouchableOpacity onPress={handleSearch} style={styles.searchButton}>
                 <Text style={styles.searchButtonText}>Buscar</Text>
               </TouchableOpacity>
             </View>
-            <TouchableOpacity
-              style={[styles.addButton, isMobile && styles.addButtonMobile]}
-              onPress={() => router.push('/academias/novo')}
-            >
-              <Feather name="plus" size={18} color="#fff" />
-              {!isMobile && <Text style={styles.addButtonText}>Nova Academia</Text>}
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -326,6 +353,17 @@ export default function AcademiasScreen() {
         onConfirm={confirmDeleteAction}
         onCancel={cancelDelete}
       />
+
+      <ConfirmModal
+        visible={confirmToggle.visible}
+        title={confirmToggle.ativo ? "Ativar Academia" : "Desativar Academia"}
+        message={`Deseja ${confirmToggle.ativo ? 'ativar' : 'desativar'} a academia "${confirmToggle.nome}"?`}
+        confirmText={confirmToggle.ativo ? "Ativar" : "Desativar"}
+        cancelText="Cancelar"
+        type={confirmToggle.ativo ? "success" : "warning"}
+        onConfirm={confirmToggleAction}
+        onCancel={cancelToggle}
+      />
     </LayoutBase>
   );
 }
@@ -333,7 +371,7 @@ export default function AcademiasScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#f8fafc',
   },
   loadingContainer: {
     flex: 1,
@@ -346,96 +384,185 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
   },
-  header: {
+  // Banner Header
+  bannerContainer: {
+    backgroundColor: '#f8fafc',
+  },
+  banner: {
+    backgroundColor: '#f97316',
+    paddingVertical: 28,
+    paddingHorizontal: 24,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  bannerContent: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e5e5',
-    gap: 16,
-    flexWrap: 'wrap',
-    rowGap: 12,
+    gap: 18,
+    zIndex: 2,
   },
-  headerMobile: {
-    flexDirection: 'column',
-    padding: 16,
-    gap: 12,
+  bannerIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  headerLeft: {
-    flexShrink: 0,
-    minWidth: 220,
-    paddingRight: 12,
+  bannerIconOuter: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  headerRight: {
+  bannerIconInner: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerTextContainer: {
     flex: 1,
+  },
+  bannerTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.5,
+  },
+  bannerSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.85)',
+    marginTop: 4,
+    lineHeight: 20,
+  },
+  bannerDecoration: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: 200,
+    zIndex: 1,
+  },
+  decorCircle1: {
+    position: 'absolute',
+    top: -30,
+    right: -30,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  decorCircle2: {
+    position: 'absolute',
+    top: 40,
+    right: 60,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  decorCircle3: {
+    position: 'absolute',
+    bottom: -20,
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  // Search Card
+  searchCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    marginHorizontal: 20,
+    marginTop: -24,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+    zIndex: 10,
+  },
+  searchCardMobile: {
+    marginHorizontal: 16,
+    padding: 16,
+  },
+  searchCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
+    marginBottom: 16,
     gap: 12,
     flexWrap: 'wrap',
   },
-  searchContainer: {
-    flexGrow: 1,
+  searchCardInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f3f4f6',
-    borderRadius: 8,
-    paddingHorizontal: 12,
+    gap: 12,
+    flex: 1,
+  },
+  searchCardIconContainer: {
+    width: 44,
     height: 44,
-    maxWidth: 500,
-    minWidth: 280,
+    borderRadius: 12,
+    backgroundColor: 'rgba(249, 115, 22, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  searchContainerMobile: {
-    maxWidth: '100%',
+  searchCardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1f2937',
   },
-  searchIcon: {
-    marginRight: 8,
+  searchCardSubtitle: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  searchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    paddingHorizontal: 14,
+    height: 52,
+  },
+  searchInputIcon: {
+    marginRight: 10,
   },
   searchInput: {
     flex: 1,
-    fontSize: 14,
-    color: '#333',
+    fontSize: 16,
+    color: '#1f2937',
     outlineStyle: 'none',
-  },
-  searchInputMobile: {
-    fontSize: 14,
+    height: '100%',
   },
   clearButton: {
-    padding: 4,
-    marginLeft: 4,
+    padding: 6,
   },
   searchButton: {
-    backgroundColor: '#3b82f6',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 6,
-    marginLeft: 8,
+    backgroundColor: '#f97316',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginLeft: 10,
   },
   searchButtonText: {
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
   },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  headerTitleMobile: {
-    fontSize: 20,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginTop: 4,
-    fontWeight: '400',
-  },
   addButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f97316',
+    backgroundColor: '#10b981',
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 8,
@@ -449,7 +576,7 @@ const styles = StyleSheet.create({
   },
   addButtonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
   },
   // Cards Mobile
@@ -555,11 +682,39 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 4,
   },
+  colId: { flex: 0.6, minWidth: 60 },
   colNome: { flex: 2, minWidth: 150 },
   colEmail: { flex: 2.5, minWidth: 180 },
   colTelefone: { flex: 1.5, minWidth: 120 },
   colStatus: { flex: 1, minWidth: 100 },
-  colAcoes: { flex: 1, minWidth: 100 },
+  colAcoes: { flex: 0.8, minWidth: 80 },
+  colAcoesCenter: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTextCenter: {
+    textAlign: 'center',
+  },
+  tableIdText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#f97316',
+  },
+  cardIdRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
+  cardId: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#f97316',
+    backgroundColor: 'rgba(249, 115, 22, 0.1)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
   statusBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -585,18 +740,18 @@ const styles = StyleSheet.create({
   actionButton: {
     padding: 8,
   },
-  contractButton: {
-    backgroundColor: '#10b981',
-    borderRadius: 8,
-    padding: 8,
-  },
   editButton: {
     backgroundColor: '#3b82f6',
     borderRadius: 8,
     padding: 8,
   },
-  deleteButton: {
-    backgroundColor: '#ef4444',
+  toggleActiveButton: {
+    backgroundColor: '#10b981',
+    borderRadius: 8,
+    padding: 8,
+  },
+  toggleInactiveButton: {
+    backgroundColor: '#6b7280',
     borderRadius: 8,
     padding: 8,
   },

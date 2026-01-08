@@ -1,5 +1,8 @@
 <?php
 
+// Configurar timezone Brasil para todo o sistema
+date_default_timezone_set('America/Sao_Paulo');
+
 return [
     'displayErrorDetails' => $_ENV['APP_ENV'] === 'development',
     'logErrorDetails' => true,

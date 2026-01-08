@@ -331,7 +331,7 @@ class ModalidadeController
     }
 
     /**
-     * Excluir modalidade
+     * Excluir modalidade (desativar/ativar)
      * DELETE /admin/modalidades/{id}
      */
     public function delete(Request $request, Response $response, array $args): Response
@@ -358,19 +358,42 @@ class ModalidadeController
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(403);
         }
         
+        // Se está tentando desativar, verificar se há contratos ativos
+        if ($modalidade['ativo']) {
+            $db = require __DIR__ . '/../../config/database.php';
+            $stmt = $db->prepare("
+                SELECT COUNT(*) as total 
+                FROM matriculas m
+                INNER JOIN planos p ON m.plano_id = p.id
+                WHERE p.modalidade_id = ?
+                AND m.status = 'ativa'
+            ");
+            $stmt->execute([$id]);
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($result['total'] > 0) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'message' => 'Não é possível desativar modalidade com contratos ativos'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(422);
+            }
+        }
+        
         try {
             $this->modalidadeModel->excluir($id);
             
+            $acao = $modalidade['ativo'] ? 'desativada' : 'ativada';
             $response->getBody()->write(json_encode([
                 'type' => 'success',
-                'message' => 'Modalidade desativada com sucesso'
+                'message' => "Modalidade {$acao} com sucesso"
             ], JSON_UNESCAPED_UNICODE));
             
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
         } catch (\Exception $e) {
             $response->getBody()->write(json_encode([
                 'type' => 'error',
-                'message' => 'Erro ao excluir modalidade: ' . $e->getMessage()
+                'message' => 'Erro ao alterar modalidade: ' . $e->getMessage()
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
         }

@@ -507,7 +507,7 @@ class UsuarioController
         $userAuth = $this->usuarioModel->findById($userId, $tenantId);
         $isSuperAdmin = $userAuth && isset($userAuth['role_id']) && $userAuth['role_id'] == 3;
 
-        // Se for SuperAdmin, pode deletar usuários de qualquer tenant
+        // Se for SuperAdmin, pode alterar status de usuários de qualquer tenant
         if ($isSuperAdmin) {
             // Buscar usuário sem restrição de tenant
             $usuario = $this->usuarioModel->findById($id, null);
@@ -520,28 +520,28 @@ class UsuarioController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
             }
 
-            // Não permitir deletar outros SuperAdmins
+            // Não permitir alterar status de outros SuperAdmins
             if ($usuario['role_id'] == 3) {
                 $response->getBody()->write(json_encode([
                     'type' => 'error',
-                    'message' => 'Não é permitido deletar usuários SuperAdmin'
+                    'message' => 'Não é permitido alterar status de usuários SuperAdmin'
                 ]));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
             }
 
-            // Não permitir deletar Admins proprietários de tenants (role_id = 2)
+            // Não permitir alterar status de Admins proprietários de tenants (role_id = 2)
             if ($usuario['role_id'] == 2) {
                 $response->getBody()->write(json_encode([
                     'type' => 'error',
-                    'message' => 'Não é permitido deletar administradores de academias/tenants'
+                    'message' => 'Não é permitido alterar status de administradores de academias/tenants'
                 ]));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
             }
 
-            // Desativar usando o tenant_id do usuário alvo
-            $deleted = $this->usuarioModel->desativarUsuarioTenant($id, $usuario['tenant_id']);
+            // Alternar status usando o tenant_id do usuário alvo
+            $toggled = $this->usuarioModel->toggleStatusUsuarioTenant($id, $usuario['tenant_id']);
         } else {
-            // Se não for SuperAdmin, só pode deletar do próprio tenant
+            // Se não for SuperAdmin, só pode alterar status do próprio tenant
             $usuario = $this->usuarioModel->findById($id, $tenantId);
             
             if (!$usuario) {
@@ -552,21 +552,25 @@ class UsuarioController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
             }
 
-            // Soft delete: atualizar status do vínculo com o tenant
-            $deleted = $this->usuarioModel->desativarUsuarioTenant($id, $tenantId);
+            // Alternar status do vínculo com o tenant
+            $toggled = $this->usuarioModel->toggleStatusUsuarioTenant($id, $tenantId);
         }
 
-        if (!$deleted) {
+        if (!$toggled) {
             $response->getBody()->write(json_encode([
                 'type' => 'error',
-                'message' => 'Erro ao desativar usuário'
+                'message' => 'Erro ao alterar status do usuário'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
 
+        // Buscar usuário atualizado para retornar status correto
+        $usuarioAtualizado = $this->usuarioModel->findById($id, $tenantId);
+        $acao = $usuarioAtualizado['status'] === 'ativo' ? 'ativado' : 'desativado';
+
         $response->getBody()->write(json_encode([
             'type' => 'success',
-            'message' => 'Usuário desativado com sucesso'
+            'message' => "Usuário {$acao} com sucesso"
         ]));
 
         return $response->withHeader('Content-Type', 'application/json');

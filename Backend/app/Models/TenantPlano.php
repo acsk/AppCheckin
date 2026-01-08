@@ -311,6 +311,7 @@ class TenantPlano
                     ps.nome as plano_nome, 
                     ps.valor as plano_valor,
                     ps.descricao as plano_descricao,
+                    ps.duracao_dias,
                     sc.id as status_id,
                     sc.nome as status_nome
                 FROM tenant_planos_sistema tp

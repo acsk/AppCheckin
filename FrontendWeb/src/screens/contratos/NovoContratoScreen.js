@@ -39,6 +39,7 @@ export default function NovoContratoScreen() {
   };
   const [planos, setPlanos] = useState([]);
   const [academias, setAcademias] = useState([]);
+  const [formasPagamento, setFormasPagamento] = useState([]);
   const [contratoAtivo, setContratoAtivo] = useState(null);
   const [errors, setErrors] = useState({});
   const [showConfirmTrocar, setShowConfirmTrocar] = useState(false);
@@ -46,7 +47,7 @@ export default function NovoContratoScreen() {
   const [formData, setFormData] = useState({
     academia_id: '',
     plano_sistema_id: '',
-    forma_pagamento: 'pix',
+    forma_pagamento_id: '',
     data_inicio: '',
     data_vencimento: '',
     observacoes: '',
@@ -67,6 +68,10 @@ export default function NovoContratoScreen() {
       // Buscar academias sem contrato ativo via API
       const responseAcademias = await api.get('/superadmin/academias?sem_contrato_ativo=true');
       setAcademias(responseAcademias.data.academias || []);
+
+      // Buscar formas de pagamento via API
+      const responseFormasPagamento = await api.get('/formas-pagamento');
+      setFormasPagamento(responseFormasPagamento.data.formas || []);
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
       showError('Erro ao carregar dados');
@@ -130,8 +135,8 @@ export default function NovoContratoScreen() {
       newErrors.plano_sistema_id = 'Selecione um plano';
     }
 
-    if (!formData.forma_pagamento) {
-      newErrors.forma_pagamento = 'Selecione a forma de pagamento';
+    if (!formData.forma_pagamento_id) {
+      newErrors.forma_pagamento_id = 'Selecione a forma de pagamento';
     }
 
     setErrors(newErrors);
@@ -153,7 +158,7 @@ export default function NovoContratoScreen() {
     try {
       const dataToSend = {
         plano_sistema_id: parseInt(formData.plano_sistema_id),
-        forma_pagamento: formData.forma_pagamento,
+        forma_pagamento_id: parseInt(formData.forma_pagamento_id),
         data_inicio: formData.data_inicio || undefined,
         data_vencimento: formData.data_vencimento || undefined,
         observacoes: formData.observacoes || null,
@@ -251,19 +256,22 @@ export default function NovoContratoScreen() {
 
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Forma de Pagamento *</Text>
-              <View style={[styles.pickerContainer, errors.forma_pagamento && styles.inputError]}>
+              <View style={[styles.pickerContainer, errors.forma_pagamento_id && styles.inputError]}>
                 <select
                   style={styles.picker}
-                  value={formData.forma_pagamento}
-                  onChange={(e) => handleChange('forma_pagamento', e.target.value)}
+                  value={formData.forma_pagamento_id}
+                  onChange={(e) => handleChange('forma_pagamento_id', e.target.value)}
                   disabled={saving || !!contratoAtivo}
                 >
-                  <option value="pix">PIX</option>
-                  <option value="cartao">Cartão de Crédito</option>
-                  <option value="operadora">Operadora</option>
+                  <option value="">Selecione uma forma de pagamento</option>
+                  {formasPagamento.map((forma) => (
+                    <option key={forma.id} value={forma.id}>
+                      {forma.nome}
+                    </option>
+                  ))}
                 </select>
               </View>
-              {errors.forma_pagamento && <Text style={styles.errorText}>{errors.forma_pagamento}</Text>}
+              {errors.forma_pagamento_id && <Text style={styles.errorText}>{errors.forma_pagamento_id}</Text>}
             </View>
 
             <View style={styles.row}>

@@ -31,7 +31,7 @@ const MENU = [
 const BREAKPOINT_MOBILE = 768;
 const BREAKPOINT_TABLET = 1024;
 
-export default function LayoutBase({ children, title = 'Dashboard', subtitle = 'Overview' }) {
+export default function LayoutBase({ children, title = 'Dashboard', subtitle = 'Overview', noPadding = false }) {
   const router = useRouter();
   const pathname = usePathname();
   const { width } = useWindowDimensions();
@@ -265,7 +265,7 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
           </View>
         </View>
 
-        <ScrollView contentContainerStyle={[styles.content, isMobile && styles.contentMobile]}>
+        <ScrollView contentContainerStyle={[styles.content, isMobile && styles.contentMobile, noPadding && styles.contentNoPadding]}>
           {children}
         </ScrollView>
       </LinearGradient>
@@ -481,5 +481,6 @@ const styles = StyleSheet.create({
   },
   avatarText: { color: '#ffffff', fontWeight: '900', fontSize: 13 },
   content: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 20 },
+  contentNoPadding: { paddingHorizontal: 0, paddingTop: 0, paddingBottom: 0 },
   contentMobile: { paddingHorizontal: 12, paddingTop: 16, paddingBottom: 16 },
 });

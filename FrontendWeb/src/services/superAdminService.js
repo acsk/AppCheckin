@@ -76,6 +76,19 @@ export const superAdminService = {
     }
   },
 
+  // Ativar/Desativar academia
+  async toggleAtivoAcademia(id, ativo) {
+    try {
+      console.log(`🔄 ${ativo ? 'Ativando' : 'Desativando'} academia ${id}`);
+      const response = await api.put(`/superadmin/academias/${id}`, { ativo });
+      console.log('✅ Status alterado:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao alterar status da academia:', error);
+      throw error.response?.data || error;
+    }
+  },
+
   // ========================================
   // Gestão de Usuários (SuperAdmin)
   // ========================================

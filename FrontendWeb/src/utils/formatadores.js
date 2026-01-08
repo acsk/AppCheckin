@@ -7,6 +7,14 @@ export function formatarData(data) {
   if (!data) return '-';
   
   try {
+    // Se a data vier no formato YYYY-MM-DD, fazer split direto para evitar problemas de timezone
+    if (typeof data === 'string' && data.match(/^\d{4}-\d{2}-\d{2}/)) {
+      const [dataParte] = data.split('T'); // Remove hora se existir
+      const [ano, mes, dia] = dataParte.split('-');
+      return `${dia}/${mes}/${ano}`;
+    }
+    
+    // Fallback para outros formatos
     const date = new Date(data);
     const dia = String(date.getDate()).padStart(2, '0');
     const mes = String(date.getMonth() + 1).padStart(2, '0');

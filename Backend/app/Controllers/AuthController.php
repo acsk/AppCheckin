@@ -119,6 +119,26 @@ class AuthController
         if (count($tenants) === 1) {
             $tenantId = $tenants[0]['tenant']['id'];
             
+            // Se for Tenant Admin (role_id = 2), verificar contrato ativo
+            if ($usuario['role_id'] == 2) {
+                $db = require __DIR__ . '/../../config/database.php';
+                $stmt = $db->prepare("
+                    SELECT COUNT(*) as tem_contrato
+                    FROM tenant_planos_sistema
+                    WHERE tenant_id = :tenant_id
+                    AND status_id = 1
+                ");
+                $stmt->execute(['tenant_id' => $tenantId]);
+                $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+                
+                if ($result['tem_contrato'] == 0) {
+                    $response->getBody()->write(json_encode([
+                        'error' => 'Acesso negado: Sua academia não possui contrato ativo. Entre em contato com o suporte.'
+                    ], JSON_UNESCAPED_UNICODE));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+                }
+            }
+            
             // Gerar token com tenant único
             $token = $this->jwtService->encode([
                 'user_id' => $usuario['id'],
@@ -186,6 +206,26 @@ class AuthController
 
         // Buscar dados do usuário
         $usuario = $this->usuarioModel->findById($userId);
+        
+        // Se for Tenant Admin (role_id = 2), verificar contrato ativo
+        if ($usuario['role_id'] == 2) {
+            $db = require __DIR__ . '/../../config/database.php';
+            $stmt = $db->prepare("
+                SELECT COUNT(*) as tem_contrato
+                FROM tenant_planos_sistema
+                WHERE tenant_id = :tenant_id
+                AND status_id = 1
+            ");
+            $stmt->execute(['tenant_id' => $tenantId]);
+            $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+            
+            if ($result['tem_contrato'] == 0) {
+                $response->getBody()->write(json_encode([
+                    'error' => 'Acesso negado: Esta academia não possui contrato ativo. Entre em contato com o suporte.'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+            }
+        }
 
         // Gerar novo token com o tenant selecionado
         $token = $this->jwtService->encode([

@@ -16,6 +16,18 @@ class Usuario
     public function create(array $data, int $tenantId = 1): ?int
     {
         try {
+            // Limpar CPF e CEP (remover formatação)
+            $cpfLimpo = isset($data['cpf']) ? preg_replace('/[^0-9]/', '', $data['cpf']) : null;
+            $cepLimpo = isset($data['cep']) ? preg_replace('/[^0-9]/', '', $data['cep']) : null;
+            
+            // Converter campos de texto para maiúsculas
+            $nome = isset($data['nome']) ? mb_strtoupper(trim($data['nome']), 'UTF-8') : null;
+            $logradouro = isset($data['logradouro']) ? mb_strtoupper(trim($data['logradouro']), 'UTF-8') : null;
+            $complemento = isset($data['complemento']) ? mb_strtoupper(trim($data['complemento']), 'UTF-8') : null;
+            $bairro = isset($data['bairro']) ? mb_strtoupper(trim($data['bairro']), 'UTF-8') : null;
+            $cidade = isset($data['cidade']) ? mb_strtoupper(trim($data['cidade']), 'UTF-8') : null;
+            $estado = isset($data['estado']) ? mb_strtoupper(trim($data['estado']), 'UTF-8') : null;
+            
             // 1. Inserir usuário (sem tenant_id, pois isso vai para usuario_tenant)
             $stmt = $this->db->prepare(
                 "INSERT INTO usuarios (nome, email, email_global, senha_hash, role_id, cpf, cep, logradouro, numero, complemento, bairro, cidade, estado, telefone, ativo) 
@@ -23,19 +35,19 @@ class Usuario
             );
             
             $stmt->execute([
-                'nome' => $data['nome'],
+                'nome' => $nome,
                 'email' => $data['email'],
                 'email_global' => $data['email_global'] ?? $data['email'],
                 'senha_hash' => password_hash($data['senha'], PASSWORD_BCRYPT),
                 'role_id' => $data['role_id'] ?? 1,
-                'cpf' => $data['cpf'] ?? null,
-                'cep' => $data['cep'] ?? null,
-                'logradouro' => $data['logradouro'] ?? null,
+                'cpf' => $cpfLimpo ?: null,
+                'cep' => $cepLimpo ?: null,
+                'logradouro' => $logradouro,
                 'numero' => $data['numero'] ?? null,
-                'complemento' => $data['complemento'] ?? null,
-                'bairro' => $data['bairro'] ?? null,
-                'cidade' => $data['cidade'] ?? null,
-                'estado' => $data['estado'] ?? null,
+                'complemento' => $complemento,
+                'bairro' => $bairro,
+                'cidade' => $cidade,
+                'estado' => $estado,
                 'telefone' => $data['telefone'] ?? null,
                 'ativo' => $data['ativo'] ?? 1
             ]);
@@ -93,15 +105,14 @@ class Usuario
         $joinType = $tenantId ? "INNER JOIN" : "LEFT JOIN";
         
         $sql = "
-            SELECT u.id, ut.tenant_id, u.nome, u.email, u.role_id, 
+            SELECT u.id, ut.tenant_id, ut.status, u.nome, u.email, u.role_id, 
                    u.foto_base64, u.telefone,
                    u.cpf, u.cep, u.logradouro, u.numero, u.complemento, u.bairro, u.cidade, u.estado,
                    u.created_at, u.updated_at,
                    r.nome as role_nome, r.descricao as role_descricao
             FROM usuarios u
             LEFT JOIN roles r ON u.role_id = r.id
-            {$joinType} usuario_tenant ut ON ut.usuario_id = u.id 
-                AND ut.status = 'ativo'
+            {$joinType} usuario_tenant ut ON ut.usuario_id = u.id
         ";
         
         $conditions = ["u.id = :id"];
@@ -142,7 +153,7 @@ class Usuario
 
         if (isset($data['nome'])) {
             $fields[] = 'nome = :nome';
-            $params['nome'] = $data['nome'];
+            $params['nome'] = mb_strtoupper(trim($data['nome']), 'UTF-8');
         }
 
         if (isset($data['email'])) {
@@ -172,17 +183,17 @@ class Usuario
 
         if (isset($data['cpf'])) {
             $fields[] = 'cpf = :cpf';
-            $params['cpf'] = $data['cpf'];
+            $params['cpf'] = preg_replace('/[^0-9]/', '', $data['cpf']) ?: null;
         }
 
         if (isset($data['cep'])) {
             $fields[] = 'cep = :cep';
-            $params['cep'] = $data['cep'];
+            $params['cep'] = preg_replace('/[^0-9]/', '', $data['cep']) ?: null;
         }
 
         if (isset($data['logradouro'])) {
             $fields[] = 'logradouro = :logradouro';
-            $params['logradouro'] = $data['logradouro'];
+            $params['logradouro'] = mb_strtoupper(trim($data['logradouro']), 'UTF-8');
         }
 
         if (isset($data['numero'])) {
@@ -192,22 +203,22 @@ class Usuario
 
         if (isset($data['complemento'])) {
             $fields[] = 'complemento = :complemento';
-            $params['complemento'] = $data['complemento'];
+            $params['complemento'] = mb_strtoupper(trim($data['complemento']), 'UTF-8');
         }
 
         if (isset($data['bairro'])) {
             $fields[] = 'bairro = :bairro';
-            $params['bairro'] = $data['bairro'];
+            $params['bairro'] = mb_strtoupper(trim($data['bairro']), 'UTF-8');
         }
 
         if (isset($data['cidade'])) {
             $fields[] = 'cidade = :cidade';
-            $params['cidade'] = $data['cidade'];
+            $params['cidade'] = mb_strtoupper(trim($data['cidade']), 'UTF-8');
         }
 
         if (isset($data['estado'])) {
             $fields[] = 'estado = :estado';
-            $params['estado'] = $data['estado'];
+            $params['estado'] = mb_strtoupper(trim($data['estado']), 'UTF-8');
         }
 
         if (empty($fields)) {
@@ -573,28 +584,33 @@ class Usuario
      */
     public function criarUsuarioCompleto(array $data, int $tenantId): ?int
     {
+        // Limpar CPF (remover formatação)
+        $cpfLimpo = isset($data['cpf']) ? preg_replace('/[^0-9]/', '', $data['cpf']) : null;
+        
+        // Converter nome para maiúsculas
+        $nome = isset($data['nome']) ? mb_strtoupper(trim($data['nome']), 'UTF-8') : null;
+        
         $sql = "
             INSERT INTO usuarios 
-            (tenant_id, nome, email, senha_hash, telefone, cpf, role_id) 
+            (nome, email, senha_hash, telefone, cpf, role_id) 
             VALUES 
-            (:tenant_id, :nome, :email, :senha_hash, :telefone, :cpf, :role_id)
+            (:nome, :email, :senha_hash, :telefone, :cpf, :role_id)
         ";
         
         $stmt = $this->db->prepare($sql);
         
         $stmt->execute([
-            'tenant_id' => $tenantId,
-            'nome' => $data['nome'],
+            'nome' => $nome,
             'email' => $data['email'],
             'senha_hash' => password_hash($data['senha'], PASSWORD_BCRYPT),
             'telefone' => $data['telefone'] ?? null,
-            'cpf' => $data['cpf'] ?? null,
+            'cpf' => $cpfLimpo ?: null,
             'role_id' => $data['role_id'] ?? 1, // Default: Aluno
         ]);
 
         $usuarioId = (int) $this->db->lastInsertId();
 
-        // Criar vínculo na tabela usuario_tenant se existir
+        // Criar vínculo na tabela tenant_usuarios
         if ($usuarioId) {
             try {
                 $this->vincularTenant($usuarioId, $tenantId, $data['plano_id'] ?? null);
@@ -604,6 +620,67 @@ class Usuario
         }
 
         return $usuarioId;
+    }
+
+    /**
+     * Alternar status do usuário no tenant (ativar/desativar)
+     */
+    public function toggleStatusUsuarioTenant(int $usuarioId, int $tenantId): bool
+    {
+        // Primeiro verificar o status atual
+        $sqlCheck = "
+            SELECT status FROM usuario_tenant 
+            WHERE usuario_id = :usuario_id AND tenant_id = :tenant_id
+        ";
+        
+        $stmt = $this->db->prepare($sqlCheck);
+        $stmt->execute([
+            'usuario_id' => $usuarioId,
+            'tenant_id' => $tenantId
+        ]);
+        $vinculo = $stmt->fetch(\PDO::FETCH_ASSOC);
+        
+        if (!$vinculo) {
+            return false;
+        }
+        
+        $novoStatus = $vinculo['status'] === 'ativo' ? 'inativo' : 'ativo';
+        $dataFim = $novoStatus === 'inativo' ? 'CURRENT_DATE' : 'NULL';
+        
+        // Atualizar status na tabela usuario_tenant
+        $sqlVinculo = "
+            UPDATE usuario_tenant 
+            SET status = :status, data_fim = $dataFim, updated_at = CURRENT_TIMESTAMP
+            WHERE usuario_id = :usuario_id AND tenant_id = :tenant_id
+        ";
+        
+        $stmt = $this->db->prepare($sqlVinculo);
+        $stmt->execute([
+            'status' => $novoStatus,
+            'usuario_id' => $usuarioId,
+            'tenant_id' => $tenantId
+        ]);
+
+        // Atualizar também na tabela usuarios
+        $ativo = $novoStatus === 'ativo' ? 1 : 0;
+        $sqlUsuario = "
+            UPDATE usuarios 
+            SET ativo = :ativo, updated_at = CURRENT_TIMESTAMP
+            WHERE id = :usuario_id
+        ";
+        
+        try {
+            $stmt = $this->db->prepare($sqlUsuario);
+            $stmt->execute([
+                'ativo' => $ativo,
+                'usuario_id' => $usuarioId
+            ]);
+        } catch (\PDOException $e) {
+            // Se coluna não existir, apenas continuar
+            error_log("Aviso: Campo 'ativo' não existe na tabela usuarios.");
+        }
+
+        return true;
     }
 
     /**

@@ -8,6 +8,8 @@ import {
   ScrollView,
   ActivityIndicator,
   Switch,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
@@ -18,22 +20,90 @@ import { showSuccess, showError } from '../../utils/toast';
 
 // Lista de ícones disponíveis (MaterialCommunityIcons)
 const ICONES_DISPONIVEIS = [
+  // Musculação e Força
   { value: 'dumbbell', label: 'Musculação' },
   { value: 'weight-lifter', label: 'Levantamento de Peso' },
+  { value: 'arm-flex', label: 'Fitness' },
+  { value: 'weight', label: 'Peso' },
+  { value: 'barbell', label: 'Barra' },
+  
+  // Cardio e Corrida
   { value: 'run', label: 'Corrida' },
+  { value: 'run-fast', label: 'Sprint' },
+  { value: 'walk', label: 'Caminhada' },
+  { value: 'heart-pulse', label: 'Cardio' },
+  { value: 'jump-rope', label: 'Pular Corda' },
+  
+  // Bicicleta e Spinning
   { value: 'bike', label: 'Ciclismo' },
+  { value: 'bicycle', label: 'Bicicleta' },
+  
+  // Lutas e Artes Marciais
   { value: 'boxing-glove', label: 'Boxe' },
-  { value: 'yoga', label: 'Yoga' },
   { value: 'karate', label: 'Artes Marciais' },
+  { value: 'kabaddi', label: 'Luta' },
+  { value: 'fencing', label: 'Esgrima' },
+  
+  // Flexibilidade e Bem-estar
+  { value: 'yoga', label: 'Yoga' },
+  { value: 'meditation', label: 'Meditação' },
+  { value: 'human-handsup', label: 'Alongamento' },
+  { value: 'spa', label: 'Relaxamento' },
+  
+  // Aquáticos
   { value: 'swim', label: 'Natação' },
+  { value: 'waves', label: 'Hidroginástica' },
+  { value: 'pool', label: 'Piscina' },
+  
+  // Esportes com Bola
   { value: 'tennis', label: 'Tênis' },
+  { value: 'tennis-ball', label: 'Tênis de Mesa' },
   { value: 'soccer', label: 'Futebol' },
   { value: 'basketball', label: 'Basquete' },
   { value: 'volleyball', label: 'Vôlei' },
-  { value: 'heart-pulse', label: 'Cardio' },
+  { value: 'handball', label: 'Handebol' },
+  { value: 'golf', label: 'Golfe' },
+  { value: 'baseball-bat', label: 'Baseball' },
+  { value: 'rugby', label: 'Rugby' },
+  { value: 'hockey-sticks', label: 'Hockey' },
+  { value: 'badminton', label: 'Badminton' },
+  
+  // Dança e Ritmo
   { value: 'dance-ballroom', label: 'Dança' },
-  { value: 'arm-flex', label: 'Fitness' },
-  { value: 'jump-rope', label: 'Funcional' },
+  { value: 'music', label: 'Ritmos' },
+  { value: 'dance-pole', label: 'Pole Dance' },
+  
+  // Ginástica e Acrobacia
+  { value: 'gymnastics', label: 'Ginástica' },
+  { value: 'human-greeting-variant', label: 'Calistenia' },
+  { value: 'human', label: 'Corpo' },
+  
+  // Outdoor e Aventura
+  { value: 'hiking', label: 'Trilha' },
+  { value: 'climbing', label: 'Escalada' },
+  { value: 'skateboard', label: 'Skate' },
+  { value: 'roller-skate', label: 'Patins' },
+  { value: 'ski', label: 'Esqui' },
+  { value: 'snowboard', label: 'Snowboard' },
+  { value: 'sail-boat', label: 'Vela' },
+  { value: 'rowing', label: 'Remo' },
+  { value: 'paragliding', label: 'Parapente' },
+  
+  // Equipamentos
+  { value: 'whistle', label: 'Treino' },
+  { value: 'timer-outline', label: 'HIIT' },
+  { value: 'target', label: 'Tiro' },
+  { value: 'bow-arrow', label: 'Arco e Flecha' },
+  
+  // Genéricos
+  { value: 'trophy', label: 'Competição' },
+  { value: 'medal', label: 'Performance' },
+  { value: 'fire', label: 'Intenso' },
+  { value: 'lightning-bolt', label: 'Power' },
+  { value: 'star', label: 'Especial' },
+  { value: 'account-group', label: 'Grupo' },
+  { value: 'account', label: 'Personal' },
+  { value: 'bullseye-arrow', label: 'Objetivo' },
 ];
 
 export default function FormModalidadeScreen() {
@@ -51,10 +121,21 @@ export default function FormModalidadeScreen() {
     icone: 'dumbbell',
     ativo: true,
   });
-  const [planos, setPlanos] = useState([
-    { nome: '', checkins_semanais: '', valor: '', duracao_dias: 30, ativo: true, atual: true }
-  ]);
+  const [planos, setPlanos] = useState([]);
   const [errors, setErrors] = useState({});
+  
+  // Estados do Modal de Plano
+  const [modalVisible, setModalVisible] = useState(false);
+  const [planoEditando, setPlanoEditando] = useState(null);
+  const [planoEditandoIndex, setPlanoEditandoIndex] = useState(null);
+  const [planoForm, setPlanoForm] = useState({
+    nome: '',
+    checkins_semanais: '',
+    valor: '',
+    duracao_dias: 30,
+    ativo: true,
+    atual: true,
+  });
 
   useEffect(() => {
     if (isEdit) {
@@ -128,6 +209,98 @@ export default function FormModalidadeScreen() {
       const novosPlanos = planos.filter((_, i) => i !== index);
       setPlanos(novosPlanos);
     }
+  };
+
+  // Funções do Modal de Plano
+  const abrirModalNovoPlano = () => {
+    setPlanoEditando(null);
+    setPlanoEditandoIndex(null);
+    setPlanoForm({
+      nome: '',
+      checkins_semanais: '',
+      valor: '',
+      duracao_dias: 30,
+      ativo: true,
+      atual: true,
+    });
+    setModalVisible(true);
+  };
+
+  const abrirModalEditarPlano = (plano, index) => {
+    setPlanoEditando(plano);
+    setPlanoEditandoIndex(index);
+    setPlanoForm({
+      ...plano,
+      checkins_semanais: String(plano.checkins_semanais),
+      valor: plano.valor || '',
+    });
+    setModalVisible(true);
+  };
+
+  const fecharModal = () => {
+    setModalVisible(false);
+    setPlanoEditando(null);
+    setPlanoEditandoIndex(null);
+    setPlanoForm({
+      nome: '',
+      checkins_semanais: '',
+      valor: '',
+      duracao_dias: 30,
+      ativo: true,
+      atual: true,
+    });
+  };
+
+  const handlePlanoFormChange = (field, value) => {
+    setPlanoForm({ ...planoForm, [field]: value });
+  };
+
+  const salvarPlano = () => {
+    // Validar campos obrigatórios
+    if (!planoForm.nome?.trim()) {
+      showError('Nome do plano é obrigatório');
+      return;
+    }
+    if (!planoForm.checkins_semanais) {
+      showError('Checkins semanais é obrigatório');
+      return;
+    }
+    if (!planoForm.valor) {
+      showError('Valor é obrigatório');
+      return;
+    }
+
+    if (planoEditandoIndex !== null) {
+      // Editando plano existente
+      const novosPlanos = [...planos];
+      novosPlanos[planoEditandoIndex] = {
+        ...planoForm,
+        id: planoEditando?.id,
+      };
+      setPlanos(novosPlanos);
+      showSuccess('Plano atualizado');
+    } else {
+      // Adicionando novo plano
+      setPlanos([...planos, planoForm]);
+      showSuccess('Plano adicionado');
+    }
+    fecharModal();
+  };
+
+  const formatarDuracao = (dias) => {
+    if (dias === 30) return '30 dias';
+    if (dias === 90) return '90 dias';
+    if (dias === 180) return '180 dias';
+    if (dias === 365) return '365 dias';
+    return `${dias} dias`;
+  };
+
+  const formatarValorExibicao = (valor) => {
+    if (!valor) return 'R$ 0,00';
+    if (typeof valor === 'string' && valor.includes(',')) {
+      return `R$ ${valor}`;
+    }
+    return `R$ ${parseFloat(valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
   const formatValorMonetario = (value) => {
@@ -259,204 +432,314 @@ export default function FormModalidadeScreen() {
           </View>
 
           <View style={styles.form}>
-            {/* Nome */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Nome *</Text>
-              <TextInput
-                style={[styles.input, errors.nome && styles.inputError]}
-                placeholder="Ex: Musculação"
-                value={formData.nome}
-                onChangeText={(value) => handleChange('nome', value)}
-              />
-              {errors.nome && <Text style={styles.errorText}>{errors.nome}</Text>}
-            </View>
-
-            {/* Descrição */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Descrição</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="Descreva a modalidade..."
-                value={formData.descricao}
-                onChangeText={(value) => handleChange('descricao', value)}
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-              />
-            </View>
-
-            {/* Ícone */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Ícone</Text>
-              <View style={styles.pickerContainer}>
-                <Picker
-                  selectedValue={formData.icone}
-                  onValueChange={(value) => handleChange('icone', value)}
-                  style={styles.picker}
-                >
-                  {ICONES_DISPONIVEIS.map((icone) => (
-                    <Picker.Item key={icone.value} label={icone.label} value={icone.value} />
-                  ))}
-                </Picker>
-              </View>
-              <View style={styles.iconePreview}>
-                <View style={[styles.iconeBadge, { backgroundColor: formData.cor }]}>
-                  <MaterialCommunityIcons name={formData.icone} size={24} color="#fff" />
+            {/* Seção Superior: Nome + Prévia */}
+            <View style={styles.topSection}>
+              {/* Coluna Esquerda: Nome e Descrição */}
+              <View style={styles.topSectionLeft}>
+                {/* Nome */}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Nome *</Text>
+                  <TextInput
+                    style={[styles.input, errors.nome && styles.inputError]}
+                    placeholder="Ex: Musculação"
+                    value={formData.nome}
+                    onChangeText={(value) => handleChange('nome', value)}
+                  />
+                  {errors.nome && <Text style={styles.errorText}>{errors.nome}</Text>}
                 </View>
-                <Text style={styles.iconePreviewText}>Prévia do ícone</Text>
+
+                {/* Descrição */}
+                <View style={[styles.inputGroup, { marginBottom: 0 }]}>
+                  <Text style={styles.label}>Descrição</Text>
+                  <TextInput
+                    style={[styles.input, styles.textAreaCompact]}
+                    placeholder="Descreva a modalidade..."
+                    value={formData.descricao}
+                    onChangeText={(value) => handleChange('descricao', value)}
+                    multiline
+                    numberOfLines={2}
+                    textAlignVertical="top"
+                  />
+                </View>
+              </View>
+
+              {/* Coluna Direita: Prévia */}
+              <View style={styles.topSectionRight}>
+                <Text style={styles.previewLabel}>Prévia</Text>
+                <View style={styles.previewCard}>
+                  <View style={[styles.previewIcon, { backgroundColor: formData.cor }]}>
+                    <MaterialCommunityIcons name={formData.icone} size={32} color="#fff" />
+                  </View>
+                  <Text style={styles.previewName}>{formData.nome || 'Nome da Modalidade'}</Text>
+                </View>
               </View>
             </View>
 
-            {/* Cor */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Cor</Text>
-              <View style={styles.coresContainer}>
-                {['#f97316', '#3b82f6', '#10b981', '#8b5cf6', '#ef4444', '#f59e0b', '#06b6d4', '#ec4899'].map((cor) => (
-                  <TouchableOpacity
-                    key={cor}
-                    style={[
-                      styles.corButton,
-                      { backgroundColor: cor },
-                      formData.cor === cor && styles.corButtonSelected,
-                    ]}
-                    onPress={() => handleChange('cor', cor)}
-                  >
-                    {formData.cor === cor && <Feather name="check" size={16} color="#fff" />}
-                  </TouchableOpacity>
-                ))}
+            {/* Seção Aparência: Ícone + Cor lado a lado */}
+            <View style={styles.appearanceSection}>
+              <Text style={styles.sectionTitle}>Aparência</Text>
+              
+              <View style={styles.appearanceRow}>
+                {/* Ícones */}
+                <View style={styles.appearanceCol}>
+                  <Text style={styles.labelSmall}>Ícone</Text>
+                  <View style={styles.iconesGrid}>
+                    {ICONES_DISPONIVEIS.map((icone) => (
+                      <TouchableOpacity
+                        key={icone.value}
+                        style={[
+                          styles.iconeButton,
+                          formData.icone === icone.value && styles.iconeButtonSelected,
+                          formData.icone === icone.value && { borderColor: formData.cor },
+                        ]}
+                        onPress={() => handleChange('icone', icone.value)}
+                        activeOpacity={0.7}
+                      >
+                        <MaterialCommunityIcons 
+                          name={icone.value} 
+                          size={20} 
+                          color={formData.icone === icone.value ? formData.cor : '#64748b'} 
+                        />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Divisor vertical */}
+                <View style={styles.appearanceDivider} />
+
+                {/* Cores */}
+                <View style={styles.appearanceColSmall}>
+                  <Text style={styles.labelSmall}>Cor</Text>
+                  <View style={styles.coresGrid}>
+                    {['#f97316', '#3b82f6', '#10b981', '#8b5cf6', '#ef4444', '#f59e0b', '#06b6d4', '#ec4899'].map((cor) => (
+                      <TouchableOpacity
+                        key={cor}
+                        style={[
+                          styles.corButtonSmall,
+                          { backgroundColor: cor },
+                          formData.cor === cor && styles.corButtonSmallSelected,
+                        ]}
+                        onPress={() => handleChange('cor', cor)}
+                        activeOpacity={0.7}
+                      >
+                        {formData.cor === cor && <Feather name="check" size={14} color="#fff" />}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
               </View>
             </View>
 
             {/* Planos da Modalidade */}
             <View style={styles.planosSection}>
               <View style={styles.planosSectionHeader}>
-                <Text style={styles.planosSectionTitle}>Planos desta Modalidade</Text>
-                <Text style={styles.planosSectionSubtitle}>
-                  {isEdit ? 'Gerencie os planos baseados em checkins semanais' : 'Crie os planos baseados em checkins semanais'}
-                </Text>
+                <View style={styles.planosTitleRow}>
+                  <View>
+                    <Text style={styles.planosSectionTitle}>Planos desta Modalidade</Text>
+                    <Text style={styles.planosSectionSubtitle}>
+                      {isEdit ? 'Gerencie os planos baseados em checkins semanais' : 'Crie os planos baseados em checkins semanais'}
+                    </Text>
+                  </View>
+                  <TouchableOpacity 
+                    style={styles.addPlanoHeaderButton}
+                    onPress={abrirModalNovoPlano}
+                    activeOpacity={0.7}
+                  >
+                    <Feather name="plus" size={16} color="#fff" />
+                    <Text style={styles.addPlanoHeaderButtonText}>Novo Plano</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
 
-              <View style={styles.planosContainer}>
-                {planos.map((plano, index) => (
-                  <View key={index} style={styles.planoCard}>
-                    <View style={styles.planoCardHeader}>
-                      <Text style={styles.planoCardTitle}>Plano {index + 1}</Text>
-                      {planos.length > 1 && (
-                        <TouchableOpacity 
-                          onPress={() => removerPlano(index)}
-                          style={styles.removerPlanoButton}
-                        >
-                          <Feather name="x" size={18} color="#ef4444" />
-                        </TouchableOpacity>
-                      )}
+              {/* Tabela de Planos */}
+              <View style={styles.tabelaContainer}>
+                {planos.length === 0 ? (
+                  <View style={styles.emptyPlanos}>
+                    <Feather name="inbox" size={40} color="#cbd5e1" />
+                    <Text style={styles.emptyPlanosText}>Nenhum plano cadastrado</Text>
+                    <Text style={styles.emptyPlanosSubtext}>Clique em "Novo Plano" para adicionar</Text>
+                  </View>
+                ) : (
+                  <>
+                    {/* Cabeçalho da Tabela */}
+                    <View style={styles.tabelaHeader}>
+                      <Text style={[styles.tabelaHeaderCell, styles.cellNome]}>Nome</Text>
+                      <Text style={[styles.tabelaHeaderCell, styles.cellCheckins]}>Checkins</Text>
+                      <Text style={[styles.tabelaHeaderCell, styles.cellValor]}>Valor</Text>
+                      <Text style={[styles.tabelaHeaderCell, styles.cellDuracao]}>Duração</Text>
+                      <Text style={[styles.tabelaHeaderCell, styles.cellStatus]}>Status</Text>
+                      <Text style={[styles.tabelaHeaderCell, styles.cellAcoes]}>Ações</Text>
                     </View>
 
-                    <View style={styles.planoCardBody}>
-                      {/* Nome do Plano - Linha 1 */}
-                      <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Nome do Plano *</Text>
-                        <TextInput
-                          style={[styles.input, errors[`plano_${index}_nome`] && styles.inputError]}
-                          placeholder="Ex: 2x por semana"
-                          value={plano.nome}
-                          onChangeText={(value) => handlePlanoChange(index, 'nome', value)}
-                        />
-                        {errors[`plano_${index}_nome`] && <Text style={styles.errorText}>{errors[`plano_${index}_nome`]}</Text>}
-                      </View>
-
-                      {/* Linha 2: Checkins, Valor e Duração */}
-                      <View style={styles.planoRow}>
-                        {/* Checkins Semanais */}
-                        <View style={[styles.inputGroup, styles.planoInputThird]}>
-                          <Text style={styles.label}>Checkins *</Text>
-                          <TextInput
-                            style={[styles.input, errors[`plano_${index}_checkins`] && styles.inputError]}
-                            placeholder="Ex: 3"
-                            value={plano.checkins_semanais}
-                            onChangeText={(value) => handlePlanoChange(index, 'checkins_semanais', value.replace(/\D/g, ''))}
-                            keyboardType="numeric"
-                          />
-                          {errors[`plano_${index}_checkins`] ? (
-                            <Text style={styles.errorText}>{errors[`plano_${index}_checkins`]}</Text>
-                          ) : (
-                            <Text style={styles.helperText}>999 = ilimitado</Text>
+                    {/* Linhas da Tabela */}
+                    {planos.map((plano, index) => (
+                      <View key={index} style={[styles.tabelaRow, index % 2 === 0 && styles.tabelaRowAlt]}>
+                        <Text style={[styles.tabelaCell, styles.cellNome]} numberOfLines={1}>{plano.nome || '-'}</Text>
+                        <Text style={[styles.tabelaCell, styles.cellCheckins]}>
+                          {plano.checkins_semanais === '999' || plano.checkins_semanais === 999 ? 'Ilimitado' : `${plano.checkins_semanais}/sem`}
+                        </Text>
+                        <Text style={[styles.tabelaCell, styles.cellValor]}>{formatarValorExibicao(plano.valor)}</Text>
+                        <Text style={[styles.tabelaCell, styles.cellDuracao]}>{formatarDuracao(plano.duracao_dias)}</Text>
+                        <View style={[styles.tabelaCell, styles.cellStatus]}>
+                          <View style={styles.statusBadges}>
+                            <View style={[styles.statusBadge, plano.ativo ? styles.statusAtivo : styles.statusInativo]}>
+                              <Text style={[styles.statusBadgeText, plano.ativo ? styles.statusAtivoText : styles.statusInativoText]}>
+                                {plano.ativo ? 'Ativo' : 'Inativo'}
+                              </Text>
+                            </View>
+                            {plano.atual && (
+                              <View style={[styles.statusBadge, styles.statusDisponivel]}>
+                                <Text style={styles.statusDisponivelText}>Disponível</Text>
+                              </View>
+                            )}
+                          </View>
+                        </View>
+                        <View style={[styles.tabelaCell, styles.cellAcoes]}>
+                          <TouchableOpacity 
+                            style={styles.actionButton}
+                            onPress={() => abrirModalEditarPlano(plano, index)}
+                          >
+                            <Feather name="edit-2" size={16} color="#3b82f6" />
+                          </TouchableOpacity>
+                          {planos.length > 1 && (
+                            <TouchableOpacity 
+                              style={styles.actionButton}
+                              onPress={() => removerPlano(index)}
+                            >
+                              <Feather name="trash-2" size={16} color="#ef4444" />
+                            </TouchableOpacity>
                           )}
                         </View>
+                      </View>
+                    ))}
+                  </>
+                )}
+              </View>
+            </View>
 
-                        {/* Valor */}
-                        <View style={[styles.inputGroup, styles.planoInputThird]}>
-                          <Text style={styles.label}>Valor *</Text>
-                          <View style={[styles.inputWithPrefix, errors[`plano_${index}_valor`] && styles.inputError]}>
-                            <Text style={styles.prefix}>R$</Text>
-                            <TextInput
-                              style={[styles.input, styles.inputWithPrefixField]}
-                              placeholder="0,00"
-                              value={plano.valor}
-                              onChangeText={(value) => {
-                                const formatted = formatValorMonetario(value);
-                                handlePlanoChange(index, 'valor', formatted);
-                              }}
-                              keyboardType="numeric"
-                            />
-                          </View>
-                          {errors[`plano_${index}_valor`] && <Text style={styles.errorText}>{errors[`plano_${index}_valor`]}</Text>}
-                        </View>
+            {/* Modal de Plano */}
+            <Modal
+              animationType="fade"
+              transparent={true}
+              visible={modalVisible}
+              onRequestClose={fecharModal}
+            >
+              <Pressable style={styles.modalOverlay} onPress={fecharModal}>
+                <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>
+                      {planoEditandoIndex !== null ? 'Editar Plano' : 'Novo Plano'}
+                    </Text>
+                    <TouchableOpacity onPress={fecharModal} style={styles.modalCloseButton}>
+                      <Feather name="x" size={24} color="#64748b" />
+                    </TouchableOpacity>
+                  </View>
 
-                        {/* Duração */}
-                        <View style={[styles.inputGroup, styles.planoInputThird]}>
-                          <Text style={styles.label}>Duração</Text>
-                          <View style={styles.pickerContainer}>
-                            <Picker
-                              selectedValue={plano.duracao_dias}
-                              onValueChange={(value) => handlePlanoChange(index, 'duracao_dias', value)}
-                              style={styles.picker}
-                            >
-                              <Picker.Item label="30 dias" value={30} />
-                              <Picker.Item label="90 dias" value={90} />
-                              <Picker.Item label="180 dias" value={180} />
-                              <Picker.Item label="365 dias" value={365} />
-                            </Picker>
-                          </View>
-                        </View>
+                  <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+                    {/* Nome do Plano */}
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.label}>Nome do Plano *</Text>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Ex: 2x por semana"
+                        value={planoForm.nome}
+                        onChangeText={(value) => handlePlanoFormChange('nome', value)}
+                      />
+                    </View>
+
+                    {/* Checkins e Valor */}
+                    <View style={styles.modalRow}>
+                      <View style={[styles.inputGroup, styles.modalInputHalf]}>
+                        <Text style={styles.label}>Checkins Semanais *</Text>
+                        <TextInput
+                          style={styles.input}
+                          placeholder="Ex: 3"
+                          value={planoForm.checkins_semanais}
+                          onChangeText={(value) => handlePlanoFormChange('checkins_semanais', value.replace(/\D/g, ''))}
+                          keyboardType="numeric"
+                        />
+                        <Text style={styles.helperText}>999 = ilimitado</Text>
                       </View>
 
-                      {/* Flags: Ativo e Atual */}
-                      <View style={styles.planoFlagsRow}>
-                        <View style={styles.planoFlag}>
-                          <Text style={styles.planoFlagLabel}>Ativo</Text>
-                          <Switch
-                            value={plano.ativo}
-                            onValueChange={(value) => handlePlanoChange(index, 'ativo', value)}
-                            trackColor={{ false: '#d1d5db', true: '#10b981' }}
-                            thumbColor={plano.ativo ? '#fff' : '#f3f4f6'}
-                          />
-                        </View>
-                        <View style={styles.planoFlag}>
-                          <Text style={styles.planoFlagLabel}>Disponível para novos contratos</Text>
-                          <Switch
-                            value={plano.atual}
-                            onValueChange={(value) => handlePlanoChange(index, 'atual', value)}
-                            trackColor={{ false: '#d1d5db', true: '#10b981' }}
-                            thumbColor={plano.atual ? '#fff' : '#f3f4f6'}
+                      <View style={[styles.inputGroup, styles.modalInputHalf]}>
+                        <Text style={styles.label}>Valor *</Text>
+                        <View style={styles.inputWithPrefix}>
+                          <Text style={styles.prefix}>R$</Text>
+                          <TextInput
+                            style={[styles.input, styles.inputWithPrefixField]}
+                            placeholder="0,00"
+                            value={planoForm.valor}
+                            onChangeText={(value) => {
+                              const formatted = formatValorMonetario(value);
+                              handlePlanoFormChange('valor', formatted);
+                            }}
+                            keyboardType="numeric"
                           />
                         </View>
                       </View>
                     </View>
-                  </View>
-                ))}
 
-                <TouchableOpacity 
-                  style={styles.addPlanoButton}
-                  onPress={adicionarPlano}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.addPlanoButtonIcon}>
-                    <Feather name="plus" size={16} color="#fff" />
+                    {/* Duração */}
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.label}>Duração</Text>
+                      <View style={styles.pickerContainer}>
+                        <Picker
+                          selectedValue={planoForm.duracao_dias}
+                          onValueChange={(value) => handlePlanoFormChange('duracao_dias', value)}
+                          style={styles.picker}
+                        >
+                          <Picker.Item label="30 dias" value={30} />
+                          <Picker.Item label="90 dias" value={90} />
+                          <Picker.Item label="180 dias" value={180} />
+                          <Picker.Item label="365 dias" value={365} />
+                        </Picker>
+                      </View>
+                    </View>
+
+                    {/* Flags */}
+                    <View style={styles.modalFlagsContainer}>
+                      <View style={styles.modalFlag}>
+                        <Text style={styles.modalFlagLabel}>Plano Ativo</Text>
+                        <Switch
+                          value={planoForm.ativo}
+                          onValueChange={(value) => handlePlanoFormChange('ativo', value)}
+                          trackColor={{ false: '#d1d5db', true: '#10b981' }}
+                          thumbColor={planoForm.ativo ? '#fff' : '#f3f4f6'}
+                        />
+                      </View>
+                      <View style={styles.modalFlag}>
+                        <Text style={styles.modalFlagLabel}>Disponível para novos contratos</Text>
+                        <Switch
+                          value={planoForm.atual}
+                          onValueChange={(value) => handlePlanoFormChange('atual', value)}
+                          trackColor={{ false: '#d1d5db', true: '#10b981' }}
+                          thumbColor={planoForm.atual ? '#fff' : '#f3f4f6'}
+                        />
+                      </View>
+                    </View>
+                  </ScrollView>
+
+                  <View style={styles.modalFooter}>
+                    <TouchableOpacity 
+                      style={styles.modalCancelButton}
+                      onPress={fecharModal}
+                    >
+                      <Text style={styles.modalCancelButtonText}>Cancelar</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={styles.modalSaveButton}
+                      onPress={salvarPlano}
+                    >
+                      <Feather name="check" size={16} color="#fff" />
+                      <Text style={styles.modalSaveButtonText}>
+                        {planoEditandoIndex !== null ? 'Salvar' : 'Adicionar'}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
-                  <Text style={styles.addPlanoButtonText}>Adicionar Outro Plano</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+                </Pressable>
+              </Pressable>
+            </Modal>
 
             {/* Status */}
             <View style={[styles.inputGroup, styles.statusGroup]}>
@@ -581,6 +864,132 @@ const styles = StyleSheet.create({
     minHeight: 100,
     paddingTop: 12,
   },
+  textAreaCompact: {
+    minHeight: 60,
+    paddingTop: 12,
+  },
+  // Seção Superior - Layout em duas colunas
+  topSection: {
+    flexDirection: 'row',
+    gap: 24,
+    marginBottom: 20,
+  },
+  topSectionLeft: {
+    flex: 1,
+  },
+  topSectionRight: {
+    width: 140,
+  },
+  previewLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+  },
+  previewCard: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    padding: 16,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  previewIcon: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  previewName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#1e293b',
+    textAlign: 'center',
+  },
+  // Seção Aparência
+  appearanceSection: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#475569',
+    marginBottom: 12,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  appearanceRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  appearanceCol: {
+    flex: 1,
+  },
+  appearanceColSmall: {
+    width: 160,
+  },
+  appearanceDivider: {
+    width: 1,
+    backgroundColor: '#e2e8f0',
+    marginHorizontal: 16,
+    alignSelf: 'stretch',
+  },
+  labelSmall: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
+    marginBottom: 10,
+  },
+  iconesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  iconeButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderWidth: 2,
+    borderColor: '#e2e8f0',
+  },
+  iconeButtonSelected: {
+    backgroundColor: '#f0f9ff',
+    borderWidth: 2,
+  },
+  coresGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  corButtonSmall: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  corButtonSmallSelected: {
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
+    transform: [{ scale: 1.1 }],
+  },
   inputWithPrefix: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -693,6 +1102,11 @@ const styles = StyleSheet.create({
   planosSectionHeader: {
     marginBottom: 16,
   },
+  planosTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
   planosSectionTitle: {
     fontSize: 16,
     fontWeight: '700',
@@ -702,6 +1116,235 @@ const styles = StyleSheet.create({
   planosSectionSubtitle: {
     fontSize: 13,
     color: '#64748b',
+  },
+  addPlanoHeaderButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#3b82f6',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  addPlanoHeaderButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  tabelaContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    overflow: 'hidden',
+  },
+  emptyPlanos: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyPlanosText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748b',
+    marginTop: 12,
+  },
+  emptyPlanosSubtext: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginTop: 4,
+  },
+  tabelaHeader: {
+    flexDirection: 'row',
+    backgroundColor: '#f1f5f9',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  tabelaHeaderCell: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+    textTransform: 'uppercase',
+  },
+  tabelaRow: {
+    flexDirection: 'row',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+    alignItems: 'center',
+  },
+  tabelaRowAlt: {
+    backgroundColor: '#fafafa',
+  },
+  tabelaCell: {
+    fontSize: 14,
+    color: '#1e293b',
+  },
+  cellNome: {
+    flex: 2,
+    paddingRight: 8,
+  },
+  cellCheckins: {
+    flex: 1,
+    textAlign: 'center',
+  },
+  cellValor: {
+    flex: 1.2,
+    textAlign: 'right',
+    paddingRight: 8,
+  },
+  cellDuracao: {
+    flex: 1,
+    textAlign: 'center',
+  },
+  cellStatus: {
+    flex: 1.5,
+    flexDirection: 'row',
+  },
+  cellAcoes: {
+    flex: 0.8,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  statusBadges: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 4,
+  },
+  statusAtivo: {
+    backgroundColor: '#dcfce7',
+  },
+  statusAtivoText: {
+    color: '#15803d',
+  },
+  statusInativo: {
+    backgroundColor: '#fee2e2',
+  },
+  statusInativoText: {
+    color: '#dc2626',
+  },
+  statusDisponivel: {
+    backgroundColor: '#dbeafe',
+  },
+  statusDisponivelText: {
+    color: '#1d4ed8',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  actionButton: {
+    padding: 6,
+    borderRadius: 4,
+    backgroundColor: '#f8fafc',
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    width: '100%',
+    maxWidth: 500,
+    maxHeight: '90%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1e293b',
+  },
+  modalCloseButton: {
+    padding: 4,
+  },
+  modalBody: {
+    padding: 20,
+    maxHeight: 400,
+  },
+  modalRow: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  modalInputHalf: {
+    flex: 1,
+  },
+  modalFlagsContainer: {
+    marginTop: 8,
+    gap: 12,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+  },
+  modalFlag: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  modalFlagLabel: {
+    fontSize: 14,
+    color: '#475569',
+    fontWeight: '500',
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+  },
+  modalCancelButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 6,
+    backgroundColor: '#f1f5f9',
+  },
+  modalCancelButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  modalSaveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 6,
+    backgroundColor: '#3b82f6',
+  },
+  modalSaveButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
   },
   planosContainer: {
     backgroundColor: '#f8fafc',

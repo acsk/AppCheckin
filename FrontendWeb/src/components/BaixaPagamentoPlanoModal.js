@@ -7,6 +7,7 @@ import api from '../services/api';
 
 export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, onSuccess }) {
   const [loading, setLoading] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [formasPagamento, setFormasPagamento] = useState([]);
   const [formData, setFormData] = useState({
     data_pagamento: '',
@@ -23,7 +24,7 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
         data_pagamento: hoje,
         forma_pagamento_id: pagamento.forma_pagamento_id || '',
         comprovante: '',
-        observacoes: 'Baixa Manual'
+        observacoes: ''
       });
       loadFormasPagamento();
     }
@@ -31,8 +32,10 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
 
   const loadFormasPagamento = async () => {
     try {
-      const response = await api.get('/config/formas-pagamento-ativas');
-      setFormasPagamento(response.data.formas || []);
+      const response = await api.get('/formas-pagamento');
+      console.log('Formas de pagamento:', response.data);
+      const formas = response.data.formas || [];
+      setFormasPagamento(formas);
     } catch (error) {
       console.error('Erro ao carregar formas de pagamento:', error);
     }
@@ -49,14 +52,25 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
       return;
     }
 
+    // Abrir modal de confirmação ao invés de submeter direto
+    setShowConfirmModal(true);
+  };
+
+  const handleConfirmarFinal = async () => {
     try {
       setLoading(true);
-      await api.post(`/admin/pagamentos-plano/${pagamento.id}/confirmar`, {
+      setShowConfirmModal(false);
+      
+      const payload = {
         data_pagamento: formData.data_pagamento,
         forma_pagamento_id: formData.forma_pagamento_id,
         comprovante: formData.comprovante,
         observacoes: formData.observacoes
-      });
+      };
+      
+      console.log('Enviando dados de pagamento:', payload);
+      
+      await api.post(`/admin/pagamentos-plano/${pagamento.id}/confirmar`, payload);
 
       showSuccess('Pagamento confirmado! Próximo pagamento gerado automaticamente.');
       onSuccess && onSuccess();
@@ -164,7 +178,11 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
                 >
                   <Picker.Item label="Selecione a forma de pagamento" value="" />
                   {formasPagamento.map((forma) => (
-                    <Picker.Item key={forma.id} label={forma.forma_pagamento_nome} value={forma.forma_pagamento_id} />
+                    <Picker.Item 
+                      key={forma.id} 
+                      label={forma.nome} 
+                      value={forma.id} 
+                    />
                   ))}
                 </Picker>
               </View>
@@ -173,11 +191,21 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
             {/* Data do Pagamento */}
             <View style={styles.field}>
               <Text style={styles.label}>Data do Pagamento *</Text>
-              <TextInput
-                style={styles.input}
+              <input
+                type="date"
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#d1d5db',
+                  borderRadius: 8,
+                  padding: 12,
+                  fontSize: 14,
+                  backgroundColor: '#fff',
+                  width: '100%',
+                  fontFamily: 'system-ui, -apple-system, sans-serif',
+                }}
                 value={formData.data_pagamento}
-                onChangeText={(text) => setFormData({ ...formData, data_pagamento: text })}
-                placeholder="YYYY-MM-DD"
+                onChange={(e) => setFormData({ ...formData, data_pagamento: e.target.value })}
+                max={new Date().toISOString().split('T')[0]}
               />
             </View>
 
@@ -238,6 +266,63 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Modal de Confirmação */}
+        {showConfirmModal && (
+          <View style={styles.confirmOverlay}>
+            <View style={styles.confirmModal}>
+              <View style={styles.confirmHeader}>
+                <Feather name="alert-circle" size={48} color="#f59e0b" />
+                <Text style={styles.confirmTitulo}>Confirmar Pagamento</Text>
+              </View>
+              
+              <View style={styles.confirmResumo}>
+                <View style={styles.confirmItem}>
+                  <Text style={styles.confirmLabel}>Parcela</Text>
+                  <Text style={styles.confirmValor}>{pagamento.numero_parcela}</Text>
+                </View>
+                <View style={styles.confirmItem}>
+                  <Text style={styles.confirmLabel}>Vencimento</Text>
+                  <Text style={styles.confirmValor}>{formatarData(pagamento.data_vencimento)}</Text>
+                </View>
+                <View style={styles.confirmItem}>
+                  <Text style={styles.confirmLabel}>Valor</Text>
+                  <Text style={[styles.confirmValor, { color: '#10b981', fontSize: 20, fontWeight: '700' }]}>
+                    {parseFloat(pagamento.valor).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                  </Text>
+                </View>
+              </View>
+              
+              <Text style={styles.confirmTexto}>
+                Deseja realmente confirmar o recebimento deste pagamento?
+              </Text>
+              
+              <View style={styles.confirmBotoes}>
+                <TouchableOpacity
+                  style={styles.confirmBotaoCancelar}
+                  onPress={() => setShowConfirmModal(false)}
+                  disabled={loading}
+                >
+                  <Text style={styles.confirmBotaoCancelarText}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.confirmBotaoConfirmar}
+                  onPress={handleConfirmarFinal}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <>
+                      <Feather name="check" size={18} color="#fff" />
+                      <Text style={styles.confirmBotaoConfirmarText}>Sim, Confirmar</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
       </View>
     </Modal>
   );
@@ -440,5 +525,98 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 14,
     fontWeight: '600',
+  },
+  confirmOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 9999,
+  },
+  confirmModal: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    width: '90%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  confirmHeader: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  confirmTitulo: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+    marginTop: 12,
+  },
+  confirmResumo: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 8,
+    padding: 16,
+    marginBottom: 20,
+    gap: 12,
+  },
+  confirmItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  confirmLabel: {
+    fontSize: 14,
+    color: '#6b7280',
+    fontWeight: '500',
+  },
+  confirmValor: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  confirmTexto: {
+    fontSize: 14,
+    color: '#4b5563',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 20,
+  },
+  confirmBotoes: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  confirmBotaoCancelar: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+  },
+  confirmBotaoCancelarText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  confirmBotaoConfirmar: {
+    flex: 1,
+    flexDirection: 'row',
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#10b981',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  confirmBotaoConfirmarText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
   },
 });

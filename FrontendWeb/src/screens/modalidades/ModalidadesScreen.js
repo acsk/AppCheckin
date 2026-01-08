@@ -14,7 +14,7 @@ export default function ModalidadesScreen() {
   const [modalidades, setModalidades] = useState([]);
   const [modalidadesFiltradas, setModalidadesFiltradas] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [confirmDelete, setConfirmDelete] = useState({ visible: false, id: null, nome: '' });
+  const [confirmDelete, setConfirmDelete] = useState({ visible: false, id: null, nome: '', ativo: false, acao: '' });
   const [searchText, setSearchText] = useState('');
 
   useEffect(() => {
@@ -78,23 +78,27 @@ export default function ModalidadesScreen() {
     router.push(`/modalidades/${id}`);
   };
 
-  const handleDelete = (modalidade) => {
+  const handleToggleStatus = (modalidade) => {
+    const acao = modalidade.ativo ? 'desativar' : 'ativar';
     setConfirmDelete({
       visible: true,
       id: modalidade.id,
-      nome: modalidade.nome
+      nome: modalidade.nome,
+      ativo: modalidade.ativo,
+      acao: acao
     });
   };
 
   const confirmDeleteModalidade = async () => {
     try {
       await modalidadeService.excluir(confirmDelete.id);
-      showSuccess('Modalidade excluída com sucesso');
-      setConfirmDelete({ visible: false, id: null, nome: '' });
+      const acao = confirmDelete.ativo ? 'desativada' : 'ativada';
+      showSuccess(`Modalidade ${acao} com sucesso`);
+      setConfirmDelete({ visible: false, id: null, nome: '', ativo: false, acao: '' });
       loadModalidades();
     } catch (error) {
-      console.error('Erro ao excluir modalidade:', error);
-      showError(error.message || 'Erro ao excluir modalidade');
+      console.error('Erro ao alterar modalidade:', error);
+      showError(error.message || 'Erro ao alterar modalidade');
     }
   };
 
@@ -143,10 +147,10 @@ export default function ModalidadesScreen() {
             <Feather name="edit-2" size={14} color="#fff" />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.actionButton, styles.deleteButton]}
-            onPress={() => handleDelete(modalidade)}
+            style={[styles.actionButton, modalidade.ativo ? styles.toggleOffButton : styles.toggleOnButton]}
+            onPress={() => handleToggleStatus(modalidade)}
           >
-            <Feather name="trash-2" size={14} color="#fff" />
+            <Feather name={modalidade.ativo ? "toggle-right" : "toggle-left"} size={16} color="#fff" />
           </TouchableOpacity>
         </View>
       </View>
@@ -249,10 +253,10 @@ export default function ModalidadesScreen() {
 
         <ConfirmModal
           visible={confirmDelete.visible}
-          title="Excluir Modalidade"
-          message={`Tem certeza que deseja excluir a modalidade "${confirmDelete.nome}"?`}
+          title={confirmDelete.acao === 'desativar' ? 'Confirmar Desativação' : 'Confirmar Ativação'}
+          message={`Deseja realmente ${confirmDelete.acao} a modalidade "${confirmDelete.nome}"?`}
           onConfirm={confirmDeleteModalidade}
-          onCancel={() => setConfirmDelete({ visible: false, id: null, nome: '' })}
+          onCancel={() => setConfirmDelete({ visible: false, id: null, nome: '', ativo: false, acao: '' })}
         />
       </View>
     </LayoutBase>
@@ -455,8 +459,11 @@ const styles = StyleSheet.create({
   editButton: {
     backgroundColor: '#3b82f6',
   },
-  deleteButton: {
+  toggleOffButton: {
     backgroundColor: '#ef4444',
+  },
+  toggleOnButton: {
+    backgroundColor: '#10b981',
   },
   cardBody: {
     borderTopWidth: 1,

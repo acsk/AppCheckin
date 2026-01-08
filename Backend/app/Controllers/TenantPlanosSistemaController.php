@@ -187,6 +187,23 @@ class TenantPlanosSistemaController
         }
 
         try {
+            // Inicializar dependências do tenant se necessário
+            $db = require __DIR__ . '/../../config/database.php';
+            $tenantModel = new \App\Models\Tenant($db);
+            
+            // Garantir que o tenant tem formas de pagamento configuradas
+            $tenantModel->inicializarFormasPagamento($tenantId);
+            
+            // Verificar se o tenant tem usuário Admin ativo
+            if (!$tenantModel->verificarUsuarioAdmin($tenantId)) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'warning',
+                    'message' => 'Este tenant não possui um usuário Admin ativo. É recomendável criar um usuário Admin antes de ativar o contrato.',
+                    'permite_continuar' => true
+                ], JSON_UNESCAPED_UNICODE));
+                // Não bloqueia, apenas avisa
+            }
+            
             // Calcular data de vencimento baseado na duração do plano
             $plano = $this->planoSistemaModel->buscarPorId($data['plano_sistema_id']);
             $dataInicio = $data['data_inicio'] ?? date('Y-m-d');

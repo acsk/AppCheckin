@@ -1,29 +1,81 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, useWindowDimensions } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, ScrollView, useWindowDimensions, TextInput } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import planoService from '../../services/planoService';
 import LayoutBase from '../../components/LayoutBase';
 import ConfirmModal from '../../components/ConfirmModal';
 import { showSuccess, showError } from '../../utils/toast';
+import { authService } from '../../services/authService';
 
 export default function PlanosScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
   const [planos, setPlanos] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [loadingTenants, setLoadingTenants] = useState(true);
   const [confirmDelete, setConfirmDelete] = useState({ visible: false, id: null, nome: '' });
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [tenants, setTenants] = useState([]);
+  const [selectedTenant, setSelectedTenant] = useState(null);
+  const [searchText, setSearchText] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
 
   useEffect(() => {
-    loadPlanos();
+    checkUserAndLoadData();
   }, []);
 
-  const loadPlanos = async () => {
+  useEffect(() => {
+    if (isSuperAdmin && selectedTenant) {
+      loadPlanos();
+    }
+  }, [selectedTenant]);
+
+  const checkUserAndLoadData = async () => {
+    const user = await authService.getCurrentUser();
+    const superAdmin = user?.role_id === 3;
+    setIsSuperAdmin(superAdmin);
+    
+    if (superAdmin) {
+      // SuperAdmin: carregar apenas lista de tenants inicialmente
+      loadTenants();
+    } else {
+      // Admin: carregar planos normalmente
+      loadPlanos(false);
+    }
+  };
+
+  const loadTenants = async () => {
+    try {
+      setLoadingTenants(true);
+      const response = await planoService.listarTodos(null);
+      setTenants(response.tenants || []);
+    } catch (error) {
+      console.error('❌ Erro ao carregar academias:', error);
+      showError('Erro ao carregar lista de academias');
+    } finally {
+      setLoadingTenants(false);
+    }
+  };
+
+  const loadPlanos = async (superAdmin = isSuperAdmin) => {
     try {
       setLoading(true);
-      console.log('🔄 Carregando planos...');
-      const response = await planoService.listar();
+      console.log('🔄 Carregando planos...', { superAdmin, selectedTenant });
+      
+      let response;
+      if (superAdmin) {
+        if (!selectedTenant) {
+          setPlanos([]);
+          setLoading(false);
+          return;
+        }
+        response = await planoService.listarTodos(selectedTenant.id);
+      } else {
+        response = await planoService.listar();
+      }
+      
       console.log('✅ Resposta da API:', response);
       setPlanos(response.planos || []);
       console.log('📊 Total de planos:', response.planos?.length || 0);
@@ -37,6 +89,22 @@ export default function PlanosScreen() {
 
   const handleDelete = (id, nome) => {
     setConfirmDelete({ visible: true, id, nome });
+  };
+
+  const filteredTenants = tenants.filter(tenant =>
+    tenant.nome.toLowerCase().includes(searchText.toLowerCase())
+  );
+
+  const handleSelectTenant = (tenant) => {
+    setSelectedTenant(tenant);
+    setSearchText(tenant.nome);
+    setShowDropdown(false);
+  };
+
+  const clearSelection = () => {
+    setSelectedTenant(null);
+    setSearchText('');
+    setPlanos([]);
   };
 
   const confirmDeleteAction = async () => {
@@ -77,6 +145,9 @@ export default function PlanosScreen() {
                 <Text style={styles.cardId}>#{plano.id}</Text>
                 <Text style={styles.cardName}>{plano.nome}</Text>
               </View>
+              {isSuperAdmin && plano.academia_nome && (
+                <Text style={styles.cardAcademia}>{plano.academia_nome}</Text>
+              )}
               <View style={[
                 styles.statusBadge,
                 plano.ativo ? styles.statusActive : styles.statusInactive
@@ -96,14 +167,16 @@ export default function PlanosScreen() {
             style={styles.cardActionButton}
             onPress={() => router.push(`/planos/${plano.id}`)}
           >
-            <Feather name="edit-2" size={18} color="#3b82f6" />
+            <Feather name={isSuperAdmin ? "eye" : "edit-2"} size={18} color="#3b82f6" />
           </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.cardActionButton}
-            onPress={() => handleDelete(plano.id, plano.nome)}
-          >
-            <Feather name="trash-2" size={18} color="#ef4444" />
-          </TouchableOpacity>
+          {!isSuperAdmin && (
+            <TouchableOpacity
+              style={styles.cardActionButton}
+              onPress={() => handleDelete(plano.id, plano.nome)}
+            >
+              <Feather name="trash-2" size={18} color="#ef4444" />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -149,12 +222,13 @@ export default function PlanosScreen() {
     <View style={styles.tableContainer}>
       {/* Table Header */}
       <View style={styles.tableHeader}>
+        {isSuperAdmin && <Text style={[styles.headerText, styles.colAcademia]}>ACADEMIA</Text>}
         <Text style={[styles.headerText, styles.colId]}>ID</Text>
         <Text style={[styles.headerText, styles.colNome]}>NOME</Text>
         <Text style={[styles.headerText, styles.colModalidade]}>MODALIDADE</Text>
         <Text style={[styles.headerText, styles.colValor]}>VALOR</Text>
         <Text style={[styles.headerText, styles.colCheckins]}>CHECKINS/SEM</Text>
-        <Text style={[styles.headerText, styles.colAtual]}>NOVOS CONTR.</Text>
+        {!isSuperAdmin && <Text style={[styles.headerText, styles.colAtual]}>NOVOS CONTR.</Text>}
         <Text style={[styles.headerText, styles.colStatus]}>STATUS</Text>
         <Text style={[styles.headerText, styles.colAcoes]}>AÇÕES</Text>
       </View>
@@ -163,6 +237,11 @@ export default function PlanosScreen() {
       <ScrollView style={styles.tableBody} showsVerticalScrollIndicator={true}>
         {planos.map((plano) => (
           <View key={plano.id} style={styles.tableRow}>
+            {isSuperAdmin && (
+              <Text style={[styles.cellText, styles.colAcademia]} numberOfLines={1}>
+                {plano.academia_nome || '-'}
+              </Text>
+            )}
             <View style={[styles.cellText, styles.colId]}>
               <Text style={styles.tableIdText}>#{plano.id}</Text>
             </View>
@@ -187,19 +266,21 @@ export default function PlanosScreen() {
                 ? 'Ilimitado' 
                 : `${plano.checkins_semanais}x`}
             </Text>
-            <View style={[styles.cellText, styles.colAtual]}>
-              <View style={[
-                styles.atualBadge,
-                plano.atual ? styles.atualAvailable : styles.atualLocked,
-              ]}>
-                <Text style={[
-                  styles.atualText,
-                  plano.atual ? styles.atualTextAvailable : styles.atualTextLocked,
+            {!isSuperAdmin && (
+              <View style={[styles.cellText, styles.colAtual]}>
+                <View style={[
+                  styles.atualBadge,
+                  plano.atual ? styles.atualAvailable : styles.atualLocked,
                 ]}>
-                  {plano.atual ? 'Sim' : 'Não'}
-                </Text>
+                  <Text style={[
+                    styles.atualText,
+                    plano.atual ? styles.atualTextAvailable : styles.atualTextLocked,
+                  ]}>
+                    {plano.atual ? 'Sim' : 'Não'}
+                  </Text>
+                </View>
               </View>
-            </View>
+            )}
             <View style={[styles.cellText, styles.colStatus]}>
               <View style={[
                 styles.statusBadge,
@@ -219,14 +300,16 @@ export default function PlanosScreen() {
                   onPress={() => router.push(`/planos/${plano.id}`)}
                   style={styles.actionButton}
                 >
-                  <Feather name="edit-2" size={16} color="#3b82f6" />
+                  <Feather name={isSuperAdmin ? "eye" : "edit-2"} size={16} color="#3b82f6" />
                 </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => handleDelete(plano.id, plano.nome)}
-                  style={styles.actionButton}
-                >
-                  <Feather name="trash-2" size={16} color="#ef4444" />
-                </TouchableOpacity>
+                {!isSuperAdmin && (
+                  <TouchableOpacity
+                    onPress={() => handleDelete(plano.id, plano.nome)}
+                    style={styles.actionButton}
+                  >
+                    <Feather name="trash-2" size={16} color="#ef4444" />
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           </View>
@@ -235,7 +318,95 @@ export default function PlanosScreen() {
     </View>
   );
 
-  if (loading) {
+  // Renderiza o dropdown de busca de academia
+  const renderAcademiaSearch = () => (
+    <View style={[styles.searchCard, isMobile && styles.searchCardMobile]}>
+      <View style={styles.searchCardHeader}>
+        <View style={styles.searchIconContainer}>
+          <Feather name="home" size={24} color="#f97316" />
+        </View>
+        <View style={styles.searchCardTitleContainer}>
+          <Text style={styles.searchCardTitle}>Selecionar Academia</Text>
+          <Text style={styles.searchCardSubtitle}>
+            {selectedTenant ? `${planos.length} plano(s) encontrado(s)` : 'Digite para buscar uma academia'}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.searchInputContainer}>
+        <Feather name="search" size={20} color="#9ca3af" style={styles.searchIcon} />
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Buscar academia por nome..."
+          placeholderTextColor="#9ca3af"
+          value={searchText}
+          onChangeText={(text) => {
+            setSearchText(text);
+            setShowDropdown(true);
+            if (!text) {
+              setSelectedTenant(null);
+              setPlanos([]);
+            }
+          }}
+          onFocus={() => setShowDropdown(true)}
+        />
+        {searchText.length > 0 && (
+          <TouchableOpacity onPress={clearSelection} style={styles.clearButton}>
+            <Feather name="x-circle" size={20} color="#9ca3af" />
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {/* Dropdown de resultados */}
+      {showDropdown && searchText.length > 0 && !selectedTenant && (
+        <View style={styles.dropdownContainer}>
+          <ScrollView style={styles.dropdownScroll} nestedScrollEnabled>
+            {loadingTenants ? (
+              <View style={styles.dropdownLoading}>
+                <ActivityIndicator size="small" color="#f97316" />
+                <Text style={styles.dropdownLoadingText}>Carregando academias...</Text>
+              </View>
+            ) : filteredTenants.length === 0 ? (
+              <View style={styles.dropdownEmpty}>
+                <Feather name="alert-circle" size={20} color="#9ca3af" />
+                <Text style={styles.dropdownEmptyText}>Nenhuma academia encontrada</Text>
+              </View>
+            ) : (
+              filteredTenants.map((tenant) => (
+                <TouchableOpacity
+                  key={tenant.id}
+                  style={styles.dropdownItem}
+                  onPress={() => handleSelectTenant(tenant)}
+                >
+                  <View style={styles.dropdownItemIcon}>
+                    <Feather name="home" size={16} color="#6b7280" />
+                  </View>
+                  <View style={styles.dropdownItemContent}>
+                    <Text style={styles.dropdownItemName}>{tenant.nome}</Text>
+                    <Text style={styles.dropdownItemCity}>{tenant.cidade}/{tenant.estado}</Text>
+                  </View>
+                  <Feather name="chevron-right" size={16} color="#d1d5db" />
+                </TouchableOpacity>
+              ))
+            )}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Academia selecionada */}
+      {selectedTenant && (
+        <View style={styles.selectedTenantBadge}>
+          <Feather name="check-circle" size={16} color="#10b981" />
+          <Text style={styles.selectedTenantText}>{selectedTenant.nome}</Text>
+          <TouchableOpacity onPress={clearSelection}>
+            <Feather name="x" size={16} color="#6b7280" />
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+
+  if (!isSuperAdmin && loading && planos.length === 0) {
     return (
       <LayoutBase title="Planos" subtitle="Gerenciar planos de assinatura">
         <View style={styles.loadingContainer}>
@@ -247,29 +418,78 @@ export default function PlanosScreen() {
   }
 
   return (
-    <LayoutBase title="Planos" subtitle="Gerenciar planos de assinatura">
+    <LayoutBase title="Planos" subtitle={isSuperAdmin ? "Visualizar planos das academias" : "Gerenciar planos de assinatura"}>
       <View style={styles.container}>
-        {/* Header Actions */}
-        <View style={[styles.header, isMobile && styles.headerMobile]}>
-          <View>
-            <Text style={[styles.headerTitle, isMobile && styles.headerTitleMobile]}>Lista de Planos</Text>
-            <Text style={styles.headerSubtitle}>{planos.length} plano(s) cadastrado(s)</Text>
+        {/* Header para SuperAdmin com busca estilizada */}
+        {isSuperAdmin ? (
+          <View style={styles.superAdminHeader}>
+            {/* Banner Header */}
+            <View style={styles.superAdminBanner}>
+              <View style={styles.bannerContent}>
+                <View style={styles.bannerIconContainer}>
+                  <View style={styles.bannerIconOuter}>
+                    <View style={styles.bannerIconInner}>
+                      <Feather name="layers" size={28} color="#fff" />
+                    </View>
+                  </View>
+                </View>
+                <View style={styles.bannerTextContainer}>
+                  <Text style={styles.bannerTitle}>Planos das Academias</Text>
+                  <Text style={styles.bannerSubtitle}>
+                    Gerencie e visualize todos os planos criados pelas academias parceiras
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.bannerDecoration}>
+                <View style={styles.decorCircle1} />
+                <View style={styles.decorCircle2} />
+                <View style={styles.decorCircle3} />
+              </View>
+            </View>
+            {/* Card de Busca */}
+            {renderAcademiaSearch()}
           </View>
-          <TouchableOpacity
-            style={[styles.addButton, isMobile && styles.addButtonMobile]}
-            onPress={() => router.push('/planos/novo')}
-            activeOpacity={0.8}
-          >
-            <Feather name="plus" size={18} color="#fff" />
-            {!isMobile && <Text style={styles.addButtonText}>Novo Plano</Text>}
-          </TouchableOpacity>
-        </View>
+        ) : (
+          /* Header Actions para Admin */
+          <View style={[styles.header, isMobile && styles.headerMobile]}>
+            <View style={styles.headerInfo}>
+              <Text style={[styles.headerTitle, isMobile && styles.headerTitleMobile]}>Lista de Planos</Text>
+              <Text style={styles.headerSubtitle}>{planos.length} plano(s) cadastrado(s)</Text>
+            </View>
+            <TouchableOpacity
+              style={[styles.addButton, isMobile && styles.addButtonMobile]}
+              onPress={() => router.push('/planos/novo')}
+              activeOpacity={0.8}
+            >
+              <Feather name="plus" size={18} color="#fff" />
+              {!isMobile && <Text style={styles.addButtonText}>Novo Plano</Text>}
+            </TouchableOpacity>
+          </View>
+        )}
 
-        {planos.length === 0 ? (
+        {/* Conteúdo */}
+        {loading ? (
+          <View style={styles.loadingInline}>
+            <ActivityIndicator size="small" color="#f97316" />
+            <Text style={styles.loadingInlineText}>Carregando planos...</Text>
+          </View>
+        ) : isSuperAdmin && !selectedTenant ? (
+          <View style={styles.emptyContainer}>
+            <Feather name="search" size={64} color="#d1d5db" />
+            <Text style={styles.emptyText}>Selecione uma academia</Text>
+            <Text style={styles.emptySubtext}>
+              Digite o nome da academia no campo acima para visualizar seus planos
+            </Text>
+          </View>
+        ) : planos.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Feather name="inbox" size={64} color="#d1d5db" />
-            <Text style={styles.emptyText}>Nenhum plano cadastrado</Text>
-            <Text style={styles.emptySubtext}>Clique em "Novo Plano" para começar</Text>
+            <Text style={styles.emptyText}>Nenhum plano {isSuperAdmin ? 'encontrado' : 'cadastrado'}</Text>
+            <Text style={styles.emptySubtext}>
+              {isSuperAdmin 
+                ? 'Esta academia não possui planos cadastrados'
+                : 'Clique em "Novo Plano" para começar'}
+            </Text>
           </View>
         ) : (
           isMobile ? (
@@ -311,6 +531,17 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     fontWeight: '500',
   },
+  loadingInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    gap: 10,
+  },
+  loadingInlineText: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -319,9 +550,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#e5e5e5',
+    flexWrap: 'wrap',
+    gap: 16,
   },
   headerMobile: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
     padding: 16,
+  },
+  headerInfo: {
+    flex: 1,
+    minWidth: 200,
   },
   headerTitle: {
     fontSize: 24,
@@ -336,6 +575,34 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginTop: 4,
     fontWeight: '400',
+  },
+  filterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  filterContainerMobile: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    gap: 8,
+    marginTop: 8,
+  },
+  filterLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  pickerWrapper: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    minWidth: 250,
+    overflow: 'hidden',
+  },
+  picker: {
+    height: 44,
+    backgroundColor: 'transparent',
   },
   addButton: {
     flexDirection: 'row',
@@ -400,6 +667,11 @@ const styles = StyleSheet.create({
   },
   cardHeaderLeft: {
     flex: 1,
+  },
+  cardAcademia: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 2,
   },
   cardActions: {
     flexDirection: 'row',
@@ -470,6 +742,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 4,
   },
+  colAcademia: { flex: 1.5, minWidth: 130 },
   colId: { flex: 0.6, minWidth: 60 },
   colNome: { flex: 2, minWidth: 150 },
   colModalidade: { flex: 1.5, minWidth: 120 },
@@ -588,5 +861,247 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     padding: 8,
+  },
+  // SuperAdmin Header e Search
+  superAdminHeader: {
+    backgroundColor: '#f8fafc',
+  },
+  superAdminBanner: {
+    backgroundColor: '#f97316',
+    paddingVertical: 28,
+    paddingHorizontal: 24,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  bannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 18,
+    zIndex: 2,
+  },
+  bannerIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerIconOuter: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerIconInner: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerTextContainer: {
+    flex: 1,
+  },
+  bannerTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.5,
+  },
+  bannerSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.85)',
+    marginTop: 4,
+    lineHeight: 20,
+  },
+  bannerDecoration: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: 200,
+    zIndex: 1,
+  },
+  decorCircle1: {
+    position: 'absolute',
+    top: -30,
+    right: -30,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  decorCircle2: {
+    position: 'absolute',
+    top: 40,
+    right: 60,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  decorCircle3: {
+    position: 'absolute',
+    bottom: -20,
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  searchCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    marginHorizontal: 20,
+    marginTop: -24,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+    zIndex: 10,
+  },
+  searchCardMobile: {
+    padding: 16,
+  },
+  searchCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 12,
+  },
+  searchIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: 'rgba(249, 115, 22, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchCardTitleContainer: {
+    flex: 1,
+  },
+  searchCardTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1f2937',
+  },
+  searchCardSubtitle: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  searchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    paddingHorizontal: 14,
+    height: 52,
+  },
+  searchIcon: {
+    marginRight: 10,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#1f2937',
+    outlineStyle: 'none',
+    height: '100%',
+  },
+  clearButton: {
+    padding: 6,
+  },
+  dropdownContainer: {
+    marginTop: 8,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    maxHeight: 280,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+  },
+  dropdownScroll: {
+    maxHeight: 280,
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+    gap: 12,
+  },
+  dropdownItemIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dropdownItemContent: {
+    flex: 1,
+  },
+  dropdownItemName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1f2937',
+  },
+  dropdownItemCity: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  dropdownLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    gap: 10,
+  },
+  dropdownLoadingText: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  dropdownEmpty: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    gap: 8,
+  },
+  dropdownEmptyText: {
+    fontSize: 14,
+    color: '#9ca3af',
+  },
+  selectedTenantBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ecfdf5',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginTop: 12,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: '#a7f3d0',
+  },
+  selectedTenantText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#059669',
   },
 });

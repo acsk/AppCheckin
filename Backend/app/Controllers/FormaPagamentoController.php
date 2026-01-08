@@ -17,12 +17,13 @@ class FormaPagamentoController
     }
 
     /**
-     * Listar todas as formas de pagamento
+     * Listar todas as formas de pagamento ativas do tenant
      * GET /formas-pagamento
      */
     public function index(Request $request, Response $response): Response
     {
-        $formas = $this->formaPagamentoModel->listarTodas();
+        $tenantId = $request->getAttribute('tenantId');
+        $formas = $this->formaPagamentoModel->listarTodas($tenantId);
         
         $response->getBody()->write(json_encode([
             'formas' => $formas
