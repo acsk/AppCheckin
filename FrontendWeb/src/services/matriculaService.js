@@ -1,4 +1,5 @@
 import api from './api';
+import { prepararErro } from '../utils/errorHandler';
 
 export const matriculaService = {
   async listar() {
@@ -7,7 +8,7 @@ export const matriculaService = {
       return response.data;
     } catch (error) {
       console.error('Erro ao listar matrículas:', error);
-      throw error.response?.data || error;
+      throw prepararErro(error.response?.data || error);
     }
   },
 
@@ -17,7 +18,7 @@ export const matriculaService = {
       return response.data;
     } catch (error) {
       console.error('Erro ao buscar matrícula:', error);
-      throw error.response?.data || error;
+      throw prepararErro(error.response?.data || error);
     }
   },
 
@@ -27,7 +28,7 @@ export const matriculaService = {
       return response.data;
     } catch (error) {
       console.error('Erro ao criar matrícula:', error);
-      throw error.response?.data || error;
+      throw prepararErro(error.response?.data || error);
     }
   },
 
@@ -37,7 +38,7 @@ export const matriculaService = {
       return response.data;
     } catch (error) {
       console.error('Erro ao cancelar matrícula:', error);
-      throw error.response?.data || error;
+      throw prepararErro(error.response?.data || error);
     }
   },
 
@@ -47,7 +48,7 @@ export const matriculaService = {
       return response.data;
     } catch (error) {
       console.error('Erro ao buscar pagamentos:', error);
-      throw error.response?.data || error;
+      throw prepararErro(error.response?.data || error);
     }
   },
 
@@ -60,7 +61,7 @@ export const matriculaService = {
       return response.data;
     } catch (error) {
       console.error('Erro ao confirmar pagamento:', error);
-      throw error.response?.data || error;
+      throw prepararErro(error.response?.data || error);
     }
   },
 };

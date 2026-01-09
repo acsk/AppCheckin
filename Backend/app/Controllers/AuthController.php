@@ -264,4 +264,81 @@ class AuthController
 
         return $response->withHeader('Content-Type', 'application/json');
     }
+
+    /**
+     * Seleção inicial de tenant durante login (rota pública)
+     * Usada quando o login retorna múltiplos tenants sem token
+     */
+    public function selectTenantPublic(Request $request, Response $response): Response
+    {
+        $data = $request->getParsedBody();
+
+        // Validações
+        if (empty($data['user_id']) || empty($data['email']) || empty($data['tenant_id'])) {
+            $response->getBody()->write(json_encode([
+                'error' => 'user_id, email e tenant_id são obrigatórios'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+        }
+
+        $userId = (int) $data['user_id'];
+        $email = $data['email'];
+        $tenantId = (int) $data['tenant_id'];
+
+        // Buscar usuário e verificar email
+        $usuario = $this->usuarioModel->findById($userId);
+        
+        if (!$usuario || ($usuario['email'] !== $email && ($usuario['email_global'] ?? '') !== $email)) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Dados inválidos'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(401);
+        }
+
+        // Verificar se usuário tem acesso a este tenant
+        if (!$this->usuarioModel->temAcessoTenant($userId, $tenantId)) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Você não tem acesso a esta academia'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+
+        // Gerar token com o tenant selecionado
+        $token = $this->jwtService->encode([
+            'user_id' => $usuario['id'],
+            'email' => $usuario['email'],
+            'tenant_id' => $tenantId
+        ]);
+
+        // Buscar informações do tenant selecionado
+        $tenants = $this->usuarioModel->getTenantsByUsuario($userId);
+        $tenantSelecionado = null;
+        
+        foreach ($tenants as $t) {
+            if ($t['tenant']['id'] === $tenantId) {
+                $tenantSelecionado = $t;
+                break;
+            }
+        }
+
+        // Remover senha do retorno
+        unset($usuario['senha_hash']);
+
+        $response->getBody()->write(json_encode([
+            'message' => 'Academia selecionada com sucesso',
+            'token' => $token,
+            'user' => [
+                'id' => $usuario['id'],
+                'nome' => $usuario['nome'],
+                'email' => $usuario['email'],
+                'email_global' => $usuario['email_global'] ?? $usuario['email'],
+                'foto_base64' => $usuario['foto_base64'] ?? null,
+                'role_id' => $usuario['role_id'] ?? null
+            ],
+            'tenant' => $tenantSelecionado,
+            'tenants' => $tenants
+        ]));
+
+        return $response->withHeader('Content-Type', 'application/json');
+    }
 }

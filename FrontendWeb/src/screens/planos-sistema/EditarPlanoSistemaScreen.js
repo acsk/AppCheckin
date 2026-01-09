@@ -9,6 +9,7 @@ import {
   Switch,
   ScrollView,
   useWindowDimensions,
+  Platform,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -284,26 +285,85 @@ export default function EditarPlanoSistemaScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#f97316" />
-        <Text style={styles.loadingText}>Carregando...</Text>
-      </View>
+      <LayoutBase title="Editar Plano do Sistema" noPadding>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#f97316" />
+          <Text style={styles.loadingText}>Carregando...</Text>
+        </View>
+      </LayoutBase>
     );
   }
 
   return (
-    <LayoutBase title="Editar Plano do Sistema" subtitle="Atualizar informações do plano">
+    <LayoutBase title="Editar Plano do Sistema" noPadding>
       {saving && <LoadingOverlay message="Atualizando plano..." />}
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-        <View style={styles.container}>
-          {/* Form */}
-          <View style={styles.form}>
+      <View style={styles.container}>
+        {/* Banner Header */}
+        <View style={styles.bannerContainer}>
+          <View style={styles.banner}>
+            <View style={styles.bannerContent}>
+              <TouchableOpacity onPress={() => router.push('/planos-sistema')} style={styles.backButtonBanner}>
+                <Feather name="arrow-left" size={24} color="#fff" />
+              </TouchableOpacity>
+              <View style={styles.bannerIconContainer}>
+                <View style={styles.bannerIconOuter}>
+                  <View style={styles.bannerIconInner}>
+                    <Feather name="edit-3" size={28} color="#fff" />
+                  </View>
+                </View>
+              </View>
+              <View style={styles.bannerTextContainer}>
+                <Text style={styles.bannerTitle}>Editar Plano</Text>
+                <Text style={styles.bannerSubtitle} numberOfLines={1}>
+                  {formData.nome || 'Atualizar informações do plano'}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.bannerDecoration}>
+              <View style={styles.decorCircle1} />
+              <View style={styles.decorCircle2} />
+              <View style={styles.decorCircle3} />
+            </View>
+          </View>
+
+          {/* Card de Resumo */}
+          <View style={[styles.summaryCard, isMobile && styles.summaryCardMobile]}>
+            <View style={styles.summaryCardHeader}>
+              <View style={styles.summaryCardInfo}>
+                <View style={styles.summaryCardIconContainer}>
+                  <Feather name="layers" size={20} color="#f97316" />
+                </View>
+                <View>
+                  <Text style={styles.summaryCardTitle}>Plano #{planoId}</Text>
+                  <Text style={styles.summaryCardSubtitle}>
+                    {academias.length} {academias.length === 1 ? 'academia' : 'academias'} associadas
+                  </Text>
+                </View>
+              </View>
+              <View style={[styles.statusBadgeLarge, { backgroundColor: formData.ativo ? '#10b981' : '#ef4444' }]}>
+                <Text style={styles.statusTextLarge}>{formData.ativo ? 'ATIVO' : 'INATIVO'}</Text>
+              </View>
+            </View>
+          </View>
+        </View>
+
+        <ScrollView style={styles.scrollContent} contentContainerStyle={styles.scrollContentContainer}>
+          {/* Card do Formulário */}
+          <View style={styles.card}>
+            <View style={styles.cardTitleRow}>
+              <View style={styles.cardTitleIcon}>
+                <Feather name="edit-3" size={20} color="#f97316" />
+              </View>
+              <Text style={styles.cardTitle}>Informações do Plano</Text>
+            </View>
+
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Nome do Plano *</Text>
               <TextInput
                 style={[styles.input, errors.nome && styles.inputError]}
                 placeholder="Ex: Plano Premium"
+                placeholderTextColor="#9ca3af"
                 value={formData.nome}
                 onChangeText={(value) => handleChange('nome', value)}
                 editable={!saving}
@@ -316,6 +376,7 @@ export default function EditarPlanoSistemaScreen() {
               <TextInput
                 style={[styles.input, styles.textArea]}
                 placeholder="Descrição do plano"
+                placeholderTextColor="#9ca3af"
                 value={formData.descricao}
                 onChangeText={(value) => handleChange('descricao', value)}
                 multiline
@@ -330,6 +391,7 @@ export default function EditarPlanoSistemaScreen() {
                 <TextInput
                   style={[styles.input, errors.valor && styles.inputError]}
                   placeholder="199.90"
+                  placeholderTextColor="#9ca3af"
                   value={formData.valor}
                   onChangeText={(value) => handleChange('valor', value)}
                   keyboardType="decimal-pad"
@@ -343,6 +405,7 @@ export default function EditarPlanoSistemaScreen() {
                 <TextInput
                   style={styles.input}
                   placeholder="30"
+                  placeholderTextColor="#9ca3af"
                   value={formData.duracao_dias}
                   onChangeText={(value) => handleChange('duracao_dias', value)}
                   keyboardType="number-pad"
@@ -357,6 +420,7 @@ export default function EditarPlanoSistemaScreen() {
                 <TextInput
                   style={[styles.input, errors.max_alunos && styles.inputError]}
                   placeholder="Ex: 50, 100, 200"
+                  placeholderTextColor="#9ca3af"
                   value={formData.max_alunos}
                   onChangeText={(value) => handleChange('max_alunos', value)}
                   keyboardType="number-pad"
@@ -370,6 +434,7 @@ export default function EditarPlanoSistemaScreen() {
                 <TextInput
                   style={[styles.input, errors.max_admins && styles.inputError]}
                   placeholder="Ex: 1, 2, 5"
+                  placeholderTextColor="#9ca3af"
                   value={formData.max_admins}
                   onChangeText={(value) => handleChange('max_admins', value)}
                   keyboardType="number-pad"
@@ -384,6 +449,7 @@ export default function EditarPlanoSistemaScreen() {
               <TextInput
                 style={styles.input}
                 placeholder="0"
+                placeholderTextColor="#9ca3af"
                 value={formData.ordem}
                 onChangeText={(value) => handleChange('ordem', value)}
                 keyboardType="number-pad"
@@ -439,100 +505,335 @@ export default function EditarPlanoSistemaScreen() {
               {saving ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.submitButtonText}>Salvar Alterações</Text>
+                <>
+                  <Feather name="check" size={18} color="#fff" />
+                  <Text style={styles.submitButtonText}>Salvar Alterações</Text>
+                </>
               )}
             </TouchableOpacity>
           </View>
 
           {/* Academias Associadas */}
-          <View style={styles.academiasSection}>
-            <View style={styles.sectionHeader}>
-              <Feather name="briefcase" size={20} color="#f97316" />
-              <Text style={styles.sectionTitle}>Academias Associadas</Text>
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{academias.length}</Text>
+          <View style={styles.card}>
+            <View style={styles.cardTitleRow}>
+              <View style={styles.cardTitleIcon}>
+                <Feather name="briefcase" size={20} color="#f97316" />
+              </View>
+              <Text style={styles.cardTitle}>Academias Associadas</Text>
+              <View style={styles.badgeCount}>
+                <Text style={styles.badgeCountText}>{academias.length}</Text>
               </View>
             </View>
             {renderAcademiasTable()}
           </View>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </View>
     </LayoutBase>
   );
 }
 
 const styles = StyleSheet.create({
-  scrollView: {
-    flex: 1,
-  },
   container: {
     flex: 1,
-    paddingBottom: 40,
+    backgroundColor: '#f8fafc',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'transparent',
     paddingVertical: 100,
   },
   loadingText: {
-    marginTop: 10,
+    marginTop: 12,
     fontSize: 16,
-    color: '#666',
+    color: '#6b7280',
+    fontWeight: '500',
   },
-  form: {
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+  // Banner Header
+  bannerContainer: {
+    backgroundColor: '#f8fafc',
+  },
+  banner: {
+    backgroundColor: '#f97316',
+    paddingVertical: 28,
+    paddingHorizontal: 24,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  bannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    zIndex: 2,
+  },
+  backButtonBanner: {
+    width: 44,
+    height: 44,
     borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  bannerIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerIconOuter: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerIconInner: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerTextContainer: {
+    flex: 1,
+  },
+  bannerTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.5,
+  },
+  bannerSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.85)',
+    marginTop: 4,
+    lineHeight: 20,
+  },
+  bannerDecoration: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: 200,
+    zIndex: 1,
+  },
+  decorCircle1: {
+    position: 'absolute',
+    top: -30,
+    right: -30,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  decorCircle2: {
+    position: 'absolute',
+    top: 40,
+    right: 60,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  decorCircle3: {
+    position: 'absolute',
+    bottom: -20,
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  // Summary Card
+  summaryCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
     padding: 20,
     marginHorizontal: 20,
-    marginTop: 10,
-    marginBottom: 20,
+    marginTop: -24,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+    zIndex: 10,
+  },
+  summaryCardMobile: {
+    marginHorizontal: 16,
+    padding: 16,
+  },
+  summaryCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  summaryCardInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  summaryCardIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(249, 115, 22, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  summaryCardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1f2937',
+  },
+  summaryCardSubtitle: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  statusBadgeLarge: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  statusTextLarge: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  // Scroll Content
+  scrollContent: {
+    flex: 1,
+  },
+  scrollContentContainer: {
+    padding: 20,
+    gap: 16,
+  },
+  // Card Base
+  card: {
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 8px 24px rgba(15,23,42,0.1)',
+      },
+    }),
+  },
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 2,
+    borderBottomColor: '#f97316',
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#111827',
+    flex: 1,
+  },
+  cardTitleIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: 'rgba(249,115,22,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  badgeCount: {
+    backgroundColor: '#f97316',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    minWidth: 32,
+    alignItems: 'center',
+  },
+  badgeCountText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  // Form
+  form: {
+    backgroundColor: '#ffffff',
+    borderRadius: 14,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 8px 24px rgba(15,23,42,0.1)',
+      },
+    }),
   },
   row: {
     flexDirection: 'row',
   },
   inputGroup: {
-    marginBottom: 20,
+    marginBottom: 18,
   },
   switchRowContainer: {
     flexDirection: 'row',
     marginBottom: 10,
   },
   label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#2b1a04',
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#374151',
     marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   input: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderWidth: 1,
-    borderColor: 'rgba(43,26,4,0.2)',
+    backgroundColor: '#f9fafb',
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
     borderRadius: 10,
-    padding: 12,
-    fontSize: 16,
-    color: '#2b1a04',
+    padding: 14,
+    fontSize: 15,
+    color: '#1f2937',
   },
   inputError: {
     borderColor: '#ef4444',
-    borderWidth: 2,
   },
   errorText: {
     color: '#ef4444',
     fontSize: 12,
-    marginTop: 4,
-    marginLeft: 4,
+    marginTop: 6,
+    fontWeight: '500',
   },
   textArea: {
-    minHeight: 80,
+    minHeight: 90,
     textAlignVertical: 'top',
   },
   switchRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
+    backgroundColor: '#f9fafb',
+    borderRadius: 10,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
   },
   switchSubtext: {
     fontSize: 12,
@@ -541,55 +842,23 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     backgroundColor: '#f97316',
-    padding: 16,
-    borderRadius: 10,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 20,
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 8,
   },
   submitButtonDisabled: {
-    backgroundColor: '#fbbf24',
-    opacity: 0.6,
+    backgroundColor: '#fdba74',
+    opacity: 0.7,
   },
   submitButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: 'bold',
-  },
-  academiasSection: {
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    borderRadius: 12,
-    padding: 20,
-    marginHorizontal: 20,
-    marginBottom: 20,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-    paddingBottom: 15,
-    borderBottomWidth: 2,
-    borderBottomColor: 'rgba(43,26,4,0.1)',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2b1a04',
-    marginLeft: 10,
-    flex: 1,
-  },
-  badge: {
-    backgroundColor: '#f97316',
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    minWidth: 30,
-    alignItems: 'center',
-  },
-  badgeText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   emptyContainer: {
     alignItems: 'center',
@@ -599,56 +868,58 @@ const styles = StyleSheet.create({
   emptyText: {
     marginTop: 10,
     fontSize: 16,
-    color: '#999',
+    color: '#9ca3af',
   },
   // Tabela Desktop
   tableContainer: {
-    borderRadius: 8,
+    borderRadius: 10,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(43,26,4,0.15)',
+    borderColor: '#e5e7eb',
   },
   table: {
     width: '100%',
   },
   tableHeader: {
     flexDirection: 'row',
-    backgroundColor: '#f97316',
+    backgroundColor: '#f8fafc',
     paddingVertical: 12,
-    paddingHorizontal: 10,
+    paddingHorizontal: 14,
+    borderBottomWidth: 2,
+    borderBottomColor: '#e5e7eb',
   },
   tableHeaderText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 13,
-    textAlign: 'left',
+    color: '#6b7280',
+    fontWeight: '700',
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   tableRow: {
     flexDirection: 'row',
     paddingVertical: 12,
-    paddingHorizontal: 10,
+    paddingHorizontal: 14,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(43,26,4,0.1)',
+    borderBottomColor: '#f3f4f6',
     alignItems: 'center',
   },
   tableRowEven: {
-    backgroundColor: 'rgba(249, 115, 22, 0.05)',
+    backgroundColor: '#f9fafb',
   },
   tableCell: {
     fontSize: 13,
-    color: '#2b1a04',
-    textAlign: 'left',
+    color: '#1f2937',
   },
   // Cards Mobile
   mobileCards: {
     gap: 12,
   },
   mobileCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 10,
-    padding: 15,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
     borderWidth: 1,
-    borderColor: 'rgba(43,26,4,0.15)',
+    borderColor: '#e5e7eb',
   },
   mobileCardHeader: {
     flexDirection: 'row',
@@ -657,12 +928,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(43,26,4,0.1)',
+    borderBottomColor: '#f3f4f6',
   },
   mobileCardTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#2b1a04',
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1f2937',
     flex: 1,
     marginRight: 10,
   },
@@ -676,13 +947,13 @@ const styles = StyleSheet.create({
   },
   mobileCardText: {
     fontSize: 13,
-    color: '#666',
+    color: '#6b7280',
     flex: 1,
   },
   statusBadge: {
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
     alignSelf: 'flex-start',
   },
   statusBadgeText: {

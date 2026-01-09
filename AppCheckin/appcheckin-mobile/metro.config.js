@@ -1,9 +1,12 @@
-// Carrega o polyfill antes de tudo
+/**
+ * Metro Config - Carrega polyfill antes de tudo
+ */
+
+// Aplicar polyfill globalmente antes do metro inicializar
 require('./polyfill-toReversed');
 
 const { getDefaultConfig } = require('expo/metro-config');
 
-/** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
 
 module.exports = config;

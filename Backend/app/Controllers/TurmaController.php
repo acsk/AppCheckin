@@ -4,152 +4,439 @@ namespace App\Controllers;
 
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use App\Models\Turma;
+use App\Models\Professor;
+use App\Models\Modalidade;
+use App\Models\Dia;
 use App\Models\Horario;
+use PDO;
 
 class TurmaController
 {
+    private Turma $turmaModel;
+    private Professor $professorModel;
+    private Modalidade $modalidadeModel;
+    private Dia $diaModel;
     private Horario $horarioModel;
 
     public function __construct()
     {
         $db = require __DIR__ . '/../../config/database.php';
+        $this->turmaModel = new Turma($db);
+        $this->professorModel = new Professor($db);
+        $this->modalidadeModel = new Modalidade($db);
+        $this->diaModel = new Dia($db);
         $this->horarioModel = new Horario($db);
     }
 
     /**
-     * Lista todos os horários/turmas com estatísticas de alunos
+     * Listar turmas do tenant
+     * GET /admin/turmas
+     * Query params: apenas_ativas=true, data=2026-01-10 ou dia_id=18
      */
     public function index(Request $request, Response $response): Response
     {
-        $horarios = $this->horarioModel->getAllWithStats();
-
-        // Agrupar por data para melhor visualização
-        $turmasPorDia = [];
-        foreach ($horarios as $horario) {
-            $data = $horario['data'];
-            
-            if (!isset($turmasPorDia[$data])) {
-                $turmasPorDia[$data] = [
-                    'data' => $data,
-                    'dia_ativo' => (bool) $horario['dia_ativo'],
-                    'turmas' => []
-                ];
+        $tenantId = $request->getAttribute('tenantId');
+        $queryParams = $request->getQueryParams();
+        $apenasAtivas = isset($queryParams['apenas_ativas']) && $queryParams['apenas_ativas'] === 'true';
+        
+        // Aceitar tanto 'data' quanto 'dia_id'
+        $data = isset($queryParams['data']) ? $queryParams['data'] : null;
+        $diaId = isset($queryParams['dia_id']) ? (int) $queryParams['dia_id'] : null;
+        
+        $dia = null;
+        $turmas = [];
+        
+        // Se data foi fornecida, buscar o dia por data
+        if ($data) {
+            // Validar formato da data
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $data)) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'message' => 'Formato de data inválido. Use YYYY-MM-DD'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
             }
-
-            $turmasPorDia[$data]['turmas'][] = [
-                'id' => $horario['id'],
-                'hora' => $horario['hora'],
-                'horario_inicio' => $horario['horario_inicio'],
-                'horario_fim' => $horario['horario_fim'],
-                'limite_alunos' => $horario['limite_alunos'],
-                'alunos_registrados' => $horario['alunos_registrados'],
-                'vagas_disponiveis' => $horario['vagas_disponiveis'],
-                'percentual_ocupacao' => $horario['limite_alunos'] > 0 
-                    ? round(($horario['alunos_registrados'] / $horario['limite_alunos']) * 100, 2)
-                    : 0,
-                'ativo' => (bool) $horario['ativo']
-            ];
+            
+            $dia = $this->diaModel->findByData($data);
+            if (!$dia) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'message' => 'Dia não encontrado para a data informada'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
+            }
+            $turmas = $this->turmaModel->listarPorDia($tenantId, $dia['id'], $apenasAtivas);
         }
-
+        // Se dia_id foi fornecido, usar esse
+        elseif ($diaId) {
+            $dia = $this->diaModel->findById($diaId);
+            if (!$dia) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'message' => 'Dia não encontrado'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
+            }
+            $turmas = $this->turmaModel->listarPorDia($tenantId, $diaId, $apenasAtivas);
+        }
+        // Se nenhum foi fornecido, usar hoje
+        else {
+            $hoje = date('Y-m-d');
+            $dia = $this->diaModel->findByData($hoje);
+            
+            if (!$dia) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'message' => 'Dia atual não encontrado no sistema'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
+            }
+            $turmas = $this->turmaModel->listarPorDia($tenantId, $dia['id'], $apenasAtivas);
+        }
+        
         $response->getBody()->write(json_encode([
-            'turmas_por_dia' => array_values($turmasPorDia),
-            'total_turmas' => count($horarios)
-        ]));
-
-        return $response->withHeader('Content-Type', 'application/json');
+            'dia' => $dia,
+            'turmas' => $turmas
+        ], JSON_UNESCAPED_UNICODE));
+        
+        return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
     }
 
     /**
-     * Lista turmas do dia atual (baseado na data do servidor)
+     * Listar turmas de um dia específico (para mobile)
+     * GET /admin/turmas/dia/{diaId}
      */
-    public function hoje(Request $request, Response $response): Response
+    public function listarPorDia(Request $request, Response $response, array $args): Response
     {
-        $dataHoje = date('Y-m-d');
+        $diaId = (int) $args['diaId'];
+        $tenantId = $request->getAttribute('tenantId');
         
-        // Obter ID do usuário autenticado
-        $userId = $request->getAttribute('userId');
-        
-        $horarios = $this->horarioModel->getAllWithStats();
-
-        // Filtrar apenas turmas do dia atual
-        $turmasHoje = array_filter($horarios, function($horario) use ($dataHoje) {
-            return $horario['data'] === $dataHoje;
-        });
-
-        if (empty($turmasHoje)) {
+        // Verificar se dia existe
+        $dia = $this->diaModel->findById($diaId);
+        if (!$dia) {
             $response->getBody()->write(json_encode([
-                'message' => 'Não há turmas cadastradas para hoje',
-                'data' => $dataHoje,
-                'turmas' => []
-            ]));
-            return $response->withHeader('Content-Type', 'application/json');
+                'type' => 'error',
+                'message' => 'Dia não encontrado'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
         }
-
-        // Verificar em qual turma o usuário está registrado hoje
-        $turmaUsuarioId = $this->horarioModel->getTurmaRegistradaHoje($userId, $dataHoje);
-
-        // Formatar turmas
-        $turmasFormatadas = array_map(function($horario) use ($turmaUsuarioId) {
-            return [
-                'id' => $horario['id'],
-                'hora' => $horario['hora'],
-                'horario_inicio' => $horario['horario_inicio'],
-                'horario_fim' => $horario['horario_fim'],
-                'limite_alunos' => $horario['limite_alunos'],
-                'alunos_registrados' => $horario['alunos_registrados'],
-                'vagas_disponiveis' => $horario['vagas_disponiveis'],
-                'percentual_ocupacao' => $horario['limite_alunos'] > 0 
-                    ? round(($horario['alunos_registrados'] / $horario['limite_alunos']) * 100, 2)
-                    : 0,
-                'ativo' => (bool) $horario['ativo'],
-                'usuario_registrado' => $turmaUsuarioId === $horario['id']
-            ];
-        }, array_values($turmasHoje));
-
+        
+        $turmas = $this->turmaModel->listarPorDia($tenantId, $diaId);
+        
         $response->getBody()->write(json_encode([
-            'data' => $dataHoje,
-            'turmas' => $turmasFormatadas,
-            'total_turmas' => count($turmasFormatadas)
-        ]));
-
-        return $response->withHeader('Content-Type', 'application/json');
+            'dia' => $dia,
+            'turmas' => $turmas
+        ], JSON_UNESCAPED_UNICODE));
+        
+        return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
     }
 
     /**
-     * Lista alunos de uma turma/horário específico
+     * Buscar turma por ID
+     * GET /admin/turmas/{id}
      */
-    public function alunos(Request $request, Response $response, array $args): Response
+    public function show(Request $request, Response $response, array $args): Response
     {
-        $horarioId = (int) $args['id'];
+        $id = (int) $args['id'];
+        $tenantId = $request->getAttribute('tenantId');
+        
+        $turma = $this->turmaModel->findById($id, $tenantId);
+        
+        if (!$turma) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Turma não encontrada'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
+        }
+        
+        $response->getBody()->write(json_encode([
+            'turma' => $turma
+        ], JSON_UNESCAPED_UNICODE));
+        
+        return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+    }
 
+    /**
+     * Criar nova turma
+     * POST /admin/turmas
+     */
+    public function create(Request $request, Response $response): Response
+    {
+        $tenantId = $request->getAttribute('tenantId');
+        $data = $request->getParsedBody();
+        
+        // Validações básicas
+        if (empty($data['nome'])) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Nome da turma é obrigatório'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+        }
+        
+        if (empty($data['professor_id'])) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Professor é obrigatório'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+        }
+        
+        if (empty($data['modalidade_id'])) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Modalidade é obrigatória'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+        }
+        
+        if (empty($data['dia_id'])) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Dia é obrigatório'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+        }
+        
+        if (empty($data['horario_id'])) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Horário é obrigatório'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+        }
+        
+        // Verificar se professor pertence ao tenant
+        if (!$this->professorModel->pertenceAoTenant($data['professor_id'], $tenantId)) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Professor não encontrado'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+        }
+        
+        // Verificar se dia existe
+        if (!$this->diaModel->findById($data['dia_id'])) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Dia não encontrado'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+        }
+        
         // Verificar se horário existe
-        $horario = $this->horarioModel->findById($horarioId);
-
-        if (!$horario) {
+        if (!$this->horarioModel->findById($data['horario_id'])) {
             $response->getBody()->write(json_encode([
-                'error' => 'Horário/Turma não encontrado'
-            ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+                'type' => 'error',
+                'message' => 'Horário não encontrado'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
         }
+        
+        if (!empty($data['limite_alunos']) && $data['limite_alunos'] < 1) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Limite de alunos deve ser maior que 0'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+        }
+        
+        $data['tenant_id'] = $tenantId;
+        
+        try {
+            $id = $this->turmaModel->create($data);
+            $turma = $this->turmaModel->findById($id);
+            
+            $response->getBody()->write(json_encode([
+                'type' => 'success',
+                'message' => 'Turma criada com sucesso',
+                'turma' => $turma
+            ], JSON_UNESCAPED_UNICODE));
+            
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(201);
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Erro ao criar turma: ' . $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
+        }
+    }
 
-        // Buscar alunos
-        $alunos = $this->horarioModel->getAlunosByHorarioId($horarioId);
+    /**
+     * Atualizar turma
+     * PUT /admin/turmas/{id}
+     */
+    public function update(Request $request, Response $response, array $args): Response
+    {
+        $id = (int) $args['id'];
+        $tenantId = $request->getAttribute('tenantId');
+        $data = $request->getParsedBody();
+        
+        // Verificar se turma existe e pertence ao tenant
+        $turma = $this->turmaModel->findById($id, $tenantId);
+        if (!$turma) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Turma não encontrada'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
+        }
+        
+        // Validações
+        if (!empty($data['professor_id'])) {
+            if (!$this->professorModel->pertenceAoTenant($data['professor_id'], $tenantId)) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'message' => 'Professor não encontrado'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+            }
+        }
+        
+        if (!empty($data['dia_id'])) {
+            if (!$this->diaModel->findById($data['dia_id'])) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'message' => 'Dia não encontrado'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+            }
+        }
+        
+        if (!empty($data['horario_id'])) {
+            if (!$this->horarioModel->findById($data['horario_id'])) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'message' => 'Horário não encontrado'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+            }
+        }
+        
+        if (!empty($data['limite_alunos']) && $data['limite_alunos'] < 1) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Limite de alunos deve ser maior que 0'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+        }
+        
+        try {
+            $this->turmaModel->update($id, $data);
+            $turmaAtualizada = $this->turmaModel->findById($id);
+            
+            $response->getBody()->write(json_encode([
+                'type' => 'success',
+                'message' => 'Turma atualizada com sucesso',
+                'turma' => $turmaAtualizada
+            ], JSON_UNESCAPED_UNICODE));
+            
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Erro ao atualizar turma: ' . $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
+        }
+    }
 
+    /**
+     * Deletar turma
+     * DELETE /admin/turmas/{id}
+     */
+    public function delete(Request $request, Response $response, array $args): Response
+    {
+        $id = (int) $args['id'];
+        $tenantId = $request->getAttribute('tenantId');
+        
+        // Verificar se turma existe e pertence ao tenant
+        $turma = $this->turmaModel->findById($id, $tenantId);
+        if (!$turma) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Turma não encontrada'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
+        }
+        
+        try {
+            $this->turmaModel->delete($id);
+            
+            $response->getBody()->write(json_encode([
+                'type' => 'success',
+                'message' => 'Turma deletada com sucesso'
+            ], JSON_UNESCAPED_UNICODE));
+            
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Erro ao deletar turma: ' . $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
+        }
+    }
+
+    /**
+     * Listar turmas de um professor
+     * GET /admin/professores/{professorId}/turmas
+     */
+    public function listarPorProfessor(Request $request, Response $response, array $args): Response
+    {
+        $professorId = (int) $args['professorId'];
+        $tenantId = $request->getAttribute('tenantId');
+        
+        // Verificar se professor existe
+        if (!$this->professorModel->pertenceAoTenant($professorId, $tenantId)) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Professor não encontrado'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
+        }
+        
+        $turmas = $this->turmaModel->listarPorProfessor($professorId, $tenantId);
+        
         $response->getBody()->write(json_encode([
-            'turma' => [
-                'id' => $horario['id'],
-                'data' => $horario['data'],
-                'hora' => $horario['hora'],
-                'horario_inicio' => $horario['horario_inicio'],
-                'horario_fim' => $horario['horario_fim'],
-                'limite_alunos' => $horario['limite_alunos'],
-                'alunos_registrados' => $horario['alunos_registrados'],
-                'vagas_disponiveis' => $horario['vagas_disponiveis']
-            ],
-            'alunos' => $alunos,
-            'total_alunos' => count($alunos)
-        ]));
+            'turmas' => $turmas
+        ], JSON_UNESCAPED_UNICODE));
+        
+        return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+    }
 
-        return $response->withHeader('Content-Type', 'application/json');
+    /**
+     * Verificar disponibilidade de vagas
+     * GET /admin/turmas/{id}/vagas
+     */
+    public function verificarVagas(Request $request, Response $response, array $args): Response
+    {
+        $id = (int) $args['id'];
+        $tenantId = $request->getAttribute('tenantId');
+        
+        $turma = $this->turmaModel->findById($id, $tenantId);
+        if (!$turma) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Turma não encontrada'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
+        }
+        
+        $alunos = $this->turmaModel->contarAlunos($id);
+        $temVagas = $this->turmaModel->temVagas($id);
+        
+        $response->getBody()->write(json_encode([
+            'turma_id' => $id,
+            'limite_alunos' => $turma['limite_alunos'],
+            'alunos_inscritos' => $alunos,
+            'vagas_disponiveis' => $turma['limite_alunos'] - $alunos,
+            'tem_vagas' => $temVagas
+        ], JSON_UNESCAPED_UNICODE));
+        
+        return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
     }
 }

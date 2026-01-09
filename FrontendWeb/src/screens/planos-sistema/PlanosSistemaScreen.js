@@ -12,6 +12,7 @@ export default function PlanosSistemaScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
+  const isDesktop = width >= 768;
   const [planos, setPlanos] = useState([]);
   const [loading, setLoading] = useState(true);
   const [confirmDelete, setConfirmDelete] = useState({ visible: false, id: null, nome: '' });
@@ -203,7 +204,7 @@ export default function PlanosSistemaScreen() {
 
   if (loading) {
     return (
-      <LayoutBase title="Planos Sistema" subtitle="Gerenciar planos de assinatura">
+      <LayoutBase title="Planos Sistema" subtitle="Gerenciar planos de assinatura" noPadding>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#f97316" />
           <Text style={styles.loadingText}>Carregando planos...</Text>
@@ -213,31 +214,64 @@ export default function PlanosSistemaScreen() {
   }
 
   return (
-    <LayoutBase title="Planos Sistema" subtitle="Gerenciar planos de assinatura">
+    <LayoutBase title="Planos Sistema" subtitle="Gerenciar planos de assinatura" noPadding>
       <View style={styles.container}>
-        {/* Header Actions */}
-        <View style={[styles.header, isMobile && styles.headerMobile]}>
-          <View>
-            <Text style={[styles.headerTitle, isMobile && styles.headerTitleMobile]}>Lista de Planos Sistema</Text>
-            <Text style={styles.headerSubtitle}>{planos.length} plano(s) cadastrado(s)</Text>
+        {/* Banner Header */}
+        <View style={styles.bannerContainer}>
+          <View style={styles.banner}>
+            <View style={styles.bannerContent}>
+              <View style={styles.bannerIconContainer}>
+                <View style={styles.bannerIconOuter}>
+                  <View style={styles.bannerIconInner}>
+                    <Feather name="layers" size={28} color="#fff" />
+                  </View>
+                </View>
+              </View>
+              <View style={styles.bannerTextContainer}>
+                <Text style={styles.bannerTitle}>Planos do Sistema</Text>
+                <Text style={styles.bannerSubtitle}>
+                  Gerencie os planos de assinatura para academias
+                </Text>
+              </View>
+            </View>
+            <View style={styles.bannerDecoration}>
+              <View style={styles.decorCircle1} />
+              <View style={styles.decorCircle2} />
+              <View style={styles.decorCircle3} />
+            </View>
           </View>
-          <View style={styles.headerButtons}>
-            <TouchableOpacity
-              style={[styles.contractButton, isMobile && styles.contractButtonMobile]}
-              onPress={() => router.push('/contratos/novo')}
-              activeOpacity={0.8}
-            >
-              <Feather name="file-plus" size={18} color="#fff" />
-              {!isMobile && <Text style={styles.contractButtonText}>Novo Contrato</Text>}
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.addButton, isMobile && styles.addButtonMobile]}
-              onPress={() => router.push('/planos-sistema/novo')}
-              activeOpacity={0.8}
-            >
-              <Feather name="plus" size={18} color="#fff" />
-              {!isMobile && <Text style={styles.addButtonText}>Novo Plano</Text>}
-            </TouchableOpacity>
+
+          {/* Card de Resumo e Ações */}
+          <View style={[styles.summaryCard, isMobile && styles.summaryCardMobile]}>
+            <View style={styles.summaryCardHeader}>
+              <View style={styles.summaryCardInfo}>
+                <View style={styles.summaryCardIconContainer}>
+                  <Feather name="package" size={20} color="#f97316" />
+                </View>
+                <View>
+                  <Text style={styles.summaryCardTitle}>Lista de Planos</Text>
+                  <Text style={styles.summaryCardSubtitle}>
+                    {planos.length} {planos.length === 1 ? 'plano' : 'planos'} cadastrados
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.headerButtonsContainer}>
+                <TouchableOpacity
+                  style={[styles.contractButton, isMobile && styles.buttonMobile]}
+                  onPress={() => router.push('/contratos/novo')}
+                >
+                  <Feather name="file-plus" size={18} color="#fff" />
+                  {!isMobile && <Text style={styles.buttonText}>Novo Contrato</Text>}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.addButton, isMobile && styles.buttonMobile]}
+                  onPress={() => router.push('/planos-sistema/novo')}
+                >
+                  <Feather name="plus" size={18} color="#fff" />
+                  {!isMobile && <Text style={styles.buttonText}>Novo Plano</Text>}
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
         </View>
 
@@ -253,7 +287,9 @@ export default function PlanosSistemaScreen() {
               {planos.map(renderMobileCard)}
             </ScrollView>
           ) : (
-            renderTable()
+            <ScrollView style={styles.scrollContent} contentContainerStyle={styles.scrollContentContainer}>
+              {renderTable()}
+            </ScrollView>
           )
         )}
       </View>
@@ -273,7 +309,7 @@ export default function PlanosSistemaScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#f8fafc',
   },
   loadingContainer: {
     flex: 1,
@@ -287,33 +323,146 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     fontWeight: '500',
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e5e5',
+  // Banner Header
+  bannerContainer: {
+    backgroundColor: '#f8fafc',
   },
-  headerMobile: {
+  banner: {
+    backgroundColor: '#f97316',
+    paddingVertical: 28,
+    paddingHorizontal: 24,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  bannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 18,
+    zIndex: 2,
+  },
+  bannerIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerIconOuter: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerIconInner: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerTextContainer: {
+    flex: 1,
+  },
+  bannerTitle: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.5,
+  },
+  bannerSubtitle: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.85)',
+    marginTop: 4,
+    lineHeight: 20,
+  },
+  bannerDecoration: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    width: 200,
+    zIndex: 1,
+  },
+  decorCircle1: {
+    position: 'absolute',
+    top: -30,
+    right: -30,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  decorCircle2: {
+    position: 'absolute',
+    top: 40,
+    right: 60,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  decorCircle3: {
+    position: 'absolute',
+    bottom: -20,
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  // Summary Card
+  summaryCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    marginHorizontal: 20,
+    marginTop: -24,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
+    zIndex: 10,
+  },
+  summaryCardMobile: {
+    marginHorizontal: 16,
     padding: 16,
   },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
+  summaryCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+    flexWrap: 'wrap',
   },
-  headerTitleMobile: {
-    fontSize: 20,
+  summaryCardInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
   },
-  headerSubtitle: {
-    fontSize: 14,
+  summaryCardIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(249, 115, 22, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  summaryCardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1f2937',
+  },
+  summaryCardSubtitle: {
+    fontSize: 13,
     color: '#6b7280',
-    marginTop: 4,
-    fontWeight: '400',
+    marginTop: 2,
   },
-  headerButtons: {
+  headerButtonsContainer: {
     flexDirection: 'row',
     gap: 12,
   },
@@ -322,38 +471,35 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#10b981',
     paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
+    paddingHorizontal: 16,
+    borderRadius: 10,
     gap: 8,
-  },
-  contractButtonMobile: {
-    paddingVertical: 10,
-    paddingHorizontal: 10,
-    borderRadius: 50,
-  },
-  contractButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
   },
   addButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f97316',
     paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
+    paddingHorizontal: 16,
+    borderRadius: 10,
     gap: 8,
   },
-  addButtonMobile: {
+  buttonMobile: {
     paddingVertical: 10,
     paddingHorizontal: 10,
     borderRadius: 50,
   },
-  addButtonText: {
+  buttonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
+  },
+  // Scroll Content
+  scrollContent: {
+    flex: 1,
+  },
+  scrollContentContainer: {
+    padding: 20,
   },
   emptyContainer: {
     flex: 1,
@@ -379,13 +525,15 @@ const styles = StyleSheet.create({
   },
   card: {
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
     elevation: 3,
   },
   cardHeader: {
@@ -395,16 +543,16 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: '#f3f4f6',
   },
   cardHeaderLeft: {
     flex: 1,
     gap: 8,
   },
   cardName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#1f2937',
   },
   cardActions: {
     flexDirection: 'row',
@@ -413,7 +561,7 @@ const styles = StyleSheet.create({
   cardActionButton: {
     padding: 8,
     borderRadius: 8,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#f9fafb',
   },
   cardBody: {
     gap: 10,
@@ -426,35 +574,39 @@ const styles = StyleSheet.create({
   cardLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#666',
+    color: '#6b7280',
     minWidth: 90,
   },
   cardValue: {
     flex: 1,
     fontSize: 14,
-    color: '#333',
+    color: '#1f2937',
+    fontWeight: '500',
   },
   // Tabela Desktop
   tableContainer: {
-    flex: 1,
-    margin: 20,
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 14,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
   },
   tableHeader: {
     flexDirection: 'row',
-    backgroundColor: '#f8f9fa',
+    backgroundColor: '#f8fafc',
     padding: 16,
     borderBottomWidth: 2,
-    borderBottomColor: '#e5e5e5',
+    borderBottomColor: '#e5e7eb',
   },
   headerText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
-    color: '#666',
+    color: '#6b7280',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
@@ -463,7 +615,7 @@ const styles = StyleSheet.create({
   },
   tableRow: {
     flexDirection: 'row',
-    paddingVertical: 16,
+    paddingVertical: 14,
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#f3f4f6',
@@ -471,7 +623,7 @@ const styles = StyleSheet.create({
   },
   cellText: {
     fontSize: 14,
-    color: '#333',
+    color: '#1f2937',
     justifyContent: 'center',
     paddingHorizontal: 4,
   },
@@ -483,8 +635,8 @@ const styles = StyleSheet.create({
   colAcoes: { flex: 1, minWidth: 100 },
   statusBadge: {
     paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
     alignSelf: 'flex-start',
   },
   statusActive: {
@@ -522,5 +674,7 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#f9fafb',
   },
 });

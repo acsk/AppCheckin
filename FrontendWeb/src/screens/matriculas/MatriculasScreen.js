@@ -23,7 +23,7 @@ export default function MatriculasScreen() {
   const [matriculas, setMatriculas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ativa');
+  const [statusFilter, setStatusFilter] = useState('todos');
 
   const isMobile = width < 768;
 
@@ -79,7 +79,8 @@ export default function MatriculasScreen() {
               await carregarMatriculas();
             } catch (error) {
               console.error('Erro ao cancelar:', error);
-              showAlert('Erro', error.message || error.error || 'Não foi possível cancelar a matrícula');
+              const mensagemErro = error.mensagemLimpa || error.message || error.error || 'Não foi possível cancelar a matrícula';
+              showAlert('Erro', mensagemErro);
             }
           },
         },
@@ -103,8 +104,10 @@ export default function MatriculasScreen() {
     switch (status) {
       case 'ativa':
         return '#10b981';
-      case 'vencida':
+      case 'pendente':
         return '#f59e0b';
+      case 'vencida':
+        return '#f97316';
       case 'cancelada':
         return '#ef4444';
       case 'finalizada':
@@ -118,6 +121,8 @@ export default function MatriculasScreen() {
     switch (status) {
       case 'ativa':
         return 'Ativa';
+      case 'pendente':
+        return 'Pendente';
       case 'vencida':
         return 'Vencida';
       case 'cancelada':
@@ -354,7 +359,7 @@ export default function MatriculasScreen() {
           
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
             <View style={styles.filterContainer}>
-              {['todos', 'ativa', 'vencida', 'cancelada', 'finalizada'].map(status => (
+              {['todos', 'pendente', 'ativa', 'vencida', 'cancelada', 'finalizada'].map(status => (
                 <Pressable
                   key={status}
                   onPress={() => setStatusFilter(status)}

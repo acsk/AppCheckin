@@ -205,7 +205,9 @@ export default function FormMatriculaScreen() {
     } catch (error) {
       console.error('❌ Erro ao criar matrícula:', error);
       setShowConfirmModal(false);
-      Alert.alert('Erro', error.error || error.message || 'Não foi possível realizar a matrícula');
+      // Usar mensagemLimpa se disponível, senão usar error/message padrão
+      const mensagemErro = error.mensagemLimpa || error.error || error.message || 'Não foi possível realizar a matrícula';
+      Alert.alert('Erro', mensagemErro);
     } finally {
       setSaving(false);
     }

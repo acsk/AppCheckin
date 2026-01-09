@@ -56,6 +56,17 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
     setShowConfirmModal(true);
   };
 
+  const handleClose = () => {
+    setFormData({
+      data_pagamento: '',
+      forma_pagamento_id: '',
+      comprovante: '',
+      observacoes: ''
+    });
+    setShowConfirmModal(false);
+    onClose();
+  };
+
   const handleConfirmarFinal = async () => {
     try {
       setLoading(true);
@@ -73,10 +84,35 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
       await api.post(`/admin/pagamentos-plano/${pagamento.id}/confirmar`, payload);
 
       showSuccess('Pagamento confirmado! Próximo pagamento gerado automaticamente.');
+      setFormData({
+        data_pagamento: '',
+        forma_pagamento_id: '',
+        comprovante: '',
+        observacoes: ''
+      });
+      setShowConfirmModal(false);
       onSuccess && onSuccess();
       onClose();
     } catch (error) {
-      showError(error.error || 'Erro ao confirmar pagamento');
+      console.error('Erro ao confirmar pagamento:', error);
+      let mensagemErro = 'Erro ao confirmar pagamento';
+      
+      if (error.response?.data) {
+        const data = error.response.data;
+        
+        if (data.message) {
+          // Extrair a parte amigável da mensagem de erro SQL
+          const match = data.message.match(/\d+ (.*?)$/);
+          mensagemErro = match ? match[1] : data.message;
+        } else if (data.error) {
+          mensagemErro = data.error;
+        }
+      } else if (error.message) {
+        mensagemErro = error.message;
+      }
+      
+      showError(mensagemErro);
+      setShowConfirmModal(false);
     } finally {
       setLoading(false);
     }
@@ -237,7 +273,7 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
             <View style={styles.alertBox}>
               <Feather name="info" size={16} color="#3b82f6" />
               <Text style={styles.alertText}>
-                Ao confirmar este pagamento, o próximo será gerado automaticamente.
+                Ao confhandlemar este pagamento, o próximo será gerado automaticamente.
               </Text>
             </View>
           </ScrollView>
@@ -300,7 +336,10 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
               <View style={styles.confirmBotoes}>
                 <TouchableOpacity
                   style={styles.confirmBotaoCancelar}
-                  onPress={() => setShowConfirmModal(false)}
+                  onPress={() => {
+                    setShowConfirmModal(false);
+                    setLoading(false);
+                  }}
                   disabled={loading}
                 >
                   <Text style={styles.confirmBotaoCancelarText}>Cancelar</Text>

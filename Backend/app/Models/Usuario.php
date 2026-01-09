@@ -455,9 +455,6 @@ class Usuario
                 u.updated_at,
                 r.nome as role_nome,
                 ut.status,
-                ut.tenant_id,
-                t.nome as tenant_nome,
-                t.slug as tenant_slug,
                 CASE 
                     WHEN ut.status = 'ativo' THEN 1
                     ELSE 0
@@ -465,7 +462,6 @@ class Usuario
             FROM usuarios u
             LEFT JOIN roles r ON u.role_id = r.id
             INNER JOIN usuario_tenant ut ON u.id = ut.usuario_id
-            LEFT JOIN tenants t ON ut.tenant_id = t.id
         ";
         
         $conditions = [];
@@ -486,34 +482,41 @@ class Usuario
             $sql .= " WHERE " . implode(' AND ', $conditions);
         }
         
-        $sql .= " ORDER BY t.nome ASC, u.nome ASC";
+        // Ordenar para evitar duplicatas quando usuário está em múltiplos tenants
+        $sql .= " ORDER BY u.id ASC, ut.status DESC";
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
         
         $result = $stmt->fetchAll();
         
-        // Estruturar dados incluindo tenant e status ativo
-        return array_map(function($row) {
-            return [
-                'id' => $row['id'],
-                'nome' => $row['nome'],
-                'email' => $row['email'],
-                'telefone' => $row['telefone'] ?? null,
-                'cpf' => $row['cpf'] ?? null,
-                'role_id' => $row['role_id'],
-                'role_nome' => $row['role_nome'],
-                'ativo' => (bool) $row['ativo'],
-                'status' => $row['status'],
-                'created_at' => $row['created_at'],
-                'updated_at' => $row['updated_at'],
-                'tenant' => [
-                    'id' => $row['tenant_id'],
-                    'nome' => $row['tenant_nome'],
-                    'slug' => $row['tenant_slug']
-                ]
-            ];
-        }, $result);
+        // Remover duplicatas: manter apenas o primeiro registro de cada usuário
+        $usuariosProcessados = [];
+        $usuariosMap = [];
+        
+        foreach ($result as $row) {
+            $usuarioId = $row['id'];
+            
+            // Se ainda não processamos este usuário, adicionar à lista
+            if (!isset($usuariosMap[$usuarioId])) {
+                $usuariosMap[$usuarioId] = true;
+                $usuariosProcessados[] = [
+                    'id' => $row['id'],
+                    'nome' => $row['nome'],
+                    'email' => $row['email'],
+                    'telefone' => $row['telefone'] ?? null,
+                    'cpf' => $row['cpf'] ?? null,
+                    'role_id' => $row['role_id'],
+                    'role_nome' => $row['role_nome'],
+                    'ativo' => (bool) $row['ativo'],
+                    'status' => $row['status'],
+                    'created_at' => $row['created_at'],
+                    'updated_at' => $row['updated_at']
+                ];
+            }
+        }
+        
+        return $usuariosProcessados;
     }
 
     /**

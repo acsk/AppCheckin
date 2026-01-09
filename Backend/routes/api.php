@@ -5,6 +5,7 @@ use App\Controllers\DiaController;
 use App\Controllers\CheckinController;
 use App\Controllers\UsuarioController;
 use App\Controllers\TurmaController;
+use App\Controllers\ProfessorController;
 use App\Controllers\AdminController;
 use App\Controllers\PlanoController;
 use App\Controllers\PlanejamentoController;
@@ -22,6 +23,7 @@ use App\Controllers\TenantFormaPagamentoController;
 use App\Controllers\CepController;
 use App\Controllers\StatusController;
 use App\Controllers\FeatureFlagController;
+use App\Controllers\MobileController;
 use App\Middlewares\AuthMiddleware;
 use App\Middlewares\TenantMiddleware;
 use App\Middlewares\AdminMiddleware;
@@ -57,6 +59,9 @@ return function ($app) {
     
     // Seleção de tenant/academia (protegido, mas não precisa de tenant no contexto ainda)
     $app->post('/auth/select-tenant', [AuthController::class, 'selectTenant'])->add(AuthMiddleware::class);
+    
+    // Seleção inicial de tenant durante login (rota pública - usada quando múltiplos tenants)
+    $app->post('/auth/select-tenant-initial', [AuthController::class, 'selectTenantPublic']);
 
     // ========================================
     // Rotas Super Admin (role_id = 3)
@@ -112,6 +117,21 @@ return function ($app) {
     })->add(SuperAdminMiddleware::class)->add(AuthMiddleware::class);
 
     // ========================================
+    // Rotas Mobile (App Mobile)
+    // ========================================
+    $app->group('/mobile', function ($group) {
+        // Perfil completo com estatísticas
+        $group->get('/perfil', [MobileController::class, 'perfil']);
+        
+        // Tenants do usuário
+        $group->get('/tenants', [MobileController::class, 'tenants']);
+        
+        // Check-in
+        $group->post('/checkin', [MobileController::class, 'registrarCheckin']);
+        $group->get('/checkins', [MobileController::class, 'historicoCheckins']);
+    })->add(AuthMiddleware::class);
+
+    // ========================================
     // Rotas Protegidas (Usuários Autenticados)
     // ========================================
     // Rotas protegidas
@@ -134,8 +154,8 @@ return function ($app) {
         
         // Gestão de Turmas
         $group->get('/turmas', [TurmaController::class, 'index']);
-        $group->get('/turmas/hoje', [TurmaController::class, 'hoje']);
-        $group->get('/turmas/{id}/alunos', [TurmaController::class, 'alunos']);
+        $group->get('/turmas/dia/{diaId}', [TurmaController::class, 'listarPorDia']);
+        $group->get('/turmas/{id}/vagas', [TurmaController::class, 'verificarVagas']);
         
         // Planos (público para alunos verem)
         $group->get('/planos', [PlanoController::class, 'index']);
@@ -237,6 +257,23 @@ return function ($app) {
         $group->post('/modalidades', [ModalidadeController::class, 'create']);
         $group->put('/modalidades/{id}', [ModalidadeController::class, 'update']);
         $group->delete('/modalidades/{id}', [ModalidadeController::class, 'delete']);
+        
+        // Professores
+        $group->get('/professores', [ProfessorController::class, 'index']);
+        $group->get('/professores/{id}', [ProfessorController::class, 'show']);
+        $group->post('/professores', [ProfessorController::class, 'create']);
+        $group->put('/professores/{id}', [ProfessorController::class, 'update']);
+        $group->delete('/professores/{id}', [ProfessorController::class, 'delete']);
+        
+        // Turmas/Aulas
+        $group->get('/turmas', [TurmaController::class, 'index']);
+        $group->get('/turmas/dia/{diaId}', [TurmaController::class, 'listarPorDia']);
+        $group->get('/turmas/{id}', [TurmaController::class, 'show']);
+        $group->post('/turmas', [TurmaController::class, 'create']);
+        $group->put('/turmas/{id}', [TurmaController::class, 'update']);
+        $group->delete('/turmas/{id}', [TurmaController::class, 'delete']);
+        $group->get('/turmas/{id}/vagas', [TurmaController::class, 'verificarVagas']);
+        $group->get('/professores/{professorId}/turmas', [TurmaController::class, 'listarPorProfessor']);
         
         // Formas de Pagamento por Tenant (Configurações)
         $group->get('/formas-pagamento-config', [TenantFormaPagamentoController::class, 'listar']);

@@ -10,6 +10,8 @@ import {
   Platform,
   Pressable,
   Image,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, FontAwesome } from '@expo/vector-icons';
@@ -24,6 +26,10 @@ export default function LoginScreen() {
   const [senha, setSenha] = useState('SuperAdmin@2025');
   const [loading, setLoading] = useState(false);
   const [secure, setSecure] = useState(true);
+  const [showTenantModal, setShowTenantModal] = useState(false);
+  const [tenants, setTenants] = useState([]);
+  const [user, setUser] = useState(null);
+  const [selectingTenant, setSelectingTenant] = useState(false);
 
   const isDisabled = useMemo(() => email.trim().length === 0 || senha.trim().length === 0, [email, senha]);
 
@@ -47,10 +53,17 @@ export default function LoginScreen() {
     try {
       const response = await authService.login(email, senha);
 
-      // Pequeno delay para garantir que o token foi salvo
-      setTimeout(() => {
-        router.replace('/');
-      }, 100);
+      // Se requer seleção de tenant, exibir modal
+      if (response.requires_tenant_selection && response.tenants && response.tenants.length > 0) {
+        setUser(response.user);
+        setTenants(response.tenants);
+        setShowTenantModal(true);
+      } else if (response.token) {
+        // Login único, ir para home
+        setTimeout(() => {
+          router.replace('/');
+        }, 100);
+      }
     } catch (error) {
       const mensagemErro = error.error || error.message || 'Credenciais inválidas';
       toast.error(mensagemErro, {
@@ -72,6 +85,37 @@ export default function LoginScreen() {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSelectTenant = async (tenantId) => {
+    setSelectingTenant(true);
+    try {
+      const response = await authService.selectTenant(tenantId);
+      
+      if (response.token) {
+        setShowTenantModal(false);
+        setTimeout(() => {
+          router.replace('/');
+        }, 100);
+      }
+    } catch (error) {
+      const mensagemErro = error.error || error.message || 'Erro ao selecionar academia';
+      toast.error(mensagemErro, {
+        duration: 5000,
+        position: 'top-center',
+        style: {
+          background: '#ef4444',
+          color: '#fff',
+          padding: '16px',
+          borderRadius: '8px',
+          fontSize: '14px',
+          fontWeight: '500',
+          fontFamily: 'system-ui, -apple-system, sans-serif',
+        },
+      });
+    } finally {
+      setSelectingTenant(false);
     }
   };
 
@@ -163,6 +207,75 @@ export default function LoginScreen() {
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      {/* Modal de Seleção de Tenant */}
+      <Modal
+        visible={showTenantModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowTenantModal(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{
+            width: '90%',
+            maxWidth: 400,
+            backgroundColor: '#fff',
+            borderRadius: 12,
+            padding: 24,
+          }}>
+            <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 16, textAlign: 'center' }}>
+              Selecione sua Academia
+            </Text>
+            <Text style={{ fontSize: 14, color: '#666', marginBottom: 20, textAlign: 'center' }}>
+              {user?.name} tem acesso a múltiplas academias
+            </Text>
+            
+            <ScrollView style={{ maxHeight: 300, marginBottom: 16 }}>
+              {tenants.map((tenant, index) => (
+                <TouchableOpacity
+                  key={index}
+                  onPress={() => handleSelectTenant(tenant.tenant.id)}
+                  disabled={selectingTenant}
+                  style={{
+                    padding: 12,
+                    marginVertical: 8,
+                    backgroundColor: '#f5f5f5',
+                    borderRadius: 8,
+                    borderLeftWidth: 4,
+                    borderLeftColor: '#3b82f6',
+                    opacity: selectingTenant ? 0.5 : 1,
+                  }}
+                >
+                  <Text style={{ fontSize: 16, fontWeight: '600', color: '#333' }}>
+                    {tenant.tenant.nome}
+                  </Text>
+                  {tenant.tenant.cnpj && (
+                    <Text style={{ fontSize: 12, color: '#999', marginTop: 4 }}>
+                      CNPJ: {tenant.tenant.cnpj}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity
+              onPress={() => setShowTenantModal(false)}
+              disabled={selectingTenant}
+              style={{
+                padding: 12,
+                backgroundColor: '#e5e7eb',
+                borderRadius: 8,
+                marginTop: 8,
+                opacity: selectingTenant ? 0.5 : 1,
+              }}
+            >
+              <Text style={{ fontSize: 14, fontWeight: '600', color: '#666', textAlign: 'center' }}>
+                Cancelar
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }

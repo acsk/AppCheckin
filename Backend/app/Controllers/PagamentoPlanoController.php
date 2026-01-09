@@ -318,9 +318,16 @@ class PagamentoPlanoController
             $matricula = $stmtMatricula->fetch(\PDO::FETCH_ASSOC);
             
             if ($matricula && $matricula['status'] === 'pendente') {
-                    // Primeira parcela foi paga - liberar a matrícula e atualizar status_id
-                    $stmtAtualizar = $db->prepare("\n                    UPDATE matriculas \n                    SET \n                        status = 'ativa',\n                        status_id = (SELECT sm.id FROM status_matricula sm WHERE sm.codigo = 'ativa' AND sm.ativo = TRUE),\n                        updated_at = NOW()\n                    WHERE id = ?\n                ");
-                    $stmtAtualizar->execute([$pagamento['matricula_id']]);
+                // Primeira parcela foi paga - liberar a matrícula e atualizar status_id
+                $stmtAtualizar = $db->prepare("
+                    UPDATE matriculas 
+                    SET 
+                        status = 'ativa',
+                        status_id = (SELECT sm.id FROM status_matricula sm WHERE sm.codigo = 'ativa' AND sm.ativo = TRUE),
+                        updated_at = NOW()
+                    WHERE id = ?
+                ");
+                $stmtAtualizar->execute([$pagamento['matricula_id']]);
             }
             
             // Buscar informações do plano para calcular próximo vencimento

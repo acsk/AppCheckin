@@ -265,18 +265,11 @@ class MatriculaController
         ");
         $stmtMatricula->execute([$matriculaId]);
         $matricula = $stmtMatricula->fetch();
-        
-        // Buscar conta criada
-        $stmtConta = $db->prepare("
-            SELECT * FROM contas_receber WHERE id = ?
-        ");
-        $stmtConta->execute([$contaId]);
-        $conta = $stmtConta->fetch();
 
         $response->getBody()->write(json_encode([
             'message' => 'Matrícula realizada com sucesso',
             'matricula' => $matricula,
-            'conta_criada' => $conta
+            'pagamento_criado' => $pagamentoId > 0
         ]));
         return $response->withHeader('Content-Type', 'application/json')->withStatus(201);
     }

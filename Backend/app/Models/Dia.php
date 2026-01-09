@@ -13,33 +13,20 @@ class Dia
         $this->db = $db;
     }
 
-    public function getAtivos(?int $tenantId = null): array
+    public function getAtivos(): array
     {
-        $sql = "SELECT * FROM dias WHERE ativo = 1 AND data >= CURDATE()";
-        $params = [];
-        
-        if ($tenantId) {
-            $sql .= " AND tenant_id = :tenant_id";
-            $params['tenant_id'] = $tenantId;
-        }
-        
-        $sql .= " ORDER BY data ASC";
+        $sql = "SELECT * FROM dias WHERE ativo = 1 AND data >= CURDATE() ORDER BY data ASC";
         
         $stmt = $this->db->prepare($sql);
-        $stmt->execute($params);
+        $stmt->execute();
         
         return $stmt->fetchAll();
     }
 
-    public function findById(int $id, ?int $tenantId = null): ?array
+    public function findById(int $id): ?array
     {
         $sql = "SELECT * FROM dias WHERE id = :id";
         $params = ['id' => $id];
-        
-        if ($tenantId) {
-            $sql .= " AND tenant_id = :tenant_id";
-            $params['tenant_id'] = $tenantId;
-        }
         
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
@@ -67,16 +54,10 @@ class Dia
         $sql = "SELECT * FROM dias 
                 WHERE ativo = 1 
                 AND data >= DATE_SUB(?, INTERVAL " . (int)$diasAntes . " DAY)
-                AND data <= DATE_ADD(?, INTERVAL " . (int)$diasDepois . " DAY)";
+                AND data <= DATE_ADD(?, INTERVAL " . (int)$diasDepois . " DAY)
+                ORDER BY data ASC";
         
         $params = [$dataReferencia, $dataReferencia];
-        
-        if ($tenantId) {
-            $sql .= " AND tenant_id = ?";
-            $params[] = $tenantId;
-        }
-        
-        $sql .= " ORDER BY data ASC";
         
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
@@ -87,15 +68,10 @@ class Dia
     /**
      * Busca um dia específico pela data
      */
-    public function findByData(string $data, ?int $tenantId = null): ?array
+    public function findByData(string $data): ?array
     {
         $sql = "SELECT * FROM dias WHERE data = :data";
         $params = ['data' => $data];
-        
-        if ($tenantId) {
-            $sql .= " AND tenant_id = :tenant_id";
-            $params['tenant_id'] = $tenantId;
-        }
         
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);

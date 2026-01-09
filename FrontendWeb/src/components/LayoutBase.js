@@ -23,6 +23,8 @@ const MENU = [
   { label: 'Matrículas', path: '/matriculas', icon: 'user-check', roles: [2, 3] }, // Admin e SuperAdmin
   { label: 'Planos', path: '/planos', icon: 'package', roles: [2, 3] }, // Admin e SuperAdmin
   { label: 'Modalidades', path: '/modalidades', icon: 'activity', roles: [2, 3] }, // Admin e SuperAdmin
+  { label: 'Professores', path: '/professores', icon: 'user', roles: [2, 3] }, // Admin e SuperAdmin
+  { label: 'Aulas', path: '/turmas', icon: 'calendar', roles: [2, 3] }, // Admin e SuperAdmin
   { label: 'Planos Sistema', path: '/planos-sistema', icon: 'layers', roles: [3] }, // SuperAdmin apenas
   { label: 'Usuários', path: '/usuarios', icon: 'users', roles: [2, 3] }, // Admin e SuperAdmin
   { label: 'Formas de Pagamento', path: '/formas-pagamento', icon: 'credit-card', roles: [2, 3] }, // Admin e SuperAdmin
@@ -145,6 +147,42 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
           })}
         </View>
       </ScrollView>
+
+      {/* Opções do Menu Footer */}
+      <View style={styles.footerMenu}>
+        <Pressable
+          style={styles.footerMenuItem}
+          onPress={() => {
+            router.push('/perfil');
+            if (isMobile) closeDrawer();
+          }}
+        >
+          <Feather name="user" size={16} color="#d1d5db" />
+          <Text style={styles.footerMenuText}>Perfil</Text>
+        </Pressable>
+
+        <Pressable
+          style={styles.footerMenuItem}
+          onPress={() => {
+            router.push('/minha-conta');
+            if (isMobile) closeDrawer();
+          }}
+        >
+          <Feather name="settings" size={16} color="#d1d5db" />
+          <Text style={styles.footerMenuText}>Minha Conta</Text>
+        </Pressable>
+
+        <Pressable
+          style={styles.footerMenuItem}
+          onPress={() => {
+            router.push('/planos');
+            if (isMobile) closeDrawer();
+          }}
+        >
+          <Feather name="package" size={16} color="#d1d5db" />
+          <Text style={styles.footerMenuText}>Planos</Text>
+        </Pressable>
+      </View>
 
       {/* Footer do Menu */}
       <View style={styles.menuFooter}>
@@ -374,6 +412,28 @@ const styles = StyleSheet.create({
   },
   menuText: { color: MUTED, fontWeight: '600', fontSize: 14 },
   menuTextActive: { color: '#fff', fontWeight: '700' },
+  
+  // Footer Menu (Opções adicionais)
+  footerMenu: {
+    gap: 8,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+    marginBottom: 8,
+  },
+  footerMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+  },
+  footerMenuText: {
+    color: MUTED,
+    fontWeight: '600',
+    fontSize: 14,
+  },
   
   // Footer do Menu
   menuFooter: {

@@ -75,7 +75,7 @@ BEGIN
         
         IF matriculas_ativas > 0 THEN
             SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'Já existe uma matrícula ativa para este usuário e plano';
+            SET MESSAGE_TEXT = 'Ja existe uma matricula ativa para este usuario e plano';
         END IF;
     END IF;
 END//
@@ -99,7 +99,7 @@ BEGIN
         
         IF matriculas_ativas > 0 THEN
             SIGNAL SQLSTATE '45000'
-            SET MESSAGE_TEXT = 'Já existe uma matrícula ativa para este usuário e plano';
+            SET MESSAGE_TEXT = 'Ja existe uma matricula ativa para este usuario e plano';
         END IF;
     END IF;
 END//
