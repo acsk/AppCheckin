@@ -50,42 +50,42 @@ INSERT IGNORE INTO professores (tenant_id, nome, email, cpf, foto_url, ativo, cr
 (1, 'Marcus Oliveira', 'marcus.oliveira@crossfit.com', '12345678905', 'https://via.placeholder.com/150?text=Marcus', 1, NOW(), NOW());
 
 -- Seed de Turmas de Crossfit - Modalidade ID 1 (Crossfit)
--- Criamos turmas base vinculadas aos dias e horários disponíveis
+-- Criamos turmas base vinculadas aos dias com horários diretos (horario_inicio, horario_fim)
 
 -- Segunda a Sexta de manhã (06:00, 07:00, 08:00)
-INSERT INTO turmas (tenant_id, professor_id, modalidade_id, dia_id, horario_id, nome, limite_alunos, ativo, created_at, updated_at) 
-SELECT 1, 1, 1, h.dia_id, h.id, CONCAT('CrossFit - 6:00 - Prof. Carlos'), 15, 1, NOW(), NOW()
-FROM horarios h
-WHERE h.hora = '06:00:00' AND h.dia_id <= 70
+INSERT INTO turmas (tenant_id, professor_id, modalidade_id, dia_id, horario_inicio, horario_fim, nome, limite_alunos, ativo, created_at, updated_at) 
+SELECT 1, 1, 1, d.id, '06:00:00', '07:00:00', CONCAT('CrossFit - 6:00 - Prof. Carlos'), 15, 1, NOW(), NOW()
+FROM dias d
+WHERE d.ativo = 1 AND d.id <= 70
 LIMIT 12;
 
-INSERT INTO turmas (tenant_id, professor_id, modalidade_id, dia_id, horario_id, nome, limite_alunos, ativo, created_at, updated_at) 
-SELECT 1, 2, 1, h.dia_id, h.id, CONCAT('CrossFit - 7:00 - Prof. Ana'), 15, 1, NOW(), NOW()
-FROM horarios h
-WHERE h.hora = '07:00:00' AND h.dia_id > 50 AND h.dia_id <= 120
+INSERT INTO turmas (tenant_id, professor_id, modalidade_id, dia_id, horario_inicio, horario_fim, nome, limite_alunos, ativo, created_at, updated_at) 
+SELECT 1, 2, 1, d.id, '07:00:00', '08:00:00', CONCAT('CrossFit - 7:00 - Prof. Ana'), 15, 1, NOW(), NOW()
+FROM dias d
+WHERE d.ativo = 1 AND d.id > 50 AND d.id <= 120
 LIMIT 12;
 
-INSERT INTO turmas (tenant_id, professor_id, modalidade_id, dia_id, horario_id, nome, limite_alunos, ativo, created_at, updated_at) 
-SELECT 1, 3, 1, h.dia_id, h.id, CONCAT('CrossFit - 8:00 - Prof. Roberto'), 15, 1, NOW(), NOW()
-FROM horarios h
-WHERE h.hora = '08:00:00' AND h.dia_id > 100 AND h.dia_id <= 170
+INSERT INTO turmas (tenant_id, professor_id, modalidade_id, dia_id, horario_inicio, horario_fim, nome, limite_alunos, ativo, created_at, updated_at) 
+SELECT 1, 3, 1, d.id, '08:00:00', '09:00:00', CONCAT('CrossFit - 8:00 - Prof. Roberto'), 15, 1, NOW(), NOW()
+FROM dias d
+WHERE d.ativo = 1 AND d.id > 100 AND d.id <= 170
 LIMIT 12;
 
 -- Noite Segunda a Sexta (17:00, 18:00, 19:00)
-INSERT INTO turmas (tenant_id, professor_id, modalidade_id, dia_id, horario_id, nome, limite_alunos, ativo, created_at, updated_at) 
-SELECT 1, 4, 1, h.dia_id, h.id, CONCAT('CrossFit - 17:00 - Prof. Juliana'), 15, 1, NOW(), NOW()
-FROM horarios h
-WHERE h.hora = '17:00:00' AND h.dia_id > 150 AND h.dia_id <= 220
+INSERT INTO turmas (tenant_id, professor_id, modalidade_id, dia_id, horario_inicio, horario_fim, nome, limite_alunos, ativo, created_at, updated_at) 
+SELECT 1, 4, 1, d.id, '17:00:00', '18:00:00', CONCAT('CrossFit - 17:00 - Prof. Juliana'), 15, 1, NOW(), NOW()
+FROM dias d
+WHERE d.ativo = 1 AND d.id > 150 AND d.id <= 220
 LIMIT 12;
 
-INSERT INTO turmas (tenant_id, professor_id, modalidade_id, dia_id, horario_id, nome, limite_alunos, ativo, created_at, updated_at) 
-SELECT 1, 5, 1, h.dia_id, h.id, CONCAT('CrossFit - 18:00 - Prof. Marcus'), 15, 1, NOW(), NOW()
-FROM horarios h
-WHERE h.hora = '18:00:00' AND h.dia_id > 200 AND h.dia_id <= 270
+INSERT INTO turmas (tenant_id, professor_id, modalidade_id, dia_id, horario_inicio, horario_fim, nome, limite_alunos, ativo, created_at, updated_at) 
+SELECT 1, 5, 1, d.id, '18:00:00', '19:00:00', CONCAT('CrossFit - 18:00 - Prof. Marcus'), 15, 1, NOW(), NOW()
+FROM dias d
+WHERE d.ativo = 1 AND d.id > 200 AND d.id <= 270
 LIMIT 12;
 
-INSERT INTO turmas (tenant_id, professor_id, modalidade_id, dia_id, horario_id, nome, limite_alunos, ativo, created_at, updated_at) 
-SELECT 1, 1, 1, h.dia_id, h.id, CONCAT('CrossFit - 19:00 - Prof. Carlos'), 15, 1, NOW(), NOW()
-FROM horarios h
-WHERE h.hora = '19:00:00' AND h.dia_id > 250
+INSERT INTO turmas (tenant_id, professor_id, modalidade_id, dia_id, horario_inicio, horario_fim, nome, limite_alunos, ativo, created_at, updated_at) 
+SELECT 1, 1, 1, d.id, '19:00:00', '20:00:00', CONCAT('CrossFit - 19:00 - Prof. Carlos'), 15, 1, NOW(), NOW()
+FROM dias d
+WHERE d.ativo = 1 AND d.id > 250
 LIMIT 12;
