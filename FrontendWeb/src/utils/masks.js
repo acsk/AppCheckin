@@ -194,3 +194,21 @@ export const validarCPF = (cpf) => {
   
   return true;
 };
+
+/**
+ * Aplica máscara de hora (HH:MM)
+ * @param {string} value - Valor a ser formatado
+ * @returns {string} - Hora formatada (HH:MM)
+ */
+export const mascaraHora = (value) => {
+  const numeros = apenasNumeros(value);
+  
+  if (numeros.length <= 2) {
+    return numeros;
+  } else if (numeros.length <= 4) {
+    return numeros.replace(/(\d{2})(\d{0,2})/, '$1:$2');
+  } else {
+    // Limita a 4 dígitos (HH:MM)
+    return numeros.substring(0, 4).replace(/(\d{2})(\d{0,2})/, '$1:$2');
+  }
+};

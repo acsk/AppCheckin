@@ -51,12 +51,18 @@ class Modalidade
     /**
      * Buscar modalidade por ID
      */
-    public function buscarPorId(int $id): ?array
+    public function buscarPorId(int $id, ?int $tenantId = null): ?array
     {
         $sql = "SELECT * FROM modalidades WHERE id = :id";
+        $params = ['id' => $id];
+        
+        if ($tenantId !== null) {
+            $sql .= " AND tenant_id = :tenant_id";
+            $params['tenant_id'] = $tenantId;
+        }
         
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute(['id' => $id]);
+        $stmt->execute($params);
         
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
         

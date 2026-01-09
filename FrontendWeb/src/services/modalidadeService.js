@@ -12,7 +12,7 @@ const modalidadeService = {
       return response.data.modalidades || [];
     } catch (error) {
       console.error('❌ Erro ao listar modalidades:', error.response?.data || error.message);
-      throw error.response?.data || { error: 'Erro ao listar modalidades' };
+      throw error;
     }
   },
 

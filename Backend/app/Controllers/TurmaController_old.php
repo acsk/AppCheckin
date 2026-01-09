@@ -8,6 +8,7 @@ use App\Models\Turma;
 use App\Models\Professor;
 use App\Models\Modalidade;
 use App\Models\Dia;
+use App\Models\Horario;
 use PDO;
 
 class TurmaController
@@ -16,6 +17,7 @@ class TurmaController
     private Professor $professorModel;
     private Modalidade $modalidadeModel;
     private Dia $diaModel;
+    private Horario $horarioModel;
 
     public function __construct()
     {
@@ -24,6 +26,7 @@ class TurmaController
         $this->professorModel = new Professor($db);
         $this->modalidadeModel = new Modalidade($db);
         $this->diaModel = new Dia($db);
+        $this->horarioModel = new Horario($db);
     }
 
     /**
@@ -156,17 +159,6 @@ class TurmaController
     /**
      * Criar nova turma
      * POST /admin/turmas
-     * 
-     * Request body:
-     * {
-     *   "nome": "Turma A",
-     *   "professor_id": 1,
-     *   "modalidade_id": 1,
-     *   "dia_id": 18,
-     *   "horario_inicio": "04:00", ou "04:00:00"
-     *   "horario_fim": "04:30", ou "04:30:00"
-     *   "limite_alunos": 20
-     * }
      */
     public function create(Request $request, Response $response): Response
     {
@@ -206,19 +198,25 @@ class TurmaController
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
         }
         
-        if (empty($data['horario_inicio']) || empty($data['horario_fim'])) {
+        // Aceitar tanto horario_id quanto horario_inicio/horario_fim
+        $horarioId = null;
+        if (!empty($data['horario_id'])) {
+            $horarioId = $data['horario_id'];
+        } elseif (!empty($data['horario_inicio']) && !empty($data['horario_fim'])) {
+            // Buscar horário por hora_inicio e hora_fim
+            $horario = $this->horarioModel->findByDiaAndHorario($data['dia_id'], $data['horario_inicio'], $data['horario_fim']);
+            if (!$horario) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'message' => 'Horário não encontrado para o dia informado'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+            }
+            $horarioId = $horario['id'];
+        } else {
             $response->getBody()->write(json_encode([
                 'type' => 'error',
-                'message' => 'Horário de início e fim são obrigatórios'
-            ], JSON_UNESCAPED_UNICODE));
-            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
-        }
-        
-        // Validar que horario_fim é maior que horario_inicio
-        if ($data['horario_inicio'] >= $data['horario_fim']) {
-            $response->getBody()->write(json_encode([
-                'type' => 'error',
-                'message' => 'Horário de fim deve ser maior que horário de início'
+                'message' => 'Horário é obrigatório (envie horario_id OU horario_inicio + horario_fim)'
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
         }
@@ -241,7 +239,15 @@ class TurmaController
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
         }
         
-        // Validar limite de alunos
+        // Verificar se horário existe
+        if (!$this->horarioModel->findById($horarioId)) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Horário não encontrado'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+        }
+        
         if (!empty($data['limite_alunos']) && $data['limite_alunos'] < 1) {
             $response->getBody()->write(json_encode([
                 'type' => 'error',
@@ -250,23 +256,23 @@ class TurmaController
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
         }
         
-        // Validar: não pode haver outra turma com horário conflitante
-        $turmasComConflito = $this->turmaModel->verificarHorarioOcupado(
+        // Validar: não pode haver outra turma no mesmo horário e dia
+        $turmasExistentes = $this->turmaModel->verificarHorarioOcupado(
             $tenantId, 
             $data['dia_id'], 
-            $data['horario_inicio'],
-            $data['horario_fim']
+            $horarioId
         );
         
-        if (!empty($turmasComConflito)) {
+        if (!empty($turmasExistentes)) {
             $response->getBody()->write(json_encode([
                 'type' => 'error',
-                'message' => 'Já existe uma turma agendada com horário conflitante neste dia'
+                'message' => 'Já existe uma turma agendada neste horário neste dia'
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
         }
         
         $data['tenant_id'] = $tenantId;
+        $data['horario_id'] = $horarioId;
         
         try {
             $id = $this->turmaModel->create($data);
@@ -329,12 +335,27 @@ class TurmaController
             }
         }
         
-        // Validar horários se estão sendo atualizados
+        // Aceitar tanto horario_id quanto horario_inicio/horario_fim
         if (!empty($data['horario_inicio']) && !empty($data['horario_fim'])) {
-            if ($data['horario_inicio'] >= $data['horario_fim']) {
+            // Buscar horário por hora_inicio e hora_fim
+            $diaId = !empty($data['dia_id']) ? $data['dia_id'] : $turma['dia_id'];
+            $horario = $this->horarioModel->findByDiaAndHorario($diaId, $data['horario_inicio'], $data['horario_fim']);
+            if (!$horario) {
                 $response->getBody()->write(json_encode([
                     'type' => 'error',
-                    'message' => 'Horário de fim deve ser maior que horário de início'
+                    'message' => 'Horário não encontrado para o dia informado'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+            }
+            $data['horario_id'] = $horario['id'];
+            unset($data['horario_inicio'], $data['horario_fim']); // Remove para não tentar salvar no BD
+        }
+        
+        if (!empty($data['horario_id'])) {
+            if (!$this->horarioModel->findById($data['horario_id'])) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'message' => 'Horário não encontrado'
                 ], JSON_UNESCAPED_UNICODE));
                 return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
             }
@@ -348,24 +369,22 @@ class TurmaController
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
         }
         
-        // Validar: não pode haver outra turma com horário conflitante (se mudando horário ou dia)
-        if (!empty($data['horario_inicio']) && !empty($data['horario_fim']) || !empty($data['dia_id'])) {
-            $horarioInicio = !empty($data['horario_inicio']) ? $data['horario_inicio'] : $turma['horario_inicio'];
-            $horarioFim = !empty($data['horario_fim']) ? $data['horario_fim'] : $turma['horario_fim'];
-            $diaId = !empty($data['dia_id']) ? $data['dia_id'] : $turma['dia_id'];
+        // Validar: não pode haver outra turma no mesmo horário e dia (se alterando horario ou dia)
+        if (!empty($data['horario_id']) || !empty($data['dia_id'])) {
+            $horarioIdParaVerificar = !empty($data['horario_id']) ? $data['horario_id'] : $turma['horario_id'];
+            $diaIdParaVerificar = !empty($data['dia_id']) ? $data['dia_id'] : $turma['dia_id'];
             
-            $turmasComConflito = $this->turmaModel->verificarHorarioOcupado(
+            $turmasExistentes = $this->turmaModel->verificarHorarioOcupado(
                 $tenantId, 
-                $diaId, 
-                $horarioInicio,
-                $horarioFim,
+                $diaIdParaVerificar, 
+                $horarioIdParaVerificar,
                 $id // Excluir esta turma da verificação
             );
             
-            if (!empty($turmasComConflito)) {
+            if (!empty($turmasExistentes)) {
                 $response->getBody()->write(json_encode([
                     'type' => 'error',
-                    'message' => 'Já existe outra turma agendada com horário conflitante neste dia'
+                    'message' => 'Já existe outra turma agendada neste horário neste dia'
                 ], JSON_UNESCAPED_UNICODE));
                 return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
             }
@@ -450,6 +469,34 @@ class TurmaController
         
         $response->getBody()->write(json_encode([
             'turmas' => $turmas
+        ], JSON_UNESCAPED_UNICODE));
+        
+        return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+    }
+
+    /**
+     * Listar horários disponíveis de um dia
+     * GET /admin/turmas/horarios/{diaId}
+     */
+    public function listarHorariosPorDia(Request $request, Response $response, array $args): Response
+    {
+        $diaId = (int) $args['diaId'];
+        
+        // Verificar se dia existe
+        $dia = $this->diaModel->findById($diaId);
+        if (!$dia) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Dia não encontrado'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
+        }
+        
+        $horarios = $this->horarioModel->getByDiaId($diaId);
+        
+        $response->getBody()->write(json_encode([
+            'dia' => $dia,
+            'horarios' => $horarios
         ], JSON_UNESCAPED_UNICODE));
         
         return $response->withHeader('Content-Type', 'application/json; charset=utf-8');

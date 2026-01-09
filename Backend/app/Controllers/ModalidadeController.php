@@ -45,7 +45,7 @@ class ModalidadeController
         $id = (int) $args['id'];
         $tenantId = $request->getAttribute('tenantId');
         
-        $modalidade = $this->modalidadeModel->buscarPorId($id);
+        $modalidade = $this->modalidadeModel->buscarPorId($id, $tenantId);
         
         if (!$modalidade) {
             $response->getBody()->write(json_encode([
@@ -53,15 +53,6 @@ class ModalidadeController
                 'message' => 'Modalidade não encontrada'
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
-        }
-        
-        // Verificar se a modalidade pertence ao tenant
-        if ($modalidade['tenant_id'] !== $tenantId) {
-            $response->getBody()->write(json_encode([
-                'type' => 'error',
-                'message' => 'Acesso negado'
-            ], JSON_UNESCAPED_UNICODE));
-            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(403);
         }
         
         $response->getBody()->write(json_encode([
@@ -136,7 +127,7 @@ class ModalidadeController
                 
                 $db->commit();
                 
-                $modalidade = $this->modalidadeModel->buscarPorId($modalidadeId);
+                $modalidade = $this->modalidadeModel->buscarPorId($modalidadeId, $tenantId);
                 
                 $response->getBody()->write(json_encode([
                     'type' => 'success',
@@ -169,7 +160,7 @@ class ModalidadeController
         $tenantId = $request->getAttribute('tenantId');
         $data = $request->getParsedBody();
         
-        $modalidade = $this->modalidadeModel->buscarPorId($id);
+        $modalidade = $this->modalidadeModel->buscarPorId($id, $tenantId);
         
         if (!$modalidade) {
             $response->getBody()->write(json_encode([
@@ -177,15 +168,6 @@ class ModalidadeController
                 'message' => 'Modalidade não encontrada'
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
-        }
-        
-        // Verificar se a modalidade pertence ao tenant
-        if ($modalidade['tenant_id'] !== $tenantId) {
-            $response->getBody()->write(json_encode([
-                'type' => 'error',
-                'message' => 'Acesso negado'
-            ], JSON_UNESCAPED_UNICODE));
-            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(403);
         }
         
         // Validações
@@ -307,7 +289,7 @@ class ModalidadeController
                 
                 $db->commit();
                 
-                $modalidade = $this->modalidadeModel->buscarPorId($id);
+                $modalidade = $this->modalidadeModel->buscarPorId($id, $tenantId);
                 
                 $response->getBody()->write(json_encode([
                     'type' => 'success',
@@ -339,7 +321,7 @@ class ModalidadeController
         $id = (int) $args['id'];
         $tenantId = $request->getAttribute('tenantId');
         
-        $modalidade = $this->modalidadeModel->buscarPorId($id);
+        $modalidade = $this->modalidadeModel->buscarPorId($id, $tenantId);
         
         if (!$modalidade) {
             $response->getBody()->write(json_encode([
@@ -356,28 +338,6 @@ class ModalidadeController
                 'message' => 'Acesso negado'
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(403);
-        }
-        
-        // Se está tentando desativar, verificar se há contratos ativos
-        if ($modalidade['ativo']) {
-            $db = require __DIR__ . '/../../config/database.php';
-            $stmt = $db->prepare("
-                SELECT COUNT(*) as total 
-                FROM matriculas m
-                INNER JOIN planos p ON m.plano_id = p.id
-                WHERE p.modalidade_id = ?
-                AND m.status = 'ativa'
-            ");
-            $stmt->execute([$id]);
-            $result = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if ($result['total'] > 0) {
-                $response->getBody()->write(json_encode([
-                    'type' => 'error',
-                    'message' => 'Não é possível desativar modalidade com contratos ativos'
-                ], JSON_UNESCAPED_UNICODE));
-                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(422);
-            }
         }
         
         try {

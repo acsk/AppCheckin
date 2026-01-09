@@ -17,14 +17,10 @@ class Horario
     public function getByDiaId(int $diaId): array
     {
         $stmt = $this->db->prepare(
-            "SELECT h.*, 
-                    d.data,
-                    (SELECT COUNT(*) FROM checkins WHERE horario_id = h.id) as alunos_registrados,
-                    (h.limite_alunos - (SELECT COUNT(*) FROM checkins WHERE horario_id = h.id)) as vagas_disponiveis
+            "SELECT h.*
              FROM horarios h
-             INNER JOIN dias d ON d.id = h.dia_id
              WHERE h.dia_id = :dia_id AND h.ativo = 1
-             ORDER BY h.hora ASC"
+             ORDER BY h.horario_inicio ASC"
         );
         $stmt->execute(['dia_id' => $diaId]);
         
@@ -46,6 +42,47 @@ class Horario
         $horario = $stmt->fetch();
         
         return $horario ?: null;
+    }
+
+    /**
+     * Buscar horário por dia_id e horario_inicio/horario_fim
+     * Aceita formatos: HH:MM ou HH:MM:SS
+     */
+    public function findByDiaAndHorario(int $diaId, string $horarioInicio, string $horarioFim): ?array
+    {
+        // Normalizar para HH:MM:SS se estiver em HH:MM
+        $horarioInicio = $this->normalizarHora($horarioInicio);
+        $horarioFim = $this->normalizarHora($horarioFim);
+        
+        $stmt = $this->db->prepare(
+            "SELECT h.*, 
+                    d.data
+             FROM horarios h
+             INNER JOIN dias d ON d.id = h.dia_id
+             WHERE h.dia_id = :dia_id AND h.horario_inicio = :horario_inicio AND h.horario_fim = :horario_fim"
+        );
+        $stmt->execute([
+            'dia_id' => $diaId,
+            'horario_inicio' => $horarioInicio,
+            'horario_fim' => $horarioFim
+        ]);
+        $horario = $stmt->fetch();
+        
+        return $horario ?: null;
+    }
+
+    /**
+     * Normalizar hora para formato HH:MM:SS
+     * Aceita: 06:00 ou 06:00:00
+     */
+    private function normalizarHora(string $hora): string
+    {
+        $partes = explode(':', $hora);
+        if (count($partes) === 2) {
+            // Adicionar :00 se estiver em formato HH:MM
+            return $hora . ':00';
+        }
+        return $hora;
     }
 
     public function temVagasDisponiveis(int $id): bool

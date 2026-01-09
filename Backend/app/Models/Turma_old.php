@@ -24,18 +24,20 @@ class Turma
                 m.icone as modalidade_icone,
                 m.cor as modalidade_cor,
                 d.data as dia_data,
-                (SELECT COUNT(*) FROM inscricoes_turmas it WHERE it.turma_id = t.id AND it.ativo = 1 AND it.status = 'ativa') as alunos_count
+                h.hora as horario_hora,                h.horario_inicio,
+                h.horario_fim,                (SELECT COUNT(*) FROM inscricoes_turmas it WHERE it.turma_id = t.id AND it.ativo = 1 AND it.status = 'ativa') as alunos_count
                 FROM turmas t
                 LEFT JOIN professores p ON t.professor_id = p.id
                 LEFT JOIN modalidades m ON t.modalidade_id = m.id
                 LEFT JOIN dias d ON t.dia_id = d.id
+                LEFT JOIN horarios h ON t.horario_id = h.id
                 WHERE t.tenant_id = :tenant_id";
         
         if ($apenasAtivas) {
             $sql .= " AND t.ativo = 1";
         }
         
-        $sql .= " ORDER BY d.data ASC, t.horario_inicio ASC";
+        $sql .= " ORDER BY d.data ASC, h.hora ASC";
         
         $stmt = $this->db->prepare($sql);
         $stmt->execute(['tenant_id' => $tenantId]);
@@ -55,18 +57,22 @@ class Turma
                 m.icone as modalidade_icone,
                 m.cor as modalidade_cor,
                 d.data as dia_data,
+                h.hora as horario_hora,
+                h.horario_inicio,
+                h.horario_fim,
                 (SELECT COUNT(*) FROM inscricoes_turmas it WHERE it.turma_id = t.id AND it.ativo = 1 AND it.status = 'ativa') as alunos_count
                 FROM turmas t
                 LEFT JOIN professores p ON t.professor_id = p.id
                 LEFT JOIN modalidades m ON t.modalidade_id = m.id
                 LEFT JOIN dias d ON t.dia_id = d.id
+                LEFT JOIN horarios h ON t.horario_id = h.id
                 WHERE t.tenant_id = :tenant_id AND t.dia_id = :dia_id";
         
         if ($apenasAtivas) {
             $sql .= " AND t.ativo = 1";
         }
         
-        $sql .= " ORDER BY t.horario_inicio ASC";
+        $sql .= " ORDER BY h.hora ASC";
         
         $stmt = $this->db->prepare($sql);
         $stmt->execute(['tenant_id' => $tenantId, 'dia_id' => $diaId]);
@@ -84,12 +90,16 @@ class Turma
                 m.nome as modalidade_nome,
                 m.icone as modalidade_icone,
                 m.cor as modalidade_cor,
+                h.horario_inicio,
+                h.horario_fim,
                 d.data as dia_data,
+                h.hora as horario_hora,
                 (SELECT COUNT(*) FROM inscricoes_turmas it WHERE it.turma_id = t.id AND it.ativo = 1 AND it.status = 'ativa') as alunos_count
                 FROM turmas t
                 LEFT JOIN professores p ON t.professor_id = p.id
                 LEFT JOIN modalidades m ON t.modalidade_id = m.id
                 LEFT JOIN dias d ON t.dia_id = d.id
+                LEFT JOIN horarios h ON t.horario_id = h.id
                 WHERE t.id = :id";
         
         $params = ['id' => $id];
@@ -115,18 +125,22 @@ class Turma
                 m.nome as modalidade_nome,
                 m.icone as modalidade_icone,
                 m.cor as modalidade_cor,
+                h.horario_inicio,
+                h.horario_fim,
                 d.data as dia_data,
+                h.hora as horario_hora,
                 (SELECT COUNT(*) FROM inscricoes_turmas it WHERE it.turma_id = t.id AND it.ativo = 1 AND it.status = 'ativa') as alunos_count
                 FROM turmas t
                 LEFT JOIN modalidades m ON t.modalidade_id = m.id
                 LEFT JOIN dias d ON t.dia_id = d.id
+                LEFT JOIN horarios h ON t.horario_id = h.id
                 WHERE t.professor_id = :professor_id AND t.tenant_id = :tenant_id";
         
         if ($apenasAtivas) {
             $sql .= " AND t.ativo = 1";
         }
         
-        $sql .= " ORDER BY d.data ASC, t.horario_inicio ASC";
+        $sql .= " ORDER BY d.data ASC, h.hora ASC";
         
         $stmt = $this->db->prepare($sql);
         $stmt->execute(['professor_id' => $professorId, 'tenant_id' => $tenantId]);
@@ -158,13 +172,9 @@ class Turma
      */
     public function create(array $data): int
     {
-        // Normalizar horários para formato TIME (HH:MM:SS)
-        $horarioInicio = $this->normalizarHorario($data['horario_inicio']);
-        $horarioFim = $this->normalizarHorario($data['horario_fim']);
-        
         $stmt = $this->db->prepare(
-            "INSERT INTO turmas (tenant_id, professor_id, modalidade_id, dia_id, horario_inicio, horario_fim, nome, limite_alunos, ativo) 
-             VALUES (:tenant_id, :professor_id, :modalidade_id, :dia_id, :horario_inicio, :horario_fim, :nome, :limite_alunos, :ativo)"
+            "INSERT INTO turmas (tenant_id, professor_id, modalidade_id, dia_id, horario_id, nome, limite_alunos, ativo) 
+             VALUES (:tenant_id, :professor_id, :modalidade_id, :dia_id, :horario_id, :nome, :limite_alunos, :ativo)"
         );
         
         $stmt->execute([
@@ -172,8 +182,7 @@ class Turma
             'professor_id' => $data['professor_id'],
             'modalidade_id' => $data['modalidade_id'],
             'dia_id' => $data['dia_id'],
-            'horario_inicio' => $horarioInicio,
-            'horario_fim' => $horarioFim,
+            'horario_id' => $data['horario_id'],
             'nome' => $data['nome'],
             'limite_alunos' => $data['limite_alunos'] ?? 20,
             'ativo' => $data['ativo'] ?? 1
@@ -190,17 +199,12 @@ class Turma
         $updates = [];
         $params = ['id' => $id];
         
-        $allowed = ['professor_id', 'modalidade_id', 'dia_id', 'horario_inicio', 'horario_fim', 'nome', 'limite_alunos', 'ativo'];
+        $allowed = ['professor_id', 'modalidade_id', 'dia_id', 'horario_id', 'nome', 'limite_alunos', 'ativo'];
         
         foreach ($allowed as $field) {
             if (isset($data[$field])) {
-                if ($field === 'horario_inicio' || $field === 'horario_fim') {
-                    // Normalizar horários
-                    $params[$field] = $this->normalizarHorario($data[$field]);
-                } else {
-                    $params[$field] = $data[$field];
-                }
                 $updates[] = "$field = :$field";
+                $params[$field] = $data[$field];
             }
         }
         
@@ -254,33 +258,27 @@ class Turma
     }
 
     /**
-     * Verificar se já existe turma com conflito de horário
-     * Detecta sobreposição: nova turma começa antes do fim de uma existente E termina depois do início de uma existente
+     * Verificar se já existe turma no mesmo horário e dia
      * @param int $tenantId ID do tenant
      * @param int $diaId ID do dia
-     * @param string $horarioInicio Horário de início (HH:MM ou HH:MM:SS)
-     * @param string $horarioFim Horário de término (HH:MM ou HH:MM:SS)
+     * @param int $horarioId ID do horário
      * @param int|null $turmaIdExcluir ID da turma a excluir (para update)
-     * @return array Turmas com conflito encontradas
+     * @return array Turmas encontradas
      */
-    public function verificarHorarioOcupado(int $tenantId, int $diaId, string $horarioInicio, string $horarioFim, ?int $turmaIdExcluir = null): array
+    public function verificarHorarioOcupado(int $tenantId, int $diaId, int $horarioId, ?int $turmaIdExcluir = null): array
     {
-        // Normalizar horários
-        $horarioInicio = $this->normalizarHorario($horarioInicio);
-        $horarioFim = $this->normalizarHorario($horarioFim);
-        
-        $sql = "SELECT t.id, t.nome, t.professor_id, t.horario_inicio, t.horario_fim
+        $sql = "SELECT t.id, t.nome, t.professor_id, h.horario_inicio, h.horario_fim
                 FROM turmas t
+                LEFT JOIN horarios h ON t.horario_id = h.id
                 WHERE t.tenant_id = :tenant_id 
                 AND t.dia_id = :dia_id 
-                AND t.ativo = 1
-                AND (t.horario_inicio < :horario_fim AND t.horario_fim > :horario_inicio)";
+                AND t.horario_id = :horario_id 
+                AND t.ativo = 1";
         
         $params = [
             'tenant_id' => $tenantId,
             'dia_id' => $diaId,
-            'horario_inicio' => $horarioInicio,
-            'horario_fim' => $horarioFim
+            'horario_id' => $horarioId
         ];
         
         // Se for update, excluir a turma em questão
@@ -293,20 +291,5 @@ class Turma
         $stmt->execute($params);
         
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
-    }
-
-    /**
-     * Normalizar horário para formato TIME (HH:MM:SS)
-     * Aceita formatos: "HH:MM" ou "HH:MM:SS"
-     * @param string $horario
-     * @return string
-     */
-    private function normalizarHorario(string $horario): string
-    {
-        // Se não tiver segundos, adicionar :00
-        if (strlen($horario) === 5 && substr_count($horario, ':') === 1) {
-            $horario .= ':00';
-        }
-        return $horario;
     }
 }
