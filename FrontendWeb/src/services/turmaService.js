@@ -2,7 +2,7 @@ import api from './api';
 
 export const turmaService = {
   // Listar turmas - com suporte a filtro por data
-  async listar(data = null, apenasAtivas = true) {
+  async listar(data = null, apenasAtivas = false) {
     try {
       const params = {
         apenas_ativas: apenasAtivas
@@ -94,6 +94,52 @@ export const turmaService = {
       return response.data;
     } catch (error) {
       console.error('Erro ao verificar vagas:', error);
+      throw error;
+    }
+  },
+
+  // Replicar turmas para diferentes períodos
+  async replicar(diaId, periodo = 'custom', diasSemana = [], mes = null) {
+    try {
+      const payload = {
+        dia_id: diaId,
+        periodo: periodo,
+      };
+
+      // Adicionar dias_semana apenas se for customizado
+      if (periodo === 'custom') {
+        payload.dias_semana = diasSemana;
+      }
+
+      // Adicionar mês se for mes_todo ou custom
+      if ((periodo === 'mes_todo' || periodo === 'custom') && mes) {
+        payload.mes = mes;
+      }
+
+      const response = await api.post('/admin/turmas/replicar', payload);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao replicar turmas:', error);
+      throw error;
+    }
+  },
+
+  // Desativar turmas
+  async desativar(turmaId, periodo = 'apenas_esta', mes = null) {
+    try {
+      const payload = {
+        turma_id: turmaId,
+        periodo: periodo,
+      };
+
+      if ((periodo === 'mes_todo' || periodo === 'custom') && mes) {
+        payload.mes = mes;
+      }
+
+      const response = await api.post('/admin/turmas/desativar', payload);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao desativar turma:', error);
       throw error;
     }
   }

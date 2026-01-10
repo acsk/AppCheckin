@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Switch } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Switch, Modal } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Picker } from '@react-native-picker/picker';
@@ -42,6 +42,7 @@ export default function FormTurmaScreen({ turmaId }) {
   const [turma, setTurma] = useState(null);
   const [professores, setProfessores] = useState([]);
   const [modalidades, setModalidades] = useState([]);
+  const [showModalContinuar, setShowModalContinuar] = useState(false);
   
   const [formData, setFormData] = useState({
     nome: '',
@@ -62,6 +63,10 @@ export default function FormTurmaScreen({ turmaId }) {
       carregarTurma();
     }
   }, [turmaId]);
+
+  useEffect(() => {
+    console.log('🔍 Estado do modal atualizado:', { showModalContinuar, submitting });
+  }, [showModalContinuar]);
 
   const carregarDadosIniciais = async () => {
     try {
@@ -136,6 +141,29 @@ export default function FormTurmaScreen({ turmaId }) {
     return true;
   };
 
+  const incrementarProximaHora = () => {
+    const horarioAtualId = parseInt(formData.horario_id);
+    const proximoHorarioId = horarioAtualId < HORARIOS.length ? horarioAtualId + 1 : horarioAtualId;
+    return String(proximoHorarioId);
+  };
+
+  const handleContinuarCriando = () => {
+    const novoHorarioId = incrementarProximaHora();
+    console.log('🔄 Continuando criação - novo horário:', novoHorarioId);
+    setShowModalContinuar(false);
+    setFormData({
+      ...formData,
+      horario_id: novoHorarioId
+    });
+    setSubmitting(false);
+  };
+
+  const handleVoltarListagem = () => {
+    console.log('🔙 Voltando para listagem');
+    setShowModalContinuar(false);
+    setTimeout(() => router.back(), 300);
+  };
+
   const handleSubmit = async () => {
     if (!validarFormulario()) return;
 
@@ -153,11 +181,19 @@ export default function FormTurmaScreen({ turmaId }) {
       if (turmaId) {
         await turmaService.atualizar(turmaId, dados);
         showSuccess('Turma atualizada com sucesso');
+        setTimeout(() => router.back(), 1500);
       } else {
         await turmaService.criar(dados);
         showSuccess('Turma criada com sucesso');
+        console.log('✅ Turma criada, mostrando modal...');
+        setSubmitting(false);
+        // Mostrar modal para perguntar se quer criar outra - com pequeno delay para o toast aparecer
+        setTimeout(() => {
+          console.log('📱 Acionando modal de confirmação');
+          setShowModalContinuar(true);
+        }, 300);
+        return;
       }
-      setTimeout(() => router.back(), 1500);
     } catch (error) {
       console.error('Erro ao salvar:', error);
       let mensagemErro = 'Erro ao salvar turma';
@@ -174,7 +210,10 @@ export default function FormTurmaScreen({ turmaId }) {
       
       showError(mensagemErro);
     } finally {
-      setSubmitting(false);
+      // Não fechar o submitting aqui para turmas novas se o modal vai aparecer
+      if (turmaId) {
+        setSubmitting(false);
+      }
     }
   };
 
@@ -189,8 +228,9 @@ export default function FormTurmaScreen({ turmaId }) {
   }
 
   return (
-    <LayoutBase title={turmaId ? 'Editar Turma' : 'Nova Turma'}>
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <>
+      <LayoutBase title={turmaId ? 'Editar Turma' : 'Nova Turma'}>
+        <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {/* Formulário */}
         <View style={styles.formContainer}>
           {/* Nome */}
@@ -346,6 +386,48 @@ export default function FormTurmaScreen({ turmaId }) {
         </View>
       </ScrollView>
     </LayoutBase>
+
+    {/* Modal fora do LayoutBase para evitar fechar junto */}
+    <Modal
+      visible={showModalContinuar}
+      transparent
+      animationType="fade"
+      onDismiss={() => {
+        console.log('❌ Modal tentou fechar via onDismiss');
+      }}
+    >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Feather name="check-circle" size={32} color="#10b981" />
+              <Text style={styles.modalTitle}>Turma Criada!</Text>
+            </View>
+
+            <Text style={styles.modalMessage}>
+              Deseja criar outra turma similar? Os dados serão mantidos e o horário será incrementado para a próxima hora.
+            </Text>
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonSecondary]}
+                onPress={handleVoltarListagem}
+              >
+                <Feather name="arrow-left" size={18} color="#6b7280" />
+                <Text style={styles.modalButtonSecondaryText}>Voltar à Listagem</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalButton, styles.modalButtonPrimary]}
+                onPress={handleContinuarCriando}
+              >
+                <Feather name="plus" size={18} color="#fff" />
+                <Text style={styles.modalButtonPrimaryText}>Criar Outra</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </>
   );
 }
 
@@ -464,5 +546,69 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.7
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+    alignItems: 'center',
+    gap: 16
+  },
+  modalHeader: {
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 8
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827'
+  },
+  modalMessage: {
+    fontSize: 14,
+    color: '#4b5563',
+    textAlign: 'center',
+    lineHeight: 20
+  },
+  modalButtons: {
+    width: '100%',
+    gap: 12,
+    marginTop: 12
+  },
+  modalButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1
+  },
+  modalButtonSecondary: {
+    backgroundColor: '#f3f4f6',
+    borderColor: '#d1d5db'
+  },
+  modalButtonSecondaryText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6b7280'
+  },
+  modalButtonPrimary: {
+    backgroundColor: '#10b981',
+    borderColor: '#10b981'
+  },
+  modalButtonPrimaryText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff'
   }
 });

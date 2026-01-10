@@ -226,8 +226,14 @@ class Turma
         return $stmt->execute(['id' => $id]);
     }
 
-    /**
-     * Verificar se turma pertence ao tenant
+    /**     * Desativar turma (alias para delete)
+     */
+    public function desativar(int $id): bool
+    {
+        return $this->delete($id);
+    }
+
+    /**     * Verificar se turma pertence ao tenant
      */
     public function pertenceAoTenant(int $turmaId, int $tenantId): bool
     {
@@ -261,20 +267,28 @@ class Turma
      * @param string $horarioInicio Horário de início (HH:MM ou HH:MM:SS)
      * @param string $horarioFim Horário de término (HH:MM ou HH:MM:SS)
      * @param int|null $turmaIdExcluir ID da turma a excluir (para update)
+     * @param int|null $professorId ID do professor (para validar conflito de professor)
      * @return array Turmas com conflito encontradas
      */
-    public function verificarHorarioOcupado(int $tenantId, int $diaId, string $horarioInicio, string $horarioFim, ?int $turmaIdExcluir = null): array
+    public function verificarHorarioOcupado(int $tenantId, int $diaId, string $horarioInicio, string $horarioFim, ?int $turmaIdExcluir = null, ?int $professorId = null): array
     {
         // Normalizar horários
         $horarioInicio = $this->normalizarHorario($horarioInicio);
         $horarioFim = $this->normalizarHorario($horarioFim);
         
-        $sql = "SELECT t.id, t.nome, t.professor_id, t.horario_inicio, t.horario_fim
+        // Se professor foi informado, buscar conflitos APENAS para este professor
+        // pois modalidades diferentes podem ter o mesmo horário sem problema
+        $sql = "SELECT t.id, t.nome, t.professor_id, t.horario_inicio, t.horario_fim, t.modalidade_id
                 FROM turmas t
                 WHERE t.tenant_id = :tenant_id 
                 AND t.dia_id = :dia_id 
                 AND t.ativo = 1
                 AND (t.horario_inicio < :horario_fim AND t.horario_fim > :horario_inicio)";
+        
+        // Se professor foi informado, validar apenas para este professor
+        if ($professorId !== null) {
+            $sql .= " AND t.professor_id = :professor_id";
+        }
         
         $params = [
             'tenant_id' => $tenantId,
@@ -282,6 +296,10 @@ class Turma
             'horario_inicio' => $horarioInicio,
             'horario_fim' => $horarioFim
         ];
+        
+        if ($professorId !== null) {
+            $params['professor_id'] = $professorId;
+        }
         
         // Se for update, excluir a turma em questão
         if ($turmaIdExcluir !== null) {

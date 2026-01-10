@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { turmaService } from '../../services/turmaService';
+import { diaService } from '../../services/diaService';
 import modalidadeService from '../../services/modalidadeService';
 import { professorService } from '../../services/professorService';
 import { horarioService } from '../../services/horarioService';
@@ -43,6 +44,17 @@ export default function TurmasScreen() {
   const [dropdownAberto, setDropdownAberto] = useState(null);
   const [diaId, setDiaId] = useState(17); // TODO: Obter do turmasData quando carregar
   const [errors, setErrors] = useState({});
+  const [modalReplicarVisible, setModalReplicarVisible] = useState(false);
+  const [periodoReplicacao, setPeriodoReplicacao] = useState('custom');
+  const [diasSemanaSelecionados, setDiasSemanaSelecionados] = useState([]);
+  const [mesReplicacao, setMesReplicacao] = useState('');
+  const [replicando, setReplicando] = useState(false);
+  const [showConfirmeContinuar, setShowConfirmeContinuar] = useState(false);
+  const [dadosAnteriores, setDadosAnteriores] = useState(null);
+  const [modalDesativarVisible, setModalDesativarVisible] = useState(false);
+  const [turmaDesativar, setTurmaDesativar] = useState(null);
+  const [periodoDesativacao, setPeriodoDesativacao] = useState('apenas_esta');
+  const [desativando, setDesativando] = useState(false);
 
   function obterHoje() {
     const hoje = new Date();
@@ -132,6 +144,16 @@ export default function TurmasScreen() {
       setLoading(true);
       const turmasData = await turmaService.listar(dataSelecionada);
       
+      console.log('📋 [carregarDados] Turmas recebidas:', turmasData);
+      if (turmasData && turmasData.length > 0) {
+        console.log('🎨 [carregarDados] Primeira turma:', {
+          id: turmasData[0].id,
+          modalidade_nome: turmasData[0].modalidade_nome,
+          modalidade_icone: turmasData[0].modalidade_icone,
+          modalidade_cor: turmasData[0].modalidade_cor,
+        });
+      }
+      
       setTurmas(turmasData);
       setTurmasFiltradas(turmasData);
       setSearchText('');
@@ -157,13 +179,10 @@ export default function TurmasScreen() {
 
   const renderizarIconeModalidade = (nomeIcone, cor) => {
     const corIcon = cor || '#3b82f6';
-    const icosMaterialCommunity = ['weight-lifter', 'yoga', 'swimming', 'dumbbell', 'bicycle'];
+    const iconeParaUsar = nomeIcone && nomeIcone.trim() ? nomeIcone : 'dumbbell';
     
-    if (icosMaterialCommunity.includes(nomeIcone)) {
-      return <MaterialCommunityIcons name={nomeIcone || 'circle'} size={20} color={corIcon} />;
-    }
-    
-    return <Feather name={nomeIcone || 'circle'} size={20} color={corIcon} />;
+    // Tenta usar diretamente no MaterialCommunityIcons
+    return <MaterialCommunityIcons name={iconeParaUsar} size={20} color={corIcon} />;
   };
 
   const handleNova = async () => {
@@ -315,6 +334,66 @@ export default function TurmasScreen() {
       setLoadingDropdowns(false);
     }
   };
+
+  const handleReplicar = async () => {
+    try {
+      if (periodoReplicacao === 'custom' && diasSemanaSelecionados.length === 0) {
+        showError('Selecione pelo menos um dia da semana');
+        return;
+      }
+
+      setReplicando(true);
+      const mes = mesReplicacao || `${dataSelecionada.substring(0, 7)}`;
+      
+      console.log('🔵 [handleReplicar] Chamando API:', {
+        diaId,
+        periodoReplicacao,
+        diasSemanaSelecionados,
+        mes
+      });
+      
+      const resultado = await turmaService.replicar(diaId, periodoReplicacao, diasSemanaSelecionados, mes);
+
+      console.log('✅ [handleReplicar] Resposta da API:', resultado);
+
+      if (resultado.type === 'success') {
+        // Extrair informações dos detalhes
+        const totalCriadas = resultado.turmas_criadas?.length || 0;
+        
+        let mensagem = `✅ ${totalCriadas} turmas criadas com sucesso!`;
+        
+        showSuccess(mensagem);
+        setModalReplicarVisible(false);
+        setDiasSemanaSelecionados([]);
+        setMesReplicacao('');
+        setPeriodoReplicacao('custom');
+        carregarDados();
+      } else {
+        console.warn('⚠️ [handleReplicar] Resposta sem sucesso:', resultado);
+        showError(resultado.message || 'Erro ao replicar turmas');
+      }
+    } catch (error) {
+      console.error('❌ [handleReplicar] Erro completo:', error);
+      console.error('   Response:', error.response?.data);
+      console.error('   Status:', error.response?.status);
+      showError(error.response?.data?.message || 'Erro ao replicar turmas');
+    } finally {
+      setReplicando(false);
+    }
+  };
+
+  const toggleDiaSemana = (dia) => {
+    if (diasSemanaSelecionados.includes(dia)) {
+      setDiasSemanaSelecionados(diasSemanaSelecionados.filter(d => d !== dia));
+    } else {
+      setDiasSemanaSelecionados([...diasSemanaSelecionados, dia]);
+    }
+  };
+
+  const diasSemanaLabels = [
+    'Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'
+  ];
+
   const validarHora = (hora) => {
     // Validar formato HH:MM
     if (!hora || !/^\d{2}:\d{2}$/.test(hora)) {
@@ -404,16 +483,18 @@ export default function TurmasScreen() {
 
       await turmaService.criar(novaData);
       showSuccess('Turma criada com sucesso!');
+      
+      // Manter dados anteriores em memória
+      setDadosAnteriores(formData);
+      
+      // Fechar a modal de criação
       setModalCriarVisible(false);
-      setErrors({});
-      setFormData({
-        modalidade_id: '',
-        horario_inicio: '',
-        horario_fim: '',
-        professor_id: '',
-        limite_alunos: '',
-        ativo: true,
-      });
+      
+      // Mostrar modal de confirmação
+      setTimeout(() => {
+        setShowConfirmeContinuar(true);
+      }, 300);
+      
       carregarDados();
     } catch (error) {
       console.error('Erro ao criar turma:', error);
@@ -428,6 +509,67 @@ export default function TurmasScreen() {
       showError(mensagemErro);
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleCriarOutra = () => {
+    // Restaurar dados anteriores
+    if (dadosAnteriores) {
+      setFormData(dadosAnteriores);
+    }
+    
+    // Fechar modal de confirmação
+    setShowConfirmeContinuar(false);
+    
+    // Abrir modal de criação novamente
+    setTimeout(() => {
+      setModalCriarVisible(true);
+    }, 300);
+  };
+
+  const handleFecharConfirmacao = () => {
+    setShowConfirmeContinuar(false);
+    setDadosAnteriores(null);
+    setFormData({
+      modalidade_id: '',
+      horario_inicio: '',
+      horario_fim: '',
+      professor_id: '',
+      limite_alunos: '',
+      ativo: true,
+    });
+    setErrors({});
+  };
+
+  const handleDesativarTurma = async () => {
+    if (!turmaDesativar) return;
+    
+    try {
+      setDesativando(true);
+      
+      const mes = mesReplicacao || new Date().toISOString().slice(0, 7);
+      
+      const response = await turmaService.desativar(
+        turmaDesativar.id,
+        periodoDesativacao,
+        mes
+      );
+      
+      showSuccess(response.message || 'Turma(s) desativada(s) com sucesso!');
+      setModalDesativarVisible(false);
+      setTurmaDesativar(null);
+      setPeriodoDesativacao('apenas_esta');
+      
+      carregarDados();
+    } catch (error) {
+      console.error('Erro ao desativar turma:', error);
+      let mensagem = 'Erro ao desativar turma';
+      if (error.response?.data?.message) {
+        mensagem = error.response.data.message;
+      }
+      showError(mensagem);
+    } finally {
+      setDesativando(false);
     }
   };
 
@@ -626,6 +768,14 @@ export default function TurmasScreen() {
                 <Feather name="plus" size={18} color="#fff" />
                 {!isMobile && <Text style={styles.addButtonText}>Nova Aula</Text>}
               </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.replicarButton, isMobile && styles.addButtonMobile]}
+                onPress={() => setModalReplicarVisible(true)}
+                activeOpacity={0.8}
+              >
+                <Feather name="copy" size={18} color="#fff" />
+                {!isMobile && <Text style={styles.addButtonText}>Replicar</Text>}
+              </TouchableOpacity>
             </View>
 
             <View style={styles.searchInputContainer}>
@@ -698,14 +848,14 @@ export default function TurmasScreen() {
               <Text style={[styles.tableHeaderText, { flex: 1.5 }]}>PROFESSOR</Text>
               <Text style={[styles.tableHeaderText, { flex: 1 }]}>VAGAS</Text>
               <Text style={[styles.tableHeaderText, { flex: 0.8 }]}>STATUS</Text>
-              <Text style={[styles.tableHeaderText, { flex: 0.6, textAlign: 'center' }]}>AÇÕES</Text>
+              <Text style={[styles.tableHeaderText, { flex: 0.8, textAlign: 'center' }]}>AÇÕES</Text>
             </View>
 
             {/* Linhas da Tabela */}
             {turmasFiltradas.map((turma) => (
               <TouchableOpacity
                 key={turma.id}
-                style={styles.tableRow}
+                style={[styles.tableRow, !turma.ativo && styles.tableRowInativo]}
                 onPress={() => handleEditar(turma.id)}
                 activeOpacity={0.7}
               >
@@ -743,12 +893,21 @@ export default function TurmasScreen() {
                       turma.ativo ? styles.statusAtivo : styles.statusInativo,
                     ]}
                   >
-                    <Text style={styles.statusText}>
+                    <Text style={turma.ativo ? styles.statusText : styles.statusInativoText}>
                       {turma.ativo ? 'Ativo' : 'Inativo'}
                     </Text>
                   </View>
                 </View>
                 <View style={styles.acoesCell}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setTurmaDesativar(turma);
+                      setModalDesativarVisible(true);
+                    }}
+                    style={styles.actionIconButton}
+                  >
+                    <MaterialCommunityIcons name="pause-circle" size={18} color="#ef4444" />
+                  </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => handleEditar(turma.id)}
                     style={styles.actionIconButton}
@@ -1026,6 +1185,169 @@ export default function TurmasScreen() {
           onCancel={() => setConfirmDelete({ visible: false, id: null, nome: '' })}
         />
 
+        {/* Modal Replicar Turmas */}
+        <Modal
+          visible={modalReplicarVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setModalReplicarVisible(false)}
+        >
+          <Pressable 
+            style={styles.criarTurmaOverlay} 
+            onPress={() => setModalReplicarVisible(false)}
+          >
+            <Pressable 
+              style={styles.criarTurmaContent}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.criarTurmaHeader}>
+                <Text style={styles.criarTurmaTitle}>Replicar Aulas</Text>
+                <TouchableOpacity onPress={() => setModalReplicarVisible(false)}>
+                  <Feather name="x" size={28} color="#6b7280" />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={styles.criarTurmaForm} showsVerticalScrollIndicator={false}>
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Data de Origem</Text>
+                  <Text style={styles.replicarDataTexto}>
+                    {formatarDataExibicao(dataSelecionada)} ({obterDiaSemana(dataSelecionada)})
+                  </Text>
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>
+                    Tipo de Replicação
+                    <Text style={styles.required}>*</Text>
+                  </Text>
+                  <View style={styles.toggleContainer}>
+                    <TouchableOpacity
+                      style={[
+                        styles.toggleButton,
+                        periodoReplicacao === 'proxima_semana' && styles.toggleButtonActive
+                      ]}
+                      onPress={() => setPeriodoReplicacao('proxima_semana')}
+                      disabled={replicando}
+                    >
+                      <Text
+                        style={[
+                          styles.toggleText,
+                          periodoReplicacao === 'proxima_semana' && styles.toggleTextActive
+                        ]}
+                      >
+                        Próxima Semana
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.toggleButton,
+                        periodoReplicacao === 'mes_todo' && styles.toggleButtonActive
+                      ]}
+                      onPress={() => setPeriodoReplicacao('mes_todo')}
+                      disabled={replicando}
+                    >
+                      <Text
+                        style={[
+                          styles.toggleText,
+                          periodoReplicacao === 'mes_todo' && styles.toggleTextActive
+                        ]}
+                      >
+                        Mês Inteiro
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.toggleButton,
+                        periodoReplicacao === 'custom' && styles.toggleButtonActive
+                      ]}
+                      onPress={() => setPeriodoReplicacao('custom')}
+                      disabled={replicando}
+                    >
+                      <Text
+                        style={[
+                          styles.toggleText,
+                          periodoReplicacao === 'custom' && styles.toggleTextActive
+                        ]}
+                      >
+                        Customizado
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {periodoReplicacao === 'custom' && (
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>
+                      Dias da Semana
+                      <Text style={styles.required}>*</Text>
+                    </Text>
+                    <View style={styles.diasSemanaContainer}>
+                      {diasSemanaLabels.map((label, index) => (
+                        <TouchableOpacity
+                          key={index + 1}
+                          style={[
+                            styles.diaButton,
+                            diasSemanaSelecionados.includes(index + 1) && styles.diaButtonAtivo
+                          ]}
+                          onPress={() => toggleDiaSemana(index + 1)}
+                          disabled={replicando}
+                        >
+                          <Text
+                            style={[
+                              styles.diaButtonText,
+                              diasSemanaSelecionados.includes(index + 1) && styles.diaButtonTextoAtivo
+                            ]}
+                          >
+                            {label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                {(periodoReplicacao === 'mes_todo' || periodoReplicacao === 'custom') && (
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Mês (Opcional)</Text>
+                    <TextInput
+                      style={styles.formInput}
+                      placeholder="YYYY-MM (ex: 2026-02)"
+                      placeholderTextColor="#9ca3af"
+                      value={mesReplicacao}
+                      onChangeText={setMesReplicacao}
+                      editable={!replicando}
+                    />
+                    <Text style={styles.helperText}>Deixe vazio para usar o mês atual ({dataSelecionada.substring(0, 7)})</Text>
+                  </View>
+                )}
+
+                <View style={styles.formButtonRow}>
+                  <TouchableOpacity
+                    style={[styles.formButton, replicando && styles.formButtonDisabled]}
+                    onPress={() => setModalReplicarVisible(false)}
+                    disabled={replicando}
+                  >
+                    <Text style={styles.formButtonText}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.formButton, styles.formButtonSubmit, replicando && styles.formButtonDisabled]}
+                    onPress={handleReplicar}
+                    disabled={replicando}
+                  >
+                    {replicando ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={styles.formButtonTextSubmit}>Replicar</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
         {/* Loading Overlay */}
         {loading && (
           <View style={styles.loadingOverlay}>
@@ -1035,6 +1357,135 @@ export default function TurmasScreen() {
             </View>
           </View>
         )}
+
+        {/* Modal Confirmação Criar Outra Turma */}
+        <Modal
+          visible={showConfirmeContinuar}
+          transparent
+          animationType="fade"
+          onRequestClose={handleFecharConfirmacao}
+        >
+          <View style={styles.confirmModalOverlay}>
+            <View style={styles.confirmModalContent}>
+              <View style={styles.confirmModalHeader}>
+                <Text style={styles.confirmModalTitle}>✅ Turma Criada!</Text>
+              </View>
+              
+              <Text style={styles.confirmModalMessage}>
+                Deseja criar outra turma com os mesmos dados?
+              </Text>
+              
+              <View style={styles.confirmModalButtons}>
+                <TouchableOpacity 
+                  style={[styles.confirmModalButton, styles.confirmModalButtonSecondary]}
+                  onPress={handleFecharConfirmacao}
+                >
+                  <Text style={styles.confirmModalButtonSecondaryText}>Voltar</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={[styles.confirmModalButton, styles.confirmModalButtonPrimary]}
+                  onPress={handleCriarOutra}
+                >
+                  <Text style={styles.confirmModalButtonPrimaryText}>Criar Outra</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Modal Desativar Turma */}
+        <Modal
+          visible={modalDesativarVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setModalDesativarVisible(false)}
+        >
+          <Pressable 
+            style={styles.desativarModalOverlay}
+            onPress={() => setModalDesativarVisible(false)}
+          >
+            <Pressable style={styles.desativarModalContent} onPress={(e) => e.stopPropagation()}>
+              <View style={styles.desativarModalHeader}>
+                <Text style={styles.desativarModalTitle}>Desativar Aula</Text>
+              </View>
+
+              {turmaDesativar && (
+                <View style={styles.desativarModalInfo}>
+                  <Text style={styles.desativarModalInfoText}>
+                    {turmaDesativar.nome}
+                  </Text>
+                </View>
+              )}
+
+              <ScrollView style={styles.desativarModalForm} showsVerticalScrollIndicator={false}>
+                {/* Seleção de Período */}
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Período de Desativação</Text>
+                  <View style={styles.periodoOptions}>
+                    {[
+                      { label: 'Apenas Esta', value: 'apenas_esta' },
+                      { label: 'Próxima Semana', value: 'proxima_semana' },
+                      { label: 'Mês Inteiro', value: 'mes_todo' },
+                    ].map((option) => (
+                      <TouchableOpacity
+                        key={option.value}
+                        style={[
+                          styles.periodoButton,
+                          periodoDesativacao === option.value && styles.periodoButtonActive
+                        ]}
+                        onPress={() => setPeriodoDesativacao(option.value)}
+                      >
+                        <Text style={[
+                          styles.periodoButtonText,
+                          periodoDesativacao === option.value && styles.periodoButtonTextActive
+                        ]}>
+                          {option.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Seleção de Mês */}
+                {(periodoDesativacao === 'mes_todo') && (
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Mês</Text>
+                    <TextInput
+                      style={styles.formInput}
+                      placeholder="2026-01"
+                      placeholderTextColor="#9ca3af"
+                      value={mesReplicacao}
+                      onChangeText={setMesReplicacao}
+                    />
+                  </View>
+                )}
+              </ScrollView>
+
+              <View style={styles.desativarModalButtons}>
+                <TouchableOpacity
+                  style={[styles.desativarModalButton, styles.desativarModalButtonSecondary]}
+                  onPress={() => setModalDesativarVisible(false)}
+                  disabled={desativando}
+                >
+                  <Text style={styles.desativarModalButtonSecondaryText}>Cancelar</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.desativarModalButton, styles.desativarModalButtonPrimary]}
+                  onPress={handleDesativarTurma}
+                  disabled={desativando}
+                >
+                  {desativando ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.desativarModalButtonPrimaryText}>Desativar</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </View>
     </LayoutBase>
   );
@@ -1072,6 +1523,184 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#6b7280',
     marginTop: 8,
+  },
+
+  // Confirmação Modal Styles
+  confirmModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  confirmModalContent: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 28,
+    maxWidth: 420,
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  confirmModalHeader: {
+    marginBottom: 16,
+  },
+  confirmModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1f2937',
+    textAlign: 'center',
+  },
+  confirmModalMessage: {
+    fontSize: 15,
+    color: '#6b7280',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 22,
+  },
+  confirmModalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  confirmModalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+  },
+  confirmModalButtonPrimary: {
+    backgroundColor: '#10b981',
+    borderColor: '#10b981',
+  },
+  confirmModalButtonPrimaryText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  confirmModalButtonSecondary: {
+    backgroundColor: '#f3f4f6',
+    borderColor: '#d1d5db',
+  },
+  confirmModalButtonSecondaryText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#374151',
+  },
+
+  // Desativar Modal Styles
+  desativarModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  desativarModalContent: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    maxWidth: 500,
+    width: '100%',
+    maxHeight: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  desativarModalHeader: {
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  desativarModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1f2937',
+  },
+  desativarModalInfo: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    backgroundColor: '#fef3c7',
+    borderRadius: 8,
+    marginHorizontal: 24,
+    marginTop: 16,
+  },
+  desativarModalInfoText: {
+    fontSize: 13,
+    color: '#92400e',
+    fontWeight: '500',
+  },
+  desativarModalForm: {
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+  },
+  desativarModalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  desativarModalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+  },
+  desativarModalButtonPrimary: {
+    backgroundColor: '#ef4444',
+    borderColor: '#ef4444',
+  },
+  desativarModalButtonPrimaryText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#ffffff',
+  },
+  desativarModalButtonSecondary: {
+    backgroundColor: '#f3f4f6',
+    borderColor: '#d1d5db',
+  },
+  desativarModalButtonSecondaryText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#374151',
+  },
+  periodoOptions: {
+    flexDirection: 'column',
+    gap: 10,
+  },
+  periodoButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#d1d5db',
+    backgroundColor: '#f9fafb',
+  },
+  periodoButtonActive: {
+    backgroundColor: '#fef3c7',
+    borderColor: '#f59e0b',
+  },
+  periodoButtonText: {
+    fontSize: 14,
+    color: '#6b7280',
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  periodoButtonTextActive: {
+    color: '#92400e',
+    fontWeight: '600',
   },
 
   // Banner Header
@@ -1259,12 +1888,17 @@ const styles = StyleSheet.create({
 
   // Desktop Table
   tableContainer: {
-    margin: 20,
+    margin: 12,
     backgroundColor: '#fff',
     borderRadius: 12,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
   },
   tableHeader: {
     flexDirection: 'row',
@@ -1281,6 +1915,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#f3f4f6',
     alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  tableRowInativo: {
+    opacity: 0.6,
+    backgroundColor: '#f9fafb',
   },
   tableHeaderText: {
     fontSize: 11,
@@ -1304,10 +1943,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+    alignSelf: 'flex-start',
   },
   modalidadeText: {
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
     color: '#1f2937',
   },
   horarioCell: {
@@ -1357,6 +2001,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#047857',
   },
+  statusInativoText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#991b1b',
+  },
   dateSelector: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1392,11 +2041,21 @@ const styles = StyleSheet.create({
     color: '#fff',
   },
   acoesCell: {
-    flex: 0.6,
-    alignItems: 'center',
+    flex: 0.8,
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'flex-end',
   },
   actionIconButton: {
-    padding: 6,
+    padding: 8,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minWidth: 40,
+    minHeight: 40,
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
   },
 
   // Empty State
@@ -1748,5 +2407,65 @@ const styles = StyleSheet.create({
   searchableDropdown: {
     zIndex: 1000,
     position: 'relative',
+  },
+
+  // Replicar
+  replicarButton: {
+    backgroundColor: '#10b981',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginLeft: 12,
+  },
+  replicarDataTexto: {
+    fontSize: 15,
+    color: '#1f2937',
+    fontWeight: '600',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    backgroundColor: '#f0fdf4',
+    borderRadius: 10,
+    borderLeftWidth: 4,
+    borderLeftColor: '#10b981',
+  },
+  diasSemanaContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 8,
+  },
+  diaButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#f3f4f6',
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    alignItems: 'center',
+  },
+  diaButtonAtivo: {
+    backgroundColor: '#10b981',
+    borderColor: '#059669',
+  },
+  diaButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  diaButtonTextoAtivo: {
+    color: '#fff',
+  },
+  helperText: {
+    fontSize: 12,
+    color: '#9ca3af',
+    marginTop: 6,
+    fontWeight: '500',
+  },  formButtonRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
   },
 });

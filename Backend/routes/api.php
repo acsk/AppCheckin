@@ -271,10 +271,14 @@ return function ($app) {
         $group->get('/turmas/{id}', [TurmaController::class, 'show']);
         $group->post('/turmas', [TurmaController::class, 'create']);
         $group->post('/turmas/replicar', [TurmaController::class, 'replicarPorDiasSemana']);
+        $group->post('/turmas/desativar', [TurmaController::class, 'desativarTurma']);
         $group->put('/turmas/{id}', [TurmaController::class, 'update']);
         $group->delete('/turmas/{id}', [TurmaController::class, 'delete']);
         $group->get('/turmas/{id}/vagas', [TurmaController::class, 'verificarVagas']);
         $group->get('/professores/{professorId}/turmas', [TurmaController::class, 'listarPorProfessor']);
+        
+        // Desativar dias (feriados, sem aula, etc)
+        $group->post('/dias/desativar', [DiaController::class, 'desativarDias']);
         
         // Formas de Pagamento por Tenant (Configurações)
         $group->get('/formas-pagamento-config', [TenantFormaPagamentoController::class, 'listar']);
