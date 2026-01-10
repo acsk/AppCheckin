@@ -25,6 +25,8 @@ export default function TurmasScreen() {
   const [dataSelecionada, setDataSelecionada] = useState(obterHoje());
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [modalCriarVisible, setModalCriarVisible] = useState(false);
+  const [isEditando, setIsEditando] = useState(false);
+  const [turmaEditandoId, setTurmaEditandoId] = useState(null);
   const [formData, setFormData] = useState({
     modalidade_id: '',
     horario_inicio: '',
@@ -40,10 +42,14 @@ export default function TurmasScreen() {
   const [loadingDropdowns, setLoadingDropdowns] = useState(false);
   const [dropdownAberto, setDropdownAberto] = useState(null);
   const [diaId, setDiaId] = useState(17); // TODO: Obter do turmasData quando carregar
+  const [errors, setErrors] = useState({});
 
   function obterHoje() {
     const hoje = new Date();
-    return hoje.toISOString().split('T')[0];
+    const ano = hoje.getFullYear();
+    const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+    const dia = String(hoje.getDate()).padStart(2, '0');
+    return `${ano}-${mes}-${dia}`;
   }
 
   function formatarDataExibicao(dataStr) {
@@ -216,6 +222,9 @@ export default function TurmasScreen() {
       setModalidades(modalities || []);
       setProfessores(teachers || []);
       setHorarios(horariosDia || []);
+      setErrors({});
+      setIsEditando(false);
+      setTurmaEditandoId(null);
       
       console.log('🔵 [handleNova] Abrindo modal...');
       setModalCriarVisible(true);
@@ -233,10 +242,149 @@ export default function TurmasScreen() {
     }
   };
 
+  const handleEditar = async (turmaId) => {
+    try {
+      console.log('🔴 [handleEditar] Iniciando...');
+      setLoadingDropdowns(true);
+
+      let modalities = [];
+      let teachers = [];
+      let horariosDia = [];
+
+      try {
+        console.log('🔵 [handleEditar] Chamando modalidadeService.listar(true)...');
+        const modalidadesResp = await modalidadeService.listar(true);
+        modalities = Array.isArray(modalidadesResp) ? modalidadesResp : [];
+        console.log('✅ [handleEditar] Modalidades:', modalities);
+      } catch (err) {
+        console.error('❌ [handleEditar] Erro ao carregar modalidades:', err);
+      }
+
+      try {
+        console.log('🔵 [handleEditar] Chamando professorService.listar(true)...');
+        const professoresResp = await professorService.listar(true);
+        teachers = Array.isArray(professoresResp) ? professoresResp : [];
+        console.log('✅ [handleEditar] Professores:', teachers);
+      } catch (err) {
+        console.error('❌ [handleEditar] Erro ao carregar professores:', err);
+      }
+
+      try {
+        console.log('🔵 [handleEditar] Chamando horarioService.listarPorDia(' + diaId + ')...');
+        const horariosResp = await horarioService.listarPorDia(diaId);
+        horariosDia = Array.isArray(horariosResp) ? horariosResp : [];
+        console.log('✅ [handleEditar] Horários:', horariosDia);
+      } catch (err) {
+        console.error('❌ [handleEditar] Erro ao carregar horários:', err);
+      }
+
+      // Buscar dados da turma
+      const turma = turmasFiltradas.find(t => t.id === turmaId);
+      if (turma) {
+        console.log('✅ [handleEditar] Turma encontrada:', turma);
+        setFormData({
+          modalidade_id: String(turma.modalidade_id) || '',
+          horario_inicio: turma.horario_inicio ? turma.horario_inicio.substring(0, 5) : '',
+          horario_fim: turma.horario_fim ? turma.horario_fim.substring(0, 5) : '',
+          professor_id: String(turma.professor_id) || '',
+          limite_alunos: String(turma.limite_alunos) || '',
+          ativo: turma.ativo,
+        });
+      }
+
+      console.log('🔵 [handleEditar] Atualizando estado...');
+      setModalidades(modalities || []);
+      setProfessores(teachers || []);
+      setHorarios(horariosDia || []);
+      setErrors({});
+      setIsEditando(true);
+      setTurmaEditandoId(turmaId);
+
+      console.log('🔵 [handleEditar] Abrindo modal...');
+      setModalCriarVisible(true);
+
+      if ((!modalities || modalities.length === 0) && (!teachers || teachers.length === 0)) {
+        console.warn('⚠️ [handleEditar] Nenhum dado carregado!');
+        showError('Nenhum dado carregado. Verifique a API.');
+      }
+    } catch (error) {
+      console.error('💥 [handleEditar] Erro geral:', error);
+      showError('Erro ao carregar dados do formulário');
+    } finally {
+      console.log('🔴 [handleEditar] Finalizando...');
+      setLoadingDropdowns(false);
+    }
+  };
+  const validarHora = (hora) => {
+    // Validar formato HH:MM
+    if (!hora || !/^\d{2}:\d{2}$/.test(hora)) {
+      return { valida: false, erro: 'Formato inválido. Use HH:MM' };
+    }
+
+    const [horas, minutos] = hora.split(':').map(Number);
+
+    // Validar intervalo de horas (0-23)
+    if (horas < 0 || horas > 23) {
+      return { valida: false, erro: 'Hora deve estar entre 00 e 23' };
+    }
+
+    // Validar intervalo de minutos (0-59)
+    if (minutos < 0 || minutos > 59) {
+      return { valida: false, erro: 'Minutos deve estar entre 00 e 59' };
+    }
+
+    return { valida: true };
+  };
+
   const criarTurma = async () => {
     try {
-      if (!formData.modalidade_id || !formData.horario_inicio || !formData.horario_fim || !formData.professor_id || !formData.limite_alunos) {
-        showError('Preencha todos os campos obrigatórios');
+      const newErrors = {};
+
+      if (!formData.modalidade_id) {
+        newErrors.modalidade_id = 'Selecione uma modalidade';
+      }
+
+      if (!formData.professor_id) {
+        newErrors.professor_id = 'Selecione um professor';
+      }
+
+      if (!formData.horario_inicio) {
+        newErrors.horario_inicio = 'Informe o horário de início';
+      } else {
+        const validacaoInicio = validarHora(formData.horario_inicio);
+        if (!validacaoInicio.valida) {
+          newErrors.horario_inicio = validacaoInicio.erro;
+        }
+      }
+
+      if (!formData.horario_fim) {
+        newErrors.horario_fim = 'Informe o horário de término';
+      } else {
+        const validacaoFim = validarHora(formData.horario_fim);
+        if (!validacaoFim.valida) {
+          newErrors.horario_fim = validacaoFim.erro;
+        }
+      }
+
+      if (!formData.limite_alunos) {
+        newErrors.limite_alunos = 'Informe o limite de alunos';
+      }
+
+      // Validar se horário de fim é após horário de início
+      if (formData.horario_inicio && formData.horario_fim && !newErrors.horario_inicio && !newErrors.horario_fim) {
+        const [horaI, minI] = formData.horario_inicio.split(':').map(Number);
+        const [horaF, minF] = formData.horario_fim.split(':').map(Number);
+        const tempoInicio = horaI * 60 + minI;
+        const tempoFim = horaF * 60 + minF;
+
+        if (tempoFim <= tempoInicio) {
+          newErrors.horario_fim = 'Horário Fim deve ser após Horário Início';
+        }
+      }
+
+      setErrors(newErrors);
+
+      if (Object.keys(newErrors).length > 0) {
         return;
       }
 
@@ -257,6 +405,7 @@ export default function TurmasScreen() {
       await turmaService.criar(novaData);
       showSuccess('Turma criada com sucesso!');
       setModalCriarVisible(false);
+      setErrors({});
       setFormData({
         modalidade_id: '',
         horario_inicio: '',
@@ -284,8 +433,53 @@ export default function TurmasScreen() {
 
   const atualizarTurma = async (turmaId) => {
     try {
-      if (!formData.modalidade_id || !formData.horario_inicio || !formData.horario_fim || !formData.professor_id || !formData.limite_alunos) {
-        showError('Preencha todos os campos obrigatórios');
+      const newErrors = {};
+
+      if (!formData.modalidade_id) {
+        newErrors.modalidade_id = 'Selecione uma modalidade';
+      }
+
+      if (!formData.professor_id) {
+        newErrors.professor_id = 'Selecione um professor';
+      }
+
+      if (!formData.horario_inicio) {
+        newErrors.horario_inicio = 'Informe o horário de início';
+      } else {
+        const validacaoInicio = validarHora(formData.horario_inicio);
+        if (!validacaoInicio.valida) {
+          newErrors.horario_inicio = validacaoInicio.erro;
+        }
+      }
+
+      if (!formData.horario_fim) {
+        newErrors.horario_fim = 'Informe o horário de término';
+      } else {
+        const validacaoFim = validarHora(formData.horario_fim);
+        if (!validacaoFim.valida) {
+          newErrors.horario_fim = validacaoFim.erro;
+        }
+      }
+
+      if (!formData.limite_alunos) {
+        newErrors.limite_alunos = 'Informe o limite de alunos';
+      }
+
+      // Validar se horário de fim é após horário de início
+      if (formData.horario_inicio && formData.horario_fim && !newErrors.horario_inicio && !newErrors.horario_fim) {
+        const [horaI, minI] = formData.horario_inicio.split(':').map(Number);
+        const [horaF, minF] = formData.horario_fim.split(':').map(Number);
+        const tempoInicio = horaI * 60 + minI;
+        const tempoFim = horaF * 60 + minF;
+
+        if (tempoFim <= tempoInicio) {
+          newErrors.horario_fim = 'Horário Fim deve ser após Horário Início';
+        }
+      }
+
+      setErrors(newErrors);
+
+      if (Object.keys(newErrors).length > 0) {
         return;
       }
 
@@ -305,6 +499,7 @@ export default function TurmasScreen() {
       await turmaService.atualizar(turmaId, dadosAtualizados);
       showSuccess('Turma atualizada com sucesso!');
       setModalCriarVisible(false);
+      setErrors({});
       setFormData({
         modalidade_id: '',
         horario_inicio: '',
@@ -511,7 +706,7 @@ export default function TurmasScreen() {
               <TouchableOpacity
                 key={turma.id}
                 style={styles.tableRow}
-                onPress={() => router.push(`/turmas/${turma.id}`)}
+                onPress={() => handleEditar(turma.id)}
                 activeOpacity={0.7}
               >
                 <View style={styles.idCell}>
@@ -555,7 +750,7 @@ export default function TurmasScreen() {
                 </View>
                 <View style={styles.acoesCell}>
                   <TouchableOpacity
-                    onPress={() => router.push(`/turmas/${turma.id}`)}
+                    onPress={() => handleEditar(turma.id)}
                     style={styles.actionIconButton}
                   >
                     <Feather name="arrow-right" size={18} color="#f97316" />
@@ -625,19 +820,31 @@ export default function TurmasScreen() {
           visible={modalCriarVisible}
           transparent
           animationType="fade"
-          onRequestClose={() => setModalCriarVisible(false)}
+          onRequestClose={() => {
+            setModalCriarVisible(false);
+            setIsEditando(false);
+            setTurmaEditandoId(null);
+          }}
         >
           <Pressable 
             style={styles.criarTurmaOverlay} 
-            onPress={() => setModalCriarVisible(false)}
+            onPress={() => {
+              setModalCriarVisible(false);
+              setIsEditando(false);
+              setTurmaEditandoId(null);
+            }}
           >
             <Pressable 
               style={styles.criarTurmaContent}
               onPress={(e) => e.stopPropagation()}
             >
               <View style={styles.criarTurmaHeader}>
-                <Text style={styles.criarTurmaTitle}>Nova Aula</Text>
-                <TouchableOpacity onPress={() => setModalCriarVisible(false)}>
+                <Text style={styles.criarTurmaTitle}>{isEditando ? 'Editar Aula' : 'Nova Aula'}</Text>
+                <TouchableOpacity onPress={() => {
+                  setModalCriarVisible(false);
+                  setIsEditando(false);
+                  setTurmaEditandoId(null);
+                }}>
                   <Feather name="x" size={28} color="#6b7280" />
                 </TouchableOpacity>
               </View>
@@ -651,7 +858,10 @@ export default function TurmasScreen() {
                 ) : (
                   <>
                     <View style={styles.formGroup}>
-                      <Text style={styles.formLabel}>Modalidade *</Text>
+                      <Text style={styles.formLabel}>
+                        Modalidade
+                        <Text style={styles.required}>*</Text>
+                      </Text>
                       <SearchableDropdown
                         data={modalidades}
                         value={formData.modalidade_id}
@@ -659,10 +869,14 @@ export default function TurmasScreen() {
                         placeholder="Selecione uma modalidade"
                         style={styles.searchableDropdown}
                       />
+                      {errors.modalidade_id && <Text style={styles.errorText}>{errors.modalidade_id}</Text>}
                     </View>
 
                     <View style={styles.formGroup}>
-                      <Text style={styles.formLabel}>Professor *</Text>
+                      <Text style={styles.formLabel}>
+                        Professor
+                        <Text style={styles.required}>*</Text>
+                      </Text>
                       <SearchableDropdown
                         data={professores}
                         value={formData.professor_id}
@@ -670,49 +884,89 @@ export default function TurmasScreen() {
                         placeholder="Selecione um professor"
                         style={styles.searchableDropdown}
                       />
+                      {errors.professor_id && <Text style={styles.errorText}>{errors.professor_id}</Text>}
                     </View>
 
                     <View style={styles.horarioRow}>
                       <View style={[styles.formGroup, styles.horarioFormGroup]}>
-                        <Text style={styles.formLabel}>Horário Início *</Text>
+                        <Text style={styles.formLabel}>
+                          Horário Início
+                          <Text style={styles.required}>*</Text>
+                        </Text>
                         <TextInput
-                          style={styles.formInput}
+                          style={[
+                            styles.formInput,
+                            errors.horario_inicio && styles.inputError
+                          ]}
                           placeholder="Ex: 06:00"
                           placeholderTextColor="#9ca3af"
                           value={formData.horario_inicio}
-                          onChangeText={(text) => setFormData({ ...formData, horario_inicio: mascaraHora(text) })}
+                          onChangeText={(text) => {
+                            const mascado = mascaraHora(text);
+                            setFormData({ ...formData, horario_inicio: mascado });
+                            if (errors.horario_inicio) {
+                              setErrors({ ...errors, horario_inicio: null });
+                            }
+                          }}
                           keyboardType="numeric"
                           maxLength={5}
                           editable={!submitting}
                         />
+                        {errors.horario_inicio && (
+                          <Text style={styles.errorText}>{errors.horario_inicio}</Text>
+                        )}
                       </View>
 
                       <View style={[styles.formGroup, styles.horarioFormGroup]}>
-                        <Text style={styles.formLabel}>Horário Fim *</Text>
+                        <Text style={styles.formLabel}>
+                          Horário Fim
+                          <Text style={styles.required}>*</Text>
+                        </Text>
                         <TextInput
-                          style={styles.formInput}
+                          style={[
+                            styles.formInput,
+                            errors.horario_fim && styles.inputError
+                          ]}
                           placeholder="Ex: 07:00"
                           placeholderTextColor="#9ca3af"
                           value={formData.horario_fim}
-                          onChangeText={(text) => setFormData({ ...formData, horario_fim: mascaraHora(text) })}
+                          onChangeText={(text) => {
+                            const mascado = mascaraHora(text);
+                            setFormData({ ...formData, horario_fim: mascado });
+                            if (errors.horario_fim) {
+                              setErrors({ ...errors, horario_fim: null });
+                            }
+                          }}
                           keyboardType="numeric"
                           maxLength={5}
                           editable={!submitting}
                         />
+                        {errors.horario_fim && (
+                          <Text style={styles.errorText}>{errors.horario_fim}</Text>
+                        )}
                       </View>
                     </View>
 
                     <View style={styles.formGroup}>
-                      <Text style={styles.formLabel}>Limite de Alunos *</Text>
+                      <Text style={styles.formLabel}>
+                        Limite de Alunos
+                        <Text style={styles.required}>*</Text>
+                      </Text>
                       <TextInput
-                        style={styles.formInput}
+                        style={[styles.formInput, errors.limite_alunos && styles.inputError]}
                         placeholder="Quantidade máxima de alunos"
                         placeholderTextColor="#9ca3af"
                         value={formData.limite_alunos}
-                        onChangeText={(text) => setFormData({ ...formData, limite_alunos: text })}
+                        onChangeText={(text) => {
+                          setFormData({ ...formData, limite_alunos: text });
+                          if (errors.limite_alunos) {
+                            setErrors({ ...errors, limite_alunos: null });
+                          }
+                        }}
                         keyboardType="numeric"
                         editable={!submitting}
                       />
+                      {errors.limite_alunos && <Text style={styles.errorText}>{errors.limite_alunos}</Text>}
                     </View>
 
                     <View style={styles.formGroup}>
@@ -746,13 +1000,13 @@ export default function TurmasScreen() {
                       </TouchableOpacity>
                       <TouchableOpacity
                         style={[styles.formButton, styles.formButtonSubmit, submitting && styles.formButtonDisabled]}
-                        onPress={criarTurma}
+                        onPress={() => isEditando ? atualizarTurma(turmaEditandoId) : criarTurma()}
                         disabled={submitting}
                       >
                         {submitting ? (
                           <ActivityIndicator size="small" color="#fff" />
                         ) : (
-                          <Text style={styles.formButtonTextSubmit}>Criar</Text>
+                          <Text style={styles.formButtonTextSubmit}>{isEditando ? 'Salvar' : 'Criar'}</Text>
                         )}
                       </TouchableOpacity>
                     </View>
@@ -1382,6 +1636,9 @@ const styles = StyleSheet.create({
     color: '#374151',
     marginBottom: 8,
   },
+  required: {
+    color: '#ef4444',
+  },
   formInput: {
     backgroundColor: '#f9fafb',
     borderWidth: 1,
@@ -1392,6 +1649,16 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#1f2937',
     fontWeight: '500',
+  },
+  inputError: {
+    borderColor: '#ef4444',
+    borderWidth: 2,
+  },
+  errorText: {
+    color: '#ef4444',
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 4,
   },
   switchContainer: {
     flexDirection: 'row',

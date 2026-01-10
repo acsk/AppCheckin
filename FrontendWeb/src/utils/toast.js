@@ -27,6 +27,7 @@ export const showSuccess = (message) => {
       ...baseStyle,
       background: 'rgba(16, 185, 129, 0.92)',
       color: '#fff',
+      zIndex: 99999,
     },
     iconTheme: {
       primary: '#fff',
@@ -48,6 +49,7 @@ export const showError = (message) => {
       ...baseStyle,
       background: 'rgba(239, 68, 68, 0.92)',
       color: '#fff',
+      zIndex: 99999,
     },
     iconTheme: {
       primary: '#fff',
@@ -69,6 +71,7 @@ export const showWarning = (message) => {
       ...baseStyle,
       background: 'rgba(245, 158, 11, 0.92)',
       color: '#fff',
+      zIndex: 99999,
     },
     iconTheme: {
       primary: '#fff',
@@ -84,6 +87,7 @@ export const showLoading = (message = 'Carregando...') => {
       ...baseStyle,
       background: 'rgba(249, 115, 22, 0.92)',
       color: '#fff',
+      zIndex: 99999,
     },
     iconTheme: {
       primary: '#fff',

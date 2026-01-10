@@ -486,4 +486,191 @@ class TurmaController
         
         return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
     }
+
+    /**
+     * POST /admin/turmas/replicar
+     * Replicas turmas para dias da semana do mês
+     * Body: { "dia_id": 17, "dias_semana": [2,3,4,5,6], "mes": "2026-01" }
+     * dias_semana: 1=dom, 2=seg, 3=ter, 4=qua, 5=qui, 6=sex, 7=sab
+     */
+    public function replicarPorDiasSemana(Request $request, Response $response): Response
+    {
+        $tenantId = $request->getAttribute('tenantId');
+        $data = $request->getParsedBody();
+        
+        // Validar inputs
+        if (!isset($data['dia_id']) || !isset($data['dias_semana'])) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'dia_id e dias_semana são obrigatórios'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+        }
+
+        $diaOrigemId = (int) $data['dia_id'];
+        $diasSemana = (array) $data['dias_semana'];
+        $mes = $data['mes'] ?? date('Y-m');
+
+        // Validar dias_semana
+        foreach ($diasSemana as $dia) {
+            if (!is_numeric($dia) || $dia < 1 || $dia > 7) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'message' => 'dias_semana deve conter valores entre 1 e 7'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+            }
+        }
+
+        try {
+            // Buscar turmas do dia origem
+            $turmasOrigem = $this->turmaModel->listarPorDia($diaOrigemId, $tenantId);
+
+            if (empty($turmasOrigem)) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'success',
+                    'message' => 'Nenhuma turma encontrada no dia de origem',
+                    'summary' => [
+                        'total_solicitadas' => 0,
+                        'total_criadas' => 0,
+                        'total_puladas' => 0
+                    ]
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+            }
+
+            // Buscar dias do mês com os dias_semana especificados
+            $diasDestino = $this->buscarDiasDoMes($mes, $diasSemana, $tenantId, $diaOrigemId);
+
+            if (empty($diasDestino)) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'success',
+                    'message' => 'Nenhum dia encontrado para replicação no período',
+                    'summary' => [
+                        'total_solicitadas' => count($turmasOrigem),
+                        'total_criadas' => 0,
+                        'total_puladas' => 0
+                    ]
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+            }
+
+            // Replicar turmas
+            $totalCriadas = 0;
+            $totalPuladas = 0;
+            $detalhes = [];
+            $turmasCriadas = [];
+
+            foreach ($turmasOrigem as $turmaOrigem) {
+                $detalheTurma = [
+                    'turma_original_id' => $turmaOrigem['id'],
+                    'professor_id' => $turmaOrigem['professor_id'],
+                    'modalidade_id' => $turmaOrigem['modalidade_id'],
+                    'horario_inicio' => $turmaOrigem['horario_inicio'],
+                    'horario_fim' => $turmaOrigem['horario_fim'],
+                    'criadas' => 0,
+                    'puladas' => 0,
+                    'detalhes_puladas' => []
+                ];
+
+                foreach ($diasDestino as $diaDestino) {
+                    // Verificar se já existe turma neste horário neste dia
+                    $temConflito = $this->turmaModel->verificarHorarioOcupado(
+                        $tenantId,
+                        $diaDestino['id'],
+                        $turmaOrigem['horario_inicio'],
+                        $turmaOrigem['horario_fim']
+                    );
+
+                    if ($temConflito) {
+                        $detalheTurma['puladas']++;
+                        $detalheTurma['detalhes_puladas'][] = [
+                            'dia_id' => $diaDestino['id'],
+                            'data' => $diaDestino['data'],
+                            'razao' => 'Horário já ocupado'
+                        ];
+                        $totalPuladas++;
+                        continue;
+                    }
+
+                    // Criar nova turma
+                    $novaTurma = [
+                        'tenant_id' => $tenantId,
+                        'professor_id' => (int) $turmaOrigem['professor_id'],
+                        'modalidade_id' => (int) $turmaOrigem['modalidade_id'],
+                        'dia_id' => (int) $diaDestino['id'],
+                        'horario_inicio' => $turmaOrigem['horario_inicio'],
+                        'horario_fim' => $turmaOrigem['horario_fim'],
+                        'nome' => $turmaOrigem['nome'] ?? '',
+                        'limite_alunos' => (int) $turmaOrigem['limite_alunos'],
+                        'ativo' => 1
+                    ];
+
+                    $idNovoTurma = $this->turmaModel->create($novaTurma);
+                    if ($idNovoTurma) {
+                        $detalheTurma['criadas']++;
+                        $totalCriadas++;
+                        
+                        // Recuperar turma criada para resposta
+                        $turmaCompleta = $this->turmaModel->findById($idNovoTurma, $tenantId);
+                        if ($turmaCompleta) {
+                            $turmasCriadas[] = $turmaCompleta;
+                        }
+                    }
+                }
+
+                $detalhes[] = $detalheTurma;
+            }
+
+            $response->getBody()->write(json_encode([
+                'type' => 'success',
+                'message' => 'Replicação concluída com sucesso',
+                'summary' => [
+                    'total_solicitadas' => count($turmasOrigem),
+                    'total_criadas' => $totalCriadas,
+                    'total_puladas' => $totalPuladas,
+                    'dias_destino' => count($diasDestino)
+                ],
+                'detalhes' => $detalhes,
+                'turmas_criadas' => $turmasCriadas
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(201);
+
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Erro ao replicar turmas: ' . $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
+        }
+    }
+
+    /**
+     * Buscar dias do mês com os dias da semana especificados
+     */
+    private function buscarDiasDoMes(string $mes, array $diasSemana, int $tenantId, int $diaExcluir = null): array
+    {
+        $diasSemanaStr = implode(',', $diasSemana);
+        
+        $sql = "SELECT * FROM dias 
+                WHERE DATE_FORMAT(data, '%Y-%m') = ? 
+                AND DAYOFWEEK(data) IN ($diasSemanaStr)
+                AND ativo = 1";
+        
+        $params = [$mes];
+        
+        if ($diaExcluir !== null) {
+            $sql .= " AND id != ?";
+            $params[] = $diaExcluir;
+        }
+        
+        $sql .= " ORDER BY data ASC";
+
+        $db = $this->getConnection();
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
 }

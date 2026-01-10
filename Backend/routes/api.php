@@ -270,6 +270,7 @@ return function ($app) {
         $group->get('/turmas/dia/{diaId}', [TurmaController::class, 'listarPorDia']);
         $group->get('/turmas/{id}', [TurmaController::class, 'show']);
         $group->post('/turmas', [TurmaController::class, 'create']);
+        $group->post('/turmas/replicar', [TurmaController::class, 'replicarPorDiasSemana']);
         $group->put('/turmas/{id}', [TurmaController::class, 'update']);
         $group->delete('/turmas/{id}', [TurmaController::class, 'delete']);
         $group->get('/turmas/{id}/vagas', [TurmaController::class, 'verificarVagas']);
