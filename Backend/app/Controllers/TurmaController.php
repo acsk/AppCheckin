@@ -651,6 +651,26 @@ class TurmaController
      */
     private function buscarDiasDoMes(string $mes, array $diasSemana, int $tenantId, int $diaExcluir = null): array
     {
-        return $this->diaModel->findByMesEDiasSemana($mes, $diasSemana, $diaExcluir);
+        $diasSemanaStr = implode(',', $diasSemana);
+        
+        $sql = "SELECT * FROM dias 
+                WHERE DATE_FORMAT(data, '%Y-%m') = ? 
+                AND DAYOFWEEK(data) IN ($diasSemanaStr)
+                AND ativo = 1";
+        
+        $params = [$mes];
+        
+        if ($diaExcluir !== null) {
+            $sql .= " AND id != ?";
+            $params[] = $diaExcluir;
+        }
+        
+        $sql .= " ORDER BY data ASC";
+
+        $db = $this->getConnection();
+        $stmt = $db->prepare($sql);
+        $stmt->execute($params);
+        
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
     }
 }
