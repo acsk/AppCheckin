@@ -81,7 +81,7 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
       
       console.log('Enviando dados de pagamento:', payload);
       
-      await api.post(`/admin/pagamentos-plano/${pagamento.id}/confirmar`, payload);
+      const response = await api.post(`/admin/pagamentos-plano/${pagamento.id}/confirmar`, payload);
 
       showSuccess('Pagamento confirmado! Próximo pagamento gerado automaticamente.');
       setFormData({
@@ -123,6 +123,11 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
     const [ano, mes, dia] = data.split('-');
     return `${dia}/${mes}/${ano}`;
   };
+
+  const formatarMoeda = (valor) =>
+    Number(valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+  const valorPagamento = Number(pagamento?.valor || 0);
 
   if (!pagamento) return null;
 
@@ -362,6 +367,50 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
             </View>
           </View>
         )}
+
+        {showCreditoModal && creditoAplicado && (
+          <View style={styles.confirmOverlay}>
+            <View style={styles.confirmModal}>
+              <View style={styles.confirmHeader}>
+                <Feather name="check-circle" size={48} color="#10b981" />
+                <Text style={styles.confirmTitulo}>Crédito Aplicado</Text>
+              </View>
+
+              <View style={styles.confirmResumo}>
+                <View style={styles.confirmItem}>
+                  <Text style={styles.confirmLabel}>Valor original</Text>
+                  <Text style={styles.confirmValor}>{formatarMoeda(creditoAplicado.valor_original)}</Text>
+                </View>
+                <View style={styles.confirmItem}>
+                  <Text style={styles.confirmLabel}>Desconto (crédito)</Text>
+                  <Text style={[styles.confirmValor, { color: '#10b981' }]}>
+                    -{formatarMoeda(creditoAplicado.credito_descontado)}
+                  </Text>
+                </View>
+                <View style={styles.confirmItem}>
+                  <Text style={styles.confirmLabel}>Total a pagar</Text>
+                  <Text style={[styles.confirmValor, { fontSize: 20, fontWeight: '700' }]}>
+                    {formatarMoeda(creditoAplicado.valor_final)}
+                  </Text>
+                </View>
+              </View>
+
+              {creditoAplicado.observacao && (
+                <Text style={styles.confirmTexto}>{creditoAplicado.observacao}</Text>
+              )}
+
+              <View style={styles.confirmBotoes}>
+                <TouchableOpacity
+                  style={styles.confirmBotaoConfirmar}
+                  onPress={onClose}
+                  disabled={loading}
+                >
+                  <Text style={styles.confirmBotaoConfirmarText}>Fechar</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        )}
       </View>
     </Modal>
   );
@@ -532,6 +581,109 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     color: '#1e40af',
+  },
+  creditoBox: {
+    marginTop: 16,
+    backgroundColor: '#ecfeff',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#99f6e4',
+  },
+  creditoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  creditoTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0f766e',
+    textTransform: 'uppercase',
+  },
+  creditoSubtitle: {
+    marginTop: 6,
+    fontSize: 13,
+    color: '#0f766e',
+  },
+  creditoToggle: {
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#5eead4',
+    backgroundColor: '#f0fdfa',
+  },
+  creditoToggleActive: {
+    backgroundColor: '#14b8a6',
+    borderColor: '#0f766e',
+  },
+  creditoCheckbox: {
+    width: 18,
+    height: 18,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#0f766e',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+  },
+  creditoCheckboxActive: {
+    backgroundColor: '#0f766e',
+    borderColor: '#0f766e',
+  },
+  creditoToggleText: {
+    fontSize: 13,
+    color: '#0f766e',
+    fontWeight: '600',
+  },
+  creditoToggleTextActive: {
+    color: '#fff',
+  },
+  creditoResumo: {
+    marginTop: 12,
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  creditoLinha: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  creditoLabel: {
+    fontSize: 13,
+    color: '#334155',
+  },
+  creditoValor: {
+    fontSize: 13,
+    color: '#334155',
+    fontWeight: '600',
+  },
+  creditoDesconto: {
+    color: '#16a34a',
+  },
+  creditoTotalLinha: {
+    marginTop: 6,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+  },
+  creditoTotalLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  creditoTotalValor: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f172a',
   },
   footer: {
     flexDirection: 'row',

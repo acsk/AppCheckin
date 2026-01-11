@@ -195,6 +195,15 @@ class MatriculaController
         ]);
         
         $matriculaId = (int) $db->lastInsertId();
+        
+        // DEBUG LOG
+        error_log("=== MATRICULA CRIADA ===");
+        error_log("Matrícula ID: " . $matriculaId);
+        error_log("Tenant ID: " . $tenantId);
+        error_log("Usuário ID: " . $usuarioId);
+        error_log("Plano ID: " . $planoId);
+        error_log("Valor: " . $valor);
+        error_log("Data Início: " . $dataInicio);
 
         // Atualizar status_id com o ID correspondente em status_matricula
         $stmtStatusId = $db->prepare("
@@ -248,6 +257,36 @@ class MatriculaController
         
         $pagamentoId = (int) $db->lastInsertId();
 
+        // Se foi UPGRADE ou DOWNGRADE, calcular e criar pagamento de ajuste
+        $ajusteInfo = null;
+        if ($matriculaMesmaModalidade && $matriculaMesmaModalidade['plano_id'] != $planoId) {
+            // Buscar plano anterior completo
+            $stmtPlanoAnt = $db->prepare("SELECT * FROM planos WHERE id = ?");
+            $stmtPlanoAnt->execute([$planoAnteriorId]);
+            $planoAnteriorCompleto = $stmtPlanoAnt->fetch();
+            
+            // Calcular proporcional
+            $ajusteInfo = $this->calcularProporcionalPlano(
+                $planoAnteriorCompleto,
+                $plano,
+                $matriculaMesmaModalidade['data_vencimento']
+            );
+            
+            // Se houver diferença, criar pagamento de ajuste
+            if ($ajusteInfo['valor'] > 0 && $ajusteInfo['tipo'] !== 'igual') {
+                $this->criarPagamentoAjuste(
+                    $db,
+                    $matriculaId,
+                    $usuarioId,
+                    $planoId,
+                    $tenantId,
+                    $ajusteInfo['valor'],
+                    $ajusteInfo['tipo'],
+                    $adminId
+                );
+            }
+        }
+
         // Buscar matrícula criada
         $stmtMatricula = $db->prepare("
             SELECT 
@@ -266,12 +305,104 @@ class MatriculaController
         $stmtMatricula->execute([$matriculaId]);
         $matricula = $stmtMatricula->fetch();
 
+        // Buscar pagamentos da matrícula
+        $stmtPagamentos = $db->prepare("
+            SELECT 
+                id,
+                CAST(valor AS DECIMAL(10,2)) as valor,
+                data_vencimento,
+                data_pagamento,
+                status_pagamento_id,
+                (SELECT nome FROM status_pagamento WHERE id = status_pagamento_id) as status,
+                observacoes
+            FROM pagamentos_plano
+            WHERE matricula_id = ?
+            ORDER BY data_vencimento ASC
+        ");
+        $stmtPagamentos->execute([$matriculaId]);
+        $pagamentos = $stmtPagamentos->fetchAll();
+
+        // Calcular total de pagamentos
+        $totalPagamentos = (float) array_sum(array_column($pagamentos, 'valor'));
+
         $response->getBody()->write(json_encode([
             'message' => 'Matrícula realizada com sucesso',
             'matricula' => $matricula,
-            'pagamento_criado' => $pagamentoId > 0
+            'pagamentos' => $pagamentos ?? [],
+            'total' => (float) $totalPagamentos,
+            'pagamento_criado' => $pagamentoId > 0,
+            'ajuste_plano' => $ajusteInfo ? [
+                'tipo' => $ajusteInfo['tipo'],
+                'valor' => $ajusteInfo['valor'],
+                'dias_restantes' => $ajusteInfo['dias_restantes'],
+                'descricao' => $ajusteInfo['tipo'] === 'upgrade' 
+                    ? "Cobrança proporcional de R$ {$ajusteInfo['valor']} para upgradar o plano"
+                    : "Crédito de R$ {$ajusteInfo['valor']} para downgrades de plano"
+            ] : null
         ]));
         return $response->withHeader('Content-Type', 'application/json')->withStatus(201);
+    }
+
+    /**
+     * Calcular valor proporcional para upgrade/downgrade de plano
+     * Retorna: ['tipo' => 'upgrade|downgrade|igual', 'valor' => 0.00, 'dias_restantes' => 0]
+     */
+    private function calcularProporcionalPlano($planoAnterior, $planoNovo, $dataVencimentoAnterior): array
+    {
+        $hoje = date('Y-m-d');
+        $dataVencimento = new \DateTime($dataVencimentoAnterior);
+        $dataHoje = new \DateTime($hoje);
+        
+        // Calcular dias restantes
+        $intervalo = $dataHoje->diff($dataVencimento);
+        $diasRestantes = $intervalo->days;
+        
+        if ($diasRestantes <= 0) {
+            return ['tipo' => 'igual', 'valor' => 0.00, 'dias_restantes' => 0];
+        }
+        
+        $valorDiarioAnterior = $planoAnterior['valor'] / $planoAnterior['duracao_dias'];
+        $valorDiarioNovo = $planoNovo['valor'] / $planoNovo['duracao_dias'];
+        
+        $diferenca = ($valorDiarioNovo - $valorDiarioAnterior) * $diasRestantes;
+        $diferenca = round($diferenca, 2);
+        
+        if ($diferenca > 0) {
+            return ['tipo' => 'upgrade', 'valor' => $diferenca, 'dias_restantes' => $diasRestantes];
+        } elseif ($diferenca < 0) {
+            return ['tipo' => 'downgrade', 'valor' => abs($diferenca), 'dias_restantes' => $diasRestantes];
+        } else {
+            return ['tipo' => 'igual', 'valor' => 0.00, 'dias_restantes' => $diasRestantes];
+        }
+    }
+
+    /**
+     * Criar pagamento de ajuste para upgrade ou downgrade
+     */
+    private function criarPagamentoAjuste($db, $matriculaId, $usuarioId, $planoId, $tenantId, $valor, $tipo, $adminId): int
+    {
+        $stmtAjuste = $db->prepare("
+            INSERT INTO pagamentos_plano
+            (tenant_id, matricula_id, usuario_id, plano_id, valor, data_vencimento, 
+             status_pagamento_id, observacoes, criado_por)
+            VALUES (?, ?, ?, ?, ?, NOW(), 1, ?, ?)
+        ");
+        
+        $observacao = $tipo === 'upgrade' 
+            ? "Ajuste de upgrade - Diferença proporcional a cobrar"
+            : "Ajuste de downgrade - Crédito para aplicar";
+        
+        $stmtAjuste->execute([
+            $tenantId,
+            $matriculaId,
+            $usuarioId,
+            $planoId,
+            $valor,
+            $observacao,
+            $adminId
+        ]);
+        
+        return (int) $db->lastInsertId();
     }
 
     /**
@@ -324,6 +455,26 @@ class MatriculaController
         $stmt = $db->prepare($sql);
         $stmt->execute($executeParams);
         $matriculas = $stmt->fetchAll();
+
+        // Adicionar pagamentos a cada matrícula
+        foreach ($matriculas as &$matricula) {
+            $stmtPagamentos = $db->prepare("
+                SELECT 
+                    id,
+                    CAST(valor AS DECIMAL(10,2)) as valor,
+                    data_vencimento,
+                    data_pagamento,
+                    status_pagamento_id,
+                    (SELECT nome FROM status_pagamento WHERE id = status_pagamento_id) as status,
+                    observacoes
+                FROM pagamentos_plano
+                WHERE matricula_id = ?
+                ORDER BY data_vencimento ASC
+            ");
+            $stmtPagamentos->execute([$matricula['id']]);
+            $matricula['pagamentos'] = $stmtPagamentos->fetchAll() ?? [];
+            $matricula['total_pagamentos'] = (float) array_sum(array_column($matricula['pagamentos'], 'valor'));
+        }
         
         $response->getBody()->write(json_encode([
             'matriculas' => $matriculas,
@@ -373,8 +524,30 @@ class MatriculaController
             $response->getBody()->write(json_encode(['error' => 'Matrícula não encontrada']));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
         }
+
+        // Buscar pagamentos da matrícula
+        $stmtPagamentos = $db->prepare("
+            SELECT 
+                id,
+                CAST(valor AS DECIMAL(10,2)) as valor,
+                data_vencimento,
+                data_pagamento,
+                status_pagamento_id,
+                (SELECT nome FROM status_pagamento WHERE id = status_pagamento_id) as status,
+                observacoes
+            FROM pagamentos_plano
+            WHERE matricula_id = ?
+            ORDER BY data_vencimento ASC
+        ");
+        $stmtPagamentos->execute([$matriculaId]);
+        $matricula['pagamentos'] = $stmtPagamentos->fetchAll() ?? [];
+        $matricula['total_pagamentos'] = (float) array_sum(array_column($matricula['pagamentos'], 'valor'));
         
-        $response->getBody()->write(json_encode(['matricula' => $matricula]));
+        $response->getBody()->write(json_encode([
+            'matricula' => $matricula,
+            'pagamentos' => $matricula['pagamentos'],
+            'total' => $matricula['total_pagamentos']
+        ]));
         return $response->withHeader('Content-Type', 'application/json');
     }
 
@@ -543,9 +716,44 @@ class MatriculaController
             WHERE id = ?
         ");
         $stmtUpdateUsuario->execute([$matricula['usuario_id']]);
+
+        // Buscar matrícula atualizada com pagamentos
+        $stmtMatricula = $db->prepare("
+            SELECT 
+                m.*,
+                u.nome as usuario_nome,
+                u.email as usuario_email,
+                p.nome as plano_nome
+            FROM matriculas m
+            INNER JOIN usuarios u ON m.usuario_id = u.id
+            INNER JOIN planos p ON m.plano_id = p.id
+            WHERE m.id = ?
+        ");
+        $stmtMatricula->execute([$matriculaId]);
+        $matriculaAtualizada = $stmtMatricula->fetch();
+
+        // Buscar pagamentos
+        $stmtPagamentos = $db->prepare("
+            SELECT 
+                id,
+                CAST(valor AS DECIMAL(10,2)) as valor,
+                data_vencimento,
+                data_pagamento,
+                status_pagamento_id,
+                (SELECT nome FROM status_pagamento WHERE id = status_pagamento_id) as status,
+                observacoes
+            FROM pagamentos_plano
+            WHERE matricula_id = ?
+            ORDER BY data_vencimento ASC
+        ");
+        $stmtPagamentos->execute([$matriculaId]);
+        $pagamentos = $stmtPagamentos->fetchAll() ?? [];
         
         $response->getBody()->write(json_encode([
-            'message' => 'Matrícula cancelada com sucesso'
+            'message' => 'Matrícula cancelada com sucesso',
+            'matricula' => $matriculaAtualizada,
+            'pagamentos' => $pagamentos,
+            'total' => (float) array_sum(array_column($pagamentos, 'valor'))
         ]));
         return $response->withHeader('Content-Type', 'application/json');
     }

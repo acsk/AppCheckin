@@ -40,6 +40,7 @@ export default function MatriculaDetalheScreen() {
       const responseMatricula = await matriculaService.buscar(id);
       const dadosMatricula = responseMatricula?.matricula || responseMatricula;
       setMatricula(dadosMatricula);
+      setAjustePlano(responseMatricula?.ajuste_plano || null);
 
       // Buscar histórico de pagamentos (se existir endpoint)
       try {
@@ -113,8 +114,9 @@ export default function MatriculaDetalheScreen() {
   };
 
   const getPagamentoStatusColor = (statusId) => {
+    const normalizedStatusId = Number(statusId);
     // Status: 1=Aguardando, 2=Pago, 3=Atrasado, 4=Cancelado
-    switch (statusId) {
+    switch (normalizedStatusId) {
       case 1:
         return '#3B82F6'; // Aguardando (azul)
       case 2:
@@ -129,8 +131,9 @@ export default function MatriculaDetalheScreen() {
   };
 
   const getPagamentoStatusLabel = (statusId) => {
+    const normalizedStatusId = Number(statusId);
     // Status: 1=Aguardando, 2=Pago, 3=Atrasado, 4=Cancelado
-    switch (statusId) {
+    switch (normalizedStatusId) {
       case 1:
         return 'Aguardando';
       case 2:
@@ -172,24 +175,25 @@ export default function MatriculaDetalheScreen() {
   };
 
   const calcularResumo = () => {
+    const getStatusId = (pagamento) => Number(pagamento.status_pagamento_id);
     // Excluir pagamentos cancelados (status 4) do total
-    const pagamentosAtivos = pagamentos.filter((p) => p.status_pagamento_id !== 4);
+    const pagamentosAtivos = pagamentos.filter((p) => getStatusId(p) !== 4);
     
     const total = pagamentosAtivos.reduce((sum, p) => sum + parseFloat(p.valor || 0), 0);
     
     // Pago = status 2
     const pago = pagamentos
-      .filter((p) => p.status_pagamento_id === 2)
+      .filter((p) => getStatusId(p) === 2)
       .reduce((sum, p) => sum + parseFloat(p.valor || 0), 0);
     
     // Atrasado = status 3
     const atrasado = pagamentos
-      .filter((p) => p.status_pagamento_id === 3)
+      .filter((p) => getStatusId(p) === 3)
       .reduce((sum, p) => sum + parseFloat(p.valor || 0), 0);
     
     // Pendente = status 1 (aguardando)
     const pendente = pagamentos
-      .filter((p) => p.status_pagamento_id === 1)
+      .filter((p) => getStatusId(p) === 1)
       .reduce((sum, p) => sum + parseFloat(p.valor || 0), 0);
 
     return { total, pago, atrasado, pendente };
@@ -222,6 +226,9 @@ export default function MatriculaDetalheScreen() {
       </LayoutBase>
     );
   }
+
+  const pagamentosPendentes = pagamentos.filter((p) => Number(p.status_pagamento_id) === 1);
+  const pagamentosNaoPendentes = pagamentos.filter((p) => Number(p.status_pagamento_id) !== 1);
 
   const resumo = calcularResumo();
 
@@ -330,7 +337,7 @@ export default function MatriculaDetalheScreen() {
 
           {/* Parcela Pendente - Design Moderno */}
           {matricula.status !== 'cancelada' && matricula.status !== 'finalizada' && 
-           pagamentos.filter(p => p.status_pagamento_id === 1).map((pagamento, index) => (
+           pagamentosPendentes.map((pagamento, index) => (
             <View key={pagamento.id || index} className="mb-5 overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-sm">
               <View className="flex-row items-center justify-between border-b border-orange-100 bg-orange-50 px-5 py-4">
                 <View className="flex-row items-center gap-3">
@@ -338,7 +345,9 @@ export default function MatriculaDetalheScreen() {
                     <MaterialCommunityIcons name="calendar-clock" size={20} color="#fff" />
                   </View>
                   <View>
-                    <Text className="text-[10px] font-semibold uppercase text-orange-600">Próximo pagamento</Text>
+                    <Text className="text-[10px] font-semibold uppercase text-orange-600">
+                      Próximo pagamento
+                    </Text>
                     <Text className="text-sm font-semibold text-slate-800">
                       Parcela {pagamento.numero_parcela || index + 1}
                     </Text>
@@ -346,7 +355,9 @@ export default function MatriculaDetalheScreen() {
                 </View>
                 <View className="flex-row items-center gap-1 rounded-full bg-white px-2.5 py-1">
                   <MaterialCommunityIcons name="clock-outline" size={14} color="#f59e0b" />
-                  <Text className="text-[11px] font-semibold text-amber-600">Aguardando</Text>
+                  <Text className="text-[11px] font-semibold text-amber-600">
+                    Aguardando
+                  </Text>
                 </View>
               </View>
 
@@ -373,24 +384,47 @@ export default function MatriculaDetalheScreen() {
 
               <Pressable
                 className="flex-row items-center justify-between bg-orange-500 px-5 py-3"
-                style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                onPress={() => handleBaixaPagamento(pagamento)}
-              >
-                <View className="flex-row items-center gap-2">
-                  <View className="h-8 w-8 items-center justify-center rounded-full bg-white/20">
-                    <Feather name="check" size={16} color="#fff" />
+                  style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                  onPress={() => handleBaixaPagamento(pagamento)}
+                >
+                  <View className="flex-row items-center gap-2">
+                    <View className="h-8 w-8 items-center justify-center rounded-full bg-white/20">
+                      <Feather name="check" size={16} color="#fff" />
+                    </View>
+                    <Text className="text-sm font-semibold text-white">Confirmar Pagamento</Text>
                   </View>
-                  <Text className="text-sm font-semibold text-white">Confirmar Pagamento</Text>
-                </View>
-                <View className="opacity-70">
-                  <Feather name="arrow-right" size={18} color="#fff" />
-                </View>
-              </Pressable>
+                  <View className="opacity-70">
+                    <Feather name="arrow-right" size={18} color="#fff" />
+                  </View>
+                </Pressable>
             </View>
           ))}
 
+          {matricula.status !== 'cancelada' && matricula.status !== 'finalizada' && pagamentosPendentes.length === 0 && (
+            <View className="mb-5 overflow-hidden rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+              <View className="flex-row items-center gap-3">
+                <View className="h-10 w-10 items-center justify-center rounded-full bg-slate-100">
+                  <Feather name="info" size={18} color="#94a3b8" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-sm font-semibold text-slate-700">Nenhum pagamento pendente</Text>
+                  <Text className="mt-1 text-xs text-slate-500">
+                    A matrícula ainda não gerou cobranças ou o backend não retornou parcelas.
+                  </Text>
+                </View>
+              </View>
+              <Pressable
+                className="mt-4 items-center rounded-lg border border-slate-200 bg-white px-4 py-2"
+                style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                onPress={carregarDados}
+              >
+                <Text className="text-xs font-semibold text-slate-600">Recarregar pagamentos</Text>
+              </Pressable>
+            </View>
+          )}
+
           {/* Tabela de Histórico (Pagamentos Confirmados) */}
-          {pagamentos.filter(p => p.status_pagamento_id !== 1).length > 0 && (
+          {pagamentosNaoPendentes.length > 0 && (
             <View className="mb-6 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
               <View className="flex-row items-center gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4">
                 <View className="h-9 w-9 items-center justify-center rounded-full bg-orange-100">
@@ -411,7 +445,7 @@ export default function MatriculaDetalheScreen() {
                 </View>
                 
                 {pagamentos
-                  .filter(p => p.status_pagamento_id !== 1)
+                  .filter(p => Number(p.status_pagamento_id) !== 1)
                   .sort((a, b) => new Date(b.data_vencimento) - new Date(a.data_vencimento))
                   .map((pagamento, index) => (
                   <View key={pagamento.id || index} className="flex-row items-center border-b border-slate-100 py-3">

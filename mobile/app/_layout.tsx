@@ -42,6 +42,14 @@ export default function RootLayout() {
             options={{ headerShown: false }} 
           />
         )}
+        <Stack.Screen 
+          name="planos" 
+          options={{ headerShown: false }} 
+        />
+        <Stack.Screen 
+          name="matricula-detalhes" 
+          options={{ headerShown: false }} 
+        />
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>

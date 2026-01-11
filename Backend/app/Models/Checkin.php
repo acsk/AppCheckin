@@ -81,10 +81,17 @@ class Checkin
     public function findById(int $id): ?array
     {
         $stmt = $this->db->prepare(
-            "SELECT c.*, h.hora, d.data
+            "SELECT 
+                c.*, 
+                h.hora, 
+                h.horario_inicio,
+                h.horario_fim,
+                h.tolerancia_minutos,
+                d.data,
+                COALESCE(d.data, DATE(c.created_at)) as data_aula
              FROM checkins c
-             INNER JOIN horarios h ON c.horario_id = h.id
-             INNER JOIN dias d ON h.dia_id = d.id
+             LEFT JOIN horarios h ON c.horario_id = h.id
+             LEFT JOIN dias d ON h.dia_id = d.id
              WHERE c.id = :id"
         );
         $stmt->execute(['id' => $id]);

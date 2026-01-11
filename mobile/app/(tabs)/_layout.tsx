@@ -2,6 +2,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { colors } from '@/src/theme/colors';
 import { Feather } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
+import React from 'react';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -47,7 +48,7 @@ export default function TabLayout() {
           tabBarIcon: ({ color, size }) => (
             <Feather name="check-square" size={size} color={color} />
           ),
-          headerShown: true,
+          headerShown: false,
         }}
       />
     </Tabs>

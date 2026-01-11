@@ -1,12 +1,16 @@
 import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Animated,
+  Image,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../../src/theme/colors';
@@ -27,6 +31,16 @@ export default function CheckinScreen() {
   const [toastVisible, setToastVisible] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'info' | 'success' | 'error' | 'warning' }>({ message: '', type: 'info' });
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showOnlyAvailable, setShowOnlyAvailable] = useState(true);
+  const [errorModal, setErrorModal] = useState<{ visible: boolean; title: string; message: string; type: 'error' | 'warning' | 'success' }>({
+    visible: false,
+    title: '',
+    message: '',
+    type: 'error'
+  });
+  const modalScale = useRef(new Animated.Value(0)).current;
+  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const [userCheckinId, setUserCheckinId] = useState<number | null>(null);
 
   const mergeTurmaFromList = (turmaId: number | string, fallback: any = null) => {
     const fromList = availableSchedules.find((t) => String(t.id) === String(turmaId));
@@ -40,6 +54,39 @@ export default function CheckinScreen() {
     if (parts.length === 0) return '?';
     if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
     return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+  };
+
+  const getAvatarUrl = (nome: string = '', userId?: number) => {
+    // Usando randomuser.me para fotos reais de pessoas
+    // Cada userId gera uma foto consistente e realista
+    const seed = userId || Math.abs(nome.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0));
+    const gender = seed % 2 === 0 ? 'women' : 'men';
+    const photoId = (seed % 99) + 1;
+    return `https://randomuser.me/api/portraits/${gender}/${photoId}.jpg`;
+  };
+
+  const cleanTurmaName = (nome?: string, modalidade?: any, professor?: any) => {
+    let base = nome ? normalizeUtf8(nome) : '';
+    // Remove padrões de horário dentro do nome (ex: " - 16:00" ou "16:00 - 17:00").
+    base = base.replace(/\s*-?\s?\d{1,2}:\d{2}(\s*-\s*\d{1,2}:\d{2})?/g, '').trim();
+    
+    // Remove nome da modalidade se estiver duplicado no nome
+    const modalidadeNome = modalidade?.nome ? normalizeUtf8(modalidade.nome) : '';
+    if (modalidadeNome && base.toLowerCase().includes(modalidadeNome.toLowerCase())) {
+      base = base.replace(new RegExp(modalidadeNome, 'gi'), '').trim();
+    }
+    
+    // Remove nome do professor se estiver duplicado no nome
+    const profNome = professor?.nome ? normalizeUtf8(professor.nome) : (typeof professor === 'string' ? normalizeUtf8(professor) : '');
+    if (profNome && base.toLowerCase().includes(profNome.toLowerCase())) {
+      base = base.replace(new RegExp(profNome, 'gi'), '').trim();
+    }
+    
+    // Remove traços e espaços extras que sobraram
+    base = base.replace(/^\s*-\s*|\s*-\s*$/g, '').replace(/\s+-\s+/g, ' ').trim();
+    
+    if (base.length > 0) return base;
+    return modalidadeNome || 'Turma';
   };
 
   const showToast = (message: string, type: 'info' | 'success' | 'error' | 'warning' = 'info', duration = 3500) => {
@@ -56,10 +103,56 @@ export default function CheckinScreen() {
     }, duration);
   };
 
+  const showErrorModal = (message: string, type: 'error' | 'warning' | 'success' = 'error') => {
+    const msg = normalizeUtf8(String(message || ''));
+    const title = type === 'error' ? 'Erro!' : type === 'warning' ? 'Atenção!' : 'Sucesso!';
+    
+    setErrorModal({
+      visible: true,
+      title,
+      message: msg,
+      type
+    });
+
+    Animated.spring(modalScale, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 50,
+      friction: 7,
+    }).start();
+  };
+
+  const hideErrorModal = () => {
+    Animated.timing(modalScale, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      setErrorModal({ visible: false, title: '', message: '', type: 'error' });
+    });
+  };
+
   useEffect(() => {
     console.log('\n🚀 CHECKIN SCREEN MONTADO');
     generateCalendarDays();
+    loadCurrentUserId();
   }, []);
+
+  const loadCurrentUserId = async () => {
+    try {
+      const userStr = await AsyncStorage.getItem('@appcheckin:user');
+      console.log('👤 Carregando usuário do AsyncStorage:', userStr?.substring(0, 100));
+      if (userStr) {
+        const user = JSON.parse(userStr);
+        console.log('👤 ID do usuário carregado:', user.id);
+        setCurrentUserId(user.id);
+      } else {
+        console.log('❌ Nenhum usuário encontrado no AsyncStorage');
+      }
+    } catch (error) {
+      console.error('Erro ao carregar ID do usuário:', error);
+    }
+  };
 
   useEffect(() => {
     return () => {
@@ -82,6 +175,12 @@ export default function CheckinScreen() {
       fetchAvailableSchedules(selectedDate);
     }
   }, [selectedDate]);
+
+  useEffect(() => {
+    if (participantsTurma && currentUserId) {
+      checkUserHasCheckin();
+    }
+  }, [participants, checkinsRecentes, currentUserId]);
 
   const generateCalendarDays = () => {
     console.log('📅 GERANDO CALENDÁRIO');
@@ -239,29 +338,154 @@ export default function CheckinScreen() {
         const apiMessage = data?.message || data?.error || text || 'Não foi possível realizar o check-in.';
         console.warn('Erro ao registrar check-in:', response.status, apiMessage || '');
 
-        if (String(apiMessage).toLowerCase().includes('já realizou check-in')) {
-          showToast('Você já realizou check-in nesta turma.', 'warning');
+        if (String(apiMessage).toLowerCase().includes('já realizou check-in') || 
+            String(apiMessage).toLowerCase().includes('já fez check-in')) {
+          showErrorModal(normalizeUtf8(String(apiMessage)), 'warning');
         } else {
-          showToast(normalizeUtf8(String(apiMessage)), 'error');
+          showErrorModal(normalizeUtf8(String(apiMessage)), 'error');
         }
         return;
       }
 
       if (data.success) {
-        showToast(`Check-in realizado para ${normalizeUtf8(turma.nome)}`, 'success');
+        showErrorModal(`Check-in realizado para ${normalizeUtf8(turma.nome)}`, 'success');
         await Promise.all([
           fetchAvailableSchedules(selectedDate),
           openParticipants(mergeTurmaFromList(turma.id, turma)),
         ]);
       } else {
-        showToast(normalizeUtf8(data?.message || data?.error || 'Não foi possível realizar o check-in.'), 'error');
+        showErrorModal(normalizeUtf8(data?.message || data?.error || 'Não foi possível realizar o check-in.'), 'error');
       }
     } catch (error) {
       console.error('Erro check-in:', error);
-      showToast('Falha ao realizar o check-in.', 'error');
+      showErrorModal('Falha ao realizar o check-in.', 'error');
     } finally {
       setCheckinLoading(false);
     }
+  };
+
+  const handleUndoCheckin = async (checkinId: number, turma: any) => {
+    if (!checkinId) {
+      showErrorModal('ID de check-in não encontrado.', 'error');
+      return;
+    }
+
+    console.log('🔙 DESFAZENDO CHECK-IN');
+    console.log('   checkinId:', checkinId);
+    console.log('   turma.id:', turma?.id);
+
+    setCheckinLoading(true);
+    try {
+      const token = await AsyncStorage.getItem('@appcheckin:token');
+      if (!token) {
+        showErrorModal('Token não encontrado. Faça login novamente.', 'error');
+        return;
+      }
+
+      const url = `http://localhost:8080/checkin/${checkinId}/desfazer`;
+      console.log('📍 URL DELETE:', url);
+
+      const response = await fetch(url, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const text = await response.text();
+      let data: any = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (e) {
+        data = {};
+      }
+
+      if (!response.ok) {
+        const apiMessage = data?.error || data?.message || text || 'Não foi possível desfazer o check-in.';
+        console.warn('Erro ao desfazer check-in:', response.status, apiMessage);
+        showErrorModal(normalizeUtf8(String(apiMessage)), 'error');
+        return;
+      }
+
+      showErrorModal(`Check-in desfeito com sucesso`, 'warning');
+      setUserCheckinId(null);
+      await Promise.all([
+        fetchAvailableSchedules(selectedDate),
+        openParticipants(mergeTurmaFromList(turma.id, turma)),
+      ]);
+    } catch (error) {
+      console.error('Erro ao desfazer check-in:', error);
+      showErrorModal('Falha ao desfazer o check-in.', 'error');
+    } finally {
+      setCheckinLoading(false);
+    }
+  };
+
+  const checkUserHasCheckin = () => {
+    console.log('🔍 Verificando check-in do usuário');
+    console.log('   currentUserId:', currentUserId);
+    console.log('   participants.length:', participants.length);
+    console.log('   checkinsRecentes.length:', checkinsRecentes.length);
+    
+    if (!currentUserId) {
+      console.log('   ❌ Sem currentUserId');
+      setUserCheckinId(null);
+      return false;
+    }
+
+    // PRIORIDADE 1: Verificar primeiro em checkinsRecentes (tem o ID real do checkin)
+    if (checkinsRecentes.length > 0) {
+      console.log('   Check-ins recentes:', JSON.stringify(checkinsRecentes.map(c => ({
+        id: c.id,
+        usuario_id: c.usuario_id,
+        checkin_id: c.checkin_id,
+        horario_id: c.horario_id
+      }))));
+
+      const userCheckin = checkinsRecentes.find(
+        (c) => Number(c.usuario_id) === Number(currentUserId)
+      );
+
+      if (userCheckin) {
+        console.log('   ✅ Usuário encontrado em check-ins recentes:', userCheckin);
+        const checkinId = userCheckin.id || userCheckin.checkin_id;
+        console.log('   📝 checkin_id dos recentes:', checkinId);
+        setUserCheckinId(checkinId);
+        return true;
+      }
+    }
+
+    // PRIORIDADE 2: Verificar nos participantes
+    if (participants.length > 0) {
+      console.log('   Participantes:', JSON.stringify(participants.map(p => ({
+        id: p.id,
+        usuario_id: p.usuario_id,
+        checkin_id: p.checkin_id,
+        nome: p.nome || p.usuario_nome
+      }))));
+
+      const userParticipant = participants.find(
+        (p) => Number(p.usuario_id) === Number(currentUserId) || Number(p.id) === Number(currentUserId)
+      );
+
+      if (userParticipant) {
+        console.log('   ✅ Usuário encontrado nos participantes:', userParticipant);
+        const checkinId = userParticipant.checkin_id || userParticipant.id;
+        console.log('   📝 checkin_id dos participantes:', checkinId);
+        
+        if (checkinId) {
+          setUserCheckinId(checkinId);
+          return true;
+        } else {
+          console.log('   ⚠️ Participante encontrado mas sem checkin_id válido');
+        }
+      }
+    }
+
+    console.log('   ❌ Usuário não encontrado - sem check-in');
+    setUserCheckinId(null);
+    return false;
   };
 
   const openParticipants = async (turma: any) => {
@@ -391,18 +615,33 @@ export default function CheckinScreen() {
   const getHoraInicio = (turma: any) => turma?.hora_inicio || turma?.horario?.inicio;
   const getHoraFim = (turma: any) => turma?.hora_fim || turma?.horario?.fim;
 
+  const schedulesToRender = showOnlyAvailable
+    ? availableSchedules.filter((turma) => !isCheckinDisabled(turma))
+    : availableSchedules;
+
   return (
     <>
       <SafeAreaView style={styles.container} edges={['top']}>
         {/* Header com Botão Recarregar */}
         <View style={styles.headerTop}>
           <Text style={styles.headerTitle}>Checkin</Text>
-          <TouchableOpacity 
-            style={styles.refreshButton}
-            onPress={generateCalendarDays}
-          >
-            <Feather name="refresh-cw" size={20} color={colors.primary} />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <View style={styles.switchRow}>
+              <Text style={styles.switchLabel}>Só disponíveis</Text>
+              <Switch
+                value={showOnlyAvailable}
+                onValueChange={setShowOnlyAvailable}
+                trackColor={{ false: '#dcdcdc', true: colors.primary + '55' }}
+                thumbColor={showOnlyAvailable ? colors.primary : '#f4f4f4'}
+              />
+            </View>
+            <TouchableOpacity
+              style={styles.refreshButton}
+              onPress={generateCalendarDays}
+            >
+              <Feather name="refresh-cw" size={20} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         <ScrollView 
@@ -490,16 +729,28 @@ export default function CheckinScreen() {
                   <>
                     {participants.length > 0 ? (
                       <View style={styles.participantsListContainer}>
-                        {participants.map((p, idx) => (
-                          <View key={p.usuario_id || p.checkin_id || idx} style={styles.participantItem}>
-                            <View style={styles.participantAvatar}>
-                              <Text style={styles.participantAvatarText}>{getInitials(p.nome || p.usuario_nome)}</Text>
+                        {participants.map((p, idx) => {
+                          const isCurrentUser = currentUserId && Number(p.usuario_id) === Number(currentUserId);
+                          return (
+                            <View key={p.usuario_id || p.checkin_id || idx} style={styles.participantItem}>
+                              <View style={[
+                                styles.participantAvatar,
+                                isCurrentUser && styles.participantAvatarCurrent
+                              ]}>
+                                <Image
+                                  source={{ uri: getAvatarUrl(p.nome || p.usuario_nome, p.usuario_id) }}
+                                  style={styles.participantAvatarImage}
+                                />
+                              </View>
+                              <View style={styles.participantInfo}>
+                                <Text style={styles.participantName}>
+                                  {normalizeUtf8(p.nome || p.usuario_nome || 'Aluno')}
+                                  {isCurrentUser && ' (Você)'}
+                                </Text>
+                              </View>
                             </View>
-                            <View style={styles.participantInfo}>
-                              <Text style={styles.participantName}>{normalizeUtf8(p.nome || p.usuario_nome || 'Aluno')}</Text>
-                            </View>
-                          </View>
-                        ))}
+                          );
+                        })}
                       </View>
                     ) : (
                       <Text style={styles.loadingText}>Nenhum participante ainda</Text>
@@ -508,74 +759,109 @@ export default function CheckinScreen() {
                 )}
 
                 <TouchableOpacity
-                  style={[styles.checkinButton, (checkinLoading || isCheckinDisabled(participantsTurma)) && styles.checkinButtonDisabled]}
-                  onPress={() => handleCheckin(participantsTurma)}
-                  disabled={checkinLoading || isCheckinDisabled(participantsTurma)}
+                  style={[
+                    styles.checkinButton,
+                    userCheckinId ? styles.checkinButtonUndo : null,
+                    (checkinLoading || (!userCheckinId && isCheckinDisabled(participantsTurma))) && styles.checkinButtonDisabled
+                  ]}
+                  onPress={() => {
+                    if (userCheckinId) {
+                      handleUndoCheckin(userCheckinId, participantsTurma);
+                    } else {
+                      handleCheckin(participantsTurma);
+                    }
+                  }}
+                  disabled={checkinLoading || (!userCheckinId && isCheckinDisabled(participantsTurma))}
                 >
                   {checkinLoading ? (
-                    <Text style={styles.checkinButtonText}>Enviando...</Text>
+                    <>
+                      <Feather name="loader" size={18} color="#fff" />
+                      <Text style={styles.checkinButtonText}>Processando...</Text>
+                    </>
+                  ) : userCheckinId ? (
+                    <>
+                      <Feather name="rotate-ccw" size={18} color="#fff" />
+                      <Text style={styles.checkinButtonText}>Desfazer Check-in</Text>
+                    </>
                   ) : (
-                    <Text style={styles.checkinButtonText}>Fazer check-in</Text>
+                    <>
+                      <Feather name="check-circle" size={18} color="#fff" />
+                      <Text style={styles.checkinButtonText}>Fazer Check-in</Text>
+                    </>
                   )}
                 </TouchableOpacity>
               </View>
             </View>
           ) : loading ? (
             <Text style={styles.loadingText}>Carregando...</Text>
-          ) : availableSchedules.length > 0 ? (
+          ) : schedulesToRender.length > 0 ? (
             <View style={styles.schedulesList}>
-              {availableSchedules.map((turma) => {
+              {schedulesToRender.map((turma) => {
                 const disabled = isTurmaDisabled(turma, selectedDate);
+                const statusColor = disabled ? '#d9534f' : '#2e7d32';
+                const professorName = turma.professor?.nome || turma.professor || '';
+
                 return (
-                <TouchableOpacity
-                  key={turma.id}
-                  disabled={disabled}
-                  style={[
-                    styles.scheduleItem,
-                    disabled && styles.scheduleItemDisabled,
-                    { borderLeftColor: disabled ? '#cccccc' : (turma.modalidade?.cor || colors.primary) }
-                  ]}
-                  onPress={() => openParticipants(turma)}
-                >
-                  <View style={styles.scheduleContent}>
-                    <View style={styles.scheduleHeader}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.scheduleTimeText}>
-                          {turma.horario.inicio.slice(0, 5)} - {turma.horario.fim.slice(0, 5)}
-                        </Text>
-                        <Text style={styles.scheduleName}>{normalizeUtf8(turma.nome)}</Text>
-                      </View>
-                      {turma.modalidade && (
-                        <View style={[
-                          styles.modalidadeBadge,
-                          { backgroundColor: turma.modalidade.cor + '20' }
-                        ]}>
-                          <Text style={[
-                            styles.modalidadeText,
-                            { color: turma.modalidade.cor }
+                  <TouchableOpacity
+                    key={turma.id}
+                    disabled={disabled}
+                    style={[
+                      styles.scheduleItem,
+                      disabled && styles.scheduleItemDisabled,
+                      { borderLeftColor: disabled ? '#cccccc' : (turma.modalidade?.cor || colors.primary) }
+                    ]}
+                    onPress={() => openParticipants(turma)}
+                  >
+                    <View style={styles.scheduleContent}>
+                      <View style={styles.scheduleHeader}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.scheduleTimeText}>
+                            {turma.horario.inicio.slice(0, 5)} - {turma.horario.fim.slice(0, 5)}
+                          </Text>
+                          <Text style={styles.scheduleName}>{cleanTurmaName(turma.nome, turma.modalidade, turma.professor)}</Text>
+                          {!!professorName && (
+                            <Text style={styles.scheduleSubtitle}>
+                              {normalizeUtf8(professorName)}
+                            </Text>
+                          )}
+                        </View>
+                        {turma.modalidade && (
+                          <View style={[
+                            styles.modalidadeBadge,
+                            { backgroundColor: turma.modalidade.cor + '20' }
                           ]}>
-                            {normalizeUtf8(turma.modalidade.nome)}
+                            <Text style={[
+                              styles.modalidadeText,
+                              { color: turma.modalidade.cor }
+                            ]}>
+                              {normalizeUtf8(turma.modalidade.nome)}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+
+                      <View style={styles.scheduleInfoRow}>
+                        <View style={styles.infoItem}>
+                          <Feather name="user" size={14} color="#999" />
+                          <Text style={styles.infoText}>
+                            {turma.alunos_inscritos}/{turma.limite_alunos}
                           </Text>
                         </View>
-                      )}
-                    </View>
-                    <View style={styles.scheduleInfo}>
-                      <View style={styles.infoItem}>
-                        <Feather name="user" size={14} color="#999" />
-                        <Text style={styles.infoText}>
-                          {turma.alunos_inscritos}/{turma.limite_alunos}
-                        </Text>
-                      </View>
-                      <View style={styles.infoItem}>
-                        <Feather name="check-circle" size={14} color="#4CAF50" />
-                        <Text style={styles.infoText}>
-                          {disabled ? 'Encerrado' : `${turma.vagas_disponiveis} vaga${turma.vagas_disponiveis !== 1 ? 's' : ''}`}
-                        </Text>
+                        {disabled && (
+                          <>
+                            <View style={styles.statusDot} />
+                            <View style={styles.infoItem}>
+                              <Feather name="x-circle" size={14} color={statusColor} />
+                              <Text style={[styles.infoText, styles.statusClosedText]}>
+                                Encerrado
+                              </Text>
+                            </View>
+                          </>
+                        )}
                       </View>
                     </View>
-                  </View>
-                  <Feather name="chevron-right" size={20} color={disabled ? '#cccccc' : colors.primary} />
-                </TouchableOpacity>
+                    <Feather name="chevron-right" size={20} color={disabled ? '#cccccc' : colors.primary} />
+                  </TouchableOpacity>
                 );
               })}
             </View>
@@ -591,6 +877,80 @@ export default function CheckinScreen() {
         </View>
       </ScrollView>
       </SafeAreaView>
+
+      {/* Modal de Erro/Aviso Customizado */}
+      <Modal
+        visible={errorModal.visible}
+        transparent
+        animationType="none"
+        onRequestClose={hideErrorModal}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay} 
+          activeOpacity={1} 
+          onPress={hideErrorModal}
+        >
+          <Animated.View
+            style={[
+              styles.modalContainer,
+              {
+                transform: [{ scale: modalScale }],
+              },
+            ]}
+          >
+            <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+              <View style={[
+                styles.modalContent,
+                errorModal.type === 'error' && styles.modalContentError,
+                errorModal.type === 'warning' && styles.modalContentWarning,
+                errorModal.type === 'success' && styles.modalContentSuccess,
+              ]}>
+                {/* Ícone */}
+                <View style={[
+                  styles.modalIconContainer,
+                  errorModal.type === 'error' && styles.modalIconContainerError,
+                  errorModal.type === 'warning' && styles.modalIconContainerWarning,
+                  errorModal.type === 'success' && styles.modalIconContainerSuccess,
+                ]}>
+                  <Feather
+                    name={
+                      errorModal.type === 'error' ? 'x-circle' :
+                      errorModal.type === 'warning' ? 'alert-triangle' :
+                      'check-circle'
+                    }
+                    size={48}
+                    color={
+                      errorModal.type === 'error' ? '#d32f2f' :
+                      errorModal.type === 'warning' ? '#f57c00' :
+                      '#388e3c'
+                    }
+                  />
+                </View>
+
+                {/* Título */}
+                <Text style={styles.modalTitle}>{errorModal.title}</Text>
+
+                {/* Mensagem */}
+                <Text style={styles.modalMessage}>{errorModal.message}</Text>
+
+                {/* Botão Fechar */}
+                <TouchableOpacity
+                  style={[
+                    styles.modalButton,
+                    errorModal.type === 'error' && styles.modalButtonError,
+                    errorModal.type === 'warning' && styles.modalButtonWarning,
+                    errorModal.type === 'success' && styles.modalButtonSuccess,
+                  ]}
+                  onPress={hideErrorModal}
+                >
+                  <Text style={styles.modalButtonText}>OK, Entendi</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </Animated.View>
+        </TouchableOpacity>
+      </Modal>
+
       {toastVisible && (
         <View style={[styles.toastContainer, styles[`toast_${toast.type}`]]}>
           <Feather
@@ -624,6 +984,21 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: '#000',
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  switchLabel: {
+    fontSize: 12,
+    color: '#555',
+    fontWeight: '600',
   },
   refreshButton: {
     padding: 8,
@@ -731,6 +1106,11 @@ const styles = StyleSheet.create({
     color: '#666',
     fontWeight: '500',
   },
+  scheduleSubtitle: {
+    fontSize: 12,
+    color: '#888',
+    marginTop: 2,
+  },
   modalidadeBadge: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -744,6 +1124,23 @@ const styles = StyleSheet.create({
   scheduleInfo: {
     flexDirection: 'row',
     gap: 16,
+  },
+  scheduleInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  statusDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#ddd',
+  },
+  statusOpenText: {
+    color: '#2e7d32',
+  },
+  statusClosedText: {
+    color: '#d9534f',
   },
   infoItem: {
     flexDirection: 'row',
@@ -814,21 +1211,23 @@ const styles = StyleSheet.create({
     color: '#333',
     fontWeight: '500',
   },
-  participantsContent: {
-    gap: 12,
-  },
   checkinButton: {
     marginTop: 12,
-    backgroundColor: colors.primary,
+    backgroundColor: '#10b981',
     paddingVertical: 14,
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 4,
     elevation: 3,
+  },
+  checkinButtonUndo: {
+    backgroundColor: '#ef4444',
   },
   checkinButtonDisabled: {
     opacity: 0.6,
@@ -865,11 +1264,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#e8e8e8',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  participantAvatarCurrent: {
+    borderWidth: 3,
+    borderColor: '#10b981',
+  },
+  participantAvatarImage: {
+    width: '100%',
+    height: '100%',
   },
   participantAvatarText: {
     fontSize: 14,
     fontWeight: '700',
     color: '#555',
+  },
+  participantAvatarTextCurrent: {
+    color: '#fff',
   },
   participantInfo: {
     flex: 1,
@@ -1007,5 +1418,96 @@ const styles = StyleSheet.create({
   emptySubtitle: {
     fontSize: 13,
     color: '#777',
+  },
+  // Modal de Erro Customizado
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContainer: {
+    width: '100%',
+    maxWidth: 400,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 24,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  modalContentError: {
+    borderTopWidth: 4,
+    borderTopColor: '#d32f2f',
+  },
+  modalContentWarning: {
+    borderTopWidth: 4,
+    borderTopColor: '#f57c00',
+  },
+  modalContentSuccess: {
+    borderTopWidth: 4,
+    borderTopColor: '#388e3c',
+  },
+  modalIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalIconContainerError: {
+    backgroundColor: '#ffebee',
+  },
+  modalIconContainerWarning: {
+    backgroundColor: '#fff3e0',
+  },
+  modalIconContainerSuccess: {
+    backgroundColor: '#e8f5e9',
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#000',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: '#555',
+    textAlign: 'center',
+    marginBottom: 24,
+    lineHeight: 24,
+  },
+  modalButton: {
+    width: '100%',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  modalButtonError: {
+    backgroundColor: '#d32f2f',
+  },
+  modalButtonWarning: {
+    backgroundColor: '#f57c00',
+  },
+  modalButtonSuccess: {
+    backgroundColor: '#388e3c',
+  },
+  modalButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

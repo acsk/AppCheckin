@@ -2,22 +2,58 @@ import { colors } from '@/src/theme/colors';
 import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+interface UserProfile {
+  id?: number;
+  nome: string;
+  email: string;
+  cpf?: string;
+  telefone?: string;
+  data_nascimento?: string;
+  foto_base64?: string;
+  membro_desde?: string;
+  tenant?: { nome: string };
+  tenants?: { id: string; nome: string; email?: string; telefone?: string }[];
+  estatisticas?: {
+    total_checkins: number;
+    checkins_mes: number;
+    sequencia_dias: number;
+    ultimo_checkin?: { data: string; hora: string };
+  };
+}
+
 export default function AccountScreen() {
   const router = useRouter();
-  const [userProfile, setUserProfile] = useState(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const getInitials = (nome: string = '') => {
+    const parts = nome.split(' ').filter(Boolean);
+    if (parts.length === 0) return '?';
+    if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+    return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+  };
+
+  const getAvatarUrl = (nome: string = '', userId?: number) => {
+    // Usando randomuser.me para fotos reais de pessoas
+    // Cada userId gera uma foto consistente e realista
+    const seed = userId || Math.abs(nome.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0));
+    const gender = seed % 2 === 0 ? 'women' : 'men';
+    const photoId = (seed % 99) + 1;
+    return `https://randomuser.me/api/portraits/${gender}/${photoId}.jpg`;
+  };
 
   useEffect(() => {
     loadUserProfile();
@@ -29,7 +65,7 @@ export default function AccountScreen() {
     return cleaned.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
   };
 
-  const formatPhone = (phone) => {
+  const formatPhone = (phone: string) => {
     if (!phone) return '';
     const cleaned = phone.replace(/\D/g, '');
     if (cleaned.length === 11) {
@@ -164,7 +200,7 @@ export default function AccountScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container}>
       {/* Header com Botão Recarregar */}
       <View style={styles.headerTop}>
         <Text style={styles.headerTitle}>Minha Conta</Text>
@@ -187,7 +223,10 @@ export default function AccountScreen() {
             {userProfile.foto_base64 ? (
               <Text style={styles.photoText}>📸</Text>
             ) : (
-              <Feather name="user" size={50} color="#fff" />
+              <Image
+                source={{ uri: getAvatarUrl(userProfile.nome, userProfile.id) }}
+                style={styles.photoImage}
+              />
             )}
           </View>
 
@@ -427,13 +466,23 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: colors.primary,
+    backgroundColor: '#f0f0f0',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 16,
+    overflow: 'hidden',
+  },
+  photoImage: {
+    width: '100%',
+    height: '100%',
   },
   photoText: {
-    fontSize: 40,
+    fontSize: 48,
+  },
+  photoInitials: {
+    fontSize: 42,
+    fontWeight: '700',
+    color: '#fff',
   },
   userName: {
     fontSize: 24,

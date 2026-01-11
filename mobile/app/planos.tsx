@@ -3,7 +3,7 @@ import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRoute } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -15,12 +15,49 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+interface Modalidade {
+  id: number;
+  nome: string;
+  cor: string;
+}
+
+interface Plano {
+  id: number;
+  tenant_id: number;
+  nome: string;
+  descricao: string;
+  valor: number;
+  duracao_dias: number;
+  checkins_semanais: number;
+  ativo: boolean;
+  modalidade: Modalidade;
+}
+
+interface Matricula {
+  matricula_id: number;
+  plano: Plano;
+  datas: {
+    matricula: string;
+    inicio: string;
+    vencimento: string;
+  };
+  valor: number;
+  status: string;
+  motivo: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface RouteParams {
+  tenantId?: string;
+}
+
 export default function PlanosScreen() {
   const router = useRouter();
   const route = useRoute();
-  const tenantId = route.params?.tenantId;
-  const [matriculas, setMatriculas] = useState([]);
-  const [selectedMatricula, setSelectedMatricula] = useState(null);
+  const tenantId = (route.params as RouteParams)?.tenantId;
+  const [matriculas, setMatriculas] = useState<Matricula[]>([]);
+  const [selectedMatricula, setSelectedMatricula] = useState<Matricula | null>(null);
   const [loading, setLoading] = useState(true);
   const [apenasAtivos, setApenasAtivos] = useState(false);
   const [pagamentos, setPagamentos] = useState([]);
@@ -73,7 +110,7 @@ export default function PlanosScreen() {
         console.log('✅ JSON parseado com sucesso');
       } catch (parseError) {
         console.error('❌ ERRO AO FAZER PARSE DO JSON');
-        console.error('   Erro:', parseError.message);
+        console.error('   Erro:', (parseError as Error).message);
         console.error('   Body:', responseText);
         throw parseError;
       }
@@ -91,9 +128,9 @@ export default function PlanosScreen() {
       }
     } catch (error) {
       console.error('❌ EXCEÇÃO CAPTURADA EM loadPlanos');
-      console.error('   Nome:', error.name);
-      console.error('   Mensagem:', error.message);
-      console.error('   Stack:', error.stack);
+      console.error('   Nome:', (error as Error).name);
+      console.error('   Mensagem:', (error as Error).message);
+      console.error('   Stack:', (error as Error).stack);
       console.log('📦 Usando dados mockados como fallback...');
       
       // Dados mockados para exemplo (matrículas, não planos)
@@ -214,7 +251,7 @@ export default function PlanosScreen() {
         console.log('   Dados completos:', JSON.stringify(data, null, 2));
       } catch (parseError) {
         console.error('❌ ERRO AO FAZER PARSE DO JSON');
-        console.error('   Erro:', parseError.message);
+        console.error('   Erro:', (parseError as Error).message);
         console.error('   Body:', responseText);
         return;
       }
@@ -233,9 +270,9 @@ export default function PlanosScreen() {
       }
     } catch (error) {
       console.error('❌ EXCEÇÃO CAPTURADA');
-      console.error('   Nome do erro:', error.name);
-      console.error('   Mensagem:', error.message);
-      console.error('   Stack:', error.stack);
+      console.error('   Nome do erro:', (error as Error).name);
+      console.error('   Mensagem:', (error as Error).message);
+      console.error('   Stack:', (error as Error).stack);
     }
   };
 
@@ -271,18 +308,22 @@ export default function PlanosScreen() {
   if (selectedMatricula) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
+        {/* Header */}
+        <View style={styles.headerTop}>
+          <TouchableOpacity 
+            style={styles.headerBackButton}
+            onPress={() => setSelectedMatricula(null)}
+          >
+            <Feather name="arrow-left" size={24} color="#333" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitleCentered}>Detalhes do Plano</Text>
+          <View style={{ width: 40 }} />
+        </View>
+
         <ScrollView 
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Back Button */}
-          <TouchableOpacity 
-            style={styles.backButton}
-            onPress={() => setSelectedMatricula(null)}
-          >
-            <Feather name="arrow-left" size={20} color={colors.primary} />
-          </TouchableOpacity>
-
           {/* Header do Plano */}
           <View style={styles.planoHeader}>
             <View style={{ flex: 1 }}>
@@ -372,9 +413,15 @@ export default function PlanosScreen() {
   // Tela de Lista de Planos
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      {/* Header com Botão Recarregar */}
+      {/* Header com Botão Voltar e Recarregar */}
       <View style={styles.headerTop}>
-        <Text style={styles.headerTitle}>Planos</Text>
+        <TouchableOpacity 
+          style={styles.headerBackButton}
+          onPress={() => router.back()}
+        >
+          <Feather name="arrow-left" size={24} color="#333" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitleCentered}>Planos</Text>
         <TouchableOpacity 
           style={styles.refreshButton}
           onPress={() => loadPlanos()}
@@ -505,6 +552,17 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: '#000',
+  },
+  headerTitleCentered: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#000',
+    flex: 1,
+    textAlign: 'center',
+  },
+  headerBackButton: {
+    padding: 8,
+    marginRight: 8,
   },
   refreshButton: {
     padding: 8,

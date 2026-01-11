@@ -138,6 +138,106 @@ class CheckinController
     }
 
     /**
+     * DELETE /checkin/{id}/desfazer
+     * Desfazer check-in com validações de horário
+     * Não pode desfazer após o horário + tolerância
+     */
+    public function desfazer(Request $request, Response $response, array $args): Response
+    {
+        $userId = $request->getAttribute('userId');
+        $checkinId = (int) $args['id'];
+
+        // Verificar se check-in existe
+        $checkin = $this->checkinModel->findById($checkinId);
+
+        if (!$checkin) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Check-in não encontrado'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        // Verificar se check-in pertence ao usuário
+        if ($checkin['usuario_id'] != $userId) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Você não tem permissão para desfazer este check-in'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+
+        // Validar se ainda é possível desfazer
+        // Se o horário foi deletado, permitir desfazer (pois não é mais uma aula ativa)
+        if ($checkin['horario_id'] && $checkin['horario_id'] > 0) {
+            // Buscar dados do horário
+            $horario = $this->horarioModel->findById($checkin['horario_id']);
+
+            if ($horario) {
+                // Verificar se a aula já começou + tolerância
+                $agora = new \DateTime();
+                $dataHorarioInicio = new \DateTime($horario['data'] . ' ' . $horario['horario_inicio']);
+                
+                // Tolerar até X minutos após o início da aula
+                $tolerancia = $horario['tolerancia_minutos'] ?? 10;
+                $dataLimiteDesfazer = clone $dataHorarioInicio;
+                $dataLimiteDesfazer->modify("+{$tolerancia} minutes");
+
+                // Se já passou do horário + tolerância, não pode desfazer
+                if ($agora > $dataLimiteDesfazer) {
+                    return $response->withHeader('Content-Type', 'application/json')
+                        ->write(json_encode([
+                            'error' => 'Não é possível desfazer o check-in. O prazo expirou (a aula já começou)',
+                            'horario' => [
+                                'data' => $horario['data'],
+                                'inicio' => $horario['horario_inicio'],
+                                'tolerancia_minutos' => $tolerancia,
+                                'limite_para_desfazer' => $dataLimiteDesfazer->format('Y-m-d H:i:s')
+                            ]
+                        ], JSON_UNESCAPED_UNICODE))
+                        ->withStatus(400);
+                }
+
+                // Verificar se a aula ainda está acontecendo
+                $dataHorarioFim = new \DateTime($horario['data'] . ' ' . $horario['horario_fim']);
+                
+                if ($agora > $dataHorarioFim) {
+                    return $response->withHeader('Content-Type', 'application/json')
+                        ->write(json_encode([
+                            'error' => 'Não é possível desfazer o check-in. A aula já terminou',
+                            'horario' => [
+                                'data' => $horario['data'],
+                                'inicio' => $horario['horario_inicio'],
+                                'fim' => $horario['horario_fim']
+                            ]
+                        ], JSON_UNESCAPED_UNICODE))
+                        ->withStatus(400);
+                }
+            }
+        }
+
+        // Desfazer check-in (deletar)
+        $deleted = $this->checkinModel->delete($checkinId);
+
+        if (!$deleted) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Erro ao desfazer check-in'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+
+        $response->getBody()->write(json_encode([
+            'message' => 'Check-in desfeito com sucesso',
+            'checkin_id' => $checkinId,
+            'horario' => [
+                'data' => $checkin['data'] ?? 'Data não disponível',
+                'inicio' => $checkin['horario_inicio'] ?? 'Horário não disponível',
+                'fim' => $checkin['horario_fim'] ?? 'Horário não disponível'
+            ]
+        ]));
+
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
      * POST /admin/checkins/registrar
      * Admin registra check-in para um aluno em qualquer horário
      */

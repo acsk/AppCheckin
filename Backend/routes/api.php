@@ -165,6 +165,7 @@ return function ($app) {
         $group->post('/checkin', [CheckinController::class, 'store']);
         $group->get('/me/checkins', [CheckinController::class, 'myCheckins']);
         $group->delete('/checkin/{id}', [CheckinController::class, 'cancel']);
+        $group->delete('/checkin/{id}/desfazer', [CheckinController::class, 'desfazer']);
         
         // Gestão de Turmas
         $group->get('/turmas', [TurmaController::class, 'index']);
