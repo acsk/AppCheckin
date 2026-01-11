@@ -5,6 +5,8 @@ namespace App\Controllers;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Models\Usuario;
+use App\Models\Turma;
+use App\Models\Checkin;
 
 /**
  * MobileController
@@ -19,12 +21,16 @@ use App\Models\Usuario;
 class MobileController
 {
     private Usuario $usuarioModel;
+    private Turma $turmaModel;
+    private Checkin $checkinModel;
     private \PDO $db;
 
     public function __construct()
     {
         $this->db = require __DIR__ . '/../../config/database.php';
         $this->usuarioModel = new Usuario($this->db);
+        $this->turmaModel = new Turma($this->db);
+        $this->checkinModel = new Checkin($this->db);
     }
 
     /**
@@ -39,52 +45,62 @@ class MobileController
      */
     public function perfil(Request $request, Response $response): Response
     {
-        $userId = $request->getAttribute('userId');
-        $tenantId = $request->getAttribute('tenantId');
-        
-        // Buscar dados do usuário
-        $usuario = $this->usuarioModel->findById($userId, $tenantId);
+        try {
+            $userId = $request->getAttribute('userId');
+            $tenantId = $request->getAttribute('tenantId');
+            
+            // Buscar dados do usuário
+            $usuario = $this->usuarioModel->findById($userId, $tenantId);
 
-        if (!$usuario) {
+            if (!$usuario) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Usuário não encontrado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            // Buscar estatísticas de check-ins
+            $estatisticas = $this->getEstatisticasCheckin($userId, $tenantId);
+
+            // Buscar informações de todos os tenants do usuário
+            $tenants = $this->getTenantsDoUsuario($userId);
+
+            // Buscar plano do usuário
+            $plano = $this->getPlanoUsuario($userId, $tenantId);
+
+            // Montar resposta
+            $perfil = [
+                'id' => $usuario['id'],
+                'nome' => $usuario['nome'],
+                'email' => $usuario['email'],
+                'email_global' => $usuario['email'] ?? null,
+                'cpf' => $usuario['cpf'] ?? null,
+                'telefone' => $usuario['telefone'] ?? null,
+                'foto_base64' => $usuario['foto_base64'] ?? null,
+                'data_nascimento' => $usuario['data_nascimento'] ?? null,
+                'role_id' => $usuario['role_id'],
+                'role_nome' => $this->getRoleName($usuario['role_id']),
+                'membro_desde' => $usuario['created_at'],
+                'tenants' => $tenants,
+                'plano' => $plano,
+                'estatisticas' => $estatisticas,
+            ];
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'data' => $perfil
+            ]));
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            error_log("Erro no endpoint /mobile/perfil: " . $e->getMessage());
             $response->getBody()->write(json_encode([
                 'success' => false,
-                'error' => 'Usuário não encontrado'
+                'error' => 'Erro ao carregar perfil',
+                'message' => $e->getMessage()
             ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
-
-        // Buscar estatísticas de check-ins
-        $estatisticas = $this->getEstatisticasCheckin($userId, $tenantId);
-
-        // Buscar informações do tenant atual
-        $tenant = $this->getTenantInfo($tenantId);
-
-        // Buscar plano do usuário
-        $plano = $this->getPlanoUsuario($userId, $tenantId);
-
-        // Montar resposta
-        $perfil = [
-            'id' => $usuario['id'],
-            'nome' => $usuario['nome'],
-            'email' => $usuario['email'],
-            'email_global' => $usuario['email_global'] ?? $usuario['email'],
-            'cpf' => $usuario['cpf'] ?? null,
-            'telefone' => $usuario['telefone'] ?? null,
-            'foto_base64' => $usuario['foto_base64'] ?? null,
-            'data_nascimento' => $usuario['data_nascimento'] ?? null,
-            'role_id' => $usuario['role_id'],
-            'role_nome' => $this->getRoleName($usuario['role_id']),
-            'membro_desde' => $usuario['created_at'],
-            'tenant' => $tenant,
-            'plano' => $plano,
-            'estatisticas' => $estatisticas,
-        ];
-
-        $response->getBody()->write(json_encode([
-            'success' => true,
-            'data' => $perfil
-        ]));
-        return $response->withHeader('Content-Type', 'application/json');
     }
 
     /**
@@ -92,45 +108,58 @@ class MobileController
      */
     private function getEstatisticasCheckin(int $userId, ?int $tenantId): array
     {
-        // Total de check-ins do usuário
-        $sqlTotal = "SELECT COUNT(*) as total FROM checkins WHERE usuario_id = :user_id";
-        $stmt = $this->db->prepare($sqlTotal);
-        $stmt->execute(['user_id' => $userId]);
-        $totalCheckins = (int) ($stmt->fetch()['total'] ?? 0);
+        try {
+            // Total de check-ins do usuário
+            $sqlTotal = "SELECT COUNT(*) as total FROM checkins WHERE usuario_id = :user_id";
+            $stmt = $this->db->prepare($sqlTotal);
+            $stmt->execute(['user_id' => $userId]);
+            $totalCheckins = (int) ($stmt->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
 
-        // Check-ins do mês atual
-        $sqlMes = "SELECT COUNT(*) as total FROM checkins 
-                   WHERE usuario_id = :user_id 
-                   AND MONTH(data_checkin) = MONTH(CURRENT_DATE())
-                   AND YEAR(data_checkin) = YEAR(CURRENT_DATE())";
-        $stmtMes = $this->db->prepare($sqlMes);
-        $stmtMes->execute(['user_id' => $userId]);
-        $checkinsMes = (int) ($stmtMes->fetch()['total'] ?? 0);
+            // Check-ins do mês atual
+            $sqlMes = "SELECT COUNT(*) as total FROM checkins 
+                       WHERE usuario_id = :user_id 
+                       AND MONTH(data_checkin) = MONTH(CURRENT_DATE())
+                       AND YEAR(data_checkin) = YEAR(CURRENT_DATE())";
+            $stmtMes = $this->db->prepare($sqlMes);
+            $stmtMes->execute(['user_id' => $userId]);
+            $checkinsMes = (int) ($stmtMes->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
 
-        // Sequência atual (dias consecutivos)
-        $sequencia = $this->calcularSequencia($userId);
+            // Sequência atual (dias consecutivos)
+            $sequencia = $this->calcularSequencia($userId);
 
-        // Último check-in
-        $sqlUltimo = "SELECT c.data_checkin, h.hora, d.data
-                      FROM checkins c
-                      INNER JOIN horarios h ON c.horario_id = h.id
-                      INNER JOIN dias d ON h.dia_id = d.id
-                      WHERE c.usuario_id = :user_id
-                      ORDER BY d.data DESC, h.hora DESC LIMIT 1";
-        
-        $stmtUltimo = $this->db->prepare($sqlUltimo);
-        $stmtUltimo->execute(['user_id' => $userId]);
-        $ultimoCheckin = $stmtUltimo->fetch();
+            // Último check-in
+            $sqlUltimo = "SELECT c.data_checkin, h.hora, d.data
+                          FROM checkins c
+                          INNER JOIN horarios h ON c.horario_id = h.id
+                          INNER JOIN dias d ON h.dia_id = d.id
+                          WHERE c.usuario_id = :user_id
+                          ORDER BY d.data DESC, h.hora DESC LIMIT 1";
+            
+            $stmtUltimo = $this->db->prepare($sqlUltimo);
+            $stmtUltimo->execute(['user_id' => $userId]);
+            $ultimoCheckin = $stmtUltimo->fetch(\PDO::FETCH_ASSOC);
 
-        return [
-            'total_checkins' => $totalCheckins,
-            'checkins_mes' => $checkinsMes,
-            'sequencia_dias' => $sequencia,
-            'ultimo_checkin' => $ultimoCheckin ? [
-                'data' => $ultimoCheckin['data'] ?? date('Y-m-d', strtotime($ultimoCheckin['data_checkin'])),
-                'hora' => $ultimoCheckin['hora'] ?? date('H:i:s', strtotime($ultimoCheckin['data_checkin']))
-            ] : null,
-        ];
+            return [
+                'total_checkins' => $totalCheckins,
+                'checkins_mes' => $checkinsMes,
+                'sequencia_dias' => $sequencia,
+                'ultimo_checkin' => $ultimoCheckin ? [
+                    'data' => $ultimoCheckin['data'] ?? date('Y-m-d'),
+                    'hora' => $ultimoCheckin['hora'] ?? '00:00:00'
+                ] : null,
+            ];
+        } catch (\Exception $e) {
+            // Log de erro para debug
+            error_log("Erro ao buscar estatísticas de check-in do usuário {$userId}: " . $e->getMessage());
+            
+            // Retornar valores padrão em caso de erro
+            return [
+                'total_checkins' => 0,
+                'checkins_mes' => 0,
+                'sequencia_dias' => 0,
+                'ultimo_checkin' => null,
+            ];
+        }
     }
 
     /**
@@ -183,6 +212,21 @@ class MobileController
     /**
      * Busca informações do tenant
      */
+    /**
+     * Busca todos os tenants associados ao usuário
+     */
+    private function getTenantsDoUsuario(int $userId): array
+    {
+        $sql = "SELECT DISTINCT t.id, t.nome, t.slug, t.email, t.telefone 
+                FROM tenants t
+                INNER JOIN usuario_tenant ut ON t.id = ut.tenant_id
+                WHERE ut.usuario_id = :user_id AND t.ativo = 1
+                ORDER BY t.nome ASC";
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute(['user_id' => $userId]);
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+    }
+
     private function getTenantInfo(?int $tenantId): ?array
     {
         if (!$tenantId) {
@@ -199,7 +243,8 @@ class MobileController
     }
 
     /**
-     * Busca plano do usuário no tenant
+     * Busca plano do usuário no tenant através de matrículas
+     * A relação de plano agora é gerenciada apenas através de matriculas, não mais via usuario_tenant
      */
     private function getPlanoUsuario(int $userId, ?int $tenantId): ?array
     {
@@ -207,20 +252,28 @@ class MobileController
             return null;
         }
 
-        $sql = "SELECT p.id, p.nome, p.valor, p.duracao_dias, p.descricao,
-                       ut.data_inicio, ut.data_fim, ut.status as vinculo_status
-                FROM usuario_tenant ut
-                INNER JOIN planos p ON ut.plano_id = p.id
-                WHERE ut.usuario_id = :user_id 
-                AND ut.tenant_id = :tenant_id
-                AND ut.status = 'ativo'
-                LIMIT 1";
-        
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute(['user_id' => $userId, 'tenant_id' => $tenantId]);
-        $plano = $stmt->fetch(\PDO::FETCH_ASSOC);
+        try {
+            // Buscar plano através da matrícula mais recente ativa
+            $sql = "SELECT p.id, p.nome, p.valor, p.duracao_dias, p.descricao,
+                           m.data_inicio, m.data_vencimento as data_fim, m.status as vinculo_status
+                    FROM matriculas m
+                    INNER JOIN planos p ON m.plano_id = p.id
+                    WHERE m.usuario_id = :user_id 
+                    AND m.tenant_id = :tenant_id
+                    AND m.status IN ('ativa', 'pendente')
+                    ORDER BY m.data_vencimento DESC
+                    LIMIT 1";
+            
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute(['user_id' => $userId, 'tenant_id' => $tenantId]);
+            $plano = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-        return $plano ?: null;
+            return $plano ?: null;
+        } catch (\Exception $e) {
+            // Log de erro para debug
+            error_log("Erro ao buscar plano do usuário {$userId} no tenant {$tenantId}: " . $e->getMessage());
+            return null;
+        }
     }
 
     /**
@@ -262,102 +315,305 @@ class MobileController
     }
 
     /**
-     * Registra um check-in do usuário
-     * Nota: Requer que exista um horário disponível para hoje
+     * Lista os contratos/planos ativos do tenant
+     * Mostra qual é o plano ativo da academia
      * 
      * @param Request $request Requisição HTTP
      * @param Response $response Resposta HTTP
-     * @return Response JSON com confirmação
+     * @return Response JSON com contrato ativo
      * 
-     * @api POST /mobile/checkin
+     * @api GET /mobile/contratos
      */
-    public function registrarCheckin(Request $request, Response $response): Response
+    public function contratos(Request $request, Response $response): Response
     {
-        $userId = $request->getAttribute('userId');
         $tenantId = $request->getAttribute('tenantId');
-        $body = $request->getParsedBody() ?? [];
         
-        // O app pode enviar o horario_id específico ou buscar o horário atual do dia
-        $horarioId = $body['horario_id'] ?? null;
-        
-        if (!$horarioId) {
-            // Buscar horário disponível para hoje no momento atual
-            $hoje = date('Y-m-d');
-            $horaAtual = date('H:i:s');
-            
-            $sqlHorario = "SELECT h.id 
-                           FROM horarios h
-                           INNER JOIN dias d ON h.dia_id = d.id
-                           WHERE d.data = :data 
-                           AND h.ativo = 1
-                           ORDER BY ABS(TIMEDIFF(h.hora, :hora)) ASC
-                           LIMIT 1";
-            $stmtHorario = $this->db->prepare($sqlHorario);
-            $stmtHorario->execute(['data' => $hoje, 'hora' => $horaAtual]);
-            $horario = $stmtHorario->fetch();
-            
-            if (!$horario) {
-                $response->getBody()->write(json_encode([
-                    'success' => false,
-                    'error' => 'Não há horário disponível para check-in hoje'
-                ]));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
-            }
-            
-            $horarioId = $horario['id'];
-        }
-
-        // Verificar se já fez check-in neste horário
-        $sqlVerifica = "SELECT id FROM checkins 
-                        WHERE usuario_id = :user_id 
-                        AND horario_id = :horario_id";
-        $stmtVerifica = $this->db->prepare($sqlVerifica);
-        $stmtVerifica->execute([
-            'user_id' => $userId,
-            'horario_id' => $horarioId
-        ]);
-
-        if ($stmtVerifica->fetch()) {
+        if (!$tenantId) {
             $response->getBody()->write(json_encode([
                 'success' => false,
-                'error' => 'Você já realizou check-in neste horário!',
-                'ja_fez_checkin' => true
+                'error' => 'Nenhum tenant selecionado'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
 
-        // Registrar check-in
-        $sqlInsert = "INSERT INTO checkins (usuario_id, horario_id) 
-                      VALUES (:user_id, :horario_id)";
-        $stmtInsert = $this->db->prepare($sqlInsert);
-        $result = $stmtInsert->execute([
-            'user_id' => $userId,
-            'horario_id' => $horarioId
-        ]);
+        // Buscar contrato ativo
+        $sqlContrato = "SELECT tp.id, tp.tenant_id, tp.plano_sistema_id, tp.status_id,
+                               tp.data_inicio, tp.observacoes,
+                               ps.nome as plano_nome, ps.valor, ps.descricao, ps.duracao_dias,
+                               ps.max_alunos, ps.max_admins, ps.features,
+                               sc.nome as status_nome, sc.codigo as status_codigo,
+                               t.nome as tenant_nome, t.slug
+                        FROM tenant_planos_sistema tp
+                        INNER JOIN planos_sistema ps ON tp.plano_sistema_id = ps.id
+                        INNER JOIN status_contrato sc ON tp.status_id = sc.id
+                        INNER JOIN tenants t ON tp.tenant_id = t.id
+                        WHERE tp.tenant_id = :tenant_id
+                        AND tp.status_id = 1
+                        LIMIT 1";
+        
+        $stmtContrato = $this->db->prepare($sqlContrato);
+        $stmtContrato->execute(['tenant_id' => $tenantId]);
+        $contratoAtivo = $stmtContrato->fetch(\PDO::FETCH_ASSOC);
 
-        if ($result) {
-            // Buscar estatísticas atualizadas
-            $estatisticas = $this->getEstatisticasCheckin($userId, $tenantId);
-
+        if (!$contratoAtivo) {
             $response->getBody()->write(json_encode([
                 'success' => true,
-                'message' => 'Check-in realizado com sucesso!',
                 'data' => [
-                    'checkin' => [
-                        'data' => date('Y-m-d'),
-                        'hora' => date('H:i:s')
-                    ],
-                    'estatisticas' => $estatisticas
+                    'contrato_ativo' => null,
+                    'mensagem' => 'Nenhum contrato ativo no momento'
                 ]
             ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(201);
+            return $response->withHeader('Content-Type', 'application/json');
+        }
+
+        // Buscar pagamentos do contrato
+        $sqlPagamentos = "SELECT id, valor, data_vencimento, data_pagamento, 
+                                 forma_pagamento, sp.nome as status_pagamento
+                          FROM pagamentos_contrato pc
+                          INNER JOIN status_pagamento sp ON pc.status_pagamento_id = sp.id
+                          WHERE pc.contrato_id = :contrato_id
+                          ORDER BY data_vencimento ASC";
+        
+        $stmtPagamentos = $this->db->prepare($sqlPagamentos);
+        $stmtPagamentos->execute(['contrato_id' => $contratoAtivo['id']]);
+        $pagamentos = $stmtPagamentos->fetchAll(\PDO::FETCH_ASSOC);
+
+        // Calcular informações do contrato
+        $dataInicio = new \DateTime($contratoAtivo['data_inicio']);
+        $diasTotal = (int) $contratoAtivo['duracao_dias'];
+        $dataFim = (clone $dataInicio)->modify("+{$diasTotal} days");
+        $hoje = new \DateTime();
+        
+        // Calcular dias restantes
+        $diasRestantes = max(0, $dataFim->getTimestamp() - $hoje->getTimestamp()) / (24 * 3600);
+        $diasRestantes = (int) floor($diasRestantes);
+        
+        // Calcular percentual de uso
+        $diasDecorridos = $hoje->getTimestamp() - $dataInicio->getTimestamp();
+        $diasDecorridos = (int) floor($diasDecorridos / (24 * 3600));
+        $percentualUso = min(100, max(0, round(($diasDecorridos / $diasTotal) * 100)));
+
+        // Processar features (se for JSON)
+        $features = [];
+        if (!empty($contratoAtivo['features'])) {
+            $featuresData = json_decode($contratoAtivo['features'], true);
+            if (is_array($featuresData)) {
+                $features = $featuresData;
+            }
+        }
+
+        $contratoFormatado = [
+            'id' => (int) $contratoAtivo['id'],
+            'plano' => [
+                'id' => (int) $contratoAtivo['plano_sistema_id'],
+                'nome' => $contratoAtivo['plano_nome'],
+                'descricao' => $contratoAtivo['descricao'],
+                'valor' => (float) $contratoAtivo['valor'],
+                'max_alunos' => (int) $contratoAtivo['max_alunos'],
+                'max_admins' => (int) $contratoAtivo['max_admins'],
+                'features' => $features
+            ],
+            'status' => [
+                'id' => (int) $contratoAtivo['status_id'],
+                'nome' => $contratoAtivo['status_nome'],
+                'codigo' => $contratoAtivo['status_codigo']
+            ],
+            'vigencia' => [
+                'data_inicio' => $contratoAtivo['data_inicio'],
+                'data_fim' => $dataFim->format('Y-m-d'),
+                'dias_restantes' => $diasRestantes,
+                'dias_total' => $diasTotal,
+                'percentual_uso' => $percentualUso,
+                'ativo' => $hoje <= $dataFim
+            ],
+            'pagamentos' => [
+                'total' => count($pagamentos),
+                'lista' => array_map(function($pag) {
+                    return [
+                        'id' => (int) $pag['id'],
+                        'valor' => (float) $pag['valor'],
+                        'data_vencimento' => $pag['data_vencimento'],
+                        'data_pagamento' => $pag['data_pagamento'],
+                        'status' => $pag['status_pagamento'],
+                        'forma_pagamento' => $pag['forma_pagamento']
+                    ];
+                }, $pagamentos)
+            ],
+            'observacoes' => $contratoAtivo['observacoes']
+        ];
+
+        $response->getBody()->write(json_encode([
+            'success' => true,
+            'data' => [
+                'contrato_ativo' => $contratoFormatado,
+                'tenant' => [
+                    'id' => (int) $contratoAtivo['tenant_id'],
+                    'nome' => $contratoAtivo['tenant_nome'],
+                    'slug' => $contratoAtivo['slug']
+                ]
+            ]
+        ], JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+    }
+
+    /**
+     * Lista todos os contratos/planos do tenant
+     * Permite visualizar múltiplos planos (ativo, vencido, pendente, etc)
+     * Útil quando há múltiplos planos contratados
+     * 
+     * @param Request $request Requisição HTTP
+     * @param Response $response Resposta HTTP
+     * @return Response JSON com lista de contratos
+     * 
+     * @api GET /mobile/planos
+     */
+    public function planos(Request $request, Response $response): Response
+    {
+        $tenantId = $request->getAttribute('tenantId');
+        
+        if (!$tenantId) {
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Nenhum tenant selecionado'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
+
+        // Buscar todos os contratos do tenant
+        $sqlContratos = "SELECT tp.id, tp.tenant_id, tp.plano_sistema_id, tp.status_id,
+                                tp.data_inicio, tp.observacoes,
+                                ps.nome as plano_nome, ps.valor, ps.descricao, ps.duracao_dias,
+                                ps.max_alunos, ps.max_admins, ps.features,
+                                sc.nome as status_nome, sc.codigo as status_codigo,
+                                t.nome as tenant_nome, t.slug
+                         FROM tenant_planos_sistema tp
+                         INNER JOIN planos_sistema ps ON tp.plano_sistema_id = ps.id
+                         INNER JOIN status_contrato sc ON tp.status_id = sc.id
+                         INNER JOIN tenants t ON tp.tenant_id = t.id
+                         WHERE tp.tenant_id = :tenant_id
+                         ORDER BY tp.status_id ASC, tp.data_inicio DESC";
+        
+        $stmtContratos = $this->db->prepare($sqlContratos);
+        $stmtContratos->execute(['tenant_id' => $tenantId]);
+        $contratos = $stmtContratos->fetchAll(\PDO::FETCH_ASSOC);
+
+        if (empty($contratos)) {
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'data' => [
+                    'planos' => [],
+                    'total' => 0,
+                    'mensagem' => 'Nenhum plano contratado'
+                ]
+            ]));
+            return $response->withHeader('Content-Type', 'application/json');
+        }
+
+        // Processar cada contrato
+        $planosFormatados = [];
+        $hoje = new \DateTime();
+
+        foreach ($contratos as $contrato) {
+            // Buscar pagamentos do contrato
+            $sqlPagamentos = "SELECT id, valor, data_vencimento, data_pagamento, 
+                                     forma_pagamento, sp.nome as status_pagamento
+                              FROM pagamentos_contrato pc
+                              INNER JOIN status_pagamento sp ON pc.status_pagamento_id = sp.id
+                              WHERE pc.contrato_id = :contrato_id
+                              ORDER BY data_vencimento ASC";
+            
+            $stmtPagamentos = $this->db->prepare($sqlPagamentos);
+            $stmtPagamentos->execute(['contrato_id' => $contrato['id']]);
+            $pagamentos = $stmtPagamentos->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Calcular informações do contrato
+            $dataInicio = new \DateTime($contrato['data_inicio']);
+            $diasTotal = (int) $contrato['duracao_dias'];
+            $dataFim = (clone $dataInicio)->modify("+{$diasTotal} days");
+            
+            // Calcular dias restantes
+            $diasRestantes = max(0, $dataFim->getTimestamp() - $hoje->getTimestamp()) / (24 * 3600);
+            $diasRestantes = (int) floor($diasRestantes);
+            
+            // Calcular percentual de uso
+            $diasDecorridos = $hoje->getTimestamp() - $dataInicio->getTimestamp();
+            $diasDecorridos = (int) floor($diasDecorridos / (24 * 3600));
+            $percentualUso = min(100, max(0, round(($diasDecorridos / $diasTotal) * 100)));
+
+            // Processar features
+            $features = [];
+            if (!empty($contrato['features'])) {
+                $featuresData = json_decode($contrato['features'], true);
+                if (is_array($featuresData)) {
+                    $features = $featuresData;
+                }
+            }
+
+            // Contar pagamentos por status
+            $pagamentosResumido = [
+                'total' => count($pagamentos),
+                'pago' => count(array_filter($pagamentos, fn($p) => $p['status_pagamento'] === 'Pago')),
+                'aguardando' => count(array_filter($pagamentos, fn($p) => $p['status_pagamento'] === 'Aguardando')),
+                'atrasado' => count(array_filter($pagamentos, fn($p) => $p['status_pagamento'] === 'Atrasado'))
+            ];
+
+            $planosFormatados[] = [
+                'id' => (int) $contrato['id'],
+                'plano' => [
+                    'id' => (int) $contrato['plano_sistema_id'],
+                    'nome' => $contrato['plano_nome'],
+                    'descricao' => $contrato['descricao'],
+                    'valor' => (float) $contrato['valor'],
+                    'max_alunos' => (int) $contrato['max_alunos'],
+                    'max_admins' => (int) $contrato['max_admins'],
+                    'features' => $features
+                ],
+                'status' => [
+                    'id' => (int) $contrato['status_id'],
+                    'nome' => $contrato['status_nome'],
+                    'codigo' => $contrato['status_codigo']
+                ],
+                'vigencia' => [
+                    'data_inicio' => $contrato['data_inicio'],
+                    'data_fim' => $dataFim->format('Y-m-d'),
+                    'dias_restantes' => $diasRestantes,
+                    'dias_total' => $diasTotal,
+                    'percentual_uso' => $percentualUso,
+                    'ativo' => $hoje <= $dataFim && $contrato['status_id'] == 1
+                ],
+                'pagamentos' => [
+                    'total' => $pagamentosResumido['total'],
+                    'pago' => $pagamentosResumido['pago'],
+                    'aguardando' => $pagamentosResumido['aguardando'],
+                    'atrasado' => $pagamentosResumido['atrasado'],
+                    'lista' => array_map(function($pag) {
+                        return [
+                            'id' => (int) $pag['id'],
+                            'valor' => (float) $pag['valor'],
+                            'data_vencimento' => $pag['data_vencimento'],
+                            'data_pagamento' => $pag['data_pagamento'],
+                            'status' => $pag['status_pagamento'],
+                            'forma_pagamento' => $pag['forma_pagamento']
+                        ];
+                    }, $pagamentos)
+                ],
+                'observacoes' => $contrato['observacoes']
+            ];
         }
 
         $response->getBody()->write(json_encode([
-            'success' => false,
-            'error' => 'Erro ao registrar check-in'
-        ]));
-        return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            'success' => true,
+            'data' => [
+                'planos' => $planosFormatados,
+                'total' => count($planosFormatados),
+                'tenant' => [
+                    'id' => (int) $contratos[0]['tenant_id'],
+                    'nome' => $contratos[0]['tenant_nome'],
+                    'slug' => $contratos[0]['slug']
+                ]
+            ]
+        ], JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
     }
 
     /**
@@ -410,5 +666,1068 @@ class MobileController
             ]
         ]));
         return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * GET /mobile/horarios
+     * Retorna todos os horários disponíveis para hoje
+     * Útil para o aluno selecionar uma aula para fazer check-in
+     * 
+     * @param Request $request Requisição HTTP
+     * @param Response $response Resposta HTTP
+     * @return Response JSON com horários do dia
+     */
+    public function horariosHoje(Request $request, Response $response): Response
+    {
+        $tenantId = $request->getAttribute('tenantId');
+        
+        // Buscar o dia de hoje
+        $dataHoje = date('Y-m-d');
+        
+        $sql = "SELECT d.id, d.data, d.ativo,
+                h.id as horario_id, h.hora, h.horario_inicio, h.horario_fim, 
+                h.limite_alunos, h.tolerancia_minutos, h.ativo as horario_ativo,
+                COUNT(DISTINCT t.id) as total_turmas,
+                COUNT(DISTINCT c.id) as total_confirmados
+                FROM dias d
+                LEFT JOIN horarios h ON d.id = h.dia_id AND h.ativo = 1
+                LEFT JOIN turmas t ON h.id = t.horario_id AND t.ativo = 1
+                LEFT JOIN checkins c ON t.id = c.turma_id AND c.data_checkin = DATE(CURRENT_TIMESTAMP)
+                WHERE d.tenant_id = :tenant_id 
+                AND d.data = :data
+                AND d.ativo = 1
+                GROUP BY h.id
+                ORDER BY h.horario_inicio ASC";
+        
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            'tenant_id' => $tenantId,
+            'data' => $dataHoje
+        ]);
+        
+        $horarios = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        
+        $response->getBody()->write(json_encode([
+            'success' => true,
+            'data' => [
+                'data' => $dataHoje,
+                'horarios' => $horarios,
+                'total' => count($horarios)
+            ]
+        ], JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+    }
+
+    /**
+     * GET /mobile/horarios/proximos
+     * Retorna os próximos horários disponíveis (próximos 7 dias)
+     * 
+     * @param Request $request Requisição HTTP
+     * @param Response $response Resposta HTTP
+     * @return Response JSON com horários dos próximos dias
+     */
+    public function horariosProximos(Request $request, Response $response): Response
+    {
+        $tenantId = $request->getAttribute('tenantId');
+        $queryParams = $request->getQueryParams();
+        
+        // Dias a retornar (padrão: 7)
+        $dias = isset($queryParams['dias']) ? (int) $queryParams['dias'] : 7;
+        
+        $dataInicio = date('Y-m-d');
+        $dataFim = date('Y-m-d', strtotime("+{$dias} days"));
+        
+        $sql = "SELECT d.id, d.data, DAYNAME(d.data) as dia_semana, d.ativo,
+                h.id as horario_id, h.hora, h.horario_inicio, h.horario_fim, 
+                h.limite_alunos, h.tolerancia_minutos, h.ativo as horario_ativo,
+                COUNT(DISTINCT t.id) as total_turmas,
+                COUNT(DISTINCT c.id) as total_confirmados,
+                GROUP_CONCAT(DISTINCT m.nome SEPARATOR ', ') as modalidades,
+                GROUP_CONCAT(DISTINCT p.nome SEPARATOR ', ') as professores
+                FROM dias d
+                LEFT JOIN horarios h ON d.id = h.dia_id AND h.ativo = 1
+                LEFT JOIN turmas t ON h.id = t.horario_id AND t.ativo = 1
+                LEFT JOIN modalidades m ON t.modalidade_id = m.id
+                LEFT JOIN professores p ON t.professor_id = p.id
+                LEFT JOIN checkins c ON t.id = c.turma_id AND c.data_checkin = DATE(CURRENT_TIMESTAMP)
+                WHERE d.tenant_id = :tenant_id 
+                AND d.data BETWEEN :data_inicio AND :data_fim
+                AND d.ativo = 1
+                AND h.id IS NOT NULL
+                GROUP BY h.id
+                ORDER BY d.data ASC, h.horario_inicio ASC";
+        
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            'tenant_id' => $tenantId,
+            'data_inicio' => $dataInicio,
+            'data_fim' => $dataFim
+        ]);
+        
+        $horarios = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        
+        // Agrupar por data
+        $horariosPorData = [];
+        foreach ($horarios as $horario) {
+            $data = $horario['data'];
+            if (!isset($horariosPorData[$data])) {
+                $horariosPorData[$data] = [
+                    'data' => $data,
+                    'dia_semana' => $horario['dia_semana'],
+                    'ativo' => (bool) $horario['ativo'],
+                    'horarios' => []
+                ];
+            }
+            $horariosPorData[$data]['horarios'][] = $horario;
+        }
+        
+        $response->getBody()->write(json_encode([
+            'success' => true,
+            'data' => [
+                'periodo' => [
+                    'inicio' => $dataInicio,
+                    'fim' => $dataFim,
+                    'dias' => $dias
+                ],
+                'dias' => array_values($horariosPorData),
+                'total_dias' => count($horariosPorData),
+                'total_horarios' => count($horarios)
+            ]
+        ], JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+    }
+
+    /**
+     * GET /mobile/horarios/{diaId}
+     * Retorna todos os horários de um dia específico com detalhes das turmas
+     * 
+     * @param Request $request Requisição HTTP
+     * @param Response $response Resposta HTTP
+     * @return Response JSON com horários do dia
+     */
+    public function horariosPorDia(Request $request, Response $response, array $args): Response
+    {
+        $tenantId = $request->getAttribute('tenantId');
+        $diaId = (int) $args['diaId'];
+        
+        // Buscar informações do dia
+        $sqlDia = "SELECT id, data, ativo FROM dias WHERE id = :id AND tenant_id = :tenant_id";
+        $stmtDia = $this->db->prepare($sqlDia);
+        $stmtDia->execute(['id' => $diaId, 'tenant_id' => $tenantId]);
+        $dia = $stmtDia->fetch(\PDO::FETCH_ASSOC);
+        
+        if (!$dia) {
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Dia não encontrado'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+        
+        // Buscar horários e turmas deste dia
+        $sql = "SELECT h.id as horario_id, h.hora, h.horario_inicio, h.horario_fim, 
+                h.limite_alunos, h.tolerancia_minutos, h.ativo as horario_ativo,
+                t.id as turma_id, t.nome as turma_nome, t.ativo as turma_ativa,
+                m.id as modalidade_id, m.nome as modalidade_nome, m.cor,
+                p.id as professor_id, p.nome as professor_nome,
+                COUNT(DISTINCT c.id) as confirmados,
+                (h.limite_alunos - COUNT(DISTINCT c.id)) as vagas
+                FROM horarios h
+                LEFT JOIN turmas t ON h.id = t.horario_id
+                LEFT JOIN modalidades m ON t.modalidade_id = m.id
+                LEFT JOIN professores p ON t.professor_id = p.id
+                LEFT JOIN checkins c ON t.id = c.turma_id
+                WHERE h.dia_id = :dia_id AND h.ativo = 1
+                GROUP BY h.id, t.id
+                ORDER BY h.horario_inicio ASC, t.nome ASC";
+        
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute(['dia_id' => $diaId]);
+        $dados = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        
+        // Agrupar por horário
+        $horarios = [];
+        foreach ($dados as $item) {
+            $horarioId = $item['horario_id'];
+            
+            if (!isset($horarios[$horarioId])) {
+                $horarios[$horarioId] = [
+                    'horario_id' => $horarioId,
+                    'hora' => $item['hora'],
+                    'horario_inicio' => $item['horario_inicio'],
+                    'horario_fim' => $item['horario_fim'],
+                    'limite_alunos' => $item['limite_alunos'],
+                    'tolerancia_minutos' => $item['tolerancia_minutos'],
+                    'ativo' => (bool) $item['horario_ativo'],
+                    'turmas' => []
+                ];
+            }
+            
+            // Adicionar turma ao horário
+            if ($item['turma_id']) {
+                $horarios[$horarioId]['turmas'][] = [
+                    'turma_id' => $item['turma_id'],
+                    'turma_nome' => $item['turma_nome'],
+                    'ativa' => (bool) $item['turma_ativa'],
+                    'modalidade' => [
+                        'id' => $item['modalidade_id'],
+                        'nome' => $item['modalidade_nome'],
+                        'cor' => $item['cor']
+                    ],
+                    'professor' => [
+                        'id' => $item['professor_id'],
+                        'nome' => $item['professor_nome']
+                    ],
+                    'confirmados' => (int) $item['confirmados'],
+                    'vagas' => (int) $item['vagas']
+                ];
+            }
+        }
+        
+        $response->getBody()->write(json_encode([
+            'success' => true,
+            'data' => [
+                'dia' => $dia,
+                'horarios' => array_values($horarios),
+                'total_horarios' => count($horarios)
+            ]
+        ], JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+    }
+
+    /**
+     * GET /mobile/planos
+     * Retorna os planos que o usuário logado tem matrículas ativas/pendentes no tenant selecionado
+     * Busca através da tabela de matrículas, não da tabela de planos
+     * Útil para ver quais planos o usuário já contratou
+     * 
+     * @param Request $request Requisição HTTP
+     * @param Response $response Resposta HTTP
+     * @return Response JSON com planos contratados pelo usuário
+     */
+    public function planosDoUsuario(Request $request, Response $response): Response
+    {
+        try {
+            $tenantId = $request->getAttribute('tenantId');
+            $userId = $request->getAttribute('userId');
+            $queryParams = $request->getQueryParams();
+            
+            if (!$tenantId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Nenhum tenant selecionado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Por padrão retorna apenas matrículas ATIVAS
+            // Se passar ?todas=true, retorna todas as matrículas (inclusive canceladas/pendentes/finalizadas)
+            $retornarTodas = isset($queryParams['todas']) && $queryParams['todas'] === 'true';
+            
+            // Buscar matrículas do usuário com detalhes do plano
+            $sql = "SELECT mat.id, mat.usuario_id, mat.plano_id, mat.data_matricula, mat.data_inicio, mat.data_vencimento, mat.valor, mat.status, mat.motivo, p.id as plano_id_ref, p.tenant_id, p.modalidade_id, p.nome as plano_nome, p.descricao, p.valor as plano_valor, p.duracao_dias, p.checkins_semanais, p.ativo, p.created_at, p.updated_at FROM matriculas mat INNER JOIN planos p ON mat.plano_id = p.id WHERE mat.usuario_id = :user_id AND mat.tenant_id = :tenant_id";
+            
+            // Filtra por status ativo da matrícula
+            if (!$retornarTodas) {
+                $sql .= " AND mat.status = 'ativa'";
+            }
+            
+            $sql .= " ORDER BY mat.data_vencimento DESC";
+            
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([
+                'user_id' => $userId,
+                'tenant_id' => $tenantId
+            ]);
+            $matriculas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            
+            // Buscar modalidades para enriquecer a resposta
+            $modalidadesSql = "SELECT id, nome, cor FROM modalidades";
+            $modalidadesStmt = $this->db->prepare($modalidadesSql);
+            $modalidadesStmt->execute();
+            $modalidades = [];
+            foreach ($modalidadesStmt->fetchAll(\PDO::FETCH_ASSOC) as $mod) {
+                $modalidades[(int)$mod['id']] = $mod;
+            }
+
+            // Processar matrículas para retornar com tipos corretos
+            $matriculasFormatadas = array_map(function($mat) use ($modalidades) {
+                $modalidadeId = (int) $mat['modalidade_id'];
+                $modalidade = isset($modalidades[$modalidadeId]) ? $modalidades[$modalidadeId] : null;
+                
+                return [
+                    'matricula_id' => (int) $mat['id'],
+                    'plano' => [
+                        'id' => (int) $mat['plano_id_ref'],
+                        'tenant_id' => (int) $mat['tenant_id'],
+                        'nome' => $mat['plano_nome'],
+                        'descricao' => $mat['descricao'],
+                        'valor' => (float) $mat['plano_valor'],
+                        'duracao_dias' => (int) $mat['duracao_dias'],
+                        'checkins_semanais' => (int) $mat['checkins_semanais'],
+                        'ativo' => (bool) $mat['ativo'],
+                        'modalidade' => $modalidade ? [
+                            'id' => (int) $modalidade['id'],
+                            'nome' => $modalidade['nome'],
+                            'cor' => $modalidade['cor']
+                        ] : [
+                            'id' => null,
+                            'nome' => '',
+                            'cor' => ''
+                        ]
+                    ],
+                    'datas' => [
+                        'matricula' => $mat['data_matricula'],
+                        'inicio' => $mat['data_inicio'],
+                        'vencimento' => $mat['data_vencimento']
+                    ],
+                    'valor' => (float) $mat['valor'],
+                    'status' => $mat['status'],
+                    'motivo' => $mat['motivo'],
+                    'created_at' => $mat['created_at'],
+                    'updated_at' => $mat['updated_at']
+                ];
+            }, $matriculas);
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'data' => [
+                    'matriculas' => $matriculasFormatadas,
+                    'total' => count($matriculasFormatadas),
+                    'apenas_ativos' => !$retornarTodas
+                ]
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+        } catch (\Exception $e) {
+            error_log("Erro em planosDoUsuario: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao carregar matrículas',
+                'message' => $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * POST /mobile/checkin
+     * Registra check-in do usuário em uma turma selecionada
+     * 
+     * @param Request $request Requisição HTTP
+     * @param Response $response Resposta HTTP
+     * @return Response JSON com confirmação
+     */
+    public function registrarCheckin(Request $request, Response $response): Response
+    {
+        try {
+            $userId = $request->getAttribute('userId');
+            $tenantId = $request->getAttribute('tenantId');
+            $body = $request->getParsedBody() ?? [];
+            
+            if (!$tenantId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Nenhum tenant selecionado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Validar turma_id
+            $turmaId = $body['turma_id'] ?? null;
+            
+            if (!$turmaId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'turma_id é obrigatório'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            $turmaId = (int) $turmaId;
+
+            // Validar se turma existe e pertence ao tenant
+            $turma = $this->turmaModel->findById($turmaId, $tenantId);
+            
+            if (!$turma) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Turma não encontrada'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            // Verificar se usuário já fez check-in nesta turma
+            if ($this->checkinModel->usuarioTemCheckinNaTurma($userId, $turmaId)) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Você já realizou check-in nesta turma'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Verificar se usuário já fez check-in em outra turma da MESMA MODALIDADE no MESMO DIA
+            $sqlVerificaModalidade = "
+                SELECT COUNT(DISTINCT c.id) as total_checkins
+                FROM checkins c
+                INNER JOIN turmas t ON c.turma_id = t.id
+                INNER JOIN dias d ON t.dia_id = d.id
+                WHERE c.usuario_id = :usuario_id
+                  AND t.modalidade_id = :modalidade_id
+                  AND d.id = :dia_id
+                  AND c.turma_id != :turma_id
+            ";
+            $stmtModalidade = $this->db->prepare($sqlVerificaModalidade);
+            $stmtModalidade->execute([
+                'usuario_id' => $userId,
+                'modalidade_id' => $turma['modalidade_id'],
+                'dia_id' => $turma['dia_id'],
+                'turma_id' => $turmaId
+            ]);
+            $checkModalidade = $stmtModalidade->fetch(\PDO::FETCH_ASSOC);
+            
+            if ($checkModalidade && (int) $checkModalidade['total_checkins'] > 0) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Você já fez check-in em outra turma dessa modalidade no mesmo dia'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Verificar vagas disponíveis
+            $alunosCount = $this->turmaModel->contarAlunos($turmaId);
+            if ($alunosCount >= (int) $turma['limite_alunos']) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Sem vagas disponíveis nesta turma'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Registrar check-in
+            $checkinId = $this->checkinModel->createEmTurma($userId, $turmaId);
+
+            if (!$checkinId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Erro ao registrar check-in (Talvez já exista um check-in registrado)'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            }
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'message' => 'Check-in realizado com sucesso!',
+                'data' => [
+                    'checkin_id' => $checkinId,
+                    'turma' => [
+                        'id' => (int) $turma['id'],
+                        'nome' => $turma['nome'],
+                        'professor' => $turma['professor_nome'],
+                        'modalidade' => $turma['modalidade_nome']
+                    ],
+                    'data_checkin' => date('Y-m-d H:i:s'),
+                    'vagas_atualizadas' => (int) $turma['limite_alunos'] - ($alunosCount + 1)
+                ]
+            ]));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(201);
+
+        } catch (\Exception $e) {
+            error_log("Erro em registrarCheckin: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao registrar check-in',
+                'message' => $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * GET /mobile/horarios-disponiveis
+     * Retorna todos os horários/turmas disponíveis para uma data específica
+     * Útil para o app listar as aulas disponíveis para inscrição ou check-in
+     * 
+     * @param Request $request Requisição HTTP
+     * @param Response $response Resposta HTTP
+     * @return Response JSON com horários disponíveis
+     */
+    public function horariosDisponiveis(Request $request, Response $response): Response
+    {
+        try {
+            $tenantId = $request->getAttribute('tenantId');
+            $queryParams = $request->getQueryParams();
+            
+            if (!$tenantId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Nenhum tenant selecionado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Data pode ser passada como query param, senão usa hoje
+            $data = $queryParams['data'] ?? date('Y-m-d');
+            
+            // Validar formato da data
+            if (!\DateTime::createFromFormat('Y-m-d', $data)) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Formato de data inválido. Use YYYY-MM-DD'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Buscar informações do dia
+            $sqlDia = "SELECT id, data, ativo FROM dias WHERE data = :data";
+            $stmtDia = $this->db->prepare($sqlDia);
+            $stmtDia->execute(['data' => $data]);
+            $dia = $stmtDia->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$dia) {
+                $response->getBody()->write(json_encode([
+                    'success' => true,
+                    'data' => [
+                        'dia' => null,
+                        'turmas' => [],
+                        'total' => 0,
+                        'mensagem' => 'Nenhuma turma disponível para esta data'
+                    ]
+                ]));
+                return $response->withHeader('Content-Type', 'application/json');
+            }
+
+            // Buscar turmas disponíveis para este dia (apenas ativas)
+            // Nota: O COUNT de check-ins será feito em query separada para evitar problemas com GROUP BY
+            $sqlTurmas = "SELECT t.id, t.tenant_id, t.professor_id, t.modalidade_id, t.dia_id, 
+                          t.horario_inicio, t.horario_fim, t.nome, t.limite_alunos, t.ativo, 
+                          t.created_at, t.updated_at,
+                          p.nome as professor_nome,
+                          m.nome as modalidade_nome, m.icone as modalidade_icone, m.cor as modalidade_cor,
+                          d.data as dia_data
+                   FROM turmas t
+                   INNER JOIN dias d ON t.dia_id = d.id
+                   INNER JOIN professores p ON t.professor_id = p.id
+                   INNER JOIN modalidades m ON t.modalidade_id = m.id
+                   WHERE d.id = :dia_id AND t.ativo = 1
+                   ORDER BY t.horario_inicio ASC";
+            
+            $stmtTurmas = $this->db->prepare($sqlTurmas);
+            $stmtTurmas->execute(['dia_id' => $dia['id']]);
+            $turmas = $stmtTurmas->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Para cada turma, contar o número de check-ins (alunos que já marcaram presença)
+            $sqlCheckinsCount = "SELECT COUNT(DISTINCT usuario_id) as total_checkins FROM checkins WHERE turma_id = :turma_id";
+            $stmtCheckinsCount = $this->db->prepare($sqlCheckinsCount);
+
+            // Formatar turmas
+            $turmasFormatadas = array_map(function($turma) use ($stmtCheckinsCount) {
+                // Contar check-ins para esta turma
+                $stmtCheckinsCount->execute(['turma_id' => $turma['id']]);
+                $checkinsData = $stmtCheckinsCount->fetch(\PDO::FETCH_ASSOC);
+                $checkinsCount = (int) ($checkinsData['total_checkins'] ?? 0);
+                
+                return [
+                    'id' => (int) $turma['id'],
+                    'nome' => $turma['nome'],
+                    'professor' => [
+                        'id' => (int) $turma['professor_id'],
+                        'nome' => $turma['professor_nome']
+                    ],
+                    'modalidade' => [
+                        'id' => (int) $turma['modalidade_id'],
+                        'nome' => $turma['modalidade_nome'],
+                        'icone' => $turma['modalidade_icone'],
+                        'cor' => $turma['modalidade_cor']
+                    ],
+                    'horario' => [
+                        'inicio' => $turma['horario_inicio'],
+                        'fim' => $turma['horario_fim']
+                    ],
+                    'limite_alunos' => (int) $turma['limite_alunos'],
+                    'alunos_inscritos' => $checkinsCount,
+                    'vagas_disponiveis' => (int) $turma['limite_alunos'] - $checkinsCount,
+                    'ativo' => (bool) $turma['ativo'],
+                    'created_at' => $turma['created_at'],
+                    'updated_at' => $turma['updated_at']
+                ];
+            }, $turmas);
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'data' => [
+                    'dia' => [
+                        'id' => (int) $dia['id'],
+                        'data' => $dia['data'],
+                        'ativo' => (bool) $dia['ativo']
+                    ],
+                    'turmas' => $turmasFormatadas,
+                    'total' => count($turmasFormatadas)
+                ]
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+        } catch (\Exception $e) {
+            error_log("Erro em horariosDisponiveis: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao carregar horários disponíveis',
+                'message' => $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * GET /mobile/matriculas/{matriculaId}
+     * Retorna os detalhes completos de uma matrícula com todos os pagamentos
+     * Permite o usuário acompanhar status, vencimentos e histórico de pagamentos
+     * 
+     * @param Request $request Requisição HTTP
+     * @param Response $response Resposta HTTP
+     * @param array $args Argumentos da rota (matriculaId)
+     * @return Response JSON com detalhes da matrícula e pagamentos
+     */
+    public function detalheMatricula(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $userId = $request->getAttribute('userId');
+            $tenantId = $request->getAttribute('tenantId');
+            $matriculaId = $args['matriculaId'] ?? null;
+            
+            if (!$matriculaId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'ID da matrícula não informado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Buscar detalhes da matrícula com plano
+            $sqlMatricula = "SELECT m.id, m.usuario_id, m.plano_id, m.data_matricula, m.data_inicio, m.data_vencimento, m.valor, m.status, m.motivo, u.nome as usuario_nome FROM matriculas m INNER JOIN usuarios u ON m.usuario_id = u.id WHERE m.id = :matricula_id AND m.usuario_id = :user_id AND m.tenant_id = :tenant_id";
+            
+            $stmtMatricula = $this->db->prepare($sqlMatricula);
+            $stmtMatricula->execute([
+                'matricula_id' => $matriculaId,
+                'user_id' => $userId,
+                'tenant_id' => $tenantId
+            ]);
+            $matricula = $stmtMatricula->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$matricula) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Matrícula não encontrada'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            // Buscar dados do plano
+            $sqlPlano = "SELECT p.id, p.nome, p.valor, p.duracao_dias, p.checkins_semanais FROM planos p WHERE p.id = :plano_id";
+            $stmtPlano = $this->db->prepare($sqlPlano);
+            $stmtPlano->execute(['plano_id' => $matricula['plano_id']]);
+            $plano = $stmtPlano->fetch(\PDO::FETCH_ASSOC);
+
+            // Buscar pagamentos da matrícula
+            $sqlPagamentos = "SELECT pp.id, pp.valor, pp.data_vencimento, pp.data_pagamento, sp.nome as status_pagamento_nome, fp.nome as forma_pagamento_nome FROM pagamentos_plano pp INNER JOIN status_pagamento sp ON pp.status_pagamento_id = sp.id LEFT JOIN formas_pagamento fp ON pp.forma_pagamento_id = fp.id WHERE pp.matricula_id = :matricula_id ORDER BY pp.data_vencimento DESC";
+            
+            $stmtPagamentos = $this->db->prepare($sqlPagamentos);
+            $stmtPagamentos->execute(['matricula_id' => $matriculaId]);
+            $pagamentos = $stmtPagamentos->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Formatar resposta
+            $matriculaFormatada = [
+                'id' => (int) $matricula['id'],
+                'usuario' => $matricula['usuario_nome'],
+                'plano' => $plano ? [
+                    'nome' => $plano['nome'],
+                    'valor' => (float) $plano['valor'],
+                    'duracao_dias' => (int) $plano['duracao_dias'],
+                    'checkins_semanais' => (int) $plano['checkins_semanais']
+                ] : null,
+                'datas' => [
+                    'matricula' => $matricula['data_matricula'],
+                    'inicio' => $matricula['data_inicio'],
+                    'vencimento' => $matricula['data_vencimento']
+                ],
+                'valor_total' => (float) $matricula['valor'],
+                'status' => $matricula['status'],
+                'motivo' => $matricula['motivo']
+            ];
+
+            $pagamentosFormatados = array_map(function($p) {
+                return [
+                    'id' => (int) $p['id'],
+                    'valor' => (float) $p['valor'],
+                    'data_vencimento' => $p['data_vencimento'],
+                    'data_pagamento' => $p['data_pagamento'],
+                    'status' => $p['status_pagamento_nome'],
+                    'forma_pagamento' => $p['forma_pagamento_nome'],
+                    'pendente' => $p['data_pagamento'] === null
+                ];
+            }, $pagamentos);
+
+            $totalPago = array_sum(array_map(function($p) {
+                return $p['data_pagamento'] ? (float) $p['valor'] : 0;
+            }, $pagamentos));
+
+            $totalPendente = array_sum(array_map(function($p) {
+                return !$p['data_pagamento'] ? (float) $p['valor'] : 0;
+            }, $pagamentos));
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'data' => [
+                    'matricula' => $matriculaFormatada,
+                    'pagamentos' => $pagamentosFormatados,
+                    'resumo_financeiro' => [
+                        'total_previsto' => (float) $matricula['valor'],
+                        'total_pago' => (float) $totalPago,
+                        'total_pendente' => (float) $totalPendente,
+                        'quantidade_pagamentos' => count($pagamentos),
+                        'pagamentos_realizados' => count(array_filter($pagamentos, function($p) {
+                            return $p['data_pagamento'] !== null;
+                        }))
+                    ]
+                ]
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+        } catch (\Exception $e) {
+            error_log("Erro em detalheMatricula: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao carregar detalhes da matrícula',
+                'message' => $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * Visualizar participantes que fizeram check-in em uma turma
+     * 
+     * Retorna lista de usuários que realizaram check-in na turma especificada,
+     * com informações de hora do check-in e dados do usuário.
+     * 
+     * @param Request $request Requisição HTTP
+     * @param Response $response Resposta HTTP
+     * @param array $args Argumentos da rota (turma_id)
+     * @return Response JSON com lista de participantes
+     * 
+     * @api GET /mobile/turma/{turma_id}/participantes
+     */
+    public function participantesTurma(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $userId = $request->getAttribute('userId');
+            $tenantId = $request->getAttribute('tenantId');
+            $turmaId = $args['turmaId'] ?? null;
+
+            if (!$tenantId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Nenhum tenant selecionado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            if (!$turmaId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'turma_id é obrigatório'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            $turmaId = (int) $turmaId;
+
+            // Validar se turma existe e pertence ao tenant
+            $turma = $this->turmaModel->findById($turmaId, $tenantId);
+            
+            if (!$turma) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Turma não encontrada'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            // Buscar participantes que fizeram check-in
+            $sqlParticipantes = "
+                SELECT 
+                    c.id as checkin_id,
+                    c.usuario_id,
+                    u.nome as usuario_nome,
+                    u.email,
+                    c.created_at as data_checkin,
+                    TIME_FORMAT(c.created_at, '%H:%i:%s') as hora_checkin,
+                    DATE_FORMAT(c.created_at, '%d/%m/%Y') as data_checkin_formatada
+                FROM checkins c
+                INNER JOIN usuarios u ON c.usuario_id = u.id
+                WHERE c.turma_id = :turma_id
+                ORDER BY c.created_at DESC
+            ";
+
+            $stmtParticipantes = $this->db->prepare($sqlParticipantes);
+            $stmtParticipantes->execute(['turma_id' => $turmaId]);
+            $participantes = $stmtParticipantes->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Formatar participantes
+            $participantesFormatados = array_map(function($p) {
+                return [
+                    'checkin_id' => (int) $p['checkin_id'],
+                    'usuario_id' => (int) $p['usuario_id'],
+                    'nome' => $p['usuario_nome'],
+                    'email' => $p['email'],
+                    'data_checkin' => $p['data_checkin'],
+                    'hora_checkin' => $p['hora_checkin'],
+                    'data_checkin_formatada' => $p['data_checkin_formatada']
+                ];
+            }, $participantes);
+
+            // Contar vagas
+            $vagasOcupadas = count($participantes);
+            $vagasDisponiveis = (int) $turma['limite_alunos'] - $vagasOcupadas;
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'data' => [
+                    'turma' => [
+                        'id' => (int) $turma['id'],
+                        'nome' => $turma['nome'],
+                        'professor' => $turma['professor_nome'],
+                        'modalidade' => $turma['modalidade_nome'],
+                        'limite_alunos' => (int) $turma['limite_alunos'],
+                        'vagas_ocupadas' => $vagasOcupadas,
+                        'vagas_disponiveis' => $vagasDisponiveis
+                    ],
+                    'participantes' => $participantesFormatados,
+                    'resumo' => [
+                        'total_participantes' => count($participantes),
+                        'percentual_ocupacao' => count($participantes) > 0 
+                            ? round((count($participantes) / (int) $turma['limite_alunos']) * 100, 1)
+                            : 0
+                    ]
+                ]
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(200);
+
+        } catch (\Exception $e) {
+            error_log("Erro em participantesTurma: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao carregar participantes da turma',
+                'message' => $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * Retorna detalhes completos de uma turma ao clicar no card
+     * Inclui: dados da turma, alunos matriculados, check-ins, limite
+     * 
+     * @param Request $request Requisição HTTP
+     * @param Response $response Resposta HTTP
+     * @param array $args Argumentos da rota {turmaId}
+     * @return Response JSON com detalhes completos
+     * 
+     * @api GET /mobile/turma/{turmaId}/detalhes
+     */
+    public function detalheTurma(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $tenantId = $request->getAttribute('tenantId');
+            $turmaId = $args['turmaId'] ?? null;
+
+            // Validar tenantId
+            if (!$tenantId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Nenhum tenant selecionado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Validar turmaId
+            if (!$turmaId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'turma_id é obrigatório'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            $turmaId = (int) $turmaId;
+
+            // Buscar turma com detalhes
+            $sqlTurma = "
+                SELECT 
+                    t.id,
+                    t.nome,
+                    t.limite_alunos,
+                    t.horario_inicio,
+                    t.horario_fim,
+                    t.ativo,
+                    p.nome as professor_nome,
+                    p.email as professor_email,
+                    m.nome as modalidade_nome,
+                    d.data as dia_data
+                FROM turmas t
+                LEFT JOIN usuarios p ON t.professor_id = p.id
+                LEFT JOIN modalidades m ON t.modalidade_id = m.id
+                LEFT JOIN dias d ON t.dia_id = d.id
+                WHERE t.id = :turma_id AND t.tenant_id = :tenant_id
+            ";
+
+            $stmtTurma = $this->db->prepare($sqlTurma);
+            $stmtTurma->execute([
+                'turma_id' => $turmaId,
+                'tenant_id' => $tenantId
+            ]);
+            $turma = $stmtTurma->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$turma) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Turma não encontrada'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            // Contar alunos matriculados separadamente
+            $stmtAlunosCount = $this->db->prepare("
+                SELECT COUNT(DISTINCT usuario_id) as total FROM checkins 
+                WHERE turma_id = :turma_id
+            ");
+            $stmtAlunosCount->execute(['turma_id' => $turmaId]);
+            $alunosCount = $stmtAlunosCount->fetch(\PDO::FETCH_ASSOC);
+            $turma['total_alunos_matriculados'] = (int) ($alunosCount['total'] ?? 0);
+
+            // Contar check-ins separadamente
+            $stmtCheckinsCount = $this->db->prepare("
+                SELECT COUNT(*) as total FROM checkins 
+                WHERE turma_id = :turma_id
+            ");
+            $stmtCheckinsCount->execute(['turma_id' => $turmaId]);
+            $checkinsCount = $stmtCheckinsCount->fetch(\PDO::FETCH_ASSOC);
+            $turma['total_checkins'] = (int) ($checkinsCount['total'] ?? 0);
+
+            // Buscar alunos que fizeram check-in (como base de alunos da turma)
+            $sqlAlunos = "
+                SELECT 
+                    u.id,
+                    u.nome,
+                    u.email,
+                    COUNT(c.id) as checkins_do_aluno
+                FROM usuarios u
+                INNER JOIN checkins c ON u.id = c.usuario_id
+                WHERE c.turma_id = :turma_id
+                GROUP BY u.id, u.nome, u.email
+                ORDER BY u.nome ASC
+            ";
+
+            $stmtAlunos = $this->db->prepare($sqlAlunos);
+            $stmtAlunos->execute(['turma_id' => $turmaId]);
+            $alunos = $stmtAlunos->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Formatar alunos
+            $alunosFormatados = array_map(function($a) {
+                return [
+                    'usuario_id' => (int) $a['id'],
+                    'nome' => $a['nome'],
+                    'email' => $a['email'],
+                    'checkins' => (int) $a['checkins_do_aluno']
+                ];
+            }, $alunos);
+
+            // Buscar check-ins recentes
+            $sqlCheckins = "
+                SELECT 
+                    c.id as checkin_id,
+                    c.usuario_id,
+                    u.nome as usuario_nome,
+                    c.created_at as data_checkin,
+                    TIME_FORMAT(c.created_at, '%H:%i:%s') as hora_checkin,
+                    DATE_FORMAT(c.created_at, '%d/%m/%Y') as data_checkin_formatada
+                FROM checkins c
+                INNER JOIN usuarios u ON c.usuario_id = u.id
+                WHERE c.turma_id = :turma_id
+                ORDER BY c.created_at DESC
+                LIMIT 10
+            ";
+
+            $stmtCheckins = $this->db->prepare($sqlCheckins);
+            $stmtCheckins->execute(['turma_id' => $turmaId]);
+            $checkins = $stmtCheckins->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Formatar check-ins
+            $checkinsFormatados = array_map(function($c) {
+                return [
+                    'checkin_id' => (int) $c['checkin_id'],
+                    'usuario_id' => (int) $c['usuario_id'],
+                    'usuario_nome' => $c['usuario_nome'],
+                    'data_checkin' => $c['data_checkin'],
+                    'hora_checkin' => $c['hora_checkin'],
+                    'data_checkin_formatada' => $c['data_checkin_formatada']
+                ];
+            }, $checkins);
+
+            // Calcular vagas
+            $totalAlunos = (int) $turma['total_alunos_matriculados'];
+            $limite = (int) $turma['limite_alunos'];
+            $vagasDisponiveis = max(0, $limite - $totalAlunos);
+            $percentualOcupacao = $limite > 0 ? round(($totalAlunos / $limite) * 100, 1) : 0;
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'data' => [
+                    'turma' => [
+                        'id' => (int) $turma['id'],
+                        'nome' => $turma['nome'],
+                        'professor' => $turma['professor_nome'],
+                        'professor_email' => $turma['professor_email'],
+                        'modalidade' => $turma['modalidade_nome'],
+                        'horario_inicio' => $turma['horario_inicio'],
+                        'horario_fim' => $turma['horario_fim'],
+                        'dia_aula' => $turma['dia_data'],
+                        'ativo' => (bool) $turma['ativo'],
+                        'limite_alunos' => $limite,
+                        'total_alunos_matriculados' => $totalAlunos,
+                        'vagas_disponiveis' => $vagasDisponiveis,
+                        'percentual_ocupacao' => $percentualOcupacao,
+                        'total_checkins' => (int) $turma['total_checkins']
+                    ],
+                    'alunos' => [
+                        'total' => count($alunosFormatados),
+                        'lista' => $alunosFormatados
+                    ],
+                    'checkins_recentes' => [
+                        'total' => count($checkinsFormatados),
+                        'lista' => $checkinsFormatados
+                    ],
+                    'resumo' => [
+                        'alunos_ativos' => count($alunosFormatados),
+                        'presentes_hoje' => count(array_filter($checkins, function($c) {
+                            return date('Y-m-d', strtotime($c['data_checkin'])) === date('Y-m-d');
+                        })),
+                        'percentual_presenca' => count($alunosFormatados) > 0 
+                            ? round((count(array_filter($checkins, function($c) {
+                                return date('Y-m-d', strtotime($c['data_checkin'])) === date('Y-m-d');
+                            })) / count($alunosFormatados)) * 100, 1)
+                            : 0
+                    ]
+                ]
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(200);
+
+        } catch (\Exception $e) {
+            error_log("Erro em detalheTurma: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao carregar detalhes da turma',
+                'message' => $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
     }
 }

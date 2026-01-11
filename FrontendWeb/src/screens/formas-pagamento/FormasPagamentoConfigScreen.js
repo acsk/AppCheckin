@@ -184,15 +184,12 @@ export default function FormasPagamentoConfigScreen() {
             />
             <Text style={styles.cardName}>{item.forma_pagamento_nome}</Text>
           </View>
-          <View style={[
-            styles.statusBadge,
-            item.ativo ? styles.statusAtivo : styles.statusInativo
-          ]}>
-            <Text style={styles.statusText}>
-              {item.ativo ? 'Ativo' : 'Inativo'}
-            </Text>
+            <View className={`self-start rounded-full px-2.5 py-1 ${item.ativo ? 'bg-emerald-100' : 'bg-rose-100'}`}>
+              <Text className={`text-[11px] font-bold ${item.ativo ? 'text-emerald-700' : 'text-rose-700'}`}>
+                {item.ativo ? 'Ativo' : 'Inativo'}
+              </Text>
+            </View>
           </View>
-        </View>
         <View style={styles.cardActions}>
           <TouchableOpacity
             style={styles.cardActionButton}
@@ -273,11 +270,8 @@ export default function FormasPagamentoConfigScreen() {
             </View>
 
             <View style={[styles.tableCell, styles.colStatus]}>
-              <View style={[
-                styles.statusBadge,
-                item.ativo ? styles.statusAtivo : styles.statusInativo
-              ]}>
-                <Text style={styles.statusText}>
+              <View className={`self-start rounded-full px-2.5 py-1 ${item.ativo ? 'bg-emerald-100' : 'bg-rose-100'}`}>
+                <Text className={`text-[11px] font-bold ${item.ativo ? 'text-emerald-700' : 'text-rose-700'}`}>
                   {item.ativo ? 'Ativo' : 'Inativo'}
                 </Text>
               </View>
@@ -300,15 +294,15 @@ export default function FormasPagamentoConfigScreen() {
             </Text>
 
             <View style={[styles.tableCell, styles.colAcoes]}>
-              <View style={styles.actions}>
+              <View className="flex-row justify-end gap-2">
                 <TouchableOpacity
-                  style={styles.actionButton}
+                  className="h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
                   onPress={() => abrirModal(item)}
                 >
-                  <Feather name="edit-2" size={16} color="#3b82f6" />
+                  <Feather name="edit-2" size={16} color="#f97316" />
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={styles.actionButton}
+                  className="h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
                   onPress={() => toggleAtivo(item)}
                 >
                   <Feather 
@@ -815,30 +809,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   
-  statusBadge: {
-    paddingVertical: 4,
-    paddingHorizontal: 12,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-  },
-  statusAtivo: {
-    backgroundColor: '#dcfce7',
-  },
-  statusInativo: {
-    backgroundColor: '#fee2e2',
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  
-  actions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  actionButton: {
-    padding: 8,
-  },
   
   emptyState: {
     padding: 60,

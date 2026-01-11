@@ -111,4 +111,46 @@ class Checkin
         
         return $stmt->fetchColumn() > 0;
     }
+
+    /**
+     * Criar check-in em turma (novo método para mobile app)
+     */
+    public function createEmTurma(int $usuarioId, int $turmaId): ?int
+    {
+        try {
+            $stmt = $this->db->prepare(
+                "INSERT INTO checkins (usuario_id, turma_id, registrado_por_admin) 
+                 VALUES (:usuario_id, :turma_id, 0)"
+            );
+            
+            $stmt->execute([
+                'usuario_id' => $usuarioId,
+                'turma_id' => $turmaId
+            ]);
+
+            return (int) $this->db->lastInsertId();
+        } catch (\PDOException $e) {
+            // Viola constraint de unique (usuário já tem check-in nessa turma)
+            if ($e->getCode() == 23000) {
+                return null;
+            }
+            throw $e;
+        }
+    }
+
+    /**
+     * Verificar se usuário já tem check-in em uma turma específica
+     */
+    public function usuarioTemCheckinNaTurma(int $usuarioId, int $turmaId): bool
+    {
+        $stmt = $this->db->prepare(
+            "SELECT COUNT(*) FROM checkins WHERE usuario_id = :usuario_id AND turma_id = :turma_id"
+        );
+        $stmt->execute([
+            'usuario_id' => $usuarioId,
+            'turma_id' => $turmaId
+        ]);
+        
+        return (int) $stmt->fetchColumn() > 0;
+    }
 }

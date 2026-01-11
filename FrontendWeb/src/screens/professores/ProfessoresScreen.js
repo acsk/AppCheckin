@@ -105,19 +105,19 @@ export default function ProfessoresScreen() {
   };
 
   const renderTable = () => (
-    <View style={styles.tableContainer}>
+    <View className="mx-4 my-3 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       {/* Header da Tabela */}
-      <View style={styles.tableHeader}>
-        <Text style={[styles.tableHeaderText, styles.colNome]}>NOME</Text>
-        <Text style={[styles.tableHeaderText, styles.colEmail]}>EMAIL</Text>
-        <Text style={[styles.tableHeaderText, styles.colCPF]}>CPF</Text>
-        <Text style={[styles.tableHeaderText, styles.colTelefone]}>TELEFONE</Text>
-        <Text style={[styles.tableHeaderText, styles.colStatus]}>STATUS</Text>
-        <Text style={[styles.tableHeaderText, styles.colAcoes]}>AÇÕES</Text>
+      <View className="flex-row items-center border-b border-slate-200 bg-slate-50 px-4 py-3">
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colNome}>NOME</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colEmail}>EMAIL</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colCPF}>CPF</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colTelefone}>TELEFONE</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colStatus}>STATUS</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-right" style={styles.colAcoes}>AÇÕES</Text>
       </View>
 
       {/* Linhas da Tabela */}
-      <ScrollView style={styles.tableBody} showsVerticalScrollIndicator={true}>
+      <ScrollView className="max-h-[520px]" showsVerticalScrollIndicator={true}>
         {professoresFiltrados.length === 0 ? (
           <View style={styles.emptyContainer}>
             <Feather name="users" size={40} color="#d1d5db" />
@@ -125,33 +125,30 @@ export default function ProfessoresScreen() {
           </View>
         ) : (
           professoresFiltrados.map((professor) => (
-            <View key={professor.id} style={styles.tableRow}>
-              <Text style={[styles.tableCell, styles.colNome]} numberOfLines={2}>{professor.nome}</Text>
-              <Text style={[styles.tableCell, styles.colEmail]} numberOfLines={1}>{professor.email || '-'}</Text>
-              <Text style={[styles.tableCell, styles.colCPF]} numberOfLines={1}>{professor.cpf || '-'}</Text>
-              <Text style={[styles.tableCell, styles.colTelefone]} numberOfLines={1}>{professor.telefone || '-'}</Text>
+            <View key={professor.id} className="flex-row items-center border-b border-slate-100 px-4 py-3">
+              <Text className="text-[13px] font-semibold text-slate-800" style={styles.colNome} numberOfLines={2}>{professor.nome}</Text>
+              <Text className="text-[13px] text-slate-600" style={styles.colEmail} numberOfLines={1}>{professor.email || '-'}</Text>
+              <Text className="text-[13px] text-slate-600" style={styles.colCPF} numberOfLines={1}>{professor.cpf || '-'}</Text>
+              <Text className="text-[13px] text-slate-600" style={styles.colTelefone} numberOfLines={1}>{professor.telefone || '-'}</Text>
               
-              <View style={[styles.tableCell, styles.colStatus]}>
-                <View style={[
-                  styles.statusBadge,
-                  professor.ativo ? styles.statusAtivo : styles.statusInativo
-                ]}>
-                  <Text style={styles.statusText}>
+              <View style={styles.colStatus}>
+                <View className={`self-start rounded-full px-2.5 py-1 ${professor.ativo ? 'bg-emerald-100' : 'bg-rose-100'}`}>
+                  <Text className={`text-[11px] font-bold ${professor.ativo ? 'text-emerald-700' : 'text-rose-700'}`}>
                     {professor.ativo ? 'Ativo' : 'Inativo'}
                   </Text>
                 </View>
               </View>
 
-              <View style={[styles.tableCell, styles.colAcoes]}>
-                <View style={styles.actions}>
+              <View style={styles.colAcoes}>
+                <View className="flex-row justify-end gap-2">
                   <TouchableOpacity
-                    style={styles.actionButton}
+                    className="h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
                     onPress={() => router.push(`/professores/${professor.id}`)}
                   >
-                    <Feather name="edit-2" size={16} color="#3b82f6" />
+                    <Feather name="edit-2" size={16} color="#f97316" />
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={styles.actionButton}
+                    className="h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
                     onPress={() => handleToggleStatus(professor)}
                   >
                     <Feather 
@@ -161,7 +158,7 @@ export default function ProfessoresScreen() {
                     />
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={styles.actionButton}
+                    className="h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
                     onPress={() => handleDeletar(professor.id, professor.nome)}
                   >
                     <Feather name="trash-2" size={16} color="#ef4444" />

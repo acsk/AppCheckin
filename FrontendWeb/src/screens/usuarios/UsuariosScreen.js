@@ -197,69 +197,64 @@ export default function UsuariosScreen() {
   };
 
   const renderTable = () => (
-    <View style={styles.tableContainer}>
+    <View className="mx-4 my-3 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       {/* Header da Tabela */}
-      <View style={styles.tableHeader}>
-        <Text style={[styles.tableHeaderText, styles.colNome]}>NOME</Text>
-        <Text style={[styles.tableHeaderText, styles.colEmail]}>EMAIL</Text>
-        <Text style={[styles.tableHeaderText, styles.colTipo]}>TIPO</Text>
+      <View className="flex-row items-center border-b border-slate-200 bg-slate-50 px-4 py-3">
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colNome}>NOME</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colEmail}>EMAIL</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colTipo}>TIPO</Text>
         {isSuperAdmin && (
-          <Text style={[styles.tableHeaderText, styles.colTenant]}>ACADEMIA</Text>
+          <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colTenant}>ACADEMIA</Text>
         )}
-             <Text style={[styles.tableHeaderText, styles.colStatus]}>STATUS</Text>
-        <Text style={[styles.tableHeaderText, styles.colAcoes]}>AÇÕES</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colStatus}>STATUS</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-right" style={styles.colAcoes}>AÇÕES</Text>
       </View>
 
       {/* Linhas da Tabela */}
-      <ScrollView style={styles.tableBody} showsVerticalScrollIndicator={true}>
+      <ScrollView className="max-h-[520px]" showsVerticalScrollIndicator={true}>
         {usuariosFiltrados.map((usuario) => {
           const roleBadge = getRoleBadge(usuario.role_id);
           
           return (
-          <View key={usuario.id} style={styles.tableRow}>
-            <Text style={[styles.tableCell, styles.colNome]} numberOfLines={2}>{usuario.nome}</Text>
-            <Text style={[styles.tableCell, styles.colEmail]} numberOfLines={1}>{usuario.email}</Text>
-            <View style={[styles.tableCell, styles.colTipo]}>
+          <View key={usuario.id} className="flex-row items-center border-b border-slate-100 px-4 py-3">
+            <Text className="text-[13px] font-semibold text-slate-800" style={styles.colNome} numberOfLines={2}>{usuario.nome}</Text>
+            <Text className="text-[13px] text-slate-600" style={styles.colEmail} numberOfLines={1}>{usuario.email}</Text>
+            <View style={styles.colTipo}>
               <View style={[styles.roleBadge, { backgroundColor: roleBadge.color }]}>
                 <Feather name={roleBadge.icon} size={10} color="#fff" />
                 <Text style={styles.roleText}>{roleBadge.label}</Text>
               </View>
             </View>
             {isSuperAdmin && (
-              <Text style={[styles.tableCell, styles.colTenant]} numberOfLines={1}>
+              <Text className="text-[13px] text-slate-600" style={styles.colTenant} numberOfLines={1}>
                 {usuario.tenant?.nome || '-'}
               </Text>
             )}
    
-            <View style={[styles.tableCell, styles.colStatus]}>
-              <View style={[
-                styles.statusBadge,
-                (usuario.status === 'ativo' || usuario.ativo) ? styles.statusAtivo : styles.statusInativo
-              ]}>
-                <Text style={styles.statusText}>
+            <View style={styles.colStatus}>
+              <View className={`self-start rounded-full px-2.5 py-1 ${(usuario.status === 'ativo' || usuario.ativo) ? 'bg-emerald-100' : 'bg-rose-100'}`}>
+                <Text className={`text-[11px] font-bold ${(usuario.status === 'ativo' || usuario.ativo) ? 'text-emerald-700' : 'text-rose-700'}`}>
                   {(usuario.status === 'ativo' || usuario.ativo) ? 'Ativo' : 'Inativo'}
                 </Text>
               </View>
             </View>
-            <View style={[styles.tableCell, styles.colAcoes]}>
-              <View style={styles.actions}>
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={() => router.push(`/usuarios/${usuario.id}`)}
-                >
-                  <Feather name="edit-2" size={16} color="#3b82f6" />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={() => handleToggleStatus(usuario)}
-                >
-                  <Feather 
-                    name={(usuario.status === 'ativo' || usuario.ativo) ? "toggle-right" : "toggle-left"} 
-                    size={18} 
-                    color={(usuario.status === 'ativo' || usuario.ativo) ? '#16a34a' : '#ef4444'} 
-                  />
-                </TouchableOpacity>
-              </View>
+            <View className="flex-row justify-end gap-2" style={styles.colAcoes}>
+              <TouchableOpacity
+                className="h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
+                onPress={() => router.push(`/usuarios/${usuario.id}`)}
+              >
+                <Feather name="edit-2" size={16} color="#f97316" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                className="h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
+                onPress={() => handleToggleStatus(usuario)}
+              >
+                <Feather 
+                  name={(usuario.status === 'ativo' || usuario.ativo) ? "toggle-right" : "toggle-left"} 
+                  size={18} 
+                  color={(usuario.status === 'ativo' || usuario.ativo) ? '#16a34a' : '#ef4444'} 
+                />
+              </TouchableOpacity>
             </View>
           </View>
           );

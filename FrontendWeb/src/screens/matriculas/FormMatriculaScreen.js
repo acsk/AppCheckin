@@ -8,7 +8,6 @@ import {
   Alert,
   Platform,
   ToastAndroid,
-  StyleSheet,
   TextInput,
   Modal,
 } from 'react-native';
@@ -235,9 +234,9 @@ export default function FormMatriculaScreen() {
   if (loading) {
     return (
       <LayoutBase title="Nova Matrícula" subtitle="Carregando...">
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#3b82f6" />
-          <Text style={styles.loadingText}>Carregando...</Text>
+        <View className="flex-1 items-center justify-center px-10">
+          <ActivityIndicator size="large" color="#f97316" />
+          <Text className="mt-4 text-sm text-slate-500">Carregando...</Text>
         </View>
       </LayoutBase>
     );
@@ -245,31 +244,29 @@ export default function FormMatriculaScreen() {
 
   return (
     <LayoutBase title="Nova Matrícula" subtitle="Matricular aluno em um plano">
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-        <View style={styles.content}>
-          <View style={styles.header}>
+      <ScrollView className="flex-1 bg-slate-50" showsVerticalScrollIndicator={false}>
+        <View className="px-6 py-6">
+          <View className="mb-4">
             <Pressable
               onPress={() => router.back()}
-              style={({ pressed }) => [styles.btnBack, pressed && { opacity: 0.7 }]}
+              className="flex-row items-center gap-2"
+              style={({ pressed }) => [pressed && { opacity: 0.7 }]}
             >
-              <Feather name="arrow-left" size={20} color="#6b7280" />
-              <Text style={styles.btnBackText}>Voltar</Text>
+              <Feather name="arrow-left" size={18} color="#64748b" />
+              <Text className="text-sm font-medium text-slate-500">Voltar</Text>
             </Pressable>
           </View>
 
-          <View style={styles.formCard}>
-            <Text style={styles.formTitle}>Nova Matrícula</Text>
-            <Text style={styles.formSubtitle}>Preencha os dados abaixo</Text>
+          <View className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+            <Text className="text-lg font-semibold text-slate-800">Nova Matrícula</Text>
+            <Text className="mb-6 text-sm text-slate-500">Preencha os dados abaixo</Text>
 
             {/* Campo de Busca de Aluno */}
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Aluno *</Text>
-              <View style={styles.searchContainer}>
+            <View className="mb-5">
+              <Text className="mb-2 text-sm font-semibold text-slate-700">Aluno *</Text>
+              <View className="relative">
                 <TextInput
-                  style={[
-                    styles.searchInput,
-                    errors.usuario_id && styles.inputError
-                  ]}
+                  className={`h-12 rounded-lg border px-4 text-sm text-slate-800 ${errors.usuario_id ? 'border-rose-400' : 'border-slate-200'}`}
                   placeholder="Buscar aluno por nome ou email..."
                   value={searchText}
                   onChangeText={(text) => {
@@ -288,7 +285,7 @@ export default function FormMatriculaScreen() {
                 {formData.usuario_id && (
                   <Pressable
                     onPress={limparAluno}
-                    style={styles.searchClearBtn}
+                    className="absolute right-3 top-0 h-12 w-8 items-center justify-center"
                   >
                     <Feather name="x" size={18} color="#6b7280" />
                   </Pressable>
@@ -296,35 +293,33 @@ export default function FormMatriculaScreen() {
               </View>
 
               {errors.usuario_id && (
-                <View style={styles.errorContainer}>
+                <View className="mt-2 flex-row items-center gap-2">
                   <Feather name="alert-circle" size={14} color="#ef4444" />
-                  <Text style={styles.errorText}>{errors.usuario_id}</Text>
+                  <Text className="text-xs font-medium text-rose-500">{errors.usuario_id}</Text>
                 </View>
               )}
 
               {/* Lista de alunos filtrados */}
               {showAlunosList && !formData.usuario_id && (
-                <View style={styles.alunosList}>
+                <View className="mt-2 max-h-60 overflow-hidden rounded-lg border border-slate-200 bg-white">
                   {alunosFiltrados.length > 0 ? (
                     alunosFiltrados.map((aluno) => (
                       <Pressable
                         key={aluno.id}
-                        style={({ pressed }) => [
-                          styles.alunoItem,
-                          pressed && { backgroundColor: '#f3f4f6' }
-                        ]}
+                        className="flex-row items-center justify-between border-b border-slate-100 px-4 py-3"
+                        style={({ pressed }) => [pressed && { backgroundColor: '#f8fafc' }]}
                         onPress={() => selecionarAluno(aluno.id)}
                       >
-                        <View style={styles.alunoInfo}>
-                          <Text style={styles.alunoNome}>{aluno.nome}</Text>
-                          <Text style={styles.alunoEmail}>{aluno.email}</Text>
+                        <View className="flex-1">
+                          <Text className="text-sm font-semibold text-slate-800">{aluno.nome}</Text>
+                          <Text className="text-xs text-slate-500">{aluno.email}</Text>
                         </View>
                         <Feather name="check-circle" size={20} color="#10b981" />
                       </Pressable>
                     ))
                   ) : (
-                    <View style={styles.emptyList}>
-                      <Text style={styles.emptyText}>Nenhum aluno encontrado</Text>
+                    <View className="items-center px-4 py-6">
+                      <Text className="text-xs text-slate-400">Nenhum aluno encontrado</Text>
                     </View>
                   )}
                 </View>
@@ -332,17 +327,17 @@ export default function FormMatriculaScreen() {
 
               {/* Aluno selecionado */}
               {formData.usuario_id && !showAlunosList && (
-                <View style={styles.selectedAluno}>
+                <View className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
                   {alunos
                     .filter((a) => a.id === parseInt(formData.usuario_id))
                     .map((aluno) => (
-                      <View key={aluno.id} style={styles.selectedAlunoContent}>
-                        <View style={styles.selectedAlunoIcon}>
-                          <Feather name="user" size={20} color="#3b82f6" />
+                      <View key={aluno.id} className="flex-row items-center gap-3">
+                        <View className="h-10 w-10 items-center justify-center rounded-full bg-orange-100">
+                          <Feather name="user" size={18} color="#f97316" />
                         </View>
-                        <View style={styles.selectedAlunoInfo}>
-                          <Text style={styles.selectedAlunoNome}>{aluno.nome}</Text>
-                          <Text style={styles.selectedAlunoEmail}>{aluno.email}</Text>
+                        <View className="flex-1">
+                          <Text className="text-sm font-semibold text-slate-800">{aluno.nome}</Text>
+                          <Text className="text-xs text-slate-500">{aluno.email}</Text>
                         </View>
                       </View>
                     ))}
@@ -350,24 +345,21 @@ export default function FormMatriculaScreen() {
               )}
 
               {alunos.length === 0 && (
-                <Text style={styles.helperText}>Nenhum aluno disponível</Text>
+                <Text className="mt-2 text-xs text-slate-400">Nenhum aluno disponível</Text>
               )}
             </View>
 
             {/* Modalidade */}
-            <View style={styles.formGroup}>
-              <Text style={styles.label}>Modalidade *</Text>
-              <View style={[
-                styles.pickerContainer,
-                errors.modalidade_id && styles.inputError
-              ]}>
+            <View className="mb-5">
+              <Text className="mb-2 text-sm font-semibold text-slate-700">Modalidade *</Text>
+              <View className={`overflow-hidden rounded-lg border ${errors.modalidade_id ? 'border-rose-400' : 'border-slate-200'} bg-white`}>
                 <Picker
                   selectedValue={formData.modalidade_id}
                   onValueChange={(value) => {
                     setFormData((prev) => ({ ...prev, modalidade_id: value, plano_id: '' }));
                     setErrors((prev) => ({ ...prev, modalidade_id: undefined }));
                   }}
-                  style={styles.picker}
+                  style={{ height: 50 }}
                 >
                   <Picker.Item label="Selecione uma modalidade" value="" />
                   {modalidades
@@ -382,22 +374,20 @@ export default function FormMatriculaScreen() {
                 </Picker>
               </View>
               {errors.modalidade_id && (
-                <View style={styles.errorContainer}>
+                <View className="mt-2 flex-row items-center gap-2">
                   <Feather name="alert-circle" size={14} color="#ef4444" />
-                  <Text style={styles.errorText}>{errors.modalidade_id}</Text>
+                  <Text className="text-xs font-medium text-rose-500">{errors.modalidade_id}</Text>
                 </View>
               )}
               {formData.modalidade_id && (
-                <View style={styles.modalidadeBadge}>
+                <View className="mt-3">
                   {modalidades
                     .filter((m) => m.id === parseInt(formData.modalidade_id))
                     .map((m) => (
-                      <View key={m.id} style={styles.modalidadeInfo}>
+                      <View key={m.id} className="flex-row items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
                         <View
-                          style={[
-                            styles.modalidadeIcon,
-                            { backgroundColor: m.cor || '#3b82f6' },
-                          ]}
+                          className="h-10 w-10 items-center justify-center rounded-full"
+                          style={{ backgroundColor: m.cor || '#f97316' }}
                         >
                           <MaterialCommunityIcons
                             name={m.icone || 'dumbbell'}
@@ -405,7 +395,7 @@ export default function FormMatriculaScreen() {
                             color="#fff"
                           />
                         </View>
-                        <Text style={styles.modalidadeNome}>{m.nome}</Text>
+                        <Text className="text-sm font-semibold text-slate-800">{m.nome}</Text>
                       </View>
                     ))}
                 </View>
@@ -414,30 +404,23 @@ export default function FormMatriculaScreen() {
 
             {/* Planos - Botões Card */}
             {formData.modalidade_id && (
-              <View style={styles.formGroup}>
-                <Text style={styles.label}>Plano *</Text>
+              <View className="mb-5">
+                <Text className="mb-2 text-sm font-semibold text-slate-700">Plano *</Text>
                 {planosDisponiveis.length > 0 ? (
                   <>
-                    <View style={styles.planosGrid}>
+                    <View className="flex-row flex-wrap gap-3">
                       {planosDisponiveis.map((plano) => (
                         <Pressable
                           key={plano.id}
-                          style={({ pressed }) => [
-                            styles.planoCard,
-                            formData.plano_id === plano.id.toString() && styles.planoCardSelected,
-                            errors.plano_id && !formData.plano_id && styles.planoCardError,
-                            pressed && { opacity: 0.8 }
-                          ]}
+                          className={`min-w-[200px] flex-1 rounded-xl border-2 p-4 ${formData.plano_id === plano.id.toString() ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200 bg-white'} ${errors.plano_id && !formData.plano_id ? 'border-rose-300' : ''}`}
+                          style={({ pressed }) => [pressed && { opacity: 0.8 }]}
                           onPress={() => {
                             setFormData((prev) => ({ ...prev, plano_id: plano.id.toString() }));
                             setErrors((prev) => ({ ...prev, plano_id: undefined }));
                           }}
                         >
-                          <View style={styles.planoCardHeader}>
-                            <Text style={[
-                              styles.planoCardNome,
-                              formData.plano_id === plano.id.toString() && styles.planoCardNomeSelected
-                            ]}>
+                          <View className="flex-row items-center justify-between">
+                            <Text className={`text-[15px] font-semibold ${formData.plano_id === plano.id.toString() ? 'text-emerald-700' : 'text-slate-800'}`}>
                               {plano.nome}
                             </Text>
                             {formData.plano_id === plano.id.toString() && (
@@ -445,23 +428,20 @@ export default function FormMatriculaScreen() {
                             )}
                           </View>
                           
-                          <Text style={[
-                            styles.planoCardValor,
-                            formData.plano_id === plano.id.toString() && styles.planoCardValorSelected
-                          ]}>
+                          <Text className={`mt-2 text-xl font-bold ${formData.plano_id === plano.id.toString() ? 'text-emerald-600' : 'text-slate-700'}`}>
                             {formatCurrency(plano.valor)}
                           </Text>
 
-                          <View style={styles.planoCardDetails}>
-                            <View style={styles.planoCardDetail}>
-                              <Feather name="calendar" size={14} color="#6b7280" />
-                              <Text style={styles.planoCardDetailText}>
+                          <View className="mt-3 gap-2">
+                            <View className="flex-row items-center gap-2">
+                              <Feather name="calendar" size={14} color="#94a3b8" />
+                              <Text className="text-xs text-slate-500">
                                 {plano.checkins_semanais}x por semana
                               </Text>
                             </View>
-                            <View style={styles.planoCardDetail}>
-                              <Feather name="clock" size={14} color="#6b7280" />
-                              <Text style={styles.planoCardDetailText}>
+                            <View className="flex-row items-center gap-2">
+                              <Feather name="clock" size={14} color="#94a3b8" />
+                              <Text className="text-xs text-slate-500">
                                 {plano.duracao_dias} dias
                               </Text>
                             </View>
@@ -470,16 +450,16 @@ export default function FormMatriculaScreen() {
                       ))}
                     </View>
                     {errors.plano_id && (
-                      <View style={styles.errorContainer}>
+                      <View className="mt-2 flex-row items-center gap-2">
                         <Feather name="alert-circle" size={14} color="#ef4444" />
-                        <Text style={styles.errorText}>{errors.plano_id}</Text>
+                        <Text className="text-xs font-medium text-rose-500">{errors.plano_id}</Text>
                       </View>
                     )}
                   </>
                 ) : (
-                  <View style={styles.emptyPlanos}>
+                  <View className="items-center rounded-lg border border-slate-200 bg-slate-50 px-6 py-8">
                     <Feather name="alert-circle" size={32} color="#d1d5db" />
-                    <Text style={styles.emptyPlanosText}>
+                    <Text className="mt-3 text-sm text-slate-400">
                       Nenhum plano disponível para esta modalidade
                     </Text>
                   </View>
@@ -488,33 +468,28 @@ export default function FormMatriculaScreen() {
             )}
 
             {!formData.modalidade_id && (
-              <View style={styles.infoBox}>
-                <Feather name="info" size={16} color="#3b82f6" />
-                <Text style={styles.infoText}>
+              <View className="mt-2 flex-row items-center gap-3 rounded-lg border border-orange-100 bg-orange-50 px-4 py-3">
+                <Feather name="info" size={16} color="#f97316" />
+                <Text className="flex-1 text-sm text-orange-700">
                   Selecione uma modalidade para ver os planos disponíveis
                 </Text>
               </View>
             )}
 
             {/* Ações */}
-            <View style={styles.actions}>
+            <View className="mt-8 flex-row gap-3">
               <Pressable
                 onPress={() => router.back()}
-                style={({ pressed }) => [
-                  styles.btnSecondary,
-                  pressed && { opacity: 0.7 },
-                ]}
+                className="flex-1 items-center justify-center rounded-lg border border-slate-200 bg-white py-3"
+                style={({ pressed }) => [pressed && { opacity: 0.7 }]}
                 disabled={saving}
               >
-                <Text style={styles.btnSecondaryText}>Cancelar</Text>
+                <Text className="text-sm font-semibold text-slate-600">Cancelar</Text>
               </Pressable>
               <Pressable
                 onPress={handleSubmit}
-                style={({ pressed }) => [
-                  styles.btnPrimary,
-                  pressed && { opacity: 0.8 },
-                  saving && { opacity: 0.6 },
-                ]}
+                className="flex-1 flex-row items-center justify-center gap-2 rounded-lg bg-orange-500 py-3"
+                style={({ pressed }) => [pressed && { opacity: 0.8 }, saving && { opacity: 0.6 }]}
                 disabled={saving}
               >
                 {saving ? (
@@ -522,7 +497,7 @@ export default function FormMatriculaScreen() {
                 ) : (
                   <>
                     <Feather name="check" size={20} color="#fff" />
-                    <Text style={styles.btnPrimaryText}>Matricular</Text>
+                    <Text className="text-sm font-semibold text-white">Matricular</Text>
                   </>
                 )}
               </Pressable>
@@ -538,86 +513,81 @@ export default function FormMatriculaScreen() {
         animationType="fade"
         onRequestClose={() => setShowConfirmModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <View style={styles.modalIconContainer}>
-                <Feather name="check-circle" size={32} color="#3b82f6" />
+        <View className="flex-1 items-center justify-center bg-black/40 px-4">
+          <View className="w-full max-w-lg rounded-2xl bg-white shadow-xl">
+            <View className="items-center border-b border-slate-200 px-6 py-5">
+              <View className="mb-3 h-14 w-14 items-center justify-center rounded-full bg-orange-100">
+                <Feather name="check-circle" size={28} color="#f97316" />
               </View>
-              <Text style={styles.modalTitle}>Confirmar Matrícula</Text>
-              <Text style={styles.modalSubtitle}>
+              <Text className="text-lg font-semibold text-slate-800">Confirmar Matrícula</Text>
+              <Text className="text-sm text-slate-500">
                 Revise os dados antes de confirmar
               </Text>
             </View>
 
-            <View style={styles.modalBody}>
+            <View className="max-h-[420px] px-6 py-5">
               {/* Dados do Aluno */}
-              <View style={styles.modalSection}>
-                <Text style={styles.modalSectionLabel}>Aluno</Text>
+              <View className="mb-5">
+                <Text className="mb-2 text-[11px] font-semibold uppercase text-slate-500">Aluno</Text>
                 {alunos
                   .filter((a) => a.id === parseInt(formData.usuario_id))
                   .map((aluno) => (
-                    <View key={aluno.id} style={styles.modalInfoCard}>
-                      <View style={styles.modalInfoIcon}>
-                        <Feather name="user" size={20} color="#3b82f6" />
+                    <View key={aluno.id} className="flex-row items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <View className="h-10 w-10 items-center justify-center rounded-full bg-orange-100">
+                        <Feather name="user" size={18} color="#f97316" />
                       </View>
-                      <View style={styles.modalInfoText}>
-                        <Text style={styles.modalInfoName}>{aluno.nome}</Text>
-                        <Text style={styles.modalInfoDetail}>{aluno.email}</Text>
+                      <View className="flex-1">
+                        <Text className="text-sm font-semibold text-slate-800">{aluno.nome}</Text>
+                        <Text className="text-xs text-slate-500">{aluno.email}</Text>
                       </View>
                     </View>
                   ))}
               </View>
 
               {/* Dados da Modalidade */}
-              <View style={styles.modalSection}>
-                <Text style={styles.modalSectionLabel}>Modalidade</Text>
+              <View className="mb-5">
+                <Text className="mb-2 text-[11px] font-semibold uppercase text-slate-500">Modalidade</Text>
                 {modalidades
                   .filter((m) => m.id === parseInt(formData.modalidade_id))
                   .map((modalidade) => (
-                    <View key={modalidade.id} style={styles.modalInfoCard}>
-                      <View
-                        style={[
-                          styles.modalInfoIcon,
-                          { backgroundColor: modalidade.cor || '#3b82f6' },
-                        ]}
-                      >
+                    <View key={modalidade.id} className="flex-row items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <View className="h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: modalidade.cor || '#f97316' }}>
                         <MaterialCommunityIcons
                           name={modalidade.icone || 'dumbbell'}
                           size={20}
                           color="#fff"
                         />
                       </View>
-                      <View style={styles.modalInfoText}>
-                        <Text style={styles.modalInfoName}>{modalidade.nome}</Text>
+                      <View className="flex-1">
+                        <Text className="text-sm font-semibold text-slate-800">{modalidade.nome}</Text>
                       </View>
                     </View>
                   ))}
               </View>
 
               {/* Dados do Plano */}
-              <View style={styles.modalSection}>
-                <Text style={styles.modalSectionLabel}>Plano Selecionado</Text>
+              <View>
+                <Text className="mb-2 text-[11px] font-semibold uppercase text-slate-500">Plano Selecionado</Text>
                 {planosDisponiveis
                   .filter((p) => p.id === parseInt(formData.plano_id))
                   .map((plano) => (
-                    <View key={plano.id} style={styles.modalPlanoCard}>
-                      <View style={styles.modalPlanoHeader}>
-                        <Text style={styles.modalPlanoNome}>{plano.nome}</Text>
-                        <Text style={styles.modalPlanoValor}>
+                    <View key={plano.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                      <View className="flex-row items-center justify-between">
+                        <Text className="text-sm font-semibold text-slate-800">{plano.nome}</Text>
+                        <Text className="text-base font-bold text-slate-700">
                           {formatCurrency(plano.valor)}
                         </Text>
                       </View>
-                      <View style={styles.modalPlanoDetails}>
-                        <View style={styles.modalPlanoDetail}>
-                          <Feather name="calendar" size={14} color="#6b7280" />
-                          <Text style={styles.modalPlanoDetailText}>
+                      <View className="mt-3 gap-2">
+                        <View className="flex-row items-center gap-2">
+                          <Feather name="calendar" size={14} color="#94a3b8" />
+                          <Text className="text-xs text-slate-500">
                             {plano.checkins_semanais}x por semana
                           </Text>
                         </View>
-                        <View style={styles.modalPlanoDetail}>
-                          <Feather name="clock" size={14} color="#6b7280" />
-                          <Text style={styles.modalPlanoDetailText}>
+                        <View className="flex-row items-center gap-2">
+                          <Feather name="clock" size={14} color="#94a3b8" />
+                          <Text className="text-xs text-slate-500">
                             {plano.duracao_dias} dias de duração
                           </Text>
                         </View>
@@ -627,24 +597,19 @@ export default function FormMatriculaScreen() {
               </View>
             </View>
 
-            <View style={styles.modalActions}>
+            <View className="flex-row gap-3 border-t border-slate-200 px-6 py-4">
               <Pressable
                 onPress={() => setShowConfirmModal(false)}
-                style={({ pressed }) => [
-                  styles.modalBtnSecondary,
-                  pressed && { opacity: 0.7 },
-                ]}
+                className="flex-1 items-center justify-center rounded-lg border border-slate-200 bg-white py-3"
+                style={({ pressed }) => [pressed && { opacity: 0.7 }]}
                 disabled={saving}
               >
-                <Text style={styles.modalBtnSecondaryText}>Cancelar</Text>
+                <Text className="text-sm font-semibold text-slate-600">Cancelar</Text>
               </Pressable>
               <Pressable
                 onPress={confirmarMatricula}
-                style={({ pressed }) => [
-                  styles.modalBtnPrimary,
-                  pressed && { opacity: 0.8 },
-                  saving && { opacity: 0.6 },
-                ]}
+                className="flex-1 flex-row items-center justify-center gap-2 rounded-lg bg-orange-500 py-3"
+                style={({ pressed }) => [pressed && { opacity: 0.8 }, saving && { opacity: 0.6 }]}
                 disabled={saving}
               >
                 {saving ? (
@@ -652,7 +617,7 @@ export default function FormMatriculaScreen() {
                 ) : (
                   <>
                     <Feather name="check" size={18} color="#fff" />
-                    <Text style={styles.modalBtnPrimaryText}>Confirmar Matrícula</Text>
+                    <Text className="text-sm font-semibold text-white">Confirmar Matrícula</Text>
                   </>
                 )}
               </Pressable>
@@ -663,525 +628,3 @@ export default function FormMatriculaScreen() {
     </LayoutBase>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f9fafb',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 40,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  content: {
-    padding: 24,
-  },
-  header: {
-    marginBottom: 24,
-  },
-  btnBack: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  btnBackText: {
-    fontSize: 14,
-    color: '#6b7280',
-    fontWeight: '500',
-  },
-  formCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  formTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  formSubtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 24,
-  },
-  formGroup: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  pickerContainer: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    overflow: 'hidden',
-    backgroundColor: '#fff',
-  },
-  picker: {
-    height: 50,
-  },
-  helperText: {
-    fontSize: 12,
-    color: '#6b7280',
-    marginTop: 6,
-    fontStyle: 'italic',
-  },
-  modalidadeBadge: {
-    marginTop: 12,
-  },
-  modalidadeInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 12,
-    backgroundColor: '#f9fafb',
-    borderRadius: 8,
-  },
-  modalidadeIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalidadeNome: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  planoDetalhes: {
-    marginTop: 24,
-    padding: 16,
-    backgroundColor: '#eff6ff',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-  },
-  planoDetalhesTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1e40af',
-    marginBottom: 12,
-  },
-  detalhesGrid: {
-    gap: 12,
-  },
-  detalheItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  detalheLabel: {
-    fontSize: 14,
-    color: '#1e40af',
-    fontWeight: '500',
-  },
-  detalheValue: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1e3a8a',
-  },
-  searchContainer: {
-    position: 'relative',
-  },
-  searchInput: {
-    height: 50,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingRight: 40,
-    fontSize: 14,
-    color: '#111827',
-    backgroundColor: '#fff',
-  },
-  searchClearBtn: {
-    position: 'absolute',
-    right: 12,
-    top: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 30,
-    height: 50,
-  },
-  alunosList: {
-    marginTop: 8,
-    maxHeight: 240,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    backgroundColor: '#fff',
-    overflow: 'hidden',
-  },
-  alunoItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
-  },
-  alunoInfo: {
-    flex: 1,
-  },
-  alunoNome: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 2,
-  },
-  alunoEmail: {
-    fontSize: 12,
-    color: '#6b7280',
-  },
-  emptyList: {
-    padding: 24,
-    alignItems: 'center',
-  },
-  emptyText: {
-    fontSize: 14,
-    color: '#9ca3af',
-    fontStyle: 'italic',
-  },
-  selectedAluno: {
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: '#eff6ff',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-  },
-  selectedAlunoContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  selectedAlunoIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#dbeafe',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  selectedAlunoInfo: {
-    flex: 1,
-  },
-  selectedAlunoNome: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1e40af',
-    marginBottom: 2,
-  },
-  selectedAlunoEmail: {
-    fontSize: 12,
-    color: '#3b82f6',
-  },
-  planosGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  planoCard: {
-    flex: 1,
-    minWidth: 200,
-    padding: 16,
-    backgroundColor: '#fff',
-    borderWidth: 2,
-    borderColor: '#e5e7eb',
-    borderRadius: 12,
-  },
-  planoCardSelected: {
-    borderColor: '#10b981',
-    backgroundColor: '#f0fdf4',
-  },
-  planoCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  planoCardNome: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  planoCardNomeSelected: {
-    color: '#059669',
-  },
-  planoCardValor: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#3b82f6',
-    marginBottom: 12,
-  },
-  planoCardValorSelected: {
-    color: '#10b981',
-  },
-  planoCardDetails: {
-    gap: 8,
-  },
-  planoCardDetail: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  planoCardDetailText: {
-    fontSize: 13,
-    color: '#6b7280',
-  },
-  emptyPlanos: {
-    padding: 40,
-    alignItems: 'center',
-    backgroundColor: '#f9fafb',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  emptyPlanosText: {
-    fontSize: 14,
-    color: '#9ca3af',
-    marginTop: 12,
-    textAlign: 'center',
-  },
-  infoBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 16,
-    backgroundColor: '#eff6ff',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-    marginTop: 12,
-  },
-  infoText: {
-    flex: 1,
-    fontSize: 14,
-    color: '#1e40af',
-  },
-  actions: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 32,
-  },
-  btnSecondary: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    backgroundColor: '#fff',
-    alignItems: 'center',
-  },
-  btnSecondaryText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  btnPrimary: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#3b82f6',
-    paddingVertical: 14,
-    borderRadius: 8,
-  },
-  btnPrimaryText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  // Error Styles
-  inputError: {
-    borderColor: '#ef4444',
-    borderWidth: 2,
-  },
-  errorContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 6,
-  },
-  errorText: {
-    fontSize: 12,
-    color: '#ef4444',
-    fontWeight: '500',
-  },
-  planoCardError: {
-    borderColor: '#fca5a5',
-  },
-  // Modal Styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    width: '100%',
-    maxWidth: 500,
-    maxHeight: '90%',
-  },
-  modalHeader: {
-    padding: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-    alignItems: 'center',
-  },
-  modalIconContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#dbeafe',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  modalSubtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    textAlign: 'center',
-  },
-  modalBody: {
-    padding: 24,
-    maxHeight: 400,
-  },
-  modalSection: {
-    marginBottom: 20,
-  },
-  modalSectionLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#6b7280',
-    textTransform: 'uppercase',
-    marginBottom: 8,
-  },
-  modalInfoCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    padding: 12,
-    backgroundColor: '#f9fafb',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  modalInfoIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#dbeafe',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalInfoText: {
-    flex: 1,
-  },
-  modalInfoName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#111827',
-    marginBottom: 2,
-  },
-  modalInfoDetail: {
-    fontSize: 13,
-    color: '#6b7280',
-  },
-  modalPlanoCard: {
-    padding: 16,
-    backgroundColor: '#eff6ff',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-  },
-  modalPlanoHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  modalPlanoNome: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1e40af',
-  },
-  modalPlanoValor: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#3b82f6',
-  },
-  modalPlanoDetails: {
-    gap: 8,
-  },
-  modalPlanoDetail: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  modalPlanoDetailText: {
-    fontSize: 13,
-    color: '#374151',
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: 12,
-    padding: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-  },
-  modalBtnSecondary: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    backgroundColor: '#fff',
-    alignItems: 'center',
-  },
-  modalBtnSecondaryText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  modalBtnPrimary: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#3b82f6',
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  modalBtnPrimaryText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-});

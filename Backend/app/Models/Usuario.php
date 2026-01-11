@@ -105,7 +105,8 @@ class Usuario
         $joinType = $tenantId ? "INNER JOIN" : "LEFT JOIN";
         
         $sql = "
-            SELECT u.id, ut.tenant_id, ut.status, u.nome, u.email, u.role_id, 
+            SELECT u.id, COALESCE(ut.tenant_id, :fallback_tenant) as tenant_id, ut.status, 
+                   u.nome, u.email, u.role_id, 
                    u.foto_base64, u.telefone,
                    u.cpf, u.cep, u.logradouro, u.numero, u.complemento, u.bairro, u.cidade, u.estado,
                    u.created_at, u.updated_at,
@@ -116,7 +117,7 @@ class Usuario
         ";
         
         $conditions = ["u.id = :id"];
-        $params = ['id' => $id];
+        $params = ['id' => $id, 'fallback_tenant' => $tenantId ?? 0];
         
         if ($tenantId) {
             $conditions[] = "ut.tenant_id = :tenant_id";
@@ -127,7 +128,7 @@ class Usuario
         
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
-        $user = $stmt->fetch();
+        $user = $stmt->fetch(\PDO::FETCH_ASSOC);
         
         if (!$user) {
             return null;

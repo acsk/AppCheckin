@@ -155,48 +155,47 @@ export default function AcademiasScreen() {
   );
 
   const renderTable = () => (
-    <View style={styles.tableContainer}>
-      <View style={styles.tableHeader}>
-        <Text style={[styles.headerText, styles.colId]}>ID</Text>
-        <Text style={[styles.headerText, styles.colNome]}>NOME</Text>
-        <Text style={[styles.headerText, styles.colEmail]}>EMAIL</Text>
-        <Text style={[styles.headerText, styles.colTelefone]}>TELEFONE</Text>
-        <Text style={[styles.headerText, styles.colStatus]}>STATUS</Text>
-        <Text style={[styles.headerText, styles.colAcoes, styles.headerTextCenter]}>AÇÕES</Text>
+    <View className="mx-4 my-3 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <View className="flex-row items-center border-b border-slate-200 bg-slate-50 px-4 py-3">
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colId}>ID</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colNome}>NOME</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colEmail}>EMAIL</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colTelefone}>TELEFONE</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colStatus}>STATUS</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-center" style={styles.colAcoes}>AÇÕES</Text>
       </View>
 
-      <ScrollView style={styles.tableBody} showsVerticalScrollIndicator={true}>
+      <ScrollView className="max-h-[520px]" showsVerticalScrollIndicator={true}>
         {academias.map((item) => (
           <TouchableOpacity 
             key={item.id} 
-            style={styles.tableRow}
+            className="flex-row items-center border-b border-slate-100 px-4 py-3"
             onPress={() => router.push(`/academias/${item.id}`)}
             activeOpacity={0.7}
           >
-            <View style={[styles.cellText, styles.colId]}>
-              <Text style={styles.tableIdText}>#{item.id}</Text>
+            <View style={styles.colId}>
+              <Text className="text-[12px] font-semibold text-slate-400">#{item.id}</Text>
             </View>
-            <Text style={[styles.cellText, styles.colNome]} numberOfLines={2}>
+            <Text className="text-[13px] font-semibold text-slate-800" style={styles.colNome} numberOfLines={2}>
               {item.nome}
             </Text>
-            <Text style={[styles.cellText, styles.colEmail]} numberOfLines={1}>
+            <Text className="text-[13px] text-slate-600" style={styles.colEmail} numberOfLines={1}>
               {item.email}
             </Text>
-            <Text style={[styles.cellText, styles.colTelefone]} numberOfLines={1}>
+            <Text className="text-[13px] text-slate-600" style={styles.colTelefone} numberOfLines={1}>
               {item.telefone || '-'}
             </Text>
-            <View style={[styles.cellText, styles.colStatus]}>
-              <View style={[
-                styles.statusBadge,
-                item.ativo ? styles.badgeActive : styles.badgeInactive
-              ]}>
-                <Text style={styles.badgeText}>
+            <View style={styles.colStatus}>
+              <View className={`self-start rounded-full px-2.5 py-1 ${item.ativo ? 'bg-emerald-100' : 'bg-rose-100'}`}>
+                <Text className={`text-[11px] font-bold ${item.ativo ? 'text-emerald-700' : 'text-rose-700'}`}>
                   {item.ativo ? 'Ativa' : 'Inativa'}
                 </Text>
               </View>
             </View>
-            <View style={[styles.cellText, styles.colAcoes, styles.colAcoesCenter]}>
-              <Feather name="edit-2" size={18} color="#3b82f6" />
+            <View className="items-center" style={styles.colAcoes}>
+              <View className="h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50">
+                <Feather name="edit-2" size={16} color="#f97316" />
+              </View>
             </View>
           </TouchableOpacity>
         ))}

@@ -120,8 +120,10 @@ export default function ModalidadesScreen() {
           <View style={styles.modalidadeTexto}>
             <View style={styles.tituloRow}>
               <Text style={styles.nome}>{modalidade.nome}</Text>
-              <View style={[styles.statusBadge, { backgroundColor: modalidade.ativo ? '#10b981' : '#94a3b8' }]}>
-                <Text style={styles.statusText}>{modalidade.ativo ? 'Ativa' : 'Inativa'}</Text>
+              <View className={`self-start rounded-full px-2.5 py-1 ${modalidade.ativo ? 'bg-emerald-100' : 'bg-rose-100'}`}>
+                <Text className={`text-[11px] font-bold ${modalidade.ativo ? 'text-emerald-700' : 'text-rose-700'}`}>
+                  {modalidade.ativo ? 'Ativa' : 'Inativa'}
+                </Text>
               </View>
             </View>
             {modalidade.descricao && (
@@ -141,16 +143,16 @@ export default function ModalidadesScreen() {
         </View>
         <View style={styles.cardActions}>
           <TouchableOpacity
-            style={[styles.actionButton, styles.editButton]}
+            className="h-9 w-9 items-center justify-center rounded-lg bg-orange-500/15"
             onPress={() => handleEdit(modalidade.id)}
           >
-            <Feather name="edit-2" size={14} color="#fff" />
+            <Feather name="edit-2" size={14} color="#f97316" />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.actionButton, modalidade.ativo ? styles.toggleOffButton : styles.toggleOnButton]}
+            className="h-9 w-9 items-center justify-center rounded-lg bg-slate-100"
             onPress={() => handleToggleStatus(modalidade)}
           >
-            <Feather name={modalidade.ativo ? "toggle-right" : "toggle-left"} size={16} color="#fff" />
+            <Feather name={modalidade.ativo ? "toggle-right" : "toggle-left"} size={16} color="#64748b" />
           </TouchableOpacity>
         </View>
       </View>
@@ -414,16 +416,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1e293b',
   },
-  statusBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#fff',
-  },
   descricao: {
     fontSize: 12,
     color: '#64748b',
@@ -448,22 +440,6 @@ const styles = StyleSheet.create({
   cardActions: {
     flexDirection: 'row',
     gap: 6,
-  },
-  actionButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  editButton: {
-    backgroundColor: '#3b82f6',
-  },
-  toggleOffButton: {
-    backgroundColor: '#ef4444',
-  },
-  toggleOnButton: {
-    backgroundColor: '#10b981',
   },
   cardBody: {
     borderTopWidth: 1,

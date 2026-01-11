@@ -1,0 +1,851 @@
+import { colors } from '@/src/theme/colors';
+import { Feather } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
+import { useEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    Alert,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
+export default function AccountScreen() {
+  const router = useRouter();
+  const [userProfile, setUserProfile] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadUserProfile();
+  }, []);
+
+  const formatCPF = (cpf) => {
+    if (!cpf) return '';
+    const cleaned = cpf.replace(/\D/g, '');
+    return cleaned.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+  };
+
+  const formatPhone = (phone) => {
+    if (!phone) return '';
+    const cleaned = phone.replace(/\D/g, '');
+    if (cleaned.length === 11) {
+      return cleaned.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+    }
+    return cleaned.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
+  };
+
+  const loadUserProfile = async () => {
+    try {
+      console.log('\n🔄 INICIANDO CARREGAMENTO DE PERFIL');
+      
+      const token = await AsyncStorage.getItem('@appcheckin:token');
+      
+      if (!token) {
+        console.error('❌ Token não encontrado');
+        router.replace('/(auth)/login');
+        return;
+      }
+      console.log('✅ Token encontrado');
+
+      const headers = {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      };
+
+      const url = 'http://localhost:8080/mobile/perfil';
+      console.log('📍 URL:', url);
+
+      const profileResponse = await fetch(url, {
+        method: 'GET',
+        headers: headers,
+      });
+      
+      console.log('📡 RESPOSTA DO SERVIDOR');
+      console.log('   Status:', profileResponse.status);
+      console.log('   Status Text:', profileResponse.statusText);
+      
+      const responseText = await profileResponse.text();
+      console.log('   Body (primeiros 500 chars):', responseText.substring(0, 500));
+      
+      if (!profileResponse.ok) {
+        console.error('❌ ERRO NA REQUISIÇÃO');
+        console.error('   Status:', profileResponse.status);
+        console.error('   Body completo:', responseText);
+        
+        // Se for 401, token expirou ou é inválido
+        if (profileResponse.status === 401) {
+          console.log('🔑 Detectado 401 - Token inválido/expirado');
+          await AsyncStorage.removeItem('@appcheckin:token');
+          await AsyncStorage.removeItem('@appcheckin:user');
+          router.replace('/(auth)/login');
+          return;
+        }
+        
+        throw new Error(`Erro HTTP: ${profileResponse.status}`);
+      }
+
+      let profileData;
+      try {
+        profileData = JSON.parse(responseText);
+        console.log('✅ JSON parseado com sucesso');
+        console.log('   Dados:', JSON.stringify(profileData, null, 2));
+      } catch (parseError) {
+        console.error('❌ ERRO AO FAZER PARSE DO JSON');
+        console.error('   Erro:', parseError.message);
+        console.error('   Body:', responseText);
+        throw parseError;
+      }
+      
+      if (profileData.success) {
+        console.log('✅ Perfil carregado com sucesso');
+        setUserProfile(profileData.data);
+      } else {
+        Alert.alert('Erro', profileData.error || 'Não foi possível carregar o perfil');
+      }
+    } catch (error: any) {
+      if (error instanceof SyntaxError) {
+        Alert.alert('Servidor', 'Servidor indisponível. Tente novamente em alguns instantes.');
+      } else {
+        Alert.alert('Erro', 'Erro ao conectar com o servidor');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    Alert.alert('Sair', 'Deseja realmente sair?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Sair',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await AsyncStorage.removeItem('@appcheckin:token');
+            await AsyncStorage.removeItem('@appcheckin:user');
+            await AsyncStorage.removeItem('@appcheckin:tenants');
+            router.replace('/(auth)/login');
+          } catch (error) {
+            Alert.alert('Erro', 'Erro ao fazer logout');
+          }
+        },
+      },
+    ]);
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!userProfile) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.errorText}>Erro ao carregar perfil</Text>
+          <TouchableOpacity 
+            style={styles.retryButton}
+            onPress={loadUserProfile}
+          >
+            <Text style={styles.retryButtonText}>Tentar Novamente</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container} edges={['top']}>
+      {/* Header com Botão Recarregar */}
+      <View style={styles.headerTop}>
+        <Text style={styles.headerTitle}>Minha Conta</Text>
+        <TouchableOpacity 
+          style={styles.refreshButton}
+          onPress={loadUserProfile}
+        >
+          <Feather name="refresh-cw" size={20} color={colors.primary} />
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Profile Header */}
+        <View style={styles.profileSection}>
+          {/* Photo Placeholder */}
+          <View style={styles.photoContainer}>
+            {userProfile.foto_base64 ? (
+              <Text style={styles.photoText}>📸</Text>
+            ) : (
+              <Feather name="user" size={50} color="#fff" />
+            )}
+          </View>
+
+          {/* Name and Email */}
+          <Text style={styles.userName}>{userProfile.nome}</Text>
+          <Text style={styles.userEmail}>{userProfile.email}</Text>
+          
+          {/* Tenant */}
+          {userProfile.tenant && (
+            <TouchableOpacity 
+              style={styles.tenantButton}
+              onPress={() => router.push('/planos')}
+            >
+              <Text style={styles.tenantName}>{userProfile.tenant.nome}</Text>
+              <Feather name="chevron-right" size={16} color={colors.primary} />
+            </TouchableOpacity>
+          )}
+        </View>
+
+        {/* Statistics Section */}
+        {userProfile.estatisticas && (
+          <View style={styles.statisticsSection}>
+            <Text style={styles.sectionTitle}>Estatísticas</Text>
+            
+            <View style={styles.statsGrid}>
+              <View style={styles.statCard}>
+                <Feather name="check-circle" size={24} color={colors.primary} />
+                <Text style={styles.statLabel}>Total de Check-ins</Text>
+                <Text style={styles.statValue}>
+                  {userProfile.estatisticas.total_checkins}
+                </Text>
+              </View>
+
+              <View style={styles.statCard}>
+                <Feather name="calendar" size={24} color={colors.primary} />
+                <Text style={styles.statLabel}>Este Mês</Text>
+                <Text style={styles.statValue}>
+                  {userProfile.estatisticas.checkins_mes}
+                </Text>
+              </View>
+
+              <View style={styles.statCard}>
+                <Feather name="zap" size={24} color={colors.primary} />
+                <Text style={styles.statLabel}>Sequência</Text>
+                <Text style={styles.statValue}>
+                  {userProfile.estatisticas.sequencia_dias} dia(s)
+                </Text>
+              </View>
+            </View>
+
+            {userProfile.estatisticas.ultimo_checkin && (
+              <View style={styles.lastCheckinCard}>
+                <Feather name="clock" size={18} color={colors.primary} />
+                <View style={styles.lastCheckinContent}>
+                  <Text style={styles.lastCheckinLabel}>Último Check-in</Text>
+                  <Text style={styles.lastCheckinValue}>
+                    {userProfile.estatisticas.ultimo_checkin.data} às{' '}
+                    {userProfile.estatisticas.ultimo_checkin.hora}
+                  </Text>
+                </View>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Personal Information */}
+        <View style={styles.infoSection}>
+          <Text style={styles.sectionTitle}>Informações Pessoais</Text>
+
+          <View style={styles.infoItem}>
+            <Feather name="mail" size={18} color={colors.primary} />
+            <View style={styles.infoContent}>
+              <Text style={styles.infoLabel}>Email</Text>
+              <Text style={styles.infoValue}>{userProfile.email}</Text>
+            </View>
+          </View>
+
+          {userProfile.cpf && (
+            <View style={styles.infoItem}>
+              <Feather name="credit-card" size={18} color={colors.primary} />
+              <View style={styles.infoContent}>
+                <Text style={styles.infoLabel}>CPF</Text>
+                <Text style={styles.infoValue}>{formatCPF(userProfile.cpf)}</Text>
+              </View>
+            </View>
+          )}
+
+          {userProfile.telefone && (
+            <View style={styles.infoItem}>
+              <Feather name="phone" size={18} color={colors.primary} />
+              <View style={styles.infoContent}>
+                <Text style={styles.infoLabel}>Telefone</Text>
+                <Text style={styles.infoValue}>{formatPhone(userProfile.telefone)}</Text>
+              </View>
+            </View>
+          )}
+
+          {userProfile.data_nascimento && (
+            <View style={styles.infoItem}>
+              <Feather name="calendar" size={18} color={colors.primary} />
+              <View style={styles.infoContent}>
+                <Text style={styles.infoLabel}>Data de Nascimento</Text>
+                <Text style={styles.infoValue}>
+                  {new Date(userProfile.data_nascimento).toLocaleDateString('pt-BR')}
+                </Text>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* Academias Section */}
+        {userProfile.tenants && userProfile.tenants.length > 0 && (
+          <View style={styles.academiasSection}>
+            <Text style={styles.sectionTitle}>Minhas Academias</Text>
+            
+            {userProfile.tenants.map((tenant) => (
+              <TouchableOpacity
+                key={tenant.id}
+                style={styles.academiaCard}
+                onPress={() => router.push(`/planos?tenantId=${tenant.id}`)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.academiaCardContent}>
+                  {/* Nome da Academia */}
+                  <Text style={styles.academiaName}>{tenant.nome}</Text>
+
+                  {/* Email */}
+                  {tenant.email && (
+                    <View style={styles.academiaInfo}>
+                      <Feather name="mail" size={14} color={colors.primary} />
+                      <Text style={styles.academiaInfoText}>
+                        {tenant.email}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Telefone */}
+                  {tenant.telefone && (
+                    <View style={styles.academiaInfo}>
+                      <Feather name="phone" size={14} color={colors.primary} />
+                      <Text style={styles.academiaInfoText}>
+                        {tenant.telefone}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+                <Feather name="chevron-right" size={20} color={colors.primary} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Member Since */}
+        {userProfile.membro_desde && (
+          <View style={styles.memberSinceSection}>
+            <Feather name="heart" size={16} color={colors.primary} />
+            <Text style={styles.memberSinceText}>
+              Membro desde {new Date(userProfile.membro_desde).toLocaleDateString('pt-BR')}
+            </Text>
+          </View>
+        )}
+
+        {/* Logout Button */}
+        <TouchableOpacity 
+          style={styles.logoutButton}
+          onPress={handleLogout}
+        >
+          <Feather name="log-out" size={20} color="#fff" />
+          <Text style={styles.logoutText}>Sair</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#000',
+  },
+  refreshButton: {
+    padding: 8,
+  },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 40,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 50,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 16,
+  },
+  retryButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontWeight: '600',
+  },
+  profileSection: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 24,
+    alignItems: 'center',
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  photoContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  photoText: {
+    fontSize: 40,
+  },
+  userName: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#000',
+    marginBottom: 4,
+  },
+  userEmail: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 8,
+  },
+  tenantName: {
+    fontSize: 12,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  tenantButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: 4,
+    backgroundColor: colors.primary + '10',
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.primary + '30',
+  },
+  statisticsSection: {
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 12,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 12,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  statLabel: {
+    fontSize: 11,
+    color: '#999',
+    marginTop: 8,
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  statValue: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.primary,
+  },
+  lastCheckinCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  lastCheckinContent: {
+    flex: 1,
+  },
+  lastCheckinLabel: {
+    fontSize: 12,
+    color: '#999',
+    marginBottom: 2,
+  },
+  lastCheckinValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#000',
+  },
+  infoSection: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  infoItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    gap: 12,
+  },
+  infoContent: {
+    flex: 1,
+  },
+  infoLabel: {
+    fontSize: 12,
+    color: '#999',
+    marginBottom: 4,
+  },
+  infoValue: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#000',
+  },
+  membershipSection: {
+    marginBottom: 20,
+  },
+  membershipCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  membershipHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 12,
+  },
+  membershipInfo: {
+    flex: 1,
+  },
+  membershipName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000',
+  },
+  membershipStatus: {
+    fontSize: 12,
+    color: colors.primary,
+    fontWeight: '500',
+    marginTop: 2,
+    textTransform: 'capitalize',
+  },
+  membershipDates: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    gap: 8,
+  },
+  membershipLabel: {
+    fontSize: 12,
+    color: '#999',
+    fontWeight: '500',
+  },
+  membershipValue: {
+    fontSize: 13,
+    color: '#000',
+    fontWeight: '500',
+  },
+  membershipValue2: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    gap: 8,
+  },
+  membershipPriceValue: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  viewDetailsButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  viewDetailsText: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  memberSinceSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    marginBottom: 20,
+    gap: 6,
+  },
+  memberSinceText: {
+    fontSize: 12,
+    color: '#999',
+  },
+  contratosSection: {
+    marginBottom: 20,
+  },
+  academiasSection: {
+    marginBottom: 20,
+  },
+  academiaCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  academiaCardContent: {
+    flex: 1,
+  },
+  modalidadeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+    marginBottom: 8,
+  },
+  modalidadeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  modalidadeText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  academiaName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 8,
+  },
+  academiaInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  academiaInfoText: {
+    fontSize: 12,
+    color: '#666',
+  },
+  contratoCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  contratoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    gap: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  contratoInfo: {
+    flex: 1,
+  },
+  contratoNome: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#000',
+  },
+  contratoStatus: {
+    fontSize: 12,
+    color: colors.primary,
+    fontWeight: '500',
+    marginTop: 2,
+    textTransform: 'capitalize',
+  },
+  contratoSection2: {
+    marginVertical: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  contratoSectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 8,
+    textTransform: 'uppercase',
+  },
+  contratoItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  contratoLabel: {
+    fontSize: 12,
+    color: '#999',
+    fontWeight: '500',
+  },
+  contratoValue: {
+    fontSize: 13,
+    color: '#000',
+    fontWeight: '600',
+  },
+  contratoDiasRestantes: {
+    fontSize: 13,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  progressContainer: {
+    width: '100%',
+    height: 6,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 3,
+    marginTop: 8,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: colors.primary,
+  },
+  contratoFeatures: {
+    marginTop: 8,
+  },
+  featureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 6,
+  },
+  featureText: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '500',
+    flex: 1,
+  },
+  pagamentoItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 6,
+    marginVertical: 6,
+  },
+  pagamentoInfo: {
+    flex: 1,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+  },
+  statusText: {
+    fontSize: 11,
+    color: '#fff',
+    fontWeight: '600',
+  },
+  logoutButton: {
+    backgroundColor: '#f44336',
+    borderRadius: 12,
+    paddingVertical: 16,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  logoutText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});

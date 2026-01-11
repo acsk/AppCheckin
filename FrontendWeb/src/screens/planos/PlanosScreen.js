@@ -219,55 +219,53 @@ export default function PlanosScreen() {
   );
 
   const renderTable = () => (
-    <View style={styles.tableContainer}>
+    <View className="mx-4 my-3 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       {/* Table Header */}
-      <View style={styles.tableHeader}>
-        {isSuperAdmin && <Text style={[styles.headerText, styles.colAcademia]}>ACADEMIA</Text>}
-        <Text style={[styles.headerText, styles.colId]}>ID</Text>
-        <Text style={[styles.headerText, styles.colNome]}>NOME</Text>
-        <Text style={[styles.headerText, styles.colModalidade]}>MODALIDADE</Text>
-        <Text style={[styles.headerText, styles.colValor]}>VALOR</Text>
-        <Text style={[styles.headerText, styles.colCheckins]}>CHECKINS/SEM</Text>
-        {!isSuperAdmin && <Text style={[styles.headerText, styles.colAtual]}>NOVOS CONTR.</Text>}
-        <Text style={[styles.headerText, styles.colStatus]}>STATUS</Text>
-        <Text style={[styles.headerText, styles.colAcoes]}>AÇÕES</Text>
+      <View className="flex-row items-center border-b border-slate-200 bg-slate-50 px-4 py-3">
+        {isSuperAdmin && <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colAcademia}>ACADEMIA</Text>}
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colId}>ID</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colNome}>NOME</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colModalidade}>MODALIDADE</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colValor}>VALOR</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colCheckins}>CHECKINS/SEM</Text>
+        {!isSuperAdmin && <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colAtual}>NOVOS CONTR.</Text>}
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colStatus}>STATUS</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-right" style={styles.colAcoes}>AÇÕES</Text>
       </View>
 
       {/* Table Body */}
-      <ScrollView style={styles.tableBody} showsVerticalScrollIndicator={true}>
+      <ScrollView className="max-h-[520px]" showsVerticalScrollIndicator={true}>
         {planos.map((plano) => (
-          <View key={plano.id} style={styles.tableRow}>
+          <View key={plano.id} className="flex-row items-center border-b border-slate-100 px-4 py-3">
             {isSuperAdmin && (
-              <Text style={[styles.cellText, styles.colAcademia]} numberOfLines={1}>
+              <Text className="text-[13px] text-slate-600" style={styles.colAcademia} numberOfLines={1}>
                 {plano.academia_nome || '-'}
               </Text>
             )}
-            <View style={[styles.cellText, styles.colId]}>
-              <Text style={styles.tableIdText}>#{plano.id}</Text>
+            <View style={styles.colId}>
+              <Text className="text-[12px] font-semibold text-slate-400">#{plano.id}</Text>
             </View>
-            <View style={[styles.cellText, styles.colNome, styles.nomeCell]}>
+            <View className="flex-row items-center gap-2" style={styles.colNome}>
               {plano.modalidade_icone && (
-                <View style={[styles.tableIconBadge, { backgroundColor: plano.modalidade_cor || '#f97316' }]}>
+                <View style={[styles.tableIconBadge, { backgroundColor: plano.modalidade_cor || '#f97316' }]} className="h-6 w-6 items-center justify-center rounded-full">
                   <MaterialCommunityIcons name={plano.modalidade_icone} size={14} color="#fff" />
                 </View>
               )}
-              <Text style={styles.cellTextNome} numberOfLines={2}>
+              <Text className="text-[13px] font-semibold text-slate-800" numberOfLines={2}>
                 {plano.nome}
               </Text>
             </View>
-            <Text style={[styles.cellText, styles.colModalidade]} numberOfLines={1}>
+            <Text className="text-[13px] text-slate-600" style={styles.colModalidade} numberOfLines={1}>
               {plano.modalidade_nome || '-'}
             </Text>
-            <Text style={[styles.cellText, styles.colValor]} numberOfLines={1}>
+            <Text className="text-[13px] font-semibold text-slate-700" style={styles.colValor} numberOfLines={1}>
               {formatCurrency(plano.valor)}
             </Text>
-            <Text style={[styles.cellText, styles.colCheckins]} numberOfLines={1}>
-              {plano.checkins_semanais >= 999 
-                ? 'Ilimitado' 
-                : `${plano.checkins_semanais}x`}
+            <Text className="text-[13px] text-slate-600" style={styles.colCheckins} numberOfLines={1}>
+              {plano.checkins_semanais >= 999 ? 'Ilimitado' : `${plano.checkins_semanais}x`}
             </Text>
             {!isSuperAdmin && (
-              <View style={[styles.cellText, styles.colAtual]}>
+              <View style={styles.colAtual}>
                 <View style={[
                   styles.atualBadge,
                   plano.atual ? styles.atualAvailable : styles.atualLocked,
@@ -281,36 +279,28 @@ export default function PlanosScreen() {
                 </View>
               </View>
             )}
-            <View style={[styles.cellText, styles.colStatus]}>
-              <View style={[
-                styles.statusBadge,
-                plano.ativo ? styles.statusActive : styles.statusInactive,
-              ]}>
-                <Text style={[
-                  styles.statusText,
-                  plano.ativo ? styles.statusTextActive : styles.statusTextInactive,
-                ]}>
+            <View style={styles.colStatus}>
+              <View className={`self-start rounded-full px-2.5 py-1 ${plano.ativo ? 'bg-emerald-100' : 'bg-rose-100'}`}>
+                <Text className={`text-[11px] font-bold ${plano.ativo ? 'text-emerald-700' : 'text-rose-700'}`}>
                   {plano.ativo ? 'Ativo' : 'Inativo'}
                 </Text>
               </View>
             </View>
-            <View style={[styles.cellText, styles.colAcoes]}>
-              <View style={styles.actionCell}>
+            <View className="flex-row justify-end gap-2" style={styles.colAcoes}>
+              <TouchableOpacity
+                onPress={() => router.push(`/planos/${plano.id}`)}
+                className="h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
+              >
+                <Feather name={isSuperAdmin ? "eye" : "edit-2"} size={16} color="#f97316" />
+              </TouchableOpacity>
+              {!isSuperAdmin && (
                 <TouchableOpacity
-                  onPress={() => router.push(`/planos/${plano.id}`)}
-                  style={styles.actionButton}
+                  onPress={() => handleDelete(plano.id, plano.nome)}
+                  className="h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
                 >
-                  <Feather name={isSuperAdmin ? "eye" : "edit-2"} size={16} color="#3b82f6" />
+                  <Feather name="trash-2" size={16} color="#ef4444" />
                 </TouchableOpacity>
-                {!isSuperAdmin && (
-                  <TouchableOpacity
-                    onPress={() => handleDelete(plano.id, plano.nome)}
-                    style={styles.actionButton}
-                  >
-                    <Feather name="trash-2" size={16} color="#ef4444" />
-                  </TouchableOpacity>
-                )}
-              </View>
+              )}
             </View>
           </View>
         ))}

@@ -126,9 +126,23 @@ return function ($app) {
         // Tenants do usuário
         $group->get('/tenants', [MobileController::class, 'tenants']);
         
+        // Planos de alunos disponíveis
+        $group->get('/planos', [MobileController::class, 'planosDoUsuario']);
+        
+        // Detalhes da matrícula e pagamentos
+        $group->get('/matriculas/{matriculaId}', [MobileController::class, 'detalheMatricula']);
+        
         // Check-in
         $group->post('/checkin', [MobileController::class, 'registrarCheckin']);
         $group->get('/checkins', [MobileController::class, 'historicoCheckins']);
+        $group->get('/turma/{turmaId}/participantes', [MobileController::class, 'participantesTurma']);
+        $group->get('/turma/{turmaId}/detalhes', [MobileController::class, 'detalheTurma']);
+        
+        // Horários das aulas
+        $group->get('/horarios', [MobileController::class, 'horariosHoje']);
+        $group->get('/horarios/proximos', [MobileController::class, 'horariosProximos']);
+        $group->get('/horarios/{diaId}', [MobileController::class, 'horariosPorDia']);
+        $group->get('/horarios-disponiveis', [MobileController::class, 'horariosDisponiveis']);
     })->add(AuthMiddleware::class);
 
     // ========================================

@@ -800,14 +800,14 @@ export default function TurmasScreen() {
                 style={styles.dateSelectorButton}
                 onPress={() => irParaData(-1)}
               >
-                <Feather name="chevron-left" size={20} color="#fff" />
+                <Feather name="chevron-left" size={20} color="#f97316" />
               </TouchableOpacity>
 
               <TouchableOpacity 
                 style={styles.dateSelectorContent}
                 onPress={() => setCalendarVisible(true)}
               >
-                <Feather name="calendar" size={16} color="#fff" style={{ marginRight: 8 }} />
+                <Feather name="calendar" size={16} color="#f97316" style={{ marginRight: 8 }} />
                 <Text style={styles.dateDisplay}>
                   {obterDiaSemana(dataSelecionada)} • {formatarDataExibicao(dataSelecionada)}
                 </Text>
@@ -817,14 +817,14 @@ export default function TurmasScreen() {
                 style={[styles.dateSelectorButton, dataSelecionada !== obterHoje() && styles.hojeButton]}
                 onPress={voltarParaHoje}
               >
-                <Feather name="home" size={18} color="#fff" />
+                <Feather name="home" size={18} color="#f97316" />
               </TouchableOpacity>
 
               <TouchableOpacity 
                 style={styles.dateSelectorButton}
                 onPress={() => irParaData(1)}
               >
-                <Feather name="chevron-right" size={20} color="#fff" />
+                <Feather name="chevron-right" size={20} color="#f97316" />
               </TouchableOpacity>
             </View>
           </View>
@@ -839,78 +839,75 @@ export default function TurmasScreen() {
             </Text>
           </View>
         ) : (
-          <ScrollView style={styles.tableContainer}>
+          <ScrollView className="m-4 rounded-2xl border border-slate-200 bg-white shadow-sm">
             {/* Header da Tabela */}
-            <View style={styles.tableHeader}>
-              <Text style={[styles.tableHeaderText, { flex: 0.3 }]}>ID</Text>
-              <Text style={[styles.tableHeaderText, { flex: 1.5 }]}>MODALIDADE</Text>
-              <Text style={[styles.tableHeaderText, { flex: 1.2 }]}>HORÁRIO</Text>
-              <Text style={[styles.tableHeaderText, { flex: 1.5 }]}>PROFESSOR</Text>
-              <Text style={[styles.tableHeaderText, { flex: 1 }]}>VAGAS</Text>
-              <Text style={[styles.tableHeaderText, { flex: 0.8 }]}>STATUS</Text>
-              <Text style={[styles.tableHeaderText, { flex: 0.8, textAlign: 'center' }]}>AÇÕES</Text>
+            <View className="flex-row items-center border-b border-slate-200 bg-slate-50 px-4 py-3">
+              <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 0.3 }}>ID</Text>
+              <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 1.5 }}>MODALIDADE</Text>
+              <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 1.2 }}>HORÁRIO</Text>
+              <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 1.5 }}>PROFESSOR</Text>
+              <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 1 }}>VAGAS</Text>
+              <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 0.8 }}>STATUS</Text>
+              <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-center" style={{ flex: 0.8 }}>AÇÕES</Text>
             </View>
 
             {/* Linhas da Tabela */}
             {turmasFiltradas.map((turma) => (
               <TouchableOpacity
                 key={turma.id}
-                style={[styles.tableRow, !turma.ativo && styles.tableRowInativo]}
+                className={`flex-row items-center border-b border-slate-100 px-4 py-3 ${turma.ativo ? 'bg-white' : 'bg-slate-50/60 opacity-70'}`}
                 onPress={() => handleEditar(turma.id)}
                 activeOpacity={0.7}
               >
-                <View style={styles.idCell}>
-                  <Text style={styles.idText}>{turma.id}</Text>
+                <View style={{ flex: 0.3 }}>
+                  <Text className="text-[12px] font-semibold text-slate-400">{turma.id}</Text>
                 </View>
-                <View style={styles.modalidadeCell}>
-                  <View style={styles.modalidadeContent}>
+                <View style={{ flex: 1.5 }}>
+                  <View className="flex-row items-center gap-2 rounded-lg bg-slate-100 px-3 py-2">
                     {renderizarIconeModalidade(turma.modalidade_icone, turma.modalidade_cor)}
-                    <Text style={styles.modalidadeText} numberOfLines={1}>
+                    <Text className="text-[13px] font-semibold text-slate-700" numberOfLines={1}>
                       {turma.modalidade_nome}
                     </Text>
                   </View>
                 </View>
-                <View style={styles.horarioCell}>
-                  <View style={styles.horarioContent}>
+                <View style={{ flex: 1.2 }}>
+                  <View className="flex-row items-center">
                     <Feather name="clock" size={14} color="#9ca3af" style={{ marginRight: 6 }} />
-                    <Text style={styles.horarioText} numberOfLines={1}>
+                    <Text className="text-[13px] text-slate-500" numberOfLines={1}>
                       {formatarHorarioIntervalo(turma.horario_inicio, turma.horario_fim)}
                     </Text>
                   </View>
                 </View>
-                <Text style={styles.professorCell} numberOfLines={1}>
+                <Text className="text-[13px] text-slate-500" style={{ flex: 1.5 }} numberOfLines={1}>
                   {turma.professor_nome || '-'}
                 </Text>
-                <View style={styles.vagasCell}>
-                  <Text style={styles.vagasText}>
+                <View style={{ flex: 1 }}>
+                  <Text className="text-[13px] font-semibold text-slate-700">
                     {turma.alunos_count || 0}/{turma.limite_alunos}
                   </Text>
                 </View>
-                <View style={styles.statusCell}>
+                <View style={{ flex: 1 }}>
                   <View
-                    style={[
-                      styles.statusBadge,
-                      turma.ativo ? styles.statusAtivo : styles.statusInativo,
-                    ]}
+                    className={`self-start rounded-full px-2.5 py-1 ${turma.ativo ? 'bg-emerald-100' : 'bg-rose-100'}`}
                   >
-                    <Text style={turma.ativo ? styles.statusText : styles.statusInativoText}>
+                    <Text className={`text-[11px] font-bold ${turma.ativo ? 'text-emerald-700' : 'text-rose-700'}`}>
                       {turma.ativo ? 'Ativo' : 'Inativo'}
                     </Text>
                   </View>
                 </View>
-                <View style={styles.acoesCell}>
+                <View className="flex-row justify-end gap-2" style={{ flex: 0.8 }}>
                   <TouchableOpacity
                     onPress={() => {
                       setTurmaDesativar(turma);
                       setModalDesativarVisible(true);
                     }}
-                    style={styles.actionIconButton}
+                    className="h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
                   >
                     <MaterialCommunityIcons name="pause-circle" size={18} color="#ef4444" />
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => handleEditar(turma.id)}
-                    style={styles.actionIconButton}
+                    className="h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
                   >
                     <Feather name="arrow-right" size={18} color="#f97316" />
                   </TouchableOpacity>
@@ -927,13 +924,13 @@ export default function TurmasScreen() {
           animationType="fade"
           onRequestClose={() => setCalendarVisible(false)}
         >
-          <View style={styles.calendarOverlay}>
-            <View style={styles.calendarContent}>
-              <View style={styles.calendarHeader}>
+          <View className="flex-1 items-center justify-center bg-black/40 px-4">
+            <View className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+              <View className="flex-row items-center justify-between border-b border-slate-200 pb-3">
                 <TouchableOpacity onPress={() => irParaData(-30)}>
                   <Feather name="chevron-left" size={24} color="#f97316" />
                 </TouchableOpacity>
-                <Text style={styles.calendarTitle}>
+                <Text className="text-[15px] font-semibold capitalize text-slate-700">
                   {new Date(dataSelecionada).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
                 </Text>
                 <TouchableOpacity onPress={() => irParaData(30)}>
@@ -941,34 +938,34 @@ export default function TurmasScreen() {
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.calendarDaysOfWeek}>
+              <View className="flex-row justify-between pt-3">
                 {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'].map((dia) => (
-                  <Text key={dia} style={styles.calendarDayOfWeekText}>{dia}</Text>
+                  <Text key={dia} className="w-[14.28%] text-center text-[11px] font-semibold text-slate-500">{dia}</Text>
                 ))}
               </View>
 
-              <View style={styles.calendarGrid}>
+              <View className="mt-3 flex-row flex-wrap">
                 {gerarDiasDoMes(new Date(dataSelecionada)).map((dia, index) => (
                   <TouchableOpacity
                     key={index}
-                    style={[
-                      styles.calendarDay,
-                      !dia && styles.calendarDayEmpty,
-                      dia && dia.toISOString().split('T')[0] === dataSelecionada && styles.calendarDaySelected,
-                    ]}
+                    className={`mb-2 w-[14.28%] items-center justify-center rounded-lg ${!dia ? 'bg-transparent' : 'bg-white'} ${dia && dia.toISOString().split('T')[0] === dataSelecionada ? 'bg-orange-500' : ''}`}
                     onPress={() => handleSelecionarDataCalendar(dia)}
                     disabled={!dia}
                   >
-                    {dia && <Text style={[styles.calendarDayText, dia.toISOString().split('T')[0] === dataSelecionada && styles.calendarDayTextSelected]}>{dia.getDate()}</Text>}
+                    {dia && (
+                      <Text className={`text-[13px] font-semibold ${dia.toISOString().split('T')[0] === dataSelecionada ? 'text-white' : 'text-slate-700'}`}>
+                        {dia.getDate()}
+                      </Text>
+                    )}
                   </TouchableOpacity>
                 ))}
               </View>
 
               <TouchableOpacity
-                style={styles.calendarCloseButton}
+                className="mt-2 items-center rounded-lg bg-orange-500 py-3"
                 onPress={() => setCalendarVisible(false)}
               >
-                <Text style={styles.calendarCloseButtonText}>Fechar</Text>
+                <Text className="text-sm font-semibold text-white">Fechar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -986,7 +983,7 @@ export default function TurmasScreen() {
           }}
         >
           <Pressable 
-            style={styles.criarTurmaOverlay} 
+            className="flex-1 items-center justify-center bg-black/40 px-4" 
             onPress={() => {
               setModalCriarVisible(false);
               setIsEditando(false);
@@ -994,25 +991,25 @@ export default function TurmasScreen() {
             }}
           >
             <Pressable 
-              style={styles.criarTurmaContent}
+              className="max-h-[90%] w-full max-w-2xl rounded-2xl bg-white shadow-xl"
               onPress={(e) => e.stopPropagation()}
             >
-              <View style={styles.criarTurmaHeader}>
-                <Text style={styles.criarTurmaTitle}>{isEditando ? 'Editar Aula' : 'Nova Aula'}</Text>
+              <View className="flex-row items-center justify-between border-b border-slate-200 px-6 py-4">
+                <Text className="text-[18px] font-semibold text-slate-800">{isEditando ? 'Editar Aula' : 'Nova Aula'}</Text>
                 <TouchableOpacity onPress={() => {
                   setModalCriarVisible(false);
                   setIsEditando(false);
                   setTurmaEditandoId(null);
                 }}>
-                  <Feather name="x" size={28} color="#6b7280" />
+                  <Feather name="x" size={24} color="#94a3b8" />
                 </TouchableOpacity>
               </View>
 
-              <ScrollView style={styles.criarTurmaForm} showsVerticalScrollIndicator={false}>
+              <ScrollView className="px-6 py-4" showsVerticalScrollIndicator={false}>
                 {loadingDropdowns ? (
-                  <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <View className="items-center py-10">
                     <ActivityIndicator size="large" color="#f97316" />
-                    <Text style={{ marginTop: 16, color: '#6b7280', fontSize: 14 }}>Carregando opções...</Text>
+                    <Text className="mt-4 text-sm text-slate-500">Carregando opções...</Text>
                   </View>
                 ) : (
                   <>
@@ -1193,21 +1190,21 @@ export default function TurmasScreen() {
           onRequestClose={() => setModalReplicarVisible(false)}
         >
           <Pressable 
-            style={styles.criarTurmaOverlay} 
+            className="flex-1 items-center justify-center bg-black/40 px-4" 
             onPress={() => setModalReplicarVisible(false)}
           >
             <Pressable 
-              style={styles.criarTurmaContent}
+              className="max-h-[90%] w-full max-w-2xl rounded-2xl bg-white shadow-xl"
               onPress={(e) => e.stopPropagation()}
             >
-              <View style={styles.criarTurmaHeader}>
-                <Text style={styles.criarTurmaTitle}>Replicar Aulas</Text>
+              <View className="flex-row items-center justify-between border-b border-slate-200 px-6 py-4">
+                <Text className="text-[18px] font-semibold text-slate-800">Replicar Aulas</Text>
                 <TouchableOpacity onPress={() => setModalReplicarVisible(false)}>
-                  <Feather name="x" size={28} color="#6b7280" />
+                  <Feather name="x" size={24} color="#94a3b8" />
                 </TouchableOpacity>
               </View>
 
-              <ScrollView style={styles.criarTurmaForm} showsVerticalScrollIndicator={false}>
+              <ScrollView className="px-6 py-4" showsVerticalScrollIndicator={false}>
                 <View style={styles.formGroup}>
                   <Text style={styles.formLabel}>Data de Origem</Text>
                   <Text style={styles.replicarDataTexto}>
@@ -1365,29 +1362,29 @@ export default function TurmasScreen() {
           animationType="fade"
           onRequestClose={handleFecharConfirmacao}
         >
-          <View style={styles.confirmModalOverlay}>
-            <View style={styles.confirmModalContent}>
-              <View style={styles.confirmModalHeader}>
-                <Text style={styles.confirmModalTitle}>✅ Turma Criada!</Text>
+          <View className="flex-1 items-center justify-center bg-black/40 px-4">
+            <View className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
+              <View className="mb-3">
+                <Text className="text-center text-[18px] font-semibold text-slate-800">Turma criada!</Text>
               </View>
               
-              <Text style={styles.confirmModalMessage}>
+              <Text className="mb-5 text-center text-sm text-slate-500">
                 Deseja criar outra turma com os mesmos dados?
               </Text>
               
-              <View style={styles.confirmModalButtons}>
+              <View className="flex-row gap-3">
                 <TouchableOpacity 
-                  style={[styles.confirmModalButton, styles.confirmModalButtonSecondary]}
+                  className="flex-1 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 py-3"
                   onPress={handleFecharConfirmacao}
                 >
-                  <Text style={styles.confirmModalButtonSecondaryText}>Voltar</Text>
+                  <Text className="text-sm font-semibold text-slate-600">Voltar</Text>
                 </TouchableOpacity>
                 
                 <TouchableOpacity 
-                  style={[styles.confirmModalButton, styles.confirmModalButtonPrimary]}
+                  className="flex-1 items-center justify-center rounded-lg bg-orange-500 py-3"
                   onPress={handleCriarOutra}
                 >
-                  <Text style={styles.confirmModalButtonPrimaryText}>Criar Outra</Text>
+                  <Text className="text-sm font-semibold text-white">Criar Outra</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1402,23 +1399,23 @@ export default function TurmasScreen() {
           onRequestClose={() => setModalDesativarVisible(false)}
         >
           <Pressable 
-            style={styles.desativarModalOverlay}
+            className="flex-1 items-center justify-center bg-black/40 px-4"
             onPress={() => setModalDesativarVisible(false)}
           >
-            <Pressable style={styles.desativarModalContent} onPress={(e) => e.stopPropagation()}>
-              <View style={styles.desativarModalHeader}>
-                <Text style={styles.desativarModalTitle}>Desativar Aula</Text>
+            <Pressable className="max-h-[80%] w-full max-w-lg rounded-2xl bg-white shadow-xl" onPress={(e) => e.stopPropagation()}>
+              <View className="border-b border-slate-200 px-6 py-4">
+                <Text className="text-[17px] font-semibold text-slate-800">Desativar Aula</Text>
               </View>
 
               {turmaDesativar && (
-                <View style={styles.desativarModalInfo}>
-                  <Text style={styles.desativarModalInfoText}>
+                <View className="mx-6 mt-4 rounded-lg bg-orange-50 px-4 py-3">
+                  <Text className="text-[12px] font-medium text-orange-700">
                     {turmaDesativar.nome}
                   </Text>
                 </View>
               )}
 
-              <ScrollView style={styles.desativarModalForm} showsVerticalScrollIndicator={false}>
+              <ScrollView className="px-6 py-4" showsVerticalScrollIndicator={false}>
                 {/* Seleção de Período */}
                 <View style={styles.formGroup}>
                   <Text style={styles.formLabel}>Período de Desativação</Text>
@@ -1462,24 +1459,24 @@ export default function TurmasScreen() {
                 )}
               </ScrollView>
 
-              <View style={styles.desativarModalButtons}>
+              <View className="flex-row gap-3 border-t border-slate-200 px-6 py-4">
                 <TouchableOpacity
-                  style={[styles.desativarModalButton, styles.desativarModalButtonSecondary]}
+                  className="flex-1 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 py-3"
                   onPress={() => setModalDesativarVisible(false)}
                   disabled={desativando}
                 >
-                  <Text style={styles.desativarModalButtonSecondaryText}>Cancelar</Text>
+                  <Text className="text-sm font-semibold text-slate-600">Cancelar</Text>
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={[styles.desativarModalButton, styles.desativarModalButtonPrimary]}
+                  className="flex-1 items-center justify-center rounded-lg bg-orange-500 py-3"
                   onPress={handleDesativarTurma}
                   disabled={desativando}
                 >
                   {desativando ? (
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
-                    <Text style={styles.desativarModalButtonPrimaryText}>Desativar</Text>
+                    <Text className="text-sm font-semibold text-white">Desativar</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -1492,7 +1489,7 @@ export default function TurmasScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc' },
+  container: { flex: 1, backgroundColor: '#f9fafb' },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingOverlay: {
     position: 'absolute',
@@ -1551,7 +1548,7 @@ const styles = StyleSheet.create({
   confirmModalTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#1f2937',
+    color: '#4b5563',
     textAlign: 'center',
   },
   confirmModalMessage: {
@@ -1590,7 +1587,7 @@ const styles = StyleSheet.create({
   confirmModalButtonSecondaryText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#374151',
+    color: '#4b5563',
   },
 
   // Desativar Modal Styles
@@ -1622,7 +1619,7 @@ const styles = StyleSheet.create({
   desativarModalTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#1f2937',
+    color: '#4b5563',
   },
   desativarModalInfo: {
     paddingHorizontal: 24,
@@ -1674,7 +1671,7 @@ const styles = StyleSheet.create({
   desativarModalButtonSecondaryText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#374151',
+    color: '#4b5563',
   },
   periodoOptions: {
     flexDirection: 'column',
@@ -1705,7 +1702,7 @@ const styles = StyleSheet.create({
 
   // Banner Header
   bannerContainer: {
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f9fafb',
   },
   banner: {
     backgroundColor: '#f97316',
@@ -1836,7 +1833,7 @@ const styles = StyleSheet.create({
   searchCardTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1f2937',
+    color: '#4b5563',
   },
   searchCardSubtitle: {
     fontSize: 13,
@@ -1859,7 +1856,7 @@ const styles = StyleSheet.create({
   searchInput: {
     flex: 1,
     fontSize: 16,
-    color: '#1f2937',
+    color: '#4b5563',
     outlineStyle: 'none',
     height: '100%',
   },
@@ -1952,12 +1949,12 @@ const styles = StyleSheet.create({
   modalidadeText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#1f2937',
+    color: '#4b5563',
   },
   horarioCell: {
     flex: 1.2,
     fontSize: 13,
-    color: '#4b5563',
+    color: '#6b7280',
   },
   horarioContent: {
     flexDirection: 'row',
@@ -1965,12 +1962,12 @@ const styles = StyleSheet.create({
   },
   horarioText: {
     fontSize: 13,
-    color: '#4b5563',
+    color: '#6b7280',
   },
   professorCell: {
     flex: 1.5,
     fontSize: 13,
-    color: '#4b5563',
+    color: '#6b7280',
   },
   vagasCell: {
     flex: 1,
@@ -1979,7 +1976,7 @@ const styles = StyleSheet.create({
   vagasText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#1f2937',
+    color: '#4b5563',
   },
   statusCell: {
     flex: 1,
@@ -2010,35 +2007,46 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     gap: 10,
-    backgroundColor: '#f97316',
-    borderBottomWidth: 0,
+    backgroundColor: '#fff7ed',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    marginTop: 12,
   },
   dateSelectorButton: {
     padding: 8,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    borderRadius: 10,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
     justifyContent: 'center',
     alignItems: 'center',
-    minWidth: 44,
-    minHeight: 44,
+    minWidth: 40,
+    minHeight: 40,
   },
   hojeButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.35)',
+    backgroundColor: '#ffedd5',
+    borderColor: '#fdba74',
   },
   dateSelectorContent: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    gap: 4,
+    gap: 6,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+    paddingVertical: 8,
+    borderRadius: 999,
   },
   dateDisplay: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '600',
-    color: '#fff',
+    color: '#9a3412',
   },
   acoesCell: {
     flex: 0.8,
@@ -2097,7 +2105,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#1f2937',
+    color: '#4b5563',
   },
   modalOptions: {
     gap: 12,
@@ -2116,7 +2124,7 @@ const styles = StyleSheet.create({
   modalOptionText: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#1f2937',
+    color: '#4b5563',
   },
 
   // Calendar
@@ -2150,7 +2158,7 @@ const styles = StyleSheet.create({
   calendarTitle: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#1f2937',
+    color: '#4b5563',
     textTransform: 'capitalize',
   },
   calendarDaysOfWeek: {
@@ -2187,7 +2195,7 @@ const styles = StyleSheet.create({
   calendarDayText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#1f2937',
+    color: '#4b5563',
   },
   calendarDayTextSelected: {
     color: '#fff',
@@ -2237,7 +2245,7 @@ const styles = StyleSheet.create({
   criarTurmaTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#1f2937',
+    color: '#4b5563',
   },
   criarTurmaForm: {
     paddingHorizontal: 24,
@@ -2292,7 +2300,7 @@ const styles = StyleSheet.create({
   formLabel: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#374151',
+    color: '#4b5563',
     marginBottom: 8,
   },
   required: {
@@ -2306,7 +2314,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
     fontSize: 15,
-    color: '#1f2937',
+    color: '#4b5563',
     fontWeight: '500',
   },
   inputError: {
@@ -2397,7 +2405,7 @@ const styles = StyleSheet.create({
   },
   dropdownItemText: {
     fontSize: 14,
-    color: '#374151',
+    color: '#4b5563',
     fontWeight: '500',
   },
   dropdownItemTextSelected: {
@@ -2422,7 +2430,7 @@ const styles = StyleSheet.create({
   },
   replicarDataTexto: {
     fontSize: 15,
-    color: '#1f2937',
+    color: '#4b5563',
     fontWeight: '600',
     paddingVertical: 12,
     paddingHorizontal: 14,
@@ -2463,7 +2471,8 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     marginTop: 6,
     fontWeight: '500',
-  },  formButtonRow: {
+  },
+  formButtonRow: {
     flexDirection: 'row',
     gap: 10,
     marginTop: 16,

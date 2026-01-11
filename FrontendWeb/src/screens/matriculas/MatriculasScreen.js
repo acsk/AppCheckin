@@ -173,12 +173,10 @@ export default function MatriculasScreen() {
           </View>
         </View>
         <View
-          style={[
-            styles.statusBadge,
-            { backgroundColor: getStatusColor(matricula.status) },
-          ]}
+          className="self-start rounded-full px-2.5 py-1"
+          style={{ backgroundColor: getStatusColor(matricula.status) }}
         >
-          <Text style={styles.statusText}>{getStatusLabel(matricula.status)}</Text>
+          <Text className="text-[11px] font-bold text-white">{getStatusLabel(matricula.status)}</Text>
         </View>
       </View>
 
@@ -233,92 +231,84 @@ export default function MatriculasScreen() {
   );
 
   const renderTable = () => (
-    <View style={styles.tableContainer}>
-      <View style={styles.table}>
-          {/* Header */}
-          <View style={styles.tableHeader}>
-            <Text style={[styles.tableHeaderText, styles.colAluno]}>Aluno</Text>
-            <Text style={[styles.tableHeaderText, styles.colPlano]}>Plano</Text>
-            <Text style={[styles.tableHeaderText, styles.colModalidade]}>Modalidade</Text>
-            <Text style={[styles.tableHeaderText, styles.colValor]}>Valor</Text>
-            <Text style={[styles.tableHeaderText, styles.colDatas]}>Início</Text>
-            <Text style={[styles.tableHeaderText, styles.colDatas]}>Vencimento</Text>
-            <Text style={[styles.tableHeaderText, styles.colStatus]}>Status</Text>
-            <Text style={[styles.tableHeaderText, styles.colAcoes]}>Ações</Text>
-          </View>
+    <View className="mx-4 my-3 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      {/* Header */}
+      <View className="flex-row items-center border-b border-slate-200 bg-slate-50 px-4 py-3">
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colAluno}>Aluno</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colPlano}>Plano</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colModalidade}>Modalidade</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colValor}>Valor</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colDatas}>Início</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colDatas}>Vencimento</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colStatus}>Status</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-right" style={styles.colAcoes}>Ações</Text>
+      </View>
 
-          {/* Body */}
-          {filteredMatriculas.map((matricula) => (
-            <View key={matricula.id} style={styles.tableRow}>
-              <View style={styles.colAluno}>
-                <Text style={styles.cellTextBold}>{matricula.usuario_nome}</Text>
-                <Text style={styles.cellTextSmall}>{matricula.usuario_email}</Text>
-              </View>
-              <Text style={[styles.cellText, styles.colPlano]}>{matricula.plano_nome}</Text>
-              <View style={styles.colModalidade}>
-                <View style={styles.modalidadeCell}>
-                  {matricula.modalidade_icone && (
-                    <View
-                      style={[
-                        styles.tableIconBadge,
-                        { backgroundColor: matricula.modalidade_cor || '#3b82f6' },
-                      ]}
-                    >
-                      <MaterialCommunityIcons
-                        name={matricula.modalidade_icone}
-                        size={14}
-                        color="#fff"
-                      />
-                    </View>
-                  )}
-                  <Text style={styles.cellText}>{matricula.modalidade_nome}</Text>
-                </View>
-              </View>
-              <Text style={[styles.cellText, styles.colValor]}>
-                {formatCurrency(matricula.valor)}
-              </Text>
-              <Text style={[styles.cellText, styles.colDatas]}>
-                {formatDate(matricula.data_inicio)}
-              </Text>
-              <Text style={[styles.cellText, styles.colDatas]}>
-                {formatDate(matricula.data_vencimento)}
-              </Text>
-              <View style={styles.colStatus}>
+      {/* Body */}
+      {filteredMatriculas.map((matricula) => (
+        <View key={matricula.id} className="flex-row items-center border-b border-slate-100 px-4 py-3">
+          <View style={styles.colAluno}>
+            <Text className="text-[13px] font-semibold text-slate-800">{matricula.usuario_nome}</Text>
+            <Text className="text-[12px] text-slate-500">{matricula.usuario_email}</Text>
+          </View>
+          <Text className="text-[13px] text-slate-600" style={styles.colPlano}>{matricula.plano_nome}</Text>
+          <View style={styles.colModalidade}>
+            <View className="flex-row items-center gap-2">
+              {matricula.modalidade_icone && (
                 <View
                   style={[
-                    styles.statusBadge,
-                    { backgroundColor: getStatusColor(matricula.status) },
+                    styles.tableIconBadge,
+                    { backgroundColor: matricula.modalidade_cor || '#f97316' },
                   ]}
+                  className="h-6 w-6 items-center justify-center rounded-full"
                 >
-                  <Text style={styles.statusText}>{getStatusLabel(matricula.status)}</Text>
+                  <MaterialCommunityIcons
+                    name={matricula.modalidade_icone}
+                    size={14}
+                    color="#fff"
+                  />
                 </View>
-              </View>
-              <View style={styles.colAcoes}>
-                <Pressable
-                  onPress={() => router.push(`/matriculas/detalhe?id=${matricula.id}`)}
-                  style={({ pressed }) => [
-                    styles.btnTableAction,
-                    pressed && { opacity: 0.7 },
-                  ]}
-                >
-                  <Feather name="file-text" size={18} color="#3b82f6" />
-                </Pressable>
-                {matricula.status !== 'cancelada' && matricula.status !== 'finalizada' && (
-                  <Pressable
-                    onPress={() => handleCancelar(matricula)}
-                    style={({ pressed }) => [
-                      styles.btnTableAction,
-                      { marginLeft: 8 },
-                      pressed && { opacity: 0.7 },
-                    ]}
-                  >
-                    <Feather name="x-circle" size={18} color="#ef4444" />
-                  </Pressable>
-                )}
-              </View>
+              )}
+              <Text className="text-[13px] text-slate-600">{matricula.modalidade_nome}</Text>
             </View>
-          ))}
+          </View>
+          <Text className="text-[13px] font-semibold text-slate-700" style={styles.colValor}>
+            {formatCurrency(matricula.valor)}
+          </Text>
+          <Text className="text-[13px] text-slate-600" style={styles.colDatas}>
+            {formatDate(matricula.data_inicio)}
+          </Text>
+          <Text className="text-[13px] text-slate-600" style={styles.colDatas}>
+            {formatDate(matricula.data_vencimento)}
+          </Text>
+          <View style={styles.colStatus}>
+            <View
+              className="self-start rounded-full px-2.5 py-1"
+              style={{ backgroundColor: getStatusColor(matricula.status) }}
+            >
+              <Text className="text-[11px] font-bold text-white">{getStatusLabel(matricula.status)}</Text>
+            </View>
+          </View>
+          <View className="flex-row justify-end gap-2" style={styles.colAcoes}>
+            <Pressable
+              onPress={() => router.push(`/matriculas/detalhe?id=${matricula.id}`)}
+              className="h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
+              style={({ pressed }) => [pressed && { opacity: 0.7 }]}
+            >
+              <Feather name="file-text" size={18} color="#f97316" />
+            </Pressable>
+            {matricula.status !== 'cancelada' && matricula.status !== 'finalizada' && (
+              <Pressable
+                onPress={() => handleCancelar(matricula)}
+                className="h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
+                style={({ pressed }) => [pressed && { opacity: 0.7 }]}
+              >
+                <Feather name="x-circle" size={18} color="#ef4444" />
+              </Pressable>
+            )}
+          </View>
         </View>
+      ))}
     </View>
   );
 
@@ -380,7 +370,7 @@ export default function MatriculasScreen() {
 
         {loading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#3b82f6" />
+            <ActivityIndicator size="large" color="#f97316" />
             <Text style={styles.loadingText}>Carregando matrículas...</Text>
           </View>
         ) : matriculas.length === 0 ? (
@@ -418,7 +408,7 @@ export default function MatriculasScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#f8fafc',
   },
   header: {
     flexDirection: 'row',
@@ -475,8 +465,8 @@ const styles = StyleSheet.create({
     borderColor: '#e5e7eb',
   },
   filterChipActive: {
-    backgroundColor: '#3b82f6',
-    borderColor: '#3b82f6',
+    backgroundColor: '#f97316',
+    borderColor: '#f97316',
   },
   filterChipText: {
     fontSize: 13,
@@ -505,7 +495,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#f97316',
     paddingHorizontal: 20,
     paddingVertical: 12,
     borderRadius: 8,
@@ -588,16 +578,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6b7280',
   },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#fff',
-  },
   cardContent: {
     gap: 10,
     marginBottom: 16,
@@ -634,12 +614,12 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   btnDetalhes: {
-    backgroundColor: '#eff6ff',
+    backgroundColor: '#fff7ed',
   },
   btnDetalhesText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#3b82f6',
+    color: '#f97316',
   },
   btnCancelar: {
     backgroundColor: '#fef2f2',
