@@ -139,6 +139,29 @@ export default function TurmasScreen() {
     carregarDados();
   }, [dataSelecionada]);
 
+  const buscarOuCriarDia = async (data) => {
+    try {
+      // Primeiro, buscar todos os dias
+      const dias = await diaService.listar();
+      
+      // Procurar se já existe um dia com essa data
+      const diaExistente = dias.find(d => d.data === data);
+      
+      if (diaExistente) {
+        console.log('✅ [buscarOuCriarDia] Dia encontrado:', diaExistente.id);
+        return diaExistente.id;
+      }
+      
+      // Se não existir, criar um novo dia
+      const novoDia = await diaService.criar({ data, ativo: true });
+      console.log('✅ [buscarOuCriarDia] Novo dia criado:', novoDia.id);
+      return novoDia.id;
+    } catch (error) {
+      console.error('Erro ao buscar/criar dia:', error);
+      throw error;
+    }
+  };
+
   const carregarDados = async () => {
     try {
       setLoading(true);
@@ -158,10 +181,18 @@ export default function TurmasScreen() {
       setTurmasFiltradas(turmasData);
       setSearchText('');
       
-      // Capturar dia_id do objeto dia retornado
-      if (turmasData.dia && turmasData.dia.id) {
-        setDiaId(turmasData.dia.id);
-        console.log('✅ [carregarDados] dia_id atualizado:', turmasData.dia.id);
+      // Buscar ou criar o dia_id baseado na data selecionada
+      try {
+        const diaIdBuscado = await buscarOuCriarDia(dataSelecionada);
+        setDiaId(diaIdBuscado);
+        console.log('✅ [carregarDados] dia_id atualizado para data', dataSelecionada, ':', diaIdBuscado);
+      } catch (error) {
+        console.error('Erro ao buscar/criar dia_id:', error);
+        // Fallback: se houver turmas, tentar extrair o dia_id delas
+        if (turmasData && turmasData.length > 0 && turmasData[0].dia_id) {
+          setDiaId(turmasData[0].dia_id);
+          console.log('⚠️ [carregarDados] Usando dia_id da primeira turma como fallback:', turmasData[0].dia_id);
+        }
       }
     } catch (error) {
       showError('Erro ao carregar turmas');
