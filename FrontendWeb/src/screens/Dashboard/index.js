@@ -12,15 +12,71 @@ import {
   ToastAndroid,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Feather } from '@expo/vector-icons';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { authService } from '../../services/authService';
 import { superAdminService } from '../../services/superAdminService';
+import { buscarDashboard, buscarTurmasPorModalidade, buscarCheckinsUltimos7Dias } from '../../services/dashboardService';
 import LayoutBase from '../../components/LayoutBase';
 import styles, { MENU, KPI, BAR_VALUES, MONTHS, FEED, CAL_DAYS, CAL_NUMS } from './styles';
 import LoaderOverlay from './components/LoaderOverlay';
 import AcademiaList from './components/AcademiaList';
 import AcademiaForm from './components/AcademiaForm';
+
+// Componente auxiliar para gráfico de check-ins
+const CheckinsChart = ({ data }) => {
+  if (!data || data.length === 0) {
+    return (
+      <View style={{ padding: 40, alignItems: 'center', justifyContent: 'center', height: 200 }}>
+        <MaterialCommunityIcons name="chart-bar" size={48} color="#cbd5e1" />
+        <Text style={{ marginTop: 12, color: '#94a3b8', fontSize: 14 }}>Nenhum check-in registrado</Text>
+      </View>
+    );
+  }
+
+  const maxValue = Math.max(...data.map(d => d.total), 1);
+
+  return (
+    <View style={{ padding: 16, height: 200 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', height: 150, gap: 8 }}>
+        {data.map((item) => {
+          const heightPercent = (item.total / maxValue) * 100;
+          const dateObj = new Date(item.data + 'T00:00:00');
+          const dayName = dateObj.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
+          
+          return (
+            <View key={item.data} style={{ flex: 1, alignItems: 'center', gap: 4 }}>
+              <View style={{ flex: 1, width: '100%', justifyContent: 'flex-end' }}>
+                <View 
+                  style={{ 
+                    width: '100%', 
+                    backgroundColor: '#a855f7',
+                    borderTopLeftRadius: 8,
+                    borderTopRightRadius: 8,
+                    height: `${Math.max(heightPercent, 5)}%`,
+                  }}
+                />
+              </View>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#1e293b' }}>{item.total}</Text>
+              <Text style={{ fontSize: 10, fontWeight: '600', color: '#64748b' }}>{dayName}</Text>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+};
+
+// Componente auxiliar para linha de estatística
+const StatRow = ({ icon, label, value }) => (
+  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      <MaterialCommunityIcons name={icon} size={18} color="#64748b" />
+      <Text style={{ fontSize: 13, color: '#64748b' }}>{label}</Text>
+    </View>
+    <Text style={{ fontSize: 14, fontWeight: '700', color: '#1e293b' }}>{value}</Text>
+  </View>
+);
 
 export default function Dashboard() {
   const router = useRouter();
@@ -32,6 +88,13 @@ export default function Dashboard() {
   const [showForm, setShowForm] = useState(false);
   const [academias, setAcademias] = useState([]);
   const [loadingAcademias, setLoadingAcademias] = useState(false);
+  
+  // Estados do Dashboard
+  const [dashboardData, setDashboardData] = useState(null);
+  const [turmasPorModalidade, setTurmasPorModalidade] = useState([]);
+  const [checkinsData, setCheckinsData] = useState([]);
+  const [loadingDashboard, setLoadingDashboard] = useState(false);
+  
   const [saving, setSaving] = useState(false);
   const [editAcademia, setEditAcademia] = useState(null);
   const [novaAcademia, setNovaAcademia] = useState({
@@ -52,6 +115,14 @@ export default function Dashboard() {
         }
         console.log('✅ Usuário autenticado:', user);
         setUsuarioInfo(user);
+        
+        // Carregar dados do dashboard (disponível para admin)
+        carregarDadosDashboard();
+        
+        // Carregar academias apenas para super_admin (role_id = 3)
+        if (user.role_id === 3) {
+          carregarAcademias();
+        }
       } catch (error) {
         console.error('❌ Erro ao verificar autenticação:', error);
         router.replace('/login');
@@ -71,6 +142,42 @@ export default function Dashboard() {
       Alert.alert('Erro', 'Não foi possível carregar academias');
     } finally {
       setLoadingAcademias(false);
+    }
+  };
+
+  const carregarDadosDashboard = async () => {
+    setLoadingDashboard(true);
+    try {
+      // Buscar dados em paralelo
+      const [dashboard, turmas, checkins] = await Promise.all([
+        buscarDashboard().catch(err => {
+          console.error('Erro ao buscar dashboard:', err);
+          return { data: null };
+        }),
+        buscarTurmasPorModalidade().catch(err => {
+          console.error('Erro ao buscar turmas por modalidade:', err);
+          return { data: [] };
+        }),
+        buscarCheckinsUltimos7Dias().catch(err => {
+          console.error('Erro ao buscar check-ins:', err);
+          return { data: [] };
+        }),
+      ]);
+      
+      setDashboardData(dashboard?.data || dashboard);
+      setTurmasPorModalidade(turmas?.data || turmas || []);
+      setCheckinsData(checkins?.data || checkins || []);
+      
+      // Verificar se conseguiu carregar algum dado
+      const temDados = dashboard?.data || turmas?.data?.length > 0 || checkins?.data?.length > 0;
+      if (!temDados) {
+        console.warn('⚠️ Nenhum dado foi carregado. Verifique as permissões no backend.');
+        console.warn('As rotas /admin/dashboard/* devem aceitar role_id = 2 (admin) e 3 (super_admin)');
+      }
+    } catch (error) {
+      console.error('Erro geral ao carregar dashboard:', error);
+    } finally {
+      setLoadingDashboard(false);
     }
   };
 
@@ -217,120 +324,444 @@ export default function Dashboard() {
     </View>
   );
 
-  const renderDashboard = () => (
-    <>
-      <View style={styles.kpiRow}>
-        {KPI.map((k) => (
-          <View key={k.title} style={[styles.card, styles.kpiCard]}>
-            <View>
-              <Text style={styles.kpiTitle}>{k.title}</Text>
-              <Text style={styles.kpiSub}>{k.subtitle}</Text>
-              {k.delta ? (
-                <View style={styles.deltaPill}>
-                  <Text style={styles.deltaText}>{k.delta}</Text>
-                </View>
-              ) : null}
-            </View>
-            <Feather name={k.icon} size={28} color="#2b1a04" />
-          </View>
-        ))}
-      </View>
+  const renderDashboard = () => {
+    // Formatar valores do dashboard com os campos corretos da API
+    const totalAlunos = dashboardData?.total_alunos || 0;
+    const alunosAtivos = dashboardData?.alunos_ativos || 0;
+    const alunosInativos = dashboardData?.alunos_inativos || 0;
+    const novosAlunosMes = dashboardData?.novos_alunos_mes || 0;
+    const checkinsHoje = dashboardData?.total_checkins_hoje || 0;
+    const checkinsMes = dashboardData?.total_checkins_mes || 0;
+    const planosVencendo = dashboardData?.planos_vencendo || 0;
+    const receitaMensal = dashboardData?.receita_mensal || 0;
+    const contasPendentesQtd = dashboardData?.contas_pendentes_qtd || 0;
+    const contasPendentesValor = dashboardData?.contas_pendentes_valor || 0;
+    const contasVencidasQtd = dashboardData?.contas_vencidas_qtd || 0;
+    const contasVencidasValor = dashboardData?.contas_vencidas_valor || 0;
+    
+    const totalTurmas = dashboardData?.turmas || 0;
+    const professores = dashboardData?.professores || 0;
+    const modalidades = dashboardData?.modalidades || 0;
 
-      <View style={styles.rowTwo}>
-        <View style={[styles.card, styles.chartCard]}>
-          <View style={styles.cardHead}>
-            <Text style={styles.cardHeadTitle}>Sales / Revenue</Text>
-            <Feather name="more-horizontal" size={18} color="#2b1a04" />
-          </View>
-          <BarChart />
-        </View>
+    // Formatar moeda
+    const formatMoney = (value) => {
+      return new Intl.NumberFormat('pt-BR', { 
+        style: 'currency', 
+        currency: 'BRL',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(value);
+    };
 
-        <View style={[styles.card, styles.feedCard]}>
-          <View style={styles.cardHead}>
-            <Text style={styles.cardHeadTitle}>Daily feed</Text>
-            <View style={styles.arrows}>
-              <View style={styles.iconChip}>
-                <Feather name="chevron-left" size={16} color="#2b1a04" />
-              </View>
-              <View style={styles.iconChip}>
-                <Feather name="chevron-right" size={16} color="#2b1a04" />
-              </View>
-            </View>
-          </View>
-          <View style={styles.feed}>
-            {FEED.map((f) => (
-              <View key={f.line} style={styles.feedItem}>
-                <View style={styles.feedAvatar}>
-                  <Text style={styles.feedAvatarText}>{f.avatar}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.feedLine}>{f.line}</Text>
-                  {f.note ? <Text style={styles.feedNote}>{f.note}</Text> : null}
-                  <Text style={styles.feedTime}>{f.time}</Text>
-                </View>
-                <Text style={styles.feedRight}>{f.right}</Text>
-              </View>
-            ))}
-            <Pressable style={styles.btnGradient}>
-              <Text style={styles.btnGradientText}>Load more</Text>
-            </Pressable>
-          </View>
-        </View>
-      </View>
+    // Cards de métricas principais
+    const metricsCards = [
+      { 
+        title: 'Total de Alunos', 
+        value: totalAlunos.toString(), 
+        subtitle: `${alunosAtivos} ativos, ${alunosInativos} inativos`,
+        icon: 'users',
+        color: '#3b82f6',
+        bgColor: '#eff6ff'
+      },
+      { 
+        title: 'Receita Mensal', 
+        value: formatMoney(receitaMensal), 
+        subtitle: `${contasPendentesQtd} contas pendentes`,
+        icon: 'dollar-sign',
+        color: '#10b981',
+        bgColor: '#f0fdf4'
+      },
+      { 
+        title: 'Check-ins Hoje', 
+        value: checkinsHoje.toString(), 
+        subtitle: `${checkinsMes} no mês`,
+        icon: 'check-circle',
+        color: '#f59e0b',
+        bgColor: '#fffbeb'
+      },
+      { 
+        title: 'Planos Vencendo', 
+        value: planosVencendo.toString(), 
+        subtitle: `${novosAlunosMes} novos este mês`,
+        icon: 'alert-circle',
+        color: '#ef4444',
+        bgColor: '#fef2f2'
+      },
+    ];
 
-      <View style={styles.rowThree}>
-        <View style={[styles.card, styles.calendarCard]}>
-          <View style={styles.cardHead}>
-            <Text style={styles.cardHeadTitle}>Calendar</Text>
-            <Feather name="more-horizontal" size={18} color="#2b1a04" />
+    return (
+      <ScrollView style={{ flex: 1, backgroundColor: '#f9fafb' }} showsVerticalScrollIndicator={false}>
+        {loadingDashboard ? (
+          <View style={{ padding: 60, alignItems: 'center' }}>
+            <ActivityIndicator size="large" color="#3b82f6" />
+            <Text style={{ marginTop: 16, color: '#64748b', fontSize: 14 }}>Carregando dados...</Text>
           </View>
-          <View style={styles.calendar}>
-            <View style={styles.calHeader}>
-              <Text style={styles.calMonth}>November 2020</Text>
-            </View>
-            <View style={styles.calGrid}>
-              {CAL_DAYS.map((d) => (
-                <Text key={d} style={styles.calDay}>
-                  {d}
-                </Text>
+        ) : (
+          <View style={{ padding: 24, gap: 24 }}>
+            {/* Metrics Cards */}
+            <View style={{ flexDirection: 'row', gap: 16 }}>
+              {metricsCards.map((card, index) => (
+                <View 
+                  key={index} 
+                  style={{ 
+                    flex: 1, 
+                    backgroundColor: '#ffffff', 
+                    borderRadius: 12, 
+                    padding: 20,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 1 },
+                    shadowOpacity: 0.05,
+                    shadowRadius: 3,
+                    elevation: 2,
+                  }}
+                >
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                    <Text style={{ fontSize: 13, color: '#64748b', fontWeight: '500' }}>{card.title}</Text>
+                    <View style={{ 
+                      width: 32, 
+                      height: 32, 
+                      borderRadius: 8, 
+                      backgroundColor: card.bgColor,
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      <Feather name={card.icon} size={16} color={card.color} />
+                    </View>
+                  </View>
+                  <Text style={{ fontSize: 28, fontWeight: '700', color: '#1e293b', marginBottom: 8 }}>
+                    {card.value}
+                  </Text>
+                  <Text style={{ fontSize: 11, color: '#94a3b8' }}>
+                    {card.subtitle}
+                  </Text>
+                </View>
               ))}
-              {CAL_NUMS.map((n, idx) => (
-                <Text key={idx} style={[styles.calNum, idx < 1 || idx >= 30 ? styles.calMuted : null]}>
-                  {n}
-                </Text>
-              ))}
             </View>
-          </View>
-        </View>
 
-        <View style={[styles.card, styles.donutCard]}>
-          <View style={styles.cardHead}>
-            <Text style={styles.cardHeadTitle}>Weekly sales</Text>
-            <Feather name="more-horizontal" size={18} color="#2b1a04" />
-          </View>
-          <View style={styles.donutWrap}>
-            <View style={styles.donut}>
-              <View style={styles.donutHole}>
-                <Text style={styles.donutValue}>68%</Text>
-                <Text style={styles.donutMuted}>Target</Text>
+            {/* Charts Row */}
+            <View style={{ flexDirection: 'row', gap: 16 }}>
+              {/* Statistics Chart */}
+              <View style={{ 
+                flex: 2, 
+                backgroundColor: '#ffffff', 
+                borderRadius: 12, 
+                padding: 24,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.05,
+                shadowRadius: 3,
+                elevation: 2,
+              }}>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: '#1e293b', marginBottom: 20 }}>
+                  Check-ins (Últimos 7 dias)
+                </Text>
+                {checkinsData.length > 0 ? (
+                  <View style={{ height: 200 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: '100%', gap: 12 }}>
+                      {checkinsData.map((item, index) => {
+                        const maxValue = Math.max(...checkinsData.map(d => d.total), 1);
+                        const heightPercent = (item.total / maxValue) * 100;
+                        const dateObj = new Date(item.data + 'T00:00:00');
+                        const day = dateObj.getDate();
+                        
+                        return (
+                          <View key={item.data} style={{ flex: 1, height: '100%', justifyContent: 'flex-end', alignItems: 'center' }}>
+                            <View 
+                              style={{ 
+                                width: '100%',
+                                height: `${Math.max(heightPercent, 8)}%`,
+                                backgroundColor: '#14b8a6',
+                                borderTopLeftRadius: 4,
+                                borderTopRightRadius: 4,
+                              }}
+                            />
+                            <Text style={{ fontSize: 10, color: '#64748b', marginTop: 8, fontWeight: '500' }}>
+                              {day}
+                            </Text>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ) : (
+                  <View style={{ height: 200, alignItems: 'center', justifyContent: 'center' }}>
+                    <MaterialCommunityIcons name="chart-bar" size={48} color="#cbd5e1" />
+                    <Text style={{ color: '#94a3b8', fontSize: 13, marginTop: 8 }}>Nenhum check-in registrado</Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Contas Card */}
+              <View style={{ 
+                flex: 1, 
+                backgroundColor: '#ffffff', 
+                borderRadius: 12, 
+                padding: 24,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.05,
+                shadowRadius: 3,
+                elevation: 2,
+              }}>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: '#1e293b', marginBottom: 20 }}>
+                  Contas a Receber
+                </Text>
+                <View style={{ gap: 16 }}>
+                  <View>
+                    <Text style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>Contas Pendentes</Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 24, fontWeight: '700', color: '#f59e0b' }}>
+                        {contasPendentesQtd}
+                      </Text>
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: '#64748b' }}>
+                        {formatMoney(contasPendentesValor)}
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  <View style={{ height: 1, backgroundColor: '#f1f5f9' }} />
+                  
+                  <View>
+                    <Text style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>Contas Vencidas</Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ fontSize: 24, fontWeight: '700', color: '#ef4444' }}>
+                        {contasVencidasQtd}
+                      </Text>
+                      <Text style={{ fontSize: 14, fontWeight: '600', color: '#64748b' }}>
+                        {formatMoney(contasVencidasValor)}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={{ height: 1, backgroundColor: '#f1f5f9' }} />
+
+                  <View>
+                    <Text style={{ fontSize: 11, color: '#64748b', marginBottom: 8 }}>Receita Mensal</Text>
+                    <Text style={{ fontSize: 24, fontWeight: '700', color: '#10b981' }}>
+                      {formatMoney(receitaMensal)}
+                    </Text>
+                  </View>
+                </View>
+
+                <Pressable 
+                  onPress={carregarDadosDashboard}
+                  style={{ 
+                    marginTop: 20, 
+                    padding: 12, 
+                    backgroundColor: '#f1f5f9', 
+                    borderRadius: 8,
+                    alignItems: 'center'
+                  }}
+                >
+                  <Text style={{ fontSize: 12, color: '#3b82f6', fontWeight: '600' }}>
+                    Atualizar Dados
+                  </Text>
+                </Pressable>
+              </View>
+
+              {/* Alunos Stats */}
+              <View style={{ 
+                flex: 1.2, 
+                backgroundColor: '#ffffff', 
+                borderRadius: 12, 
+                padding: 24,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.05,
+                shadowRadius: 3,
+                elevation: 2,
+              }}>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: '#1e293b', marginBottom: 20 }}>
+                  Estatísticas de Alunos
+                </Text>
+                
+                {/* Donut Chart Placeholder */}
+                <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                  <View style={{ 
+                    width: 120, 
+                    height: 120, 
+                    borderRadius: 60,
+                    borderWidth: 16,
+                    borderColor: '#3b82f6',
+                    borderRightColor: '#cbd5e1',
+                    borderBottomColor: '#cbd5e1',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transform: [{ rotate: '-90deg' }]
+                  }}>
+                    <View style={{ transform: [{ rotate: '90deg' }] }}>
+                      <Text style={{ fontSize: 28, fontWeight: '700', color: '#1e293b' }}>
+                        {totalAlunos}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Stats */}
+                <View style={{ gap: 12 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#3b82f6' }} />
+                      <Text style={{ fontSize: 12, color: '#64748b' }}>Alunos Ativos</Text>
+                    </View>
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: '#1e293b' }}>
+                      {alunosAtivos}
+                    </Text>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#cbd5e1' }} />
+                      <Text style={{ fontSize: 12, color: '#64748b' }}>Alunos Inativos</Text>
+                    </View>
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: '#1e293b' }}>
+                      {alunosInativos}
+                    </Text>
+                  </View>
+
+                  <View style={{ height: 1, backgroundColor: '#f1f5f9', marginVertical: 4 }} />
+
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 12, color: '#64748b' }}>Novos este mês</Text>
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: '#10b981' }}>
+                      +{novosAlunosMes}
+                    </Text>
+                  </View>
+                </View>
               </View>
             </View>
-          </View>
-        </View>
 
-        <View style={[styles.card, styles.apptCard]}>
-          <View style={styles.cardHead}>
-            <Text style={styles.cardHeadTitle}>Appointments</Text>
-            <Feather name="more-horizontal" size={18} color="#2b1a04" />
+            {/* Turmas por Modalidade */}
+            <View style={{ 
+              backgroundColor: '#ffffff', 
+              borderRadius: 12, 
+              padding: 24,
+              shadowColor: '#000',
+              shadowOffset: { width: 0, height: 1 },
+              shadowOpacity: 0.05,
+              shadowRadius: 3,
+              elevation: 2,
+            }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <Text style={{ fontSize: 16, fontWeight: '700', color: '#1e293b' }}>
+                  Turmas por Modalidade
+                </Text>
+                <Pressable onPress={() => router.push('/modalidades')}>
+                  <Text style={{ fontSize: 12, color: '#3b82f6', fontWeight: '600' }}>Ver todas →</Text>
+                </Pressable>
+              </View>
+              
+              <View style={{ gap: 16 }}>
+                {turmasPorModalidade.length > 0 ? (
+                  turmasPorModalidade.slice(0, 5).map((modalidade, index) => {
+                    const maxValue = Math.max(...turmasPorModalidade.map(m => m.total), 1);
+                    const widthPercent = (modalidade.total / maxValue) * 100;
+                    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#a855f7', '#ef4444'];
+                    
+                    return (
+                      <View key={modalidade.id}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: '#1e293b' }}>
+                            {modalidade.nome}
+                          </Text>
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: '#1e293b' }}>
+                            {modalidade.total}
+                          </Text>
+                        </View>
+                        <View style={{ height: 8, backgroundColor: '#f1f5f9', borderRadius: 4, overflow: 'hidden' }}>
+                          <View 
+                            style={{ 
+                              height: '100%',
+                              width: `${Math.max(widthPercent, 5)}%`,
+                              backgroundColor: colors[index % colors.length],
+                              borderRadius: 4,
+                            }}
+                          />
+                        </View>
+                      </View>
+                    );
+                  })
+                ) : (
+                  <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+                    <MaterialCommunityIcons name="dumbbell" size={48} color="#cbd5e1" />
+                    <Text style={{ marginTop: 12, color: '#94a3b8', fontSize: 13 }}>
+                      Nenhuma modalidade cadastrada
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+
+            {/* Quick Actions */}
+            <View style={{ flexDirection: 'row', gap: 16 }}>
+              <Pressable 
+                onPress={() => router.push('/turmas')}
+                style={{ 
+                  flex: 1,
+                  backgroundColor: '#3b82f6',
+                  borderRadius: 12,
+                  padding: 20,
+                  alignItems: 'center',
+                  shadowColor: '#3b82f6',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 8,
+                  elevation: 4,
+                }}
+              >
+                <Feather name="calendar" size={24} color="#ffffff" />
+                <Text style={{ marginTop: 8, color: '#ffffff', fontSize: 14, fontWeight: '600' }}>
+                  Gerenciar Turmas
+                </Text>
+              </Pressable>
+
+              <Pressable 
+                onPress={() => router.push('/usuarios')}
+                style={{ 
+                  flex: 1,
+                  backgroundColor: '#10b981',
+                  borderRadius: 12,
+                  padding: 20,
+                  alignItems: 'center',
+                  shadowColor: '#10b981',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 8,
+                  elevation: 4,
+                }}
+              >
+                <Feather name="users" size={24} color="#ffffff" />
+                <Text style={{ marginTop: 8, color: '#ffffff', fontSize: 14, fontWeight: '600' }}>
+                  Ver Alunos
+                </Text>
+              </Pressable>
+
+              <Pressable 
+                onPress={() => router.push('/contratos')}
+                style={{ 
+                  flex: 1,
+                  backgroundColor: '#f59e0b',
+                  borderRadius: 12,
+                  padding: 20,
+                  alignItems: 'center',
+                  shadowColor: '#f59e0b',
+                  shadowOffset: { width: 0, height: 4 },
+                  shadowOpacity: 0.3,
+                  shadowRadius: 8,
+                  elevation: 4,
+                }}
+              >
+                <Feather name="file-text" size={24} color="#ffffff" />
+                <Text style={{ marginTop: 8, color: '#ffffff', fontSize: 14, fontWeight: '600' }}>
+                  Contratos
+                </Text>
+              </Pressable>
+            </View>
           </View>
-          <View style={styles.apptList}>
-            <Appt title="Chat with Carl and Ashley" desc="Nam premium turiple et, omcu. Duis arcu tortor..." />
-            <Appt title="The Big launch" desc="Nam a consed sidan ceèl, imperta tacilus..." />
-          </View>
-        </View>
-      </View>
-    </>
-  );
+        )}
+      </ScrollView>
+    );
+  };
 
   return (
     <LayoutBase title="Dashboard" subtitle="Overview">

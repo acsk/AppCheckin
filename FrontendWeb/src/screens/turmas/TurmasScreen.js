@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, useWindowDimensions, TextInput, Modal, FlatList, Pressable, Switch } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, useWindowDimensions, TextInput, Modal, FlatList, Pressable, Switch, Alert } from 'react-native';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { turmaService } from '../../services/turmaService';
@@ -34,6 +34,8 @@ export default function TurmasScreen() {
     horario_fim: '',
     professor_id: '',
     limite_alunos: '',
+    tolerancia_antes_minutos: '',
+    tolerancia_minutos: '',
     ativo: true,
   });
   const [submitting, setSubmitting] = useState(false);
@@ -48,7 +50,10 @@ export default function TurmasScreen() {
   const [periodoReplicacao, setPeriodoReplicacao] = useState('custom');
   const [diasSemanaSelecionados, setDiasSemanaSelecionados] = useState([]);
   const [mesReplicacao, setMesReplicacao] = useState('');
+  const [modalidadeReplicarId, setModalidadeReplicarId] = useState('');
   const [replicando, setReplicando] = useState(false);
+  const [deletandoHorarios, setDeletandoHorarios] = useState(false);
+  const [modalDeletarVisible, setModalDeletarVisible] = useState(false);
   const [showConfirmeContinuar, setShowConfirmeContinuar] = useState(false);
   const [dadosAnteriores, setDadosAnteriores] = useState(null);
   const [modalDesativarVisible, setModalDesativarVisible] = useState(false);
@@ -139,29 +144,6 @@ export default function TurmasScreen() {
     carregarDados();
   }, [dataSelecionada]);
 
-  const buscarOuCriarDia = async (data) => {
-    try {
-      // Primeiro, buscar todos os dias
-      const dias = await diaService.listar();
-      
-      // Procurar se já existe um dia com essa data
-      const diaExistente = dias.find(d => d.data === data);
-      
-      if (diaExistente) {
-        console.log('✅ [buscarOuCriarDia] Dia encontrado:', diaExistente.id);
-        return diaExistente.id;
-      }
-      
-      // Se não existir, criar um novo dia
-      const novoDia = await diaService.criar({ data, ativo: true });
-      console.log('✅ [buscarOuCriarDia] Novo dia criado:', novoDia.id);
-      return novoDia.id;
-    } catch (error) {
-      console.error('Erro ao buscar/criar dia:', error);
-      throw error;
-    }
-  };
-
   const carregarDados = async () => {
     try {
       setLoading(true);
@@ -181,18 +163,12 @@ export default function TurmasScreen() {
       setTurmasFiltradas(turmasData);
       setSearchText('');
       
-      // Buscar ou criar o dia_id baseado na data selecionada
-      try {
-        const diaIdBuscado = await buscarOuCriarDia(dataSelecionada);
-        setDiaId(diaIdBuscado);
-        console.log('✅ [carregarDados] dia_id atualizado para data', dataSelecionada, ':', diaIdBuscado);
-      } catch (error) {
-        console.error('Erro ao buscar/criar dia_id:', error);
-        // Fallback: se houver turmas, tentar extrair o dia_id delas
-        if (turmasData && turmasData.length > 0 && turmasData[0].dia_id) {
-          setDiaId(turmasData[0].dia_id);
-          console.log('⚠️ [carregarDados] Usando dia_id da primeira turma como fallback:', turmasData[0].dia_id);
-        }
+      // Extrair dia_id das turmas, se existirem
+      if (turmasData && turmasData.length > 0 && turmasData[0].dia_id) {
+        setDiaId(turmasData[0].dia_id);
+        console.log('✅ [carregarDados] dia_id extraído das turmas:', turmasData[0].dia_id);
+      } else {
+        console.log('⚠️ [carregarDados] Sem turmas - dia_id não pode ser definido');
       }
     } catch (error) {
       showError('Erro ao carregar turmas');
@@ -219,7 +195,7 @@ export default function TurmasScreen() {
   const handleNova = async () => {
     console.log('🔴 [handleNova] Iniciando...');
     setDropdownAberto(null);
-    setFormData({ modalidade_id: '', horario_inicio: '', horario_fim: '', professor_id: '', limite_alunos: '', ativo: true });
+    setFormData({ modalidade_id: '', horario_inicio: '', horario_fim: '', professor_id: '', limite_alunos: '', tolerancia_antes_minutos: '', tolerancia_minutos: '', ativo: true });
     setLoadingDropdowns(true);
     
     try {
@@ -328,18 +304,23 @@ export default function TurmasScreen() {
         console.error('❌ [handleEditar] Erro ao carregar horários:', err);
       }
 
-      // Buscar dados da turma
-      const turma = turmasFiltradas.find(t => t.id === turmaId);
-      if (turma) {
-        console.log('✅ [handleEditar] Turma encontrada:', turma);
+      // Buscar dados completos da turma pela API
+      try {
+        const turma = await turmaService.buscarPorId(turmaId);
+        
         setFormData({
           modalidade_id: String(turma.modalidade_id) || '',
           horario_inicio: turma.horario_inicio ? turma.horario_inicio.substring(0, 5) : '',
           horario_fim: turma.horario_fim ? turma.horario_fim.substring(0, 5) : '',
           professor_id: String(turma.professor_id) || '',
           limite_alunos: String(turma.limite_alunos) || '',
+          tolerancia_antes_minutos: turma.tolerancia_antes_minutos !== undefined && turma.tolerancia_antes_minutos !== null ? String(turma.tolerancia_antes_minutos) : '',
+          tolerancia_minutos: turma.tolerancia_minutos !== undefined && turma.tolerancia_minutos !== null ? String(turma.tolerancia_minutos) : '',
           ativo: turma.ativo,
         });
+      } catch (err) {
+        console.error('Erro ao buscar turma:', err);
+        showError('Erro ao carregar dados da turma');
       }
 
       console.log('🔵 [handleEditar] Atualizando estado...');
@@ -380,10 +361,11 @@ export default function TurmasScreen() {
         diaId,
         periodoReplicacao,
         diasSemanaSelecionados,
-        mes
+        mes,
+        modalidadeId: modalidadeReplicarId
       });
       
-      const resultado = await turmaService.replicar(diaId, periodoReplicacao, diasSemanaSelecionados, mes);
+      const resultado = await turmaService.replicar(diaId, periodoReplicacao, diasSemanaSelecionados, mes, modalidadeReplicarId);
 
       console.log('✅ [handleReplicar] Resposta da API:', resultado);
 
@@ -398,6 +380,7 @@ export default function TurmasScreen() {
         setDiasSemanaSelecionados([]);
         setMesReplicacao('');
         setPeriodoReplicacao('custom');
+        setModalidadeReplicarId('');
         carregarDados();
       } else {
         console.warn('⚠️ [handleReplicar] Resposta sem sucesso:', resultado);
@@ -418,6 +401,92 @@ export default function TurmasScreen() {
       setDiasSemanaSelecionados(diasSemanaSelecionados.filter(d => d !== dia));
     } else {
       setDiasSemanaSelecionados([...diasSemanaSelecionados, dia]);
+    }
+  };
+
+  const handleAbrirReplicar = async () => {
+    console.log('🟣 [handleAbrirReplicar] Iniciando...');
+    console.log('🟣 [handleAbrirReplicar] Modalidades atuais:', modalidades.length);
+    
+    // Carregar modalidades se ainda não foram carregadas
+    if (modalidades.length === 0) {
+      console.log('🟣 [handleAbrirReplicar] Modalidades vazias, carregando...');
+      try {
+        setLoadingDropdowns(true);
+        console.log('🟣 [handleAbrirReplicar] Chamando modalidadeService.listar(true)...');
+        const modalities = await modalidadeService.listar(true);
+        console.log('🟣 [handleAbrirReplicar] Modalidades recebidas:', modalities);
+        console.log('🟣 [handleAbrirReplicar] Tipo:', typeof modalities);
+        console.log('🟣 [handleAbrirReplicar] É array?', Array.isArray(modalities));
+        console.log('🟣 [handleAbrirReplicar] Tamanho:', modalities?.length);
+        setModalidades(modalities || []);
+        console.log('🟣 [handleAbrirReplicar] setModalidades chamado');
+      } catch (error) {
+        console.error('❌ [handleAbrirReplicar] Erro ao carregar modalidades:', error);
+        console.error('   Status:', error.response?.status);
+        console.error('   Data:', error.response?.data);
+        console.error('   Message:', error.message);
+      } finally {
+        setLoadingDropdowns(false);
+        console.log('🟣 [handleAbrirReplicar] Loading finalizado');
+      }
+    } else {
+      console.log('🟣 [handleAbrirReplicar] Modalidades já carregadas, usando cache');
+    }
+    
+    console.log('🟣 [handleAbrirReplicar] Abrindo modal de replicar');
+    setModalReplicarVisible(true);
+  };
+
+  const handleDeletarHorariosDia = async () => {
+    try {
+      console.log('🔴 [handleDeletarHorariosDia] === INÍCIO ===');
+      console.log('🔴 [handleDeletarHorariosDia] Dia ID recebido:', diaId);
+      console.log('🔴 [handleDeletarHorariosDia] Tipo do dia ID:', typeof diaId);
+      
+      setDeletandoHorarios(true);
+      
+      console.log('🔴 [handleDeletarHorariosDia] Chamando turmaService.deletarHorariosDia...');
+      const resultado = await turmaService.deletarHorariosDia(diaId);
+
+      console.log('✅ [handleDeletarHorariosDia] Resposta da API:', resultado);
+
+      if (resultado.type === 'success') {
+        const totalDeletados = resultado.summary?.total_deletados || 0;
+        const data = resultado.summary?.data || '';
+        const diaSemana = resultado.summary?.dia_semana || '';
+        
+        // Montar lista de turmas deletadas
+        const turmasDeletadas = resultado.turmas_deletadas || [];
+        const listaTurmas = turmasDeletadas
+          .map(t => `• ${t.nome} (${t.horario_inicio?.substring(0,5)} - ${t.horario_fim?.substring(0,5)})`)
+          .join('\n');
+        
+        const mensagemDetalhada = `
+${totalDeletados} turma(s) deletada(s) com sucesso!
+
+📅 Data: ${data} (${diaSemana})
+
+${listaTurmas ? `Turmas deletadas:\n${listaTurmas}` : ''}
+        `.trim();
+        
+        Alert.alert(
+          '✅ Sucesso',
+          mensagemDetalhada,
+          [{ text: 'OK' }]
+        );
+        
+        carregarDados();
+      } else {
+        showError(resultado.message || 'Erro ao deletar horários');
+      }
+    } catch (error) {
+      console.error('❌ [handleDeletarHorariosDia] Erro completo:', error);
+      console.error('   Response:', error.response?.data);
+      console.error('   Status:', error.response?.status);
+      showError(error.response?.data?.message || 'Erro ao deletar horários do dia');
+    } finally {
+      setDeletandoHorarios(false);
     }
   };
 
@@ -508,6 +577,8 @@ export default function TurmasScreen() {
         horario_inicio: formData.horario_inicio + ':00',
         horario_fim: formData.horario_fim + ':00',
         limite_alunos: parseInt(formData.limite_alunos),
+        tolerancia_antes_minutos: parseInt(formData.tolerancia_antes_minutos) || 0,
+        tolerancia_minutos: parseInt(formData.tolerancia_minutos) || 0,
       };
       
       console.log('📤 [criarTurma] Enviando:', novaData);
@@ -567,6 +638,8 @@ export default function TurmasScreen() {
       horario_fim: '',
       professor_id: '',
       limite_alunos: '',
+      tolerancia_antes_minutos: '',
+      tolerancia_minutos: '',
       ativo: true,
     });
     setErrors({});
@@ -665,6 +738,8 @@ export default function TurmasScreen() {
         horario_inicio: formData.horario_inicio + ':00',
         horario_fim: formData.horario_fim + ':00',
         limite_alunos: parseInt(formData.limite_alunos),
+        tolerancia_antes_minutos: parseInt(formData.tolerancia_antes_minutos) || 0,
+        tolerancia_minutos: parseInt(formData.tolerancia_minutos) || 0,
       };
       
       console.log('📤 [atualizarTurma] Enviando:', dadosAtualizados);
@@ -679,6 +754,8 @@ export default function TurmasScreen() {
         horario_fim: '',
         professor_id: '',
         limite_alunos: '',
+        tolerancia_antes_minutos: '',
+        tolerancia_minutos: '',
         ativo: true,
       });
       carregarDados();
@@ -801,7 +878,7 @@ export default function TurmasScreen() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.replicarButton, isMobile && styles.addButtonMobile]}
-                onPress={() => setModalReplicarVisible(true)}
+                onPress={handleAbrirReplicar}
                 activeOpacity={0.8}
               >
                 <Feather name="copy" size={18} color="#fff" />
@@ -856,6 +933,29 @@ export default function TurmasScreen() {
                 onPress={() => irParaData(1)}
               >
                 <Feather name="chevron-right" size={20} color="#f97316" />
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.dateSelectorButton, styles.deleteButton]}
+                onPress={() => {
+                  console.log('🗑️ [Botão Delete] Pressionado');
+                  console.log('🗑️ [Botão Delete] Turmas filtradas:', turmasFiltradas.length);
+                  
+                  if (turmasFiltradas.length === 0) {
+                    showError('Não há turmas neste dia para deletar');
+                    return;
+                  }
+                  
+                  console.log('🗑️ [Botão Delete] Abrindo modal de confirmação');
+                  setModalDeletarVisible(true);
+                }}
+                disabled={deletandoHorarios}
+              >
+                {deletandoHorarios ? (
+                  <ActivityIndicator size="small" color="#ef4444" />
+                ) : (
+                  <Feather name="trash-2" size={18} color="#ef4444" />
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -1156,6 +1256,76 @@ export default function TurmasScreen() {
                       {errors.limite_alunos && <Text style={styles.errorText}>{errors.limite_alunos}</Text>}
                     </View>
 
+                    <View style={styles.horarioRow}>
+                      <View style={[styles.formGroup, styles.horarioFormGroup]}>
+                        <Text style={styles.formLabel}>
+                          Tolerância antes (min)
+                        </Text>
+                        <TextInput
+                          style={styles.formInput}
+                          placeholder="Ex: 480"
+                          placeholderTextColor="#9ca3af"
+                          value={formData.tolerancia_antes_minutos}
+                          onChangeText={(text) => {
+                            const numerico = text.replace(/[^0-9]/g, '');
+                            setFormData({ ...formData, tolerancia_antes_minutos: numerico });
+                          }}
+                          keyboardType="numeric"
+                          editable={!submitting}
+                        />
+                        {formData.tolerancia_antes_minutos && (
+                          <Text style={styles.fieldHint}>
+                            {(() => {
+                              const mins = parseInt(formData.tolerancia_antes_minutos);
+                              const horas = Math.floor(mins / 60);
+                              const minutosRestantes = mins % 60;
+                              if (horas > 0 && minutosRestantes > 0) {
+                                return `= ${horas}h ${minutosRestantes}min antes do início`;
+                              } else if (horas > 0) {
+                                return `= ${horas}h antes do início`;
+                              } else {
+                                return `${minutosRestantes}min antes do início`;
+                              }
+                            })()}
+                          </Text>
+                        )}
+                      </View>
+
+                      <View style={[styles.formGroup, styles.horarioFormGroup]}>
+                        <Text style={styles.formLabel}>
+                          Tolerância após (min)
+                        </Text>
+                        <TextInput
+                          style={styles.formInput}
+                          placeholder="Ex: 10"
+                          placeholderTextColor="#9ca3af"
+                          value={formData.tolerancia_minutos}
+                          onChangeText={(text) => {
+                            const numerico = text.replace(/[^0-9]/g, '');
+                            setFormData({ ...formData, tolerancia_minutos: numerico });
+                          }}
+                          keyboardType="numeric"
+                          editable={!submitting}
+                        />
+                        {formData.tolerancia_minutos && (
+                          <Text style={styles.fieldHint}>
+                            {(() => {
+                              const mins = parseInt(formData.tolerancia_minutos);
+                              const horas = Math.floor(mins / 60);
+                              const minutosRestantes = mins % 60;
+                              if (horas > 0 && minutosRestantes > 0) {
+                                return `= ${horas}h ${minutosRestantes}min após o início`;
+                              } else if (horas > 0) {
+                                return `= ${horas}h após o início`;
+                              } else {
+                                return `${minutosRestantes}min após o início`;
+                              }
+                            })()}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+
                     <View style={styles.formGroup}>
                       <View style={styles.switchContainer}>
                         <View style={styles.switchLabelCompact}>
@@ -1229,7 +1399,7 @@ export default function TurmasScreen() {
               onPress={(e) => e.stopPropagation()}
             >
               <View className="flex-row items-center justify-between border-b border-slate-200 px-6 py-4">
-                <Text className="text-[18px] font-semibold text-slate-800">Replicar Aulas</Text>
+                <Text className="text-[18px] font-semibold text-slate-800">Replicar Horários por Modalidade</Text>
                 <TouchableOpacity onPress={() => setModalReplicarVisible(false)}>
                   <Feather name="x" size={24} color="#94a3b8" />
                 </TouchableOpacity>
@@ -1241,6 +1411,21 @@ export default function TurmasScreen() {
                   <Text style={styles.replicarDataTexto}>
                     {formatarDataExibicao(dataSelecionada)} ({obterDiaSemana(dataSelecionada)})
                   </Text>
+                </View>
+
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>
+                    Modalidade (Opcional)
+                  </Text>
+                  <SearchableDropdown
+                    data={modalidades}
+                    value={modalidadeReplicarId}
+                    onChange={setModalidadeReplicarId}
+                    placeholder="Todas as modalidades"
+                    labelKey="nome"
+                    valueKey="id"
+                  />
+                  <Text style={styles.helperText}>Deixe vazio para replicar todas as modalidades</Text>
                 </View>
 
                 <View style={styles.formGroup}>
@@ -1508,6 +1693,81 @@ export default function TurmasScreen() {
                     <ActivityIndicator size="small" color="#fff" />
                   ) : (
                     <Text className="text-sm font-semibold text-white">Desativar</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        {/* Modal Deletar Horários do Dia */}
+        <Modal
+          visible={modalDeletarVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setModalDeletarVisible(false)}
+        >
+          <Pressable 
+            className="flex-1 items-center justify-center bg-black/40 px-4"
+            onPress={() => setModalDeletarVisible(false)}
+          >
+            <Pressable className="w-full max-w-lg rounded-2xl bg-white shadow-xl" onPress={(e) => e.stopPropagation()}>
+              <View className="border-b border-slate-200 px-6 py-4">
+                <Text className="text-[17px] font-semibold text-red-600">⚠️ Confirmar Exclusão</Text>
+              </View>
+
+              <View className="px-6 py-4">
+                <Text className="mb-4 text-[15px] text-slate-700">
+                  Você está prestes a deletar <Text className="font-bold">TODAS as {turmasFiltradas.length} turma(s)</Text> do dia:
+                </Text>
+                
+                <View className="mb-4 rounded-lg bg-orange-50 px-4 py-3">
+                  <Text className="text-[13px] font-semibold text-orange-700">
+                    📅 {formatarDataExibicao(dataSelecionada)} ({obterDiaSemana(dataSelecionada)})
+                  </Text>
+                </View>
+
+                <Text className="mb-2 text-[13px] font-semibold text-slate-600">Turmas que serão deletadas:</Text>
+                <ScrollView className="max-h-64 rounded-lg bg-slate-50 px-4 py-3" showsVerticalScrollIndicator={true}>
+                  {turmasFiltradas.map((t, index) => (
+                    <Text key={index} className="mb-2 text-[13px] text-slate-700">
+                      • {t.modalidade_nome || 'Sem modalidade'} - {t.horario_inicio?.substring(0,5)} às {t.horario_fim?.substring(0,5)} (Prof. {t.professor_nome || 'N/A'})
+                    </Text>
+                  ))}
+                </ScrollView>
+
+                <View className="mt-4 rounded-lg bg-red-50 px-4 py-3">
+                  <Text className="text-center text-[13px] font-semibold text-red-600">
+                    ⚠️ Esta ação não pode ser desfeita!
+                  </Text>
+                </View>
+              </View>
+
+              <View className="flex-row gap-3 border-t border-slate-200 px-6 py-4">
+                <TouchableOpacity
+                  className="flex-1 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 py-3"
+                  onPress={() => {
+                    console.log('🗑️ [Modal] Exclusão cancelada');
+                    setModalDeletarVisible(false);
+                  }}
+                  disabled={deletandoHorarios}
+                >
+                  <Text className="text-sm font-semibold text-slate-600">Cancelar</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  className="flex-1 items-center justify-center rounded-lg bg-red-500 py-3"
+                  onPress={() => {
+                    console.log('🗑️ [Modal] Confirmado - executando exclusão');
+                    setModalDeletarVisible(false);
+                    handleDeletarHorariosDia();
+                  }}
+                  disabled={deletandoHorarios}
+                >
+                  {deletandoHorarios ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text className="text-sm font-semibold text-white">Deletar Tudo</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -2062,6 +2322,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffedd5',
     borderColor: '#fdba74',
   },
+  deleteButton: {
+    backgroundColor: '#fee2e2',
+    borderColor: '#fecaca',
+    marginLeft: 8,
+  },
   dateSelectorContent: {
     flex: 1,
     alignItems: 'center',
@@ -2357,6 +2622,20 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 4,
     marginLeft: 4,
+  },
+  fieldHint: {
+    fontSize: 11,
+    color: '#9ca3af',
+    marginTop: 4,
+    marginLeft: 4,
+    fontStyle: 'italic',
+  },
+  fieldLabel: {
+    fontSize: 13,
+    color: '#6b7280',
+    fontWeight: '600',
+    marginTop: 6,
+    textAlign: 'center',
   },
   switchContainer: {
     flexDirection: 'row',

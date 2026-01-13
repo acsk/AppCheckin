@@ -36,6 +36,263 @@ const BORDER = 'rgba(255,255,255,0.12)';
 const MUTED = 'rgba(255,255,255,0.65)';
 
 export default StyleSheet.create({
+  // Dashboard Container
+  dashboardContainer: {
+    flex: 1,
+    padding: 24,
+    gap: 24,
+  },
+
+  // Hero Section
+  heroSection: {
+    backgroundColor: 'linear-gradient(135deg, #f97316 0%, #fb923c 100%)',
+    borderRadius: 16,
+    padding: 32,
+    shadowColor: '#f97316',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    elevation: 5,
+  },
+  heroContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  heroGreeting: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#fff',
+    marginBottom: 4,
+  },
+  heroSubtitle: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.9)',
+    fontWeight: '500',
+  },
+  heroButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  heroButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+
+  // Stats Grid
+  statsGrid: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+  },
+  statIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: '#fef3c7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  statContent: {
+    flex: 1,
+  },
+  statValue: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: 4,
+  },
+  statLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+
+  // Main Content
+  mainContent: {
+    flexDirection: 'row',
+    gap: 24,
+  },
+
+  // Card Base
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 24,
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: 4,
+  },
+  cardSubtitle: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  cardHeaderButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#fff5ed',
+  },
+  cardHeaderButtonText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#f97316',
+  },
+
+  // Activity Card
+  activityCard: {
+    flex: 2,
+  },
+  activityList: {
+    gap: 16,
+  },
+  activityItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  activityIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activityContent: {
+    flex: 1,
+  },
+  activityText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#0f172a',
+    marginBottom: 4,
+  },
+  activityTime: {
+    fontSize: 12,
+    color: '#94a3b8',
+    fontWeight: '500',
+  },
+
+  // Quick Actions Card
+  quickActionsCard: {
+    flex: 1,
+  },
+  quickActionsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  quickActionButton: {
+    width: '48%',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  quickActionIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  quickActionText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#334155',
+  },
+
+  // Academias Section
+  academiasSection: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#f1f5f9',
+  },
+  academiasHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 24,
+  },
+  academiasTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: 4,
+  },
+  academiasSubtitle: {
+    fontSize: 14,
+    color: '#64748b',
+    fontWeight: '500',
+  },
+  reloadButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: '#f8fafc',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+
+  // Old styles (mantidos para compatibilidade)
   app: { flex: 1, flexDirection: 'row', backgroundColor: '#0f0f12' },
   sidebar: {
     width: 240,

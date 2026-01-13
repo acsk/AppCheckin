@@ -87,6 +87,17 @@ export const turmaService = {
     }
   },
 
+  // Deletar todas as turmas de um dia
+  async deletarHorariosDia(diaId) {
+    try {
+      const response = await api.delete(`/admin/dias/${diaId}/horarios`);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao deletar horários do dia:', error);
+      throw error;
+    }
+  },
+
   // Verificar vagas disponíveis
   async verificarVagas(id) {
     try {
@@ -99,7 +110,7 @@ export const turmaService = {
   },
 
   // Replicar turmas para diferentes períodos
-  async replicar(diaId, periodo = 'custom', diasSemana = [], mes = null) {
+  async replicar(diaId, periodo = 'custom', diasSemana = [], mes = null, modalidadeId = null) {
     try {
       const payload = {
         dia_id: diaId,
@@ -114,6 +125,11 @@ export const turmaService = {
       // Adicionar mês se for mes_todo ou custom
       if ((periodo === 'mes_todo' || periodo === 'custom') && mes) {
         payload.mes = mes;
+      }
+
+      // Adicionar modalidade_id se fornecido
+      if (modalidadeId) {
+        payload.modalidade_id = parseInt(modalidadeId);
       }
 
       const response = await api.post('/admin/turmas/replicar', payload);
