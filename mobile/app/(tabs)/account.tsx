@@ -161,11 +161,23 @@ export default function AccountScreen() {
         style: 'destructive',
         onPress: async () => {
           try {
-            await AsyncStorage.removeItem('@appcheckin:token');
-            await AsyncStorage.removeItem('@appcheckin:user');
-            await AsyncStorage.removeItem('@appcheckin:tenants');
+            // Limpar apenas as chaves do app
+            const keys = await AsyncStorage.getAllKeys();
+            const appKeys = keys.filter(key => key.startsWith('@appcheckin:'));
+            if (appKeys.length > 0) {
+              await AsyncStorage.multiRemove(appKeys);
+            }
+            
+            // Limpar estado local
+            setUserProfile(null);
+            
+            // Fechar todas as telas e redirecionar para login
+            while (router.canGoBack()) {
+              router.back();
+            }
             router.replace('/(auth)/login');
           } catch (error) {
+            console.error('Erro ao fazer logout:', error);
             Alert.alert('Erro', 'Erro ao fazer logout');
           }
         },
