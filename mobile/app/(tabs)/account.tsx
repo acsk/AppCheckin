@@ -171,10 +171,7 @@ export default function AccountScreen() {
             // Limpar estado local
             setUserProfile(null);
             
-            // Fechar todas as telas e redirecionar para login
-            while (router.canGoBack()) {
-              router.back();
-            }
+            // Redirecionar para login
             router.replace('/(auth)/login');
           } catch (error) {
             console.error('Erro ao fazer logout:', error);
