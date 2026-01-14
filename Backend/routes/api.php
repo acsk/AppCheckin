@@ -24,6 +24,10 @@ use App\Controllers\CepController;
 use App\Controllers\StatusController;
 use App\Controllers\FeatureFlagController;
 use App\Controllers\MobileController;
+use App\Controllers\WodController;
+use App\Controllers\WodBlocoController;
+use App\Controllers\WodVariacaoController;
+use App\Controllers\WodResultadoController;
 use App\Middlewares\AuthMiddleware;
 use App\Middlewares\TenantMiddleware;
 use App\Middlewares\AdminMiddleware;
@@ -305,6 +309,33 @@ return function ($app) {
         $group->put('/formas-pagamento-config/{id}', [TenantFormaPagamentoController::class, 'atualizar']);
         $group->post('/formas-pagamento-config/calcular-taxas', [TenantFormaPagamentoController::class, 'calcularTaxas']);
         $group->post('/formas-pagamento-config/calcular-parcelas', [TenantFormaPagamentoController::class, 'calcularParcelas']);
+        
+        // WOD (Workout of the Day)
+        $group->get('/wods', [WodController::class, 'index']);
+        $group->get('/wods/{id}', [WodController::class, 'show']);
+        $group->post('/wods', [WodController::class, 'create']);
+        $group->put('/wods/{id}', [WodController::class, 'update']);
+        $group->delete('/wods/{id}', [WodController::class, 'delete']);
+        $group->patch('/wods/{id}/publish', [WodController::class, 'publish']);
+        $group->patch('/wods/{id}/archive', [WodController::class, 'archive']);
+        
+        // Blocos de WOD
+        $group->get('/wods/{wodId}/blocos', [WodBlocoController::class, 'index']);
+        $group->post('/wods/{wodId}/blocos', [WodBlocoController::class, 'create']);
+        $group->put('/wods/{wodId}/blocos/{id}', [WodBlocoController::class, 'update']);
+        $group->delete('/wods/{wodId}/blocos/{id}', [WodBlocoController::class, 'delete']);
+        
+        // Variações de WOD
+        $group->get('/wods/{wodId}/variacoes', [WodVariacaoController::class, 'index']);
+        $group->post('/wods/{wodId}/variacoes', [WodVariacaoController::class, 'create']);
+        $group->put('/wods/{wodId}/variacoes/{id}', [WodVariacaoController::class, 'update']);
+        $group->delete('/wods/{wodId}/variacoes/{id}', [WodVariacaoController::class, 'delete']);
+        
+        // Resultados/Leaderboard de WOD
+        $group->get('/wods/{wodId}/resultados', [WodResultadoController::class, 'index']);
+        $group->post('/wods/{wodId}/resultados', [WodResultadoController::class, 'create']);
+        $group->put('/wods/{wodId}/resultados/{id}', [WodResultadoController::class, 'update']);
+        $group->delete('/wods/{wodId}/resultados/{id}', [WodResultadoController::class, 'delete']);
     })->add(AdminMiddleware::class)->add(AuthMiddleware::class);
 
     // Rota de teste
