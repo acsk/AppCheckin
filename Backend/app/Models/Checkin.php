@@ -160,4 +160,73 @@ class Checkin
         
         return (int) $stmt->fetchColumn() > 0;
     }
+
+    /**
+     * Verificar se usuário já tem check-in no mesmo dia (diferente turmas, mesma data)
+     */
+    public function usuarioTemCheckinNoDia(int $usuarioId, string $data): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT COUNT(*) as total, MAX(c.id) as ultimo_checkin_id
+             FROM checkins c
+             INNER JOIN turmas t ON c.turma_id = t.id
+             INNER JOIN dias d ON t.dia_id = d.id
+             WHERE c.usuario_id = :usuario_id
+             AND DATE(d.data) = :data"
+        );
+        $stmt->execute([
+            'usuario_id' => $usuarioId,
+            'data' => $data
+        ]);
+        
+        $result = $stmt->fetch();
+        return [
+            'total' => (int) ($result['total'] ?? 0),
+            'ultimo_checkin_id' => $result['ultimo_checkin_id'] ? (int) $result['ultimo_checkin_id'] : null
+        ];
+    }
+
+    /**
+     * Contar check-ins do usuário na semana atual
+     */
+    public function contarCheckinsNaSemana(int $usuarioId): int
+    {
+        $stmt = $this->db->prepare(
+            "SELECT COUNT(*) FROM checkins
+             WHERE usuario_id = :usuario_id
+             AND YEARWEEK(created_at, 1) = YEARWEEK(NOW(), 1)"
+        );
+        $stmt->execute(['usuario_id' => $usuarioId]);
+        
+        return (int) $stmt->fetchColumn();
+    }
+
+    /**
+     * Obter limite de check-ins do plano do usuário
+     */
+    public function obterLimiteCheckinsPlano(int $usuarioId, int $tenantId): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT p.checkins_semanais, p.nome as plano_nome
+             FROM matriculas m
+             INNER JOIN planos p ON m.plano_id = p.id
+             WHERE m.usuario_id = :usuario_id
+             AND m.tenant_id = :tenant_id
+             AND m.status = 'ativa'
+             AND m.data_inicio <= CURDATE()
+             AND m.data_vencimento >= CURDATE()
+             LIMIT 1"
+        );
+        $stmt->execute([
+            'usuario_id' => $usuarioId,
+            'tenant_id' => $tenantId
+        ]);
+        
+        $result = $stmt->fetch();
+        return [
+            'limite' => $result ? (int) $result['checkins_semanais'] : 0,
+            'plano_nome' => $result ? $result['plano_nome'] : 'Sem plano',
+            'tem_plano' => $result !== false
+        ];
+    }
 }

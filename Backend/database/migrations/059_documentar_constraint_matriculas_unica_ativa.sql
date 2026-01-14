@@ -1,0 +1,106 @@
+-- =====================================================
+-- MIGRATION 059: Documentar Constraint de Unicidade Matriculas
+-- =====================================================
+-- Problema: MySQL não suporta "partial unique index" para permitir
+--           múltiplos NULL mas apenas 1 status='ativa' por usuario/tenant
+--
+-- Solução implementada: Validação em nível de aplicação (MVP)
+-- Arquivo: app/Controllers/MatriculaController.php::criar()
+--
+-- Lógica: Ao criar matrícula, finalize/cancele todas as anteriores
+--         dentro de uma transação, garantindo max 1 ativa por usuario/tenant
+-- =====================================================
+
+-- DOCUMENTAÇÃO: Estrutura atual da tabela matriculas
+-- Campos relevantes para a regra:
+-- - usuario_id (chave da restrição)
+-- - tenant_id (chave da restrição)
+-- - status ENUM('ativa', 'vencida', 'cancelada', 'finalizada')
+-- - matricula_anterior_id (fk para rastreamento)
+
+-- Índice existente para performance
+-- INDEX idx_tenant_usuario (tenant_id, usuario_id)
+-- Este índice facilita a busca de matrículas por usuario/tenant
+
+-- =====================================================
+-- FUTURO (Se evoluir para Opção B - Constraint no DB)
+-- =====================================================
+-- 
+-- Como MySQL não tem "partial unique index", alternativas seriam:
+--
+-- 1) Adicionar coluna flag de ativa (TINYINT)
+--    ALTER TABLE matriculas ADD COLUMN is_ativa TINYINT GENERATED AS (status = 'ativa');
+--    Criar índice único condicional (simulado com coluna gerada)
+--    CREATE UNIQUE INDEX ux_ativa ON matriculas (usuario_id, tenant_id, is_ativa)
+--    Problemas: Ainda permite múltiplos NULL em is_ativa
+--
+-- 2) Usar PostgreSQL (suporta partial indexes nativamente)
+--    CREATE UNIQUE INDEX ux_matricula_ativa 
+--    ON matriculas(usuario_id, tenant_id) 
+--    WHERE status = 'ativa';
+--
+-- 3) Usar MySQL 8.0 com geração de coluna
+--    ALTER TABLE matriculas 
+--    ADD COLUMN check_ativa INT GENERATED ALWAYS AS 
+--    (IF(status = 'ativa', 1, NULL)) STORED;
+--    CREATE UNIQUE INDEX ux_matricula_ativa 
+--    ON matriculas (usuario_id, tenant_id, check_ativa);
+--    Permite múltiplos NULL, mas garante 1 valor=1 por usuario/tenant
+--
+-- =====================================================
+
+-- Para futuro: Criar índice que facilita busca de matricula ativa
+CREATE INDEX IF NOT EXISTS idx_matricula_ativa 
+ON matriculas (usuario_id, tenant_id, status);
+
+-- =====================================================
+-- VALIDAÇÃO: Query para verificar regra
+-- =====================================================
+-- 
+-- Verificar se há múltiplas matrículas 'ativa' por usuario/tenant:
+-- SELECT usuario_id, tenant_id, COUNT(*) as total_ativas
+-- FROM matriculas
+-- WHERE status = 'ativa'
+-- GROUP BY usuario_id, tenant_id
+-- HAVING total_ativas > 1;
+--
+-- Resultado esperado: Nenhuma linha (0 rows)
+-- Se houver resultado: Executar script de limpeza (ver abaixo)
+--
+-- =====================================================
+
+-- =====================================================
+-- SCRIPT DE LIMPEZA (se necessário)
+-- =====================================================
+-- 
+-- USE CASE: Descobriu múltiplas matrículas ativas por erro
+-- AÇÃO: Manter a mais recente (ou especificar qual manter)
+--
+-- -- Manter apenas a matrícula mais recente por usuario/tenant
+-- UPDATE matriculas m1
+-- INNER JOIN (
+--     SELECT usuario_id, tenant_id, MAX(created_at) as max_created
+--     FROM matriculas
+--     WHERE status = 'ativa'
+--     GROUP BY usuario_id, tenant_id
+-- ) m2 ON m1.usuario_id = m2.usuario_id 
+--        AND m1.tenant_id = m2.tenant_id
+--        AND m1.status = 'ativa'
+--        AND m1.created_at < m2.max_created
+-- SET m1.status = 'cancelada',
+--     m1.motivo_cancelamento = 'Cancelada automaticamente - limpeza de duplicatas',
+--     m1.data_cancelamento = CURDATE()
+-- WHERE m1.status = 'ativa'
+--   AND EXISTS (
+--       SELECT 1 FROM matriculas m3
+--       WHERE m3.usuario_id = m1.usuario_id
+--         AND m3.tenant_id = m1.tenant_id
+--         AND m3.status = 'ativa'
+--       GROUP BY m3.usuario_id, m3.tenant_id
+--       HAVING COUNT(*) > 1
+--   );
+--
+-- =====================================================
+
+-- Commit
+-- =====================================================

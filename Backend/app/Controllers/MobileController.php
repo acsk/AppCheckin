@@ -1032,6 +1032,23 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
 
+            // ============================================================
+            // VALIDAÇÃO CRÍTICA: Garantir que usuário tem acesso ao tenant
+            // Evita "dados cruzados" (cross-tenant pollution)
+            // ============================================================
+            $usuarioTenantModel = new \App\Models\UsuarioTenant($this->db);
+            $usuarioTenantValido = $usuarioTenantModel->validarAcesso($userId, $tenantId);
+            
+            if (!$usuarioTenantValido) {
+                error_log("SEGURANÇA: Usuário $userId tentou acessar tenant $tenantId sem permissão");
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Acesso negado: você não tem permissão neste tenant',
+                    'code' => 'INVALID_TENANT_ACCESS'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+            }
+
             // Validar turma_id
             $turmaId = $body['turma_id'] ?? null;
             
@@ -1063,6 +1080,45 @@ class MobileController
                     'error' => 'Você já realizou check-in nesta turma'
                 ]));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // VALIDAÇÃO 1: Verificar se usuário já fez check-in NO MESMO DIA (em qualquer turma/modalidade)
+            $diaAula = $turma['dia_data'] ?? date('Y-m-d'); // Usar data da turma
+            $checkinDia = $this->checkinModel->usuarioTemCheckinNoDia($userId, $diaAula);
+            
+            if ($checkinDia['total'] > 0) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Você já realizou um check-in em ' . $diaAula . '. Máximo 1 check-in por dia',
+                    'detalhes' => [
+                        'limite_diario' => 1,
+                        'data' => $diaAula,
+                        'checkins_no_dia' => $checkinDia['total'],
+                        'ultimo_checkin_id' => $checkinDia['ultimo_checkin_id']
+                    ]
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // VALIDAÇÃO 2: Verificar limite de check-ins da semana baseado no plano
+            $planoInfo = $this->checkinModel->obterLimiteCheckinsPlano($userId, $tenantId);
+            
+            if ($planoInfo['tem_plano'] && $planoInfo['limite'] > 0) {
+                $checkinsNaSemana = $this->checkinModel->contarCheckinsNaSemana($userId);
+                
+                if ($checkinsNaSemana >= $planoInfo['limite']) {
+                    $response->getBody()->write(json_encode([
+                        'success' => false,
+                        'error' => 'Você atingiu o limite de check-ins desta semana',
+                        'detalhes' => [
+                            'plano' => $planoInfo['plano_nome'],
+                            'limite_semana' => $planoInfo['limite'],
+                            'checkins_semana' => $checkinsNaSemana,
+                            'mensagem' => 'Seu plano (' . $planoInfo['plano_nome'] . ') permite ' . $planoInfo['limite'] . ' check-in(s) por semana. Você já realizou ' . $checkinsNaSemana . '.'
+                        ]
+                    ]));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                }
             }
 
             // Verificar se usuário já fez check-in em outra turma da MESMA MODALIDADE no MESMO DIA
@@ -1136,6 +1192,120 @@ class MobileController
             $response->getBody()->write(json_encode([
                 'success' => false,
                 'error' => 'Erro ao registrar check-in',
+                'message' => $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * DELETE /mobile/checkin/{checkinId}/desfazer
+     * Desfazer check-in com validação de horário
+     * Regra: Não pode desfazer se a aula já começou ou passou
+     */
+    public function desfazerCheckin(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $userId = $request->getAttribute('userId');
+            $tenantId = $request->getAttribute('tenantId');
+            $checkinId = (int) ($args['checkinId'] ?? $args['id'] ?? 0);
+
+            if (!$checkinId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'checkinId é obrigatório'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Buscar check-in
+            $sql = "SELECT c.id, c.usuario_id, c.turma_id, t.dia_id, d.data as dia_data
+                    FROM checkins c
+                    INNER JOIN turmas t ON c.turma_id = t.id
+                    INNER JOIN dias d ON t.dia_id = d.id
+                    WHERE c.id = :checkin_id AND t.tenant_id = :tenant_id";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([
+                'checkin_id' => $checkinId,
+                'tenant_id' => $tenantId
+            ]);
+            $checkin = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$checkin) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Check-in não encontrado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            // Verificar propriedade do check-in
+            if ((int) $checkin['usuario_id'] !== (int) $userId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Você não tem permissão para desfazer este check-in'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+            }
+
+            // Buscar dados da turma para verificar horário
+            $turmaId = (int) $checkin['turma_id'];
+            $turma = $this->turmaModel->findById($turmaId, $tenantId);
+
+            if (!$turma) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Turma não encontrada'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            // Validar se a aula já começou ou passou
+            $agora = new \DateTime();
+            $diaAula = $checkin['dia_data']; // Data da aula
+            $horarioInicio = $turma['horario_inicio']; // Horário de início (HH:MM:SS)
+
+            // Combinar data + horário
+            $dataHorarioInicio = new \DateTime($diaAula . ' ' . $horarioInicio);
+
+            // NÃO PODE DESFAZER SE A AULA JÁ COMEÇOU
+            if ($agora >= $dataHorarioInicio) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Não é possível desfazer o check-in. A aula já começou ou passou',
+                    'detalhes' => [
+                        'aula_inicio' => $dataHorarioInicio->format('Y-m-d H:i:s'),
+                        'agora' => $agora->format('Y-m-d H:i:s'),
+                        'mensagem' => 'O desfazimento só é permitido ANTES do horário de início da aula'
+                    ]
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Deletar check-in
+            $deleteSql = "DELETE FROM checkins WHERE id = :checkin_id";
+            $deleteStmt = $this->db->prepare($deleteSql);
+            $deleteStmt->execute(['checkin_id' => $checkinId]);
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'message' => 'Check-in desfeito com sucesso',
+                'data' => [
+                    'checkin_id' => $checkinId,
+                    'turma' => [
+                        'id' => (int) $turma['id'],
+                        'nome' => $turma['nome'],
+                        'horario_inicio' => $turma['horario_inicio']
+                    ]
+                ]
+            ]));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(200);
+
+        } catch (\Exception $e) {
+            error_log("Erro em desfazerCheckin: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao desfazer check-in',
                 'message' => $e->getMessage()
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
@@ -1524,6 +1694,119 @@ class MobileController
     /**
      * Retorna detalhes completos de uma turma ao clicar no card
      * Inclui: dados da turma, alunos matriculados, check-ins, limite
+     * 
+     * @param Request $request Requisição HTTP
+     * @param Response $response Resposta HTTP
+     * @param array $args Argumentos da rota {turmaId}
+     * @return Response JSON com detalhes completos
+     * 
+     * @api GET /mobile/turma/{turmaId}/detalhes
+     */
+    public function listarTurmas(Request $request, Response $response): Response
+    {
+        try {
+            $userId = $request->getAttribute('userId');
+            $tenantId = $request->getAttribute('tenantId');
+            
+            if (!$tenantId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Nenhum tenant selecionado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Buscar todas as turmas do tenant com informações básicas
+            $sql = "
+                SELECT t.id,
+                       t.nome,
+                       p.id as professor_id,
+                       p.nome as professor,
+                       m.id as modalidade_id,
+                       m.nome as modalidade,
+                       m.icone,
+                       m.cor,
+                       t.horario_id,
+                       h.horario_inicio,
+                       h.horario_fim,
+                       d.data as dia_aula,
+                       d.id as dia_id,
+                       t.limite_alunos,
+                       (SELECT COUNT(*) FROM checkins c 
+                        WHERE c.turma_id = t.id) as total_checkins,
+                       (SELECT COUNT(*) FROM inscricoes_turmas it 
+                        WHERE it.turma_id = t.id AND it.ativo = 1 AND it.status = 'ativa') as alunos_inscritos,
+                       (t.limite_alunos - COALESCE((SELECT COUNT(*) FROM inscricoes_turmas it 
+                                                    WHERE it.turma_id = t.id AND it.ativo = 1 AND it.status = 'ativa'), 0)) as vagas_disponiveis,
+                       t.ativo,
+                       t.created_at,
+                       t.updated_at
+                FROM turmas t
+                INNER JOIN professores p ON t.professor_id = p.id
+                INNER JOIN modalidades m ON t.modalidade_id = m.id
+                INNER JOIN horarios h ON t.horario_id = h.id
+                INNER JOIN dias d ON t.dia_id = d.id
+                WHERE t.tenant_id = :tenant_id AND t.ativo = 1
+                ORDER BY d.data ASC, h.horario_inicio ASC
+            ";
+            
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute(['tenant_id' => $tenantId]);
+            $turmas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            $turmasFormatadas = array_map(function($turma) {
+                return [
+                    'id' => (int) $turma['id'],
+                    'nome' => $turma['nome'],
+                    'professor' => [
+                        'id' => (int) $turma['professor_id'],
+                        'nome' => $turma['professor']
+                    ],
+                    'modalidade' => [
+                        'id' => (int) $turma['modalidade_id'],
+                        'nome' => $turma['modalidade'],
+                        'icone' => $turma['icone'],
+                        'cor' => $turma['cor']
+                    ],
+                    'horario' => [
+                        'inicio' => $turma['horario_inicio'],
+                        'fim' => $turma['horario_fim']
+                    ],
+                    'dia_aula' => $turma['dia_aula'],
+                    'limite_alunos' => (int) $turma['limite_alunos'],
+                    'alunos_inscritos' => (int) $turma['alunos_inscritos'],
+                    'vagas_disponiveis' => (int) $turma['vagas_disponiveis'],
+                    'total_checkins' => (int) $turma['total_checkins'],
+                    'ativo' => (bool) $turma['ativo'],
+                    'created_at' => $turma['created_at'],
+                    'updated_at' => $turma['updated_at']
+                ];
+            }, $turmas);
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'data' => [
+                    'turmas' => $turmasFormatadas,
+                    'total' => count($turmasFormatadas)
+                ]
+            ]));
+            
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(200);
+
+        } catch (\Exception $e) {
+            error_log("Erro em listarTurmas: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao listar turmas',
+                'message' => $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * GET /mobile/turma/{turmaId}/detalhes
+     * Retorna detalhes completos de uma turma com lista de participantes
      * 
      * @param Request $request Requisição HTTP
      * @param Response $response Resposta HTTP

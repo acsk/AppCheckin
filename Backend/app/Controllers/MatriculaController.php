@@ -10,7 +10,9 @@ use App\Models\Plano;
 class MatriculaController
 {
     /**
-     * Criar nova matrícula
+     * Criar nova matrícula com regra de unicidade: max 1 ativa por usuário/tenant
+     * 
+     * REGRA MVP: Ao criar nova matrícula, finalize/cancele a anterior dentro de transação
      */
     public function criar(Request $request, Response $response): Response
     {
@@ -19,85 +21,211 @@ class MatriculaController
         $data = $request->getParsedBody();
         $db = require __DIR__ . '/../../config/database.php';
 
-        // Validações
-        $errors = [];
-        
-        if (empty($data['usuario_id'])) {
-            $errors[] = 'Aluno é obrigatório';
-        }
-        
-        if (empty($data['plano_id'])) {
-            $errors[] = 'Plano é obrigatório';
-        }
-        
-        if (!empty($errors)) {
-            $response->getBody()->write(json_encode(['errors' => $errors]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
-        }
+        try {
+            // Iniciar transação
+            $db->beginTransaction();
 
-        $usuarioId = $data['usuario_id'];
-        $planoId = $data['plano_id'];
-        
-        // Buscar aluno
-        $stmtUsuario = $db->prepare("
-            SELECT u.* 
-            FROM usuarios u
-            INNER JOIN usuario_tenant ut ON ut.usuario_id = u.id
-            WHERE u.id = ? AND ut.tenant_id = ? AND u.role_id = 1 AND ut.status = 'ativo'
-        ");
-        $stmtUsuario->execute([$usuarioId, $tenantId]);
-        $usuario = $stmtUsuario->fetch();
-        
-        if (!$usuario) {
-            $response->getBody()->write(json_encode(['error' => 'Aluno não encontrado']));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
-        }
-
-        // Buscar plano
-        $stmtPlano = $db->prepare("SELECT * FROM planos WHERE id = ? AND tenant_id = ?");
-        $stmtPlano->execute([$planoId, $tenantId]);
-        $plano = $stmtPlano->fetch();
-        
-        if (!$plano) {
-            $response->getBody()->write(json_encode(['error' => 'Plano não encontrado']));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
-        }
-
-        // Verificar se já existe matrícula ativa NA MESMA MODALIDADE
-        $stmtAtiva = $db->prepare("
-            SELECT m.*, p.modalidade_id 
-            FROM matriculas m
-            INNER JOIN planos p ON p.id = m.plano_id
-            WHERE m.usuario_id = ? AND m.tenant_id = ? AND m.status = 'ativa'
-            ORDER BY m.created_at DESC
-        ");
-        $stmtAtiva->execute([$usuarioId, $tenantId]);
-        $matriculasAtivas = $stmtAtiva->fetchAll();
-        
-        // Buscar modalidade do novo plano
-        $modalidadeAtual = $plano['modalidade_id'];
-        
-        // Verificar se existe matrícula ativa na mesma modalidade
-        $matriculaMesmaModalidade = null;
-        foreach ($matriculasAtivas as $mat) {
-            if ($mat['modalidade_id'] == $modalidadeAtual) {
-                $matriculaMesmaModalidade = $mat;
-                break;
-            }
-        }
-
-        // VALIDAÇÃO: Só validar se for mudança na MESMA modalidade
-        if ($matriculaMesmaModalidade && $matriculaMesmaModalidade['plano_id'] != $planoId) {
-            // Verificar se a matrícula está dentro do período de validade
-            $dataVencimentoMatricula = $matriculaMesmaModalidade['data_vencimento'];
-            $hoje = date('Y-m-d');
+            // Validações
+            $errors = [];
             
-            if ($dataVencimentoMatricula >= $hoje) {
-                // Verificar se aluno tem pagamento ativo
-                $stmtPagamentoAtivo = $db->prepare("
-                    SELECT COUNT(*) as tem_pagamento FROM contas_receber 
-                    WHERE usuario_id = ? 
-                    AND tenant_id = ?
+            if (empty($data['usuario_id'])) {
+                $errors[] = 'Aluno é obrigatório';
+            }
+            
+            if (empty($data['plano_id'])) {
+                $errors[] = 'Plano é obrigatório';
+            }
+            
+            if (!empty($errors)) {
+                $db->rollBack();
+                $response->getBody()->write(json_encode(['errors' => $errors]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+            }
+
+            $usuarioId = $data['usuario_id'];
+            $planoId = $data['plano_id'];
+            
+            // ============================================================
+            // VALIDAÇÃO CRÍTICA: Garantir que usuário tem acesso ao tenant
+            // ============================================================
+            $usuarioTenantModel = new \App\Models\UsuarioTenant($db);
+            $usuarioTenantValido = $usuarioTenantModel->validarAcesso($usuarioId, $tenantId);
+            
+            if (!$usuarioTenantValido) {
+                $db->rollBack();
+                error_log("SEGURANÇA: Admin $adminId tentou criar matrícula para usuário $usuarioId em tenant $tenantId sem permissão");
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Acesso negado: aluno não tem acesso a este tenant',
+                    'code' => 'INVALID_TENANT_ACCESS'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+            }
+            
+            // Buscar aluno
+            $stmtUsuario = $db->prepare("
+                SELECT u.* 
+                FROM usuarios u
+                INNER JOIN usuario_tenant ut ON ut.usuario_id = u.id
+                WHERE u.id = ? AND ut.tenant_id = ? AND u.role_id = 1 AND ut.status = 'ativo'
+            ");
+            $stmtUsuario->execute([$usuarioId, $tenantId]);
+            $usuario = $stmtUsuario->fetch();
+            
+            if (!$usuario) {
+                $db->rollBack();
+                $response->getBody()->write(json_encode(['error' => 'Aluno não encontrado']));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            // Buscar plano
+            $stmtPlano = $db->prepare("SELECT * FROM planos WHERE id = ? AND tenant_id = ?");
+            $stmtPlano->execute([$planoId, $tenantId]);
+            $plano = $stmtPlano->fetch();
+            
+            if (!$plano) {
+                $db->rollBack();
+                $response->getBody()->write(json_encode(['error' => 'Plano não encontrado']));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            // ============================================================
+            // REGRA MVP: Buscar e CANCELAR todas as matrículas ativas
+            // ============================================================
+            $stmtMatriculasAtivas = $db->prepare("
+                SELECT id, plano_id FROM matriculas 
+                WHERE usuario_id = ? AND tenant_id = ? AND status = 'ativa'
+                FOR UPDATE
+            ");
+            $stmtMatriculasAtivas->execute([$usuarioId, $tenantId]);
+            $matriculasAtivas = $stmtMatriculasAtivas->fetchAll();
+            
+            $matriculaAnteriorId = null;
+            $planoAnteriorId = null;
+            $motivo = 'nova';
+            
+            // Se há matrículas ativas, finalize-as e determine motivo
+            if (!empty($matriculasAtivas)) {
+                // Pegar a primeira (ou mais recente se houve erro)
+                $matAnterior = $matriculasAtivas[0];
+                $matriculaAnteriorId = $matAnterior['id'];
+                $planoAnteriorId = $matAnterior['plano_id'];
+                
+                // Determinar motivo
+                if ($planoId == $planoAnteriorId) {
+                    $motivo = 'renovacao';
+                } else {
+                    $stmtPlanoAnt = $db->prepare("SELECT valor FROM planos WHERE id = ?");
+                    $stmtPlanoAnt->execute([$planoAnteriorId]);
+                    $planoAnt = $stmtPlanoAnt->fetch();
+                    
+                    if ($planoAnt && $plano['valor'] > $planoAnt['valor']) {
+                        $motivo = 'upgrade';
+                    } elseif ($planoAnt) {
+                        $motivo = 'downgrade';
+                    }
+                }
+                
+                // ========================================================
+                // TRANSAÇÃO: Cancelar todas as matrículas ativas anteriores
+                // ========================================================
+                foreach ($matriculasAtivas as $mat) {
+                    $stmtCancelar = $db->prepare("
+                        UPDATE matriculas 
+                        SET status = 'cancelada', 
+                            cancelado_por = ?,
+                            data_cancelamento = CURDATE(),
+                            motivo_cancelamento = 'Nova matrícula criada pelo admin',
+                            updated_at = NOW()
+                        WHERE id = ? AND tenant_id = ?
+                    ");
+                    $stmtCancelar->execute([$adminId, $mat['id'], $tenantId]);
+                }
+            }
+
+            // Configurar timezone Brasil
+            date_default_timezone_set('America/Sao_Paulo');
+            
+            // Determinar datas
+            $dataMatricula = date('Y-m-d');
+            $dataInicio = $data['data_inicio'] ?? $dataMatricula;
+            $dataVencimento = date('Y-m-d', strtotime($dataInicio . " +{$plano['duracao_dias']} days"));
+            $valor = $data['valor'] ?? $plano['valor'];
+
+            // ========================================================
+            // Criar NOVA matrícula com status 'ativa'
+            // ========================================================
+            $stmtInsert = $db->prepare("
+                INSERT INTO matriculas 
+                (tenant_id, usuario_id, plano_id, data_matricula, data_inicio, data_vencimento, 
+                 valor, status, motivo, matricula_anterior_id, plano_anterior_id, observacoes, criado_por)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'ativa', ?, ?, ?, ?, ?)
+            ");
+            
+            $stmtInsert->execute([
+                $tenantId,
+                $usuarioId,
+                $planoId,
+                $dataMatricula,
+                $dataInicio,
+                $dataVencimento,
+                $valor,
+                $motivo,
+                $matriculaAnteriorId,
+                $planoAnteriorId,
+                $data['observacoes'] ?? null,
+                $adminId
+            ]);
+            
+            $matriculaId = (int) $db->lastInsertId();
+
+            // Confirmar transação
+            $db->commit();
+            
+            error_log("=== MATRICULA CRIADA (TRANSAÇÃO CONCLUÍDA) ===");
+            error_log("Matrícula ID: $matriculaId, Usuário: $usuarioId, Tenant: $tenantId");
+            error_log("Matrículas anteriores canceladas: " . count($matriculasAtivas));
+            
+            $response->getBody()->write(json_encode([
+                'message' => 'Matrícula criada com sucesso',
+                'data' => [
+                    'id' => $matriculaId,
+                    'usuario_id' => (int) $usuarioId,
+                    'plano_id' => (int) $planoId,
+                    'data_inicio' => $dataInicio,
+                    'data_vencimento' => $dataVencimento,
+                    'status' => 'ativa',
+                    'motivo' => $motivo,
+                    'matriculas_anteriores_canceladas' => count($matriculasAtivas)
+                ]
+            ]));
+            
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(201);
+
+        } catch (\PDOException $e) {
+            try {
+                $db->rollBack();
+            } catch (\Exception $e2) {}
+            
+            error_log("Erro ao criar matrícula: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'error' => 'Erro ao criar matrícula',
+                'message' => $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        } catch (\Exception $e) {
+            try {
+                $db->rollBack();
+            } catch (\Exception $e2) {}
+            
+            error_log("Erro geral ao criar matrícula: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'error' => 'Erro ao criar matrícula',
+                'message' => $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
                     AND status = 'pago'
                     AND data_vencimento <= CURDATE()
                     AND DATE_ADD(data_vencimento, INTERVAL intervalo_dias DAY) >= CURDATE()
