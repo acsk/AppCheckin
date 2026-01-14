@@ -23,7 +23,13 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "bundler": "metro",
+      "build": {
+        "babel": {
+          "include": ["node_modules/react-native-web"]
+        }
+      }
     },
     "plugins": [
       "expo-router",

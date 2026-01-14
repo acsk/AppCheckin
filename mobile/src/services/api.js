@@ -1,7 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-// URL base da API - ajuste conforme seu ambiente
-const API_URL = 'http://localhost:8080';
+import { API_URL } from '@/src/utils/apiConfig';
+import AsyncStorage from '@/src/utils/storage';
 
 // Callback para notificar logout quando token é inválido
 let onUnauthorizedCallback = null;

@@ -1,5 +1,5 @@
+import AsyncStorage from '@/src/utils/storage';
 import api from './api';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
  * Serviço de autenticação

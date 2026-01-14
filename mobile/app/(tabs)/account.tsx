@@ -1,12 +1,13 @@
 import { colors } from '@/src/theme/colors';
+import AsyncStorage from '@/src/utils/storage';
 import { Feather } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -154,32 +155,84 @@ export default function AccountScreen() {
   };
 
   const handleLogout = async () => {
-    Alert.alert('Sair', 'Deseja realmente sair?', [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Sair',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            // Limpar apenas as chaves do app
-            const keys = await AsyncStorage.getAllKeys();
-            const appKeys = keys.filter(key => key.startsWith('@appcheckin:'));
-            if (appKeys.length > 0) {
-              await AsyncStorage.multiRemove(appKeys);
-            }
-            
-            // Limpar estado local
-            setUserProfile(null);
-            
-            // Redirecionar para login
-            router.replace('/(auth)/login');
-          } catch (error) {
-            console.error('Erro ao fazer logout:', error);
-            Alert.alert('Erro', 'Erro ao fazer logout');
-          }
-        },
-      },
-    ]);
+    console.log('🔴 [LOGOUT] handleLogout chamado');
+    console.log('🔴 [LOGOUT] Platform.OS:', Platform.OS);
+    
+    // Usar confirm() nativo para web, Alert para mobile
+    let confirmed = false;
+    
+    if (Platform.OS === 'web') {
+      // Web: usar window.confirm()
+      confirmed = window.confirm('Deseja realmente sair?');
+      console.log('🔴 [LOGOUT] Web confirm result:', confirmed);
+    } else {
+      // Mobile: usar Alert.alert() com Promise
+      confirmed = await new Promise((resolve) => {
+        Alert.alert('Sair', 'Deseja realmente sair?', [
+          { 
+            text: 'Cancelar', 
+            style: 'cancel',
+            onPress: () => resolve(false)
+          },
+          {
+            text: 'Sair',
+            style: 'destructive',
+            onPress: () => resolve(true)
+          },
+        ]);
+      });
+      console.log('🔴 [LOGOUT] Mobile alert result:', confirmed);
+    }
+
+    if (!confirmed) {
+      console.log('🔵 [LOGOUT] Cancelado pelo usuário');
+      return;
+    }
+
+    try {
+      console.log('🟡 [LOGOUT] Iniciando logout...');
+      
+      // Log do estado antes de remover
+      const tokenBefore = await AsyncStorage.getItem('@appcheckin:token');
+      console.log('🟡 [LOGOUT] Token antes de remover:', tokenBefore ? 'EXISTE' : 'NÃO EXISTE');
+      
+      // Remover token
+      console.log('🟡 [LOGOUT] Removendo token...');
+      const result1 = await AsyncStorage.removeItem('@appcheckin:token');
+      console.log('✅ [LOGOUT] Token removido - resultado:', result1);
+      
+      // Verificar se removeu
+      const tokenAfter = await AsyncStorage.getItem('@appcheckin:token');
+      console.log('✅ [LOGOUT] Token após remover:', tokenAfter ? 'AINDA EXISTE' : 'FOI REMOVIDO');
+      
+      // Remover usuário
+      console.log('🟡 [LOGOUT] Removendo usuário...');
+      const result2 = await AsyncStorage.removeItem('@appcheckin:user');
+      console.log('✅ [LOGOUT] Usuário removido - resultado:', result2);
+      
+      // Remover tenant
+      console.log('🟡 [LOGOUT] Removendo tenant...');
+      const result3 = await AsyncStorage.removeItem('@appcheckin:tenant');
+      console.log('✅ [LOGOUT] Tenant removido - resultado:', result3);
+      
+      // Limpar estado local
+      console.log('🟡 [LOGOUT] Limpando estado local...');
+      setUserProfile(null);
+      console.log('✅ [LOGOUT] Estado local limpo');
+      
+      // Redirecionar para login
+      console.log('🟡 [LOGOUT] Redirecionando para login...');
+      router.replace('/(auth)/login');
+      console.log('✅ [LOGOUT] Replace chamado');
+      
+      console.log('🟢 [LOGOUT] Logout completo!');
+    } catch (error) {
+      console.error('❌ [LOGOUT] Erro ao fazer logout:', error);
+      console.error('❌ [LOGOUT] Error type:', typeof error);
+      console.error('❌ [LOGOUT] Error message:', error?.message);
+      console.error('❌ [LOGOUT] Error stack:', error?.stack);
+      Alert.alert('Erro', 'Erro ao fazer logout: ' + (error?.message || 'Tente novamente'));
+    }
   };
 
   if (loading) {

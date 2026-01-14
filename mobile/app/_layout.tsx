@@ -1,9 +1,14 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@/src/utils/storage';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
-import 'react-native-reanimated';
+import { Platform } from 'react-native';
+
+// Importar Reanimated apenas no mobile
+if (Platform.OS !== 'web') {
+  require('react-native-reanimated');
+}
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 

@@ -3,10 +3,11 @@ import { colors } from '@/src/theme/colors';
 import { Feather } from '@expo/vector-icons';
 import { useState } from 'react';
 import {
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Platform,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 
 // Importar as telas
@@ -108,16 +109,19 @@ const styles = StyleSheet.create({
   customNav: {
     flexDirection: 'row',
     borderTopWidth: 1,
-    paddingBottom: 0,
-    paddingTop: 4,
+    paddingBottom: Platform.OS === 'web' ? 8 : 0,
+    paddingTop: Platform.OS === 'web' ? 8 : 4,
     paddingHorizontal: 0,
-    height: 65,
+    height: Platform.OS === 'web' ? 'auto' : 65,
+    minHeight: 65,
+    overflow: 'hidden',
   },
   navItem: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     gap: 4,
+    paddingVertical: Platform.OS === 'web' ? 4 : 0,
   },
   navItemActive: {
     opacity: 1,
