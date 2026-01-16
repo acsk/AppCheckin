@@ -27,11 +27,11 @@ class WodBloco
     {
         try {
             $stmt = $this->db->prepare(
-                "INSERT INTO wod_blocos (wod_id, ordem, tipo, titulo, conteudo, tempo_cap, criado_em, atualizado_em)
+                "INSERT INTO wod_blocos (wod_id, ordem, tipo, titulo, conteudo, tempo_cap, created_at, updated_at)
                  VALUES (:wod_id, :ordem, :tipo, :titulo, :conteudo, :tempo_cap, NOW(), NOW())"
             );
 
-            $stmt->execute([
+            $result = $stmt->execute([
                 'wod_id' => $data['wod_id'],
                 'ordem' => $data['ordem'] ?? 1,
                 'tipo' => $data['tipo'],
@@ -40,10 +40,19 @@ class WodBloco
                 'tempo_cap' => $data['tempo_cap'] ?? null,
             ]);
 
-            return $this->db->lastInsertId() ? (int)$this->db->lastInsertId() : null;
+            if (!$result) {
+                throw new \Exception('Falha ao executar INSERT de WOD Bloco: ' . implode(', ', $stmt->errorInfo()));
+            }
+
+            $lastId = $this->db->lastInsertId();
+            if (!$lastId) {
+                throw new \Exception('Não foi possível obter o ID do bloco criado');
+            }
+
+            return (int)$lastId;
         } catch (\Exception $e) {
             error_log('Erro ao criar bloco de WOD: ' . $e->getMessage());
-            return null;
+            throw $e;
         }
     }
 
@@ -111,7 +120,7 @@ class WodBloco
                 return false;
             }
 
-            $updateFields[] = "atualizado_em = NOW()";
+            $updateFields[] = "updated_at = NOW()";
             $query = "UPDATE wod_blocos SET " . implode(", ", $updateFields) . " WHERE id = :id";
 
             $stmt = $this->db->prepare($query);

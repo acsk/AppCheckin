@@ -266,77 +266,68 @@ export default function UsuariosScreen() {
   return (
     <LayoutBase title="Usuários" subtitle="Gerenciar usuários do sistema">
       <View style={styles.container}>
-        {/* Header com título, busca e botões */}
-        <View style={[styles.header, isMobile && styles.headerMobile]}>
-          <View style={styles.headerLeft}>
-            <Text style={[styles.headerTitle, isMobile && styles.headerTitleMobile]}>Lista de Usuários</Text>
-            <Text style={styles.headerSubtitle}>
-              {usuariosFiltrados.length} {usuariosFiltrados.length === 1 ? 'usuário encontrado' : 'usuários encontrados'}
-            </Text>
+        {/* Banner Header */}
+        <View style={styles.bannerContainer}>
+          <View style={styles.banner}>
+            <View style={styles.bannerContent}>
+              <View style={styles.bannerIconContainer}>
+                <View style={styles.bannerIconOuter}>
+                  <View style={styles.bannerIconInner}>
+                    <Feather name="users" size={28} color="#fff" />
+                  </View>
+                </View>
+              </View>
+              <View style={styles.bannerTextContainer}>
+                <Text style={styles.bannerTitle}>Usuários</Text>
+                <Text style={styles.bannerSubtitle}>Gerencie todos os usuários do sistema</Text>
+              </View>
+            </View>
+            <View style={styles.bannerDecoration}>
+              <View style={styles.decorCircle1} />
+              <View style={styles.decorCircle2} />
+              <View style={styles.decorCircle3} />
+            </View>
           </View>
-          
-          {!isMobile && (
-            <View style={styles.searchContainer}>
-              <View style={styles.searchInputContainer}>
-                <Feather name="search" size={20} color="#999" style={styles.searchIcon} />
-                <TextInput
-                  style={styles.searchInput}
-                  placeholder="Buscar por nome, email, CPF ou telefone..."
-                  placeholderTextColor="#999"
-                  value={searchText}
-                  onChangeText={handleSearchChange}
-                />
-                {searchText.length > 0 && (
-                  <TouchableOpacity onPress={handleClearSearch} style={styles.clearButton}>
-                    <Feather name="x" size={18} color="#999" />
-                  </TouchableOpacity>
-                )}
+
+          <View style={[styles.searchCard, isMobile && styles.searchCardMobile]}>
+            <View style={styles.searchCardHeader}>
+              <View style={styles.searchCardInfo}>
+                <View style={styles.searchCardIconContainer}>
+                  <Feather name="search" size={20} color="#f97316" />
+                </View>
+                <View>
+                  <Text style={styles.searchCardTitle}>Buscar Usuários</Text>
+                  <Text style={styles.searchCardSubtitle}>
+                    {usuariosFiltrados.length} {usuariosFiltrados.length === 1 ? 'usuário encontrado' : 'usuários encontrados'}
+                  </Text>
+                </View>
               </View>
               <TouchableOpacity
-                style={styles.searchButton}
-                onPress={handleSearch}
+                style={[styles.addButton, isMobile && styles.addButtonMobile]}
+                onPress={() => router.push('/usuarios/novo')}
               >
-                <Feather name="search" size={18} color="#fff" />
-                <Text style={styles.searchButtonText}>Buscar</Text>
+                <Feather name="plus" size={18} color="#fff" />
+                {!isMobile && <Text style={styles.addButtonText}>Novo Usuário</Text>}
               </TouchableOpacity>
             </View>
-          )}
-          
-          <TouchableOpacity
-            style={[styles.newButton, isMobile && styles.newButtonMobile]}
-            onPress={() => router.push('/usuarios/novo')}
-          >
-            <Feather name="plus" size={20} color="#fff" />
-            {!isMobile && <Text style={styles.newButtonText}>Novo Usuário</Text>}
-          </TouchableOpacity>
-        </View>
 
-        {/* Barra de Busca Mobile */}
-        {isMobile && (
-          <View style={styles.searchContainerMobile}>
             <View style={styles.searchInputContainer}>
-              <Feather name="search" size={20} color="#999" style={styles.searchIcon} />
+              <Feather name="search" size={20} color="#9ca3af" style={styles.searchInputIcon} />
               <TextInput
                 style={styles.searchInput}
-                placeholder="Buscar..."
-                placeholderTextColor="#999"
+                placeholder="Buscar por nome, email, CPF ou telefone..."
+                placeholderTextColor="#9ca3af"
                 value={searchText}
                 onChangeText={handleSearchChange}
               />
               {searchText.length > 0 && (
                 <TouchableOpacity onPress={handleClearSearch} style={styles.clearButton}>
-                  <Feather name="x" size={18} color="#999" />
+                  <Feather name="x-circle" size={20} color="#9ca3af" />
                 </TouchableOpacity>
               )}
             </View>
-            <TouchableOpacity
-              style={styles.searchButton}
-              onPress={handleSearch}
-            >
-              <Feather name="search" size={18} color="#fff" />
-            </TouchableOpacity>
           </View>
-        )}
+        </View>
 
         {/* Loading */}
         {loading && (
@@ -387,89 +378,162 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f5f5f5',
   },
-  header: {
+  bannerContainer: {
+    padding: 16,
+    gap: 16,
+  },
+  banner: {
+    backgroundColor: '#f97316',
+    borderRadius: 16,
+    padding: 20,
+    overflow: 'hidden',
+  },
+  bannerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    zIndex: 2,
+  },
+  bannerIconContainer: {
+    width: 54,
+    height: 54,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerIconOuter: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerIconInner: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerTextContainer: {
+    flex: 1,
+  },
+  bannerTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  bannerSubtitle: {
+    marginTop: 4,
+    fontSize: 14,
+    color: 'rgba(255,255,255,0.9)',
+  },
+  bannerDecoration: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: 140,
+  },
+  decorCircle1: {
+    position: 'absolute',
+    top: -40,
+    right: -40,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  decorCircle2: {
+    position: 'absolute',
+    bottom: -30,
+    right: 10,
+    width: 90,
+    height: 90,
+    borderRadius: 45,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  decorCircle3: {
+    position: 'absolute',
+    top: 20,
+    right: 50,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  searchCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  searchCardMobile: {
+    padding: 14,
+  },
+  searchCardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e5e5',
-    gap: 20,
-  },
-  headerMobile: {
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    gap: 12,
-    padding: 16,
-  },
-  headerLeft: {
-    flex: 0,
-    minWidth: 200,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  headerTitleMobile: {
-    fontSize: 20,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#666',
-    marginTop: 4,
-  },
-  searchContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    gap: 12,
-    maxWidth: 600,
-  },
-  searchContainerMobile: {
-    flexDirection: 'row',
-    padding: 20,
-    paddingTop: 0,
+    marginBottom: 12,
     gap: 12,
   },
-  searchInputContainer: {
-    flex: 1,
+  searchCardInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e5e5e5',
-    paddingHorizontal: 12,
+    gap: 12,
+    flex: 1,
   },
-  searchIcon: {
-    marginRight: 8,
+  searchCardIconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#fff7ed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchCardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  searchCardSubtitle: {
+    marginTop: 2,
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  searchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    height: 52,
+  },
+  searchInputIcon: {
+    marginRight: 10,
   },
   searchInput: {
     flex: 1,
-    paddingVertical: 12,
-    fontSize: 14,
-    color: '#333',
+    fontSize: 16,
+    color: '#4b5563',
+    outlineStyle: 'none',
+    height: '100%',
   },
   clearButton: {
-    padding: 4,
+    padding: 6,
   },
-  searchButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#3b82f6',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    gap: 8,
-  },
-  searchButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  newButton: {
+  addButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f97316',
@@ -478,14 +542,14 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     gap: 8,
   },
-  newButtonMobile: {
+  addButtonMobile: {
     paddingVertical: 10,
     paddingHorizontal: 10,
     borderRadius: 50,
   },
-  newButtonText: {
+  addButtonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
   },
   loadingContainer: {

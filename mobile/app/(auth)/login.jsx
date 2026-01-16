@@ -23,6 +23,7 @@ export default function LoginScreen() {
   const [senha, setSenha] = useState('123456');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [formError, setFormError] = useState('');
 
   const handleLogin = async () => {
     if (!email.trim() || !senha.trim()) {
@@ -31,6 +32,7 @@ export default function LoginScreen() {
     }
 
     setLoading(true);
+    setFormError('');
     try {
       const response = await authService.login(email, senha);
       
@@ -42,6 +44,7 @@ export default function LoginScreen() {
       }
     } catch (error) {
       const mensagem = error?.error || error?.message || 'Email ou senha incorretos';
+      setFormError(mensagem);
       Alert.alert('Erro', mensagem);
     } finally {
       setLoading(false);
@@ -73,6 +76,13 @@ export default function LoginScreen() {
             <View style={styles.formCard}>
             <Text style={styles.welcomeText}>Bem-vindo de volta!</Text>
             <Text style={styles.welcomeSubtext}>Faça login para continuar</Text>
+
+            {formError ? (
+              <View style={styles.formError}>
+                <Feather name="alert-circle" size={16} color="#b91c1c" />
+                <Text style={styles.formErrorText}>{formError}</Text>
+              </View>
+            ) : null}
 
             {/* Email Input */}
             <View style={styles.inputWrapper}>
@@ -254,5 +264,22 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  formError: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef2f2',
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    marginBottom: 14,
+    gap: 8,
+  },
+  formErrorText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#b91c1c',
   },
 });

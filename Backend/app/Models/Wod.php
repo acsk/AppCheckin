@@ -24,12 +24,13 @@ class Wod
     {
         try {
             $stmt = $this->db->prepare(
-                "INSERT INTO wods (tenant_id, data, titulo, descricao, status, criado_por, criado_em, atualizado_em)
-                 VALUES (:tenant_id, :data, :titulo, :descricao, :status, :criado_por, NOW(), NOW())"
+                "INSERT INTO wods (tenant_id, modalidade_id, data, titulo, descricao, status, criado_por, created_at, updated_at)
+                 VALUES (:tenant_id, :modalidade_id, :data, :titulo, :descricao, :status, :criado_por, NOW(), NOW())"
             );
 
-            $stmt->execute([
+            $result = $stmt->execute([
                 'tenant_id' => $tenantId,
+                'modalidade_id' => $data['modalidade_id'] ?? null,
                 'data' => $data['data'],
                 'titulo' => $data['titulo'],
                 'descricao' => $data['descricao'] ?? null,
@@ -37,10 +38,19 @@ class Wod
                 'criado_por' => $data['criado_por'] ?? null,
             ]);
 
-            return $this->db->lastInsertId() ? (int)$this->db->lastInsertId() : null;
+            if (!$result) {
+                throw new \Exception('Falha ao executar INSERT de WOD: ' . implode(', ', $stmt->errorInfo()));
+            }
+
+            $lastId = $this->db->lastInsertId();
+            if (!$lastId) {
+                throw new \Exception('Não foi possível obter o ID do WOD criado');
+            }
+
+            return (int)$lastId;
         } catch (\Exception $e) {
             error_log('Erro ao criar WOD: ' . $e->getMessage());
-            return null;
+            throw $e;
         }
     }
 
@@ -50,9 +60,10 @@ class Wod
     public function findById(int $id, int $tenantId): ?array
     {
         $stmt = $this->db->prepare(
-            "SELECT w.*, u.nome as criado_por_nome
+            "SELECT w.*, u.nome as criado_por_nome, m.nome as modalidade_nome
              FROM wods w
              LEFT JOIN usuarios u ON w.criado_por = u.id
+             LEFT JOIN modalidades m ON w.modalidade_id = m.id
              WHERE w.id = :id AND w.tenant_id = :tenant_id"
         );
 
@@ -65,13 +76,43 @@ class Wod
     }
 
     /**
+     * Buscar WOD por data e modalidade
+     * Usado para exibir o WOD do dia em turmas específicas
+     */
+    public function findByDataModalidade(string $data, int $modalidadeId, int $tenantId): ?array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT w.*, u.nome as criado_por_nome, m.nome as modalidade_nome, m.cor as modalidade_cor
+             FROM wods w
+             LEFT JOIN usuarios u ON w.criado_por = u.id
+             LEFT JOIN modalidades m ON w.modalidade_id = m.id
+             WHERE w.data = :data 
+             AND w.modalidade_id = :modalidade_id 
+             AND w.tenant_id = :tenant_id
+             AND w.status = 'published'
+             LIMIT 1"
+        );
+
+        $stmt->execute([
+            'data' => $data,
+            'modalidade_id' => $modalidadeId,
+            'tenant_id' => $tenantId,
+        ]);
+
+        $wod = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        return $wod ?: null;
+    }
+
+    /**
      * Listar WODs de um tenant
      */
     public function listByTenant(int $tenantId, array $filters = []): array
     {
-        $query = "SELECT w.*, u.nome as criado_por_nome
+        $query = "SELECT w.*, u.nome as criado_por_nome, m.nome as modalidade_nome
                   FROM wods w
                   LEFT JOIN usuarios u ON w.criado_por = u.id
+                  LEFT JOIN modalidades m ON w.modalidade_id = m.id
                   WHERE w.tenant_id = :tenant_id";
 
         $params = ['tenant_id' => $tenantId];
@@ -90,6 +131,11 @@ class Wod
         if (!empty($filters['data'])) {
             $query .= " AND DATE(w.data) = :data";
             $params['data'] = $filters['data'];
+        }
+
+        if (!empty($filters['modalidade_id'])) {
+            $query .= " AND w.modalidade_id = :modalidade_id";
+            $params['modalidade_id'] = $filters['modalidade_id'];
         }
 
         $query .= " ORDER BY w.data DESC";
@@ -139,11 +185,16 @@ class Wod
                 $params['data'] = $data['data'];
             }
 
+            if (isset($data['modalidade_id'])) {
+                $updateFields[] = "modalidade_id = :modalidade_id";
+                $params['modalidade_id'] = $data['modalidade_id'];
+            }
+
             if (empty($updateFields)) {
                 return false;
             }
 
-            $updateFields[] = "atualizado_em = NOW()";
+            $updateFields[] = "updated_at = NOW()";
             $query = "UPDATE wods SET " . implode(", ", $updateFields) . " WHERE id = :id AND tenant_id = :tenant_id";
 
             $stmt = $this->db->prepare($query);
@@ -177,6 +228,32 @@ class Wod
     /**
      * Verificar se existe WOD para uma data específica
      */
+    /**
+     * Verificar se existe WOD para uma data específica e modalidade
+     */
+    public function existePorDataModalidade(string $data, int $modalidadeId, int $tenantId, ?int $wodIdExcluir = null): bool
+    {
+        $query = "SELECT COUNT(*) FROM wods 
+                  WHERE tenant_id = :tenant_id 
+                  AND DATE(data) = :data 
+                  AND modalidade_id = :modalidade_id";
+        $params = [
+            'tenant_id' => $tenantId,
+            'data' => $data,
+            'modalidade_id' => $modalidadeId,
+        ];
+
+        if ($wodIdExcluir) {
+            $query .= " AND id != :wod_id";
+            $params['wod_id'] = $wodIdExcluir;
+        }
+
+        $stmt = $this->db->prepare($query);
+        $stmt->execute($params);
+
+        return (int)$stmt->fetchColumn() > 0;
+    }
+
     public function existePorData(string $data, int $tenantId, ?int $wodIdExcluir = null): bool
     {
         $query = "SELECT COUNT(*) FROM wods WHERE tenant_id = :tenant_id AND DATE(data) = :data";

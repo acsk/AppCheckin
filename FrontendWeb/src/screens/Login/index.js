@@ -52,6 +52,7 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       const response = await authService.login(email, senha);
+      console.log('✅ Login response:', response);
 
       // Se requer seleção de tenant, exibir modal
       if (response.requires_tenant_selection && response.tenants && response.tenants.length > 0) {
@@ -60,7 +61,9 @@ export default function LoginScreen() {
         setShowTenantModal(true);
       } else if (response.token) {
         // Login único, ir para home
+        console.log('🚀 Redirecionando para home...');
         setTimeout(() => {
+          console.log('⏱️ Executando router.replace("/")');
           router.replace('/');
         }, 100);
       }
@@ -92,10 +95,13 @@ export default function LoginScreen() {
     setSelectingTenant(true);
     try {
       const response = await authService.selectTenant(tenantId);
+      console.log('✅ Select tenant response:', response);
       
       if (response.token) {
         setShowTenantModal(false);
+        console.log('🚀 Redirecionando para home...');
         setTimeout(() => {
+          console.log('⏱️ Executando router.replace("/")');
           router.replace('/');
         }, 100);
       }

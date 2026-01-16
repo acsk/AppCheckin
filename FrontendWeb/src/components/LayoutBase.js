@@ -22,6 +22,7 @@ const MENU = [
   { label: 'Modalidades', path: '/modalidades', icon: 'activity', roles: [2, 3] }, // Admin e SuperAdmin
   { label: 'Professores', path: '/professores', icon: 'user', roles: [2, 3] }, // Admin e SuperAdmin
   { label: 'Aulas', path: '/turmas', icon: 'calendar', roles: [2, 3] }, // Admin e SuperAdmin
+  { label: 'WOD', path: '/wods', icon: 'zap', roles: [2, 3] }, // Admin e SuperAdmin
   { label: 'Planos Sistema', path: '/planos-sistema', icon: 'layers', roles: [3] }, // SuperAdmin apenas
   { label: 'Usuários', path: '/usuarios', icon: 'users', roles: [2, 3] }, // Admin e SuperAdmin
   { label: 'Formas de Pagamento', path: '/formas-pagamento', icon: 'credit-card', roles: [2, 3] }, // Admin e SuperAdmin

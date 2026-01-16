@@ -1,7 +1,8 @@
 import axios from 'axios';
 import { authService } from './authService';
+import { API_BASE_URL } from '../config/api';
 
-const API_URL = 'http://localhost:8080/superadmin/planos-sistema';
+const API_URL = `${API_BASE_URL}/superadmin/planos-sistema`;
 
 class PlanosSistemaService {
   async listar(apenasAtivos = false, apenasAtuais = false) {

@@ -27,6 +27,7 @@ export default function MatriculaDetalheScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [modalConfirmVisible, setModalConfirmVisible] = useState(false);
   const [pagamentoSelecionado, setPagamentoSelecionado] = useState(null);
+  const [ajustePlano, setAjustePlano] = useState(null);
 
   useEffect(() => {
     carregarDados();
@@ -39,6 +40,8 @@ export default function MatriculaDetalheScreen() {
       // Buscar dados da matrícula
       const responseMatricula = await matriculaService.buscar(id);
       const dadosMatricula = responseMatricula?.matricula || responseMatricula;
+      const pagamentosDaMatricula = responseMatricula?.pagamentos || dadosMatricula?.pagamentos || [];
+      console.log('📌 Pagamentos da matrícula:', pagamentosDaMatricula);
       setMatricula(dadosMatricula);
       setAjustePlano(responseMatricula?.ajuste_plano || null);
 
@@ -46,10 +49,10 @@ export default function MatriculaDetalheScreen() {
       try {
         const responsePagamentos = await matriculaService.buscarPagamentos(id);
         const dadosPagamentos = responsePagamentos?.pagamentos || responsePagamentos?.data || [];
-        setPagamentos(dadosPagamentos);
+        setPagamentos(dadosPagamentos.length > 0 ? dadosPagamentos : pagamentosDaMatricula);
       } catch (error) {
         console.log('Endpoint de pagamentos não disponível ainda');
-        setPagamentos([]);
+        setPagamentos(pagamentosDaMatricula);
       }
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
@@ -60,6 +63,8 @@ export default function MatriculaDetalheScreen() {
   };
 
   const handleBaixaPagamento = (pagamento) => {
+    console.log('🔍 Pagamento selecionado:', pagamento);
+    console.log('📍 ID do pagamento:', pagamento.id || pagamento.pagamento_id || pagamento.conta_id);
     setPagamentoSelecionado(pagamento);
     setModalVisible(true);
   };
@@ -234,10 +239,10 @@ export default function MatriculaDetalheScreen() {
 
   return (
     <LayoutBase title={`Matrícula #${matricula.id}`}>
-      <ScrollView className="flex-1 bg-slate-50">
+      <ScrollView className="flex-1 bg-slate-100">
         <View className={`mx-auto w-full ${isDesktop ? 'max-w-6xl px-6 py-6' : 'px-4 py-5'}`}>
           {/* Header */}
-          <View className="mb-4 rounded-2xl border border-slate-100 bg-white px-5 py-4 shadow-sm">
+          <View className="mb-6 rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 shadow-md">
             <Pressable
               className="flex-row items-center gap-2"
               style={({ pressed }) => [pressed && { opacity: 0.7 }]}
@@ -247,18 +252,18 @@ export default function MatriculaDetalheScreen() {
               <Text className="text-sm font-semibold text-slate-500">Voltar</Text>
             </Pressable>
             
-            <View className="mt-4 flex-row items-center justify-between border-t border-slate-100 pt-4">
+            <View className="mt-4 flex-row items-center justify-between border-t border-orange-100 pt-4">
               <View>
-                <Text className="text-lg font-semibold text-slate-800">{matricula.usuario_nome}</Text>
-                <Text className="text-xs text-slate-500">
+                <Text className="text-lg font-semibold text-slate-900">{matricula.usuario_nome}</Text>
+                <Text className="text-xs text-slate-600">
                   Contrato #{matricula.id} • {matricula.modalidade_nome} - {matricula.plano_nome}
                 </Text>
               </View>
               <View
-                className="self-start rounded-full px-2.5 py-1"
+                className="self-start rounded-full px-3 py-1"
                 style={{ backgroundColor: getStatusColor(matricula.status) }}
               >
-                <Text className="text-[11px] font-bold text-white">
+                <Text className="text-[11px] font-bold tracking-wide text-white">
                   {getStatusLabel(matricula.status)}
                 </Text>
               </View>
@@ -266,13 +271,13 @@ export default function MatriculaDetalheScreen() {
           </View>
 
           {/* Card com informações da matrícula - Design Compacto */}
-          <View className="mb-5 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+          <View className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-md">
             {/* Header do Card */}
             <View className="flex-row items-center justify-between border-b border-slate-100 bg-slate-50 px-5 py-4">
               <View className="flex-1 flex-row items-center gap-3">
                 {matricula.modalidade_icone && (
                   <View
-                    className="h-11 w-11 items-center justify-center rounded-xl"
+                    className="h-11 w-11 items-center justify-center rounded-2xl shadow-sm"
                     style={{ backgroundColor: matricula.modalidade_cor || '#f97316' }}
                   >
                     <MaterialCommunityIcons
@@ -288,15 +293,15 @@ export default function MatriculaDetalheScreen() {
                 </View>
               </View>
               <View
-                className="self-start rounded-full px-2.5 py-1"
+                className="self-start rounded-full px-3 py-1"
                 style={{ backgroundColor: getStatusColor(matricula.status) }}
               >
-                <Text className="text-[11px] font-bold text-white">{getStatusLabel(matricula.status)}</Text>
+                <Text className="text-[11px] font-bold tracking-wide text-white">{getStatusLabel(matricula.status)}</Text>
               </View>
             </View>
 
             {/* Grid de Informações Compacto */}
-            <View className="flex-row items-center border-b border-slate-100 px-4 py-4">
+            <View className="flex-row items-center border-b border-slate-100 bg-white px-4 py-4">
               <View className="flex-1 items-center gap-1">
                 <Feather name="calendar" size={16} color="#f97316" />
                 <Text className="text-[10px] font-semibold uppercase text-slate-400">Início</Text>
@@ -329,19 +334,19 @@ export default function MatriculaDetalheScreen() {
             </View>
 
             {/* Footer com Valor */}
-            <View className="flex-row items-center justify-between bg-emerald-50 px-5 py-4">
-              <Text className="text-xs font-semibold text-emerald-700">Valor Mensal</Text>
-              <Text className="text-lg font-extrabold text-emerald-600">{formatCurrency(matricula.valor)}</Text>
+            <View className="flex-row items-center justify-between bg-emerald-100 px-5 py-4">
+              <Text className="text-xs font-semibold text-emerald-800">Valor Mensal</Text>
+              <Text className="text-lg font-extrabold text-emerald-800">{formatCurrency(matricula.valor)}</Text>
             </View>
           </View>
 
           {/* Parcela Pendente - Design Moderno */}
           {matricula.status !== 'cancelada' && matricula.status !== 'finalizada' && 
            pagamentosPendentes.map((pagamento, index) => (
-            <View key={pagamento.id || index} className="mb-5 overflow-hidden rounded-2xl border border-orange-100 bg-white shadow-sm">
+            <View key={pagamento.id || index} className="mb-6 overflow-hidden rounded-2xl border border-orange-300 bg-white shadow-md">
               <View className="flex-row items-center justify-between border-b border-orange-100 bg-orange-50 px-5 py-4">
                 <View className="flex-row items-center gap-3">
-                  <View className="h-10 w-10 items-center justify-center rounded-full bg-orange-500">
+                  <View className="h-10 w-10 items-center justify-center rounded-xl bg-orange-500 shadow-sm">
                     <MaterialCommunityIcons name="calendar-clock" size={20} color="#fff" />
                   </View>
                   <View>
@@ -353,7 +358,7 @@ export default function MatriculaDetalheScreen() {
                     </Text>
                   </View>
                 </View>
-                <View className="flex-row items-center gap-1 rounded-full bg-white px-2.5 py-1">
+                <View className="flex-row items-center gap-1 rounded-full bg-white px-2.5 py-1 shadow-sm">
                   <MaterialCommunityIcons name="clock-outline" size={14} color="#f59e0b" />
                   <Text className="text-[11px] font-semibold text-amber-600">
                     Aguardando
@@ -490,10 +495,10 @@ export default function MatriculaDetalheScreen() {
 
           {/* Card de Resumo Financeiro - Design Moderno */}
           {pagamentos.length > 0 && (
-            <View className="mb-10 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+            <View className="mb-10 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-md">
               <View className="border-b border-slate-200 bg-slate-50 px-5 py-4">
                 <View className="flex-row items-center gap-3">
-                  <View className="h-10 w-10 items-center justify-center rounded-full bg-orange-500">
+                  <View className="h-10 w-10 items-center justify-center rounded-xl bg-orange-500 shadow-sm">
                     <MaterialCommunityIcons name="chart-donut" size={20} color="#fff" />
                   </View>
                   <View className="flex-1">
@@ -523,7 +528,7 @@ export default function MatriculaDetalheScreen() {
               </View>
 
               <View className="flex-row flex-wrap gap-3 px-5 py-4">
-                <View className="min-w-[220px] flex-1 rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+                <View className="min-w-[220px] flex-1 rounded-xl border border-emerald-100 bg-emerald-50/80 p-4">
                   <View className="flex-row items-center gap-2">
                     <Feather name="check-circle" size={18} color="#10b981" />
                     <Text className="text-xs font-semibold text-emerald-700">Pago</Text>
@@ -534,7 +539,7 @@ export default function MatriculaDetalheScreen() {
                 </View>
 
                 {resumo.atrasado > 0 && (
-                  <View className="min-w-[220px] flex-1 rounded-xl border border-rose-100 bg-rose-50 p-4">
+                  <View className="min-w-[220px] flex-1 rounded-xl border border-rose-100 bg-rose-50/80 p-4">
                     <View className="flex-row items-center gap-2">
                       <Feather name="alert-triangle" size={18} color="#ef4444" />
                       <Text className="text-xs font-semibold text-rose-600">Atrasado</Text>
@@ -545,7 +550,7 @@ export default function MatriculaDetalheScreen() {
                   </View>
                 )}
 
-                <View className="min-w-[220px] flex-1 rounded-xl border border-amber-100 bg-amber-50 p-4">
+                <View className="min-w-[220px] flex-1 rounded-xl border border-amber-100 bg-amber-50/80 p-4">
                   <View className="flex-row items-center gap-2">
                     <Feather name="clock" size={18} color="#f59e0b" />
                     <Text className="text-xs font-semibold text-amber-700">Pendente</Text>

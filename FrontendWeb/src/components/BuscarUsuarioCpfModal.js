@@ -12,6 +12,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { mascaraCPF, apenasNumeros } from '../utils/masks';
 import { showError } from '../utils/toast';
+import { API_BASE_URL } from '../config/api';
 
 export default function BuscarUsuarioCpfModal({ visible, onClose, onUsuarioEncontrado, onCriarNovoUsuario }) {
   const [cpf, setCpf] = useState('');
@@ -31,7 +32,7 @@ export default function BuscarUsuarioCpfModal({ visible, onClose, onUsuarioEncon
     setSearched(false);
     
     try {
-      const response = await fetch(`http://localhost:8080/tenant/usuarios/buscar-cpf/${cpfLimpo}`, {
+      const response = await fetch(`${API_BASE_URL}/tenant/usuarios/buscar-cpf/${cpfLimpo}`, {
         headers: {
           'Authorization': `Bearer ${await getToken()}`,
         },

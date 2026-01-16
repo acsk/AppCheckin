@@ -317,5 +317,82 @@ class DiaController
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
         }
     }
+
+    /**
+     * Deletar todas as turmas de um dia específico
+     * DELETE /admin/dias/{id}/horarios
+     */
+    public function deletarHorariosDoDia(Request $request, Response $response, array $args): Response
+    {
+        $diaId = (int) $args['id'];
+        $tenantId = $request->getAttribute('tenantId');
+
+        try {
+            $db = require __DIR__ . '/../../config/database.php';
+
+            // Verificar se o dia existe e pertence ao tenant
+            $dia = $this->diaModel->findById($diaId, $tenantId);
+
+            if (!$dia) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'message' => 'Dia não encontrado'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
+            }
+
+            // Buscar turmas do dia para retornar informações
+            $stmt = $db->prepare("
+                SELECT t.id, t.nome, t.horario_inicio, t.horario_fim, t.limite_alunos
+                FROM turmas t
+                WHERE t.dia_id = :dia_id AND t.tenant_id = :tenant_id
+            ");
+            $stmt->execute(['dia_id' => $diaId, 'tenant_id' => $tenantId]);
+            $turmasParaDeletar = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            $totalTurmas = count($turmasParaDeletar);
+
+            if ($totalTurmas === 0) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'info',
+                    'message' => 'Nenhuma turma encontrada para este dia'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(200);
+            }
+
+            // Primeiro, deletar os checkins associados às turmas
+            $turmasIds = array_column($turmasParaDeletar, 'id');
+            $placeholders = implode(',', array_fill(0, count($turmasIds), '?'));
+            
+            $stmt = $db->prepare("DELETE FROM checkins WHERE turma_id IN ($placeholders)");
+            $stmt->execute($turmasIds);
+            $checkinsRemovidos = $stmt->rowCount();
+
+            // Depois, deletar as turmas do dia
+            $stmt = $db->prepare("DELETE FROM turmas WHERE dia_id = :dia_id AND tenant_id = :tenant_id");
+            $stmt->execute(['dia_id' => $diaId, 'tenant_id' => $tenantId]);
+
+            $response->getBody()->write(json_encode([
+                'type' => 'success',
+                'message' => "$totalTurmas turma(s) removida(s) com sucesso do dia {$dia['data']}",
+                'data' => [
+                    'dia_id' => $diaId,
+                    'data' => $dia['data'],
+                    'turmas_removidas' => $totalTurmas,
+                    'checkins_removidos' => $checkinsRemovidos,
+                    'detalhes' => $turmasParaDeletar
+                ]
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(200);
+
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Erro ao deletar turmas: ' . $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
+        }
+    }
 }
 

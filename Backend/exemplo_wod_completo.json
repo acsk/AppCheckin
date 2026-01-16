@@ -1,0 +1,57 @@
+{
+  "titulo": "WOD 14/01/2026 - Upper Body Day",
+  "descricao": "Treino focado em força e resistência de trem superior",
+  "data": "2026-01-14",
+  "status": "published",
+  "blocos": [
+    {
+      "ordem": 1,
+      "tipo": "warmup",
+      "titulo": "Aquecimento (5 min)",
+      "conteudo": "2 rounds não por tempo:\n- 5 cal bike\n- 5 shoulder pass throughs com PVC\n- 5 pull-ups (qualquer variação)",
+      "tempo_cap": "5 min"
+    },
+    {
+      "ordem": 2,
+      "tipo": "strength",
+      "titulo": "Desenvolvimento da Força",
+      "conteudo": "Bench Press\nMin 0-10: Build to heavy single for the day\nMin 10-15: Drop 10-15% and do max reps",
+      "tempo_cap": "15 min"
+    },
+    {
+      "ordem": 3,
+      "tipo": "metcon",
+      "titulo": "WOD Principal - 15 min AMRAP",
+      "conteudo": "15 min AMRAP (As Many Rounds As Possible):\n- 8 Bench Press (no rack, power clean the bar up)\n- 12 Dumbbell Rows (6 each side)\n- 10 Burpee Pull-ups\n- 200m Run",
+      "tempo_cap": "15 min"
+    },
+    {
+      "ordem": 4,
+      "tipo": "accessory",
+      "titulo": "Trabalho Acessório",
+      "conteudo": "3 rounds for quality:\n- 10 Dumbbell Bench Press\n- 15 Banded Pull-aparts\n- 10 Weighted Dips (add weight if possible)",
+      "tempo_cap": "10 min"
+    },
+    {
+      "ordem": 5,
+      "tipo": "cooldown",
+      "titulo": "Resfriamento e Mobilidade",
+      "conteudo": "5 min de alongamento\nPosições de pectoral\nFlexibilidade de ombro\nRespiraçao profunda",
+      "tempo_cap": "5 min"
+    }
+  ],
+  "variacoes": [
+    {
+      "nome": "RX",
+      "descricao": "Bench Press com 65/95 lbs, DB rows 25/35 lbs, burpee pull-ups completos"
+    },
+    {
+      "nome": "Scaled",
+      "descricao": "Bench Press com 45/65 lbs, DB rows 15/20 lbs, burpee box jumps"
+    },
+    {
+      "nome": "Modificado",
+      "descricao": "Push press ou shoulder press, row com máquina, modified pull-ups com band"
+    }
+  ]
+}

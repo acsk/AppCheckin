@@ -102,6 +102,49 @@ export const mobileService = {
       throw errorData;
     }
   },
+
+  /**
+   * Busca os WODs do dia
+   */
+  async getWodsHoje() {
+    try {
+      const response = await api.get('/mobile/wods/hoje');
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data || error;
+      throw errorData;
+    }
+  },
+
+  /**
+   * Busca o WOD de uma modalidade específica
+   * @param {number} modalidadeId - ID da modalidade
+   * @param {string} data - Data do WOD (formato YYYY-MM-DD)
+   */
+  async getWodPorModalidade(modalidadeId, data) {
+    try {
+      const response = await api.get('/mobile/wod/hoje', {
+        params: { data, modalidade_id: modalidadeId }
+      });
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data || error;
+      throw errorData;
+    }
+  },
+
+  /**
+   * Busca as modalidades com WOD disponível hoje
+   */
+  async getModalidadesComWodHoje() {
+    try {
+      const response = await api.get('/mobile/wods/hoje');
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data || error;
+      throw errorData;
+    }
+  },
 };
 
 export default mobileService;

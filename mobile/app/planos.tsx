@@ -1,4 +1,5 @@
 import { colors } from '@/src/theme/colors';
+import { handleAuthError } from '@/src/utils/authHelpers';
 import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRoute } from '@react-navigation/native';
@@ -98,6 +99,14 @@ export default function PlanosScreen() {
       console.log('   Body (primeiros 500 chars):', responseText.substring(0, 500));
 
       if (!response.ok) {
+        // Tratar erro 401
+        if (response.status === 401) {
+          console.log('🔑 Token inválido/expirado ao carregar planos');
+          await handleAuthError();
+          router.replace('/(auth)/login');
+          return;
+        }
+        
         console.error('❌ ERRO NA REQUISIÇÃO');
         console.error('   Status:', response.status);
         console.error('   Body completo:', responseText);
@@ -230,6 +239,14 @@ export default function PlanosScreen() {
       console.log('   Body (primeiros 500 chars):', responseText.substring(0, 500));
 
       if (!response.ok) {
+        // Tratar erro 401
+        if (response.status === 401) {
+          console.log('🔑 Token inválido/expirado ao carregar detalhes da matrícula');
+          await handleAuthError();
+          router.replace('/(auth)/login');
+          return;
+        }
+        
         console.error('❌ ERRO NA REQUISIÇÃO');
         console.error('   Status:', response.status);
         console.error('   Body completo:', responseText);

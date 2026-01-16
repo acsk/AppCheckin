@@ -99,3 +99,12 @@ export const showLoading = (message = 'Carregando...') => {
 export const dismissToast = (toastId) => {
   toast.dismiss(toastId);
 };
+
+// Exportar como objeto padrão também para compatibilidade
+export default {
+  success: showSuccess,
+  error: showError,
+  warning: showWarning,
+  loading: showLoading,
+  dismiss: dismissToast,
+};

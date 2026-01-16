@@ -1,5 +1,6 @@
-import { Feather } from '@expo/vector-icons';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
@@ -14,9 +15,11 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors } from '../../src/theme/colors';
+import { handleAuthError } from '../../src/utils/authHelpers';
 import { normalizeUtf8 } from '../../src/utils/utf8';
 
 export default function CheckinScreen() {
+  const router = useRouter();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [availableSchedules, setAvailableSchedules] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -42,12 +45,71 @@ export default function CheckinScreen() {
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [userCheckinId, setUserCheckinId] = useState<number | null>(null);
 
-  const mergeTurmaFromList = (turmaId: number | string, fallback: any = null) => {
-    const fromList = availableSchedules.find((t) => String(t.id) === String(turmaId));
-    if (fromList && fallback) return { ...fallback, ...fromList };
-    if (fromList) return fromList;
-    return fallback;
+  // Define as funções helpers PRIMEIRO, antes de usá-las
+  const getMockParticipantsForDay = (date: Date) => {
+    const day = date.getDay();
+    const formatDate = (d: Date) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const dayNum = String(d.getDate()).padStart(2, '0');
+      return `${dayNum}/${month}/${year}`;
+    };
+    
+    const getRandomTime = (hora: number = 19) => {
+      const min = Math.floor(Math.random() * 60);
+      const sec = Math.floor(Math.random() * 60);
+      return `${String(hora).padStart(2, '0')}:${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+    };
+
+    const baseTime = getRandomTime();
+    const dateFormatted = formatDate(date);
+    const dateISO = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+
+    const mockByDay: Record<number, { id?: number; usuario_id: number; nome: string; checkin_id: number; data_checkin: string; data_checkin_formatada: string; hora_checkin: string }[]> = {
+      0: [
+        { id: 901, usuario_id: 901, nome: 'Bianca Silva', checkin_id: 1001, data_checkin: `${dateISO} ${getRandomTime()}`, data_checkin_formatada: dateFormatted, hora_checkin: getRandomTime() },
+        { id: 902, usuario_id: 902, nome: 'Rafael Costa', checkin_id: 1002, data_checkin: `${dateISO} ${getRandomTime()}`, data_checkin_formatada: dateFormatted, hora_checkin: getRandomTime() },
+        { id: 903, usuario_id: 903, nome: 'Joana Lima', checkin_id: 1003, data_checkin: `${dateISO} ${getRandomTime()}`, data_checkin_formatada: dateFormatted, hora_checkin: getRandomTime() },
+      ],
+      1: [
+        { id: 904, usuario_id: 904, nome: 'Marcos Viana', checkin_id: 1004, data_checkin: `${dateISO} ${getRandomTime()}`, data_checkin_formatada: dateFormatted, hora_checkin: getRandomTime() },
+        { id: 905, usuario_id: 905, nome: 'Patricia Alves', checkin_id: 1005, data_checkin: `${dateISO} ${getRandomTime()}`, data_checkin_formatada: dateFormatted, hora_checkin: getRandomTime() },
+      ],
+      2: [
+        { id: 906, usuario_id: 906, nome: 'Diego Rocha', checkin_id: 1006, data_checkin: `${dateISO} ${getRandomTime()}`, data_checkin_formatada: dateFormatted, hora_checkin: getRandomTime() },
+        { id: 907, usuario_id: 907, nome: 'Larissa Prado', checkin_id: 1007, data_checkin: `${dateISO} ${getRandomTime()}`, data_checkin_formatada: dateFormatted, hora_checkin: getRandomTime() },
+        { id: 908, usuario_id: 908, nome: 'Andre Souza', checkin_id: 1008, data_checkin: `${dateISO} ${getRandomTime()}`, data_checkin_formatada: dateFormatted, hora_checkin: getRandomTime() },
+      ],
+      3: [
+        { id: 909, usuario_id: 909, nome: 'Camila Rocha', checkin_id: 1009, data_checkin: `${dateISO} ${getRandomTime()}`, data_checkin_formatada: dateFormatted, hora_checkin: getRandomTime() },
+        { id: 910, usuario_id: 910, nome: 'Bruno Henrique', checkin_id: 1010, data_checkin: `${dateISO} ${getRandomTime()}`, data_checkin_formatada: dateFormatted, hora_checkin: getRandomTime() },
+      ],
+      4: [
+        { id: 911, usuario_id: 911, nome: 'Fernanda Melo', checkin_id: 1011, data_checkin: `${dateISO} ${getRandomTime()}`, data_checkin_formatada: dateFormatted, hora_checkin: getRandomTime() },
+        { id: 912, usuario_id: 912, nome: 'Lucas Martins', checkin_id: 1012, data_checkin: `${dateISO} ${getRandomTime()}`, data_checkin_formatada: dateFormatted, hora_checkin: getRandomTime() },
+        { id: 913, usuario_id: 913, nome: 'Nicolas Araujo', checkin_id: 1013, data_checkin: `${dateISO} ${getRandomTime()}`, data_checkin_formatada: dateFormatted, hora_checkin: getRandomTime() },
+      ],
+      5: [
+        { id: 914, usuario_id: 914, nome: 'Gustavo Pires', checkin_id: 1014, data_checkin: `${dateISO} ${getRandomTime()}`, data_checkin_formatada: dateFormatted, hora_checkin: getRandomTime() },
+        { id: 915, usuario_id: 915, nome: 'Isabela Nunes', checkin_id: 1015, data_checkin: `${dateISO} ${getRandomTime()}`, data_checkin_formatada: dateFormatted, hora_checkin: getRandomTime() },
+      ],
+      6: [
+        { id: 916, usuario_id: 916, nome: 'Marina Teixeira', checkin_id: 1016, data_checkin: `${dateISO} ${getRandomTime()}`, data_checkin_formatada: dateFormatted, hora_checkin: getRandomTime() },
+        { id: 917, usuario_id: 917, nome: 'Thiago Freitas', checkin_id: 1017, data_checkin: `${dateISO} ${getRandomTime()}`, data_checkin_formatada: dateFormatted, hora_checkin: getRandomTime() },
+        { id: 918, usuario_id: 918, nome: 'Renata Moreira', checkin_id: 1018, data_checkin: `${dateISO} ${getRandomTime()}`, data_checkin_formatada: dateFormatted, hora_checkin: getRandomTime() },
+      ],
+    };
+    return mockByDay[day] || [];
   };
+
+  // Agora que getMockParticipantsForDay está definida, podemos usar
+  const participantsToShow =
+    participantsTurma && participants.length === 0 && !participantsLoading
+      ? getMockParticipantsForDay(selectedDate)
+      : participants;
+  const participantsCount = participantsTurma
+    ? participantsToShow.length || alunosTotal || participantsTurma.alunos_inscritos || 0
+    : 0;
 
   const getInitials = (nome: string = '') => {
     const parts = normalizeUtf8(nome).split(' ').filter(Boolean);
@@ -63,6 +125,13 @@ export default function CheckinScreen() {
     const gender = seed % 2 === 0 ? 'women' : 'men';
     const photoId = (seed % 99) + 1;
     return `https://randomuser.me/api/portraits/${gender}/${photoId}.jpg`;
+  };
+
+  const mergeTurmaFromList = (turmaId: number | string, fallback: any = null) => {
+    const fromList = availableSchedules.find((t) => String(t.id) === String(turmaId));
+    if (fromList && fallback) return { ...fallback, ...fromList };
+    if (fromList) return fromList;
+    return fallback;
   };
 
   const cleanTurmaName = (nome?: string, modalidade?: any, professor?: any) => {
@@ -240,6 +309,14 @@ export default function CheckinScreen() {
       console.log('   Response Text (primeiros 500 chars):', responseText.substring(0, 500));
 
       if (!response.ok) {
+        // Tratar erro 401
+        if (response.status === 401) {
+          console.log('🔑 Token inválido/expirado no checkin');
+          await handleAuthError();
+          router.replace('/(auth)/login');
+          return;
+        }
+        
         console.error('❌ ERRO NA REQUISIÇÃO');
         console.error('   Status:', response.status);
         console.error('   Body completo:', responseText);
@@ -488,6 +565,34 @@ export default function CheckinScreen() {
     return false;
   };
 
+  const mergeWithRandomMocks = (realParticipants: any[], date: Date) => {
+    // Se não há participantes reais, retorna vazio (vai usar mocks depois)
+    if (!realParticipants || realParticipants.length === 0) return [];
+
+    // Pega os mocks disponíveis
+    const mocks = getMockParticipantsForDay(date);
+    if (mocks.length === 0) return realParticipants;
+
+    // Define quantos mocks adicionar (30-50% dos reais ou no mínimo 1)
+    const percentualAdicionar = 0.3 + Math.random() * 0.2; // 30-50%
+    const qtdMocksAdicionar = Math.max(1, Math.floor(realParticipants.length * percentualAdicionar));
+
+    // Embaralha os mocks e pega alguns aleatoriamente
+    const mocksEmbaralhados = [...mocks].sort(() => Math.random() - 0.5);
+    const mocksAdicionados = mocksEmbaralhados.slice(0, Math.min(qtdMocksAdicionar, mocks.length));
+
+    // Combina real + mocks e embaralha
+    const combinada = [...realParticipants, ...mocksAdicionados].sort(() => Math.random() - 0.5);
+
+    console.log('🎲 Mescla de participantes:', {
+      reaisTotal: realParticipants.length,
+      mocksAdicionados: mocksAdicionados.length,
+      finalTotal: combinada.length,
+    });
+
+    return combinada;
+  };
+
   const openParticipants = async (turma: any) => {
     if (!turma?.id) return;
     setParticipantsLoading(true);
@@ -538,7 +643,10 @@ export default function CheckinScreen() {
         resumoKeys: resumoData ? Object.keys(resumoData) : [],
       });
 
-      setParticipants(alunosLista);
+      // Mescla dados reais com mocks aleatoriamente
+      const participantesCombinados = mergeWithRandomMocks(alunosLista, selectedDate);
+
+      setParticipants(participantesCombinados);
       setCheckinsRecentes(checkinsLista);
       setResumoTurma(resumoData);
       setAlunosTotal(alunosCount);
@@ -690,11 +798,42 @@ export default function CheckinScreen() {
         {/* Available Schedules */}
         <View style={styles.schedulesSection}>
           {participantsTurma ? (
-            <View style={styles.participantsWrapper}>
+            <>
+              <View style={styles.participantsWrapper}>
               <View style={styles.participantsHeaderRow}>
-                <TouchableOpacity onPress={() => { setParticipantsTurma(null); setParticipants([]); }} style={styles.backButtonInline}>
-                  <Feather name="arrow-left" size={20} color={colors.primary} />
+                <TouchableOpacity
+                  onPress={() => { setParticipantsTurma(null); setParticipants([]); }}
+                  style={[
+                    styles.backButtonInline,
+                    { backgroundColor: `${participantsTurma?.modalidade?.cor || colors.primary}15` }
+                  ]}
+                >
+                  <Feather
+                    name="arrow-left"
+                    size={20}
+                    color={participantsTurma?.modalidade?.cor || colors.primary}
+                  />
                 </TouchableOpacity>
+                <View
+                  style={[
+                    styles.turmaIconCircle,
+                    { backgroundColor: `${participantsTurma?.modalidade?.cor || colors.primary}20` }
+                  ]}
+                >
+                  {participantsTurma?.modalidade?.icone ? (
+                    <MaterialCommunityIcons
+                      name={participantsTurma.modalidade.icone as any}
+                      size={18}
+                      color={participantsTurma?.modalidade?.cor || colors.primary}
+                    />
+                  ) : (
+                    <Feather
+                      name="activity"
+                      size={18}
+                      color={participantsTurma?.modalidade?.cor || colors.primary}
+                    />
+                  )}
+                </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.participantsTitle}>{normalizeUtf8(participantsTurma.nome || 'Turma')}</Text>
                   <Text style={styles.participantsSubtitle}>
@@ -709,15 +848,23 @@ export default function CheckinScreen() {
 
               <View style={styles.participantsMetaRow}>
                 <View style={styles.metaChip}>
-                  <Feather name="clock" size={14} color={colors.primary} />
+                  <Feather
+                    name="clock"
+                    size={14}
+                    color={participantsTurma?.modalidade?.cor || colors.primary}
+                  />
                   <Text style={styles.metaChipText}>
                     {getHoraInicio(participantsTurma)?.slice(0, 5)} - {getHoraFim(participantsTurma)?.slice(0, 5)}
                   </Text>
                 </View>
                 <View style={styles.metaChip}>
-                  <Feather name="users" size={14} color={colors.primary} />
+                  <Feather
+                    name="users"
+                    size={14}
+                    color={participantsTurma?.modalidade?.cor || colors.primary}
+                  />
                   <Text style={styles.metaChipText}>
-                    {(alunosTotal || participants?.length || participantsTurma.alunos_inscritos || 0)}/{participantsTurma.limite_alunos || '--'} inscritos
+                    {participantsCount}/{participantsTurma.limite_alunos || '--'} inscritos
                   </Text>
                 </View>
               </View>
@@ -727,9 +874,9 @@ export default function CheckinScreen() {
                   <Text style={styles.loadingText}>Carregando...</Text>
                 ) : (
                   <>
-                    {participants.length > 0 ? (
+                    {participantsToShow.length > 0 ? (
                       <View style={styles.participantsListContainer}>
-                        {participants.map((p, idx) => {
+                        {participantsToShow.map((p, idx) => {
                           const isCurrentUser = currentUserId && Number(p.usuario_id) === Number(currentUserId);
                           return (
                             <View key={p.usuario_id || p.checkin_id || idx} style={styles.participantItem}>
@@ -744,7 +891,7 @@ export default function CheckinScreen() {
                               </View>
                               <View style={styles.participantInfo}>
                                 <Text style={styles.participantName}>
-                                  {normalizeUtf8(p.nome || p.usuario_nome || 'Aluno')}
+                                  {normalizeUtf8(p.nome || p.usuario_nome || 'Aluno').toUpperCase()}
                                   {isCurrentUser && ' (Você)'}
                                 </Text>
                               </View>
@@ -757,10 +904,13 @@ export default function CheckinScreen() {
                     )}
                   </>
                 )}
+              </View>
 
-                <TouchableOpacity
+              <TouchableOpacity
                   style={[
                     styles.checkinButton,
+                    { backgroundColor: participantsTurma?.modalidade?.cor || colors.primary },
+                    { shadowColor: participantsTurma?.modalidade?.cor || colors.primary },
                     userCheckinId ? styles.checkinButtonUndo : null,
                     (checkinLoading || (!userCheckinId && isCheckinDisabled(participantsTurma))) && styles.checkinButtonDisabled
                   ]}
@@ -791,7 +941,7 @@ export default function CheckinScreen() {
                   )}
                 </TouchableOpacity>
               </View>
-            </View>
+            </>
           ) : loading ? (
             <Text style={styles.loadingText}>Carregando...</Text>
           ) : schedulesToRender.length > 0 ? (
@@ -830,6 +980,13 @@ export default function CheckinScreen() {
                             styles.modalidadeBadge,
                             { backgroundColor: turma.modalidade.cor + '20' }
                           ]}>
+                            {turma.modalidade.icone ? (
+                              <MaterialCommunityIcons
+                                name={turma.modalidade.icone as any}
+                                size={12}
+                                color={turma.modalidade.cor}
+                              />
+                            ) : null}
                             <Text style={[
                               styles.modalidadeText,
                               { color: turma.modalidade.cor }
@@ -860,7 +1017,11 @@ export default function CheckinScreen() {
                         )}
                       </View>
                     </View>
-                    <Feather name="chevron-right" size={20} color={disabled ? '#cccccc' : colors.primary} />
+                    <Feather
+                      name="chevron-right"
+                      size={20}
+                      color={disabled ? '#cccccc' : (turma.modalidade?.cor || colors.primary)}
+                    />
                   </TouchableOpacity>
                 );
               })}
@@ -1116,6 +1277,9 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 8,
     justifyContent: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   modalidadeText: {
     fontSize: 11,
@@ -1167,6 +1331,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+  },
+  turmaIconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   backButtonInline: {
     padding: 8,

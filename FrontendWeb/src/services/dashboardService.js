@@ -27,6 +27,11 @@ export const buscarTurmasPorModalidade = async () => {
     const response = await api.get('/admin/dashboard/turmas-por-modalidade');
     return response.data;
   } catch (error) {
+    // Se for 404, retornar array vazio (endpoint não implementado ainda)
+    if (error.response?.status === 404) {
+      console.warn('⚠️ Endpoint /admin/dashboard/turmas-por-modalidade não implementado no backend');
+      return [];
+    }
     console.error('Erro ao buscar turmas por modalidade:', error);
     throw error;
   }
@@ -41,6 +46,11 @@ export const buscarAlunosPorModalidade = async () => {
     const response = await api.get('/admin/dashboard/alunos-por-modalidade');
     return response.data;
   } catch (error) {
+    // Se for 404, retornar array vazio (endpoint não implementado ainda)
+    if (error.response?.status === 404) {
+      console.warn('⚠️ Endpoint /admin/dashboard/alunos-por-modalidade não implementado no backend');
+      return [];
+    }
     console.error('Erro ao buscar alunos por modalidade:', error);
     throw error;
   }
@@ -55,6 +65,11 @@ export const buscarCheckinsUltimos7Dias = async () => {
     const response = await api.get('/admin/dashboard/checkins-últimos-7-dias');
     return response.data;
   } catch (error) {
+    // Se for 404, retornar array vazio (endpoint não implementado ainda)
+    if (error.response?.status === 404) {
+      console.warn('⚠️ Endpoint /admin/dashboard/checkins-últimos-7-dias não implementado no backend');
+      return [];
+    }
     console.error('Erro ao buscar check-ins:', error);
     throw error;
   }

@@ -2,7 +2,9 @@ import React from 'react';
 import { usePerfil } from '../../hooks/usePerfil';
 import './Perfil.css';
 
-export default function Perfil({ baseUrl = 'http://localhost:8080', onLogout = null }) {
+import { API_BASE_URL } from '../../config/api';
+
+export default function Perfil({ baseUrl = API_BASE_URL, onLogout = null }) {
   const {
     usuario,
     carregando,

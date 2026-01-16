@@ -27,11 +27,24 @@ class WodResultado
     public function create(array $data): ?int
     {
         try {
+            $tipoScore = $data['tipo_score'] ?? null;
+
+            $peso = ($tipoScore === self::TIPO_WEIGHT) ? ($data['valor_num'] ?? null) : null;
+            $repeticoes = ($tipoScore === self::TIPO_REPS || $tipoScore === self::TIPO_ROUNDS_REPS) ? ($data['valor_num'] ?? null) : null;
+            $tempoTotal = ($tipoScore === self::TIPO_TIME) ? ($data['valor_texto'] ?? null) : null;
+
+            $resultadoTexto = null;
+            if ($tipoScore === self::TIPO_ROUNDS_REPS || $tipoScore === self::TIPO_POINTS || $tipoScore === self::TIPO_DISTANCE || $tipoScore === self::TIPO_CALORIES) {
+                $resultadoTexto = $data['valor_texto'] ?? ($data['valor_num'] ?? null);
+            } elseif ($tipoScore === null) {
+                $resultadoTexto = $data['valor_texto'] ?? null;
+            }
+
             $stmt = $this->db->prepare(
                 "INSERT INTO wod_resultados 
-                    (tenant_id, wod_id, usuario_id, variacao_id, tipo_score, valor_num, valor_texto, observacao, registrado_por, registrado_em, atualizado_em)
+                    (tenant_id, wod_id, usuario_id, variacao_id, resultado, tempo_total, repeticoes, peso, nota, created_at, updated_at)
                  VALUES 
-                    (:tenant_id, :wod_id, :usuario_id, :variacao_id, :tipo_score, :valor_num, :valor_texto, :observacao, :registrado_por, NOW(), NOW())"
+                    (:tenant_id, :wod_id, :usuario_id, :variacao_id, :resultado, :tempo_total, :repeticoes, :peso, :nota, NOW(), NOW())"
             );
 
             $stmt->execute([
@@ -39,11 +52,11 @@ class WodResultado
                 'wod_id' => $data['wod_id'],
                 'usuario_id' => $data['usuario_id'],
                 'variacao_id' => $data['variacao_id'] ?? null,
-                'tipo_score' => $data['tipo_score'],
-                'valor_num' => $data['valor_num'] ?? null,
-                'valor_texto' => $data['valor_texto'] ?? null,
-                'observacao' => $data['observacao'] ?? null,
-                'registrado_por' => $data['registrado_por'] ?? null,
+                'resultado' => $resultadoTexto,
+                'tempo_total' => $tempoTotal,
+                'repeticoes' => $repeticoes,
+                'peso' => $peso,
+                'nota' => $data['observacao'] ?? null,
             ]);
 
             return $this->db->lastInsertId() ? (int)$this->db->lastInsertId() : null;
@@ -64,7 +77,7 @@ class WodResultado
              LEFT JOIN usuarios u ON wr.usuario_id = u.id
              LEFT JOIN wod_variacoes wv ON wr.variacao_id = wv.id
              WHERE wr.wod_id = :wod_id AND wr.tenant_id = :tenant_id
-             ORDER BY CAST(wr.valor_num AS DECIMAL(10,2)) DESC NULLS LAST, wr.registrado_em DESC"
+             ORDER BY wr.peso IS NULL, CAST(wr.peso AS DECIMAL(10,2)) DESC, wr.created_at DESC"
         );
 
         $stmt->execute([
@@ -122,19 +135,39 @@ class WodResultado
             $updateFields = [];
             $params = ['id' => $id];
 
-            if (isset($data['valor_num'])) {
-                $updateFields[] = "valor_num = :valor_num";
-                $params['valor_num'] = $data['valor_num'];
+            if (isset($data['resultado'])) {
+                $updateFields[] = "resultado = :resultado";
+                $params['resultado'] = $data['resultado'];
             }
 
-            if (isset($data['valor_texto'])) {
-                $updateFields[] = "valor_texto = :valor_texto";
-                $params['valor_texto'] = $data['valor_texto'];
+            if (isset($data['tempo_total'])) {
+                $updateFields[] = "tempo_total = :tempo_total";
+                $params['tempo_total'] = $data['tempo_total'];
+            }
+
+            if (isset($data['repeticoes'])) {
+                $updateFields[] = "repeticoes = :repeticoes";
+                $params['repeticoes'] = $data['repeticoes'];
+            }
+
+            if (isset($data['peso'])) {
+                $updateFields[] = "peso = :peso";
+                $params['peso'] = $data['peso'];
             }
 
             if (isset($data['observacao'])) {
-                $updateFields[] = "observacao = :observacao";
-                $params['observacao'] = $data['observacao'];
+                $updateFields[] = "nota = :nota";
+                $params['nota'] = $data['observacao'];
+            }
+
+            if (isset($data['valor_num']) && !isset($params['peso']) && !isset($params['repeticoes'])) {
+                $updateFields[] = "peso = :valor_num";
+                $params['valor_num'] = $data['valor_num'];
+            }
+
+            if (isset($data['valor_texto']) && !isset($params['resultado'])) {
+                $updateFields[] = "resultado = :valor_texto";
+                $params['valor_texto'] = $data['valor_texto'];
             }
 
             if (isset($data['variacao_id'])) {
@@ -146,7 +179,7 @@ class WodResultado
                 return false;
             }
 
-            $updateFields[] = "atualizado_em = NOW()";
+                $updateFields[] = "updated_at = NOW()";
             $query = "UPDATE wod_resultados SET " . implode(", ", $updateFields) . " WHERE id = :id";
 
             $stmt = $this->db->prepare($query);

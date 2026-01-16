@@ -1,7 +1,6 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-const API_URL = 'http://localhost:8080';
+import { API_BASE_URL } from '../config/api';
 
 // Event emitter simples para notificar logout
 let onUnauthorizedCallback = null;
@@ -11,7 +10,7 @@ export const setOnUnauthorized = (callback) => {
 };
 
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -53,5 +52,38 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+/**
+ * Faz uma chamada de API genérica
+ * @param {string} method - GET, POST, PUT, DELETE, PATCH
+ * @param {string} url - URL relativa (ex: /admin/wods)
+ * @param {object} data - Dados a enviar (para POST, PUT, PATCH)
+ */
+export const apiCall = async (method, url, data = null) => {
+  try {
+    const config = {
+      method,
+      url,
+    };
+
+    if (data) {
+      config.data = data;
+    }
+
+    const response = await api(config);
+    return response.data;
+  } catch (error) {
+    // Retornar objeto de erro padronizado
+    if (error.response?.data) {
+      return error.response.data;
+    }
+    
+    return {
+      type: 'error',
+      message: error.message || 'Erro na requisição',
+      error,
+    };
+  }
+};
 
 export default api;

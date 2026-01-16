@@ -189,14 +189,30 @@ class Checkin
     /**
      * Contar check-ins do usuário na semana atual
      */
-    public function contarCheckinsNaSemana(int $usuarioId): int
+    /**
+     * Contar check-ins do usuário na semana atual
+     * @param int $usuarioId ID do usuário
+     * @param int|null $modalidadeId Filtrar por modalidade (opcional)
+     */
+    public function contarCheckinsNaSemana(int $usuarioId, ?int $modalidadeId = null): int
     {
-        $stmt = $this->db->prepare(
-            "SELECT COUNT(*) FROM checkins
-             WHERE usuario_id = :usuario_id
-             AND YEARWEEK(created_at, 1) = YEARWEEK(NOW(), 1)"
-        );
-        $stmt->execute(['usuario_id' => $usuarioId]);
+        $sql = "SELECT COUNT(*) FROM checkins c";
+        $params = ['usuario_id' => $usuarioId];
+        
+        if ($modalidadeId) {
+            $sql .= " INNER JOIN turmas t ON c.turma_id = t.id";
+        }
+        
+        $sql .= " WHERE c.usuario_id = :usuario_id
+                  AND YEARWEEK(c.created_at, 1) = YEARWEEK(NOW(), 1)";
+        
+        if ($modalidadeId) {
+            $sql .= " AND t.modalidade_id = :modalidade_id";
+            $params['modalidade_id'] = $modalidadeId;
+        }
+        
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
         
         return (int) $stmt->fetchColumn();
     }
@@ -204,29 +220,287 @@ class Checkin
     /**
      * Obter limite de check-ins do plano do usuário
      */
-    public function obterLimiteCheckinsPlano(int $usuarioId, int $tenantId): array
+    /**
+     * Obter limite de check-ins semanal baseado no plano do usuário
+     * @param int $usuarioId ID do usuário
+     * @param int $tenantId ID do tenant
+     * @param int|null $modalidadeId Filtrar por modalidade (para check-in em turma específica)
+     */
+    public function obterLimiteCheckinsPlano(int $usuarioId, int $tenantId, ?int $modalidadeId = null): array
     {
-        $stmt = $this->db->prepare(
-            "SELECT p.checkins_semanais, p.nome as plano_nome
+        $sql = "SELECT p.checkins_semanais, p.nome as plano_nome, p.modalidade_id
              FROM matriculas m
              INNER JOIN planos p ON m.plano_id = p.id
              WHERE m.usuario_id = :usuario_id
              AND m.tenant_id = :tenant_id
              AND m.status = 'ativa'
              AND m.data_inicio <= CURDATE()
-             AND m.data_vencimento >= CURDATE()
-             LIMIT 1"
-        );
-        $stmt->execute([
+             AND m.data_vencimento >= CURDATE()";
+        
+        $params = [
             'usuario_id' => $usuarioId,
             'tenant_id' => $tenantId
-        ]);
+        ];
+        
+        // Se modalidade foi especificada, filtrar por ela
+        if ($modalidadeId) {
+            $sql .= " AND p.modalidade_id = :modalidade_id";
+            $params['modalidade_id'] = $modalidadeId;
+        }
+        
+        $sql .= " LIMIT 1";
+        
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
         
         $result = $stmt->fetch();
         return [
             'limite' => $result ? (int) $result['checkins_semanais'] : 0,
             'plano_nome' => $result ? $result['plano_nome'] : 'Sem plano',
-            'tem_plano' => $result !== false
+            'tem_plano' => $result !== false,
+            'modalidade_id' => $result ? (int) $result['modalidade_id'] : null
         ];
+    }
+
+    /**
+     * Listar check-ins de uma turma para controle de presença
+     */
+    public function listarCheckinsTurma(int $turmaId, int $tenantId): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT c.id, c.usuario_id, c.turma_id, c.data_checkin, 
+                    c.presente, c.presenca_confirmada_em, c.presenca_confirmada_por,
+                    u.nome as aluno_nome, u.email as aluno_email,
+                    conf.nome as confirmado_por_nome
+             FROM checkins c
+             INNER JOIN usuarios u ON c.usuario_id = u.id
+             LEFT JOIN usuarios conf ON c.presenca_confirmada_por = conf.id
+             WHERE c.turma_id = :turma_id
+             ORDER BY u.nome ASC"
+        );
+        $stmt->execute(['turma_id' => $turmaId]);
+        
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Marcar presença de um aluno (presente ou falta)
+     */
+    public function marcarPresenca(int $checkinId, bool $presente, int $confirmadoPor): bool
+    {
+        $stmt = $this->db->prepare(
+            "UPDATE checkins 
+             SET presente = :presente,
+                 presenca_confirmada_em = NOW(),
+                 presenca_confirmada_por = :confirmado_por
+             WHERE id = :checkin_id"
+        );
+        
+        return $stmt->execute([
+            'presente' => $presente ? 1 : 0,
+            'confirmado_por' => $confirmadoPor,
+            'checkin_id' => $checkinId
+        ]);
+    }
+
+    /**
+     * Marcar presença em lote (todos os alunos de uma turma)
+     */
+    public function marcarPresencaEmLote(array $checkinIds, bool $presente, int $confirmadoPor): int
+    {
+        if (empty($checkinIds)) {
+            return 0;
+        }
+        
+        $placeholders = implode(',', array_fill(0, count($checkinIds), '?'));
+        
+        $sql = "UPDATE checkins 
+                SET presente = ?,
+                    presenca_confirmada_em = NOW(),
+                    presenca_confirmada_por = ?
+                WHERE id IN ($placeholders)";
+        
+        $params = array_merge([$presente ? 1 : 0, $confirmadoPor], $checkinIds);
+        
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        
+        return $stmt->rowCount();
+    }
+
+    /**
+     * Verificar se o check-in pertence a uma turma do professor
+     */
+    public function checkinPertenceAoProfessor(int $checkinId, int $professorId, int $tenantId): bool
+    {
+        $stmt = $this->db->prepare(
+            "SELECT COUNT(*) as total
+             FROM checkins c
+             INNER JOIN turmas t ON c.turma_id = t.id
+             WHERE c.id = :checkin_id
+             AND t.professor_id = :professor_id
+             AND t.tenant_id = :tenant_id"
+        );
+        $stmt->execute([
+            'checkin_id' => $checkinId,
+            'professor_id' => $professorId,
+            'tenant_id' => $tenantId
+        ]);
+        
+        return (int) $stmt->fetchColumn() > 0;
+    }
+
+    /**
+     * Obter estatísticas de presença de uma turma
+     */
+    public function estatisticasPresencaTurma(int $turmaId): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT 
+                COUNT(*) as total_checkins,
+                SUM(CASE WHEN presente = 1 THEN 1 ELSE 0 END) as presentes,
+                SUM(CASE WHEN presente = 0 THEN 1 ELSE 0 END) as faltas,
+                SUM(CASE WHEN presente IS NULL THEN 1 ELSE 0 END) as nao_verificados
+             FROM checkins
+             WHERE turma_id = :turma_id"
+        );
+        $stmt->execute(['turma_id' => $turmaId]);
+        
+        return $stmt->fetch(\PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Ranking de usuários com mais check-ins no mês atual
+     * @param int $tenantId ID do tenant
+     * @param int $limite Quantidade de resultados (default 3)
+     * @param int|null $modalidadeId Filtrar por modalidade (opcional)
+     */
+    public function rankingMesAtual(int $tenantId, int $limite = 3, ?int $modalidadeId = null): array
+    {
+        $sql = "SELECT 
+                u.id as usuario_id,
+                u.nome,
+                u.email,
+                u.foto_base64 as foto,
+                COUNT(c.id) as total_checkins
+             FROM checkins c
+             INNER JOIN usuarios u ON c.usuario_id = u.id
+             INNER JOIN turmas t ON c.turma_id = t.id AND t.tenant_id = c.tenant_id
+             INNER JOIN usuario_tenant ut ON c.usuario_id = ut.usuario_id AND ut.tenant_id = c.tenant_id
+             WHERE c.tenant_id = :tenant_id
+               AND MONTH(c.data_checkin_date) = MONTH(CURRENT_DATE())
+               AND YEAR(c.data_checkin_date) = YEAR(CURRENT_DATE())";
+        
+        if ($modalidadeId) {
+            $sql .= " AND t.modalidade_id = :modalidade_id";
+        }
+        
+        $sql .= " GROUP BY u.id, u.nome, u.email, u.foto_base64
+                  ORDER BY total_checkins DESC
+                  LIMIT :limite";
+        
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindValue(':tenant_id', $tenantId, \PDO::PARAM_INT);
+        $stmt->bindValue(':limite', $limite, \PDO::PARAM_INT);
+        
+        if ($modalidadeId) {
+            $stmt->bindValue(':modalidade_id', $modalidadeId, \PDO::PARAM_INT);
+        }
+        
+        $stmt->execute();
+        
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Ranking do usuário em cada modalidade no mês atual
+     * Retorna a posição do usuário em cada modalidade que ele pratica
+     */
+    public function rankingUsuarioPorModalidade(int $userId, int $tenantId): array
+    {
+        // Primeiro, busca as modalidades que o usuário fez check-in no mês
+        $sqlModalidades = "SELECT DISTINCT 
+                t.modalidade_id,
+                m.nome as modalidade_nome,
+                m.icone as modalidade_icone,
+                m.cor as modalidade_cor
+             FROM checkins c
+             INNER JOIN turmas t ON c.turma_id = t.id AND t.tenant_id = c.tenant_id
+             INNER JOIN modalidades m ON t.modalidade_id = m.id
+             WHERE c.usuario_id = :usuario_id
+               AND c.tenant_id = :tenant_id
+               AND MONTH(c.data_checkin_date) = MONTH(CURRENT_DATE())
+               AND YEAR(c.data_checkin_date) = YEAR(CURRENT_DATE())";
+        
+        $stmt = $this->db->prepare($sqlModalidades);
+        $stmt->execute(['usuario_id' => $userId, 'tenant_id' => $tenantId]);
+        $modalidades = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        
+        $rankings = [];
+        
+        foreach ($modalidades as $modalidade) {
+            // Para cada modalidade, calcular a posição do usuário (apenas usuários vinculados ao tenant)
+            $sqlRanking = "SELECT 
+                    usuario_id,
+                    total_checkins,
+                    posicao
+                FROM (
+                    SELECT 
+                        c.usuario_id,
+                        COUNT(c.id) as total_checkins,
+                        RANK() OVER (ORDER BY COUNT(c.id) DESC) as posicao
+                    FROM checkins c
+                    INNER JOIN turmas t ON c.turma_id = t.id AND t.tenant_id = c.tenant_id
+                    INNER JOIN usuario_tenant ut ON c.usuario_id = ut.usuario_id AND ut.tenant_id = c.tenant_id
+                    WHERE c.tenant_id = :tenant_id
+                      AND t.modalidade_id = :modalidade_id
+                      AND MONTH(c.data_checkin_date) = MONTH(CURRENT_DATE())
+                      AND YEAR(c.data_checkin_date) = YEAR(CURRENT_DATE())
+                    GROUP BY c.usuario_id
+                ) ranking
+                WHERE usuario_id = :usuario_id";
+            
+            $stmtRanking = $this->db->prepare($sqlRanking);
+            $stmtRanking->execute([
+                'tenant_id' => $tenantId,
+                'modalidade_id' => $modalidade['modalidade_id'],
+                'usuario_id' => $userId
+            ]);
+            $posicao = $stmtRanking->fetch(\PDO::FETCH_ASSOC);
+            
+            // Contar total de participantes na modalidade (apenas usuários vinculados ao tenant)
+            $sqlTotal = "SELECT COUNT(DISTINCT c.usuario_id) as total
+                FROM checkins c
+                INNER JOIN turmas t ON c.turma_id = t.id AND t.tenant_id = c.tenant_id
+                INNER JOIN usuario_tenant ut ON c.usuario_id = ut.usuario_id AND ut.tenant_id = c.tenant_id
+                WHERE c.tenant_id = :tenant_id
+                  AND t.modalidade_id = :modalidade_id
+                  AND MONTH(c.data_checkin_date) = MONTH(CURRENT_DATE())
+                  AND YEAR(c.data_checkin_date) = YEAR(CURRENT_DATE())";
+            
+            $stmtTotal = $this->db->prepare($sqlTotal);
+            $stmtTotal->execute([
+                'tenant_id' => $tenantId,
+                'modalidade_id' => $modalidade['modalidade_id']
+            ]);
+            $totalParticipantes = (int) $stmtTotal->fetchColumn();
+            
+            if ($posicao) {
+                $rankings[] = [
+                    'modalidade_id' => (int) $modalidade['modalidade_id'],
+                    'modalidade_nome' => $modalidade['modalidade_nome'],
+                    'modalidade_icone' => $modalidade['modalidade_icone'],
+                    'modalidade_cor' => $modalidade['modalidade_cor'],
+                    'posicao' => (int) $posicao['posicao'],
+                    'total_checkins' => (int) $posicao['total_checkins'],
+                    'total_participantes' => $totalParticipantes
+                ];
+            }
+        }
+        
+        // Ordenar por posição (melhores primeiro)
+        usort($rankings, fn($a, $b) => $a['posicao'] <=> $b['posicao']);
+        
+        return $rankings;
     }
 }

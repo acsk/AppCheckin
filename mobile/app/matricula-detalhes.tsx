@@ -1,16 +1,17 @@
 import { colors } from '@/src/theme/colors';
+import { handleAuthError } from '@/src/utils/authHelpers';
 import { Feather } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -45,7 +46,7 @@ export default function MatriculaDetalhesScreen() {
 
       if (!response.ok) {
         if (response.status === 401) {
-          await AsyncStorage.removeItem('@appcheckin:token');
+          await handleAuthError();
           router.replace('/(auth)/login');
           return;
         }

@@ -28,6 +28,7 @@ use App\Controllers\WodController;
 use App\Controllers\WodBlocoController;
 use App\Controllers\WodVariacaoController;
 use App\Controllers\WodResultadoController;
+use App\Controllers\PresencaController;
 use App\Middlewares\AuthMiddleware;
 use App\Middlewares\TenantMiddleware;
 use App\Middlewares\AdminMiddleware;
@@ -151,6 +152,13 @@ return function ($app) {
         $group->get('/horarios/proximos', [MobileController::class, 'horariosProximos']);
         $group->get('/horarios/{diaId}', [MobileController::class, 'horariosPorDia']);
         $group->get('/horarios-disponiveis', [MobileController::class, 'horariosDisponiveis']);
+        
+        // WOD do dia
+        $group->get('/wod/hoje', [MobileController::class, 'wodDodia']);
+        $group->get('/wods/hoje', [MobileController::class, 'wodsDodia']);
+        
+        // Ranking de check-ins
+        $group->get('/ranking/mensal', [MobileController::class, 'rankingMensal']);
     })->add(AuthMiddleware::class);
 
     // ========================================
@@ -245,6 +253,9 @@ return function ($app) {
         $group->delete('/planejamentos/{id}', [PlanejamentoController::class, 'delete']);
         $group->post('/planejamentos/{id}/gerar-horarios', [PlanejamentoController::class, 'gerarHorarios']);
         
+        // Dias e Horários (Admin)
+        $group->delete('/dias/{id}/horarios', [DiaController::class, 'deletarHorariosDoDia']);
+        
         // Registrar check-in para aluno
         $group->post('/checkins/registrar', [CheckinController::class, 'registrarPorAdmin']);
         
@@ -311,9 +322,12 @@ return function ($app) {
         $group->post('/formas-pagamento-config/calcular-parcelas', [TenantFormaPagamentoController::class, 'calcularParcelas']);
         
         // WOD (Workout of the Day)
+        $group->get('/wods/modalidades', [WodController::class, 'listarModalidades']); // Listar modalidades disponíveis
+        $group->get('/wods/buscar', [WodController::class, 'buscarPorDataModalidade']); // Buscar WOD por data + modalidade
         $group->get('/wods', [WodController::class, 'index']);
         $group->get('/wods/{id}', [WodController::class, 'show']);
         $group->post('/wods', [WodController::class, 'create']);
+        $group->post('/wods/completo', [WodController::class, 'createCompleto']); // Criar WOD completo com blocos
         $group->put('/wods/{id}', [WodController::class, 'update']);
         $group->delete('/wods/{id}', [WodController::class, 'delete']);
         $group->patch('/wods/{id}/publish', [WodController::class, 'publish']);
@@ -336,6 +350,11 @@ return function ($app) {
         $group->post('/wods/{wodId}/resultados', [WodResultadoController::class, 'create']);
         $group->put('/wods/{wodId}/resultados/{id}', [WodResultadoController::class, 'update']);
         $group->delete('/wods/{wodId}/resultados/{id}', [WodResultadoController::class, 'delete']);
+        
+        // Controle de Presença (Professor/Admin)
+        $group->get('/turmas/{turmaId}/presencas', [PresencaController::class, 'listarPresencas']);
+        $group->patch('/checkins/{checkinId}/presenca', [PresencaController::class, 'marcarPresenca']);
+        $group->post('/turmas/{turmaId}/presencas/lote', [PresencaController::class, 'marcarPresencaLote']);
     })->add(AdminMiddleware::class)->add(AuthMiddleware::class);
 
     // Rota de teste

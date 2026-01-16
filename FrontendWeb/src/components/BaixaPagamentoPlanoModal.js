@@ -8,6 +8,8 @@ import api from '../services/api';
 export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, onSuccess }) {
   const [loading, setLoading] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [showCreditoModal, setShowCreditoModal] = useState(false);
+  const [creditoAplicado, setCreditoAplicado] = useState(null);
   const [formasPagamento, setFormasPagamento] = useState([]);
   const [formData, setFormData] = useState({
     data_pagamento: '',
@@ -18,6 +20,13 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
 
   useEffect(() => {
     if (visible && pagamento) {
+      console.log('🔐 Objeto pagamento recebido no modal:', pagamento);
+      console.log('📍 ID disponíveis:', {
+        id: pagamento.id,
+        pagamento_id: pagamento.pagamento_id,
+        conta_id: pagamento.conta_id,
+        pagamentos_plano_id: pagamento.pagamentos_plano_id
+      });
       // Preencher dados do pagamento
       const hoje = new Date().toISOString().split('T')[0];
       setFormData({
@@ -75,13 +84,15 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
       const payload = {
         data_pagamento: formData.data_pagamento,
         forma_pagamento_id: formData.forma_pagamento_id,
-        comprovante: formData.comprovante,
         observacoes: formData.observacoes
       };
       
-      console.log('Enviando dados de pagamento:', payload);
+      const idParaBaixa = pagamento.pagamento_id || pagamento.id || pagamento.conta_id;
+      console.log('📤 Enviando solicitação de baixa para ID:', idParaBaixa);
+      console.log('📦 Payload:', payload);
       
-      const response = await api.post(`/admin/pagamentos-plano/${pagamento.id}/confirmar`, payload);
+      const response = await api.post(`/admin/matriculas/contas/${idParaBaixa}/baixa`, payload);
+      console.log('✅ Resposta do servidor:', response.status, response.data);
 
       showSuccess('Pagamento confirmado! Próximo pagamento gerado automaticamente.');
       setFormData({

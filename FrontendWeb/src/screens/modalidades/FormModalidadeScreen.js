@@ -410,77 +410,87 @@ export default function FormModalidadeScreen() {
   }
 
   return (
-    <LayoutBase showSidebar showHeader>
+    <LayoutBase
+      showSidebar
+      showHeader
+      title={isEdit ? 'Editar Modalidade' : 'Nova Modalidade'}
+      subtitle="Preencha os campos obrigatórios"
+    >
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.headerActions}>
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-            <Feather name="arrow-left" size={20} color="#64748b" />
+            <Feather name="arrow-left" size={18} color="#fff" />
             <Text style={styles.backButtonText}>Voltar</Text>
           </TouchableOpacity>
-        </View>
 
-        <View style={styles.content}>
-          <View style={styles.header}>
-            <Text style={styles.title}>
-              {isEdit ? 'Editar Modalidade' : 'Nova Modalidade'}
-            </Text>
-            <Text style={styles.subtitle}>
-              {isEdit 
-                ? 'Atualize as informações da modalidade' 
-                : 'Preencha os dados da nova modalidade'}
+          <View style={[styles.statusIndicator, formData.ativo ? styles.statusActive : styles.statusInactive]}>
+            <View style={[styles.statusDot, formData.ativo ? styles.statusDotActive : styles.statusDotInactive]} />
+            <Text style={[styles.statusIndicatorText, formData.ativo ? styles.statusTextActive : styles.statusTextInactive]}>
+              {formData.ativo ? 'Modalidade Ativa' : 'Modalidade Inativa'}
             </Text>
           </View>
+        </View>
 
-          <View style={styles.form}>
-            {/* Seção Superior: Nome + Prévia */}
-            <View style={styles.topSection}>
-              {/* Coluna Esquerda: Nome e Descrição */}
-              <View style={styles.topSectionLeft}>
-                {/* Nome */}
-                <View style={styles.inputGroup}>
-                  <Text style={styles.label}>Nome *</Text>
-                  <TextInput
-                    style={[styles.input, errors.nome && styles.inputError]}
-                    placeholder="Ex: Musculação"
-                    value={formData.nome}
-                    onChangeText={(value) => handleChange('nome', value)}
-                  />
-                  {errors.nome && <Text style={styles.errorText}>{errors.nome}</Text>}
-                </View>
-
-                {/* Descrição */}
-                <View style={[styles.inputGroup, { marginBottom: 0 }]}>
-                  <Text style={styles.label}>Descrição</Text>
-                  <TextInput
-                    style={[styles.input, styles.textAreaCompact]}
-                    placeholder="Descreva a modalidade..."
-                    value={formData.descricao}
-                    onChangeText={(value) => handleChange('descricao', value)}
-                    multiline
-                    numberOfLines={2}
-                    textAlignVertical="top"
-                  />
-                </View>
+        <View style={styles.formContainer}>
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <View style={styles.cardHeaderIcon}>
+                <Feather name="activity" size={20} color="#f97316" />
               </View>
-
-              {/* Coluna Direita: Prévia */}
-              <View style={styles.topSectionRight}>
-                <Text style={styles.previewLabel}>Prévia</Text>
-                <View style={styles.previewCard}>
-                  <View style={[styles.previewIcon, { backgroundColor: formData.cor }]}>
-                    <MaterialCommunityIcons name={formData.icone} size={32} color="#fff" />
+              <Text style={styles.cardTitle}>Dados da Modalidade</Text>
+            </View>
+            <View style={styles.cardBody}>
+              <View style={styles.topSection}>
+                <View style={styles.topSectionLeft}>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Nome <Text style={styles.required}>*</Text></Text>
+                    <TextInput
+                      style={[styles.input, errors.nome && styles.inputError]}
+                      placeholder="Ex: Musculação"
+                      placeholderTextColor="#999"
+                      value={formData.nome}
+                      onChangeText={(value) => handleChange('nome', value)}
+                    />
+                    {errors.nome && <Text style={styles.errorText}>{errors.nome}</Text>}
                   </View>
-                  <Text style={styles.previewName}>{formData.nome || 'Nome da Modalidade'}</Text>
+
+                  <View style={[styles.inputGroup, { marginBottom: 0 }]}>
+                    <Text style={styles.label}>Descrição</Text>
+                    <TextInput
+                      style={[styles.input, styles.textAreaCompact]}
+                      placeholder="Descreva a modalidade..."
+                      placeholderTextColor="#999"
+                      value={formData.descricao}
+                      onChangeText={(value) => handleChange('descricao', value)}
+                      multiline
+                      numberOfLines={2}
+                      textAlignVertical="top"
+                    />
+                  </View>
+                </View>
+
+                <View style={styles.topSectionRight}>
+                  <Text style={styles.previewLabel}>Prévia</Text>
+                  <View style={styles.previewCard}>
+                    <View style={[styles.previewIcon, { backgroundColor: formData.cor }]}>
+                      <MaterialCommunityIcons name={formData.icone} size={32} color="#fff" />
+                    </View>
+                    <Text style={styles.previewName}>{formData.nome || 'Nome da Modalidade'}</Text>
+                  </View>
                 </View>
               </View>
             </View>
+          </View>
 
-            {/* Seção Aparência: Ícone + Cor lado a lado */}
-            <View style={styles.appearanceSection}>
-              <Text style={styles.sectionTitle}>Aparência</Text>
-              
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <View style={styles.cardHeaderIcon}>
+                <Feather name="image" size={20} color="#f97316" />
+              </View>
+              <Text style={styles.cardTitle}>Aparência</Text>
+            </View>
+            <View style={styles.cardBody}>
               <View style={styles.appearanceRow}>
-                {/* Ícones */}
                 <View style={styles.appearanceCol}>
                   <Text style={styles.labelSmall}>Ícone</Text>
                   <View style={styles.iconesGrid}>
@@ -495,20 +505,18 @@ export default function FormModalidadeScreen() {
                         onPress={() => handleChange('icone', icone.value)}
                         activeOpacity={0.7}
                       >
-                        <MaterialCommunityIcons 
-                          name={icone.value} 
-                          size={20} 
-                          color={formData.icone === icone.value ? formData.cor : '#64748b'} 
+                        <MaterialCommunityIcons
+                          name={icone.value}
+                          size={20}
+                          color={formData.icone === icone.value ? formData.cor : '#64748b'}
                         />
                       </TouchableOpacity>
                     ))}
                   </View>
                 </View>
 
-                {/* Divisor vertical */}
                 <View style={styles.appearanceDivider} />
 
-                {/* Cores */}
                 <View style={styles.appearanceColSmall}>
                   <Text style={styles.labelSmall}>Cor</Text>
                   <View style={styles.coresGrid}>
@@ -530,29 +538,27 @@ export default function FormModalidadeScreen() {
                 </View>
               </View>
             </View>
+          </View>
 
-            {/* Planos da Modalidade */}
-            <View style={styles.planosSection}>
-              <View style={styles.planosSectionHeader}>
-                <View style={styles.planosTitleRow}>
-                  <View>
-                    <Text style={styles.planosSectionTitle}>Planos desta Modalidade</Text>
-                    <Text style={styles.planosSectionSubtitle}>
-                      {isEdit ? 'Gerencie os planos baseados em checkins semanais' : 'Crie os planos baseados em checkins semanais'}
-                    </Text>
-                  </View>
-                  <TouchableOpacity 
-                    style={styles.addPlanoHeaderButton}
-                    onPress={abrirModalNovoPlano}
-                    activeOpacity={0.7}
-                  >
-                    <Feather name="plus" size={16} color="#fff" />
-                    <Text style={styles.addPlanoHeaderButtonText}>Novo Plano</Text>
-                  </TouchableOpacity>
-                </View>
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <View style={styles.cardHeaderIcon}>
+                <Feather name="list" size={20} color="#f97316" />
               </View>
-
-              {/* Tabela de Planos */}
+              <Text style={styles.cardTitle}>Planos da Modalidade</Text>
+              <TouchableOpacity 
+                style={styles.addPlanoHeaderButton}
+                onPress={abrirModalNovoPlano}
+                activeOpacity={0.7}
+              >
+                <Feather name="plus" size={16} color="#fff" />
+                <Text style={styles.addPlanoHeaderButtonText}>Novo Plano</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={styles.cardBody}>
+              <Text style={styles.planosSectionSubtitle}>
+                {isEdit ? 'Gerencie os planos baseados em checkins semanais' : 'Crie os planos baseados em checkins semanais'}
+              </Text>
               <View style={styles.tabelaContainer}>
                 {planos.length === 0 ? (
                   <View style={styles.emptyPlanos}>
@@ -562,7 +568,6 @@ export default function FormModalidadeScreen() {
                   </View>
                 ) : (
                   <>
-                    {/* Cabeçalho da Tabela */}
                     <View style={styles.tabelaHeader}>
                       <Text style={[styles.tabelaHeaderCell, styles.cellNome]}>Nome</Text>
                       <Text style={[styles.tabelaHeaderCell, styles.cellCheckins]}>Checkins</Text>
@@ -572,7 +577,6 @@ export default function FormModalidadeScreen() {
                       <Text style={[styles.tabelaHeaderCell, styles.cellAcoes]}>Ações</Text>
                     </View>
 
-                    {/* Linhas da Tabela */}
                     {planos.map((plano, index) => (
                       <View key={index} style={[styles.tabelaRow, index % 2 === 0 && styles.tabelaRowAlt]}>
                         <Text style={[styles.tabelaCell, styles.cellNome]} numberOfLines={1}>{plano.nome || '-'}</Text>
@@ -617,6 +621,7 @@ export default function FormModalidadeScreen() {
                 )}
               </View>
             </View>
+          </View>
 
             {/* Modal de Plano */}
             <Modal
@@ -741,29 +746,43 @@ export default function FormModalidadeScreen() {
               </Pressable>
             </Modal>
 
-            {/* Status */}
-            <View style={[styles.inputGroup, styles.statusGroup]}>
-              <View style={styles.switchContainer}>
-                <View style={styles.switchLabelCompact}>
-                  <Feather 
-                    name={formData.ativo ? "check-circle" : "x-circle"} 
-                    size={20} 
-                    color={formData.ativo ? "#10b981" : "#ef4444"} 
-                  />
-                  <Text style={styles.label}>Modalidade Ativa</Text>
-                  <Switch
-                    value={formData.ativo}
-                    onValueChange={(value) => handleChange('ativo', value)}
-                    trackColor={{ false: '#d1d5db', true: '#10b981' }}
-                    thumbColor={formData.ativo ? '#fff' : '#f3f4f6'}
-                    style={styles.switchInline}
-                  />
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <View style={styles.cardHeaderIcon}>
+                <Feather name="toggle-right" size={20} color="#f97316" />
+              </View>
+              <Text style={styles.cardTitle}>Status da Modalidade</Text>
+            </View>
+            <View style={styles.cardBody}>
+              <View style={styles.switchRow}>
+                <View style={styles.switchInfo}>
+                  <Text style={styles.switchLabel}>Modalidade Ativa</Text>
+                  <Text style={styles.switchDescription}>
+                    {formData.ativo
+                      ? 'A modalidade está ativa e disponível para novas turmas.'
+                      : 'A modalidade está inativa e não aparece no catálogo.'}
+                  </Text>
                 </View>
+                <Switch
+                  value={formData.ativo}
+                  onValueChange={(value) => handleChange('ativo', value)}
+                  trackColor={{ false: '#d1d5db', true: '#10b981' }}
+                  thumbColor={formData.ativo ? '#22c55e' : '#9ca3af'}
+                />
               </View>
             </View>
           </View>
+        </View>
 
-          {/* Botão de Salvar */}
+        <View style={styles.actionButtons}>
+          <TouchableOpacity
+            style={styles.cancelButton}
+            onPress={() => router.back()}
+            disabled={saving}
+          >
+            <Text style={styles.cancelButtonText}>Cancelar</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={[styles.submitButton, saving && styles.submitButtonDisabled]}
             onPress={handleSubmit}
@@ -773,9 +792,9 @@ export default function FormModalidadeScreen() {
               <ActivityIndicator color="#fff" />
             ) : (
               <>
-                <Feather name={isEdit ? "save" : "plus"} size={18} color="#fff" />
+                <Feather name="check" size={18} color="#fff" />
                 <Text style={styles.submitButtonText}>
-                  {isEdit ? 'Atualizar Modalidade' : 'Cadastrar Modalidade'}
+                  {isEdit ? 'Salvar Alterações' : 'Cadastrar Modalidade'}
                 </Text>
               </>
             )}
@@ -789,7 +808,7 @@ export default function FormModalidadeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: 'transparent',
   },
   loadingContainer: {
     flex: 1,
@@ -803,20 +822,159 @@ const styles = StyleSheet.create({
     color: '#64748b',
   },
   headerActions: {
-    padding: 20,
-    paddingBottom: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 16,
   },
   backButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    backgroundColor: '#f97316',
+    borderRadius: 8,
   },
   backButtonText: {
     fontSize: 14,
-    color: '#64748b',
+    color: '#fff',
+    fontWeight: '600',
   },
-  content: {
-    padding: 20,
+  statusIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 20,
+  },
+  statusActive: {
+    backgroundColor: '#dcfce7',
+  },
+  statusInactive: {
+    backgroundColor: '#fee2e2',
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  statusDotActive: {
+    backgroundColor: '#22c55e',
+  },
+  statusDotInactive: {
+    backgroundColor: '#ef4444',
+  },
+  statusIndicatorText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  statusTextActive: {
+    color: '#166534',
+  },
+  statusTextInactive: {
+    color: '#991b1b',
+  },
+  formContainer: {
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+  },
+  card: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    overflow: 'hidden',
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+    backgroundColor: '#fff7ed',
+  },
+  cardHeaderIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1f2937',
+  },
+  cardBody: {
+    padding: 16,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 16,
+  },
+  switchInfo: {
+    flex: 1,
+  },
+  switchLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  switchDescription: {
+    marginTop: 4,
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+    paddingHorizontal: 24,
+    paddingBottom: 40,
+  },
+  cancelButton: {
+    minWidth: 160,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#f3f4f6',
+  },
+  cancelButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  submitButton: {
+    minWidth: 220,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#f97316',
+  },
+  submitButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  submitButtonDisabled: {
+    opacity: 0.7,
   },
   header: {
     marginBottom: 24,

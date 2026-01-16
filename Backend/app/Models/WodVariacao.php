@@ -24,20 +24,29 @@ class WodVariacao
     {
         try {
             $stmt = $this->db->prepare(
-                "INSERT INTO wod_variacoes (wod_id, nome, descricao, criado_em, atualizado_em)
+                "INSERT INTO wod_variacoes (wod_id, nome, descricao, created_at, updated_at)
                  VALUES (:wod_id, :nome, :descricao, NOW(), NOW())"
             );
 
-            $stmt->execute([
+            $result = $stmt->execute([
                 'wod_id' => $data['wod_id'],
                 'nome' => $data['nome'],
                 'descricao' => $data['descricao'] ?? null,
             ]);
 
-            return $this->db->lastInsertId() ? (int)$this->db->lastInsertId() : null;
+            if (!$result) {
+                throw new \Exception('Falha ao executar INSERT de WOD Variação: ' . implode(', ', $stmt->errorInfo()));
+            }
+
+            $lastId = $this->db->lastInsertId();
+            if (!$lastId) {
+                throw new \Exception('Não foi possível obter o ID da variação criada');
+            }
+
+            return (int)$lastId;
         } catch (\Exception $e) {
             error_log('Erro ao criar variação: ' . $e->getMessage());
-            return null;
+            throw $e;
         }
     }
 
@@ -107,7 +116,7 @@ class WodVariacao
                 return false;
             }
 
-            $updateFields[] = "atualizado_em = NOW()";
+            $updateFields[] = "updated_at = NOW()";
             $query = "UPDATE wod_variacoes SET " . implode(", ", $updateFields) . " WHERE id = :id";
 
             $stmt = $this->db->prepare($query);

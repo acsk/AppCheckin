@@ -58,10 +58,13 @@ export default function BaixaPagamentoModal({ visible, onClose, pagamento, onSuc
 
     try {
       setLoading(true);
-      await api.post(`/superadmin/pagamentos/${pagamento.id}/confirmar`, {
+      
+      const idParaBaixa = pagamento.pagamento_id || pagamento.id || pagamento.conta_id;
+      console.log('📤 Enviando solicitação de baixa para ID:', idParaBaixa);
+      
+      await api.post(`/admin/matriculas/contas/${idParaBaixa}/baixa`, {
         data_pagamento: formData.data_pagamento,
         forma_pagamento_id: formData.forma_pagamento_id,
-        comprovante: formData.comprovante,
         observacoes: formData.observacoes
       });
 

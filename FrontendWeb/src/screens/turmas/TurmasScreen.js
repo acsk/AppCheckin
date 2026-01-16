@@ -12,6 +12,8 @@ import ConfirmModal from '../../components/ConfirmModal';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import { showSuccess, showError } from '../../utils/toast';
 import { mascaraHora } from '../../utils/masks';
+import { buscarWodPorDataModalidade } from '../../services/wodService';
+import WodPreviewModal from '../../components/WodPreviewModal';
 
 export default function TurmasScreen() {
   const router = useRouter();
@@ -60,6 +62,11 @@ export default function TurmasScreen() {
   const [turmaDesativar, setTurmaDesativar] = useState(null);
   const [periodoDesativacao, setPeriodoDesativacao] = useState('apenas_esta');
   const [desativando, setDesativando] = useState(false);
+  const [modalWodSelectVisible, setModalWodSelectVisible] = useState(false);
+  const [modalWodVisible, setModalWodVisible] = useState(false);
+  const [modalidadeWodId, setModalidadeWodId] = useState('');
+  const [wodData, setWodData] = useState(null);
+  const [loadingWod, setLoadingWod] = useState(false);
 
   function obterHoje() {
     const hoje = new Date();
@@ -190,6 +197,55 @@ export default function TurmasScreen() {
     
     // Tenta usar diretamente no MaterialCommunityIcons
     return <MaterialCommunityIcons name={iconeParaUsar} size={20} color={corIcon} />;
+  };
+
+  const obterModalidadesDoDia = () => {
+    const mapa = new Map();
+    turmas.forEach((turma) => {
+      if (turma.modalidade_id) {
+        mapa.set(String(turma.modalidade_id), turma.modalidade_nome || 'Modalidade');
+      }
+    });
+    return Array.from(mapa.entries()).map(([id, nome]) => ({ id, nome }));
+  };
+
+  const carregarWodDoDia = async (modalidadeId) => {
+    try {
+      setLoadingWod(true);
+      const response = await buscarWodPorDataModalidade(dataSelecionada, modalidadeId);
+      if (response?.type === 'error') {
+        showError(response.message || 'Erro ao buscar WOD');
+        return;
+      }
+      const wod = response?.data || response;
+      if (!wod || !wod.id) {
+        showError('Nenhum WOD encontrado para essa modalidade');
+        return;
+      }
+      setWodData(wod);
+      setModalWodVisible(true);
+    } catch (error) {
+      console.error('Erro ao buscar WOD:', error);
+      showError('Erro ao buscar WOD');
+    } finally {
+      setLoadingWod(false);
+    }
+  };
+
+  const handleAbrirWod = () => {
+    const modalidadesDoDia = obterModalidadesDoDia();
+    if (modalidadesDoDia.length === 0) {
+      showError('Nenhuma modalidade encontrada para o dia selecionado');
+      return;
+    }
+    if (modalidadesDoDia.length === 1) {
+      const { id } = modalidadesDoDia[0];
+      setModalidadeWodId(id);
+      carregarWodDoDia(id);
+      return;
+    }
+    setModalidadeWodId('');
+    setModalWodSelectVisible(true);
   };
 
   const handleNova = async () => {
@@ -441,13 +497,25 @@ export default function TurmasScreen() {
   const handleDeletarHorariosDia = async () => {
     try {
       console.log('🔴 [handleDeletarHorariosDia] === INÍCIO ===');
-      console.log('🔴 [handleDeletarHorariosDia] Dia ID recebido:', diaId);
-      console.log('🔴 [handleDeletarHorariosDia] Tipo do dia ID:', typeof diaId);
+      
+      // Obter dia_id das turmas filtradas
+      const diaIdAtual = turmasFiltradas.length > 0 && turmasFiltradas[0].dia_id 
+        ? turmasFiltradas[0].dia_id 
+        : diaId;
+      
+      console.log('🔴 [handleDeletarHorariosDia] Dia ID a ser usado:', diaIdAtual);
+      console.log('🔴 [handleDeletarHorariosDia] Tipo do dia ID:', typeof diaIdAtual);
+      console.log('🔴 [handleDeletarHorariosDia] Turmas filtradas:', turmasFiltradas.length);
+      
+      if (!diaIdAtual) {
+        showError('Não foi possível identificar o dia para deletar');
+        return;
+      }
       
       setDeletandoHorarios(true);
       
       console.log('🔴 [handleDeletarHorariosDia] Chamando turmaService.deletarHorariosDia...');
-      const resultado = await turmaService.deletarHorariosDia(diaId);
+      const resultado = await turmaService.deletarHorariosDia(diaIdAtual);
 
       console.log('✅ [handleDeletarHorariosDia] Resposta da API:', resultado);
 
@@ -884,6 +952,14 @@ ${listaTurmas ? `Turmas deletadas:\n${listaTurmas}` : ''}
                 <Feather name="copy" size={18} color="#fff" />
                 {!isMobile && <Text style={styles.addButtonText}>Replicar</Text>}
               </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.wodButton, isMobile && styles.addButtonMobile]}
+                onPress={handleAbrirWod}
+                activeOpacity={0.8}
+              >
+                <Feather name="book-open" size={18} color="#fff" />
+                {!isMobile && <Text style={styles.addButtonText}>WOD</Text>}
+              </TouchableOpacity>
             </View>
 
             <View style={styles.searchInputContainer}>
@@ -1101,6 +1177,65 @@ ${listaTurmas ? `Turmas deletadas:\n${listaTurmas}` : ''}
             </View>
           </View>
         </Modal>
+
+        {/* Modal Selecionar Modalidade WOD */}
+        <Modal
+          visible={modalWodSelectVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setModalWodSelectVisible(false)}
+        >
+          <View style={styles.wodModalOverlay}>
+            <View style={styles.wodModalContainer}>
+              <View style={styles.wodModalHeader}>
+                <Text style={styles.wodModalTitle}>WOD do Dia</Text>
+                <TouchableOpacity onPress={() => setModalWodSelectVisible(false)}>
+                  <Feather name="x" size={20} color="#64748b" />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.wodModalSubtitle}>
+                Selecione a modalidade para {formatarDataExibicao(dataSelecionada)}
+              </Text>
+              <View style={styles.wodModalOptions}>
+                {obterModalidadesDoDia().map((modalidade) => {
+                  const isActive = modalidadeWodId === modalidade.id;
+                  return (
+                    <TouchableOpacity
+                      key={modalidade.id}
+                      style={[styles.wodOptionButton, isActive && styles.wodOptionButtonActive]}
+                      onPress={() => setModalidadeWodId(modalidade.id)}
+                    >
+                      <Text style={[styles.wodOptionText, isActive && styles.wodOptionTextActive]}>
+                        {modalidade.nome}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <TouchableOpacity
+                style={[styles.wodModalAction, !modalidadeWodId && styles.wodModalActionDisabled]}
+                onPress={() => {
+                  if (!modalidadeWodId) return;
+                  setModalWodSelectVisible(false);
+                  carregarWodDoDia(modalidadeWodId);
+                }}
+                disabled={!modalidadeWodId || loadingWod}
+              >
+                {loadingWod ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.wodModalActionText}>Abrir WOD</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        <WodPreviewModal
+          visible={modalWodVisible}
+          onClose={() => setModalWodVisible(false)}
+          wodData={wodData || {}}
+        />
 
         {/* Modal Criar Turma */}
         <Modal
@@ -2173,6 +2308,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  wodButton: {
+    backgroundColor: '#0ea5e9',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginLeft: 12,
+  },
 
   // Desktop Table
   tableContainer: {
@@ -2737,6 +2882,81 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginLeft: 12,
+  },
+  wodModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+  wodModalContainer: {
+    width: '100%',
+    maxWidth: 420,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  wodModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  wodModalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  wodModalSubtitle: {
+    marginTop: 6,
+    fontSize: 12,
+    color: '#64748b',
+  },
+  wodModalOptions: {
+    marginTop: 12,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  wodOptionButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    backgroundColor: '#f8fafc',
+  },
+  wodOptionButtonActive: {
+    borderColor: '#0ea5e9',
+    backgroundColor: '#e0f2fe',
+  },
+  wodOptionText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  wodOptionTextActive: {
+    color: '#0ea5e9',
+  },
+  wodModalAction: {
+    marginTop: 16,
+    backgroundColor: '#0ea5e9',
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  wodModalActionDisabled: {
+    opacity: 0.5,
+  },
+  wodModalActionText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 13,
   },
   replicarDataTexto: {
     fontSize: 15,

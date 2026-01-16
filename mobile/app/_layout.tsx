@@ -1,6 +1,8 @@
+import { setOnUnauthorized } from '@/src/services/api';
+import { handleAuthError } from '@/src/utils/authHelpers';
 import AsyncStorage from '@/src/utils/storage';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
+import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
@@ -15,9 +17,16 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     checkAuthStatus();
+    
+    // Configurar callback para tratar 401 globalmente
+    setOnUnauthorized(async () => {
+      await handleAuthError();
+      router.replace('/(auth)/login');
+    });
   }, []);
 
   const checkAuthStatus = async () => {

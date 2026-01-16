@@ -38,7 +38,37 @@ class MatriculaController
         $usuarioId = $data['usuario_id'];
         $planoId = $data['plano_id'];
         
-        // Buscar aluno
+        // Verificar se usuário existe
+        $stmtUsuarioExiste = $db->prepare("SELECT * FROM usuarios WHERE id = ? AND role_id = 1");
+        $stmtUsuarioExiste->execute([$usuarioId]);
+        $usuarioExiste = $stmtUsuarioExiste->fetch();
+        
+        if (!$usuarioExiste) {
+            $response->getBody()->write(json_encode(['error' => 'Aluno não encontrado']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+        
+        // Verificar se existe vínculo com o tenant, se não existir criar
+        $stmtVinculo = $db->prepare("SELECT * FROM usuario_tenant WHERE usuario_id = ? AND tenant_id = ?");
+        $stmtVinculo->execute([$usuarioId, $tenantId]);
+        $vinculo = $stmtVinculo->fetch();
+        
+        if (!$vinculo) {
+            // Criar vínculo automaticamente
+            $stmtCriarVinculo = $db->prepare("
+                INSERT INTO usuario_tenant (usuario_id, tenant_id, status, data_inicio, created_at)
+                VALUES (?, ?, 'ativo', CURDATE(), NOW())
+            ");
+            $stmtCriarVinculo->execute([$usuarioId, $tenantId]);
+            error_log("Vínculo usuario_tenant criado automaticamente: usuario_id={$usuarioId}, tenant_id={$tenantId}");
+        } elseif ($vinculo['status'] !== 'ativo') {
+            // Reativar vínculo se estava inativo
+            $stmtReativar = $db->prepare("UPDATE usuario_tenant SET status = 'ativo', updated_at = NOW() WHERE usuario_id = ? AND tenant_id = ?");
+            $stmtReativar->execute([$usuarioId, $tenantId]);
+            error_log("Vínculo usuario_tenant reativado: usuario_id={$usuarioId}, tenant_id={$tenantId}");
+        }
+        
+        // Buscar aluno (agora garantimos que o vínculo existe)
         $stmtUsuario = $db->prepare("
             SELECT u.* 
             FROM usuarios u
@@ -49,8 +79,8 @@ class MatriculaController
         $usuario = $stmtUsuario->fetch();
         
         if (!$usuario) {
-            $response->getBody()->write(json_encode(['error' => 'Aluno não encontrado']));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            $response->getBody()->write(json_encode(['error' => 'Erro ao vincular aluno ao tenant']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
 
         // Buscar plano
@@ -759,60 +789,55 @@ class MatriculaController
     }
     
     /**
-     * Dar baixa em conta a receber
+     * Dar baixa em pagamento de plano (marcar como pago)
      */
     public function darBaixaConta(Request $request, Response $response, array $args): Response
     {
         $tenantId = $request->getAttribute('tenantId', 1);
         $adminId = $request->getAttribute('userId', null);
-        $contaId = (int) $args['id'];
         $data = $request->getParsedBody();
         $db = require __DIR__ . '/../../config/database.php';
         
-        // Buscar conta
-        $stmt = $db->prepare("SELECT * FROM contas_receber WHERE id = ? AND tenant_id = ?");
-        $stmt->execute([$contaId, $tenantId]);
-        $conta = $stmt->fetch();
+        $pagamentoId = (int) ($args['id'] ?? 0);
         
-        if (!$conta) {
-            $response->getBody()->write(json_encode(['error' => 'Conta não encontrada']));
+        // Buscar pagamento com informações do plano
+        $stmt = $db->prepare("
+            SELECT pp.*, m.plano_id, p.duracao_dias
+            FROM pagamentos_plano pp
+            INNER JOIN matriculas m ON pp.matricula_id = m.id
+            INNER JOIN planos p ON pp.plano_id = p.id
+            WHERE pp.id = ? AND pp.tenant_id = ?
+        ");
+        $stmt->execute([$pagamentoId, $tenantId]);
+        $pagamento = $stmt->fetch();
+        
+        if (!$pagamento) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Pagamento não encontrado'
+            ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
         }
         
-        if ($conta['status'] === 'pago') {
-            $response->getBody()->write(json_encode(['error' => 'Conta já está paga']));
+        // Verificar se já está pago (status_pagamento_id = 2)
+        if ($pagamento['status_pagamento_id'] == 2) {
+            $response->getBody()->write(json_encode(['error' => 'Pagamento já está marcado como pago']));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
         
         $dataPagamento = $data['data_pagamento'] ?? date('Y-m-d');
         $formaPagamentoId = $data['forma_pagamento_id'] ?? null;
         $observacoes = $data['observacoes'] ?? null;
+        $tipoBaixaId = 1; // 1 = Manual (assumindo que existe na tabela tipos_baixa)
         
-        // Calcular desconto se houver forma de pagamento
-        $valorLiquido = $conta['valor'];
-        $valorDesconto = 0;
-        
-        if ($formaPagamentoId) {
-            $stmtForma = $db->prepare("SELECT percentual_desconto FROM formas_pagamento WHERE id = ? AND ativo = 1");
-            $stmtForma->execute([$formaPagamentoId]);
-            $formaPagamento = $stmtForma->fetch();
-            
-            if ($formaPagamento && $formaPagamento['percentual_desconto'] > 0) {
-                $valorDesconto = ($conta['valor'] * $formaPagamento['percentual_desconto']) / 100;
-                $valorLiquido = $conta['valor'] - $valorDesconto;
-            }
-        }
-        
-        // Atualizar conta para paga
+        // Atualizar pagamento para pago (status_pagamento_id = 2)
         $stmtUpdate = $db->prepare("
-            UPDATE contas_receber 
-            SET status = 'pago',
+            UPDATE pagamentos_plano 
+            SET status_pagamento_id = 2,
                 data_pagamento = ?,
                 forma_pagamento_id = ?,
-                valor_liquido = ?,
-                valor_desconto = ?,
                 observacoes = ?,
-                baixa_por = ?,
+                baixado_por = ?,
+                tipo_baixa_id = ?,
                 updated_at = NOW()
             WHERE id = ?
         ");
@@ -820,52 +845,77 @@ class MatriculaController
         $stmtUpdate->execute([
             $dataPagamento,
             $formaPagamentoId,
-            $valorLiquido,
-            $valorDesconto,
             $observacoes,
             $adminId,
-            $contaId
+            $tipoBaixaId,
+            $pagamentoId
         ]);
         
-        // Se é recorrente, criar próxima conta
-        if ($conta['recorrente']) {
-            $proximaDataVencimento = date('Y-m-d', strtotime($conta['data_vencimento'] . ' + ' . $conta['intervalo_dias'] . ' days'));
-            $proximaReferencia = date('Y-m', strtotime($proximaDataVencimento));
+        // Atualizar status da matrícula para 'ativa' se era 'pendente'
+        $stmtMatricula = $db->prepare("
+            UPDATE matriculas 
+            SET status = 'ativa',
+                status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1),
+                updated_at = NOW()
+            WHERE id = ? 
+            AND status = 'pendente'
+        ");
+        $stmtMatricula->execute([$pagamento['matricula_id']]);
+        
+        // Criar próxima parcela automaticamente
+        try {
+            $duracaoDias = (int) $pagamento['duracao_dias']; // 30, 60, 90, etc
+            $dataVencimentoAtual = new \DateTime($pagamento['data_vencimento']);
+            $proximoVencimento = $dataVencimentoAtual->add(new \DateInterval("P{$duracaoDias}D"));
             
             $stmtProxima = $db->prepare("
-                INSERT INTO contas_receber 
-                (tenant_id, usuario_id, plano_id, historico_plano_id, valor, data_vencimento, 
-                 status, referencia_mes, recorrente, intervalo_dias, conta_origem_id, criado_por)
-                VALUES (?, ?, ?, ?, ?, ?, 'pendente', ?, true, ?, ?, ?)
+                INSERT INTO pagamentos_plano (
+                    tenant_id,
+                    matricula_id,
+                    usuario_id,
+                    plano_id,
+                    valor,
+                    data_vencimento,
+                    status_pagamento_id,
+                    observacoes,
+                    criado_por,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, NOW())
             ");
             
             $stmtProxima->execute([
-                $tenantId,
-                $conta['usuario_id'],
-                $conta['plano_id'],
-                $conta['historico_plano_id'],
-                $conta['valor'],
-                $proximaDataVencimento,
-                $proximaReferencia,
-                $conta['intervalo_dias'],
-                $contaId,
+                $pagamento['tenant_id'],
+                $pagamento['matricula_id'],
+                $pagamento['usuario_id'],
+                $pagamento['plano_id'],
+                $pagamento['valor'],
+                $proximoVencimento->format('Y-m-d'),
+                'Pagamento gerado automaticamente após confirmação',
                 $adminId
             ]);
             
-            $proximaContaId = (int) $db->lastInsertId();
+            $proximaParcela = [
+                'id' => $db->lastInsertId(),
+                'data_vencimento' => $proximoVencimento->format('Y-m-d'),
+                'valor' => $pagamento['valor'],
+                'status' => 'Aguardando'
+            ];
             
-            // Atualizar referência na conta atual
-            $stmtUpdateRef = $db->prepare("UPDATE contas_receber SET proxima_conta_id = ? WHERE id = ?");
-            $stmtUpdateRef->execute([$proximaContaId, $contaId]);
+            error_log("Próxima parcela criada com sucesso: ID " . $proximaParcela['id']);
+            
+        } catch (\Exception $e) {
+            error_log("Erro ao criar próxima parcela: " . $e->getMessage());
+            // Não falha a operação se houver erro ao criar próxima parcela
         }
         
-        // Buscar conta atualizada
-        $stmt->execute([$contaId, $tenantId]);
-        $contaAtualizada = $stmt->fetch();
+        // Buscar pagamento atualizado
+        $stmt->execute([$pagamentoId, $tenantId]);
+        $pagamentoAtualizado = $stmt->fetch();
         
         $response->getBody()->write(json_encode([
             'message' => 'Baixa realizada com sucesso',
-            'conta' => $contaAtualizada
+            'pagamento' => $pagamentoAtualizado,
+            'proxima_parcela' => $proximaParcela ?? null
         ]));
         return $response->withHeader('Content-Type', 'application/json');
     }

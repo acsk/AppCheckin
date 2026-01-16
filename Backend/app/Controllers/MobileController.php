@@ -7,6 +7,9 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Models\Usuario;
 use App\Models\Turma;
 use App\Models\Checkin;
+use App\Models\Wod;
+use App\Models\WodBloco;
+use App\Models\WodVariacao;
 
 /**
  * MobileController
@@ -23,6 +26,9 @@ class MobileController
     private Usuario $usuarioModel;
     private Turma $turmaModel;
     private Checkin $checkinModel;
+    private Wod $wodModel;
+    private WodBloco $wodBlocoModel;
+    private WodVariacao $wodVariacaoModel;
     private \PDO $db;
 
     public function __construct()
@@ -31,6 +37,9 @@ class MobileController
         $this->usuarioModel = new Usuario($this->db);
         $this->turmaModel = new Turma($this->db);
         $this->checkinModel = new Checkin($this->db);
+        $this->wodModel = new Wod($this->db);
+        $this->wodBlocoModel = new WodBloco($this->db);
+        $this->wodVariacaoModel = new WodVariacao($this->db);
     }
 
     /**
@@ -69,6 +78,9 @@ class MobileController
             // Buscar plano do usuário
             $plano = $this->getPlanoUsuario($userId, $tenantId);
 
+            // Buscar ranking do usuário em cada modalidade no mês atual
+            $rankingModalidades = $this->checkinModel->rankingUsuarioPorModalidade($userId, $tenantId);
+
             // Montar resposta
             $perfil = [
                 'id' => $usuario['id'],
@@ -85,6 +97,7 @@ class MobileController
                 'tenants' => $tenants,
                 'plano' => $plano,
                 'estatisticas' => $estatisticas,
+                'ranking_modalidades' => $rankingModalidades,
             ];
 
             $response->getBody()->write(json_encode([
@@ -1100,11 +1113,13 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
 
-            // VALIDAÇÃO 2: Verificar limite de check-ins da semana baseado no plano
-            $planoInfo = $this->checkinModel->obterLimiteCheckinsPlano($userId, $tenantId);
+            // VALIDAÇÃO 2: Verificar limite de check-ins da semana baseado no plano DA MODALIDADE DA TURMA
+            $modalidadeTurma = $turma['modalidade_id'] ?? null;
+            $planoInfo = $this->checkinModel->obterLimiteCheckinsPlano($userId, $tenantId, $modalidadeTurma);
             
             if ($planoInfo['tem_plano'] && $planoInfo['limite'] > 0) {
-                $checkinsNaSemana = $this->checkinModel->contarCheckinsNaSemana($userId);
+                // Contar check-ins apenas na mesma modalidade
+                $checkinsNaSemana = $this->checkinModel->contarCheckinsNaSemana($userId, $modalidadeTurma);
                 
                 if ($checkinsNaSemana >= $planoInfo['limite']) {
                     $response->getBody()->write(json_encode([
@@ -1119,6 +1134,17 @@ class MobileController
                     ]));
                     return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
                 }
+            } elseif (!$planoInfo['tem_plano']) {
+                // Usuário não tem plano ativo para esta modalidade
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Você não possui plano ativo para esta modalidade',
+                    'detalhes' => [
+                        'modalidade_id' => $modalidadeTurma,
+                        'modalidade' => $turma['modalidade_nome'] ?? 'Não informada'
+                    ]
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
 
             // Verificar se usuário já fez check-in em outra turma da MESMA MODALIDADE no MESMO DIA
@@ -2011,6 +2037,345 @@ class MobileController
                 'message' => $e->getMessage()
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * Retorna o WOD do dia
+     * Endpoint para o App Mobile exibir o treino do dia
+     * 
+     * @param Request $request Requisição HTTP
+     * @param Response $response Resposta HTTP
+     * @return Response JSON com WOD do dia
+     * 
+     * @api GET /mobile/wod/hoje
+     * @query-param modalidade_id (opcional) - ID da modalidade para filtrar
+     * @query-param data (opcional) - Data no formato YYYY-MM-DD (padrão: hoje)
+     */
+    public function wodDodia(Request $request, Response $response): Response
+    {
+        try {
+            $tenantId = (int)$request->getAttribute('tenantId');
+            $userId = (int)$request->getAttribute('userId');
+            
+            // Pegar query parameters opcionais
+            $queryParams = $request->getQueryParams();
+            $dataParam = $queryParams['data'] ?? null;
+            $modalidadeParam = isset($queryParams['modalidade_id']) ? (int)$queryParams['modalidade_id'] : null;
+            
+            // Validar data se fornecida
+            $dataHoje = date('Y-m-d');
+            if ($dataParam) {
+                if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataParam)) {
+                    $response->getBody()->write(json_encode([
+                        'success' => false,
+                        'error' => 'Formato de data inválido. Use YYYY-MM-DD'
+                    ], JSON_UNESCAPED_UNICODE));
+                    return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+                }
+                $dataHoje = $dataParam;
+            }
+            
+            // Buscar usuário para obter sua modalidade (se não foi fornecida)
+            $usuario = $this->usuarioModel->findById($userId, $tenantId);
+            
+            if (!$usuario) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Usuário não encontrado'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
+            }
+            
+            // Usar modalidade do parâmetro ou do usuário
+            $modalidadeId = $modalidadeParam ?? ($usuario['modalidade_id'] ?? null);
+            $wod = null;
+            
+            // Primeiro: Tenta buscar WOD com a modalidade específica
+            if ($modalidadeId) {
+                $stmt = $this->db->prepare(
+                    "SELECT w.* FROM wods w
+                     WHERE w.tenant_id = :tenant_id 
+                     AND DATE(w.data) = :data
+                     AND w.status = 'published'
+                     AND w.modalidade_id = :modalidade_id
+                     LIMIT 1"
+                );
+                
+                $stmt->execute([
+                    'tenant_id' => $tenantId,
+                    'data' => $dataHoje,
+                    'modalidade_id' => $modalidadeId
+                ]);
+                
+                $wod = $stmt->fetch(\PDO::FETCH_ASSOC);
+            }
+            
+            // Segundo: Se não encontrou, tenta buscar WOD genérico (sem modalidade)
+            if (!$wod) {
+                $stmt = $this->db->prepare(
+                    "SELECT w.* FROM wods w
+                     WHERE w.tenant_id = :tenant_id 
+                     AND DATE(w.data) = :data
+                     AND w.status = 'published'
+                     AND w.modalidade_id IS NULL
+                     LIMIT 1"
+                );
+                
+                $stmt->execute([
+                    'tenant_id' => $tenantId,
+                    'data' => $dataHoje
+                ]);
+                
+                $wod = $stmt->fetch(\PDO::FETCH_ASSOC);
+            }
+            
+            if (!$wod) {
+                $response->getBody()->write(json_encode([
+                    'success' => true,
+                    'data' => null,
+                    'message' => 'Nenhum WOD agendado para esta data'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(200);
+            }
+            
+            // Carregar blocos do WOD
+            $blocos = $this->wodBlocoModel->listByWod($wod['id']);
+            
+            // Carregar variações
+            $variacoes = $this->wodVariacaoModel->listByWod($wod['id']);
+            
+            // Formatar resposta
+            $wodFormatado = [
+                'id' => (int)$wod['id'],
+                'titulo' => $wod['titulo'],
+                'descricao' => $wod['descricao'],
+                'data' => $wod['data'],
+                'status' => $wod['status'],
+                'modalidade_id' => $wod['modalidade_id'] ? (int)$wod['modalidade_id'] : null,
+                'blocos' => array_map(function($bloco) {
+                    return [
+                        'id' => (int)$bloco['id'],
+                        'ordem' => (int)$bloco['ordem'],
+                        'tipo' => $bloco['tipo'],
+                        'titulo' => $bloco['titulo'],
+                        'conteudo' => $bloco['conteudo'],
+                        'tempo_cap' => $bloco['tempo_cap']
+                    ];
+                }, $blocos),
+                'variacoes' => array_map(function($variacao) {
+                    return [
+                        'id' => (int)$variacao['id'],
+                        'nome' => $variacao['nome'],
+                        'descricao' => $variacao['descricao']
+                    ];
+                }, $variacoes)
+            ];
+            
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'data' => $wodFormatado
+            ], JSON_UNESCAPED_UNICODE));
+            
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(200);
+            
+        } catch (\Exception $e) {
+            error_log("Erro em wodDodia: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao carregar WOD',
+                'message' => $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
+        }
+    }
+
+    /**
+     * Retorna todos os WODs do dia com dados da modalidade
+     * Endpoint para o App Mobile listar todos os treinos disponíveis
+     * 
+     * @param Request $request Requisição HTTP
+     * @param Response $response Resposta HTTP
+     * @return Response JSON com array de WODs
+     * 
+     * @api GET /mobile/wods/hoje
+     * @query-param data (opcional) - Data no formato YYYY-MM-DD (padrão: hoje)
+     */
+    public function wodsDodia(Request $request, Response $response): Response
+    {
+        try {
+            $tenantId = (int)$request->getAttribute('tenantId');
+            
+            // Pegar query parameter opcional
+            $queryParams = $request->getQueryParams();
+            $dataParam = $queryParams['data'] ?? null;
+            
+            // Validar data se fornecida
+            $dataHoje = date('Y-m-d');
+            if ($dataParam) {
+                if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataParam)) {
+                    $response->getBody()->write(json_encode([
+                        'success' => false,
+                        'error' => 'Formato de data inválido. Use YYYY-MM-DD'
+                    ], JSON_UNESCAPED_UNICODE));
+                    return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+                }
+                $dataHoje = $dataParam;
+            }
+            
+            // Buscar todos os WODs publicados do dia com dados da modalidade
+            $stmt = $this->db->prepare(
+                "SELECT w.*, 
+                        m.id as modalidade_id_obj,
+                        m.nome as modalidade_nome,
+                        m.descricao as modalidade_descricao,
+                        m.cor as modalidade_cor,
+                        m.icone as modalidade_icone,
+                        m.ativo as modalidade_ativo
+                 FROM wods w
+                 LEFT JOIN modalidades m ON w.modalidade_id = m.id
+                 WHERE w.tenant_id = :tenant_id 
+                 AND DATE(w.data) = :data
+                 AND w.status = 'published'
+                 ORDER BY w.modalidade_id ASC, w.created_at ASC"
+            );
+            
+            $stmt->execute([
+                'tenant_id' => $tenantId,
+                'data' => $dataHoje
+            ]);
+            
+            $wods = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            
+            if (empty($wods)) {
+                $response->getBody()->write(json_encode([
+                    'success' => true,
+                    'data' => [],
+                    'message' => 'Nenhum WOD agendado para esta data'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(200);
+            }
+            
+            // Formatar WODs com dados da modalidade
+            $wodsFormatados = array_map(function($wod) {
+                // Carregar blocos do WOD
+                $blocos = $this->wodBlocoModel->listByWod($wod['id']);
+                
+                // Carregar variações
+                $variacoes = $this->wodVariacaoModel->listByWod($wod['id']);
+                
+                return [
+                    'id' => (int)$wod['id'],
+                    'titulo' => $wod['titulo'],
+                    'descricao' => $wod['descricao'],
+                    'data' => $wod['data'],
+                    'status' => $wod['status'],
+                    'modalidade' => $wod['modalidade_id'] ? [
+                        'id' => (int)$wod['modalidade_id'],
+                        'nome' => $wod['modalidade_nome'],
+                        'descricao' => $wod['modalidade_descricao'],
+                        'cor' => $wod['modalidade_cor'],
+                        'icone' => $wod['modalidade_icone'],
+                        'ativo' => (bool)$wod['modalidade_ativo']
+                    ] : null,
+                    'blocos' => array_map(function($bloco) {
+                        return [
+                            'id' => (int)$bloco['id'],
+                            'ordem' => (int)$bloco['ordem'],
+                            'tipo' => $bloco['tipo'],
+                            'titulo' => $bloco['titulo'],
+                            'conteudo' => $bloco['conteudo'],
+                            'tempo_cap' => $bloco['tempo_cap']
+                        ];
+                    }, $blocos),
+                    'variacoes' => array_map(function($variacao) {
+                        return [
+                            'id' => (int)$variacao['id'],
+                            'nome' => $variacao['nome'],
+                            'descricao' => $variacao['descricao']
+                        ];
+                    }, $variacoes)
+                ];
+            }, $wods);
+            
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'data' => $wodsFormatados,
+                'total' => count($wodsFormatados)
+            ], JSON_UNESCAPED_UNICODE));
+            
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(200);
+            
+        } catch (\Exception $e) {
+            error_log("Erro em wodsDodia: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao carregar WODs',
+                'message' => $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
+        }
+    }
+
+    /**
+     * Ranking dos usuários com mais check-ins no mês atual
+     * GET /mobile/ranking/mensal?modalidade_id=1
+     */
+    public function rankingMensal(Request $request, Response $response): Response
+    {
+        $tenantId = $request->getAttribute('tenantId');
+        $queryParams = $request->getQueryParams();
+        $modalidadeId = isset($queryParams['modalidade_id']) ? (int) $queryParams['modalidade_id'] : null;
+        
+        try {
+            $ranking = $this->checkinModel->rankingMesAtual($tenantId, 3, $modalidadeId);
+            
+            // Formatar resposta com posição no ranking
+            $rankingFormatado = array_map(function($item, $index) {
+                return [
+                    'posicao' => $index + 1,
+                    'usuario' => [
+                        'id' => (int) $item['usuario_id'],
+                        'nome' => $item['nome'],
+                        'email' => $item['email'],
+                        'foto' => $item['foto']
+                    ],
+                    'total_checkins' => (int) $item['total_checkins']
+                ];
+            }, $ranking, array_keys($ranking));
+            
+            // Pegar nome do mês atual
+            $meses = [
+                1 => 'Janeiro', 2 => 'Fevereiro', 3 => 'Março', 4 => 'Abril',
+                5 => 'Maio', 6 => 'Junho', 7 => 'Julho', 8 => 'Agosto',
+                9 => 'Setembro', 10 => 'Outubro', 11 => 'Novembro', 12 => 'Dezembro'
+            ];
+            $mesAtual = $meses[(int) date('n')];
+            $anoAtual = date('Y');
+            
+            $responseData = [
+                'periodo' => "$mesAtual/$anoAtual",
+                'mes' => (int) date('n'),
+                'ano' => (int) date('Y'),
+                'modalidade_id' => $modalidadeId,
+                'ranking' => $rankingFormatado
+            ];
+            
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'data' => $responseData
+            ], JSON_UNESCAPED_UNICODE));
+            
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(200);
+            
+        } catch (\Exception $e) {
+            error_log("Erro em rankingMensal: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao carregar ranking',
+                'message' => $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
         }
     }
 }

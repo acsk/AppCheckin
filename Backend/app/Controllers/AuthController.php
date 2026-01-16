@@ -101,22 +101,37 @@ class AuthController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(401);
         }
 
-        // Buscar todos os tenants/academias do usuário
-        $tenants = $this->usuarioModel->getTenantsByUsuario($usuario['id']);
+        // Super admin (role_id = 3) não precisa de vínculo com tenant
+        if ($usuario['role_id'] == 3) {
+            // Super admin: pode acessar sem tenant específico
+            $tenants = [];
+            
+            // Gerar token sem tenant_id
+            $token = $this->jwtService->encode([
+                'user_id' => $usuario['id'],
+                'email' => $usuario['email'],
+                'tenant_id' => null,
+                'is_super_admin' => true
+            ]);
+        } else {
+            // Buscar todos os tenants/academias do usuário
+            $tenants = $this->usuarioModel->getTenantsByUsuario($usuario['id']);
 
-        if (empty($tenants)) {
-            $response->getBody()->write(json_encode([
-                'error' => 'Usuário não possui vínculo com nenhuma academia'
-            ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+            if (empty($tenants)) {
+                $response->getBody()->write(json_encode([
+                    'error' => 'Usuário não possui vínculo com nenhuma academia'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+            }
         }
 
         // Se usuário tem apenas um tenant, já retorna o token com ele
         // Se tem múltiplos, retorna a lista para o usuário escolher
         $tenantId = null;
-        $token = null;
 
-        if (count($tenants) === 1) {
+        if ($usuario['role_id'] == 3) {
+            // Super admin já tem token gerado acima, não precisa fazer nada
+        } else if (count($tenants) === 1) {
             $tenantId = $tenants[0]['tenant']['id'];
             
             // Se for Tenant Admin (role_id = 2), verificar contrato ativo

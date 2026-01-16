@@ -587,6 +587,15 @@ class TurmaController
             // Buscar turmas do dia origem
             $turmasOrigem = $this->turmaModel->listarPorDia($tenantId, $diaOrigemId);
 
+            // Filtrar por modalidade se fornecida
+            if (!empty($data['modalidade_id'])) {
+                $modalidadeId = (int) $data['modalidade_id'];
+                $turmasOrigem = array_filter($turmasOrigem, function($turma) use ($modalidadeId) {
+                    return (int) $turma['modalidade_id'] === $modalidadeId;
+                });
+                $turmasOrigem = array_values($turmasOrigem); // Reindexar array
+            }
+
             if (empty($turmasOrigem)) {
                 $response->getBody()->write(json_encode([
                     'type' => 'success',

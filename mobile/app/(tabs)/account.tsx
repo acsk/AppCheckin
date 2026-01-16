@@ -1,18 +1,19 @@
 import { colors } from '@/src/theme/colors';
+import { handleAuthError } from '@/src/utils/authHelpers';
 import AsyncStorage from '@/src/utils/storage';
-import { Feather } from '@expo/vector-icons';
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -33,12 +34,46 @@ interface UserProfile {
     sequencia_dias: number;
     ultimo_checkin?: { data: string; hora: string };
   };
+  ranking_modalidades?: {
+    modalidade_id: number;
+    modalidade_nome: string;
+    modalidade_icone?: string;
+    modalidade_cor?: string;
+    posicao: number;
+    total_checkins: number;
+    total_participantes: number;
+  }[];
+}
+
+interface RankingUsuario {
+  id: number;
+  nome: string;
+}
+
+interface RankingItem {
+  posicao: number;
+  usuario: RankingUsuario;
+  total_checkins: number;
+}
+
+interface RankingModalidade {
+  id: number;
+  nome: string;
+  icone?: string;
+  cor?: string;
 }
 
 export default function AccountScreen() {
   const router = useRouter();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [rankingLoading, setRankingLoading] = useState(false);
+  const [rankingError, setRankingError] = useState<string | null>(null);
+  const [ranking, setRanking] = useState<RankingItem[]>([]);
+  const [rankingPeriodo, setRankingPeriodo] = useState<string>('');
+  const [rankingModalidades, setRankingModalidades] = useState<RankingModalidade[]>([]);
+  const [selectedModalidadeId, setSelectedModalidadeId] = useState<number | null>(null);
+  const [modalidadesFromTurmasLoaded, setModalidadesFromTurmasLoaded] = useState(false);
 
   const getInitials = (nome: string = '') => {
     const parts = nome.split(' ').filter(Boolean);
@@ -59,6 +94,23 @@ export default function AccountScreen() {
   useEffect(() => {
     loadUserProfile();
   }, []);
+  useEffect(() => {
+    if (userProfile) {
+      loadRanking();
+      if (userProfile.ranking_modalidades?.length) {
+        const modalidades = userProfile.ranking_modalidades.map((item) => ({
+          id: item.modalidade_id,
+          nome: item.modalidade_nome,
+          icone: item.modalidade_icone,
+          cor: item.modalidade_cor,
+        }));
+        setRankingModalidades(modalidades);
+        if (modalidades.length === 1 && !selectedModalidadeId) {
+          setSelectedModalidadeId(modalidades[0].id);
+        }
+      }
+    }
+  }, [userProfile]);
 
   const formatCPF = (cpf) => {
     if (!cpf) return '';
@@ -109,19 +161,17 @@ export default function AccountScreen() {
       console.log('   Body (primeiros 500 chars):', responseText.substring(0, 500));
       
       if (!profileResponse.ok) {
-        console.error('❌ ERRO NA REQUISIÇÃO');
-        console.error('   Status:', profileResponse.status);
-        console.error('   Body completo:', responseText);
-        
         // Se for 401, token expirou ou é inválido
         if (profileResponse.status === 401) {
           console.log('🔑 Detectado 401 - Token inválido/expirado');
-          await AsyncStorage.removeItem('@appcheckin:token');
-          await AsyncStorage.removeItem('@appcheckin:user');
+          await handleAuthError();
           router.replace('/(auth)/login');
           return;
         }
         
+        console.error('❌ ERRO NA REQUISIÇÃO');
+        console.error('   Status:', profileResponse.status);
+        console.error('   Body completo:', responseText);
         throw new Error(`Erro HTTP: ${profileResponse.status}`);
       }
 
@@ -153,6 +203,106 @@ export default function AccountScreen() {
       setLoading(false);
     }
   };
+
+  const loadRanking = async (modalidadeId?: number | null) => {
+    try {
+      setRankingError(null);
+      setRankingLoading(true);
+      const token = await AsyncStorage.getItem('@appcheckin:token');
+      if (!token) {
+        setRankingError('Token não encontrado');
+        return;
+      }
+
+      const params = modalidadeId ? `?modalidade_id=${modalidadeId}` : '';
+      const url = `http://localhost:8080/mobile/ranking/mensal${params}`;
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data?.success) {
+        throw new Error(data?.error || 'Erro ao carregar ranking');
+      }
+
+      const rankingData = data?.data;
+      setRanking(rankingData?.ranking || []);
+      setRankingPeriodo(rankingData?.periodo || '');
+
+      if (Array.isArray(rankingData?.modalidades) && rankingData.modalidades.length > 0) {
+        setRankingModalidades(rankingData.modalidades);
+        if (rankingData.modalidades.length === 1 && !selectedModalidadeId) {
+          const onlyId = rankingData.modalidades[0].id;
+          setSelectedModalidadeId(onlyId);
+          loadRanking(onlyId);
+        }
+      } else if (!modalidadesFromTurmasLoaded) {
+        await loadModalidadesFromTurmas();
+      }
+    } catch (error: any) {
+      setRankingError(error?.message || 'Erro ao carregar ranking');
+    } finally {
+      setRankingLoading(false);
+    }
+  };
+
+  const loadModalidadesFromTurmas = async () => {
+    try {
+      const token = await AsyncStorage.getItem('@appcheckin:token');
+      if (!token) {
+        return;
+      }
+      const hoje = new Date().toISOString().split('T')[0];
+      const url = `http://localhost:8080/mobile/horarios-disponiveis?data=${hoje}`;
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+      if (!response.ok) {
+        return;
+      }
+      const data = await response.json();
+      const turmas = data?.data?.turmas || [];
+      const modalidadesMap = new Map<number, RankingModalidade>();
+      turmas.forEach((turma: any) => {
+        const mod = turma?.modalidade;
+        if (mod?.id && mod?.nome) {
+          if (!modalidadesMap.has(mod.id)) {
+            modalidadesMap.set(mod.id, {
+              id: mod.id,
+              nome: mod.nome,
+              icone: mod.icone,
+              cor: mod.cor,
+            });
+          }
+        }
+      });
+      const modalidades = Array.from(modalidadesMap.values());
+      setRankingModalidades(modalidades);
+      setModalidadesFromTurmasLoaded(true);
+      if (modalidades.length === 1 && !selectedModalidadeId) {
+        setSelectedModalidadeId(modalidades[0].id);
+        loadRanking(modalidades[0].id);
+      }
+    } catch {
+      setModalidadesFromTurmasLoaded(true);
+    }
+  };
+
+  const rankingMock = [
+    { id: 101, nome: 'Marina Souza', checkins: 28 },
+    { id: 102, nome: 'Joao Pedro', checkins: 25 },
+    { id: 103, nome: 'Ana Clara', checkins: 23 },
+    { id: 104, nome: 'Felipe Costa', checkins: 19 },
+    { id: 105, nome: 'Livia Mendes', checkins: 17 },
+  ];
 
   const handleLogout = async () => {
     console.log('🔴 [LOGOUT] handleLogout chamado');
@@ -353,6 +503,101 @@ export default function AccountScreen() {
             )}
           </View>
         )}
+
+        {/* Ranking de Check-ins */}
+        <View style={styles.rankingSection}>
+          <Text style={styles.sectionTitle}>
+            Ranking de Check-ins{rankingPeriodo ? ` • ${rankingPeriodo}` : ''}
+          </Text>
+          {rankingModalidades.length > 1 && (
+            <View style={styles.modalidadeFilter}>
+              {rankingModalidades.map((modalidade) => {
+                const active = selectedModalidadeId === modalidade.id;
+                const chipColor = modalidade.cor || colors.primary;
+                return (
+                  <TouchableOpacity
+                    key={modalidade.id}
+                    style={[
+                      styles.modalidadeChip,
+                      active && styles.modalidadeChipActive,
+                      { borderColor: active ? chipColor : '#f8e5d1' },
+                      active && { backgroundColor: `${chipColor}15` }
+                    ]}
+                    onPress={() => {
+                      setSelectedModalidadeId(modalidade.id);
+                      loadRanking(modalidade.id);
+                    }}
+                  >
+                    <View style={styles.modalidadeChipContent}>
+                      {modalidade.icone ? (
+                        <MaterialCommunityIcons
+                          name={modalidade.icone as any}
+                          size={14}
+                          color={chipColor}
+                        />
+                      ) : null}
+                      <Text
+                        style={[
+                          styles.modalidadeChipText,
+                          active && styles.modalidadeChipTextActive,
+                          { color: active ? chipColor : '#8b6b3b' }
+                        ]}
+                      >
+                        {modalidade.nome}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+          <View style={styles.rankingCard}>
+            {rankingLoading ? (
+              <View style={styles.rankingLoading}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={styles.rankingLoadingText}>Carregando ranking...</Text>
+              </View>
+            ) : rankingError ? (
+              <Text style={styles.rankingErrorText}>{rankingError}</Text>
+            ) : (
+              <>
+                <View style={styles.rankingList}>
+                  {ranking.slice(0, 3).map((item) => (
+                    <View key={item.usuario.id} style={styles.rankingListItem}>
+                      <View style={styles.rankingPosition}>
+                        <Text style={styles.rankingPositionNumber}>{item.posicao}</Text>
+                      </View>
+                      <Image
+                        source={{ uri: getAvatarUrl(item.usuario.nome, item.usuario.id) }}
+                        style={styles.rankingAvatar}
+                      />
+                      <View style={styles.rankingListContent}>
+                        <Text style={styles.rankingName}>{item.usuario.nome}</Text>
+                        <Text style={styles.rankingCheckins}>{item.total_checkins} check-ins</Text>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+                <View style={styles.rankingDivider} />
+                <View style={styles.rankingUserRow}>
+                  <View>
+                    <Text style={styles.rankingUserLabel}>Sua posicao</Text>
+                    <Text style={styles.rankingUserName}>{userProfile.nome}</Text>
+                  </View>
+                  <View style={styles.rankingUserPosition}>
+                    <Text style={styles.rankingUserPositionText}>
+                      {userProfile.ranking_modalidades?.find(
+                        (item) => item.modalidade_id === selectedModalidadeId
+                      )?.posicao ||
+                        ranking.find((item) => item.usuario.id === userProfile.id)?.posicao ||
+                        '--'}
+                    </Text>
+                  </View>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
 
         {/* Personal Information */}
         <View style={styles.infoSection}>
@@ -765,6 +1010,151 @@ const styles = StyleSheet.create({
   },
   academiasSection: {
     marginBottom: 20,
+  },
+  rankingSection: {
+    marginBottom: 20,
+  },
+  modalidadeFilter: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 10,
+  },
+  modalidadeChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#f8e5d1',
+  },
+  modalidadeChipActive: {
+    backgroundColor: colors.primary + '15',
+    borderColor: colors.primary + '60',
+  },
+  modalidadeChipContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  modalidadeChipText: {
+    fontSize: 12,
+    color: '#8b6b3b',
+    fontWeight: '600',
+  },
+  modalidadeChipTextActive: {
+    color: colors.primary,
+  },
+  rankingCard: {
+    backgroundColor: '#fffaf5',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#fde2c2',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  rankingList: {
+    gap: 10,
+  },
+  rankingListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#f8e5d1',
+  },
+  rankingPosition: {
+    width: 44,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#fffaf5',
+    borderWidth: 1,
+    borderColor: '#f4c595',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rankingPositionNumber: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#d97706',
+  },
+  rankingAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
+  rankingNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  rankingListContent: {
+    flex: 1,
+  },
+  rankingName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  rankingCheckins: {
+    fontSize: 11,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  rankingLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 8,
+  },
+  rankingLoadingText: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  rankingErrorText: {
+    fontSize: 12,
+    color: '#b91c1c',
+  },
+  rankingDivider: {
+    height: 1,
+    backgroundColor: '#fed7aa',
+    marginVertical: 12,
+  },
+  rankingUserRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  rankingUserLabel: {
+    fontSize: 11,
+    color: '#9ca3af',
+    marginBottom: 2,
+  },
+  rankingUserName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  rankingUserPosition: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: colors.primary + '15',
+    borderWidth: 1,
+    borderColor: colors.primary + '40',
+  },
+  rankingUserPositionText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.primary,
   },
   academiaCard: {
     backgroundColor: '#fff',
