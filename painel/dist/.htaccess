@@ -1,7 +1,6 @@
-# Habilitar reescrita de URL
 <IfModule mod_rewrite.c>
   RewriteEngine On
-  RewriteBase /dist
+  RewriteBase /dist/
   
   # Se for arquivo ou diretório existente, servir normalmente
   RewriteCond %{REQUEST_FILENAME} !-f
