@@ -3,11 +3,13 @@
 const fs = require('fs');
 const path = require('path');
 
-// Caminho dos fonts de origem
+// Caminhos
 const sourceDir = path.join(__dirname, '../node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts');
-
-// Caminho de destino
 const destDir = path.join(__dirname, '../dist/_expo/Fonts');
+const distDir = path.join(__dirname, '../dist');
+const publicFontsDir = path.join(__dirname, '../public');
+
+console.log('🚀 Iniciando cópia de fonts e injeção no HTML...');
 
 // Criar diretório de destino se não existir
 if (!fs.existsSync(destDir)) {
@@ -15,7 +17,7 @@ if (!fs.existsSync(destDir)) {
   console.log(`📁 Diretório criado: ${destDir}`);
 }
 
-// Copiar todos os arquivos
+// Copiar fonts
 try {
   const files = fs.readdirSync(sourceDir);
   
@@ -24,11 +26,43 @@ try {
     const destFile = path.join(destDir, file);
     
     fs.copyFileSync(srcFile, destFile);
-    console.log(`✅ Copiado: ${file}`);
   });
   
-  console.log(`\n✨ ${files.length} ícones copiados com sucesso!`);
+  console.log(`✅ ${files.length} ícones copiados com sucesso!`);
 } catch (error) {
   console.error('❌ Erro ao copiar ícones:', error.message);
   process.exit(1);
 }
+
+// Copiar arquivo CSS dos fonts para dist
+const fontsCssSource = path.join(publicFontsDir, 'fonts.css');
+const fontsCssDest = path.join(distDir, 'fonts.css');
+
+if (fs.existsSync(fontsCssSource)) {
+  fs.copyFileSync(fontsCssSource, fontsCssDest);
+  console.log(`✅ Arquivo fonts.css copiado para: ${fontsCssDest}`);
+} else {
+  console.warn(`⚠️  Arquivo fonts.css não encontrado em: ${fontsCssSource}`);
+}
+
+// Modificar o index.html para incluir o CSS dos fonts
+const indexHtmlPath = path.join(distDir, 'index.html');
+if (fs.existsSync(indexHtmlPath)) {
+  let htmlContent = fs.readFileSync(indexHtmlPath, 'utf8');
+  
+  // Se o link para fonts.css não existir, adicionar
+  if (!htmlContent.includes('fonts.css')) {
+    htmlContent = htmlContent.replace(
+      '</head>',
+      '  <link rel="stylesheet" href="/dist/fonts.css">\n</head>'
+    );
+    fs.writeFileSync(indexHtmlPath, htmlContent, 'utf8');
+    console.log(`✅ Link para fonts.css adicionado ao index.html`);
+  } else {
+    console.log(`ℹ️  Link para fonts.css já existe no index.html`);
+  }
+} else {
+  console.warn(`⚠️  Arquivo index.html não encontrado em: ${indexHtmlPath}`);
+}
+
+console.log('✨ Processo completado!');
