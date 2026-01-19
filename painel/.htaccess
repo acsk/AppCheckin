@@ -1,14 +1,19 @@
 # Habilitar reescrita de URL
 <IfModule mod_rewrite.c>
   RewriteEngine On
-  RewriteBase /dist
+  RewriteBase /
   
-  # Se for arquivo ou diretório existente, servir normalmente
-  RewriteCond %{REQUEST_FILENAME} !-f
-  RewriteCond %{REQUEST_FILENAME} !-d
+  # Se o arquivo/diretório existe na raiz, servir normalmente
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
   
-  # Caso contrário, redirecionar para index.html (SPA routing)
-  RewriteRule ^ index.html [QSA,L]
+  # Se pedir /dist/algo, deixar passar
+  RewriteCond %{REQUEST_URI} ^/dist/ [NC]
+  RewriteRule ^ - [L]
+  
+  # Se pedir / ou qualquer rota, servir /dist/index.html (SPA routing)
+  RewriteRule ^(.*)$ /dist/index.html [QSA,L]
 </IfModule>
 
 # Configurar tipos MIME
