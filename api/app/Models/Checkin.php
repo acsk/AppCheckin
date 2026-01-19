@@ -3,27 +3,34 @@
 namespace App\Models;
 
 use PDO;
+use App\Services\TenantService;
 
 class Checkin
 {
     private PDO $db;
+    private TenantService $tenantService;
 
     public function __construct(PDO $db)
     {
         $this->db = $db;
+        $this->tenantService = new TenantService($db);
     }
 
     public function create(int $usuarioId, int $horarioId): ?int
     {
         try {
+            // Obter tenant_id do usuário (substitui função MySQL)
+            $tenantId = $this->tenantService->getTenantIdFromUsuario($usuarioId);
+            
             $stmt = $this->db->prepare(
-                "INSERT INTO checkins (usuario_id, horario_id, registrado_por_admin) 
-                 VALUES (:usuario_id, :horario_id, 0)"
+                "INSERT INTO checkins (usuario_id, horario_id, tenant_id, registrado_por_admin) 
+                 VALUES (:usuario_id, :horario_id, :tenant_id, 0)"
             );
             
             $stmt->execute([
                 'usuario_id' => $usuarioId,
-                'horario_id' => $horarioId
+                'horario_id' => $horarioId,
+                'tenant_id' => $tenantId
             ]);
 
             return (int) $this->db->lastInsertId();
@@ -39,14 +46,18 @@ class Checkin
     public function createByAdmin(int $usuarioId, int $horarioId, int $adminId): ?int
     {
         try {
+            // Obter tenant_id do usuário (substitui função MySQL)
+            $tenantId = $this->tenantService->getTenantIdFromUsuario($usuarioId);
+            
             $stmt = $this->db->prepare(
-                "INSERT INTO checkins (usuario_id, horario_id, registrado_por_admin, admin_id) 
-                 VALUES (:usuario_id, :horario_id, 1, :admin_id)"
+                "INSERT INTO checkins (usuario_id, horario_id, tenant_id, registrado_por_admin, admin_id) 
+                 VALUES (:usuario_id, :horario_id, :tenant_id, 1, :admin_id)"
             );
             
             $stmt->execute([
                 'usuario_id' => $usuarioId,
                 'horario_id' => $horarioId,
+                'tenant_id' => $tenantId,
                 'admin_id' => $adminId
             ]);
 
@@ -125,14 +136,18 @@ class Checkin
     public function createEmTurma(int $usuarioId, int $turmaId): ?int
     {
         try {
+            // Obter tenant_id do usuário (substitui função MySQL)
+            $tenantId = $this->tenantService->getTenantIdFromUsuario($usuarioId);
+            
             $stmt = $this->db->prepare(
-                "INSERT INTO checkins (usuario_id, turma_id, registrado_por_admin) 
-                 VALUES (:usuario_id, :turma_id, 0)"
+                "INSERT INTO checkins (usuario_id, turma_id, tenant_id, registrado_por_admin) 
+                 VALUES (:usuario_id, :turma_id, :tenant_id, 0)"
             );
             
             $stmt->execute([
                 'usuario_id' => $usuarioId,
-                'turma_id' => $turmaId
+                'turma_id' => $turmaId,
+                'tenant_id' => $tenantId
             ]);
 
             return (int) $this->db->lastInsertId();
