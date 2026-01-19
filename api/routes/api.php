@@ -38,6 +38,64 @@ return function ($app) {
     // Aplicar TenantMiddleware globalmente
     $app->add(TenantMiddleware::class);
     
+    // ========================================
+    // ROTAS DE TESTE E HEALTH CHECK (PÚBLICAS)
+    // ========================================
+    
+    // Ping simples - verifica se PHP está rodando
+    $app->get('/ping', function($request, $response) {
+        return $response
+            ->withHeader('Content-Type', 'application/json')
+            ->withStatus(200)
+            ->write(json_encode([
+                'message' => 'pong',
+                'timestamp' => date('Y-m-d H:i:s'),
+                'php_version' => phpversion()
+            ]));
+    });
+    
+    // Health check - verifica PHP e conexão com banco
+    $app->get('/health', function($request, $response) {
+        try {
+            $db = require __DIR__ . '/../config/database.php';
+            $stmt = $db->query("SELECT 1");
+            $dbConnected = $stmt !== false;
+            
+            return $response
+                ->withHeader('Content-Type', 'application/json')
+                ->withStatus(200)
+                ->write(json_encode([
+                    'status' => 'ok',
+                    'php' => 'running',
+                    'database' => $dbConnected ? 'connected' : 'disconnected',
+                    'timestamp' => date('Y-m-d H:i:s'),
+                    'environment' => $_ENV['APP_ENV'] ?? 'unknown'
+                ]));
+        } catch (\Exception $e) {
+            return $response
+                ->withHeader('Content-Type', 'application/json')
+                ->withStatus(503)
+                ->write(json_encode([
+                    'status' => 'error',
+                    'message' => $e->getMessage(),
+                    'timestamp' => date('Y-m-d H:i:s')
+                ]));
+        }
+    });
+    
+    // Status da API - verifica se está online
+    $app->get('/status', function($request, $response) {
+        return $response
+            ->withHeader('Content-Type', 'application/json')
+            ->withStatus(200)
+            ->write(json_encode([
+                'status' => 'online',
+                'app' => 'AppCheckin API',
+                'version' => '1.0.0',
+                'timestamp' => date('Y-m-d H:i:s')
+            ]));
+    });
+    
     // Rotas públicas
     $app->post('/auth/register', [AuthController::class, 'register']);
     $app->post('/auth/login', [AuthController::class, 'login']);
