@@ -1,1 +1,22 @@
-
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>App Checkin</title>
+    <script>
+        // Redirecionar para /login se não houver token
+        window.addEventListener('DOMContentLoaded', function() {
+            const token = localStorage.getItem('token') || sessionStorage.getItem('token');
+            if (!token) {
+                window.location.href = '/login';
+            } else {
+                window.location.href = '/dist/';
+            }
+        });
+    </script>
+</head>
+<body>
+    <p>Carregando...</p>
+</body>
+</html>
