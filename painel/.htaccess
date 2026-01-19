@@ -8,7 +8,11 @@
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
   
-  # Deixar /dist/ intacto (arquivos estáticos)
+  # NÃO redirecionar arquivos estáticos
+  RewriteCond %{REQUEST_URI} \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ [NC]
+  RewriteRule ^ - [L]
+  
+  # Deixar /dist/ intacto (não redirecionar)
   RewriteCond %{REQUEST_URI} ^/dist/ [NC]
   RewriteRule ^ - [L]
   
