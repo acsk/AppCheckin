@@ -44,14 +44,14 @@ return function ($app) {
     
     // Ping simples - verifica se PHP está rodando
     $app->get('/ping', function($request, $response) {
+        $response->getBody()->write(json_encode([
+            'message' => 'pong',
+            'timestamp' => date('Y-m-d H:i:s'),
+            'php_version' => phpversion()
+        ]));
         return $response
             ->withHeader('Content-Type', 'application/json')
-            ->withStatus(200)
-            ->write(json_encode([
-                'message' => 'pong',
-                'timestamp' => date('Y-m-d H:i:s'),
-                'php_version' => phpversion()
-            ]));
+            ->withStatus(200);
     });
     
     // Health check - verifica PHP e conexão com banco
@@ -61,39 +61,39 @@ return function ($app) {
             $stmt = $db->query("SELECT 1");
             $dbConnected = $stmt !== false;
             
+            $response->getBody()->write(json_encode([
+                'status' => 'ok',
+                'php' => 'running',
+                'database' => $dbConnected ? 'connected' : 'disconnected',
+                'timestamp' => date('Y-m-d H:i:s'),
+                'environment' => $_ENV['APP_ENV'] ?? 'unknown'
+            ]));
             return $response
                 ->withHeader('Content-Type', 'application/json')
-                ->withStatus(200)
-                ->write(json_encode([
-                    'status' => 'ok',
-                    'php' => 'running',
-                    'database' => $dbConnected ? 'connected' : 'disconnected',
-                    'timestamp' => date('Y-m-d H:i:s'),
-                    'environment' => $_ENV['APP_ENV'] ?? 'unknown'
-                ]));
+                ->withStatus(200);
         } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'status' => 'error',
+                'message' => $e->getMessage(),
+                'timestamp' => date('Y-m-d H:i:s')
+            ]));
             return $response
                 ->withHeader('Content-Type', 'application/json')
-                ->withStatus(503)
-                ->write(json_encode([
-                    'status' => 'error',
-                    'message' => $e->getMessage(),
-                    'timestamp' => date('Y-m-d H:i:s')
-                ]));
+                ->withStatus(503);
         }
     });
     
     // Status da API - verifica se está online
     $app->get('/status', function($request, $response) {
+        $response->getBody()->write(json_encode([
+            'status' => 'online',
+            'app' => 'AppCheckin API',
+            'version' => '1.0.0',
+            'timestamp' => date('Y-m-d H:i:s')
+        ]));
         return $response
             ->withHeader('Content-Type', 'application/json')
-            ->withStatus(200)
-            ->write(json_encode([
-                'status' => 'online',
-                'app' => 'AppCheckin API',
-                'version' => '1.0.0',
-                'timestamp' => date('Y-m-d H:i:s')
-            ]));
+            ->withStatus(200);
     });
     
     // Rotas públicas
