@@ -54,12 +54,15 @@ if (fs.existsSync(indexHtmlPath)) {
   if (!htmlContent.includes('fonts.css')) {
     htmlContent = htmlContent.replace(
       '</head>',
-      '  <link rel="stylesheet" href="/dist/fonts.css">\n</head>'
+      '  <link rel="stylesheet" href="/fonts.css">\n</head>'
     );
     fs.writeFileSync(indexHtmlPath, htmlContent, 'utf8');
     console.log(`✅ Link para fonts.css adicionado ao index.html`);
   } else {
-    console.log(`ℹ️  Link para fonts.css já existe no index.html`);
+    // Corrigir path se estiver com /dist/fonts.css
+    htmlContent = htmlContent.replace(/href="\/dist\/fonts\.css"/g, 'href="/fonts.css"');
+    fs.writeFileSync(indexHtmlPath, htmlContent, 'utf8');
+    console.log(`✅ Link para fonts.css já existe e está correto`);
   }
 } else {
   console.warn(`⚠️  Arquivo index.html não encontrado em: ${indexHtmlPath}`);

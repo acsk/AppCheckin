@@ -2,114 +2,114 @@
 
 @font-face {
   font-family: 'AntDesign';
-  src: url('./_expo/Fonts/AntDesign.ttf') format('truetype');
+  src: url('/_expo/Fonts/AntDesign.ttf') format('truetype');
   font-display: auto;
 }
 
 @font-face {
   font-family: 'Entypo';
-  src: url('./_expo/Fonts/Entypo.ttf') format('truetype');
+  src: url('/_expo/Fonts/Entypo.ttf') format('truetype');
   font-display: auto;
 }
 
 @font-face {
   font-family: 'EvilIcons';
-  src: url('./_expo/Fonts/EvilIcons.ttf') format('truetype');
+  src: url('/_expo/Fonts/EvilIcons.ttf') format('truetype');
   font-display: auto;
 }
 
 @font-face {
   font-family: 'Feather';
-  src: url('./_expo/Fonts/Feather.ttf') format('truetype');
+  src: url('/_expo/Fonts/Feather.ttf') format('truetype');
   font-display: auto;
 }
 
 @font-face {
   font-family: 'FontAwesome';
-  src: url('./_expo/Fonts/FontAwesome.ttf') format('truetype');
+  src: url('/_expo/Fonts/FontAwesome.ttf') format('truetype');
   font-display: auto;
 }
 
 @font-face {
   font-family: 'FontAwesome5_Brands';
-  src: url('./_expo/Fonts/FontAwesome5_Brands.ttf') format('truetype');
+  src: url('/_expo/Fonts/FontAwesome5_Brands.ttf') format('truetype');
   font-display: auto;
 }
 
 @font-face {
   font-family: 'FontAwesome5_Regular';
-  src: url('./_expo/Fonts/FontAwesome5_Regular.ttf') format('truetype');
+  src: url('/_expo/Fonts/FontAwesome5_Regular.ttf') format('truetype');
   font-display: auto;
 }
 
 @font-face {
   font-family: 'FontAwesome5_Solid';
-  src: url('./_expo/Fonts/FontAwesome5_Solid.ttf') format('truetype');
+  src: url('/_expo/Fonts/FontAwesome5_Solid.ttf') format('truetype');
   font-display: auto;
 }
 
 @font-face {
   font-family: 'FontAwesome6_Brands';
-  src: url('./_expo/Fonts/FontAwesome6_Brands.ttf') format('truetype');
+  src: url('/_expo/Fonts/FontAwesome6_Brands.ttf') format('truetype');
   font-display: auto;
 }
 
 @font-face {
   font-family: 'FontAwesome6_Regular';
-  src: url('./_expo/Fonts/FontAwesome6_Regular.ttf') format('truetype');
+  src: url('/_expo/Fonts/FontAwesome6_Regular.ttf') format('truetype');
   font-display: auto;
 }
 
 @font-face {
   font-family: 'FontAwesome6_Solid';
-  src: url('./_expo/Fonts/FontAwesome6_Solid.ttf') format('truetype');
+  src: url('/_expo/Fonts/FontAwesome6_Solid.ttf') format('truetype');
   font-display: auto;
 }
 
 @font-face {
   font-family: 'Fontisto';
-  src: url('./_expo/Fonts/Fontisto.ttf') format('truetype');
+  src: url('/_expo/Fonts/Fontisto.ttf') format('truetype');
   font-display: auto;
 }
 
 @font-face {
   font-family: 'Foundation';
-  src: url('./_expo/Fonts/Foundation.ttf') format('truetype');
+  src: url('/_expo/Fonts/Foundation.ttf') format('truetype');
   font-display: auto;
 }
 
 @font-face {
   font-family: 'Ionicons';
-  src: url('./_expo/Fonts/Ionicons.ttf') format('truetype');
+  src: url('/_expo/Fonts/Ionicons.ttf') format('truetype');
   font-display: auto;
 }
 
 @font-face {
   font-family: 'MaterialCommunityIcons';
-  src: url('./_expo/Fonts/MaterialCommunityIcons.ttf') format('truetype');
+  src: url('/_expo/Fonts/MaterialCommunityIcons.ttf') format('truetype');
   font-display: auto;
 }
 
 @font-face {
   font-family: 'MaterialIcons';
-  src: url('./_expo/Fonts/MaterialIcons.ttf') format('truetype');
+  src: url('/_expo/Fonts/MaterialIcons.ttf') format('truetype');
   font-display: auto;
 }
 
 @font-face {
   font-family: 'Octicons';
-  src: url('./_expo/Fonts/Octicons.ttf') format('truetype');
+  src: url('/_expo/Fonts/Octicons.ttf') format('truetype');
   font-display: auto;
 }
 
 @font-face {
   font-family: 'SimpleLineIcons';
-  src: url('./_expo/Fonts/SimpleLineIcons.ttf') format('truetype');
+  src: url('/_expo/Fonts/SimpleLineIcons.ttf') format('truetype');
   font-display: auto;
 }
 
 @font-face {
   font-family: 'Zocial';
-  src: url('./_expo/Fonts/Zocial.ttf') format('truetype');
+  src: url('/_expo/Fonts/Zocial.ttf') format('truetype');
   font-display: auto;
 }

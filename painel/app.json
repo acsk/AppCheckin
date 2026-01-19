@@ -25,8 +25,7 @@
       "edgeToEdgeEnabled": true
     },
     "web": {
-      "favicon": "./assets/favicon.png",
-      "baseUrl": "/dist/"
+      "favicon": "./assets/favicon.png"
     }
   }
 }
