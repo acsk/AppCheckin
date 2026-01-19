@@ -1,22 +1,20 @@
 # Habilitar reescrita de URL
 <IfModule mod_rewrite.c>
   RewriteEngine On
-  
-  # Remover www se presente
-  RewriteCond %{HTTP_HOST} ^www\. [NC]
-  RewriteRule ^(.*)$ https://%{HTTP_HOST:www.}%{REQUEST_URI} [R=301,L]
-
-  # Redirecionar para dist/
   RewriteBase /
+  
+  # Se o arquivo/diretório existe, deixar passar
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
-  RewriteCond %{REQUEST_URI} !^/dist/
-  RewriteRule ^(.*)$ /dist/index.html [QSA,L]
   
-  # Se o arquivo não existir em dist/, redirecionar para dist/index.html
-  RewriteCond %{DOCUMENT_ROOT}/dist%{REQUEST_FILENAME} !-f
-  RewriteCond %{DOCUMENT_ROOT}/dist%{REQUEST_FILENAME} !-d
-  RewriteRule ^(.+)$ /dist/index.html [QSA,L]
+  # Se não estiver em /dist, redirecionar para /dist
+  RewriteCond %{REQUEST_URI} !^/dist/ [NC]
+  RewriteRule ^(.*)$ /dist/$1 [L]
+  
+  # Dentro de /dist, SPA routing - se não for arquivo/diretório, ir para index.html
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^dist/(.*)$ /dist/index.html [QSA,L]
 </IfModule>
 
 # Configurar tipos MIME
