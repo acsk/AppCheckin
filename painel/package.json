@@ -6,7 +6,9 @@
     "start": "node -r ./node-polyfill.js ./node_modules/.bin/expo start",
     "android": "node -r ./node-polyfill.js ./node_modules/.bin/expo start --android",
     "ios": "node -r ./node-polyfill.js ./node_modules/.bin/expo start --ios",
-    "web": "node -r ./node-polyfill.js ./node_modules/.bin/expo start --web"
+    "web": "node -r ./node-polyfill.js ./node_modules/.bin/expo start --web",
+    "copy-icons": "node scripts/copy-icons.js",
+    "postbuild": "node scripts/copy-icons.js"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",
