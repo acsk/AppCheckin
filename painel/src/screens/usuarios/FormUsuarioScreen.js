@@ -17,6 +17,7 @@ import LayoutBase from '../../components/LayoutBase';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import ConfirmModal from '../../components/ConfirmModal';
 import { showSuccess, showError } from '../../utils/toast';
+import { mascaraTelefone } from '../../utils/masks';
 import api from '../../services/api';
 import BuscarUsuarioCpfModal from '../../components/BuscarUsuarioCpfModal';
 
@@ -446,7 +447,7 @@ export default function FormUsuarioScreen() {
                 placeholder="(11) 99999-9999"
                 placeholderTextColor="#aaa"
                 value={formData.telefone}
-                onChangeText={(value) => handleChange('telefone', value)}
+                onChangeText={(value) => handleChange('telefone', mascaraTelefone(value))}
                 keyboardType="phone-pad"
                 editable={!saving}
               />

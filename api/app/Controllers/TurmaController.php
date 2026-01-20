@@ -166,7 +166,9 @@ class TurmaController
      *   "dia_id": 18,
      *   "horario_inicio": "04:00", ou "04:00:00"
      *   "horario_fim": "04:30", ou "04:30:00"
-     *   "limite_alunos": 20
+     *   "limite_alunos": 20,
+     *   "tolerancia_minutos": 10,              (opcional, padrão: 10)
+     *   "tolerancia_antes_minutos": 480        (opcional, padrão: 480)
      * }
      */
     public function create(Request $request, Response $response): Response

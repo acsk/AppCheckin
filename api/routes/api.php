@@ -102,13 +102,6 @@ return function ($app) {
     $app->post('/auth/login', [AuthController::class, 'login']);
     
     // ========================================
-    // ROTAS SUPERADMIN
-    // ========================================
-    $app->group('/superadmin', function ($group) {
-        $group->get('/env', [SuperAdminController::class, 'getEnvironmentVariables']);
-        $group->post('/cleanup-database', [MaintenanceController::class, 'cleanupDatabase']);
-    })->add(SuperAdminMiddleware::class)->add(AuthMiddleware::class);
-    
     // Rota pública de consulta CEP
     $app->get('/cep/{cep}', [CepController::class, 'buscar']);
     
@@ -164,9 +157,9 @@ return function ($app) {
         $group->delete('/planos-sistema/{id}', [PlanosSistemaController::class, 'delete']);
         
         // === CONTRATOS (Associação Academia + Plano Sistema) ===
-        $group->get('/contratos', [TenantPlanosSistemaController::class, 'index']);
         $group->get('/contratos/proximos-vencimento', [TenantPlanosSistemaController::class, 'proximosVencimento']);
         $group->get('/contratos/vencidos', [TenantPlanosSistemaController::class, 'vencidos']);
+        $group->get('/contratos', [TenantPlanosSistemaController::class, 'index']);
         $group->get('/contratos/{id}', [TenantPlanosSistemaController::class, 'show']);
         $group->get('/academias/{tenantId}/contratos', [TenantPlanosSistemaController::class, 'contratosPorAcademia']);
         $group->get('/academias/{tenantId}/contrato-ativo', [TenantPlanosSistemaController::class, 'contratoAtivo']);
@@ -176,13 +169,13 @@ return function ($app) {
         $group->delete('/contratos/{id}', [TenantPlanosSistemaController::class, 'cancelar']);
         
         // === PAGAMENTOS DE CONTRATOS ===
-        $group->get('/pagamentos', [PagamentoContratoController::class, 'index']);
-        $group->get('/pagamentos/resumo', [PagamentoContratoController::class, 'resumo']);
-        $group->get('/contratos/{id}/pagamentos', [PagamentoContratoController::class, 'listarPorContrato']);
-        $group->post('/contratos/{id}/pagamentos', [PagamentoContratoController::class, 'criar']);
-        $group->post('/pagamentos/{id}/confirmar', [PagamentoContratoController::class, 'confirmar']);
-        $group->delete('/pagamentos/{id}', [PagamentoContratoController::class, 'cancelar']);
-        $group->post('/pagamentos/marcar-atrasados', [PagamentoContratoController::class, 'marcarAtrasados']);
+        $group->get('/pagamentos-contrato/resumo', [PagamentoContratoController::class, 'resumo']);
+        $group->post('/pagamentos-contrato/marcar-atrasados', [PagamentoContratoController::class, 'marcarAtrasados']);
+        $group->post('/pagamentos-contrato/{id}/confirmar', [PagamentoContratoController::class, 'confirmar']);
+        $group->delete('/pagamentos-contrato/{id}', [PagamentoContratoController::class, 'cancelar']);
+        $group->get('/pagamentos-contrato', [PagamentoContratoController::class, 'index']);
+        $group->get('/contratos/{id}/pagamentos-contrato', [PagamentoContratoController::class, 'listarPorContrato']);
+        $group->post('/contratos/{id}/pagamentos-contrato', [PagamentoContratoController::class, 'criar']);
         
         // Gerenciar usuários de todos os tenants
         $group->get('/usuarios', [UsuarioController::class, 'listarTodos']);
@@ -242,9 +235,11 @@ return function ($app) {
         $group->get('/usuarios/{id}/estatisticas', [UsuarioController::class, 'estatisticas']);
         
         // Dias disponíveis
-        $group->get('/dias', [DiaController::class, 'index']);
+        $group->get('/dias/por-data', [DiaController::class, 'porData']);
+        $group->get('/dias/periodo', [DiaController::class, 'periodo']);
         $group->get('/dias/proximos', [DiaController::class, 'diasProximos']);
         $group->get('/dias/horarios', [DiaController::class, 'horariosPorData']);
+        $group->get('/dias', [DiaController::class, 'index']);
         $group->get('/dias/{id}/horarios', [DiaController::class, 'horarios']);
         
         // Check-ins

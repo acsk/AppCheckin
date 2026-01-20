@@ -256,4 +256,129 @@ class PagamentoContrato
         
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
+
+    /**
+     * Listar pagamentos com valor 0 que ainda não foram pagos
+     * Estes devem ser baixados automaticamente via job mensal
+     */
+    public function listarPagamentosComValorZero(int $limite = 100): array
+    {
+        $sql = "SELECT pc.id, pc.tenant_plano_id as contrato_id, pc.valor, pc.data_vencimento,
+                       pc.status_pagamento_id, sp.nome as status_nome,
+                       tps.tenant_id, t.nome as tenant_nome
+                FROM pagamentos_contrato pc
+                INNER JOIN tenant_planos_sistema tps ON pc.tenant_plano_id = tps.id
+                INNER JOIN tenants t ON tps.tenant_id = t.id
+                LEFT JOIN status_pagamento sp ON pc.status_pagamento_id = sp.id
+                WHERE pc.valor = 0 
+                AND pc.status_pagamento_id = 1  -- Aguardando
+                ORDER BY pc.created_at ASC
+                LIMIT :limite";
+        
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->bindValue(':limite', $limite, PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Baixar pagamento com valor 0 (marcar como pago)
+     * Gera automaticamente o próximo pagamento baseado no plano
+     */
+    public function baixarPagamentoValorZero(int $pagamentoId): bool
+    {
+        // Buscar dados do pagamento e contrato
+        $sqlBuscar = "SELECT pc.id, pc.tenant_plano_id, pc.valor, pc.data_vencimento,
+                             tp.id as contrato_id,
+                             ps.valor as valor_plano, ps.duracao_dias
+                      FROM pagamentos_contrato pc
+                      INNER JOIN tenant_planos_sistema tp ON pc.tenant_plano_id = tp.id
+                      INNER JOIN planos_sistema ps ON tp.plano_sistema_id = ps.id
+                      WHERE pc.id = :id";
+        
+        $stmt = $this->pdo->prepare($sqlBuscar);
+        $stmt->execute(['id' => $pagamentoId]);
+        $pagamento = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$pagamento) {
+            return false;
+        }
+
+        // Baixar o pagamento atual
+        $sql = "UPDATE pagamentos_contrato 
+                SET status_pagamento_id = 2,
+                    data_pagamento = CURDATE(),
+                    observacoes = CONCAT(COALESCE(observacoes, ''), '\n', 'Baixado automaticamente via job - valor R$ 0,00'),
+                    updated_at = NOW()
+                WHERE id = :id";
+        
+        $stmt = $this->pdo->prepare($sql);
+        $resultado = $stmt->execute(['id' => $pagamentoId]);
+
+        if ($resultado) {
+            // Gerar próximo pagamento
+            $proximaDataVencimento = date('Y-m-d', strtotime("+{$pagamento['duracao_dias']} days", strtotime($pagamento['data_vencimento'])));
+            $valorProximo = $pagamento['valor_plano'] ?? 0;
+
+            $sqlNovoPageamento = "INSERT INTO pagamentos_contrato 
+                                  (tenant_plano_id, valor, data_vencimento, status_pagamento_id, observacoes)
+                                  VALUES 
+                                  (:tenant_plano_id, :valor, :data_vencimento, 1, :observacoes)";
+            
+            try {
+                $stmt = $this->pdo->prepare($sqlNovoPageamento);
+                $stmt->execute([
+                    'tenant_plano_id' => $pagamento['tenant_plano_id'],
+                    'valor' => $valorProximo,
+                    'data_vencimento' => $proximaDataVencimento,
+                    'observacoes' => 'Gerado automaticamente após pagamento com valor R$ 0,00'
+                ]);
+            } catch (\Exception $e) {
+                // Log do erro mas não falha a baixa
+                error_log("Erro ao gerar próximo pagamento: " . $e->getMessage());
+            }
+        }
+
+        return $resultado;
+    }
+
+    /**
+     * Baixar múltiplos pagamentos em transação
+     */
+    public function baixarPagamentosBatch(array $pagamentoIds): array
+    {
+        if (empty($pagamentoIds)) {
+            return ['sucesso' => 0, 'erro' => 0, 'total' => 0];
+        }
+
+        $sucesso = 0;
+        $erro = 0;
+
+        try {
+            $this->pdo->beginTransaction();
+
+            foreach ($pagamentoIds as $pagamentoId) {
+                try {
+                    if ($this->baixarPagamentoValorZero($pagamentoId)) {
+                        $sucesso++;
+                    } else {
+                        $erro++;
+                    }
+                } catch (\Exception $e) {
+                    $erro++;
+                }
+            }
+
+            $this->pdo->commit();
+        } catch (\Exception $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
+
+        return [
+            'sucesso' => $sucesso,
+            'erro' => $erro,
+            'total' => count($pagamentoIds)
+        ];
+    }
 }

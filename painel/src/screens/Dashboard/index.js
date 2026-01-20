@@ -165,8 +165,14 @@ export default function Dashboard() {
       ]);
       
       setDashboardData(dashboard?.data || dashboard);
-      setTurmasPorModalidade(turmas?.data || turmas || []);
-      setCheckinsData(checkins?.data || checkins || []);
+      
+      // Garantir que turmasPorModalidade é sempre um array
+      const turmasArray = Array.isArray(turmas?.data) ? turmas.data : Array.isArray(turmas) ? turmas : [];
+      setTurmasPorModalidade(turmasArray);
+      
+      // Garantir que checkinsData é sempre um array
+      const checkinsArray = Array.isArray(checkins?.data) ? checkins.data : Array.isArray(checkins) ? checkins : [];
+      setCheckinsData(checkinsArray);
       
       // Verificar se conseguiu carregar algum dado
       const temDados = dashboard?.data || turmas?.data?.length > 0 || checkins?.data?.length > 0;

@@ -10,13 +10,13 @@ services:
       - "3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
-      - ./Backend/database/migrations:/docker-entrypoint-initdb.d
+      - ./api/database/migrations:/docker-entrypoint-initdb.d
     networks:
       - appcheckin_network
 
   php:
     build:
-      context: ./Backend
+      context: ./api
       dockerfile: Dockerfile
     container_name: appcheckin_php
     restart: unless-stopped
@@ -25,7 +25,7 @@ services:
     depends_on:
       - mysql
     volumes:
-      - ./Backend:/var/www/html
+      - ./api:/var/www/html
     environment:
       DB_HOST: mysql
       DB_PORT: 3306

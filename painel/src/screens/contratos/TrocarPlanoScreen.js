@@ -431,7 +431,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#2b1a04',
     border: 'none',
-    outline: 'none',
     backgroundColor: 'transparent',
     width: '100%',
     cursor: 'pointer',

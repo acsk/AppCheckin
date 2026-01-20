@@ -4,6 +4,7 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import { showSuccess, showError } from '../utils/toast';
 import api from '../services/api';
+import pagamentoContratoService from '../services/pagamentoContratoService';
 
 export default function BaixaPagamentoModal({ visible, onClose, pagamento, onSuccess }) {
   const [loading, setLoading] = useState(false);
@@ -23,7 +24,7 @@ export default function BaixaPagamentoModal({ visible, onClose, pagamento, onSuc
       setFormData({
         data_pagamento: hoje,
         forma_pagamento_id: pagamento.forma_pagamento_id || '',
-        valor: pagamento.valor || '',
+        valor: pagamento.valor !== undefined && pagamento.valor !== null ? pagamento.valor.toString() : '',
         comprovante: '',
         observacoes: 'Baixa Manual'
       });
@@ -51,7 +52,7 @@ export default function BaixaPagamentoModal({ visible, onClose, pagamento, onSuc
       return;
     }
 
-    if (!formData.valor || parseFloat(formData.valor) <= 0) {
+    if (!formData.valor || parseFloat(formData.valor) < 0) {
       showError('Valor inválido');
       return;
     }
@@ -59,10 +60,16 @@ export default function BaixaPagamentoModal({ visible, onClose, pagamento, onSuc
     try {
       setLoading(true);
       
-      const idParaBaixa = pagamento.pagamento_id || pagamento.id || pagamento.conta_id;
-      console.log('📤 Enviando solicitação de baixa para ID:', idParaBaixa);
+      const pagamentoId = pagamento.pagamento_id || pagamento.id;
+      console.log('📤 Enviando confirmação de pagamento ID:', pagamentoId);
       
-      await api.post(`/admin/matriculas/contas/${idParaBaixa}/baixa`, {
+      if (!pagamentoId) {
+        showError('ID do pagamento não encontrado');
+        setLoading(false);
+        return;
+      }
+      
+      await pagamentoContratoService.confirmar(pagamentoId, {
         data_pagamento: formData.data_pagamento,
         forma_pagamento_id: formData.forma_pagamento_id,
         observacoes: formData.observacoes
@@ -72,7 +79,7 @@ export default function BaixaPagamentoModal({ visible, onClose, pagamento, onSuc
       onSuccess && onSuccess();
       onClose();
     } catch (error) {
-      showError(error.error || 'Erro ao confirmar pagamento');
+      showError(error.error || error.message || 'Erro ao confirmar pagamento');
     } finally {
       setLoading(false);
     }

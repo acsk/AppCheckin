@@ -298,7 +298,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     fontSize: 16,
     color: '#2b1a04',
-    outline: 'none',
   },
   searchClearButton: {
     padding: 4,

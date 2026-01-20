@@ -14,7 +14,11 @@ export const turmaService = {
       }
       
       const response = await api.get('/admin/turmas', { params });
-      return response.data.turmas || [];
+      // Retorna objeto com dia e turmas
+      return {
+        dia: response.data.dia || null,
+        turmas: response.data.turmas || []
+      };
     } catch (error) {
       console.error('Erro ao listar turmas:', error);
       throw error;

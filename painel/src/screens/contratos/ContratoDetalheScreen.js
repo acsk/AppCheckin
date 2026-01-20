@@ -44,7 +44,7 @@ export default function ContratoDetalheScreen() {
       setContrato(dadosContrato);
 
       // Buscar histórico de pagamentos
-      const responsePagamentos = await api.get(`/superadmin/contratos/${id}/pagamentos`);
+      const responsePagamentos = await api.get(`/superadmin/contratos/${id}/pagamentos-contrato`);
       const dadosPagamentos = responsePagamentos.data.pagamentos || responsePagamentos.data.data || [];
       setPagamentos(dadosPagamentos);
     } catch (error) {

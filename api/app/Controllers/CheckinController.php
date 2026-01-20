@@ -5,20 +5,20 @@ namespace App\Controllers;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Models\Checkin;
-use App\Models\Horario;
+use App\Models\Turma;
 use App\Models\Usuario;
 
 class CheckinController
 {
     private Checkin $checkinModel;
-    private Horario $horarioModel;
+    private Turma $turmaModel;
     private Usuario $usuarioModel;
 
     public function __construct()
     {
         $db = require __DIR__ . '/../../config/database.php';
         $this->checkinModel = new Checkin($db);
-        $this->horarioModel = new Horario($db);
+        $this->turmaModel = new Turma($db);
         $this->usuarioModel = new Usuario($db);
     }
 
@@ -36,36 +36,36 @@ class CheckinController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
         }
 
-        // Validação
-        if (empty($data['horario_id'])) {
+        // Validação - aceita turma_id
+        if (empty($data['turma_id'])) {
             $response->getBody()->write(json_encode([
-                'error' => 'horario_id é obrigatório'
+                'error' => 'turma_id é obrigatório'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
         }
 
-        $horarioId = (int) $data['horario_id'];
+        $turmaId = (int) $data['turma_id'];
 
-        // Verificar se usuário já tem check-in neste horário
-        if ($this->checkinModel->usuarioTemCheckin($userId, $horarioId)) {
+        // Verificar se usuário já tem check-in nesta turma
+        if ($this->checkinModel->usuarioTemCheckin($userId, $turmaId)) {
             $response->getBody()->write(json_encode([
-                'error' => 'Você já tem check-in neste horário'
+                'error' => 'Você já tem check-in nesta turma'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
 
-        // Verificar se pode realizar check-in (valida horário, tolerância e vagas)
-        $validacao = $this->horarioModel->podeRealizarCheckin($horarioId);
-
-        if (!$validacao['permitido']) {
+        // Buscar dados da turma
+        $turma = $this->turmaModel->findById($turmaId);
+        
+        if (!$turma) {
             $response->getBody()->write(json_encode([
-                'error' => $validacao['motivo']
+                'error' => 'Turma não encontrada'
             ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
         }
 
         // Criar check-in com timestamp do momento exato
-        $checkinId = $this->checkinModel->create($userId, $horarioId);
+        $checkinId = $this->checkinModel->create($userId, $turmaId);
 
         if (!$checkinId) {
             $response->getBody()->write(json_encode([
@@ -166,50 +166,59 @@ class CheckinController
         }
 
         // Validar se ainda é possível desfazer
-        // Se o horário foi deletado, permitir desfazer (pois não é mais uma aula ativa)
-        if ($checkin['horario_id'] && $checkin['horario_id'] > 0) {
-            // Buscar dados do horário
-            $horario = $this->horarioModel->findById($checkin['horario_id']);
+        // Se a turma foi deletada, permitir desfazer (pois não é mais uma aula ativa)
+        if ($checkin['turma_id'] && $checkin['turma_id'] > 0) {
+            // Buscar dados da turma
+            $turma = $this->turmaModel->findById($checkin['turma_id']);
 
-            if ($horario) {
-                // Verificar se a aula já começou + tolerância
-                $agora = new \DateTime();
-                $dataHorarioInicio = new \DateTime($horario['data'] . ' ' . $horario['horario_inicio']);
+            if ($turma) {
+                // Precisamos da data do check-in para calcular os horários
+                // Como a turma tem dia_id, precisamos buscar o dia
+                $db = require __DIR__ . '/../../config/database.php';
+                $stmt = $db->prepare("SELECT data FROM dias WHERE id = ?");
+                $stmt->execute([$turma['dia_id']]);
+                $dia = $stmt->fetch(\PDO::FETCH_ASSOC);
                 
-                // Tolerar até X minutos após o início da aula
-                $tolerancia = $horario['tolerancia_minutos'] ?? 10;
-                $dataLimiteDesfazer = clone $dataHorarioInicio;
-                $dataLimiteDesfazer->modify("+{$tolerancia} minutes");
+                if ($dia) {
+                    // Verificar se a aula já começou + tolerância
+                    $agora = new \DateTime();
+                    $dataHorarioInicio = new \DateTime($dia['data'] . ' ' . $turma['horario_inicio']);
+                    
+                    // Tolerar até X minutos após o início da aula
+                    $tolerancia = (int) $turma['tolerancia_minutos'] ?? 10;
+                    $dataLimiteDesfazer = clone $dataHorarioInicio;
+                    $dataLimiteDesfazer->modify("+{$tolerancia} minutes");
 
-                // Se já passou do horário + tolerância, não pode desfazer
-                if ($agora > $dataLimiteDesfazer) {
-                    return $response->withHeader('Content-Type', 'application/json')
-                        ->write(json_encode([
-                            'error' => 'Não é possível desfazer o check-in. O prazo expirou (a aula já começou)',
-                            'horario' => [
-                                'data' => $horario['data'],
-                                'inicio' => $horario['horario_inicio'],
-                                'tolerancia_minutos' => $tolerancia,
-                                'limite_para_desfazer' => $dataLimiteDesfazer->format('Y-m-d H:i:s')
-                            ]
-                        ], JSON_UNESCAPED_UNICODE))
-                        ->withStatus(400);
-                }
+                    // Se já passou do horário + tolerância, não pode desfazer
+                    if ($agora > $dataLimiteDesfazer) {
+                        return $response->withHeader('Content-Type', 'application/json')
+                            ->write(json_encode([
+                                'error' => 'Não é possível desfazer o check-in. O prazo expirou (a aula já começou)',
+                                'turma' => [
+                                    'data' => $dia['data'],
+                                    'inicio' => $turma['horario_inicio'],
+                                    'tolerancia_minutos' => $tolerancia,
+                                    'limite_para_desfazer' => $dataLimiteDesfazer->format('Y-m-d H:i:s')
+                                ]
+                            ], JSON_UNESCAPED_UNICODE))
+                            ->withStatus(400);
+                    }
 
-                // Verificar se a aula ainda está acontecendo
-                $dataHorarioFim = new \DateTime($horario['data'] . ' ' . $horario['horario_fim']);
-                
-                if ($agora > $dataHorarioFim) {
-                    return $response->withHeader('Content-Type', 'application/json')
-                        ->write(json_encode([
-                            'error' => 'Não é possível desfazer o check-in. A aula já terminou',
-                            'horario' => [
-                                'data' => $horario['data'],
-                                'inicio' => $horario['horario_inicio'],
-                                'fim' => $horario['horario_fim']
-                            ]
-                        ], JSON_UNESCAPED_UNICODE))
-                        ->withStatus(400);
+                    // Verificar se a aula ainda está acontecendo
+                    $dataHorarioFim = new \DateTime($dia['data'] . ' ' . $turma['horario_fim']);
+                    
+                    if ($agora > $dataHorarioFim) {
+                        return $response->withHeader('Content-Type', 'application/json')
+                            ->write(json_encode([
+                                'error' => 'Não é possível desfazer o check-in. A aula já terminou',
+                                'turma' => [
+                                    'data' => $dia['data'],
+                                    'inicio' => $turma['horario_inicio'],
+                                    'fim' => $turma['horario_fim']
+                                ]
+                            ], JSON_UNESCAPED_UNICODE))
+                            ->withStatus(400);
+                    }
                 }
             }
         }
@@ -239,7 +248,7 @@ class CheckinController
 
     /**
      * POST /admin/checkins/registrar
-     * Admin registra check-in para um aluno em qualquer horário
+     * Admin registra check-in para um aluno em qualquer turma
      */
     public function registrarPorAdmin(Request $request, Response $response): Response
     {
@@ -247,15 +256,15 @@ class CheckinController
         $data = $request->getParsedBody();
 
         // Validações
-        if (empty($data['usuario_id']) || empty($data['horario_id'])) {
+        if (empty($data['usuario_id']) || empty($data['turma_id'])) {
             $response->getBody()->write(json_encode([
-                'error' => 'usuario_id e horario_id são obrigatórios'
+                'error' => 'usuario_id e turma_id são obrigatórios'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
         }
 
         $usuarioId = (int) $data['usuario_id'];
-        $horarioId = (int) $data['horario_id'];
+        $turmaId = (int) $data['turma_id'];
 
         // Verificar se aluno existe e é realmente aluno (role_id = 1)
         $aluno = $this->usuarioModel->findById($usuarioId);
@@ -273,26 +282,26 @@ class CheckinController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
 
-        // Verificar se aluno já tem check-in neste horário
-        if ($this->checkinModel->usuarioTemCheckin($usuarioId, $horarioId)) {
+        // Verificar se aluno já tem check-in nesta turma
+        if ($this->checkinModel->usuarioTemCheckin($usuarioId, $turmaId)) {
             $response->getBody()->write(json_encode([
-                'error' => 'Aluno já tem check-in neste horário'
+                'error' => 'Aluno já tem check-in nesta turma'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
 
-        // Admin pode registrar em qualquer horário (sem validação de tolerância)
-        // Mas ainda validamos se o horário existe e está ativo
-        $horario = $this->horarioModel->findById($horarioId);
-        if (!$horario || !$horario['ativo']) {
+        // Admin pode registrar em qualquer turma (sem validação de tolerância)
+        // Mas ainda validamos se a turma existe e está ativa
+        $turma = $this->turmaModel->findById($turmaId);
+        if (!$turma || !$turma['ativo']) {
             $response->getBody()->write(json_encode([
-                'error' => 'Horário inválido ou inativo'
+                'error' => 'Turma inválida ou inativa'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
 
         // Criar check-in registrado pelo admin
-        $checkinId = $this->checkinModel->createByAdmin($usuarioId, $horarioId, $adminId);
+        $checkinId = $this->checkinModel->createByAdmin($usuarioId, $turmaId, $adminId);
 
         if (!$checkinId) {
             $response->getBody()->write(json_encode([

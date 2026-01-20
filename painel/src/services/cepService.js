@@ -23,7 +23,10 @@ const cepService = {
       
       throw response.data;
     } catch (error) {
-      console.error('❌ Erro ao buscar CEP:', error.response?.data || error.message);
+      const errorMsg = error.response?.data?.message || error.message || 'Erro desconhecido ao buscar CEP';
+      console.error('❌ Erro ao buscar CEP:', errorMsg);
+      console.error('   Response:', error.response?.data);
+      console.error('   Status:', error.response?.status);
       throw error.response?.data || error;
     }
   }

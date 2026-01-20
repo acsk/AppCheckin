@@ -1,22 +1,29 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
     <title>App Checkin</title>
-    <script>
-        // Redirecionar para /login se não houver token
-        window.addEventListener('DOMContentLoaded', function() {
-            const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-            if (!token) {
-                window.location.href = '/login';
-            } else {
-                window.location.href = '/dist/';
-            }
-        });
-    </script>
-</head>
-<body>
-    <p>Carregando...</p>
-</body>
+    <style id="expo-reset">
+      html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        overflow: hidden;
+      }
+      #root {
+        display: flex;
+        height: 100%;
+        flex: 1;
+      }
+    </style>
+    <link rel="stylesheet" href="/fonts.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="http://localhost:8080/index.bundle?platform=web"></script>
+  </body>
 </html>

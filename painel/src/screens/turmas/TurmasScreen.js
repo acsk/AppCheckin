@@ -46,7 +46,7 @@ export default function TurmasScreen() {
   const [horarios, setHorarios] = useState([]);
   const [loadingDropdowns, setLoadingDropdowns] = useState(false);
   const [dropdownAberto, setDropdownAberto] = useState(null);
-  const [diaId, setDiaId] = useState(17); // TODO: Obter do turmasData quando carregar
+  const [diaId, setDiaId] = useState(); // TODO: Obter do turmasData quando carregar
   const [errors, setErrors] = useState({});
   const [modalReplicarVisible, setModalReplicarVisible] = useState(false);
   const [periodoReplicacao, setPeriodoReplicacao] = useState('custom');
@@ -154,9 +154,20 @@ export default function TurmasScreen() {
   const carregarDados = async () => {
     try {
       setLoading(true);
-      const turmasData = await turmaService.listar(dataSelecionada);
+      const response = await turmaService.listar(dataSelecionada);
       
-      console.log('📋 [carregarDados] Turmas recebidas:', turmasData);
+      const { dia, turmas: turmasData } = response;
+      
+      console.log('📋 [carregarDados] Resposta recebida:', { dia, turmasCount: turmasData?.length });
+      
+      // Extrair dia_id do objeto dia
+      if (dia && dia.id) {
+        setDiaId(dia.id);
+        console.log('✅ [carregarDados] dia_id definido do objeto dia:', dia.id);
+      } else {
+        console.log('⚠️ [carregarDados] Sem informação do dia na resposta');
+      }
+      
       if (turmasData && turmasData.length > 0) {
         console.log('🎨 [carregarDados] Primeira turma:', {
           id: turmasData[0].id,
@@ -166,17 +177,9 @@ export default function TurmasScreen() {
         });
       }
       
-      setTurmas(turmasData);
-      setTurmasFiltradas(turmasData);
+      setTurmas(turmasData || []);
+      setTurmasFiltradas(turmasData || []);
       setSearchText('');
-      
-      // Extrair dia_id das turmas, se existirem
-      if (turmasData && turmasData.length > 0 && turmasData[0].dia_id) {
-        setDiaId(turmasData[0].dia_id);
-        console.log('✅ [carregarDados] dia_id extraído das turmas:', turmasData[0].dia_id);
-      } else {
-        console.log('⚠️ [carregarDados] Sem turmas - dia_id não pode ser definido');
-      }
     } catch (error) {
       showError('Erro ao carregar turmas');
       console.error(error);

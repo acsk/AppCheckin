@@ -24,11 +24,19 @@ export default function EditarPlanoSistemaScreen() {
   const { id } = useLocalSearchParams();
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
-  const planoId = parseInt(id);
-
+  
+  // Validar se o ID foi passado corretamente
+  const planoId = id ? parseInt(id) : null;
+  
+  // Se não tiver ID, redirecionar
   useEffect(() => {
+    if (!planoId || isNaN(planoId)) {
+      console.error('❌ ID do plano não informado');
+      router.replace('/planos-sistema');
+      return;
+    }
     checkAccess();
-  }, []);
+  }, [planoId]);
 
   const checkAccess = async () => {
     const user = await authService.getCurrentUser();
@@ -57,9 +65,11 @@ export default function EditarPlanoSistemaScreen() {
   });
 
   useEffect(() => {
-    loadData();
-    loadAcademias();
-  }, []);
+    if (planoId && !isNaN(planoId)) {
+      loadData();
+      loadAcademias();
+    }
+  }, [planoId]);
 
   const loadData = async () => {
     try {
@@ -86,6 +96,12 @@ export default function EditarPlanoSistemaScreen() {
   };
 
   const loadAcademias = async () => {
+    // Validar planoId antes de fazer requisição
+    if (!planoId || isNaN(planoId)) {
+      console.warn('⚠️ Plano ID inválido, pulando carregamento de academias');
+      return;
+    }
+    
     try {
       setLoadingAcademias(true);
       const response = await planosSistemaService.listarAcademias(planoId);

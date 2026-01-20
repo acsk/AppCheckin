@@ -5,18 +5,18 @@ namespace App\Controllers;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Models\Dia;
-use App\Models\Horario;
+use App\Models\Turma;
 
 class DiaController
 {
     private Dia $diaModel;
-    private Horario $horarioModel;
+    private Turma $turmaModel;
 
     public function __construct()
     {
         $db = require __DIR__ . '/../../config/database.php';
         $this->diaModel = new Dia($db);
-        $this->horarioModel = new Horario($db);
+        $this->turmaModel = new Turma($db);
     }
 
     public function index(Request $request, Response $response): Response
@@ -46,30 +46,33 @@ class DiaController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
         }
 
-        $horarios = $this->horarioModel->getByDiaId($diaId);
+        // Buscar turmas do dia (antes chamadas de horários)
+        $turmas = $this->turmaModel->listarPorDia($tenantId, $diaId);
 
-        // Adicionar informações de disponibilidade para cada horário
-        $horariosComDisponibilidade = array_map(function($horario) {
-            $validacao = $this->horarioModel->podeRealizarCheckin($horario['id']);
+        // Adicionar informações de disponibilidade para cada turma
+        $turmasComDisponibilidade = array_map(function($turma) {
+            $alunosRegistrados = (int) ($turma['alunos_count'] ?? 0);
+            $vagasDisponiveis = (int) $turma['limite_alunos'] - $alunosRegistrados;
             
             return [
-                'id' => $horario['id'],
-                'hora' => $horario['hora'],
-                'horario_inicio' => $horario['horario_inicio'],
-                'horario_fim' => $horario['horario_fim'],
-                'limite_alunos' => $horario['limite_alunos'],
-                'alunos_registrados' => $horario['alunos_registrados'] ?? 0,
-                'vagas_disponiveis' => $horario['vagas_disponiveis'] ?? $horario['limite_alunos'],
-                'tolerancia_minutos' => $horario['tolerancia_minutos'],
-                'pode_fazer_checkin' => $validacao['permitido'],
-                'motivo_indisponibilidade' => $validacao['permitido'] ? null : $validacao['motivo'],
-                'ativo' => (bool) $horario['ativo']
+                'id' => $turma['id'],
+                'nome' => $turma['nome'],
+                'professor_nome' => $turma['professor_nome'],
+                'modalidade_nome' => $turma['modalidade_nome'],
+                'horario_inicio' => $turma['horario_inicio'],
+                'horario_fim' => $turma['horario_fim'],
+                'limite_alunos' => (int) $turma['limite_alunos'],
+                'alunos_registrados' => $alunosRegistrados,
+                'vagas_disponiveis' => $vagasDisponiveis,
+                'tolerancia_minutos' => (int) $turma['tolerancia_minutos'],
+                'tolerancia_antes_minutos' => (int) $turma['tolerancia_antes_minutos'],
+                'ativo' => (bool) $turma['ativo']
             ];
-        }, $horarios);
+        }, $turmas);
 
         $response->getBody()->write(json_encode([
             'dia' => $dia,
-            'horarios' => $horariosComDisponibilidade
+            'turmas' => $turmasComDisponibilidade
         ]));
 
         return $response->withHeader('Content-Type', 'application/json');
@@ -121,45 +124,39 @@ class DiaController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
         }
 
-        // Buscar horários do dia
-        $horarios = $this->horarioModel->getByDiaId($dia['id']);
+        // Buscar turmas do dia
+        $turmas = $this->turmaModel->listarPorDia($tenantId, $dia['id']);
 
-        // Obter usuário logado
-        $userId = $request->getAttribute('userId');
-
-        // Adicionar informações completas para cada horário
-        $horariosCompletos = array_map(function($horario) use ($userId, $dia) {
-            $validacao = $this->horarioModel->podeRealizarCheckin($horario['id']);
-            $usuarioRegistrado = false;
-            
-            if ($userId) {
-                // Verifica se o usuário tem check-in registrado nesta turma
-                $turmaRegistrada = $this->horarioModel->getTurmaRegistradaHoje($userId, $dia['data']);
-                $usuarioRegistrado = ($turmaRegistrada === $horario['id']);
-            }
+        // Adicionar informações completas para cada turma
+        $turmasCompletas = array_map(function($turma) {
+            $alunosRegistrados = (int) ($turma['alunos_count'] ?? 0);
+            $vagasDisponiveis = (int) $turma['limite_alunos'] - $alunosRegistrados;
             
             return [
-                'id' => $horario['id'],
-                'hora' => $horario['hora'],
-                'horario_inicio' => $horario['horario_inicio'],
-                'horario_fim' => $horario['horario_fim'],
-                'limite_alunos' => (int) $horario['limite_alunos'],
-                'alunos_registrados' => (int) $horario['alunos_registrados'],
-                'vagas_disponiveis' => (int) $horario['vagas_disponiveis'],
-                'percentual_ocupacao' => $horario['limite_alunos'] > 0 
-                    ? ($horario['alunos_registrados'] / $horario['limite_alunos']) * 100 
+                'id' => $turma['id'],
+                'nome' => $turma['nome'],
+                'professor_nome' => $turma['professor_nome'],
+                'professor_id' => (int) $turma['professor_id'],
+                'modalidade_nome' => $turma['modalidade_nome'],
+                'modalidade_icone' => $turma['modalidade_icone'],
+                'modalidade_cor' => $turma['modalidade_cor'],
+                'horario_inicio' => $turma['horario_inicio'],
+                'horario_fim' => $turma['horario_fim'],
+                'limite_alunos' => (int) $turma['limite_alunos'],
+                'alunos_registrados' => $alunosRegistrados,
+                'vagas_disponiveis' => $vagasDisponiveis,
+                'percentual_ocupacao' => $turma['limite_alunos'] > 0 
+                    ? ($alunosRegistrados / $turma['limite_alunos']) * 100 
                     : 0,
-                'tolerancia_minutos' => (int) $horario['tolerancia_minutos'],
-                'pode_fazer_checkin' => $validacao['permitido'],
-                'motivo_indisponibilidade' => $validacao['permitido'] ? null : $validacao['motivo'],
-                'usuario_registrado' => $usuarioRegistrado,
-                'ativo' => (bool) $horario['ativo']
+                'tolerancia_minutos' => (int) $turma['tolerancia_minutos'],
+                'tolerancia_antes_minutos' => (int) $turma['tolerancia_antes_minutos'],
+                'ativo' => (bool) $turma['ativo']
             ];
-        }, $horarios);
+        }, $turmas);
 
         $response->getBody()->write(json_encode([
             'dia' => $dia,
-            'turmas' => $horariosCompletos
+            'turmas' => $turmasCompletas
         ]));
 
         return $response->withHeader('Content-Type', 'application/json');
@@ -393,6 +390,209 @@ class DiaController
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
         }
+    }
+
+    /**
+     * Consultar ID do dia pela data
+     * GET /dias/por-data?data=2026-01-20
+     */
+    public function porData(Request $request, Response $response): Response
+    {
+        try {
+            $queryParams = $request->getQueryParams();
+            $data = $queryParams['data'] ?? null;
+            
+            if (!$data) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'validation_error',
+                    'message' => 'Data é obrigatória',
+                    'reason' => 'Forneça a data no parâmetro: ?data=2026-01-20',
+                    'code' => 'MISSING_DATA'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+            }
+            
+            // Validar formato da data
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $data)) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'validation_error',
+                    'message' => 'Formato de data inválido',
+                    'reason' => 'Use o formato YYYY-MM-DD (ex: 2026-01-20)',
+                    'code' => 'INVALID_DATE_FORMAT',
+                    'provided' => $data
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+            }
+            
+            // Validar se a data é válida
+            $d = \DateTime::createFromFormat('Y-m-d', $data);
+            if (!$d || $d->format('Y-m-d') !== $data) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'validation_error',
+                    'message' => 'Data inválida',
+                    'reason' => 'A data fornecida não é válida (ex: 2026-02-30)',
+                    'code' => 'INVALID_DATE',
+                    'provided' => $data
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+            }
+            
+            // Buscar o dia
+            $dia = $this->diaModel->findByData($data);
+            
+            if (!$dia) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'not_found_error',
+                    'message' => 'Dia não encontrado',
+                    'reason' => 'A data fornecida não existe na tabela dias',
+                    'code' => 'DAY_NOT_FOUND',
+                    'data' => $data
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
+            }
+            
+            $response->getBody()->write(json_encode([
+                'type' => 'success',
+                'message' => 'Dia encontrado com sucesso',
+                'code' => 'DAY_FOUND',
+                'data' => [
+                    'id' => (int) $dia['id'],
+                    'data' => $dia['data'],
+                    'ativo' => (bool) $dia['ativo'],
+                    'dia_semana' => $this->getNomeDiaSemana($dia['data']),
+                    'created_at' => $dia['created_at'],
+                    'updated_at' => $dia['updated_at']
+                ]
+            ], JSON_UNESCAPED_UNICODE));
+            
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+            
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Erro ao consultar dia',
+                'reason' => $e->getMessage(),
+                'code' => 'INTERNAL_ERROR'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
+        }
+    }
+
+    /**
+     * Listar dias por período
+     * GET /dias/periodo?data_inicio=2026-01-01&data_fim=2026-01-31
+     */
+    public function periodo(Request $request, Response $response): Response
+    {
+        try {
+            $queryParams = $request->getQueryParams();
+            $dataInicio = $queryParams['data_inicio'] ?? null;
+            $dataFim = $queryParams['data_fim'] ?? null;
+            
+            if (!$dataInicio || !$dataFim) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'validation_error',
+                    'message' => 'Datas são obrigatórias',
+                    'reason' => 'Forneça data_inicio e data_fim',
+                    'code' => 'MISSING_DATES'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+            }
+            
+            // Validar formatos
+            if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataInicio) || 
+                !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataFim)) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'validation_error',
+                    'message' => 'Formato de data inválido',
+                    'reason' => 'Use o formato YYYY-MM-DD',
+                    'code' => 'INVALID_DATE_FORMAT'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+            }
+            
+            // Buscar dias no período
+            $db = require __DIR__ . '/../../config/database.php';
+            $sql = "SELECT id, data, ativo, created_at, updated_at 
+                    FROM dias 
+                    WHERE data BETWEEN :data_inicio AND :data_fim 
+                    ORDER BY data ASC";
+            
+            $stmt = $db->prepare($sql);
+            $stmt->execute([
+                'data_inicio' => $dataInicio,
+                'data_fim' => $dataFim
+            ]);
+            $dias = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            
+            if (empty($dias)) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'not_found_error',
+                    'message' => 'Nenhum dia encontrado no período',
+                    'reason' => 'Não há registros para o período informado',
+                    'code' => 'NO_DAYS_FOUND',
+                    'periodo' => [
+                        'inicio' => $dataInicio,
+                        'fim' => $dataFim
+                    ]
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
+            }
+            
+            // Formatar resposta
+            $diasFormatados = array_map(function($dia) {
+                return [
+                    'id' => (int) $dia['id'],
+                    'data' => $dia['data'],
+                    'ativo' => (bool) $dia['ativo'],
+                    'dia_semana' => $this->getNomeDiaSemana($dia['data']),
+                    'created_at' => $dia['created_at'],
+                    'updated_at' => $dia['updated_at']
+                ];
+            }, $dias);
+            
+            $response->getBody()->write(json_encode([
+                'type' => 'success',
+                'message' => 'Dias encontrados com sucesso',
+                'code' => 'DAYS_FOUND',
+                'total' => count($diasFormatados),
+                'periodo' => [
+                    'inicio' => $dataInicio,
+                    'fim' => $dataFim
+                ],
+                'data' => $diasFormatados
+            ], JSON_UNESCAPED_UNICODE));
+            
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+            
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Erro ao consultar período',
+                'reason' => $e->getMessage(),
+                'code' => 'INTERNAL_ERROR'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
+        }
+    }
+
+    /**
+     * Obter nome do dia da semana
+     */
+    private function getNomeDiaSemana(string $data): string
+    {
+        $nomesDia = [
+            'Monday' => 'Segunda',
+            'Tuesday' => 'Terça',
+            'Wednesday' => 'Quarta',
+            'Thursday' => 'Quinta',
+            'Friday' => 'Sexta',
+            'Saturday' => 'Sábado',
+            'Sunday' => 'Domingo'
+        ];
+        
+        $dioDaSemana = date('l', strtotime($data));
+        return $nomesDia[$dioDaSemana] ?? $dioDaSemana;
     }
 }
 

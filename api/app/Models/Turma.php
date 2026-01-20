@@ -163,8 +163,8 @@ class Turma
         $horarioFim = $this->normalizarHorario($data['horario_fim']);
         
         $stmt = $this->db->prepare(
-            "INSERT INTO turmas (tenant_id, professor_id, modalidade_id, dia_id, horario_inicio, horario_fim, nome, limite_alunos, ativo) 
-             VALUES (:tenant_id, :professor_id, :modalidade_id, :dia_id, :horario_inicio, :horario_fim, :nome, :limite_alunos, :ativo)"
+            "INSERT INTO turmas (tenant_id, professor_id, modalidade_id, dia_id, horario_inicio, horario_fim, nome, limite_alunos, tolerancia_minutos, tolerancia_antes_minutos, ativo) 
+             VALUES (:tenant_id, :professor_id, :modalidade_id, :dia_id, :horario_inicio, :horario_fim, :nome, :limite_alunos, :tolerancia_minutos, :tolerancia_antes_minutos, :ativo)"
         );
         
         $stmt->execute([
@@ -176,6 +176,8 @@ class Turma
             'horario_fim' => $horarioFim,
             'nome' => $data['nome'],
             'limite_alunos' => $data['limite_alunos'] ?? 20,
+            'tolerancia_minutos' => $data['tolerancia_minutos'] ?? 10,
+            'tolerancia_antes_minutos' => $data['tolerancia_antes_minutos'] ?? 480,
             'ativo' => $data['ativo'] ?? 1
         ]);
         
@@ -190,7 +192,7 @@ class Turma
         $updates = [];
         $params = ['id' => $id];
         
-        $allowed = ['professor_id', 'modalidade_id', 'dia_id', 'horario_inicio', 'horario_fim', 'nome', 'limite_alunos', 'ativo'];
+        $allowed = ['professor_id', 'modalidade_id', 'dia_id', 'horario_inicio', 'horario_fim', 'nome', 'limite_alunos', 'tolerancia_minutos', 'tolerancia_antes_minutos', 'ativo'];
         
         foreach ($allowed as $field) {
             if (isset($data[$field])) {

@@ -10,4 +10,8 @@ module.exports = {
     extend: {},
   },
   plugins: [],
+  darkMode: 'class', // Desabilita dark mode automático baseado em media query
+  corePlugins: {
+    darkMode: false, // Desabilita completamente o dark mode se necessário
+  },
 };
