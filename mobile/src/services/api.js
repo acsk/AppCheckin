@@ -145,5 +145,5 @@ const api = {
   },
 };
 
-export const API_BASE_URL = API_URL;
+export const API_BASE_URL = getApiUrlRuntime();
 export default api;
