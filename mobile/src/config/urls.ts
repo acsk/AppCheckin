@@ -6,11 +6,11 @@
 export const CONFIG = {
   // URLs da API por ambiente
   api: {
-    development: 'http://localhost:8080',
+    development: "http://localhost:8080",
     // localhost com porta customizada (ex: 3000, 5000, etc)
     // development: 'http://localhost:3000',
-    
-    production: 'https://api.appcheckin.com',
+
+    production: "https://api.appcheckin.com.br",
   },
 
   // Apps/Serviços opcionais
@@ -22,7 +22,7 @@ export const CONFIG = {
 
   // Configurações de timeout
   timeouts: {
-    request: 30000,    // 30s
+    request: 30000, // 30s
     connection: 15000, // 15s
   },
 
@@ -33,16 +33,12 @@ export const CONFIG = {
   },
 
   // Endpoints que não precisam de autenticação
-  publicEndpoints: [
-    '/auth/login',
-    '/auth/register',
-    '/auth/select-tenant',
-  ],
+  publicEndpoints: ["/auth/login", "/auth/register", "/auth/select-tenant"],
 
   // Headers padrão
   defaultHeaders: {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
+    "Content-Type": "application/json",
+    Accept: "application/json",
   },
 };
 

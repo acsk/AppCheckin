@@ -1,51 +1,54 @@
-import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { Feather } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import { useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { authService } from '../../src/services/authService';
-import { colors } from '../../src/theme/colors';
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { authService } from "../../src/services/authService";
+import { colors } from "../../src/theme/colors";
 
 export default function LoginScreen() {
   const router = useRouter();
-  const [email, setEmail] = useState('carolina.ferreira@tenant4.com');
-  const [senha, setSenha] = useState('123456');
+  const [email, setEmail] = useState(
+    __DEV__ ? "carolina.ferreira@tenant4.com" : "",
+  );
+  const [senha, setSenha] = useState(__DEV__ ? "123456" : "");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [formError, setFormError] = useState('');
+  const [formError, setFormError] = useState("");
 
   const handleLogin = async () => {
     if (!email.trim() || !senha.trim()) {
-      Alert.alert('Atenção', 'Preencha email e senha');
+      Alert.alert("Atenção", "Preencha email e senha");
       return;
     }
 
     setLoading(true);
-    setFormError('');
+    setFormError("");
     try {
       const response = await authService.login(email, senha);
-      
+
       // authService já salva o token automaticamente
       if (response.token || response.data?.token) {
-        router.replace('/(tabs)');
+        router.replace("/(tabs)");
       } else {
-        Alert.alert('Erro', 'Não foi possível fazer login');
+        Alert.alert("Erro", "Não foi possível fazer login");
       }
     } catch (error) {
-      const mensagem = error?.error || error?.message || 'Email ou senha incorretos';
+      const mensagem =
+        error?.error || error?.message || "Email ou senha incorretos";
       setFormError(mensagem);
-      Alert.alert('Erro', mensagem);
+      Alert.alert("Erro", mensagem);
     } finally {
       setLoading(false);
     }
@@ -54,10 +57,10 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.keyboardView}
       >
-        <ScrollView 
+        <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
@@ -74,81 +77,80 @@ export default function LoginScreen() {
           {/* Formulário */}
           <View style={styles.formContainer}>
             <View style={styles.formCard}>
-            <Text style={styles.welcomeText}>Bem-vindo de volta!</Text>
-            <Text style={styles.welcomeSubtext}>Faça login para continuar</Text>
+              <Text style={styles.welcomeText}>Bem-vindo de volta!</Text>
+              <Text style={styles.welcomeSubtext}>
+                Faça login para continuar
+              </Text>
 
-            {formError ? (
-              <View style={styles.formError}>
-                <Feather name="alert-circle" size={16} color="#b91c1c" />
-                <Text style={styles.formErrorText}>{formError}</Text>
-              </View>
-            ) : null}
+              {formError ? (
+                <View style={styles.formError}>
+                  <Feather name="alert-circle" size={16} color="#b91c1c" />
+                  <Text style={styles.formErrorText}>{formError}</Text>
+                </View>
+              ) : null}
 
-            {/* Email Input */}
-            <View style={styles.inputWrapper}>
-              <Feather 
-                name="mail" 
-                size={20} 
-                color={colors.primary} 
-                style={styles.inputIcon} 
-              />
-              <TextInput
-                style={styles.input}
-                placeholder="Email"
-                placeholderTextColor="#999"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                value={email}
-                onChangeText={setEmail}
-                editable={!loading}
-              />
-            </View>
-
-            {/* Senha Input */}
-            <View style={styles.inputWrapper}>
-              <Feather 
-                name="lock" 
-                size={20} 
-                color={colors.primary}
-                style={styles.inputIcon} 
-              />
-              <TextInput
-                style={[styles.input, { paddingRight: 50 }]}
-                placeholder="Senha"
-                placeholderTextColor="#999"
-                secureTextEntry={!showPassword}
-                value={senha}
-                onChangeText={setSenha}
-                editable={!loading}
-              />
-              <TouchableOpacity 
-                style={styles.eyeIcon}
-                onPress={() => setShowPassword(!showPassword)}
-              >
-                <Feather 
-                  name={showPassword ? 'eye-off' : 'eye'} 
-                  size={20} 
+              {/* Email Input */}
+              <View style={styles.inputWrapper}>
+                <Feather
+                  name="mail"
+                  size={20}
                   color={colors.primary}
+                  style={styles.inputIcon}
                 />
-              </TouchableOpacity>
-            </View>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Email"
+                  placeholderTextColor="#999"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  value={email}
+                  onChangeText={setEmail}
+                  editable={!loading}
+                />
+              </View>
 
-            {/* Login Button */}
-            <TouchableOpacity 
-              style={[
-                styles.loginButton,
-                loading && { opacity: 0.7 }
-              ]}
-              onPress={handleLogin}
-              disabled={loading}
-            >
-              {loading ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <Text style={styles.loginButtonText}>Entrar</Text>
-              )}
-            </TouchableOpacity>
+              {/* Senha Input */}
+              <View style={styles.inputWrapper}>
+                <Feather
+                  name="lock"
+                  size={20}
+                  color={colors.primary}
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  style={[styles.input, { paddingRight: 50 }]}
+                  placeholder="Senha"
+                  placeholderTextColor="#999"
+                  secureTextEntry={!showPassword}
+                  value={senha}
+                  onChangeText={setSenha}
+                  editable={!loading}
+                />
+                <TouchableOpacity
+                  style={styles.eyeIcon}
+                  onPress={() => setShowPassword(!showPassword)}
+                >
+                  <Feather
+                    name={showPassword ? "eye-off" : "eye"}
+                    size={20}
+                    color={colors.primary}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              {/* Login Button */}
+              <TouchableOpacity
+                style={[styles.loginButton, loading && { opacity: 0.7 }]}
+                onPress={handleLogin}
+                disabled={loading}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.loginButtonText}>Entrar</Text>
+                )}
+              </TouchableOpacity>
             </View>
           </View>
         </ScrollView>
@@ -160,30 +162,30 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f6f7fb',
+    backgroundColor: "#f6f7fb",
   },
   keyboardView: {
     flex: 1,
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
+    justifyContent: "center",
     paddingHorizontal: 20,
     paddingVertical: 24,
   },
   logoContainer: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 28,
   },
   logoCircle: {
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: '#ffffff',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#ffffff",
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 16,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.08,
     shadowRadius: 16,
@@ -191,23 +193,23 @@ const styles = StyleSheet.create({
   },
   appName: {
     fontSize: 32,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: colors.primary,
     marginBottom: 4,
   },
   tagline: {
     fontSize: 16,
-    color: '#8b91a1',
+    color: "#8b91a1",
   },
   formContainer: {
-    width: '100%',
+    width: "100%",
   },
   formCard: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 20,
     paddingVertical: 24,
     paddingHorizontal: 20,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 12 },
     shadowOpacity: 0.08,
     shadowRadius: 20,
@@ -215,24 +217,24 @@ const styles = StyleSheet.create({
   },
   welcomeText: {
     fontSize: 24,
-    fontWeight: '600',
-    color: '#111827',
+    fontWeight: "600",
+    color: "#111827",
     marginBottom: 8,
   },
   welcomeSubtext: {
     fontSize: 14,
-    color: '#6b7280',
+    color: "#6b7280",
     marginBottom: 24,
   },
   inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: "#e5e7eb",
     borderRadius: 12,
     paddingHorizontal: 14,
-    backgroundColor: '#f9fafb',
+    backgroundColor: "#f9fafb",
     height: 52,
   },
   inputIcon: {
@@ -242,7 +244,7 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 52,
     fontSize: 16,
-    color: '#111827',
+    color: "#111827",
   },
   eyeIcon: {
     padding: 10,
@@ -251,8 +253,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
     borderRadius: 14,
     height: 52,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     marginTop: 18,
     shadowColor: colors.primary,
     shadowOffset: { width: 0, height: 4 },
@@ -261,16 +263,16 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   loginButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   formError: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fef2f2',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fef2f2",
     borderWidth: 1,
-    borderColor: '#fecaca',
+    borderColor: "#fecaca",
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
@@ -280,6 +282,6 @@ const styles = StyleSheet.create({
   formErrorText: {
     flex: 1,
     fontSize: 13,
-    color: '#b91c1c',
+    color: "#b91c1c",
   },
 });
