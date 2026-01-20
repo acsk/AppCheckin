@@ -30,21 +30,33 @@ const getApiUrl = (): string => {
     return configUrl;
   }
 
-  // 3️⃣ Fallback: se está em desenvolvimento local
-  if (isWeb && process.env.NODE_ENV === "development") {
-    console.log("📡 API URL (fallback dev):", CONFIG.api.development);
-    return CONFIG.api.development;
-  }
-
-  // 4️⃣ Produção web: usar config de produção
+  // 3️⃣ Em web (produção): tentar usar o host atual ou fallback
   if (isWeb) {
-    console.log("📡 API URL (fallback prod):", CONFIG.api.production);
+    // Se está em produção web, usar API de produção por padrão
+    console.log("📡 API URL (web):", CONFIG.api.production);
     return CONFIG.api.production;
   }
 
-  // 5️⃣ Mobile: usar config
+  // 4️⃣ Mobile: usar config de produção
   console.log("📡 API URL (mobile):", CONFIG.api.production);
   return CONFIG.api.production;
+};
+
+// Export como função também para poder recalcular em runtime
+export const getApiUrlRuntime = (): string => {
+  // Em tempo de execução, se for web, retornar a URL configurada
+  if (typeof window !== "undefined") {
+    // Temos acesso ao window, estamos em execução web
+    const appEnv = (window as any).__APP_ENV__ || "production";
+    const url = CONFIG.api[appEnv as keyof typeof CONFIG.api];
+
+    if (url) {
+      console.log(`📡 API URL (runtime ${appEnv}):`, url);
+      return url;
+    }
+  }
+
+  return getApiUrl();
 };
 
 export const API_URL = getApiUrl();
@@ -53,6 +65,7 @@ export const DEBUG_LOGS = process.env.EXPO_PUBLIC_DEBUG_LOGS === "true";
 
 export default {
   getApiUrl,
+  getApiUrlRuntime,
   API_URL,
   APP_ENV,
   DEBUG_LOGS,
