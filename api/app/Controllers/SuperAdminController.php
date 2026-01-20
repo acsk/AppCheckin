@@ -1178,5 +1178,53 @@ class SuperAdminController
 
         return $response->withHeader('Content-Type', 'application/json');
     }
+
+    /**
+     * Obter variáveis de ambiente (.env)
+     * GET /superadmin/env
+     * Apenas para SuperAdmin - NÃO exponha senhas em produção!
+     */
+    public function getEnvironmentVariables(Request $request, Response $response): Response
+    {
+        $userId = $request->getAttribute('userId');
+        $user = $this->usuarioModel->findById($userId);
+
+        // Verificar se é super admin
+        if ($user['role_id'] != 3) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Acesso negado. Apenas Super Admin pode acessar'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+
+        // Variáveis seguras para expor
+        $safeVars = [
+            'APP_ENV' => $_ENV['APP_ENV'] ?? 'unknown',
+            'APP_URL' => $_ENV['APP_URL'] ?? 'unknown',
+            'APP_DEBUG' => $_ENV['APP_DEBUG'] ?? false,
+            'APP_TIMEZONE' => $_ENV['APP_TIMEZONE'] ?? 'unknown',
+            'DB_HOST' => $_ENV['DB_HOST'] ?? 'unknown',
+            'DB_PORT' => $_ENV['DB_PORT'] ?? 3306,
+            'DB_NAME' => $_ENV['DB_NAME'] ?? 'unknown',
+            'DB_USER' => $_ENV['DB_USER'] ?? 'unknown',
+            // DB_PASS intencialmente não incluída por segurança
+            'JWT_EXPIRATION' => $_ENV['JWT_EXPIRATION'] ?? 86400,
+            'LOG_LEVEL' => $_ENV['LOG_LEVEL'] ?? 'error',
+            'LOG_PATH' => $_ENV['LOG_PATH'] ?? '/var/log/appcheckin',
+            'RATE_LIMIT_ENABLED' => $_ENV['RATE_LIMIT_ENABLED'] ?? true,
+            'RATE_LIMIT_MAX_REQUESTS' => $_ENV['RATE_LIMIT_MAX_REQUESTS'] ?? 100,
+            'RATE_LIMIT_WINDOW_SECONDS' => $_ENV['RATE_LIMIT_WINDOW_SECONDS'] ?? 60,
+        ];
+
+        // Adicionar aviso de segurança
+        $response->getBody()->write(json_encode([
+            'warning' => 'Dados de ambiente do servidor - Proteja este acesso',
+            'environment' => $safeVars,
+            'php_version' => phpversion(),
+            'timestamp' => date('Y-m-d H:i:s')
+        ], JSON_UNESCAPED_UNICODE));
+
+        return $response->withHeader('Content-Type', 'application/json');
+    }
 }
 

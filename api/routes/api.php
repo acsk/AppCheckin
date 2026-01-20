@@ -138,6 +138,9 @@ return function ($app) {
         $group->delete('/academias/{id}', [SuperAdminController::class, 'excluirAcademia']);
         $group->post('/academias/{tenantId}/admin', [SuperAdminController::class, 'criarAdminAcademia']);
         
+        // === VARIÁVEIS DE AMBIENTE (Debug) ===
+        $group->get('/env', [SuperAdminController::class, 'getEnvironmentVariables']);
+        
         // === PLANOS DE ALUNOS (de todas as academias) ===
         $group->get('/planos', [SuperAdminController::class, 'listarPlanosAlunos']);
         
