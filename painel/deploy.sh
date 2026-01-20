@@ -21,7 +21,7 @@ SOURCE_FONTS="$PROJECT_DIR/node_modules/@expo/vector-icons/build/vendor/react-na
 DIST_FONTS="$PROJECT_DIR/dist/_expo/Fonts"
 PUBLIC_FONTS_CSS="$PROJECT_DIR/public/fonts.css"
 DIST_FONTS_CSS="$PROJECT_DIR/dist/fonts.css"
-BASE_PATH="/painel/dist"
+BASE_PATH="/dist"
 
 # Step 1: Executar export do Expo
 echo -e "${BLUE}📦 Step 1: Exportando Expo para Web...${NC}"
