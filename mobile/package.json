@@ -9,9 +9,9 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "web:dev": "EXPO_PUBLIC_APP_ENV=development EXPO_PUBLIC_API_URL=http://localhost:8080 EXPO_PUBLIC_DEBUG_LOGS=true expo start --web",
-    "web:build:dev": "mv .env.production .env.production.bak && cp .env.development .env && expo export --platform web --clear && rm .env && mv .env.production.bak .env.production",
+    "web:build:dev": "mv .env.production .env.production.bak && cp .env.development .env && expo export --platform web --clear && rm .env && mv .env.production.bak .env.production && cp -r assets dist/",
     "web:prod": "EXPO_PUBLIC_APP_ENV=production EXPO_PUBLIC_API_URL=https://api.appcheckin.com expo start --web",
-    "web:build": "mv .env.development .env.development.bak && cp .env.production .env && expo export --platform web --clear && rm .env && mv .env.development.bak .env.development",
+    "web:build": "mv .env.development .env.development.bak && cp .env.production .env && expo export --platform web --clear && rm .env && mv .env.development.bak .env.development && cp -r assets dist/",
     "lint": "expo lint"
   },
   "dependencies": {
