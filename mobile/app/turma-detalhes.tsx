@@ -578,7 +578,7 @@ export default function TurmaDetalhesScreen() {
         return;
       }
 
-      const url = `http://localhost:8080/checkin/${checkinId}/desfazer`;
+      const url = `${getApiUrlRuntime()}/checkin/${checkinId}/desfazer`;
 
       const response = await fetch(url, {
         method: "DELETE",

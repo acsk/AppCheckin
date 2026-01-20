@@ -237,7 +237,7 @@ export default function AccountScreen() {
       }
 
       const params = modalidadeId ? `?modalidade_id=${modalidadeId}` : "";
-      const url = `http://localhost:8080/mobile/ranking/mensal${params}`;
+      const url = `${getApiUrlRuntime()}/mobile/ranking/mensal${params}`;
       const response = await fetch(url, {
         method: "GET",
         headers: {
@@ -282,7 +282,7 @@ export default function AccountScreen() {
         return;
       }
       const hoje = new Date().toISOString().split("T")[0];
-      const url = `http://localhost:8080/mobile/horarios-disponiveis?data=${hoje}`;
+      const url = `${getApiUrlRuntime()}/mobile/horarios-disponiveis?data=${hoje}`;
       const response = await fetch(url, {
         method: "GET",
         headers: {

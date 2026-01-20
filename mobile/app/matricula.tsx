@@ -1,18 +1,19 @@
-import { colors } from '@/src/theme/colors';
-import { Feather } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { colors } from "@/src/theme/colors";
+import { getApiUrlRuntime } from "@/src/utils/apiConfig";
+import { Feather } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+    ActivityIndicator,
+    Alert,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function MatriculaScreen() {
   const router = useRouter();
@@ -28,63 +29,64 @@ export default function MatriculaScreen() {
 
   const loadMatricula = async () => {
     try {
-      const token = await AsyncStorage.getItem('@appcheckin:token');
+      const token = await AsyncStorage.getItem("@appcheckin:token");
       if (!token) {
-        Alert.alert('Erro', 'Token não encontrado');
+        Alert.alert("Erro", "Token não encontrado");
         return;
       }
 
-      console.log('Buscando matrícula:', matriculaId);
+      console.log("Buscando matrícula:", matriculaId);
+      const baseUrl = getApiUrlRuntime();
       const response = await fetch(
-        `http://localhost:8080/mobile/matriculas/${matriculaId}`,
+        `${baseUrl}/mobile/matriculas/${matriculaId}`,
         {
-          method: 'GET',
+          method: "GET",
           headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
           },
-        }
+        },
       );
 
       const data = await response.json();
-      console.log('Matrícula carregada:', JSON.stringify(data, null, 2));
+      console.log("Matrícula carregada:", JSON.stringify(data, null, 2));
 
       if (data.success && data.data) {
         setMatricula(data.data.matricula);
         setPagamentos(data.data.pagamentos || []);
         setResumo(data.data.resumo_financeiro);
       } else {
-        throw new Error(data.error || 'Erro ao carregar matrícula');
+        throw new Error(data.error || "Erro ao carregar matrícula");
       }
     } catch (error) {
-      console.error('Erro ao carregar matrícula:', error);
-      Alert.alert('Erro', 'Não foi possível carregar os detalhes da matrícula');
+      console.error("Erro ao carregar matrícula:", error);
+      Alert.alert("Erro", "Não foi possível carregar os detalhes da matrícula");
     } finally {
       setLoading(false);
     }
   };
 
   const formatarValor = (valor) => {
-    return `R$ ${parseFloat(valor).toFixed(2).replace('.', ',')}`;
+    return `R$ ${parseFloat(valor).toFixed(2).replace(".", ",")}`;
   };
 
   const formatarData = (data) => {
-    if (!data) return '-';
-    return new Date(data).toLocaleDateString('pt-BR');
+    if (!data) return "-";
+    return new Date(data).toLocaleDateString("pt-BR");
   };
 
   const getStatusColor = (status) => {
     switch (status.toLowerCase()) {
-      case 'pago':
-        return '#4CAF50';
-      case 'aguardando':
-        return '#FFA726';
-      case 'vencido':
-        return '#EF5350';
-      case 'ativa':
-        return '#4CAF50';
-      case 'inativa':
-        return '#9E9E9E';
+      case "pago":
+        return "#4CAF50";
+      case "aguardando":
+        return "#FFA726";
+      case "vencido":
+        return "#EF5350";
+      case "ativa":
+        return "#4CAF50";
+      case "inativa":
+        return "#9E9E9E";
       default:
         return colors.primary;
     }
@@ -119,7 +121,7 @@ export default function MatriculaScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['right', 'bottom', 'left']}>
+    <SafeAreaView style={styles.container} edges={["right", "bottom", "left"]}>
       <View style={styles.headerTop}>
         <TouchableOpacity onPress={() => router.back()}>
           <Feather name="arrow-left" size={24} color={colors.primary} />
@@ -128,7 +130,7 @@ export default function MatriculaScreen() {
         <View style={{ width: 24 }} />
       </View>
 
-      <ScrollView 
+      <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
@@ -152,20 +154,26 @@ export default function MatriculaScreen() {
                 <Text style={styles.label}>Plano</Text>
                 <Text style={styles.value}>{matricula.plano.nome}</Text>
                 {matricula.plano.modalidade && (
-                  <View style={[
-                    styles.modalidadeBadge,
-                    { backgroundColor: matricula.plano.modalidade.cor + '20' }
-                  ]}>
-                    <View 
+                  <View
+                    style={[
+                      styles.modalidadeBadge,
+                      {
+                        backgroundColor: matricula.plano.modalidade.cor + "20",
+                      },
+                    ]}
+                  >
+                    <View
                       style={[
                         styles.modalidadeDot,
-                        { backgroundColor: matricula.plano.modalidade.cor }
+                        { backgroundColor: matricula.plano.modalidade.cor },
                       ]}
                     />
-                    <Text style={[
-                      styles.modalidadeText,
-                      { color: matricula.plano.modalidade.cor }
-                    ]}>
+                    <Text
+                      style={[
+                        styles.modalidadeText,
+                        { color: matricula.plano.modalidade.cor },
+                      ]}
+                    >
                       {matricula.plano.modalidade.nome}
                     </Text>
                   </View>
@@ -180,7 +188,8 @@ export default function MatriculaScreen() {
               <View style={styles.infoContent}>
                 <Text style={styles.label}>Período</Text>
                 <Text style={styles.value}>
-                  {formatarData(matricula.datas.inicio)} a {formatarData(matricula.datas.vencimento)}
+                  {formatarData(matricula.datas.inicio)} a{" "}
+                  {formatarData(matricula.datas.vencimento)}
                 </Text>
               </View>
             </View>
@@ -191,15 +200,22 @@ export default function MatriculaScreen() {
               <Feather name="activity" size={18} color={colors.primary} />
               <View style={styles.infoContent}>
                 <Text style={styles.label}>Status</Text>
-                <View style={[
-                  styles.statusBadge,
-                  { backgroundColor: getStatusColor(matricula.status) + '20' }
-                ]}>
-                  <Text style={[
-                    styles.statusText,
-                    { color: getStatusColor(matricula.status) }
-                  ]}>
-                    {matricula.status.charAt(0).toUpperCase() + matricula.status.slice(1)}
+                <View
+                  style={[
+                    styles.statusBadge,
+                    {
+                      backgroundColor: getStatusColor(matricula.status) + "20",
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.statusText,
+                      { color: getStatusColor(matricula.status) },
+                    ]}
+                  >
+                    {matricula.status.charAt(0).toUpperCase() +
+                      matricula.status.slice(1)}
                   </Text>
                 </View>
               </View>
@@ -221,7 +237,7 @@ export default function MatriculaScreen() {
                 </View>
                 <View style={styles.financialItem}>
                   <Text style={styles.financialLabel}>Total Pago</Text>
-                  <Text style={[styles.financialValue, { color: '#4CAF50' }]}>
+                  <Text style={[styles.financialValue, { color: "#4CAF50" }]}>
                     {formatarValor(resumo.total_pago)}
                   </Text>
                 </View>
@@ -232,14 +248,15 @@ export default function MatriculaScreen() {
               <View style={styles.financialRow}>
                 <View style={styles.financialItem}>
                   <Text style={styles.financialLabel}>Pendente</Text>
-                  <Text style={[styles.financialValue, { color: '#FFA726' }]}>
+                  <Text style={[styles.financialValue, { color: "#FFA726" }]}>
                     {formatarValor(resumo.total_pendente)}
                   </Text>
                 </View>
                 <View style={styles.financialItem}>
                   <Text style={styles.financialLabel}>Progresso</Text>
                   <Text style={styles.financialValue}>
-                    {resumo.pagamentos_realizados}/{resumo.quantidade_pagamentos}
+                    {resumo.pagamentos_realizados}/
+                    {resumo.quantidade_pagamentos}
                   </Text>
                 </View>
               </View>
@@ -248,12 +265,12 @@ export default function MatriculaScreen() {
                 <>
                   <View style={styles.divider} />
                   <View style={styles.progressBar}>
-                    <View 
+                    <View
                       style={[
                         styles.progressFill,
-                        { 
-                          width: `${(resumo.pagamentos_realizados / resumo.quantidade_pagamentos) * 100}%` 
-                        }
+                        {
+                          width: `${(resumo.pagamentos_realizados / resumo.quantidade_pagamentos) * 100}%`,
+                        },
                       ]}
                     />
                   </View>
@@ -268,11 +285,11 @@ export default function MatriculaScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Histórico de Pagamentos</Text>
             {pagamentos.map((pagamento) => (
-              <View 
+              <View
                 key={pagamento.id}
                 style={[
                   styles.paymentCard,
-                  pagamento.pendente && { borderLeftColor: '#FFA726' }
+                  pagamento.pendente && { borderLeftColor: "#FFA726" },
                 ]}
               >
                 <View style={styles.paymentHeader}>
@@ -284,14 +301,21 @@ export default function MatriculaScreen() {
                       Vencimento: {formatarData(pagamento.data_vencimento)}
                     </Text>
                   </View>
-                  <View style={[
-                    styles.paymentStatusBadge,
-                    { backgroundColor: getStatusColor(pagamento.status) + '20' }
-                  ]}>
-                    <Text style={[
-                      styles.paymentStatusText,
-                      { color: getStatusColor(pagamento.status) }
-                    ]}>
+                  <View
+                    style={[
+                      styles.paymentStatusBadge,
+                      {
+                        backgroundColor:
+                          getStatusColor(pagamento.status) + "20",
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.paymentStatusText,
+                        { color: getStatusColor(pagamento.status) },
+                      ]}
+                    >
                       {pagamento.status}
                     </Text>
                   </View>
@@ -299,10 +323,10 @@ export default function MatriculaScreen() {
 
                 {pagamento.data_pagamento && (
                   <View style={styles.paymentDetails}>
-                    <Feather 
-                      name="check-circle" 
-                      size={14} 
-                      color={getStatusColor(pagamento.status)} 
+                    <Feather
+                      name="check-circle"
+                      size={14}
+                      color={getStatusColor(pagamento.status)}
                     />
                     <Text style={styles.paymentDetailText}>
                       Pago em {formatarData(pagamento.data_pagamento)}
@@ -317,15 +341,10 @@ export default function MatriculaScreen() {
 
                 {pagamento.pendente && (
                   <View style={styles.paymentDetails}>
-                    <Feather 
-                      name="alert-circle" 
-                      size={14} 
-                      color="#FFA726" 
-                    />
-                    <Text style={[
-                      styles.paymentDetailText,
-                      { color: '#FFA726' }
-                    ]}>
+                    <Feather name="alert-circle" size={14} color="#FFA726" />
+                    <Text
+                      style={[styles.paymentDetailText, { color: "#FFA726" }]}
+                    >
                       Aguardando pagamento
                     </Text>
                   </View>
@@ -342,22 +361,22 @@ export default function MatriculaScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: "#f5f5f5",
   },
   headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: "#f0f0f0",
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#000',
+    fontWeight: "700",
+    color: "#000",
   },
   scrollContent: {
     padding: 16,
@@ -365,23 +384,23 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   section: {
     marginBottom: 24,
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#000',
+    fontWeight: "600",
+    color: "#000",
     marginBottom: 12,
   },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 16,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -389,12 +408,12 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: "#f0f0f0",
     marginVertical: 12,
   },
   infoRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    alignItems: "flex-start",
     gap: 12,
   },
   infoContent: {
@@ -402,23 +421,23 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 12,
-    color: '#999',
+    color: "#999",
     marginBottom: 4,
   },
   value: {
     fontSize: 14,
-    color: '#000',
-    fontWeight: '600',
+    color: "#000",
+    fontWeight: "600",
   },
   modalidadeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 6,
     marginTop: 8,
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
   },
   modalidadeDot: {
     width: 10,
@@ -427,22 +446,22 @@ const styles = StyleSheet.create({
   },
   modalidadeText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   statusBadge: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 6,
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
     marginTop: 8,
   },
   statusText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   financialRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    justifyContent: "space-between",
     gap: 12,
   },
   financialItem: {
@@ -450,42 +469,42 @@ const styles = StyleSheet.create({
   },
   financialLabel: {
     fontSize: 12,
-    color: '#999',
+    color: "#999",
     marginBottom: 4,
   },
   financialValue: {
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: "700",
     color: colors.primary,
   },
   progressBar: {
     height: 6,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: "#f0f0f0",
     borderRadius: 3,
-    overflow: 'hidden',
+    overflow: "hidden",
     marginTop: 12,
   },
   progressFill: {
-    height: '100%',
-    backgroundColor: '#4CAF50',
+    height: "100%",
+    backgroundColor: "#4CAF50",
   },
   paymentCard: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 14,
     marginBottom: 12,
     borderLeftWidth: 4,
-    borderLeftColor: '#4CAF50',
-    shadowColor: '#000',
+    borderLeftColor: "#4CAF50",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
     shadowRadius: 4,
     elevation: 2,
   },
   paymentHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
     gap: 12,
   },
   paymentInfo: {
@@ -493,13 +512,13 @@ const styles = StyleSheet.create({
   },
   paymentValue: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#000',
+    fontWeight: "700",
+    color: "#000",
     marginBottom: 4,
   },
   paymentDate: {
     fontSize: 12,
-    color: '#999',
+    color: "#999",
   },
   paymentStatusBadge: {
     paddingHorizontal: 10,
@@ -508,35 +527,35 @@ const styles = StyleSheet.create({
   },
   paymentStatusText: {
     fontSize: 11,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   paymentDetails: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     marginTop: 10,
     paddingTop: 10,
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    borderTopColor: "#f0f0f0",
   },
   paymentDetailText: {
     fontSize: 12,
-    color: '#666',
+    color: "#666",
   },
   paymentMethod: {
     fontSize: 12,
-    color: '#999',
-    fontStyle: 'italic',
+    color: "#999",
+    fontStyle: "italic",
   },
   emptyContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
   emptyText: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#999',
+    fontWeight: "600",
+    color: "#999",
     marginTop: 12,
   },
 });
