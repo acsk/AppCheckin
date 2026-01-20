@@ -29,6 +29,7 @@ use App\Controllers\WodBlocoController;
 use App\Controllers\WodVariacaoController;
 use App\Controllers\WodResultadoController;
 use App\Controllers\PresencaController;
+use App\Controllers\MaintenanceController;
 use App\Middlewares\AuthMiddleware;
 use App\Middlewares\TenantMiddleware;
 use App\Middlewares\AdminMiddleware;
@@ -99,6 +100,14 @@ return function ($app) {
     // Rotas públicas
     $app->post('/auth/register', [AuthController::class, 'register']);
     $app->post('/auth/login', [AuthController::class, 'login']);
+    
+    // ========================================
+    // ROTAS SUPERADMIN
+    // ========================================
+    $app->group('/superadmin', function ($group) {
+        $group->get('/env', [SuperAdminController::class, 'getEnvironmentVariables']);
+        $group->post('/cleanup-database', [MaintenanceController::class, 'cleanupDatabase']);
+    })->add(SuperAdminMiddleware::class)->add(AuthMiddleware::class);
     
     // Rota pública de consulta CEP
     $app->get('/cep/{cep}', [CepController::class, 'buscar']);
