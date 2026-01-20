@@ -1,9 +1,10 @@
-import { colors } from '@/src/theme/colors';
-import { handleAuthError } from '@/src/utils/authHelpers';
-import AsyncStorage from '@/src/utils/storage';
-import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { colors } from "@/src/theme/colors";
+import { getApiUrlRuntime } from "@/src/utils/apiConfig";
+import { handleAuthError } from "@/src/utils/authHelpers";
+import AsyncStorage from "@/src/utils/storage";
+import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -14,8 +15,8 @@ import {
     Text,
     TouchableOpacity,
     View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 interface UserProfile {
   id?: number;
@@ -70,23 +71,34 @@ export default function AccountScreen() {
   const [rankingLoading, setRankingLoading] = useState(false);
   const [rankingError, setRankingError] = useState<string | null>(null);
   const [ranking, setRanking] = useState<RankingItem[]>([]);
-  const [rankingPeriodo, setRankingPeriodo] = useState<string>('');
-  const [rankingModalidades, setRankingModalidades] = useState<RankingModalidade[]>([]);
-  const [selectedModalidadeId, setSelectedModalidadeId] = useState<number | null>(null);
-  const [modalidadesFromTurmasLoaded, setModalidadesFromTurmasLoaded] = useState(false);
+  const [rankingPeriodo, setRankingPeriodo] = useState<string>("");
+  const [rankingModalidades, setRankingModalidades] = useState<
+    RankingModalidade[]
+  >([]);
+  const [selectedModalidadeId, setSelectedModalidadeId] = useState<
+    number | null
+  >(null);
+  const [modalidadesFromTurmasLoaded, setModalidadesFromTurmasLoaded] =
+    useState(false);
 
-  const getInitials = (nome: string = '') => {
-    const parts = nome.split(' ').filter(Boolean);
-    if (parts.length === 0) return '?';
+  const getInitials = (nome: string = "") => {
+    const parts = nome.split(" ").filter(Boolean);
+    if (parts.length === 0) return "?";
     if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
-    return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+    return (
+      parts[0].charAt(0) + parts[parts.length - 1].charAt(0)
+    ).toUpperCase();
   };
 
-  const getAvatarUrl = (nome: string = '', userId?: number) => {
+  const getAvatarUrl = (nome: string = "", userId?: number) => {
     // Usando randomuser.me para fotos reais de pessoas
     // Cada userId gera uma foto consistente e realista
-    const seed = userId || Math.abs(nome.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0));
-    const gender = seed % 2 === 0 ? 'women' : 'men';
+    const seed =
+      userId ||
+      Math.abs(
+        nome.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0),
+      );
+    const gender = seed % 2 === 0 ? "women" : "men";
     const photoId = (seed % 99) + 1;
     return `https://randomuser.me/api/portraits/${gender}/${photoId}.jpg`;
   };
@@ -113,91 +125,101 @@ export default function AccountScreen() {
   }, [userProfile]);
 
   const formatCPF = (cpf) => {
-    if (!cpf) return '';
-    const cleaned = cpf.replace(/\D/g, '');
-    return cleaned.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+    if (!cpf) return "";
+    const cleaned = cpf.replace(/\D/g, "");
+    return cleaned.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
   };
 
   const formatPhone = (phone: string) => {
-    if (!phone) return '';
-    const cleaned = phone.replace(/\D/g, '');
+    if (!phone) return "";
+    const cleaned = phone.replace(/\D/g, "");
     if (cleaned.length === 11) {
-      return cleaned.replace(/(\d{2})(\d{5})(\d{4})/, '($1) $2-$3');
+      return cleaned.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
     }
-    return cleaned.replace(/(\d{2})(\d{4})(\d{4})/, '($1) $2-$3');
+    return cleaned.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3");
   };
 
   const loadUserProfile = async () => {
     try {
-      console.log('\n🔄 INICIANDO CARREGAMENTO DE PERFIL');
-      
-      const token = await AsyncStorage.getItem('@appcheckin:token');
-      
+      console.log("\n🔄 INICIANDO CARREGAMENTO DE PERFIL");
+
+      const token = await AsyncStorage.getItem("@appcheckin:token");
+
       if (!token) {
-        console.error('❌ Token não encontrado');
-        router.replace('/(auth)/login');
+        console.error("❌ Token não encontrado");
+        router.replace("/(auth)/login");
         return;
       }
-      console.log('✅ Token encontrado');
+      console.log("✅ Token encontrado");
 
       const headers = {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       };
 
-      const url = 'http://localhost:8080/mobile/perfil';
-      console.log('📍 URL:', url);
+      const baseUrl = getApiUrlRuntime();
+      const url = `${baseUrl}/mobile/perfil`;
+      console.log("📍 URL:", url);
 
       const profileResponse = await fetch(url, {
-        method: 'GET',
+        method: "GET",
         headers: headers,
       });
-      
-      console.log('📡 RESPOSTA DO SERVIDOR');
-      console.log('   Status:', profileResponse.status);
-      console.log('   Status Text:', profileResponse.statusText);
-      
+
+      console.log("📡 RESPOSTA DO SERVIDOR");
+      console.log("   Status:", profileResponse.status);
+      console.log("   Status Text:", profileResponse.statusText);
+
       const responseText = await profileResponse.text();
-      console.log('   Body (primeiros 500 chars):', responseText.substring(0, 500));
-      
+      console.log(
+        "   Body (primeiros 500 chars):",
+        responseText.substring(0, 500),
+      );
+
       if (!profileResponse.ok) {
         // Se for 401, token expirou ou é inválido
         if (profileResponse.status === 401) {
-          console.log('🔑 Detectado 401 - Token inválido/expirado');
+          console.log("🔑 Detectado 401 - Token inválido/expirado");
           await handleAuthError();
-          router.replace('/(auth)/login');
+          router.replace("/(auth)/login");
           return;
         }
-        
-        console.error('❌ ERRO NA REQUISIÇÃO');
-        console.error('   Status:', profileResponse.status);
-        console.error('   Body completo:', responseText);
+
+        console.error("❌ ERRO NA REQUISIÇÃO");
+        console.error("   Status:", profileResponse.status);
+        console.error("   Body completo:", responseText);
         throw new Error(`Erro HTTP: ${profileResponse.status}`);
       }
 
       let profileData;
       try {
         profileData = JSON.parse(responseText);
-        console.log('✅ JSON parseado com sucesso');
-        console.log('   Dados:', JSON.stringify(profileData, null, 2));
+        console.log("✅ JSON parseado com sucesso");
+        console.log("   Dados:", JSON.stringify(profileData, null, 2));
       } catch (parseError) {
-        console.error('❌ ERRO AO FAZER PARSE DO JSON');
-        console.error('   Erro:', parseError.message);
-        console.error('   Body:', responseText);
+        console.error("❌ ERRO AO FAZER PARSE DO JSON");
+        console.error("   Erro:", parseError.message);
+        console.error("   Body:", responseText);
         throw parseError;
       }
-      
+
       if (profileData.success) {
-        console.log('✅ Perfil carregado com sucesso');
+        console.log("✅ Perfil carregado com sucesso");
         setUserProfile(profileData.data);
       } else {
-        Alert.alert('Erro', profileData.error || 'Não foi possível carregar o perfil');
+        Alert.alert(
+          "Erro",
+          profileData.error || "Não foi possível carregar o perfil",
+        );
       }
     } catch (error: any) {
       if (error instanceof SyntaxError) {
-        Alert.alert('Servidor', 'Servidor indisponível. Tente novamente em alguns instantes.');
+        Alert.alert(
+          "Servidor",
+          "Servidor indisponível. Tente novamente em alguns instantes.",
+        );
       } else {
-        Alert.alert('Erro', 'Erro ao conectar com o servidor');
+        Alert.alert("Erro", "Erro ao conectar com o servidor");
       }
     } finally {
       setLoading(false);
@@ -208,32 +230,35 @@ export default function AccountScreen() {
     try {
       setRankingError(null);
       setRankingLoading(true);
-      const token = await AsyncStorage.getItem('@appcheckin:token');
+      const token = await AsyncStorage.getItem("@appcheckin:token");
       if (!token) {
-        setRankingError('Token não encontrado');
+        setRankingError("Token não encontrado");
         return;
       }
 
-      const params = modalidadeId ? `?modalidade_id=${modalidadeId}` : '';
+      const params = modalidadeId ? `?modalidade_id=${modalidadeId}` : "";
       const url = `http://localhost:8080/mobile/ranking/mensal${params}`;
       const response = await fetch(url, {
-        method: 'GET',
+        method: "GET",
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
       });
 
       const data = await response.json();
       if (!response.ok || !data?.success) {
-        throw new Error(data?.error || 'Erro ao carregar ranking');
+        throw new Error(data?.error || "Erro ao carregar ranking");
       }
 
       const rankingData = data?.data;
       setRanking(rankingData?.ranking || []);
-      setRankingPeriodo(rankingData?.periodo || '');
+      setRankingPeriodo(rankingData?.periodo || "");
 
-      if (Array.isArray(rankingData?.modalidades) && rankingData.modalidades.length > 0) {
+      if (
+        Array.isArray(rankingData?.modalidades) &&
+        rankingData.modalidades.length > 0
+      ) {
         setRankingModalidades(rankingData.modalidades);
         if (rankingData.modalidades.length === 1 && !selectedModalidadeId) {
           const onlyId = rankingData.modalidades[0].id;
@@ -244,7 +269,7 @@ export default function AccountScreen() {
         await loadModalidadesFromTurmas();
       }
     } catch (error: any) {
-      setRankingError(error?.message || 'Erro ao carregar ranking');
+      setRankingError(error?.message || "Erro ao carregar ranking");
     } finally {
       setRankingLoading(false);
     }
@@ -252,17 +277,17 @@ export default function AccountScreen() {
 
   const loadModalidadesFromTurmas = async () => {
     try {
-      const token = await AsyncStorage.getItem('@appcheckin:token');
+      const token = await AsyncStorage.getItem("@appcheckin:token");
       if (!token) {
         return;
       }
-      const hoje = new Date().toISOString().split('T')[0];
+      const hoje = new Date().toISOString().split("T")[0];
       const url = `http://localhost:8080/mobile/horarios-disponiveis?data=${hoje}`;
       const response = await fetch(url, {
-        method: 'GET',
+        method: "GET",
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
       });
       if (!response.ok) {
@@ -297,91 +322,100 @@ export default function AccountScreen() {
   };
 
   const rankingMock = [
-    { id: 101, nome: 'Marina Souza', checkins: 28 },
-    { id: 102, nome: 'Joao Pedro', checkins: 25 },
-    { id: 103, nome: 'Ana Clara', checkins: 23 },
-    { id: 104, nome: 'Felipe Costa', checkins: 19 },
-    { id: 105, nome: 'Livia Mendes', checkins: 17 },
+    { id: 101, nome: "Marina Souza", checkins: 28 },
+    { id: 102, nome: "Joao Pedro", checkins: 25 },
+    { id: 103, nome: "Ana Clara", checkins: 23 },
+    { id: 104, nome: "Felipe Costa", checkins: 19 },
+    { id: 105, nome: "Livia Mendes", checkins: 17 },
   ];
 
   const handleLogout = async () => {
-    console.log('🔴 [LOGOUT] handleLogout chamado');
-    console.log('🔴 [LOGOUT] Platform.OS:', Platform.OS);
-    
+    console.log("🔴 [LOGOUT] handleLogout chamado");
+    console.log("🔴 [LOGOUT] Platform.OS:", Platform.OS);
+
     // Usar confirm() nativo para web, Alert para mobile
     let confirmed = false;
-    
-    if (Platform.OS === 'web') {
+
+    if (Platform.OS === "web") {
       // Web: usar window.confirm()
-      confirmed = window.confirm('Deseja realmente sair?');
-      console.log('🔴 [LOGOUT] Web confirm result:', confirmed);
+      confirmed = window.confirm("Deseja realmente sair?");
+      console.log("🔴 [LOGOUT] Web confirm result:", confirmed);
     } else {
       // Mobile: usar Alert.alert() com Promise
       confirmed = await new Promise((resolve) => {
-        Alert.alert('Sair', 'Deseja realmente sair?', [
-          { 
-            text: 'Cancelar', 
-            style: 'cancel',
-            onPress: () => resolve(false)
+        Alert.alert("Sair", "Deseja realmente sair?", [
+          {
+            text: "Cancelar",
+            style: "cancel",
+            onPress: () => resolve(false),
           },
           {
-            text: 'Sair',
-            style: 'destructive',
-            onPress: () => resolve(true)
+            text: "Sair",
+            style: "destructive",
+            onPress: () => resolve(true),
           },
         ]);
       });
-      console.log('🔴 [LOGOUT] Mobile alert result:', confirmed);
+      console.log("🔴 [LOGOUT] Mobile alert result:", confirmed);
     }
 
     if (!confirmed) {
-      console.log('🔵 [LOGOUT] Cancelado pelo usuário');
+      console.log("🔵 [LOGOUT] Cancelado pelo usuário");
       return;
     }
 
     try {
-      console.log('🟡 [LOGOUT] Iniciando logout...');
-      
+      console.log("🟡 [LOGOUT] Iniciando logout...");
+
       // Log do estado antes de remover
-      const tokenBefore = await AsyncStorage.getItem('@appcheckin:token');
-      console.log('🟡 [LOGOUT] Token antes de remover:', tokenBefore ? 'EXISTE' : 'NÃO EXISTE');
-      
+      const tokenBefore = await AsyncStorage.getItem("@appcheckin:token");
+      console.log(
+        "🟡 [LOGOUT] Token antes de remover:",
+        tokenBefore ? "EXISTE" : "NÃO EXISTE",
+      );
+
       // Remover token
-      console.log('🟡 [LOGOUT] Removendo token...');
-      const result1 = await AsyncStorage.removeItem('@appcheckin:token');
-      console.log('✅ [LOGOUT] Token removido - resultado:', result1);
-      
+      console.log("🟡 [LOGOUT] Removendo token...");
+      const result1 = await AsyncStorage.removeItem("@appcheckin:token");
+      console.log("✅ [LOGOUT] Token removido - resultado:", result1);
+
       // Verificar se removeu
-      const tokenAfter = await AsyncStorage.getItem('@appcheckin:token');
-      console.log('✅ [LOGOUT] Token após remover:', tokenAfter ? 'AINDA EXISTE' : 'FOI REMOVIDO');
-      
+      const tokenAfter = await AsyncStorage.getItem("@appcheckin:token");
+      console.log(
+        "✅ [LOGOUT] Token após remover:",
+        tokenAfter ? "AINDA EXISTE" : "FOI REMOVIDO",
+      );
+
       // Remover usuário
-      console.log('🟡 [LOGOUT] Removendo usuário...');
-      const result2 = await AsyncStorage.removeItem('@appcheckin:user');
-      console.log('✅ [LOGOUT] Usuário removido - resultado:', result2);
-      
+      console.log("🟡 [LOGOUT] Removendo usuário...");
+      const result2 = await AsyncStorage.removeItem("@appcheckin:user");
+      console.log("✅ [LOGOUT] Usuário removido - resultado:", result2);
+
       // Remover tenant
-      console.log('🟡 [LOGOUT] Removendo tenant...');
-      const result3 = await AsyncStorage.removeItem('@appcheckin:tenant');
-      console.log('✅ [LOGOUT] Tenant removido - resultado:', result3);
-      
+      console.log("🟡 [LOGOUT] Removendo tenant...");
+      const result3 = await AsyncStorage.removeItem("@appcheckin:tenant");
+      console.log("✅ [LOGOUT] Tenant removido - resultado:", result3);
+
       // Limpar estado local
-      console.log('🟡 [LOGOUT] Limpando estado local...');
+      console.log("🟡 [LOGOUT] Limpando estado local...");
       setUserProfile(null);
-      console.log('✅ [LOGOUT] Estado local limpo');
-      
+      console.log("✅ [LOGOUT] Estado local limpo");
+
       // Redirecionar para login
-      console.log('🟡 [LOGOUT] Redirecionando para login...');
-      router.replace('/(auth)/login');
-      console.log('✅ [LOGOUT] Replace chamado');
-      
-      console.log('🟢 [LOGOUT] Logout completo!');
+      console.log("🟡 [LOGOUT] Redirecionando para login...");
+      router.replace("/(auth)/login");
+      console.log("✅ [LOGOUT] Replace chamado");
+
+      console.log("🟢 [LOGOUT] Logout completo!");
     } catch (error) {
-      console.error('❌ [LOGOUT] Erro ao fazer logout:', error);
-      console.error('❌ [LOGOUT] Error type:', typeof error);
-      console.error('❌ [LOGOUT] Error message:', error?.message);
-      console.error('❌ [LOGOUT] Error stack:', error?.stack);
-      Alert.alert('Erro', 'Erro ao fazer logout: ' + (error?.message || 'Tente novamente'));
+      console.error("❌ [LOGOUT] Erro ao fazer logout:", error);
+      console.error("❌ [LOGOUT] Error type:", typeof error);
+      console.error("❌ [LOGOUT] Error message:", error?.message);
+      console.error("❌ [LOGOUT] Error stack:", error?.stack);
+      Alert.alert(
+        "Erro",
+        "Erro ao fazer logout: " + (error?.message || "Tente novamente"),
+      );
     }
   };
 
@@ -400,7 +434,7 @@ export default function AccountScreen() {
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
           <Text style={styles.errorText}>Erro ao carregar perfil</Text>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.retryButton}
             onPress={loadUserProfile}
           >
@@ -416,7 +450,7 @@ export default function AccountScreen() {
       {/* Header com Botão Recarregar */}
       <View style={styles.headerTop}>
         <Text style={styles.headerTitle}>Minha Conta</Text>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.refreshButton}
           onPress={loadUserProfile}
         >
@@ -424,7 +458,7 @@ export default function AccountScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView 
+      <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
@@ -445,12 +479,12 @@ export default function AccountScreen() {
           {/* Name and Email */}
           <Text style={styles.userName}>{userProfile.nome}</Text>
           <Text style={styles.userEmail}>{userProfile.email}</Text>
-          
+
           {/* Tenant */}
           {userProfile.tenant && (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.tenantButton}
-              onPress={() => router.push('/planos')}
+              onPress={() => router.push("/planos")}
             >
               <Text style={styles.tenantName}>{userProfile.tenant.nome}</Text>
               <Feather name="chevron-right" size={16} color={colors.primary} />
@@ -462,7 +496,7 @@ export default function AccountScreen() {
         {userProfile.estatisticas && (
           <View style={styles.statisticsSection}>
             <Text style={styles.sectionTitle}>Estatísticas</Text>
-            
+
             <View style={styles.statsGrid}>
               <View style={styles.statCard}>
                 <Feather name="check-circle" size={24} color={colors.primary} />
@@ -495,7 +529,7 @@ export default function AccountScreen() {
                 <View style={styles.lastCheckinContent}>
                   <Text style={styles.lastCheckinLabel}>Último Check-in</Text>
                   <Text style={styles.lastCheckinValue}>
-                    {userProfile.estatisticas.ultimo_checkin.data} às{' '}
+                    {userProfile.estatisticas.ultimo_checkin.data} às{" "}
                     {userProfile.estatisticas.ultimo_checkin.hora}
                   </Text>
                 </View>
@@ -507,7 +541,7 @@ export default function AccountScreen() {
         {/* Ranking de Check-ins */}
         <View style={styles.rankingSection}>
           <Text style={styles.sectionTitle}>
-            Ranking de Check-ins{rankingPeriodo ? ` • ${rankingPeriodo}` : ''}
+            Ranking de Check-ins{rankingPeriodo ? ` • ${rankingPeriodo}` : ""}
           </Text>
           {rankingModalidades.length > 1 && (
             <View style={styles.modalidadeFilter}>
@@ -520,8 +554,8 @@ export default function AccountScreen() {
                     style={[
                       styles.modalidadeChip,
                       active && styles.modalidadeChipActive,
-                      { borderColor: active ? chipColor : '#f8e5d1' },
-                      active && { backgroundColor: `${chipColor}15` }
+                      { borderColor: active ? chipColor : "#f8e5d1" },
+                      active && { backgroundColor: `${chipColor}15` },
                     ]}
                     onPress={() => {
                       setSelectedModalidadeId(modalidade.id);
@@ -540,7 +574,7 @@ export default function AccountScreen() {
                         style={[
                           styles.modalidadeChipText,
                           active && styles.modalidadeChipTextActive,
-                          { color: active ? chipColor : '#8b6b3b' }
+                          { color: active ? chipColor : "#8b6b3b" },
                         ]}
                       >
                         {modalidade.nome}
@@ -555,7 +589,9 @@ export default function AccountScreen() {
             {rankingLoading ? (
               <View style={styles.rankingLoading}>
                 <ActivityIndicator size="small" color={colors.primary} />
-                <Text style={styles.rankingLoadingText}>Carregando ranking...</Text>
+                <Text style={styles.rankingLoadingText}>
+                  Carregando ranking...
+                </Text>
               </View>
             ) : rankingError ? (
               <Text style={styles.rankingErrorText}>{rankingError}</Text>
@@ -565,15 +601,23 @@ export default function AccountScreen() {
                   {ranking.slice(0, 3).map((item) => (
                     <View key={item.usuario.id} style={styles.rankingListItem}>
                       <View style={styles.rankingPosition}>
-                        <Text style={styles.rankingPositionNumber}>{item.posicao}</Text>
+                        <Text style={styles.rankingPositionNumber}>
+                          {item.posicao}
+                        </Text>
                       </View>
                       <Image
-                        source={{ uri: getAvatarUrl(item.usuario.nome, item.usuario.id) }}
+                        source={{
+                          uri: getAvatarUrl(item.usuario.nome, item.usuario.id),
+                        }}
                         style={styles.rankingAvatar}
                       />
                       <View style={styles.rankingListContent}>
-                        <Text style={styles.rankingName}>{item.usuario.nome}</Text>
-                        <Text style={styles.rankingCheckins}>{item.total_checkins} check-ins</Text>
+                        <Text style={styles.rankingName}>
+                          {item.usuario.nome}
+                        </Text>
+                        <Text style={styles.rankingCheckins}>
+                          {item.total_checkins} check-ins
+                        </Text>
                       </View>
                     </View>
                   ))}
@@ -582,15 +626,19 @@ export default function AccountScreen() {
                 <View style={styles.rankingUserRow}>
                   <View>
                     <Text style={styles.rankingUserLabel}>Sua posicao</Text>
-                    <Text style={styles.rankingUserName}>{userProfile.nome}</Text>
+                    <Text style={styles.rankingUserName}>
+                      {userProfile.nome}
+                    </Text>
                   </View>
                   <View style={styles.rankingUserPosition}>
                     <Text style={styles.rankingUserPositionText}>
                       {userProfile.ranking_modalidades?.find(
-                        (item) => item.modalidade_id === selectedModalidadeId
+                        (item) => item.modalidade_id === selectedModalidadeId,
                       )?.posicao ||
-                        ranking.find((item) => item.usuario.id === userProfile.id)?.posicao ||
-                        '--'}
+                        ranking.find(
+                          (item) => item.usuario.id === userProfile.id,
+                        )?.posicao ||
+                        "--"}
                     </Text>
                   </View>
                 </View>
@@ -616,7 +664,9 @@ export default function AccountScreen() {
               <Feather name="credit-card" size={18} color={colors.primary} />
               <View style={styles.infoContent}>
                 <Text style={styles.infoLabel}>CPF</Text>
-                <Text style={styles.infoValue}>{formatCPF(userProfile.cpf)}</Text>
+                <Text style={styles.infoValue}>
+                  {formatCPF(userProfile.cpf)}
+                </Text>
               </View>
             </View>
           )}
@@ -626,7 +676,9 @@ export default function AccountScreen() {
               <Feather name="phone" size={18} color={colors.primary} />
               <View style={styles.infoContent}>
                 <Text style={styles.infoLabel}>Telefone</Text>
-                <Text style={styles.infoValue}>{formatPhone(userProfile.telefone)}</Text>
+                <Text style={styles.infoValue}>
+                  {formatPhone(userProfile.telefone)}
+                </Text>
               </View>
             </View>
           )}
@@ -637,7 +689,9 @@ export default function AccountScreen() {
               <View style={styles.infoContent}>
                 <Text style={styles.infoLabel}>Data de Nascimento</Text>
                 <Text style={styles.infoValue}>
-                  {new Date(userProfile.data_nascimento).toLocaleDateString('pt-BR')}
+                  {new Date(userProfile.data_nascimento).toLocaleDateString(
+                    "pt-BR",
+                  )}
                 </Text>
               </View>
             </View>
@@ -648,7 +702,7 @@ export default function AccountScreen() {
         {userProfile.tenants && userProfile.tenants.length > 0 && (
           <View style={styles.academiasSection}>
             <Text style={styles.sectionTitle}>Minhas Academias</Text>
-            
+
             {userProfile.tenants.map((tenant) => (
               <TouchableOpacity
                 key={tenant.id}
@@ -680,7 +734,11 @@ export default function AccountScreen() {
                     </View>
                   )}
                 </View>
-                <Feather name="chevron-right" size={20} color={colors.primary} />
+                <Feather
+                  name="chevron-right"
+                  size={20}
+                  color={colors.primary}
+                />
               </TouchableOpacity>
             ))}
           </View>
@@ -691,16 +749,14 @@ export default function AccountScreen() {
           <View style={styles.memberSinceSection}>
             <Feather name="heart" size={16} color={colors.primary} />
             <Text style={styles.memberSinceText}>
-              Membro desde {new Date(userProfile.membro_desde).toLocaleDateString('pt-BR')}
+              Membro desde{" "}
+              {new Date(userProfile.membro_desde).toLocaleDateString("pt-BR")}
             </Text>
           </View>
         )}
 
         {/* Logout Button */}
-        <TouchableOpacity 
-          style={styles.logoutButton}
-          onPress={handleLogout}
-        >
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Feather name="log-out" size={20} color="#fff" />
           <Text style={styles.logoutText}>Sair</Text>
         </TouchableOpacity>
@@ -712,22 +768,22 @@ export default function AccountScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: "#f5f5f5",
   },
   headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: "#f0f0f0",
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#000',
+    fontWeight: "700",
+    color: "#000",
   },
   refreshButton: {
     padding: 8,
@@ -738,13 +794,13 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     paddingVertical: 50,
   },
   errorText: {
     fontSize: 16,
-    color: '#666',
+    color: "#666",
     marginBottom: 16,
   },
   retryButton: {
@@ -754,16 +810,16 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   retryButtonText: {
-    color: '#fff',
-    fontWeight: '600',
+    color: "#fff",
+    fontWeight: "600",
   },
   profileSection: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 24,
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 20,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -773,73 +829,73 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: '#f0f0f0',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "#f0f0f0",
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 16,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   photoImage: {
-    width: '100%',
-    height: '100%',
+    width: "100%",
+    height: "100%",
   },
   photoText: {
     fontSize: 48,
   },
   photoInitials: {
     fontSize: 42,
-    fontWeight: '700',
-    color: '#fff',
+    fontWeight: "700",
+    color: "#fff",
   },
   userName: {
     fontSize: 24,
-    fontWeight: '700',
-    color: '#000',
+    fontWeight: "700",
+    color: "#000",
     marginBottom: 4,
   },
   userEmail: {
     fontSize: 14,
-    color: '#666',
+    color: "#666",
     marginBottom: 8,
   },
   tenantName: {
     fontSize: 12,
     color: colors.primary,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   tenantButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     paddingHorizontal: 12,
     paddingVertical: 8,
     marginTop: 4,
-    backgroundColor: colors.primary + '10',
+    backgroundColor: colors.primary + "10",
     borderRadius: 6,
     borderWidth: 1,
-    borderColor: colors.primary + '30',
+    borderColor: colors.primary + "30",
   },
   statisticsSection: {
     marginBottom: 20,
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#000',
+    fontWeight: "600",
+    color: "#000",
     marginBottom: 12,
   },
   statsGrid: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
     marginBottom: 12,
   },
   statCard: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 12,
-    alignItems: 'center',
-    shadowColor: '#000',
+    alignItems: "center",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -847,24 +903,24 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: 11,
-    color: '#999',
+    color: "#999",
     marginTop: 8,
     marginBottom: 4,
-    textAlign: 'center',
+    textAlign: "center",
   },
   statValue: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     color: colors.primary,
   },
   lastCheckinCard: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -875,31 +931,31 @@ const styles = StyleSheet.create({
   },
   lastCheckinLabel: {
     fontSize: 12,
-    color: '#999',
+    color: "#999",
     marginBottom: 2,
   },
   lastCheckinValue: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#000',
+    fontWeight: "600",
+    color: "#000",
   },
   infoSection: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 16,
     marginBottom: 20,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
   infoItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    alignItems: "flex-start",
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: "#f0f0f0",
     gap: 12,
   },
   infoContent: {
@@ -907,32 +963,32 @@ const styles = StyleSheet.create({
   },
   infoLabel: {
     fontSize: 12,
-    color: '#999',
+    color: "#999",
     marginBottom: 4,
   },
   infoValue: {
     fontSize: 14,
-    fontWeight: '500',
-    color: '#000',
+    fontWeight: "500",
+    color: "#000",
   },
   membershipSection: {
     marginBottom: 20,
   },
   membershipCard: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 16,
     borderLeftWidth: 4,
     borderLeftColor: colors.primary,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
   membershipHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 12,
     gap: 12,
   },
@@ -941,69 +997,69 @@ const styles = StyleSheet.create({
   },
   membershipName: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#000',
+    fontWeight: "600",
+    color: "#000",
   },
   membershipStatus: {
     fontSize: 12,
     color: colors.primary,
-    fontWeight: '500',
+    fontWeight: "500",
     marginTop: 2,
-    textTransform: 'capitalize',
+    textTransform: "capitalize",
   },
   membershipDates: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 8,
     gap: 8,
   },
   membershipLabel: {
     fontSize: 12,
-    color: '#999',
-    fontWeight: '500',
+    color: "#999",
+    fontWeight: "500",
   },
   membershipValue: {
     fontSize: 13,
-    color: '#000',
-    fontWeight: '500',
+    color: "#000",
+    fontWeight: "500",
   },
   membershipValue2: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 8,
     gap: 8,
   },
   membershipPriceValue: {
     fontSize: 14,
     color: colors.primary,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   viewDetailsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     gap: 8,
     marginTop: 16,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: '#f0f0f0',
+    borderTopColor: "#f0f0f0",
   },
   viewDetailsText: {
     fontSize: 14,
     color: colors.primary,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   memberSinceSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     paddingVertical: 12,
     marginBottom: 20,
     gap: 6,
   },
   memberSinceText: {
     fontSize: 12,
-    color: '#999',
+    color: "#999",
   },
   contratosSection: {
     marginBottom: 20,
@@ -1015,8 +1071,8 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   modalidadeFilter: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
     marginBottom: 10,
   },
@@ -1024,34 +1080,34 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: '#f8e5d1',
+    borderColor: "#f8e5d1",
   },
   modalidadeChipActive: {
-    backgroundColor: colors.primary + '15',
-    borderColor: colors.primary + '60',
+    backgroundColor: colors.primary + "15",
+    borderColor: colors.primary + "60",
   },
   modalidadeChipContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
   },
   modalidadeChipText: {
     fontSize: 12,
-    color: '#8b6b3b',
-    fontWeight: '600',
+    color: "#8b6b3b",
+    fontWeight: "600",
   },
   modalidadeChipTextActive: {
     color: colors.primary,
   },
   rankingCard: {
-    backgroundColor: '#fffaf5',
+    backgroundColor: "#fffaf5",
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
-    borderColor: '#fde2c2',
-    shadowColor: '#000',
+    borderColor: "#fde2c2",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -1061,30 +1117,30 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   rankingListItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 8,
     borderWidth: 1,
-    borderColor: '#f8e5d1',
+    borderColor: "#f8e5d1",
   },
   rankingPosition: {
     width: 44,
     height: 36,
     borderRadius: 10,
-    backgroundColor: '#fffaf5',
+    backgroundColor: "#fffaf5",
     borderWidth: 1,
-    borderColor: '#f4c595',
-    alignItems: 'center',
-    justifyContent: 'center',
+    borderColor: "#f4c595",
+    alignItems: "center",
+    justifyContent: "center",
   },
   rankingPositionNumber: {
     fontSize: 13,
-    fontWeight: '700',
-    color: '#d97706',
+    fontWeight: "700",
+    color: "#d97706",
   },
   rankingAvatar: {
     width: 36,
@@ -1092,8 +1148,8 @@ const styles = StyleSheet.create({
     borderRadius: 18,
   },
   rankingNameRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
   },
   rankingListContent: {
@@ -1101,72 +1157,72 @@ const styles = StyleSheet.create({
   },
   rankingName: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#111827',
+    fontWeight: "600",
+    color: "#111827",
   },
   rankingCheckins: {
     fontSize: 11,
-    color: '#6b7280',
+    color: "#6b7280",
     marginTop: 2,
   },
   rankingLoading: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     paddingVertical: 8,
   },
   rankingLoadingText: {
     fontSize: 12,
-    color: '#6b7280',
+    color: "#6b7280",
   },
   rankingErrorText: {
     fontSize: 12,
-    color: '#b91c1c',
+    color: "#b91c1c",
   },
   rankingDivider: {
     height: 1,
-    backgroundColor: '#fed7aa',
+    backgroundColor: "#fed7aa",
     marginVertical: 12,
   },
   rankingUserRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   rankingUserLabel: {
     fontSize: 11,
-    color: '#9ca3af',
+    color: "#9ca3af",
     marginBottom: 2,
   },
   rankingUserName: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
+    fontWeight: "600",
+    color: "#111827",
   },
   rankingUserPosition: {
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 10,
-    backgroundColor: colors.primary + '15',
+    backgroundColor: colors.primary + "15",
     borderWidth: 1,
-    borderColor: colors.primary + '40',
+    borderColor: colors.primary + "40",
   },
   rankingUserPositionText: {
     fontSize: 12,
-    fontWeight: '700',
+    fontWeight: "700",
     color: colors.primary,
   },
   academiaCard: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 14,
     marginBottom: 12,
     borderLeftWidth: 4,
     borderLeftColor: colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    shadowColor: '#000',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -1176,13 +1232,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   modalidadeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
     marginBottom: 8,
   },
   modalidadeDot: {
@@ -1192,128 +1248,128 @@ const styles = StyleSheet.create({
   },
   modalidadeText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   academiaName: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#000',
+    fontWeight: "600",
+    color: "#000",
     marginBottom: 8,
   },
   academiaInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     marginBottom: 6,
   },
   academiaInfoText: {
     fontSize: 12,
-    color: '#666',
+    color: "#666",
   },
   contratoCard: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 16,
     borderLeftWidth: 4,
     borderLeftColor: colors.primary,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
   contratoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 16,
     gap: 12,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: "#f0f0f0",
   },
   contratoInfo: {
     flex: 1,
   },
   contratoNome: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#000',
+    fontWeight: "600",
+    color: "#000",
   },
   contratoStatus: {
     fontSize: 12,
     color: colors.primary,
-    fontWeight: '500',
+    fontWeight: "500",
     marginTop: 2,
-    textTransform: 'capitalize',
+    textTransform: "capitalize",
   },
   contratoSection2: {
     marginVertical: 12,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: "#f0f0f0",
   },
   contratoSectionTitle: {
     fontSize: 13,
-    fontWeight: '600',
-    color: '#666',
+    fontWeight: "600",
+    color: "#666",
     marginBottom: 8,
-    textTransform: 'uppercase',
+    textTransform: "uppercase",
   },
   contratoItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 6,
   },
   contratoLabel: {
     fontSize: 12,
-    color: '#999',
-    fontWeight: '500',
+    color: "#999",
+    fontWeight: "500",
   },
   contratoValue: {
     fontSize: 13,
-    color: '#000',
-    fontWeight: '600',
+    color: "#000",
+    fontWeight: "600",
   },
   contratoDiasRestantes: {
     fontSize: 13,
     color: colors.primary,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   progressContainer: {
-    width: '100%',
+    width: "100%",
     height: 6,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: "#f0f0f0",
     borderRadius: 3,
     marginTop: 8,
-    overflow: 'hidden',
+    overflow: "hidden",
   },
   progressBar: {
-    height: '100%',
+    height: "100%",
     backgroundColor: colors.primary,
   },
   contratoFeatures: {
     marginTop: 8,
   },
   featureItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     paddingVertical: 6,
   },
   featureText: {
     fontSize: 12,
-    color: '#666',
-    fontWeight: '500',
+    color: "#666",
+    fontWeight: "500",
     flex: 1,
   },
   pagamentoItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 8,
     paddingHorizontal: 8,
-    backgroundColor: '#f9f9f9',
+    backgroundColor: "#f9f9f9",
     borderRadius: 6,
     marginVertical: 6,
   },
@@ -1327,26 +1383,26 @@ const styles = StyleSheet.create({
   },
   statusText: {
     fontSize: 11,
-    color: '#fff',
-    fontWeight: '600',
+    color: "#fff",
+    fontWeight: "600",
   },
   logoutButton: {
-    backgroundColor: '#f44336',
+    backgroundColor: "#f44336",
     borderRadius: 12,
     paddingVertical: 16,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
     gap: 10,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 4,
   },
   logoutText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 });

@@ -8,7 +8,6 @@ use App\Controllers\TurmaController;
 use App\Controllers\ProfessorController;
 use App\Controllers\AdminController;
 use App\Controllers\PlanoController;
-use App\Controllers\PlanejamentoController;
 use App\Controllers\ContasReceberController;
 use App\Controllers\MatriculaController;
 use App\Controllers\ConfigController;
@@ -309,14 +308,6 @@ return function ($app) {
         $group->post('/planos', [PlanoController::class, 'create']);
         $group->put('/planos/{id}', [PlanoController::class, 'update']);
         $group->delete('/planos/{id}', [PlanoController::class, 'delete']);
-        
-        // Planejamento de Horários
-        $group->get('/planejamentos', [PlanejamentoController::class, 'index']);
-        $group->get('/planejamentos/{id}', [PlanejamentoController::class, 'show']);
-        $group->post('/planejamentos', [PlanejamentoController::class, 'create']);
-        $group->put('/planejamentos/{id}', [PlanejamentoController::class, 'update']);
-        $group->delete('/planejamentos/{id}', [PlanejamentoController::class, 'delete']);
-        $group->post('/planejamentos/{id}/gerar-horarios', [PlanejamentoController::class, 'gerarHorarios']);
         
         // Dias e Horários (Admin)
         $group->delete('/dias/{id}/horarios', [DiaController::class, 'deletarHorariosDoDia']);

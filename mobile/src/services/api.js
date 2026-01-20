@@ -52,6 +52,10 @@ const api = {
       // Buscar token do storage
       const token = await AsyncStorage.getItem("@appcheckin:token");
 
+      // Debug: listar todas as chaves do storage
+      const allKeys = await AsyncStorage.getAllKeys?.();
+      console.log("🔍 Chaves no storage:", allKeys);
+
       // Montar headers
       const headers = {
         "Content-Type": "application/json",
@@ -61,13 +65,20 @@ const api = {
       // Adicionar token se existir
       if (token) {
         headers["Authorization"] = `Bearer ${token}`;
-        console.log("🔑 Token adicionado ao header");
+        console.log(
+          "🔑 Token adicionado ao header:",
+          token.substring(0, 20) + "...",
+        );
       } else {
-        console.warn("⚠️ Nenhum token encontrado");
+        console.warn(
+          "⚠️ Nenhum token encontrado em storage (@appcheckin:token)",
+        );
+        console.warn("⚠️ Você precisa fazer login primeiro!");
       }
 
       // Log da requisição
       console.log(`📡 ${method} ${API_URL}${endpoint}`);
+      console.log("📋 Headers:", JSON.stringify(headers, null, 2));
 
       // Configurar requisição
       const fetchConfig = {

@@ -86,7 +86,9 @@ class AuthController
         // Validações
         if (empty($data['email']) || empty($data['senha'])) {
             $response->getBody()->write(json_encode([
-                'error' => 'Email e senha são obrigatórios'
+                'type' => 'error',
+                'code' => 'MISSING_CREDENTIALS',
+                'message' => 'Email e senha são obrigatórios'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
         }
@@ -96,7 +98,9 @@ class AuthController
 
         if (!$usuario || !password_verify($data['senha'], $usuario['senha_hash'])) {
             $response->getBody()->write(json_encode([
-                'error' => 'Credenciais inválidas'
+                'type' => 'error',
+                'code' => 'INVALID_CREDENTIALS',
+                'message' => 'Email ou senha inválidos'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(401);
         }
@@ -119,7 +123,9 @@ class AuthController
 
             if (empty($tenants)) {
                 $response->getBody()->write(json_encode([
-                    'error' => 'Usuário não possui vínculo com nenhuma academia'
+                    'type' => 'error',
+                    'code' => 'NO_TENANT_ACCESS',
+                    'message' => 'Usuário não possui vínculo com nenhuma academia'
                 ]));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
             }
@@ -148,7 +154,9 @@ class AuthController
                 
                 if ($result['tem_contrato'] == 0) {
                     $response->getBody()->write(json_encode([
-                        'error' => 'Acesso negado: Sua academia não possui contrato ativo. Entre em contato com o suporte.'
+                        'type' => 'error',
+                        'code' => 'NO_ACTIVE_CONTRACT',
+                        'message' => 'Sua academia não possui contrato ativo. Entre em contato com o suporte.'
                     ], JSON_UNESCAPED_UNICODE));
                     return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
                 }
@@ -204,7 +212,9 @@ class AuthController
 
         if (empty($data['tenant_id'])) {
             $response->getBody()->write(json_encode([
-                'error' => 'tenant_id é obrigatório'
+                'type' => 'error',
+                'code' => 'MISSING_TENANT_ID',
+                'message' => 'tenant_id é obrigatório'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
         }
@@ -214,7 +224,9 @@ class AuthController
         // Verificar se usuário tem acesso a este tenant
         if (!$this->usuarioModel->temAcessoTenant($userId, $tenantId)) {
             $response->getBody()->write(json_encode([
-                'error' => 'Você não tem acesso a esta academia'
+                'type' => 'error',
+                'code' => 'TENANT_ACCESS_DENIED',
+                'message' => 'Você não tem acesso a esta academia'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
         }
@@ -236,7 +248,9 @@ class AuthController
             
             if ($result['tem_contrato'] == 0) {
                 $response->getBody()->write(json_encode([
-                    'error' => 'Acesso negado: Esta academia não possui contrato ativo. Entre em contato com o suporte.'
+                    'type' => 'error',
+                    'code' => 'NO_ACTIVE_CONTRACT',
+                    'message' => 'Esta academia não possui contrato ativo. Entre em contato com o suporte.'
                 ], JSON_UNESCAPED_UNICODE));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
             }
@@ -291,7 +305,9 @@ class AuthController
         // Validações
         if (empty($data['user_id']) || empty($data['email']) || empty($data['tenant_id'])) {
             $response->getBody()->write(json_encode([
-                'error' => 'user_id, email e tenant_id são obrigatórios'
+                'type' => 'error',
+                'code' => 'MISSING_REQUIRED_FIELDS',
+                'message' => 'user_id, email e tenant_id são obrigatórios'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
         }
@@ -305,7 +321,9 @@ class AuthController
         
         if (!$usuario || ($usuario['email'] !== $email && ($usuario['email_global'] ?? '') !== $email)) {
             $response->getBody()->write(json_encode([
-                'error' => 'Dados inválidos'
+                'type' => 'error',
+                'code' => 'INVALID_USER_DATA',
+                'message' => 'Dados inválidos'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(401);
         }
@@ -313,7 +331,9 @@ class AuthController
         // Verificar se usuário tem acesso a este tenant
         if (!$this->usuarioModel->temAcessoTenant($userId, $tenantId)) {
             $response->getBody()->write(json_encode([
-                'error' => 'Você não tem acesso a esta academia'
+                'type' => 'error',
+                'code' => 'TENANT_ACCESS_DENIED',
+                'message' => 'Você não tem acesso a esta academia'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
         }

@@ -47,7 +47,12 @@ export const getApiUrlRuntime = (): string => {
   // Em tempo de execução, se for web, retornar a URL configurada
   if (typeof window !== "undefined") {
     // Temos acesso ao window, estamos em execução web
-    const appEnv = (window as any).__APP_ENV__ || "production";
+    // Tentar: window.__APP_ENV__, EXPO_PUBLIC_APP_ENV ou usar "production" como fallback
+    const appEnv =
+      (window as any).__APP_ENV__ ||
+      process.env.EXPO_PUBLIC_APP_ENV ||
+      "production";
+
     const url = CONFIG.api[appEnv as keyof typeof CONFIG.api];
 
     if (url) {

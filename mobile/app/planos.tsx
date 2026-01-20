@@ -1,10 +1,11 @@
-import { colors } from '@/src/theme/colors';
-import { handleAuthError } from '@/src/utils/authHelpers';
-import { Feather } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useRoute } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { colors } from "@/src/theme/colors";
+import { getApiUrlRuntime } from "@/src/utils/apiConfig";
+import { handleAuthError } from "@/src/utils/authHelpers";
+import { Feather } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useRoute } from "@react-navigation/native";
+import { useRouter } from "expo-router";
+import React, { useEffect, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -13,8 +14,8 @@ import {
     Text,
     TouchableOpacity,
     View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 interface Modalidade {
   id: number;
@@ -58,7 +59,9 @@ export default function PlanosScreen() {
   const route = useRoute();
   const tenantId = (route.params as RouteParams)?.tenantId;
   const [matriculas, setMatriculas] = useState<Matricula[]>([]);
-  const [selectedMatricula, setSelectedMatricula] = useState<Matricula | null>(null);
+  const [selectedMatricula, setSelectedMatricula] = useState<Matricula | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [apenasAtivos, setApenasAtivos] = useState(false);
   const [pagamentos, setPagamentos] = useState([]);
@@ -70,78 +73,82 @@ export default function PlanosScreen() {
 
   const loadPlanos = async (todas = false) => {
     try {
-      console.log('\n🔄 INICIANDO CARREGAMENTO DE PLANOS');
-      
-      const token = await AsyncStorage.getItem('@appcheckin:token');
+      console.log("\n🔄 INICIANDO CARREGAMENTO DE PLANOS");
+
+      const token = await AsyncStorage.getItem("@appcheckin:token");
       if (!token) {
-        console.error('❌ Token não encontrado');
-        Alert.alert('Erro', 'Token não encontrado');
+        console.error("❌ Token não encontrado");
+        Alert.alert("Erro", "Token não encontrado");
         return;
       }
-      console.log('✅ Token encontrado');
+      console.log("✅ Token encontrado");
 
-      const url = `http://localhost:8080/mobile/planos${todas ? '?todas=true' : ''}`;
-      console.log('📍 URL:', url);
+      const baseUrl = getApiUrlRuntime();
+      const url = `${baseUrl}/mobile/planos${todas ? "?todas=true" : ""}`;
+      console.log("📍 URL:", url);
 
       const response = await fetch(url, {
-        method: 'GET',
+        method: "GET",
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
       });
 
-      console.log('📡 RESPOSTA DO SERVIDOR');
-      console.log('   Status:', response.status);
-      console.log('   Status Text:', response.statusText);
+      console.log("📡 RESPOSTA DO SERVIDOR");
+      console.log("   Status:", response.status);
+      console.log("   Status Text:", response.statusText);
 
       const responseText = await response.text();
-      console.log('   Body (primeiros 500 chars):', responseText.substring(0, 500));
+      console.log(
+        "   Body (primeiros 500 chars):",
+        responseText.substring(0, 500),
+      );
 
       if (!response.ok) {
         // Tratar erro 401
         if (response.status === 401) {
-          console.log('🔑 Token inválido/expirado ao carregar planos');
+          console.log("🔑 Token inválido/expirado ao carregar planos");
           await handleAuthError();
-          router.replace('/(auth)/login');
+          router.replace("/(auth)/login");
           return;
         }
-        
-        console.error('❌ ERRO NA REQUISIÇÃO');
-        console.error('   Status:', response.status);
-        console.error('   Body completo:', responseText);
+
+        console.error("❌ ERRO NA REQUISIÇÃO");
+        console.error("   Status:", response.status);
+        console.error("   Body completo:", responseText);
         throw new Error(`HTTP ${response.status}: ${responseText}`);
       }
 
       let data;
       try {
         data = JSON.parse(responseText);
-        console.log('✅ JSON parseado com sucesso');
+        console.log("✅ JSON parseado com sucesso");
       } catch (parseError) {
-        console.error('❌ ERRO AO FAZER PARSE DO JSON');
-        console.error('   Erro:', (parseError as Error).message);
-        console.error('   Body:', responseText);
+        console.error("❌ ERRO AO FAZER PARSE DO JSON");
+        console.error("   Erro:", (parseError as Error).message);
+        console.error("   Body:", responseText);
         throw parseError;
       }
 
-      console.log('   Dados completos:', JSON.stringify(data, null, 2));
+      console.log("   Dados completos:", JSON.stringify(data, null, 2));
 
       if (data.success && data.data?.matriculas) {
-        console.log('✅ Matrículas carregadas com sucesso');
-        console.log('   Quantidade:', data.data.matriculas.length);
+        console.log("✅ Matrículas carregadas com sucesso");
+        console.log("   Quantidade:", data.data.matriculas.length);
         setMatriculas(data.data.matriculas);
       } else if (!data.success) {
-        console.error('⚠️ success = false');
-        console.error('   Error:', data.error);
-        throw new Error(data.error || 'Erro ao carregar matrículas');
+        console.error("⚠️ success = false");
+        console.error("   Error:", data.error);
+        throw new Error(data.error || "Erro ao carregar matrículas");
       }
     } catch (error) {
-      console.error('❌ EXCEÇÃO CAPTURADA EM loadPlanos');
-      console.error('   Nome:', (error as Error).name);
-      console.error('   Mensagem:', (error as Error).message);
-      console.error('   Stack:', (error as Error).stack);
-      console.log('📦 Usando dados mockados como fallback...');
-      
+      console.error("❌ EXCEÇÃO CAPTURADA EM loadPlanos");
+      console.error("   Nome:", (error as Error).name);
+      console.error("   Mensagem:", (error as Error).message);
+      console.error("   Stack:", (error as Error).stack);
+      console.log("📦 Usando dados mockados como fallback...");
+
       // Dados mockados para exemplo (matrículas, não planos)
       const mockMatriculas = [
         {
@@ -151,26 +158,26 @@ export default function PlanosScreen() {
             tenant_id: 4,
             nome: "Plano 3x por semana",
             descricao: "Acesso 3 vezes na semana à modalidade",
-            valor: 150.00,
+            valor: 150.0,
             duracao_dias: 30,
             checkins_semanais: 3,
             ativo: true,
             modalidade: {
               id: 4,
               nome: "Natação",
-              cor: "#3b82f6"
-            }
+              cor: "#3b82f6",
+            },
           },
           datas: {
             matricula: "2026-01-09",
             inicio: "2026-01-09",
-            vencimento: "2026-02-08"
+            vencimento: "2026-02-08",
           },
-          valor: 150.00,
+          valor: 150.0,
           status: "ativa",
           motivo: "nova",
           created_at: "2026-01-09T10:30:00",
-          updated_at: "2026-01-09T10:30:00"
+          updated_at: "2026-01-09T10:30:00",
         },
         {
           matricula_id: 24,
@@ -179,27 +186,27 @@ export default function PlanosScreen() {
             tenant_id: 5,
             nome: "Plano 1x por semana",
             descricao: "Acesso 1 vez na semana à modalidade",
-            valor: 110.00,
+            valor: 110.0,
             duracao_dias: 30,
             checkins_semanais: 1,
             ativo: true,
             modalidade: {
               id: 5,
               nome: "CrossFit",
-              cor: "#10b981"
-            }
+              cor: "#10b981",
+            },
           },
           datas: {
             matricula: "2026-01-07",
             inicio: "2026-01-07",
-            vencimento: "2026-02-06"
+            vencimento: "2026-02-06",
           },
-          valor: 110.00,
+          valor: 110.0,
           status: "ativa",
           motivo: "nova",
           created_at: "2026-01-07T08:00:00",
-          updated_at: "2026-01-07T08:00:00"
-        }
+          updated_at: "2026-01-07T08:00:00",
+        },
       ];
       setMatriculas(mockMatriculas);
     } finally {
@@ -209,53 +216,59 @@ export default function PlanosScreen() {
 
   const loadPagamentos = async (matriculaId) => {
     try {
-      console.log('\n🔄 INICIANDO CARREGAMENTO DE PAGAMENTOS');
-      console.log('   matriculaId:', matriculaId);
-      
-      const token = await AsyncStorage.getItem('@appcheckin:token');
+      console.log("\n🔄 INICIANDO CARREGAMENTO DE PAGAMENTOS");
+      console.log("   matriculaId:", matriculaId);
+
+      const token = await AsyncStorage.getItem("@appcheckin:token");
       if (!token) {
-        console.warn('❌ Token não encontrado');
+        console.warn("❌ Token não encontrado");
         return;
       }
-      console.log('✅ Token encontrado:', token.substring(0, 20) + '...');
+      console.log("✅ Token encontrado:", token.substring(0, 20) + "...");
 
-      const url = `http://localhost:8080/mobile/matriculas/${matriculaId}`;
-      console.log('📍 URL:', url);
+      const baseUrl = getApiUrlRuntime();
+      const url = `${baseUrl}/mobile/matriculas/${matriculaId}`;
+      console.log("📍 URL:", url);
 
       const response = await fetch(url, {
-        method: 'GET',
+        method: "GET",
         headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
         },
       });
 
-      console.log('📡 RESPOSTA DO SERVIDOR');
-      console.log('   Status:', response.status);
-      console.log('   Status Text:', response.statusText);
-      
+      console.log("📡 RESPOSTA DO SERVIDOR");
+      console.log("   Status:", response.status);
+      console.log("   Status Text:", response.statusText);
+
       // Tentar ler a resposta como texto primeiro
       const responseText = await response.text();
-      console.log('   Body (primeiros 500 chars):', responseText.substring(0, 500));
+      console.log(
+        "   Body (primeiros 500 chars):",
+        responseText.substring(0, 500),
+      );
 
       if (!response.ok) {
         // Tratar erro 401
         if (response.status === 401) {
-          console.log('🔑 Token inválido/expirado ao carregar detalhes da matrícula');
+          console.log(
+            "🔑 Token inválido/expirado ao carregar detalhes da matrícula",
+          );
           await handleAuthError();
-          router.replace('/(auth)/login');
+          router.replace("/(auth)/login");
           return;
         }
-        
-        console.error('❌ ERRO NA REQUISIÇÃO');
-        console.error('   Status:', response.status);
-        console.error('   Body completo:', responseText);
-        
+
+        console.error("❌ ERRO NA REQUISIÇÃO");
+        console.error("   Status:", response.status);
+        console.error("   Body completo:", responseText);
+
         try {
           const errorData = JSON.parse(responseText);
-          console.error('   Erro parseado:', errorData);
+          console.error("   Erro parseado:", errorData);
         } catch (e) {
-          console.error('   Não foi possível fazer parse do erro como JSON');
+          console.error("   Não foi possível fazer parse do erro como JSON");
         }
         return;
       }
@@ -264,56 +277,67 @@ export default function PlanosScreen() {
       let data;
       try {
         data = JSON.parse(responseText);
-        console.log('✅ JSON parseado com sucesso');
-        console.log('   Dados completos:', JSON.stringify(data, null, 2));
+        console.log("✅ JSON parseado com sucesso");
+        console.log("   Dados completos:", JSON.stringify(data, null, 2));
       } catch (parseError) {
-        console.error('❌ ERRO AO FAZER PARSE DO JSON');
-        console.error('   Erro:', (parseError as Error).message);
-        console.error('   Body:', responseText);
+        console.error("❌ ERRO AO FAZER PARSE DO JSON");
+        console.error("   Erro:", (parseError as Error).message);
+        console.error("   Body:", responseText);
         return;
       }
 
       if (data.success && data.data) {
-        console.log('✅ SUCCESS = true');
-        console.log('   Pagamentos:', data.data.pagamentos?.length || 0, 'itens');
-        console.log('   Resumo Financeiro:', data.data.resumo_financeiro);
-        
+        console.log("✅ SUCCESS = true");
+        console.log(
+          "   Pagamentos:",
+          data.data.pagamentos?.length || 0,
+          "itens",
+        );
+        console.log("   Resumo Financeiro:", data.data.resumo_financeiro);
+
         setPagamentos(data.data.pagamentos || []);
         setResumoFinanceiro(data.data.resumo_financeiro);
       } else {
-        console.warn('⚠️ success é false ou data.data está vazio');
-        console.log('   Success:', data.success);
-        console.log('   Data:', data.data);
+        console.warn("⚠️ success é false ou data.data está vazio");
+        console.log("   Success:", data.success);
+        console.log("   Data:", data.data);
       }
     } catch (error) {
-      console.error('❌ EXCEÇÃO CAPTURADA');
-      console.error('   Nome do erro:', (error as Error).name);
-      console.error('   Mensagem:', (error as Error).message);
-      console.error('   Stack:', (error as Error).stack);
+      console.error("❌ EXCEÇÃO CAPTURADA");
+      console.error("   Nome do erro:", (error as Error).name);
+      console.error("   Mensagem:", (error as Error).message);
+      console.error("   Stack:", (error as Error).stack);
     }
   };
 
   const handleSelectPlano = async (matricula) => {
-    console.log('🎯 Matrícula selecionada:', matricula.matricula_id, 'Plano:', matricula.plano.nome);
+    console.log(
+      "🎯 Matrícula selecionada:",
+      matricula.matricula_id,
+      "Plano:",
+      matricula.plano.nome,
+    );
     setSelectedMatricula(matricula);
-    
+
     if (matricula.matricula_id) {
       await loadPagamentos(matricula.matricula_id);
     }
   };
 
   const formatarValor = (valor) => {
-    return `R$ ${parseFloat(valor).toFixed(2).replace('.', ',')}`;
+    return `R$ ${parseFloat(valor).toFixed(2).replace(".", ",")}`;
   };
 
   // Sempre mostrar apenas as ativas
   const matriculasFiltradas = matriculas
-    .filter(m => m.status === 'ativa')
-    .filter(m => tenantId ? m.plano.tenant_id === parseInt(tenantId) : true);
+    .filter((m) => m.status === "ativa")
+    .filter((m) =>
+      tenantId ? m.plano.tenant_id === parseInt(tenantId) : true,
+    );
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <SafeAreaView style={styles.container} edges={["top"]}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -324,10 +348,10 @@ export default function PlanosScreen() {
   // Tela de Detalhes da Matrícula
   if (selectedMatricula) {
     return (
-      <SafeAreaView style={styles.container} edges={['top']}>
+      <SafeAreaView style={styles.container} edges={["top"]}>
         {/* Header */}
         <View style={styles.headerTop}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.headerBackButton}
             onPress={() => setSelectedMatricula(null)}
           >
@@ -337,30 +361,42 @@ export default function PlanosScreen() {
           <View style={{ width: 40 }} />
         </View>
 
-        <ScrollView 
+        <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
           {/* Header do Plano */}
           <View style={styles.planoHeader}>
             <View style={{ flex: 1 }}>
-              <Text style={styles.planoNome}>{selectedMatricula.plano.nome}</Text>
+              <Text style={styles.planoNome}>
+                {selectedMatricula.plano.nome}
+              </Text>
               <View style={styles.planoHeaderSubrow}>
                 {selectedMatricula.plano.modalidade && (
-                  <View style={[
-                    styles.modalidadeBadge,
-                    { backgroundColor: selectedMatricula.plano.modalidade.cor + '20' }
-                  ]}>
-                    <View 
+                  <View
+                    style={[
+                      styles.modalidadeBadge,
+                      {
+                        backgroundColor:
+                          selectedMatricula.plano.modalidade.cor + "20",
+                      },
+                    ]}
+                  >
+                    <View
                       style={[
                         styles.modalidadeDot,
-                        { backgroundColor: selectedMatricula.plano.modalidade.cor }
+                        {
+                          backgroundColor:
+                            selectedMatricula.plano.modalidade.cor,
+                        },
                       ]}
                     />
-                    <Text style={[
-                      styles.modalidadeText,
-                      { color: selectedMatricula.plano.modalidade.cor }
-                    ]}>
+                    <Text
+                      style={[
+                        styles.modalidadeText,
+                        { color: selectedMatricula.plano.modalidade.cor },
+                      ]}
+                    >
                       {selectedMatricula.plano.modalidade.nome}
                     </Text>
                   </View>
@@ -368,7 +404,9 @@ export default function PlanosScreen() {
                 {selectedMatricula.plano.duracao_dias && (
                   <View style={styles.durationContainer}>
                     <Feather name="clock" size={14} color={colors.primary} />
-                    <Text style={styles.durationText}>{selectedMatricula.plano.duracao_dias} dias</Text>
+                    <Text style={styles.durationText}>
+                      {selectedMatricula.plano.duracao_dias} dias
+                    </Text>
                   </View>
                 )}
               </View>
@@ -378,7 +416,9 @@ export default function PlanosScreen() {
           {/* Descrição */}
           {selectedMatricula.plano.descricao && (
             <View style={styles.descricaoCard}>
-              <Text style={styles.descricaoText}>{selectedMatricula.plano.descricao}</Text>
+              <Text style={styles.descricaoText}>
+                {selectedMatricula.plano.descricao}
+              </Text>
             </View>
           )}
 
@@ -392,31 +432,48 @@ export default function PlanosScreen() {
                     <View style={styles.pagamentoRow}>
                       <View style={styles.pagamentoContent}>
                         <Text style={styles.label}>
-                          {new Date(pagamento.data_vencimento).toLocaleDateString('pt-BR')}
+                          {new Date(
+                            pagamento.data_vencimento,
+                          ).toLocaleDateString("pt-BR")}
                         </Text>
                         <Text style={styles.value}>
-                          R$ {typeof pagamento.valor === 'number'
-                            ? pagamento.valor.toFixed(2).replace('.', ',')
+                          R${" "}
+                          {typeof pagamento.valor === "number"
+                            ? pagamento.valor.toFixed(2).replace(".", ",")
                             : pagamento.valor}
                         </Text>
                       </View>
-                      <View style={[
-                        styles.statusBadge,
-                        { 
-                          backgroundColor: pagamento.status === 'Pago' ? '#4CAF5020' : '#FF980020',
-                          paddingHorizontal: 12,
-                          paddingVertical: 6
-                        }
-                      ]}>
-                        <Text style={[
-                          styles.statusText,
-                          { color: pagamento.status === 'Pago' ? '#4CAF50' : '#FF9800' }
-                        ]}>
+                      <View
+                        style={[
+                          styles.statusBadge,
+                          {
+                            backgroundColor:
+                              pagamento.status === "Pago"
+                                ? "#4CAF5020"
+                                : "#FF980020",
+                            paddingHorizontal: 12,
+                            paddingVertical: 6,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.statusText,
+                            {
+                              color:
+                                pagamento.status === "Pago"
+                                  ? "#4CAF50"
+                                  : "#FF9800",
+                            },
+                          ]}
+                        >
                           {pagamento.status}
                         </Text>
                       </View>
                     </View>
-                    {idx < pagamentos.length - 1 && <View style={styles.divider} />}
+                    {idx < pagamentos.length - 1 && (
+                      <View style={styles.divider} />
+                    )}
                   </View>
                 ))}
               </View>
@@ -429,17 +486,17 @@ export default function PlanosScreen() {
 
   // Tela de Lista de Planos
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
+    <SafeAreaView style={styles.container} edges={["top"]}>
       {/* Header com Botão Voltar e Recarregar */}
       <View style={styles.headerTop}>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.headerBackButton}
           onPress={() => router.back()}
         >
           <Feather name="arrow-left" size={24} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitleCentered}>Planos</Text>
-        <TouchableOpacity 
+        <TouchableOpacity
           style={styles.refreshButton}
           onPress={() => loadPlanos()}
         >
@@ -447,7 +504,7 @@ export default function PlanosScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView 
+      <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
@@ -462,7 +519,9 @@ export default function PlanosScreen() {
                 key={matricula.matricula_id}
                 style={[
                   styles.planoCard,
-                  matricula.plano.modalidade && { borderLeftColor: matricula.plano.modalidade.cor }
+                  matricula.plano.modalidade && {
+                    borderLeftColor: matricula.plano.modalidade.cor,
+                  },
                 ]}
                 onPress={() => handleSelectPlano(matricula)}
                 activeOpacity={0.7}
@@ -471,20 +530,27 @@ export default function PlanosScreen() {
                   {/* Header: Modalidade Badge */}
                   <View style={styles.planoCardHeader}>
                     {matricula.plano.modalidade && (
-                      <View style={[
-                        styles.modalidadeBadgeCard,
-                        { backgroundColor: matricula.plano.modalidade.cor + '20' }
-                      ]}>
-                        <View 
+                      <View
+                        style={[
+                          styles.modalidadeBadgeCard,
+                          {
+                            backgroundColor:
+                              matricula.plano.modalidade.cor + "20",
+                          },
+                        ]}
+                      >
+                        <View
                           style={[
                             styles.modalidadeBadgeDot,
-                            { backgroundColor: matricula.plano.modalidade.cor }
+                            { backgroundColor: matricula.plano.modalidade.cor },
                           ]}
                         />
-                        <Text style={[
-                          styles.modalidadeBadgeText,
-                          { color: matricula.plano.modalidade.cor }
-                        ]}>
+                        <Text
+                          style={[
+                            styles.modalidadeBadgeText,
+                            { color: matricula.plano.modalidade.cor },
+                          ]}
+                        >
                           {matricula.plano.modalidade.nome}
                         </Text>
                       </View>
@@ -492,7 +558,9 @@ export default function PlanosScreen() {
                   </View>
 
                   {/* Nome do Plano */}
-                  <Text style={styles.planoCardNome}>{matricula.plano.nome}</Text>
+                  <Text style={styles.planoCardNome}>
+                    {matricula.plano.nome}
+                  </Text>
 
                   {/* Valor destacado */}
                   <View style={styles.planoCardValorContainer}>
@@ -505,10 +573,16 @@ export default function PlanosScreen() {
                   {/* Info Row: Duração + Check-ins */}
                   <View style={styles.planoCardInfoRow}>
                     <View style={styles.infoItemCard}>
-                      <Feather name="calendar" size={16} color={colors.primary} />
+                      <Feather
+                        name="calendar"
+                        size={16}
+                        color={colors.primary}
+                      />
                       <View style={styles.infoItemContent}>
                         <Text style={styles.infoItemLabel}>Duração</Text>
-                        <Text style={styles.infoItemValue}>{matricula.plano.duracao_dias} dias</Text>
+                        <Text style={styles.infoItemValue}>
+                          {matricula.plano.duracao_dias} dias
+                        </Text>
                       </View>
                     </View>
 
@@ -517,18 +591,21 @@ export default function PlanosScreen() {
                       <View style={styles.infoItemContent}>
                         <Text style={styles.infoItemLabel}>Por semana</Text>
                         <Text style={styles.infoItemValue}>
-                          {matricula.plano.checkins_semanais === 999 ? 'Ilimitado' : `${matricula.plano.checkins_semanais}x`}
+                          {matricula.plano.checkins_semanais === 999
+                            ? "Ilimitado"
+                            : `${matricula.plano.checkins_semanais}x`}
                         </Text>
                       </View>
                     </View>
                   </View>
 
                   {/* Status - Apenas mostra se a matrícula não está ativa */}
-                  {matricula.status !== 'ativa' && (
+                  {matricula.status !== "ativa" && (
                     <View style={styles.planoCardStatusBadge}>
                       <Feather name="alert-circle" size={14} color="#F44336" />
                       <Text style={styles.planoCardStatusText}>
-                        {matricula.status.charAt(0).toUpperCase() + matricula.status.slice(1)}
+                        {matricula.status.charAt(0).toUpperCase() +
+                          matricula.status.slice(1)}
                       </Text>
                     </View>
                   )}
@@ -539,7 +616,9 @@ export default function PlanosScreen() {
         ) : (
           <View style={styles.emptyContainer}>
             <Feather name="inbox" size={48} color="#ddd" />
-            <Text style={styles.emptyText}>Nenhuma matrícula ativa encontrada</Text>
+            <Text style={styles.emptyText}>
+              Nenhuma matrícula ativa encontrada
+            </Text>
             <Text style={styles.emptySubtext}>
               Você não possui matrículas ativas no momento
             </Text>
@@ -553,29 +632,29 @@ export default function PlanosScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: "#f5f5f5",
   },
   headerTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingHorizontal: 16,
     paddingVertical: 12,
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: "#f0f0f0",
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#000',
+    fontWeight: "700",
+    color: "#000",
   },
   headerTitleCentered: {
     fontSize: 18,
-    fontWeight: '700',
-    color: '#000',
+    fontWeight: "700",
+    color: "#000",
     flex: 1,
-    textAlign: 'center',
+    textAlign: "center",
   },
   headerBackButton: {
     padding: 8,
@@ -587,25 +666,25 @@ const styles = StyleSheet.create({
   backButton: {
     padding: 8,
     marginBottom: 12,
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
   },
   minimalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 16,
     paddingHorizontal: 0,
   },
   headerActionsMini: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
   },
   filterButtonMini: {
     padding: 6,
   },
   filterButtonActiveMini: {
-    backgroundColor: colors.primary + '15',
+    backgroundColor: colors.primary + "15",
     borderRadius: 6,
   },
   refreshButtonMini: {
@@ -617,8 +696,8 @@ const styles = StyleSheet.create({
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
     paddingVertical: 50,
   },
   section: {
@@ -626,15 +705,15 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#000',
+    fontWeight: "600",
+    color: "#000",
     marginBottom: 12,
   },
   card: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 16,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -642,20 +721,20 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: "#f0f0f0",
     marginVertical: 12,
   },
 
   /* Tenant Info */
   tenantInfoCard: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 12,
     marginBottom: 20,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -666,26 +745,26 @@ const styles = StyleSheet.create({
   },
   tenantInfoName: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#000',
+    fontWeight: "600",
+    color: "#000",
     marginBottom: 2,
   },
   tenantInfoSlug: {
     fontSize: 12,
-    color: '#999',
+    color: "#999",
   },
 
   /* Plano Cards */
   planoCard: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 16,
     marginBottom: 16,
-    overflow: 'hidden',
+    overflow: "hidden",
     borderLeftWidth: 6,
     borderLeftColor: colors.primary,
     borderWidth: 1,
-    borderColor: '#e8e8e8',
-    shadowColor: '#000',
+    borderColor: "#e8e8e8",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
     shadowRadius: 8,
@@ -694,7 +773,7 @@ const styles = StyleSheet.create({
   planoCardAtual: {
     borderColor: colors.primary,
     borderWidth: 2,
-    backgroundColor: colors.primary + '05',
+    backgroundColor: colors.primary + "05",
   },
   planoCardModalidadeBar: {
     height: 4,
@@ -703,15 +782,15 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   planoCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
     marginBottom: 12,
     gap: 12,
   },
   modalidadeBadgeCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -724,56 +803,56 @@ const styles = StyleSheet.create({
   },
   modalidadeBadgeText: {
     fontSize: 12,
-    fontWeight: '600',
-    textTransform: 'capitalize',
+    fontWeight: "600",
+    textTransform: "capitalize",
   },
   platoAtualBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    backgroundColor: colors.primary + '15',
+    backgroundColor: colors.primary + "15",
     borderRadius: 6,
   },
   platoAtualText: {
     fontSize: 11,
     color: colors.primary,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   planoCardNome: {
     fontSize: 16,
-    fontWeight: '700',
-    color: '#000',
+    fontWeight: "700",
+    color: "#000",
     marginBottom: 12,
   },
   planoCardValorContainer: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
+    flexDirection: "row",
+    alignItems: "baseline",
     gap: 4,
     marginBottom: 14,
   },
   planoCardValor: {
     fontSize: 24,
-    fontWeight: '800',
+    fontWeight: "800",
     color: colors.primary,
   },
   planoCardValorSubtext: {
     fontSize: 13,
-    color: '#999',
-    fontWeight: '500',
+    color: "#999",
+    fontWeight: "500",
   },
   planoCardInfoRow: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
     marginBottom: 12,
   },
   infoItemCard: {
     flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
-    backgroundColor: '#f8f8f8',
+    backgroundColor: "#f8f8f8",
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderRadius: 10,
@@ -783,64 +862,64 @@ const styles = StyleSheet.create({
   },
   infoItemLabel: {
     fontSize: 11,
-    color: '#999',
-    fontWeight: '500',
+    color: "#999",
+    fontWeight: "500",
     marginBottom: 2,
   },
   infoItemValue: {
     fontSize: 13,
-    color: '#000',
-    fontWeight: '600',
+    color: "#000",
+    fontWeight: "600",
   },
   planoCardStatusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
-    backgroundColor: '#F4433615',
+    backgroundColor: "#F4433615",
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
   },
   planoCardStatusText: {
     fontSize: 12,
-    color: '#F44336',
-    fontWeight: '600',
+    color: "#F44336",
+    fontWeight: "600",
   },
 
   /* Plano Details */
   planoHeader: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 16,
     padding: 20,
     marginBottom: 20,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    shadowColor: '#000',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
   planoHeaderSubrow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 10,
     marginTop: 12,
   },
   planoNome: {
     fontSize: 22,
-    fontWeight: '700',
-    color: '#000',
+    fontWeight: "700",
+    color: "#000",
   },
   modalidadeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 8,
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
   },
   modalidadeDot: {
     width: 10,
@@ -849,46 +928,46 @@ const styles = StyleSheet.create({
   },
   modalidadeText: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   planoValorContainer: {
-    alignItems: 'flex-end',
+    alignItems: "flex-end",
   },
   planoValor: {
     fontSize: 24,
-    fontWeight: '700',
+    fontWeight: "700",
     color: colors.primary,
   },
   planoValorMes: {
     fontSize: 13,
-    fontWeight: '500',
-    color: '#999',
+    fontWeight: "500",
+    color: "#999",
     marginTop: 2,
   },
   tenantBadgeDetail: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 8,
     paddingHorizontal: 14,
     paddingVertical: 8,
-    backgroundColor: colors.primary + '10',
+    backgroundColor: colors.primary + "10",
     borderRadius: 8,
     marginBottom: 16,
-    alignSelf: 'flex-start',
+    alignSelf: "flex-start",
   },
   tenantBadgeText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
     color: colors.primary,
   },
   descricaoCard: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 14,
     marginBottom: 20,
     borderLeftWidth: 4,
     borderLeftColor: colors.primary,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -896,14 +975,14 @@ const styles = StyleSheet.create({
   },
   descricaoText: {
     fontSize: 13,
-    color: '#666',
+    color: "#666",
     lineHeight: 20,
   },
 
   /* Info */
   infoRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
+    flexDirection: "row",
+    alignItems: "flex-start",
     gap: 12,
   },
   infoContent: {
@@ -911,18 +990,18 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 12,
-    color: '#999',
+    color: "#999",
     marginBottom: 4,
   },
   value: {
     fontSize: 13,
-    color: '#000',
-    fontWeight: '600',
+    color: "#000",
+    fontWeight: "600",
   },
 
   /* Status */
   statusInfo: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 12,
   },
   statusItem: {
@@ -932,17 +1011,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 6,
-    alignItems: 'center',
+    alignItems: "center",
   },
   statusText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   durationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 6,
-    backgroundColor: colors.primary + '10',
+    backgroundColor: colors.primary + "10",
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: 8,
@@ -950,30 +1029,30 @@ const styles = StyleSheet.create({
   durationText: {
     fontSize: 13,
     color: colors.primary,
-    fontWeight: '600',
+    fontWeight: "600",
   },
 
   /* Empty State */
   emptyContainer: {
-    alignItems: 'center',
+    alignItems: "center",
     paddingVertical: 60,
   },
   emptyText: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#999',
+    fontWeight: "600",
+    color: "#999",
     marginTop: 12,
   },
   emptySubtext: {
     fontSize: 13,
-    color: '#ccc',
+    color: "#ccc",
     marginTop: 6,
-    textAlign: 'center',
+    textAlign: "center",
   },
   pagamentoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 12,
   },
   pagamentoContent: {
