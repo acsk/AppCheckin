@@ -2,6 +2,9 @@
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
+
+  # Mapear assets gerados pelo Expo Web quando a app está em /dist
+  RewriteRule ^assets/(.*)$ /dist/assets/$1 [L,NC]
   
   # Deixar arquivos e diretórios reais passarem
   RewriteCond %{REQUEST_FILENAME} -f [OR]
