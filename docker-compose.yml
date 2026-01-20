@@ -43,7 +43,7 @@ services:
     container_name: appcheckin_phpmyadmin
     restart: unless-stopped
     ports:
-      - "8082:80"
+      - "9092:80"
     depends_on:
       - mysql
     environment:
