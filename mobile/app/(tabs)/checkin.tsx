@@ -4,15 +4,15 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
-    Animated,
-    Image,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    TouchableOpacity,
-    View,
+  Animated,
+  Image,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../../src/theme/colors";
@@ -54,223 +54,7 @@ export default function CheckinScreen() {
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [userCheckinId, setUserCheckinId] = useState<number | null>(null);
 
-  // Define as funções helpers PRIMEIRO, antes de usá-las
-  const getMockParticipantsForDay = (date: Date) => {
-    const day = date.getDay();
-    const formatDate = (d: Date) => {
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, "0");
-      const dayNum = String(d.getDate()).padStart(2, "0");
-      return `${dayNum}/${month}/${year}`;
-    };
-
-    const getRandomTime = (hora: number = 19) => {
-      const min = Math.floor(Math.random() * 60);
-      const sec = Math.floor(Math.random() * 60);
-      return `${String(hora).padStart(2, "0")}:${String(min).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-    };
-
-    const baseTime = getRandomTime();
-    const dateFormatted = formatDate(date);
-    const dateISO = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-
-    const mockByDay: Record<
-      number,
-      {
-        id?: number;
-        usuario_id: number;
-        nome: string;
-        checkin_id: number;
-        data_checkin: string;
-        data_checkin_formatada: string;
-        hora_checkin: string;
-      }[]
-    > = {
-      0: [
-        {
-          id: 901,
-          usuario_id: 901,
-          nome: "Bianca Silva",
-          checkin_id: 1001,
-          data_checkin: `${dateISO} ${getRandomTime()}`,
-          data_checkin_formatada: dateFormatted,
-          hora_checkin: getRandomTime(),
-        },
-        {
-          id: 902,
-          usuario_id: 902,
-          nome: "Rafael Costa",
-          checkin_id: 1002,
-          data_checkin: `${dateISO} ${getRandomTime()}`,
-          data_checkin_formatada: dateFormatted,
-          hora_checkin: getRandomTime(),
-        },
-        {
-          id: 903,
-          usuario_id: 903,
-          nome: "Joana Lima",
-          checkin_id: 1003,
-          data_checkin: `${dateISO} ${getRandomTime()}`,
-          data_checkin_formatada: dateFormatted,
-          hora_checkin: getRandomTime(),
-        },
-      ],
-      1: [
-        {
-          id: 904,
-          usuario_id: 904,
-          nome: "Marcos Viana",
-          checkin_id: 1004,
-          data_checkin: `${dateISO} ${getRandomTime()}`,
-          data_checkin_formatada: dateFormatted,
-          hora_checkin: getRandomTime(),
-        },
-        {
-          id: 905,
-          usuario_id: 905,
-          nome: "Patricia Alves",
-          checkin_id: 1005,
-          data_checkin: `${dateISO} ${getRandomTime()}`,
-          data_checkin_formatada: dateFormatted,
-          hora_checkin: getRandomTime(),
-        },
-      ],
-      2: [
-        {
-          id: 906,
-          usuario_id: 906,
-          nome: "Diego Rocha",
-          checkin_id: 1006,
-          data_checkin: `${dateISO} ${getRandomTime()}`,
-          data_checkin_formatada: dateFormatted,
-          hora_checkin: getRandomTime(),
-        },
-        {
-          id: 907,
-          usuario_id: 907,
-          nome: "Larissa Prado",
-          checkin_id: 1007,
-          data_checkin: `${dateISO} ${getRandomTime()}`,
-          data_checkin_formatada: dateFormatted,
-          hora_checkin: getRandomTime(),
-        },
-        {
-          id: 908,
-          usuario_id: 908,
-          nome: "Andre Souza",
-          checkin_id: 1008,
-          data_checkin: `${dateISO} ${getRandomTime()}`,
-          data_checkin_formatada: dateFormatted,
-          hora_checkin: getRandomTime(),
-        },
-      ],
-      3: [
-        {
-          id: 909,
-          usuario_id: 909,
-          nome: "Camila Rocha",
-          checkin_id: 1009,
-          data_checkin: `${dateISO} ${getRandomTime()}`,
-          data_checkin_formatada: dateFormatted,
-          hora_checkin: getRandomTime(),
-        },
-        {
-          id: 910,
-          usuario_id: 910,
-          nome: "Bruno Henrique",
-          checkin_id: 1010,
-          data_checkin: `${dateISO} ${getRandomTime()}`,
-          data_checkin_formatada: dateFormatted,
-          hora_checkin: getRandomTime(),
-        },
-      ],
-      4: [
-        {
-          id: 911,
-          usuario_id: 911,
-          nome: "Fernanda Melo",
-          checkin_id: 1011,
-          data_checkin: `${dateISO} ${getRandomTime()}`,
-          data_checkin_formatada: dateFormatted,
-          hora_checkin: getRandomTime(),
-        },
-        {
-          id: 912,
-          usuario_id: 912,
-          nome: "Lucas Martins",
-          checkin_id: 1012,
-          data_checkin: `${dateISO} ${getRandomTime()}`,
-          data_checkin_formatada: dateFormatted,
-          hora_checkin: getRandomTime(),
-        },
-        {
-          id: 913,
-          usuario_id: 913,
-          nome: "Nicolas Araujo",
-          checkin_id: 1013,
-          data_checkin: `${dateISO} ${getRandomTime()}`,
-          data_checkin_formatada: dateFormatted,
-          hora_checkin: getRandomTime(),
-        },
-      ],
-      5: [
-        {
-          id: 914,
-          usuario_id: 914,
-          nome: "Gustavo Pires",
-          checkin_id: 1014,
-          data_checkin: `${dateISO} ${getRandomTime()}`,
-          data_checkin_formatada: dateFormatted,
-          hora_checkin: getRandomTime(),
-        },
-        {
-          id: 915,
-          usuario_id: 915,
-          nome: "Isabela Nunes",
-          checkin_id: 1015,
-          data_checkin: `${dateISO} ${getRandomTime()}`,
-          data_checkin_formatada: dateFormatted,
-          hora_checkin: getRandomTime(),
-        },
-      ],
-      6: [
-        {
-          id: 916,
-          usuario_id: 916,
-          nome: "Marina Teixeira",
-          checkin_id: 1016,
-          data_checkin: `${dateISO} ${getRandomTime()}`,
-          data_checkin_formatada: dateFormatted,
-          hora_checkin: getRandomTime(),
-        },
-        {
-          id: 917,
-          usuario_id: 917,
-          nome: "Thiago Freitas",
-          checkin_id: 1017,
-          data_checkin: `${dateISO} ${getRandomTime()}`,
-          data_checkin_formatada: dateFormatted,
-          hora_checkin: getRandomTime(),
-        },
-        {
-          id: 918,
-          usuario_id: 918,
-          nome: "Renata Moreira",
-          checkin_id: 1018,
-          data_checkin: `${dateISO} ${getRandomTime()}`,
-          data_checkin_formatada: dateFormatted,
-          hora_checkin: getRandomTime(),
-        },
-      ],
-    };
-    return mockByDay[day] || [];
-  };
-
-  // Agora que getMockParticipantsForDay está definida, podemos usar
-  const participantsToShow =
-    participantsTurma && participants.length === 0 && !participantsLoading
-      ? getMockParticipantsForDay(selectedDate)
-      : participants;
+  const participantsToShow = participants;
   const participantsCount = participantsTurma
     ? participantsToShow.length ||
       alunosTotal ||
@@ -819,42 +603,6 @@ export default function CheckinScreen() {
     return false;
   };
 
-  const mergeWithRandomMocks = (realParticipants: any[], date: Date) => {
-    // Se não há participantes reais, retorna vazio (vai usar mocks depois)
-    if (!realParticipants || realParticipants.length === 0) return [];
-
-    // Pega os mocks disponíveis
-    const mocks = getMockParticipantsForDay(date);
-    if (mocks.length === 0) return realParticipants;
-
-    // Define quantos mocks adicionar (30-50% dos reais ou no mínimo 1)
-    const percentualAdicionar = 0.3 + Math.random() * 0.2; // 30-50%
-    const qtdMocksAdicionar = Math.max(
-      1,
-      Math.floor(realParticipants.length * percentualAdicionar),
-    );
-
-    // Embaralha os mocks e pega alguns aleatoriamente
-    const mocksEmbaralhados = [...mocks].sort(() => Math.random() - 0.5);
-    const mocksAdicionados = mocksEmbaralhados.slice(
-      0,
-      Math.min(qtdMocksAdicionar, mocks.length),
-    );
-
-    // Combina real + mocks e embaralha
-    const combinada = [...realParticipants, ...mocksAdicionados].sort(
-      () => Math.random() - 0.5,
-    );
-
-    console.log("🎲 Mescla de participantes:", {
-      reaisTotal: realParticipants.length,
-      mocksAdicionados: mocksAdicionados.length,
-      finalTotal: combinada.length,
-    });
-
-    return combinada;
-  };
-
   const openParticipants = async (turma: any) => {
     if (!turma?.id) return;
     setParticipantsLoading(true);
@@ -909,13 +657,7 @@ export default function CheckinScreen() {
         resumoKeys: resumoData ? Object.keys(resumoData) : [],
       });
 
-      // Mescla dados reais com mocks aleatoriamente
-      const participantesCombinados = mergeWithRandomMocks(
-        alunosLista,
-        selectedDate,
-      );
-
-      setParticipants(participantesCombinados);
+      setParticipants(alunosLista);
       setCheckinsRecentes(checkinsLista);
       setResumoTurma(resumoData);
       setAlunosTotal(alunosCount);
