@@ -96,9 +96,7 @@ class AdminController
             SELECT SUM(cr.valor) as receita
             FROM contas_receber cr
             WHERE cr.tenant_id = ?
-            AND u.role_id = 1
-            AND cr.referencia_mes >= DATE_FORMAT(CURDATE(), '%Y-%m-01')
-            AND cr.referencia_mes < DATE_ADD(DATE_FORMAT(CURDATE(), '%Y-%m-01'), INTERVAL 1 MONTH)
+            AND cr.referencia_mes = DATE_FORMAT(CURDATE(), '%Y-%m')
         ");
         $stmtReceita->execute([$tenantId]);
         $receitaMensal = $stmtReceita->fetch()['receita'] ?? 0;

@@ -202,6 +202,39 @@ class Checkin
     }
 
     /**
+     * Verificar se usuário já tem check-in na mesma modalidade no mesmo dia
+     * Permite múltiplas modalidades no mesmo dia, mas apenas 1 por modalidade
+     */
+    public function usuarioTemCheckinNoDiaNaModalidade(int $usuarioId, string $data, ?int $modalidadeId): array
+    {
+        $sql = "SELECT COUNT(*) as total, MAX(c.id) as ultimo_checkin_id
+                FROM checkins c
+                INNER JOIN turmas t ON c.turma_id = t.id
+                INNER JOIN dias d ON t.dia_id = d.id
+                WHERE c.usuario_id = :usuario_id
+                AND DATE(d.data) = :data";
+        
+        $params = [
+            'usuario_id' => $usuarioId,
+            'data' => $data
+        ];
+        
+        if ($modalidadeId !== null) {
+            $sql .= " AND t.modalidade_id = :modalidade_id";
+            $params['modalidade_id'] = $modalidadeId;
+        }
+        
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        
+        $result = $stmt->fetch();
+        return [
+            'total' => (int) ($result['total'] ?? 0),
+            'ultimo_checkin_id' => $result['ultimo_checkin_id'] ? (int) $result['ultimo_checkin_id'] : null
+        ];
+    }
+
+    /**
      * Contar check-ins do usuário na semana atual
      */
     /**

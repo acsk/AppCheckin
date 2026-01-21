@@ -735,16 +735,32 @@ class TurmaController
     {
         $diasSemanaStr = implode(',', $diasSemana);
         
+        // Converter mês (YYYY-MM) para data inicial e final
+        $dataParts = explode('-', $mes);
+        if (count($dataParts) !== 2) {
+            return [];
+        }
+        $ano = (int)$dataParts[0];
+        $mes_num = (int)$dataParts[1];
+        
+        $dataInicio = sprintf('%04d-%02d-01', $ano, $mes_num);
+        $dataFim = date('Y-m-t', strtotime($dataInicio));
+        
+        // Usar YEAR() e MONTH() para evitar problemas de collation
         $sql = "SELECT * FROM dias 
-                WHERE DATE_FORMAT(data, '%Y-%m') = ? 
+                WHERE YEAR(data) = :ano 
+                AND MONTH(data) = :mes 
                 AND DAYOFWEEK(data) IN ($diasSemanaStr)
                 AND ativo = 1";
         
-        $params = [$mes];
+        $params = [
+            'ano' => $ano,
+            'mes' => $mes_num
+        ];
         
         if ($diaExcluir !== null) {
-            $sql .= " AND id != ?";
-            $params[] = $diaExcluir;
+            $sql .= " AND id != :dia_excluir";
+            $params['dia_excluir'] = $diaExcluir;
         }
         
         $sql .= " ORDER BY data ASC";

@@ -137,25 +137,29 @@ class DashboardController
     private function calcularReceitaMes(int $tenantId): array
     {
         $mesAtual = date('Y-m');
+        $ano = (int)date('Y');
+        $mes = (int)date('m');
         
         // Total pago
         $stmt = $this->db->prepare(
             "SELECT COALESCE(SUM(valor), 0) as total FROM pagamentos 
              WHERE tenant_id = :tenant_id 
-             AND DATE_FORMAT(data_pagamento, '%Y-%m') = :mes
+             AND YEAR(data_pagamento) = :ano 
+             AND MONTH(data_pagamento) = :mes
              AND status IN ('concluido', 'processando')"
         );
-        $stmt->execute(['tenant_id' => $tenantId, 'mes' => $mesAtual]);
+        $stmt->execute(['tenant_id' => $tenantId, 'ano' => $ano, 'mes' => $mes]);
         $totalPago = (float) $stmt->fetch(PDO::FETCH_ASSOC)['total'];
 
         // Total pendente
         $stmt = $this->db->prepare(
             "SELECT COALESCE(SUM(valor), 0) as total FROM pagamentos 
              WHERE tenant_id = :tenant_id 
-             AND DATE_FORMAT(data_vencimento, '%Y-%m') = :mes
+             AND YEAR(data_vencimento) = :ano 
+             AND MONTH(data_vencimento) = :mes
              AND status IN ('pendente', 'atrasado')"
         );
-        $stmt->execute(['tenant_id' => $tenantId, 'mes' => $mesAtual]);
+        $stmt->execute(['tenant_id' => $tenantId, 'ano' => $ano, 'mes' => $mes]);
         $totalPendente = (float) $stmt->fetch(PDO::FETCH_ASSOC)['total'];
 
         return [

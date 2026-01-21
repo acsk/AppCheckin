@@ -372,6 +372,36 @@ class WodController
             }
         }
 
+        // Processar variações se fornecidas
+        if (isset($data['variacoes'])) {
+            $variacoes = $data['variacoes'];
+            
+            // Se é um array vazio, deleta todas as variações existentes
+            if (is_array($variacoes) && empty($variacoes)) {
+                $this->wodVariacaoModel->deleteByWod($wodId);
+            } elseif (is_array($variacoes) && !empty($variacoes)) {
+                // Deleta as variações antigas e cria as novas
+                $this->wodVariacaoModel->deleteByWod($wodId);
+                
+                foreach ($variacoes as $variacao) {
+                    if (isset($variacao['nome'])) {
+                        try {
+                            $this->wodVariacaoModel->create([
+                                'wod_id' => $wodId,
+                                'nome' => $variacao['nome'],
+                                'descricao' => $variacao['descricao'] ?? null,
+                            ]);
+                        } catch (\Exception $e) {
+                            error_log('Erro ao criar variação: ' . $e->getMessage());
+                        }
+                    }
+                }
+            }
+            
+            // Remove 'variacoes' do array de dados para não tentar atualizar na tabela wods
+            unset($data['variacoes']);
+        }
+
         if (!$this->wodModel->update($wodId, $tenantId, $data)) {
             $response->getBody()->write(json_encode([
                 'type' => 'error',
@@ -382,6 +412,10 @@ class WodController
         }
 
         $wod = $this->wodModel->findById($wodId, $tenantId);
+        // Carregar blocos e variações atualizados
+        $wod['blocos'] = $this->wodBlocoModel->listByWod($wodId);
+        $wod['variacoes'] = $this->wodVariacaoModel->listByWod($wodId);
+        $wod['resultados'] = $this->wodResultadoModel->listByWod($wodId, $tenantId);
 
         $response->getBody()->write(json_encode([
             'type' => 'success',

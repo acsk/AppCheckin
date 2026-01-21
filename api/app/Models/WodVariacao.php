@@ -140,4 +140,18 @@ class WodVariacao
             return false;
         }
     }
+
+    /**
+     * Deletar todas as variações de um WOD
+     */
+    public function deleteByWod(int $wodId): bool
+    {
+        try {
+            $stmt = $this->db->prepare("DELETE FROM wod_variacoes WHERE wod_id = :wod_id");
+            return $stmt->execute(['wod_id' => $wodId]);
+        } catch (\Exception $e) {
+            error_log('Erro ao deletar variações do WOD: ' . $e->getMessage());
+            return false;
+        }
+    }
 }

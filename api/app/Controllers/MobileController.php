@@ -1095,18 +1095,22 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
 
-            // VALIDAÇÃO 1: Verificar se usuário já fez check-in NO MESMO DIA (em qualquer turma/modalidade)
+            // VALIDAÇÃO 1: Verificar se usuário já fez check-in NA MESMA MODALIDADE NO MESMO DIA
             $diaAula = $turma['dia_data'] ?? date('Y-m-d'); // Usar data da turma
-            $checkinDia = $this->checkinModel->usuarioTemCheckinNoDia($userId, $diaAula);
+            $modalidadeTurma = $turma['modalidade_id'] ?? null;
+            
+            // Contar check-ins apenas na MESMA MODALIDADE no mesmo dia
+            $checkinDia = $this->checkinModel->usuarioTemCheckinNoDiaNaModalidade($userId, $diaAula, $modalidadeTurma);
             
             if ($checkinDia['total'] > 0) {
                 $response->getBody()->write(json_encode([
                     'success' => false,
-                    'error' => 'Você já realizou um check-in em ' . $diaAula . '. Máximo 1 check-in por dia',
+                    'error' => 'Você já realizou um check-in nesta modalidade em ' . $diaAula . '. Máximo 1 check-in por modalidade por dia',
                     'detalhes' => [
-                        'limite_diario' => 1,
+                        'limite_diario_modalidade' => 1,
                         'data' => $diaAula,
-                        'checkins_no_dia' => $checkinDia['total'],
+                        'modalidade_id' => $modalidadeTurma,
+                        'checkins_no_dia_nesta_modalidade' => $checkinDia['total'],
                         'ultimo_checkin_id' => $checkinDia['ultimo_checkin_id']
                     ]
                 ]));
@@ -1114,7 +1118,6 @@ class MobileController
             }
 
             // VALIDAÇÃO 2: Verificar limite de check-ins da semana baseado no plano DA MODALIDADE DA TURMA
-            $modalidadeTurma = $turma['modalidade_id'] ?? null;
             $planoInfo = $this->checkinModel->obterLimiteCheckinsPlano($userId, $tenantId, $modalidadeTurma);
             
             if ($planoInfo['tem_plano'] && $planoInfo['limite'] > 0) {
@@ -1143,34 +1146,6 @@ class MobileController
                         'modalidade_id' => $modalidadeTurma,
                         'modalidade' => $turma['modalidade_nome'] ?? 'Não informada'
                     ]
-                ]));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
-            }
-
-            // Verificar se usuário já fez check-in em outra turma da MESMA MODALIDADE no MESMO DIA
-            $sqlVerificaModalidade = "
-                SELECT COUNT(DISTINCT c.id) as total_checkins
-                FROM checkins c
-                INNER JOIN turmas t ON c.turma_id = t.id
-                INNER JOIN dias d ON t.dia_id = d.id
-                WHERE c.usuario_id = :usuario_id
-                  AND t.modalidade_id = :modalidade_id
-                  AND d.id = :dia_id
-                  AND c.turma_id != :turma_id
-            ";
-            $stmtModalidade = $this->db->prepare($sqlVerificaModalidade);
-            $stmtModalidade->execute([
-                'usuario_id' => $userId,
-                'modalidade_id' => $turma['modalidade_id'],
-                'dia_id' => $turma['dia_id'],
-                'turma_id' => $turmaId
-            ]);
-            $checkModalidade = $stmtModalidade->fetch(\PDO::FETCH_ASSOC);
-            
-            if ($checkModalidade && (int) $checkModalidade['total_checkins'] > 0) {
-                $response->getBody()->write(json_encode([
-                    'success' => false,
-                    'error' => 'Você já fez check-in em outra turma dessa modalidade no mesmo dia'
                 ]));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
