@@ -31,9 +31,10 @@ class AdminController
 
         // Total de alunos
         $stmtTotalAlunos = $db->prepare("
-            SELECT COUNT(*) as total 
-            FROM usuarios 
-            WHERE tenant_id = ? AND role_id = 1
+            SELECT COUNT(DISTINCT ut.usuario_id) as total 
+            FROM usuario_tenant ut
+            INNER JOIN usuarios u ON u.id = ut.usuario_id
+            WHERE ut.tenant_id = ? AND u.role_id = 1
         ");
         $stmtTotalAlunos->execute([$tenantId]);
         $totalAlunos = $stmtTotalAlunos->fetch()['total'];
@@ -41,19 +42,18 @@ class AdminController
         // Alunos com status detalhado
         $stmtStatusAlunos = $db->prepare("
             SELECT 
-                COUNT(*) as total,
+                COUNT(DISTINCT ut.usuario_id) as total,
                 SUM(CASE 
-                    WHEN plano_id IS NOT NULL 
-                    AND (data_vencimento_plano IS NULL OR data_vencimento_plano >= CURDATE())
+                    WHEN ut.status = 'ativo'
                     THEN 1 ELSE 0 
                 END) as ativos,
                 SUM(CASE 
-                    WHEN plano_id IS NULL 
-                    OR (data_vencimento_plano IS NOT NULL AND data_vencimento_plano < CURDATE())
+                    WHEN ut.status != 'ativo'
                     THEN 1 ELSE 0 
                 END) as inativos
-            FROM usuarios 
-            WHERE tenant_id = ? AND role_id = 1
+            FROM usuario_tenant ut
+            INNER JOIN usuarios u ON u.id = ut.usuario_id
+            WHERE ut.tenant_id = ? AND u.role_id = 1
         ");
         $stmtStatusAlunos->execute([$tenantId]);
         $statusAlunos = $stmtStatusAlunos->fetch();
