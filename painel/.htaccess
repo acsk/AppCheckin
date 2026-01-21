@@ -9,6 +9,9 @@
   # Mapear /fonts.css para /dist/fonts.css
   RewriteRule ^fonts\.css$ /dist/fonts.css [L,NC]
   
+  # Mapear raiz / para /dist/index.html (SPA entry point)
+  RewriteRule ^$ /dist/index.html [L,NC]
+  
   # Deixar arquivos e diretórios reais passarem
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
