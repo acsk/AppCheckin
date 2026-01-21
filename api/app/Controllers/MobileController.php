@@ -122,7 +122,7 @@ class MobileController
     private function getEstatisticasCheckin(int $userId, ?int $tenantId): array
     {
         try {
-            // Total geral de check-ins do usuário
+            // Total de check-ins do usuário
             $sqlTotal = "SELECT COUNT(*) as total FROM checkins WHERE usuario_id = :user_id";
             $stmt = $this->db->prepare($sqlTotal);
             $stmt->execute(['user_id' => $userId]);
@@ -152,29 +152,6 @@ class MobileController
             $stmtUltimo->execute(['user_id' => $userId]);
             $ultimoCheckin = $stmtUltimo->fetch(\PDO::FETCH_ASSOC);
 
-            // Estatísticas por modalidade
-            $sqlPorModalidade = "
-                SELECT 
-                    m.id as modalidade_id,
-                    m.nome as modalidade_nome,
-                    COUNT(DISTINCT c.id) as total_checkins,
-                    SUM(CASE 
-                        WHEN MONTH(c.data_checkin) = MONTH(CURRENT_DATE())
-                        AND YEAR(c.data_checkin) = YEAR(CURRENT_DATE())
-                        THEN 1 ELSE 0 
-                    END) as checkins_mes
-                FROM checkins c
-                INNER JOIN turmas t ON c.turma_id = t.id
-                INNER JOIN modalidades m ON t.modalidade_id = m.id
-                WHERE c.usuario_id = :user_id
-                GROUP BY m.id, m.nome
-                ORDER BY m.nome ASC
-            ";
-            
-            $stmtPorModalidade = $this->db->prepare($sqlPorModalidade);
-            $stmtPorModalidade->execute(['user_id' => $userId]);
-            $estatisticasModalidades = $stmtPorModalidade->fetchAll(\PDO::FETCH_ASSOC);
-
             return [
                 'total_checkins' => $totalCheckins,
                 'checkins_mes' => $checkinsMes,
@@ -183,14 +160,6 @@ class MobileController
                     'data' => $ultimoCheckin['data'] ?? date('Y-m-d'),
                     'hora' => $ultimoCheckin['hora'] ?? '00:00:00'
                 ] : null,
-                'por_modalidade' => array_map(function($mod) {
-                    return [
-                        'modalidade_id' => (int) $mod['modalidade_id'],
-                        'modalidade_nome' => $mod['modalidade_nome'],
-                        'total_checkins' => (int) $mod['total_checkins'],
-                        'checkins_mes' => (int) $mod['checkins_mes']
-                    ];
-                }, $estatisticasModalidades)
             ];
         } catch (\Exception $e) {
             // Log de erro para debug
@@ -202,7 +171,6 @@ class MobileController
                 'checkins_mes' => 0,
                 'sequencia_dias' => 0,
                 'ultimo_checkin' => null,
-                'por_modalidade' => []
             ];
         }
     }
