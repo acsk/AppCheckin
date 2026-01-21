@@ -2,16 +2,16 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { authService } from "../../src/services/authService";
@@ -36,19 +36,51 @@ export default function LoginScreen() {
     setLoading(true);
     setFormError("");
     try {
+      console.log("🔐 Iniciando login para:", email);
       const response = await authService.login(email, senha);
 
       // authService já salva o token automaticamente
       if (response.token || response.data?.token) {
+        console.log("✅ Login bem-sucedido");
         router.replace("/(tabs)");
       } else {
+        console.log("⚠️ Login sem token");
         Alert.alert("Erro", "Não foi possível fazer login");
       }
     } catch (error) {
-      const mensagem =
-        error?.error || error?.message || "Email ou senha incorretos";
+      console.error("❌ ERRO AO FAZER LOGIN:", {
+        erro: error,
+        status: error?.status,
+        statusCode: error?.response?.status,
+        message: error?.message,
+        code: error?.code,
+        errorField: error?.error,
+        fullError: error,
+      });
+
+      // Mapear mensagens de erro mais específicas
+      let mensagem = "Email ou senha incorretos";
+
+      // Tentar extrair a mensagem do erro (backend retorna { type, code, message })
+      if (error?.message) {
+        mensagem = error.message;
+      } else if (error?.error) {
+        mensagem = error.error;
+      }
+
+      // Mapear códigos de erro específicos
+      if (error?.code === "INVALID_CREDENTIALS") {
+        mensagem = "Email ou senha incorretos";
+      } else if (error?.status === 401 || error?.response?.status === 401) {
+        if (!mensagem || mensagem.includes("Email ou senha")) {
+          mensagem = "Email ou senha incorretos";
+        }
+      } else if (error?.isNetworkError) {
+        mensagem = "Erro de conexão. Verifique sua internet.";
+      }
+
       setFormError(mensagem);
-      Alert.alert("Erro", mensagem);
+      Alert.alert("Erro ao fazer login", mensagem);
     } finally {
       setLoading(false);
     }

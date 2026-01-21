@@ -106,6 +106,7 @@ export default function AccountScreen() {
   useEffect(() => {
     loadUserProfile();
   }, []);
+
   useEffect(() => {
     if (userProfile) {
       loadRanking();
@@ -123,6 +124,13 @@ export default function AccountScreen() {
       }
     }
   }, [userProfile]);
+
+  // Carregar ranking quando modalidade selecionada muda
+  useEffect(() => {
+    if (selectedModalidadeId && userProfile) {
+      loadRanking(selectedModalidadeId);
+    }
+  }, [selectedModalidadeId]);
 
   const formatCPF = (cpf) => {
     if (!cpf) return "";
@@ -260,11 +268,7 @@ export default function AccountScreen() {
         rankingData.modalidades.length > 0
       ) {
         setRankingModalidades(rankingData.modalidades);
-        if (rankingData.modalidades.length === 1 && !selectedModalidadeId) {
-          const onlyId = rankingData.modalidades[0].id;
-          setSelectedModalidadeId(onlyId);
-          loadRanking(onlyId);
-        }
+        // Não fazer chamada recursiva aqui, deixar para useEffect
       } else if (!modalidadesFromTurmasLoaded) {
         await loadModalidadesFromTurmas();
       }
@@ -312,10 +316,7 @@ export default function AccountScreen() {
       const modalidades = Array.from(modalidadesMap.values());
       setRankingModalidades(modalidades);
       setModalidadesFromTurmasLoaded(true);
-      if (modalidades.length === 1 && !selectedModalidadeId) {
-        setSelectedModalidadeId(modalidades[0].id);
-        loadRanking(modalidades[0].id);
-      }
+      // Não fazer chamada recursiva aqui, deixar para useEffect
     } catch {
       setModalidadesFromTurmasLoaded(true);
     }

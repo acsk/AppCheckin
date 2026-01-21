@@ -1,5 +1,5 @@
-import AsyncStorage from '@/src/utils/storage';
-import api from './api';
+import AsyncStorage from "@/src/utils/storage";
+import api from "./api";
 
 /**
  * Serviço de autenticação
@@ -12,38 +12,55 @@ export const authService = {
    */
   async login(email, senha) {
     try {
-      const response = await api.post('/auth/login', { email, senha });
-      
+      const response = await api.post("/auth/login", { email, senha });
+
       // Se tem token, já salva (usuário tem apenas 1 tenant)
       if (response.data.token) {
-        await AsyncStorage.setItem('@appcheckin:token', response.data.token);
-        await AsyncStorage.setItem('@appcheckin:user', JSON.stringify(response.data.user));
-        
+        await AsyncStorage.setItem("@appcheckin:token", response.data.token);
+        await AsyncStorage.setItem(
+          "@appcheckin:user",
+          JSON.stringify(response.data.user),
+        );
+
         // Salvar tenants disponíveis (para trocar depois)
         if (response.data.tenants) {
-          await AsyncStorage.setItem('@appcheckin:tenants', JSON.stringify(response.data.tenants));
+          await AsyncStorage.setItem(
+            "@appcheckin:tenants",
+            JSON.stringify(response.data.tenants),
+          );
         }
-        
+
         return response.data;
       }
-      
+
       // Se não tem token mas tem múltiplos tenants, selecionar o primeiro automaticamente
-      if (response.data.requires_tenant_selection && response.data.tenants?.length > 0) {
+      if (
+        response.data.requires_tenant_selection &&
+        response.data.tenants?.length > 0
+      ) {
         const firstTenant = response.data.tenants[0];
         const tenantId = firstTenant.tenant?.id || firstTenant.id;
-        
+
         // Fazer seleção inicial de tenant (endpoint público)
         const selectResponse = await this.selectTenantInitial(
           response.data.user.id,
           email,
-          tenantId
+          tenantId,
         );
-        
+
         return selectResponse;
       }
-      
+
       return response.data;
     } catch (error) {
+      console.error("❌ ERRO NO LOGIN:", {
+        status: error.status,
+        statusCode: error.response?.status,
+        errorData: error.response?.data,
+        message: error.message,
+        isNetworkError: error.isNetworkError,
+      });
+
       const errorData = error.response?.data || error;
       throw errorData;
     }
@@ -55,27 +72,36 @@ export const authService = {
    */
   async selectTenantInitial(userId, email, tenantId) {
     try {
-      const response = await api.post('/auth/select-tenant-initial', { 
+      const response = await api.post("/auth/select-tenant-initial", {
         user_id: userId,
         email: email,
-        tenant_id: tenantId 
+        tenant_id: tenantId,
       });
-      
+
       if (response.data.token) {
-        await AsyncStorage.setItem('@appcheckin:token', response.data.token);
-        await AsyncStorage.setItem('@appcheckin:user', JSON.stringify(response.data.user));
-        
+        await AsyncStorage.setItem("@appcheckin:token", response.data.token);
+        await AsyncStorage.setItem(
+          "@appcheckin:user",
+          JSON.stringify(response.data.user),
+        );
+
         // Salvar tenants disponíveis (para trocar depois)
         if (response.data.tenants) {
-          await AsyncStorage.setItem('@appcheckin:tenants', JSON.stringify(response.data.tenants));
+          await AsyncStorage.setItem(
+            "@appcheckin:tenants",
+            JSON.stringify(response.data.tenants),
+          );
         }
-        
+
         // Salvar tenant atual
         if (response.data.tenant) {
-          await AsyncStorage.setItem('@appcheckin:current_tenant', JSON.stringify(response.data.tenant));
+          await AsyncStorage.setItem(
+            "@appcheckin:current_tenant",
+            JSON.stringify(response.data.tenant),
+          );
         }
       }
-      
+
       return response.data;
     } catch (error) {
       const errorData = error.response?.data || error;
@@ -88,18 +114,26 @@ export const authService = {
    */
   async selectTenant(tenantId) {
     try {
-      const response = await api.post('/auth/select-tenant', { tenant_id: tenantId });
-      
+      const response = await api.post("/auth/select-tenant", {
+        tenant_id: tenantId,
+      });
+
       if (response.data.token) {
-        await AsyncStorage.setItem('@appcheckin:token', response.data.token);
-        await AsyncStorage.setItem('@appcheckin:user', JSON.stringify(response.data.user));
-        
+        await AsyncStorage.setItem("@appcheckin:token", response.data.token);
+        await AsyncStorage.setItem(
+          "@appcheckin:user",
+          JSON.stringify(response.data.user),
+        );
+
         // Atualizar tenant atual
         if (response.data.tenant) {
-          await AsyncStorage.setItem('@appcheckin:current_tenant', JSON.stringify(response.data.tenant));
+          await AsyncStorage.setItem(
+            "@appcheckin:current_tenant",
+            JSON.stringify(response.data.tenant),
+          );
         }
       }
-      
+
       return response.data;
     } catch (error) {
       const errorData = error.response?.data || error;
@@ -111,17 +145,17 @@ export const authService = {
    * Realiza logout, removendo todos os dados salvos
    */
   async logout() {
-    await AsyncStorage.removeItem('@appcheckin:token');
-    await AsyncStorage.removeItem('@appcheckin:user');
-    await AsyncStorage.removeItem('@appcheckin:tenants');
-    await AsyncStorage.removeItem('@appcheckin:current_tenant');
+    await AsyncStorage.removeItem("@appcheckin:token");
+    await AsyncStorage.removeItem("@appcheckin:user");
+    await AsyncStorage.removeItem("@appcheckin:tenants");
+    await AsyncStorage.removeItem("@appcheckin:current_tenant");
   },
 
   /**
    * Retorna o usuário logado atualmente
    */
   async getCurrentUser() {
-    const userJson = await AsyncStorage.getItem('@appcheckin:user');
+    const userJson = await AsyncStorage.getItem("@appcheckin:user");
     return userJson ? JSON.parse(userJson) : null;
   },
 
@@ -129,7 +163,7 @@ export const authService = {
    * Retorna o token atual
    */
   async getToken() {
-    return await AsyncStorage.getItem('@appcheckin:token');
+    return await AsyncStorage.getItem("@appcheckin:token");
   },
 
   /**
@@ -144,7 +178,7 @@ export const authService = {
    * Retorna os tenants disponíveis do usuário
    */
   async getTenants() {
-    const tenantsJson = await AsyncStorage.getItem('@appcheckin:tenants');
+    const tenantsJson = await AsyncStorage.getItem("@appcheckin:tenants");
     return tenantsJson ? JSON.parse(tenantsJson) : null;
   },
 
@@ -152,7 +186,7 @@ export const authService = {
    * Retorna o tenant atual selecionado
    */
   async getCurrentTenant() {
-    const tenantJson = await AsyncStorage.getItem('@appcheckin:current_tenant');
+    const tenantJson = await AsyncStorage.getItem("@appcheckin:current_tenant");
     return tenantJson ? JSON.parse(tenantJson) : null;
   },
 };

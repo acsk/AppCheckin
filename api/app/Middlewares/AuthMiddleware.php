@@ -15,14 +15,20 @@ class AuthMiddleware
         $authHeader = $request->getHeaderLine('Authorization');
 
         if (!$authHeader) {
-            return $this->unauthorizedResponse('Token não fornecido');
+            return $this->unauthorizedResponse(
+                'Token não fornecido',
+                'MISSING_TOKEN'
+            );
         }
 
         // Formato: Bearer <token>
         $parts = explode(' ', $authHeader);
         
         if (count($parts) !== 2 || $parts[0] !== 'Bearer') {
-            return $this->unauthorizedResponse('Formato de token inválido');
+            return $this->unauthorizedResponse(
+                'Formato de token inválido',
+                'INVALID_TOKEN_FORMAT'
+            );
         }
 
         $token = $parts[1];
@@ -32,7 +38,10 @@ class AuthMiddleware
         $decoded = $jwtService->decode($token);
 
         if (!$decoded) {
-            return $this->unauthorizedResponse('Token inválido ou expirado');
+            return $this->unauthorizedResponse(
+                'Token inválido ou expirado',
+                'TOKEN_EXPIRED_OR_INVALID'
+            );
         }
 
         // Buscar dados completos do usuário
@@ -56,7 +65,10 @@ class AuthMiddleware
         $usuario = $stmt->fetch(\PDO::FETCH_ASSOC);
 
         if (!$usuario) {
-            return $this->unauthorizedResponse('Usuário não encontrado');
+            return $this->unauthorizedResponse(
+                'Usuário não existe ou foi removido',
+                'USER_NOT_FOUND'
+            );
         }
 
         // Adicionar dados do usuário ao request
@@ -68,11 +80,13 @@ class AuthMiddleware
         return $handler->handle($request);
     }
 
-    private function unauthorizedResponse(string $message): Response
+    private function unauthorizedResponse(string $message, string $code = 'UNAUTHORIZED'): Response
     {
         $response = new SlimResponse();
         $response->getBody()->write(json_encode([
-            'error' => $message
+            'type' => 'error',
+            'code' => $code,
+            'message' => $message
         ]));
         
         return $response

@@ -105,15 +105,32 @@ const api = {
 
       // Tratar erros de autenticação
       if (response.status === 401) {
-        console.warn(
-          "🚫 Token inválido ou expirado - redirecionando para login...",
-        );
-        await AsyncStorage.removeItem("@appcheckin:token");
-        await AsyncStorage.removeItem("@appcheckin:user");
+        // Extrair mensagem de erro do backend se disponível
+        const errorMessage =
+          responseData?.message ||
+          responseData?.error ||
+          "Acesso não autorizado";
+        const errorCode = responseData?.code;
 
-        // Notificar o app para redirecionar
-        if (onUnauthorizedCallback) {
-          onUnauthorizedCallback();
+        // Verificar se é erro de login (endpoint /auth/login)
+        // Se for, não chamar o callback, deixar a tela de login tratar
+        const isLoginEndpoint = endpoint === "/auth/login";
+
+        if (!isLoginEndpoint) {
+          // Para outros endpoints, limpar storage e notificar
+          console.warn(
+            "🚫 Token inválido ou expirado - redirecionando para login...",
+          );
+          await AsyncStorage.removeItem("@appcheckin:token");
+          await AsyncStorage.removeItem("@appcheckin:user");
+
+          if (onUnauthorizedCallback) {
+            onUnauthorizedCallback();
+          }
+        } else {
+          // Para login, apenas remover dados se existirem
+          await AsyncStorage.removeItem("@appcheckin:token");
+          await AsyncStorage.removeItem("@appcheckin:user");
         }
 
         throw {
@@ -121,16 +138,26 @@ const api = {
             status: 401,
             data: responseData,
           },
+          message: errorMessage,
+          code: errorCode,
         };
       }
 
       // Se não for sucesso, lançar erro
       if (!response.ok) {
+        const errorMessage =
+          responseData?.message ||
+          responseData?.error ||
+          `Erro HTTP ${response.status}`;
+        const errorCode = responseData?.code;
+
         throw {
           response: {
             status: response.status,
             data: responseData,
           },
+          message: errorMessage,
+          code: errorCode,
         };
       }
 
