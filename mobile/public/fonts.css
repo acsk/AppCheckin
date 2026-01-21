@@ -80,6 +80,11 @@
 }
 
 @font-face {
+  font-family: "material-community";
+  src: url("/fonts/MaterialCommunityIcons.ttf") format("truetype");
+}
+
+@font-face {
   font-family: "Octicons";
   src: url("/fonts/Octicons.ttf") format("truetype");
 }
