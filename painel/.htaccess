@@ -6,8 +6,8 @@
   # Mapear /_expo/ para /dist/_expo/ (assets do Expo)
   RewriteRule ^_expo/(.*)$ /dist/_expo/$1 [L,NC]
   
-  # Mapear /assets/ para /dist/assets/ 
-  RewriteRule ^assets/(.*)$ /dist/assets/$1 [L,NC]
+  # Mapear /fonts.css para /dist/fonts.css
+  RewriteRule ^fonts\.css$ /dist/fonts.css [L,NC]
   
   # Deixar arquivos e diretórios reais passarem
   RewriteCond %{REQUEST_FILENAME} -f [OR]
