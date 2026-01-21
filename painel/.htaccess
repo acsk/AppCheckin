@@ -6,6 +6,12 @@
   # Mapear /_expo/ para /dist/_expo/ (assets do Expo)
   RewriteRule ^_expo/(.*)$ /dist/_expo/$1 [L,NC]
   
+  # Mapear fonts do Expo para /dist/fonts/
+  RewriteRule ^assets/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/(.+)$ /dist/fonts/$1 [L,NC]
+  
+  # Mapear /assets/ para /dist/assets/ (remover duplicação)
+  RewriteRule ^assets/(.*)$ /dist/assets/$1 [L,NC]
+  
   # Mapear /fonts.css para /dist/fonts.css
   RewriteRule ^fonts\.css$ /dist/fonts.css [L,NC]
   
