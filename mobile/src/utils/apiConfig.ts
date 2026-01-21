@@ -3,7 +3,7 @@
  * Usa URLs centralizadas do arquivo src/config/urls.ts
  */
 
-import CONFIG from "@/src/config/urls";
+import { CONFIG } from "@/src/config/urls";
 import { Platform } from "react-native";
 
 const isWeb = Platform.OS === "web";

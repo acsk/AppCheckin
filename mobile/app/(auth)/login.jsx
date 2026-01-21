@@ -2,16 +2,16 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { authService } from "../../src/services/authService";
@@ -19,15 +19,19 @@ import { colors } from "../../src/theme/colors";
 
 export default function LoginScreen() {
   const router = useRouter();
-  const [email, setEmail] = useState(
-    __DEV__ ? "carolina.ferreira@tenant4.com" : "",
-  );
+  const [email, setEmail] = useState(__DEV__ ? "andreteste@gmail.com" : "");
   const [senha, setSenha] = useState(__DEV__ ? "123456" : "");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState("");
 
   const handleLogin = async () => {
+    // Proteção contra múltiplos cliques
+    if (loading) {
+      console.log("⚠️ Login já em progresso, ignorando novo clique");
+      return;
+    }
+
     if (!email.trim() || !senha.trim()) {
       Alert.alert("Atenção", "Preencha email e senha");
       return;
@@ -39,13 +43,25 @@ export default function LoginScreen() {
       console.log("🔐 Iniciando login para:", email);
       const response = await authService.login(email, senha);
 
-      // authService já salva o token automaticamente
-      if (response.token || response.data?.token) {
+      // authService já retorna response.data e salva o token automaticamente
+      if (response && response.token) {
         console.log("✅ Login bem-sucedido");
+        console.log("📊 Dados do login:", {
+          user: response.user,
+          token: response.token?.substring(0, 20) + "...",
+        });
+
+        // Pequeno delay para garantir que o token foi salvo
+        await new Promise((resolve) => setTimeout(resolve, 800));
+
+        console.log("🔄 Redirecionando para /(tabs)...");
+        // NÃO chama setLoading(false) aqui - deixa loading=true para bloquear interações
         router.replace("/(tabs)");
+        console.log("✅ Redirect executado");
       } else {
-        console.log("⚠️ Login sem token");
+        console.log("⚠️ Login sem token", response);
         Alert.alert("Erro", "Não foi possível fazer login");
+        setLoading(false);
       }
     } catch (error) {
       console.error("❌ ERRO AO FAZER LOGIN:", {
@@ -81,7 +97,6 @@ export default function LoginScreen() {
 
       setFormError(mensagem);
       Alert.alert("Erro ao fazer login", mensagem);
-    } finally {
       setLoading(false);
     }
   };
@@ -217,10 +232,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
+    boxShadow: "0px 8px 16px rgba(0, 0, 0, 0.08)",
     elevation: 6,
   },
   appName: {
@@ -241,10 +253,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     paddingVertical: 24,
     paddingHorizontal: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
+    boxShadow: "0px 12px 20px rgba(0, 0, 0, 0.08)",
     elevation: 6,
   },
   welcomeText: {
@@ -288,10 +297,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginTop: 18,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    boxShadow: "0px 4px 8px rgba(0, 150, 136, 0.3)",
     elevation: 5,
   },
   loginButtonText: {

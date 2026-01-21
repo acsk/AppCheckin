@@ -1,9 +1,7 @@
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { colors } from "@/src/theme/colors";
-import AsyncStorage from "@/src/utils/storage";
 import { Feather } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
     Platform,
     StyleSheet,
@@ -18,34 +16,8 @@ import CheckinScreen from "./(tabs)/checkin";
 
 export default function MainApp() {
   const [currentTab, setCurrentTab] = useState("account");
-  const [isReady, setIsReady] = useState(false);
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
-  const router = useRouter();
-
-  useEffect(() => {
-    // Verificar autenticação ao montar
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
-    try {
-      const token = await AsyncStorage.getItem("@appcheckin:token");
-      if (!token) {
-        // Sem token, redireciona para login
-        router.replace("/(auth)/login");
-        return;
-      }
-      setIsReady(true);
-    } catch (error) {
-      // Erro ao verificar, redireciona para login
-      router.replace("/(auth)/login");
-    }
-  };
-
-  if (!isReady) {
-    return null;
-  }
 
   const renderScreen = () => {
     switch (currentTab) {
