@@ -19,8 +19,12 @@
   RewriteCond %{REQUEST_URI} ^/dist/ [NC]
   RewriteRule ^ - [L]
   
+  # Deixar /_expo/static/ intacto (assets do Expo)
+  RewriteCond %{REQUEST_URI} ^/_expo/ [NC]
+  RewriteRule ^ - [L]
+  
   # Deixar a raiz /index.html e /index.js passarem
-  RewriteCond %{REQUEST_URI} ^/(index\.(html|js)|favicon\.ico)$ [NC]
+  RewriteCond %{REQUEST_URI} ^/(index\.(html|js)|favicon\.ico|fonts\.css)$ [NC]
   RewriteRule ^ - [L]
   
   # Qualquer outra coisa (rotas), servir /dist/index.html (SPA routing)
