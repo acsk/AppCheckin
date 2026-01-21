@@ -18,10 +18,7 @@
   # Mapear /assets/ para /dist/assets/ (CORRETO: os fonts estão dentro de assets/)
   RewriteRule ^assets/(.*)$ /dist/assets/$1 [L,NC]
   
-  # Redirecionar raiz / para /login (HTTP redirect 301)
-  RewriteRule ^$ /login [R=301,L]
-  
-  # Mapear raiz / para /dist/index.html (SPA entry point) - NÃO SERÁ MAIS UTILIZADO POR CAUSA DO REDIRECT ACIMA
+  # Mapear raiz / para /dist/index.html (SPA entry point)
   RewriteRule ^$ /dist/index.html [L,NC]
   
   # Qualquer outra coisa (rotas), servir /dist/index.html (SPA routing)
