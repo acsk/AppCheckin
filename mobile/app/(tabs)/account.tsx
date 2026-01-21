@@ -6,15 +6,15 @@ import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -34,6 +34,12 @@ interface UserProfile {
     checkins_mes: number;
     sequencia_dias: number;
     ultimo_checkin?: { data: string; hora: string };
+    por_modalidade?: {
+      modalidade_id: number;
+      modalidade_nome: string;
+      total_checkins: number;
+      checkins_mes: number;
+    }[];
   };
   ranking_modalidades?: {
     modalidade_id: number;
@@ -536,6 +542,49 @@ export default function AccountScreen() {
                 </View>
               </View>
             )}
+
+            {/* Statistics by Modalidade */}
+            {userProfile.estatisticas.por_modalidade &&
+              userProfile.estatisticas.por_modalidade.length > 0 && (
+                <View style={styles.modalidadeStatsContainer}>
+                  <Text style={styles.modalidadeStatsTitle}>
+                    Por Modalidade
+                  </Text>
+                  {userProfile.estatisticas.por_modalidade.map(
+                    (modalidade, index) => (
+                      <View
+                        key={`${modalidade.modalidade_id}-${index}`}
+                        style={styles.modalidadeStatCard}
+                      >
+                        <View style={styles.modalidadeStatHeader}>
+                          <Text style={styles.modalidadeStatName}>
+                            {modalidade.modalidade_nome}
+                          </Text>
+                        </View>
+                        <View style={styles.modalidadeStatRow}>
+                          <View style={styles.modalidadeStatItem}>
+                            <Text style={styles.modalidadeStatItemLabel}>
+                              Total
+                            </Text>
+                            <Text style={styles.modalidadeStatItemValue}>
+                              {modalidade.total_checkins}
+                            </Text>
+                          </View>
+                          <View style={styles.modalidadeStatDivider} />
+                          <View style={styles.modalidadeStatItem}>
+                            <Text style={styles.modalidadeStatItemLabel}>
+                              Este Mês
+                            </Text>
+                            <Text style={styles.modalidadeStatItemValue}>
+                              {modalidade.checkins_mes}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                    ),
+                  )}
+                </View>
+              )}
           </View>
         )}
 
@@ -939,6 +988,61 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: "#000",
+  },
+  modalidadeStatsContainer: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#f0f0f0",
+  },
+  modalidadeStatsTitle: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#999",
+    marginBottom: 12,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  modalidadeStatCard: {
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: "#f0f0f0",
+  },
+  modalidadeStatHeader: {
+    marginBottom: 10,
+  },
+  modalidadeStatName: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#000",
+  },
+  modalidadeStatRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-around",
+  },
+  modalidadeStatItem: {
+    flex: 1,
+    alignItems: "center",
+  },
+  modalidadeStatItemLabel: {
+    fontSize: 11,
+    color: "#999",
+    marginBottom: 4,
+  },
+  modalidadeStatItemValue: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: colors.primary,
+  },
+  modalidadeStatDivider: {
+    width: 1,
+    height: 30,
+    backgroundColor: "#f0f0f0",
+    marginHorizontal: 8,
   },
   infoSection: {
     backgroundColor: "#fff",
