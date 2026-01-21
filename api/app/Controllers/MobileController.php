@@ -1160,6 +1160,48 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
 
+            // VALIDAÇÃO 3: Verificar tolerância ANTES da aula
+            // Não permite check-in muito cedo
+            $agora = new \DateTime();
+            
+            // Buscar dados do dia para calcular horário da aula
+            $dia = null;
+            if ($turma['dia_id']) {
+                $stmt = $this->db->prepare("SELECT data FROM dias WHERE id = ?");
+                $stmt->execute([$turma['dia_id']]);
+                $dia = $stmt->fetch(\PDO::FETCH_ASSOC);
+            }
+            
+            if ($dia && $turma['horario_inicio']) {
+                // Data e hora do início da aula
+                $dataHorarioInicio = new \DateTime($dia['data'] . ' ' . $turma['horario_inicio']);
+                
+                // Tolerância antes da aula (padrão 480 minutos = 8 horas)
+                $toleranciaAntes = (int) ($turma['tolerancia_antes_minutos'] ?? 480);
+                
+                // Calcular o momento mais cedo que pode fazer check-in
+                $dataMaisCedo = clone $dataHorarioInicio;
+                $dataMaisCedo->modify("-{$toleranciaAntes} minutes");
+                
+                // Se agora é ANTES da data mais cedo permitida, bloquear
+                if ($agora < $dataMaisCedo) {
+                    $minutosAinda = ceil(($dataMaisCedo->getTimestamp() - $agora->getTimestamp()) / 60);
+                    $response->getBody()->write(json_encode([
+                        'success' => false,
+                        'error' => 'Check-in aberto muito cedo. Aguarde o horário de abertura',
+                        'detalhes' => [
+                            'turma_id' => (int) $turma['id'],
+                            'data_aula' => $dia['data'],
+                            'horario_inicio' => $turma['horario_inicio'],
+                            'tolerancia_minutos' => $toleranciaAntes,
+                            'abertura_checkin' => $dataMaisCedo->format('Y-m-d H:i:s'),
+                            'tempo_esperar_minutos' => $minutosAinda
+                        ]
+                    ]));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                }
+            }
+
             // Registrar check-in
             $checkinId = $this->checkinModel->createEmTurma($userId, $turmaId);
 
