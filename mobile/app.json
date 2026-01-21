@@ -25,6 +25,7 @@
       "output": "static",
       "favicon": "./assets/images/favicon.png",
       "bundler": "metro",
+      "htmlTemplate": "./public/index.html",
       "build": {
         "babel": {
           "include": ["node_modules/react-native-web"]
