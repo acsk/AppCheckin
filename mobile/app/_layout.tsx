@@ -1,18 +1,22 @@
-import { setOnUnauthorized } from '@/src/services/api';
-import { handleAuthError } from '@/src/utils/authHelpers';
-import AsyncStorage from '@/src/utils/storage';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack, useRouter } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
-import { Platform } from 'react-native';
+import { setOnUnauthorized } from "@/src/services/api";
+import { handleAuthError } from "@/src/utils/authHelpers";
+import AsyncStorage from "@/src/utils/storage";
+import {
+    DarkTheme,
+    DefaultTheme,
+    ThemeProvider,
+} from "@react-navigation/native";
+import { Stack, useRouter } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { useEffect, useState } from "react";
+import { Platform } from "react-native";
 
 // Importar Reanimated apenas no mobile
-if (Platform.OS !== 'web') {
-  require('react-native-reanimated');
+if (Platform.OS !== "web") {
+  require("react-native-reanimated");
 }
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useColorScheme } from "@/hooks/use-color-scheme";
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -21,20 +25,27 @@ export default function RootLayout() {
 
   useEffect(() => {
     checkAuthStatus();
-    
+
     // Configurar callback para tratar 401 globalmente
     setOnUnauthorized(async () => {
       await handleAuthError();
-      router.replace('/(auth)/login');
+      router.replace("/(auth)/login");
     });
   }, []);
 
   const checkAuthStatus = async () => {
     try {
-      const token = await AsyncStorage.getItem('@appcheckin:token');
-      setIsLoggedIn(!!token);
+      const token = await AsyncStorage.getItem("@appcheckin:token");
+      const hasToken = !!token;
+      setIsLoggedIn(hasToken);
+
+      // Se não tem token e tenta acessar URL raiz, redireciona para login
+      if (!hasToken) {
+        router.replace("/(auth)/login");
+      }
     } catch (error) {
       setIsLoggedIn(false);
+      router.replace("/(auth)/login");
     }
   };
 
@@ -43,32 +54,17 @@ export default function RootLayout() {
   }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
       <Stack>
-        <Stack.Screen 
-          name="(auth)" 
-          options={{ headerShown: false }} 
+        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="planos" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="matricula-detalhes"
+          options={{ headerShown: false }}
         />
-        <Stack.Screen 
-          name="(tabs)" 
-          options={{ headerShown: false }} 
-        />
-        <Stack.Screen 
-          name="index" 
-          options={{ headerShown: false }} 
-        />
-        <Stack.Screen 
-          name="planos" 
-          options={{ headerShown: false }} 
-        />
-        <Stack.Screen 
-          name="matricula-detalhes" 
-          options={{ headerShown: false }} 
-        />
-        <Stack.Screen 
-          name="turma-detalhes" 
-          options={{ headerShown: false }} 
-        />
+        <Stack.Screen name="turma-detalhes" options={{ headerShown: false }} />
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>
