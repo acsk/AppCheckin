@@ -3,7 +3,10 @@
   RewriteEngine On
   RewriteBase /
 
-  # Mapear assets gerados pelo Expo Web quando a app está em /dist
+  # Mapear /_expo/ para /dist/_expo/ (assets do Expo)
+  RewriteRule ^_expo/(.*)$ /dist/_expo/$1 [L,NC]
+  
+  # Mapear /assets/ para /dist/assets/ 
   RewriteRule ^assets/(.*)$ /dist/assets/$1 [L,NC]
   
   # Deixar arquivos e diretórios reais passarem
@@ -19,11 +22,7 @@
   RewriteCond %{REQUEST_URI} ^/dist/ [NC]
   RewriteRule ^ - [L]
   
-  # Deixar /_expo/static/ intacto (assets do Expo)
-  RewriteCond %{REQUEST_URI} ^/_expo/ [NC]
-  RewriteRule ^ - [L]
-  
-  # Deixar a raiz /index.html e /index.js passarem
+  # Deixar a raiz /index.html, /index.js e /fonts.css passarem
   RewriteCond %{REQUEST_URI} ^/(index\.(html|js)|favicon\.ico|fonts\.css)$ [NC]
   RewriteRule ^ - [L]
   
