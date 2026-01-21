@@ -85,7 +85,7 @@ class AdminController
             FROM contas_receber cr
             INNER JOIN usuario_tenant ut ON ut.usuario_id = cr.usuario_id AND ut.status = 'ativo'
             WHERE ut.tenant_id = ? 
-            AND cr.vencimento BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+            AND cr.data_vencimento BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
             AND cr.status IN ('pendente', 'vencido')
         ");
         $stmtPlanosVencendo->execute([$tenantId]);
@@ -180,8 +180,8 @@ class AdminController
                         WHERE cr.usuario_id = u.id
                         AND cr.tenant_id = ut.tenant_id
                         AND cr.status = 'pago'
-                        AND cr.vencimento <= CURDATE()
-                        AND DATE_ADD(cr.vencimento, INTERVAL COALESCE(cr.intervalo_dias, 30) DAY) >= CURDATE()
+                        AND cr.data_vencimento <= CURDATE()
+                        AND DATE_ADD(cr.data_vencimento, INTERVAL COALESCE(cr.intervalo_dias, 30) DAY) >= CURDATE()
                     ) THEN 1
                     ELSE 0
                 END as possui_pagamento_ativo,
@@ -192,7 +192,7 @@ class AdminController
                     WHERE cr2.usuario_id = u.id
                     AND cr2.tenant_id = ut.tenant_id
                     AND cr2.status = 'pendente'
-                    ORDER BY cr2.vencimento ASC
+                    ORDER BY cr2.data_vencimento ASC
                     LIMIT 1
                 ) as ultima_conta_pendente_id,
                 
@@ -202,7 +202,7 @@ class AdminController
                     WHERE cr3.usuario_id = u.id
                     AND cr3.tenant_id = ut.tenant_id
                     AND cr3.status = 'pendente'
-                    ORDER BY cr3.vencimento ASC
+                    ORDER BY cr3.data_vencimento ASC
                     LIMIT 1
                 ) as ultima_conta_pendente_valor
                 
