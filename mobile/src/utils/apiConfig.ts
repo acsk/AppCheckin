@@ -70,14 +70,39 @@ export const getApiUrlRuntime = (): string => {
   return url;
 };
 
+// Para carregar imagens/assets
+export const getAssetsUrl = (): string => {
+  const appEnv = process.env.EXPO_PUBLIC_APP_ENV || "development";
+  const assetsConfig = (CONFIG as any).assets || {};
+  return (
+    assetsConfig[appEnv] ||
+    CONFIG.api[appEnv as keyof typeof CONFIG.api] ||
+    CONFIG.api.production
+  );
+};
+
+export const getAssetsUrlRuntime = (): string => {
+  const appEnv = process.env.EXPO_PUBLIC_APP_ENV || "development";
+  const assetsConfig = (CONFIG as any).assets || {};
+  return (
+    assetsConfig[appEnv] ||
+    CONFIG.api[appEnv as keyof typeof CONFIG.api] ||
+    CONFIG.api.production
+  );
+};
+
 export const API_URL = getApiUrl();
+export const ASSETS_URL = getAssetsUrl();
 export const APP_ENV = process.env.EXPO_PUBLIC_APP_ENV || "development";
 export const DEBUG_LOGS = process.env.EXPO_PUBLIC_DEBUG_LOGS === "true";
 
 export default {
   getApiUrl,
   getApiUrlRuntime,
+  getAssetsUrl,
+  getAssetsUrlRuntime,
   API_URL,
+  ASSETS_URL,
   APP_ENV,
   DEBUG_LOGS,
   isWeb,

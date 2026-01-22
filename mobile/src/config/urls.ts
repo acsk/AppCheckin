@@ -13,6 +13,12 @@ export const CONFIG = {
     production: "https://api.appcheckin.com.br",
   },
 
+  // URLs para servir imagens/assets
+  assets: {
+    development: "http://localhost:8080",
+    production: "https://mobile.appcheckin.com.br",
+  },
+
   // Apps/Serviços opcionais
   services: {
     // Adicionar conforme necessário
