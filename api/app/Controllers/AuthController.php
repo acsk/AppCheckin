@@ -188,7 +188,7 @@ class AuthController
             'requires_tenant_selection' => count($tenants) > 1
         ]));
 
-        return $response->withHeader('Content-Type', 'application/json');
+        return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
     }
 
     public function logout(Request $request, Response $response): Response
