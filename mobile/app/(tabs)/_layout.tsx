@@ -3,7 +3,7 @@ import { colors } from '@/src/theme/colors';
 import { Feather } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { Platform } from 'react-native';
+import { Platform, StyleSheet, Text } from 'react-native';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -49,6 +49,11 @@ export default function TabLayout() {
         name="account"
         options={{
           title: 'Minha Conta',
+          tabBarLabel: ({ color }) => (
+            <Text style={[styles.tabBarLabel, { color }]} numberOfLines={1}>
+              Minha Conta
+            </Text>
+          ),
           tabBarIcon: ({ color, size }) => (
             <Feather name="user" size={size + 6} color={color} />
           ),
@@ -84,3 +89,11 @@ export default function TabLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  tabBarLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+});
