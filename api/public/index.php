@@ -28,15 +28,19 @@ $app->add(function ($request, $handler) {
             ->withHeader('Access-Control-Allow-Origin', '*')
             ->withHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Accept, Origin, Authorization')
             ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
+            ->withHeader('Access-Control-Max-Age', '86400')
             ->withStatus(200);
     }
     
-    // Para outros métodos, prosseguir normalmente
+    // Para outros métodos, prosseguir normalmente e adicionar headers CORS
     $response = $handler->handle($request);
+    
+    // Adicionar headers CORS mas preservar Content-Type, Status e Body
     return $response
         ->withHeader('Access-Control-Allow-Origin', '*')
+        ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
         ->withHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Accept, Origin, Authorization')
-        ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+        ->withHeader('Access-Control-Max-Age', '86400');
 });
 
 // Middleware de parsing de JSON
@@ -44,3 +48,14 @@ $app->addBodyParsingMiddleware();
 
 // Middleware de erro
 $app->addErrorMiddleware(true, true, true);
+
+// ========================================
+// CARREGAR ROTAS
+// ========================================
+$routes = require __DIR__ . '/../routes/api.php';
+$routes($app);
+
+// ========================================
+// EXECUTAR APLICAÇÃO
+// ========================================
+$app->run();
