@@ -103,6 +103,11 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      <View pointerEvents="none" style={styles.backgroundDecor}>
+        <View style={styles.headerAccent} />
+        <View style={styles.accentCircle} />
+        <View style={styles.accentCircleSmall} />
+      </View>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.keyboardView}
@@ -115,7 +120,7 @@ export default function LoginScreen() {
           {/* Logo */}
           <View style={styles.logoContainer}>
             <View style={styles.logoCircle}>
-              <Feather name="check-circle" size={60} color={colors.primary} />
+              <Feather name="check-circle" size={60} color="#fff" />
             </View>
             <Text style={styles.appName}>AppCheckin</Text>
             <Text style={styles.tagline}>Registre sua presença</Text>
@@ -124,7 +129,6 @@ export default function LoginScreen() {
           {/* Formulário */}
           <View style={styles.formContainer}>
             <View style={styles.formCard}>
-              <Text style={styles.welcomeText}>Bem-vindo de volta!</Text>
               <Text style={styles.welcomeSubtext}>
                 Faça login para continuar
               </Text>
@@ -209,7 +213,38 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f6f7fb",
+    backgroundColor: "#fff3ea",
+  },
+  backgroundDecor: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  headerAccent: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 220,
+    backgroundColor: colors.primary,
+    borderBottomLeftRadius: 32,
+    borderBottomRightRadius: 32,
+  },
+  accentCircle: {
+    position: "absolute",
+    top: -60,
+    right: -40,
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: "rgba(255,255,255,0.2)",
+  },
+  accentCircleSmall: {
+    position: "absolute",
+    top: 120,
+    left: -40,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "rgba(255,255,255,0.18)",
   },
   keyboardView: {
     flex: 1,
@@ -228,11 +263,11 @@ const styles = StyleSheet.create({
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: "#ffffff",
+    backgroundColor: colors.primaryDark,
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 16,
-    boxShadow: "0px 8px 16px rgba(0, 0, 0, 0.08)",
+    boxShadow: "0px 12px 20px rgba(255, 107, 53, 0.35)",
     elevation: 6,
   },
   appName: {
@@ -243,7 +278,7 @@ const styles = StyleSheet.create({
   },
   tagline: {
     fontSize: 16,
-    color: "#8b91a1",
+    color: "rgba(255,255,255,0.8)",
   },
   formContainer: {
     width: "100%",
@@ -253,7 +288,9 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     paddingVertical: 24,
     paddingHorizontal: 20,
-    boxShadow: "0px 12px 20px rgba(0, 0, 0, 0.08)",
+    borderWidth: 1,
+    borderColor: "#fde2c2",
+    boxShadow: "0px 12px 20px rgba(255, 107, 53, 0.15)",
     elevation: 6,
   },
   welcomeText: {
@@ -272,10 +309,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: "#fde2c2",
     borderRadius: 12,
     paddingHorizontal: 14,
-    backgroundColor: "#f9fafb",
+    backgroundColor: "#fff7f2",
     height: 52,
   },
   inputIcon: {
@@ -297,7 +334,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginTop: 18,
-    boxShadow: "0px 4px 8px rgba(0, 150, 136, 0.3)",
+    boxShadow: "0px 6px 14px rgba(255, 107, 53, 0.35)",
     elevation: 5,
   },
   loginButtonText: {

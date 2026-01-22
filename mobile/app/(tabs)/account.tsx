@@ -697,7 +697,7 @@ export default function AccountScreen() {
           <Text style={styles.sectionTitle}>
             Ranking de Check-ins{rankingPeriodo ? ` • ${rankingPeriodo}` : ""}
           </Text>
-          {rankingModalidades.length > 1 && (
+          {rankingModalidades.length > 0 && (
             <View style={styles.modalidadeFilter}>
               {rankingModalidades.map((modalidade) => {
                 const active = selectedModalidadeId === modalidade.id;
@@ -1287,13 +1287,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: "#fff",
+    backgroundColor: "#fff7ed",
     borderWidth: 1,
-    borderColor: "#eceff4",
+    borderColor: colors.primary + "30",
   },
   modalidadeChipActive: {
-    backgroundColor: colors.primary + "15",
-    borderColor: colors.primary + "60",
+    backgroundColor: colors.primary + "20",
+    borderColor: colors.primary + "80",
   },
   modalidadeChipContent: {
     flexDirection: "row",
