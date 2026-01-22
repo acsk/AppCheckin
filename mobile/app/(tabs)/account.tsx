@@ -89,6 +89,45 @@ export default function AccountScreen() {
   const [apiUrl, setApiUrl] = useState<string>("");
   const [assetsUrl, setAssetsUrl] = useState<string>("");
 
+  const normalizeProfileModalidades = (
+    items: UserProfile["ranking_modalidades"] = [],
+  ): RankingModalidade[] =>
+    items
+      .filter((item) => item?.modalidade_id && item?.modalidade_nome)
+      .map((item) => ({
+        id: item.modalidade_id,
+        nome: item.modalidade_nome,
+        icone: item.modalidade_icone,
+        cor: item.modalidade_cor,
+      }));
+
+  const normalizeApiModalidades = (
+    items: RankingModalidade[] = [],
+  ): RankingModalidade[] =>
+    items
+      .filter((item) => item?.id && item?.nome)
+      .map((item) => ({
+        id: item.id,
+        nome: item.nome,
+        icone: item.icone,
+        cor: item.cor,
+      }));
+
+  const mergeModalidades = (...lists: RankingModalidade[][]) => {
+    const map = new Map<number, RankingModalidade>();
+    lists.forEach((list) => {
+      list.forEach((item) => {
+        if (!item?.id) {
+          return;
+        }
+        if (!map.has(item.id)) {
+          map.set(item.id, item);
+        }
+      });
+    });
+    return Array.from(map.values());
+  };
+
   const getInitials = (nome: string = "") => {
     const parts = nome.split(" ").filter(Boolean);
     if (parts.length === 0) return "?";
@@ -109,12 +148,9 @@ export default function AccountScreen() {
     if (userProfile) {
       loadRanking();
       if (userProfile.ranking_modalidades?.length) {
-        const modalidades = userProfile.ranking_modalidades.map((item) => ({
-          id: item.modalidade_id,
-          nome: item.modalidade_nome,
-          icone: item.modalidade_icone,
-          cor: item.modalidade_cor,
-        }));
+        const modalidades = normalizeProfileModalidades(
+          userProfile.ranking_modalidades,
+        );
         setRankingModalidades(modalidades);
         // Sempre seta a primeira modalidade ao carregar
         if (!selectedModalidadeId) {
@@ -373,11 +409,23 @@ export default function AccountScreen() {
       setRanking(rankingData?.ranking || []);
       setRankingPeriodo(rankingData?.periodo || "");
 
-      if (
-        Array.isArray(rankingData?.modalidades) &&
-        rankingData.modalidades.length > 0
-      ) {
-        setRankingModalidades(rankingData.modalidades);
+      const apiModalidades = normalizeApiModalidades(
+        Array.isArray(rankingData?.modalidades) ? rankingData.modalidades : [],
+      );
+      const profileModalidades = normalizeProfileModalidades(
+        userProfile?.ranking_modalidades || [],
+      );
+      const mergedModalidades = mergeModalidades(
+        apiModalidades,
+        profileModalidades,
+        rankingModalidades,
+      );
+
+      if (mergedModalidades.length > 0) {
+        setRankingModalidades(mergedModalidades);
+        if (!selectedModalidadeId) {
+          setSelectedModalidadeId(mergedModalidades[0].id);
+        }
         // Não fazer chamada recursiva aqui, deixar para useEffect
       } else if (!modalidadesFromTurmasLoaded) {
         await loadModalidadesFromTurmas();
