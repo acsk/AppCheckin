@@ -148,6 +148,9 @@ return function ($app) {
     // Rotas públicas
     $app->post('/auth/register', [AuthController::class, 'register']);
     $app->post('/auth/login', [AuthController::class, 'login']);
+    $app->post('/auth/password-recovery/request', [AuthController::class, 'forgotPassword']);
+    $app->post('/auth/password-recovery/validate-token', [AuthController::class, 'validatePasswordToken']);
+    $app->post('/auth/password-recovery/reset', [AuthController::class, 'resetPassword']);
     
     // ========================================
     // Rota pública de consulta CEP

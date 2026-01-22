@@ -379,4 +379,198 @@ class AuthController
 
         return $response->withHeader('Content-Type', 'application/json');
     }
+
+    /**
+     * Solicitar recuperação de senha
+     */
+    public function forgotPassword(Request $request, Response $response): Response
+    {
+        $data = $request->getParsedBody();
+
+        if (empty($data['email'])) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'code' => 'MISSING_EMAIL',
+                'message' => 'Email é obrigatório'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+        }
+
+        $email = $data['email'];
+
+        // Buscar usuário por email
+        $usuario = $this->usuarioModel->findByEmailGlobal($email);
+
+        if (!$usuario) {
+            // Por segurança, não informamos se o email existe ou não
+            $response->getBody()->write(json_encode([
+                'message' => 'Se o email existe em nossa base de dados, você receberá um link de recuperação'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
+        }
+
+        // Gerar token único
+        $token = bin2hex(random_bytes(32));
+        $expiresAt = date('Y-m-d H:i:s', time() + (15 * 60)); // 15 minutos
+
+        // Salvar token no banco
+        $db = require __DIR__ . '/../../config/database.php';
+        $stmt = $db->prepare("
+            UPDATE usuarios
+            SET password_reset_token = :token,
+                password_reset_expires_at = :expires_at
+            WHERE id = :usuario_id
+        ");
+        $stmt->execute([
+            ':token' => $token,
+            ':expires_at' => $expiresAt,
+            ':usuario_id' => $usuario['id']
+        ]);
+
+        // Enviar email
+        try {
+            $mailService = new \App\Services\MailService();
+            $mailService->sendPasswordRecoveryEmail(
+                $usuario['email'],
+                $usuario['nome'],
+                $token,
+                15
+            );
+        } catch (\Exception $e) {
+            error_log("Erro ao enviar email de recuperação: " . $e->getMessage());
+        }
+
+        $response->getBody()->write(json_encode([
+            'message' => 'Se o email existe em nossa base de dados, você receberá um link de recuperação'
+        ]));
+
+        return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
+    }
+
+    /**
+     * Validar token de recuperação de senha
+     */
+    public function validatePasswordToken(Request $request, Response $response): Response
+    {
+        $data = $request->getParsedBody();
+
+        if (empty($data['token'])) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'code' => 'MISSING_TOKEN',
+                'message' => 'Token é obrigatório'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+        }
+
+        $token = $data['token'];
+
+        // Buscar usuário pelo token
+        $db = require __DIR__ . '/../../config/database.php';
+        $stmt = $db->prepare("
+            SELECT id, nome, email
+            FROM usuarios
+            WHERE password_reset_token = :token
+            AND password_reset_expires_at > NOW()
+            LIMIT 1
+        ");
+        $stmt->execute([':token' => $token]);
+        $usuario = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$usuario) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'code' => 'INVALID_OR_EXPIRED_TOKEN',
+                'message' => 'Token inválido ou expirado'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(401);
+        }
+
+        $response->getBody()->write(json_encode([
+            'message' => 'Token válido',
+            'user' => [
+                'id' => $usuario['id'],
+                'nome' => $usuario['nome'],
+                'email' => $usuario['email']
+            ]
+        ]));
+
+        return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
+    }
+
+    /**
+     * Resetar senha com token
+     */
+    public function resetPassword(Request $request, Response $response): Response
+    {
+        $data = $request->getParsedBody();
+
+        // Validações
+        $errors = [];
+
+        if (empty($data['token'])) {
+            $errors[] = 'Token é obrigatório';
+        }
+
+        if (empty($data['nova_senha']) || strlen($data['nova_senha']) < 6) {
+            $errors[] = 'Nova senha deve ter no mínimo 6 caracteres';
+        }
+
+        if (empty($data['confirmacao_senha']) || $data['nova_senha'] !== $data['confirmacao_senha']) {
+            $errors[] = 'As senhas não coincidem';
+        }
+
+        if (!empty($errors)) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'code' => 'VALIDATION_ERROR',
+                'errors' => $errors
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+        }
+
+        $token = $data['token'];
+        $novaSenha = $data['nova_senha'];
+
+        // Buscar usuário pelo token
+        $db = require __DIR__ . '/../../config/database.php';
+        $stmt = $db->prepare("
+            SELECT id
+            FROM usuarios
+            WHERE password_reset_token = :token
+            AND password_reset_expires_at > NOW()
+            LIMIT 1
+        ");
+        $stmt->execute([':token' => $token]);
+        $usuario = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$usuario) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'code' => 'INVALID_OR_EXPIRED_TOKEN',
+                'message' => 'Token inválido ou expirado'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(401);
+        }
+
+        // Atualizar senha e limpar token
+        $senhaHash = password_hash($novaSenha, PASSWORD_BCRYPT);
+        $stmt = $db->prepare("
+            UPDATE usuarios
+            SET senha_hash = :senha_hash,
+                password_reset_token = NULL,
+                password_reset_expires_at = NULL
+            WHERE id = :usuario_id
+        ");
+        $stmt->execute([
+            ':senha_hash' => $senhaHash,
+            ':usuario_id' => $usuario['id']
+        ]);
+
+        $response->getBody()->write(json_encode([
+            'message' => 'Senha alterada com sucesso. Faça login com sua nova senha.'
+        ]));
+
+        return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
+    }
 }
