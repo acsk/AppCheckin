@@ -95,6 +95,55 @@ return function ($app) {
             ->withHeader('Content-Type', 'application/json')
             ->withStatus(200);
     });
+
+    // Rota pública para servir fotos de perfil (sem autenticação)
+    $app->get('/uploads/fotos/{filename}', function($request, $response, $args) {
+        try {
+            $filename = $args['filename'] ?? '';
+            
+            // Validar nome do arquivo (evitar directory traversal)
+            if (strpos($filename, '..') !== false || strpos($filename, '/') !== false) {
+                return $response->withStatus(400);
+            }
+            
+            $caminhoCompleto = __DIR__ . '/../public/uploads/fotos/' . $filename;
+            
+            // Validar que o arquivo existe
+            if (!file_exists($caminhoCompleto)) {
+                return $response->withStatus(404);
+            }
+            
+            // Validar que o arquivo está dentro do diretório correto (evitar exploração)
+            $realpath = realpath($caminhoCompleto);
+            $expectedDir = realpath(__DIR__ . '/../public/uploads/fotos');
+            
+            if ($realpath === false || strpos($realpath, $expectedDir) !== 0) {
+                return $response->withStatus(403);
+            }
+            
+            // Determinar tipo MIME
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mimeType = finfo_file($finfo, $caminhoCompleto);
+            finfo_close($finfo);
+            
+            // Validar que é uma imagem
+            if (strpos($mimeType, 'image/') !== 0) {
+                return $response->withStatus(400);
+            }
+            
+            // Ler e enviar arquivo
+            $conteudo = file_get_contents($caminhoCompleto);
+            $response->getBody()->write($conteudo);
+            
+            return $response
+                ->withHeader('Content-Type', $mimeType)
+                ->withHeader('Cache-Control', 'public, max-age=86400')
+                ->withStatus(200);
+        } catch (\Exception $e) {
+            error_log("Erro ao servir foto: " . $e->getMessage());
+            return $response->withStatus(500);
+        }
+    });
     
     // Rotas públicas
     $app->post('/auth/register', [AuthController::class, 'register']);
