@@ -105,6 +105,9 @@ class AuthController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(401);
         }
 
+        // Inicializar token
+        $token = null;
+
         // Super admin (role_id = 3) não precisa de vínculo com tenant
         if ($usuario['role_id'] == 3) {
             // Super admin: pode acessar sem tenant específico
