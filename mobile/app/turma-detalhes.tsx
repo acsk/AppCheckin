@@ -685,7 +685,7 @@ export default function TurmaDetalhesScreen() {
             onPress={() => router.back()}
             style={styles.backButton}
           >
-            <Feather name="arrow-left" size={24} color={colors.primary} />
+            <Feather name="arrow-left" size={24} color="#fff" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Detalhes da Turma</Text>
           <View style={{ width: 40 }} />
@@ -705,7 +705,7 @@ export default function TurmaDetalhesScreen() {
             onPress={() => router.back()}
             style={styles.backButton}
           >
-            <Feather name="arrow-left" size={24} color={colors.primary} />
+            <Feather name="arrow-left" size={24} color="#fff" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Detalhes da Turma</Text>
           <View style={{ width: 40 }} />
@@ -725,7 +725,7 @@ export default function TurmaDetalhesScreen() {
             onPress={() => router.back()}
             style={styles.backButton}
           >
-            <Feather name="arrow-left" size={24} color={colors.primary} />
+            <Feather name="arrow-left" size={24} color="#fff" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Detalhes da Turma</Text>
           <View style={{ width: 40 }} />
@@ -972,24 +972,23 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
-    elevation: 4,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    backgroundColor: colors.primary,
+    borderBottomWidth: 0,
+    elevation: 8,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
   },
   backButton: {
     padding: 8,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#000",
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#fff",
   },
   content: {
     flex: 1,

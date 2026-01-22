@@ -21,11 +21,16 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
+    "androidStatusBar": {
+      "backgroundColor": "#FF6B35",
+      "barStyle": "light-content"
+    },
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png",
       "bundler": "metro",
       "htmlTemplate": "./public/index.html",
+      "themeColor": "#FF6B35",
       "build": {
         "babel": {
           "include": ["node_modules/react-native-web"]

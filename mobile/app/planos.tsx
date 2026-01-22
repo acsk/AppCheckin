@@ -355,7 +355,7 @@ export default function PlanosScreen() {
             style={styles.headerBackButton}
             onPress={() => setSelectedMatricula(null)}
           >
-            <Feather name="arrow-left" size={24} color="#333" />
+            <Feather name="arrow-left" size={24} color="#fff" />
           </TouchableOpacity>
           <Text style={styles.headerTitleCentered}>Detalhes do Plano</Text>
           <View style={{ width: 40 }} />
@@ -493,14 +493,14 @@ export default function PlanosScreen() {
           style={styles.headerBackButton}
           onPress={() => router.back()}
         >
-          <Feather name="arrow-left" size={24} color="#333" />
+          <Feather name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitleCentered}>Planos</Text>
         <TouchableOpacity
           style={styles.refreshButton}
           onPress={() => loadPlanos()}
         >
-          <Feather name="refresh-cw" size={20} color={colors.primary} />
+          <Feather name="refresh-cw" size={20} color="#fff" />
         </TouchableOpacity>
       </View>
 
@@ -638,21 +638,25 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    backgroundColor: colors.primary,
+    borderBottomWidth: 0,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 8,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#000",
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#fff",
   },
   headerTitleCentered: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#000",
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#fff",
     flex: 1,
     textAlign: "center",
   },

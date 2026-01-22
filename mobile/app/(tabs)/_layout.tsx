@@ -13,22 +13,26 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: '#999',
+        tabBarActiveTintColor: '#fff',
+        tabBarInactiveTintColor: 'rgba(255,255,255,0.65)',
         tabBarStyle: {
           borderTopWidth: 0,
-          backgroundColor: isWeb ? '#fff' : (isDark ? '#1a1a1a' : '#fff'),
-          paddingBottom: isWeb ? 12 : 8,
-          paddingTop: isWeb ? 12 : 8,
-          height: isWeb ? 75 : 70,
+          backgroundColor: colors.primary,
+          paddingBottom: isWeb ? 14 : 10,
+          paddingTop: isWeb ? 14 : 10,
+          height: isWeb ? 82 : 76,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -1 },
-          shadowOpacity: 0.1,
-          shadowRadius: 3,
-          elevation: 8,
+          shadowOpacity: 0.2,
+          shadowRadius: 6,
+          elevation: 10,
         },
         tabBarItemStyle: {
-          marginHorizontal: 8,
+          marginHorizontal: 6,
+        },
+        tabBarLabelStyle: {
+          fontSize: 13,
+          fontWeight: '700',
         },
         headerStyle: {
           backgroundColor: isDark ? '#1a1a1a' : '#fff',
@@ -46,7 +50,7 @@ export default function TabLayout() {
         options={{
           title: 'Minha Conta',
           tabBarIcon: ({ color, size }) => (
-            <Feather name="user" size={size} color={color} />
+            <Feather name="user" size={size + 6} color={color} />
           ),
           headerShown: false,
         }}
@@ -56,7 +60,7 @@ export default function TabLayout() {
         options={{
           title: 'WOD',
           tabBarIcon: ({ color, size }) => (
-            <Feather name="target" size={size} color={color} />
+            <Feather name="target" size={size + 6} color={color} />
           ),
           headerShown: false,
         }}
@@ -66,7 +70,7 @@ export default function TabLayout() {
         options={{
           title: 'Checkin',
           tabBarIcon: ({ color, size }) => (
-            <Feather name="check-square" size={size} color={color} />
+            <Feather name="check-square" size={size + 6} color={color} />
           ),
           headerShown: false,
         }}

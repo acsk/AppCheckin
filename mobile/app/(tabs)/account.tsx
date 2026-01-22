@@ -565,7 +565,7 @@ export default function AccountScreen() {
           style={styles.refreshButton}
           onPress={loadUserProfile}
         >
-          <Feather name="refresh-cw" size={20} color={colors.primary} />
+          <Feather name="refresh-cw" size={20} color="#fff" />
         </TouchableOpacity>
       </View>
 
@@ -615,7 +615,9 @@ export default function AccountScreen() {
                   }}
                 />
               ) : (
-                <Text style={styles.photoText}>👤</Text>
+                <Text style={styles.photoInitials}>
+                  {getInitials(userProfile.nome)}
+                </Text>
               )}
               {updatingPhoto && (
                 <View style={styles.photoLoading}>
@@ -639,7 +641,7 @@ export default function AccountScreen() {
               onPress={() => router.push("/planos")}
             >
               <Text style={styles.tenantName}>{userProfile.tenant.nome}</Text>
-              <Feather name="chevron-right" size={16} color={colors.primary} />
+              <Feather name="chevron-right" size={16} color="#fff" />
             </TouchableOpacity>
           )}
         </View>
@@ -652,7 +654,7 @@ export default function AccountScreen() {
             <View style={styles.statsGrid}>
               <View style={styles.statCard}>
                 <Feather name="check-circle" size={24} color={colors.primary} />
-                <Text style={styles.statLabel}>Total de Check-ins</Text>
+                <Text style={styles.statLabel}>Check-ins</Text>
                 <Text style={styles.statValue}>
                   {userProfile.estatisticas.total_checkins}
                 </Text>
@@ -766,7 +768,13 @@ export default function AccountScreen() {
                             style={styles.rankingAvatarImage}
                           />
                         ) : (
-                          <Text style={styles.rankingAvatarText}>👤</Text>
+                          <View style={styles.rankingAvatarPlaceholder}>
+                            <MaterialCommunityIcons
+                              name="account"
+                              size={20}
+                              color="#9ca3af"
+                            />
+                          </View>
                         )}
                       </View>
                       <View style={styles.rankingListContent}>
@@ -926,29 +934,33 @@ export default function AccountScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: colors.backgroundSecondary,
   },
   headerTop: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    backgroundColor: colors.primary,
+    borderBottomWidth: 0,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 8,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#000",
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#fff",
   },
   refreshButton: {
     padding: 8,
   },
   scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
+    padding: 18,
+    paddingBottom: 48,
   },
   loadingContainer: {
     flex: 1,
@@ -973,37 +985,43 @@ const styles = StyleSheet.create({
   },
   profileSection: {
     backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 24,
+    borderRadius: 20,
+    padding: 26,
     alignItems: "center",
     marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#f0f1f4",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 4,
   },
   photoWrapper: {
     position: "relative",
-    width: 100,
-    height: 100,
-    marginBottom: 16,
+    width: 112,
+    height: 112,
+    marginBottom: 18,
   },
   photoContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: "#f0f0f0",
+    width: 112,
+    height: 112,
+    borderRadius: 56,
+    backgroundColor: "#f3f4f6",
     justifyContent: "center",
     alignItems: "center",
     overflow: "hidden",
+    borderWidth: 2,
+    borderColor: "#fff",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 4,
   },
   photoImage: {
     width: "100%",
     height: "100%",
-  },
-  photoText: {
-    fontSize: 48,
   },
   photoLoading: {
     position: "absolute",
@@ -1015,59 +1033,57 @@ const styles = StyleSheet.create({
   },
   photoCameraIcon: {
     position: "absolute",
-    bottom: 0,
-    right: 0,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    bottom: -2,
+    right: -2,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: colors.primary,
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: "#fff",
     zIndex: 10,
   },
   photoInitials: {
-    fontSize: 42,
-    fontWeight: "700",
+    fontSize: 36,
+    fontWeight: "800",
     color: "#fff",
   },
   userName: {
-    fontSize: 24,
-    fontWeight: "700",
-    color: "#000",
+    fontSize: 26,
+    fontWeight: "800",
+    color: colors.text,
     marginBottom: 4,
   },
   userEmail: {
     fontSize: 14,
-    color: "#666",
-    marginBottom: 8,
+    color: colors.textSecondary,
+    marginBottom: 10,
   },
   tenantName: {
     fontSize: 12,
-    color: colors.primary,
-    fontWeight: "600",
+    color: "#fff",
+    fontWeight: "700",
   },
   tenantButton: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
     marginTop: 4,
-    backgroundColor: colors.primary + "10",
-    borderRadius: 6,
-    borderWidth: 1,
-    borderColor: colors.primary + "30",
+    backgroundColor: colors.primary,
+    borderRadius: 999,
   },
   statisticsSection: {
     marginBottom: 20,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#000",
-    marginBottom: 12,
+    fontSize: 17,
+    fontWeight: "700",
+    color: colors.text,
+    marginBottom: 14,
   },
   statsGrid: {
     flexDirection: "row",
@@ -1077,70 +1093,76 @@ const styles = StyleSheet.create({
   statCard: {
     flex: 1,
     backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 16,
+    padding: 14,
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#f0f1f4",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 2,
   },
   statLabel: {
     fontSize: 11,
-    color: "#999",
+    color: colors.textMuted,
     marginTop: 8,
     marginBottom: 4,
     textAlign: "center",
   },
   statValue: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: colors.primary,
+    fontSize: 19,
+    fontWeight: "800",
+    color: colors.primaryDark,
   },
   lastCheckinCard: {
     backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 16,
+    padding: 14,
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    borderWidth: 1,
+    borderColor: "#f0f1f4",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 2,
   },
   lastCheckinContent: {
     flex: 1,
   },
   lastCheckinLabel: {
     fontSize: 12,
-    color: "#999",
+    color: colors.textMuted,
     marginBottom: 2,
   },
   lastCheckinValue: {
     fontSize: 14,
-    fontWeight: "600",
-    color: "#000",
+    fontWeight: "700",
+    color: colors.text,
   },
   infoSection: {
     backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: 16,
+    padding: 18,
     marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#f0f1f4",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 2,
   },
   infoItem: {
     flexDirection: "row",
     alignItems: "flex-start",
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    borderBottomColor: "#eef2f7",
     gap: 12,
   },
   infoContent: {
@@ -1148,28 +1170,28 @@ const styles = StyleSheet.create({
   },
   infoLabel: {
     fontSize: 12,
-    color: "#999",
+    color: colors.textMuted,
     marginBottom: 4,
   },
   infoValue: {
     fontSize: 14,
-    fontWeight: "500",
-    color: "#000",
+    fontWeight: "600",
+    color: colors.text,
   },
   membershipSection: {
     marginBottom: 20,
   },
   membershipCard: {
     backgroundColor: "#fff",
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
+    borderWidth: 1,
+    borderColor: "#f0f1f4",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 2,
   },
   membershipHeader: {
     flexDirection: "row",
@@ -1227,7 +1249,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: "#f0f0f0",
+    borderTopColor: "#eef2f7",
   },
   viewDetailsText: {
     fontSize: 14,
@@ -1244,7 +1266,7 @@ const styles = StyleSheet.create({
   },
   memberSinceText: {
     fontSize: 12,
-    color: "#999",
+    color: colors.textMuted,
   },
   contratosSection: {
     marginBottom: 20,
@@ -1259,15 +1281,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 8,
-    marginBottom: 10,
+    marginBottom: 12,
   },
   modalidadeChip: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    borderRadius: 16,
+    borderRadius: 999,
     backgroundColor: "#fff",
     borderWidth: 1,
-    borderColor: "#f8e5d1",
+    borderColor: "#eceff4",
   },
   modalidadeChipActive: {
     backgroundColor: colors.primary + "15",
@@ -1287,16 +1309,16 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   rankingCard: {
-    backgroundColor: "#fffaf5",
-    borderRadius: 12,
-    padding: 14,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 16,
     borderWidth: 1,
-    borderColor: "#fde2c2",
+    borderColor: "#f0f1f4",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 2,
   },
   rankingList: {
     gap: 10,
@@ -1305,33 +1327,33 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    backgroundColor: "#f9fafb",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderWidth: 1,
-    borderColor: "#f8e5d1",
+    borderColor: "#eef2f7",
   },
   rankingPosition: {
     width: 44,
     height: 36,
     borderRadius: 10,
-    backgroundColor: "#fffaf5",
+    backgroundColor: colors.primary + "15",
     borderWidth: 1,
-    borderColor: "#f4c595",
+    borderColor: colors.primary + "30",
     alignItems: "center",
     justifyContent: "center",
   },
   rankingPositionNumber: {
     fontSize: 13,
     fontWeight: "700",
-    color: "#d97706",
+    color: colors.primaryDark,
   },
   rankingAvatar: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: colors.primary,
+    backgroundColor: "#f3f4f6",
     justifyContent: "center",
     alignItems: "center",
     overflow: "hidden",
@@ -1340,6 +1362,14 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
+  },
+  rankingAvatarPlaceholder: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#e5e7eb",
+    justifyContent: "center",
+    alignItems: "center",
   },
   rankingAvatarText: {
     fontSize: 20,
@@ -1378,7 +1408,7 @@ const styles = StyleSheet.create({
   },
   rankingDivider: {
     height: 1,
-    backgroundColor: "#fed7aa",
+    backgroundColor: "#eef2f7",
     marginVertical: 12,
   },
   rankingUserRow: {
@@ -1400,9 +1430,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 10,
-    backgroundColor: colors.primary + "15",
+    backgroundColor: colors.primary + "12",
     borderWidth: 1,
-    borderColor: colors.primary + "40",
+    borderColor: colors.primary + "30",
   },
   rankingUserPositionText: {
     fontSize: 12,
@@ -1411,19 +1441,19 @@ const styles = StyleSheet.create({
   },
   academiaCard: {
     backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 14,
+    borderRadius: 16,
+    padding: 16,
     marginBottom: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    borderWidth: 1,
+    borderColor: "#f0f1f4",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 2,
   },
   academiaCardContent: {
     flex: 1,
@@ -1448,10 +1478,10 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   academiaName: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#000",
-    marginBottom: 8,
+    fontSize: 15,
+    fontWeight: "700",
+    color: colors.text,
+    marginBottom: 10,
   },
   academiaInfo: {
     flexDirection: "row",
@@ -1461,19 +1491,19 @@ const styles = StyleSheet.create({
   },
   academiaInfoText: {
     fontSize: 12,
-    color: "#666",
+    color: colors.textSecondary,
   },
   contratoCard: {
     backgroundColor: "#fff",
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
+    borderWidth: 1,
+    borderColor: "#f0f1f4",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 2,
   },
   contratoHeader: {
     flexDirection: "row",
@@ -1482,7 +1512,7 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    borderBottomColor: "#eef2f7",
   },
   contratoInfo: {
     flex: 1,
@@ -1503,7 +1533,7 @@ const styles = StyleSheet.create({
     marginVertical: 12,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    borderBottomColor: "#eef2f7",
   },
   contratoSectionTitle: {
     fontSize: 13,
@@ -1584,22 +1614,22 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   logoutButton: {
-    backgroundColor: "#f44336",
-    borderRadius: 12,
+    backgroundColor: "#ef4444",
+    borderRadius: 16,
     paddingVertical: 16,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
     gap: 10,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 3,
   },
   logoutText: {
     color: "#fff",
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "700",
   },
 });

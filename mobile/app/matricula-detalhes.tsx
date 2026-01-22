@@ -135,7 +135,7 @@ export default function MatriculaDetalhesScreen() {
       {/* Header */}
       <View style={styles.headerTop}>
         <TouchableOpacity onPress={() => router.back()}>
-          <Feather name="chevron-left" size={24} color="#000" />
+          <Feather name="chevron-left" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Detalhes da Matrícula</Text>
         <View style={{ width: 24 }} />
@@ -428,16 +428,20 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f0f0",
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    backgroundColor: colors.primary,
+    borderBottomWidth: 0,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 8,
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#000",
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#fff",
   },
   scrollContent: {
     padding: 16,
