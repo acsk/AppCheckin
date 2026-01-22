@@ -1,8 +1,10 @@
+import mobileService from "@/src/services/mobileService";
 import { colors } from "@/src/theme/colors";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { handleAuthError } from "@/src/utils/authHelpers";
 import AsyncStorage from "@/src/utils/storage";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -26,6 +28,7 @@ interface UserProfile {
   telefone?: string;
   data_nascimento?: string;
   foto_base64?: string;
+  foto_caminho?: string;
   membro_desde?: string;
   tenant?: { nome: string };
   tenants?: { id: string; nome: string; email?: string; telefone?: string }[];
@@ -49,6 +52,7 @@ interface UserProfile {
 interface RankingUsuario {
   id: number;
   nome: string;
+  foto_caminho?: string;
 }
 
 interface RankingItem {
@@ -80,6 +84,9 @@ export default function AccountScreen() {
   >(null);
   const [modalidadesFromTurmasLoaded, setModalidadesFromTurmasLoaded] =
     useState(false);
+  const [updatingPhoto, setUpdatingPhoto] = useState(false);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [apiUrl, setApiUrl] = useState<string>("");
 
   const getInitials = (nome: string = "") => {
     const parts = nome.split(" ").filter(Boolean);
@@ -90,20 +97,9 @@ export default function AccountScreen() {
     ).toUpperCase();
   };
 
-  const getAvatarUrl = (nome: string = "", userId?: number) => {
-    // Usando randomuser.me para fotos reais de pessoas
-    // Cada userId gera uma foto consistente e realista
-    const seed =
-      userId ||
-      Math.abs(
-        nome.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0),
-      );
-    const gender = seed % 2 === 0 ? "women" : "men";
-    const photoId = (seed % 99) + 1;
-    return `https://randomuser.me/api/portraits/${gender}/${photoId}.jpg`;
-  };
-
   useEffect(() => {
+    // Initialize API URL
+    setApiUrl(getApiUrlRuntime());
     loadUserProfile();
   }, []);
 
@@ -214,6 +210,10 @@ export default function AccountScreen() {
 
       if (profileData.success) {
         console.log("✅ Perfil carregado com sucesso");
+        console.log(
+          "📸 Foto do perfil:",
+          profileData.data.foto_base64 ? "SIM" : "NÃO",
+        );
         setUserProfile(profileData.data);
       } else {
         Alert.alert(
@@ -232,6 +232,92 @@ export default function AccountScreen() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleChangePhoto = async () => {
+    try {
+      // Pedir permissão para acessar galeria
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+      if (status !== "granted") {
+        Alert.alert(
+          "Permissão Negada",
+          "Você precisa permitir acesso à galeria para trocar sua foto",
+        );
+        return;
+      }
+
+      // Abrir seletor de imagem
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: "images",
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+
+        setUpdatingPhoto(true);
+
+        // Criar FormData para upload (sem passar object, apenas uri)
+        const formData = new FormData();
+        const uri = asset.uri;
+        const filename = uri.split("/").pop() || "photo.jpg";
+
+        // No web, converter blob; no mobile, usar uri
+        if (Platform.OS === "web") {
+          // Para web, fazer fetch da imagem e converter para blob
+          const response = await fetch(uri);
+          const blob = await response.blob();
+          formData.append("foto", blob, filename);
+        } else {
+          // Para mobile, usar uri diretamente
+          formData.append("foto", {
+            uri,
+            type: "image/jpeg",
+            name: filename,
+          } as any);
+        }
+
+        // Enviar para servidor
+        console.log("📸 Enviando foto para servidor...");
+        const response = await mobileService.atualizarFoto(formData);
+        console.log("📸 Resposta do servidor:", response);
+
+        if (response?.success) {
+          console.log("✅ Foto enviada com sucesso, recarregando perfil...");
+          // Armazenar URL da foto se disponível
+          if (response.data?.caminho_url) {
+            const apiUrl = getApiUrlRuntime();
+            setPhotoUrl(`${apiUrl}${response.data.caminho_url}`);
+            console.log(
+              "📸 URL da foto armazenada:",
+              `${apiUrl}${response.data.caminho_url}`,
+            );
+          }
+          Alert.alert("Sucesso", "Foto atualizada com sucesso!");
+          // Recarregar perfil para pegar a nova foto
+          setUpdatingPhoto(false); // Desabilita loading ANTES de recarregar
+          await loadUserProfile();
+        } else {
+          console.error("❌ Erro na resposta:", response);
+          Alert.alert(
+            "Erro",
+            response?.error || response?.message || "Erro ao atualizar foto",
+          );
+        }
+      }
+    } catch (error: any) {
+      console.error("Erro ao trocar foto:", error);
+      Alert.alert(
+        "Erro",
+        error.message || "Erro ao trocar foto. Tente novamente.",
+      );
+    } finally {
+      setUpdatingPhoto(false);
     }
   };
 
@@ -467,15 +553,40 @@ export default function AccountScreen() {
         {/* Profile Header */}
         <View style={styles.profileSection}>
           {/* Photo Placeholder */}
-          <View style={styles.photoContainer}>
-            {userProfile.foto_base64 ? (
-              <Text style={styles.photoText}>📸</Text>
-            ) : (
-              <Image
-                source={{ uri: getAvatarUrl(userProfile.nome, userProfile.id) }}
-                style={styles.photoImage}
-              />
-            )}
+          <View style={styles.photoWrapper}>
+            <TouchableOpacity
+              style={styles.photoContainer}
+              onPress={handleChangePhoto}
+              disabled={updatingPhoto}
+            >
+              {photoUrl ? (
+                <Image source={{ uri: photoUrl }} style={styles.photoImage} />
+              ) : userProfile.foto_caminho ? (
+                <Image
+                  source={{
+                    uri: `${apiUrl}${userProfile.foto_caminho}`,
+                  }}
+                  style={styles.photoImage}
+                />
+              ) : userProfile.foto_base64 ? (
+                <Image
+                  source={{
+                    uri: `data:image/jpeg;base64,${userProfile.foto_base64}`,
+                  }}
+                  style={styles.photoImage}
+                />
+              ) : (
+                <Text style={styles.photoText}>👤</Text>
+              )}
+              {updatingPhoto && (
+                <View style={styles.photoLoading}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                </View>
+              )}
+            </TouchableOpacity>
+            <View style={styles.photoCameraIcon}>
+              <Feather name="camera" size={16} color="#fff" />
+            </View>
           </View>
 
           {/* Name and Email */}
@@ -607,12 +718,18 @@ export default function AccountScreen() {
                           {item.posicao}
                         </Text>
                       </View>
-                      <Image
-                        source={{
-                          uri: getAvatarUrl(item.usuario.nome, item.usuario.id),
-                        }}
-                        style={styles.rankingAvatar}
-                      />
+                      <View style={styles.rankingAvatar}>
+                        {item.usuario.foto_caminho && apiUrl ? (
+                          <Image
+                            source={{
+                              uri: `${apiUrl}${item.usuario.foto_caminho}`,
+                            }}
+                            style={styles.rankingAvatarImage}
+                          />
+                        ) : (
+                          <Text style={styles.rankingAvatarText}>👤</Text>
+                        )}
+                      </View>
                       <View style={styles.rankingListContent}>
                         <Text style={styles.rankingName}>
                           {item.usuario.nome}
@@ -827,6 +944,12 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  photoWrapper: {
+    position: "relative",
+    width: 100,
+    height: 100,
+    marginBottom: 16,
+  },
   photoContainer: {
     width: 100,
     height: 100,
@@ -834,7 +957,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#f0f0f0",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 16,
     overflow: "hidden",
   },
   photoImage: {
@@ -843,6 +965,28 @@ const styles = StyleSheet.create({
   },
   photoText: {
     fontSize: 48,
+  },
+  photoLoading: {
+    position: "absolute",
+    width: "100%",
+    height: "100%",
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  photoCameraIcon: {
+    position: "absolute",
+    bottom: 0,
+    right: 0,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.primary,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#fff",
+    zIndex: 10,
   },
   photoInitials: {
     fontSize: 42,
@@ -1148,6 +1292,18 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
+    backgroundColor: colors.primary,
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  rankingAvatarImage: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+  },
+  rankingAvatarText: {
+    fontSize: 20,
   },
   rankingNameRow: {
     flexDirection: "row",

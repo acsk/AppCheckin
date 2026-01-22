@@ -58,9 +58,13 @@ const api = {
 
       // Montar headers
       const headers = {
-        "Content-Type": "application/json",
         ...config.headers,
       };
+
+      // Adicionar Content-Type apenas se não for FormData
+      if (!(data instanceof FormData)) {
+        headers["Content-Type"] = "application/json";
+      }
 
       // Adicionar token se existir
       if (token) {
@@ -88,7 +92,13 @@ const api = {
 
       // Adicionar body se houver dados
       if (data) {
-        fetchConfig.body = JSON.stringify(data);
+        if (data instanceof FormData) {
+          // Para FormData, não fazer JSON.stringify
+          fetchConfig.body = data;
+        } else {
+          // Para outros dados, fazer JSON.stringify
+          fetchConfig.body = JSON.stringify(data);
+        }
       }
 
       // Fazer requisição
@@ -98,7 +108,16 @@ const api = {
       let responseData;
       const contentType = response.headers.get("content-type");
       if (contentType && contentType.includes("application/json")) {
-        responseData = await response.json();
+        let responseText = await response.text();
+
+        // Limpar warnings/notices do PHP que podem vir antes do JSON
+        // Procura por { para encontrar o início do JSON
+        const jsonStart = responseText.indexOf("{");
+        if (jsonStart > 0) {
+          responseText = responseText.substring(jsonStart);
+        }
+
+        responseData = JSON.parse(responseText);
       } else {
         responseData = await response.text();
       }

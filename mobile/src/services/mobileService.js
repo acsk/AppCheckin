@@ -1,4 +1,4 @@
-import api from './api';
+import api from "./api";
 
 /**
  * Serviço para endpoints do App Mobile
@@ -10,7 +10,7 @@ export const mobileService = {
    */
   async getPerfil() {
     try {
-      const response = await api.get('/mobile/perfil');
+      const response = await api.get("/mobile/perfil");
       return response.data;
     } catch (error) {
       const errorData = error.response?.data || error;
@@ -23,7 +23,7 @@ export const mobileService = {
    */
   async getTenants() {
     try {
-      const response = await api.get('/mobile/tenants');
+      const response = await api.get("/mobile/tenants");
       return response.data;
     } catch (error) {
       const errorData = error.response?.data || error;
@@ -36,7 +36,7 @@ export const mobileService = {
    */
   async getContratos() {
     try {
-      const response = await api.get('/mobile/contratos');
+      const response = await api.get("/mobile/contratos");
       return response.data;
     } catch (error) {
       const errorData = error.response?.data || error;
@@ -50,7 +50,7 @@ export const mobileService = {
    */
   async getPlanos() {
     try {
-      const response = await api.get('/mobile/planos');
+      const response = await api.get("/mobile/planos");
       return response.data;
     } catch (error) {
       const errorData = error.response?.data || error;
@@ -63,7 +63,7 @@ export const mobileService = {
    */
   async registrarCheckin(data = {}) {
     try {
-      const response = await api.post('/mobile/checkin', data);
+      const response = await api.post("/mobile/checkin", data);
       return response.data;
     } catch (error) {
       const errorData = error.response?.data || error;
@@ -76,7 +76,7 @@ export const mobileService = {
    */
   async getCheckins(limit = 30, offset = 0) {
     try {
-      const response = await api.get('/mobile/checkins', {
+      const response = await api.get("/mobile/checkins", {
         params: { limit, offset },
       });
       return response.data;
@@ -93,8 +93,8 @@ export const mobileService = {
    */
   async getHistoricoCheckins(limit = 30, offset = 0) {
     try {
-      const response = await api.get('/mobile/checkins', {
-        params: { limit, offset }
+      const response = await api.get("/mobile/checkins", {
+        params: { limit, offset },
       });
       return response.data;
     } catch (error) {
@@ -108,7 +108,7 @@ export const mobileService = {
    */
   async getWodsHoje() {
     try {
-      const response = await api.get('/mobile/wods/hoje');
+      const response = await api.get("/mobile/wods/hoje");
       return response.data;
     } catch (error) {
       const errorData = error.response?.data || error;
@@ -123,8 +123,8 @@ export const mobileService = {
    */
   async getWodPorModalidade(modalidadeId, data) {
     try {
-      const response = await api.get('/mobile/wod/hoje', {
-        params: { data, modalidade_id: modalidadeId }
+      const response = await api.get("/mobile/wod/hoje", {
+        params: { data, modalidade_id: modalidadeId },
       });
       return response.data;
     } catch (error) {
@@ -138,7 +138,38 @@ export const mobileService = {
    */
   async getModalidadesComWodHoje() {
     try {
-      const response = await api.get('/mobile/wods/hoje');
+      const response = await api.get("/mobile/wods/hoje");
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data || error;
+      throw errorData;
+    }
+  },
+
+  /**
+   * Atualiza a foto de perfil do usuário
+   * @param {FormData} formData - FormData contendo a foto com chave 'foto'
+   * @returns {Object} {success, data: {caminho_url}}
+   */
+  async atualizarFoto(formData) {
+    try {
+      const response = await api.post("/mobile/perfil/foto", formData);
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data || error;
+      throw errorData;
+    }
+  },
+
+  /**
+   * Obtém a foto de perfil do usuário
+   * @returns {Blob} Blob da imagem
+   */
+  async obterFoto() {
+    try {
+      const response = await api.get("/mobile/perfil/foto", {
+        responseType: "blob",
+      });
       return response.data;
     } catch (error) {
       const errorData = error.response?.data || error;

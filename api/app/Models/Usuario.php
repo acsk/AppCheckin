@@ -107,7 +107,7 @@ class Usuario
         $sql = "
             SELECT u.id, COALESCE(ut.tenant_id, :fallback_tenant) as tenant_id, ut.status, 
                    u.nome, u.email, u.role_id, 
-                   u.foto_base64, u.telefone,
+                   u.foto_base64, u.foto_caminho, u.telefone,
                    u.cpf, u.cep, u.logradouro, u.numero, u.complemento, u.bairro, u.cidade, u.estado,
                    u.created_at, u.updated_at,
                    r.nome as role_nome, r.descricao as role_descricao

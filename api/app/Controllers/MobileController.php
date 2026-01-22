@@ -90,6 +90,7 @@ class MobileController
                 'cpf' => $usuario['cpf'] ?? null,
                 'telefone' => $usuario['telefone'] ?? null,
                 'foto_base64' => $usuario['foto_base64'] ?? null,
+                'foto_caminho' => $usuario['foto_caminho'] ?? null,
                 'data_nascimento' => $usuario['data_nascimento'] ?? null,
                 'role_id' => $usuario['role_id'],
                 'role_nome' => $this->getRoleName($usuario['role_id']),
@@ -2355,7 +2356,7 @@ class MobileController
                         'id' => (int) $item['usuario_id'],
                         'nome' => $item['nome'],
                         'email' => $item['email'],
-                        'foto' => $item['foto']
+                        'foto_caminho' => $item['foto_caminho'] ?? null
                     ],
                     'total_checkins' => (int) $item['total_checkins']
                 ];
@@ -2393,6 +2394,196 @@ class MobileController
                 'message' => $e->getMessage()
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
+        }
+    }
+
+    /**
+     * POST /mobile/perfil/foto
+     * Upload de foto de perfil do usuário
+     * Aceita multipart/form-data com campo 'foto'
+     * Salva arquivo em public/uploads/fotos/
+     */
+    public function uploadFotoPerfil(Request $request, Response $response): Response
+    {
+        try {
+            $userId = $request->getAttribute('userId');
+            $tenantId = $request->getAttribute('tenantId');
+
+            // Buscar dados do usuário
+            $usuario = $this->usuarioModel->findById($userId, $tenantId);
+            if (!$usuario) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Usuário não encontrado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            // Obter arquivos enviados
+            $uploadedFiles = $request->getUploadedFiles();
+            
+            if (empty($uploadedFiles['foto'])) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Nenhuma imagem foi enviada. Use o campo "foto" em multipart/form-data'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            $uploadedFile = $uploadedFiles['foto'];
+
+            // Validar tipo de arquivo
+            $mimeType = $uploadedFile->getClientMediaType();
+            $permitidos = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+            if (!in_array($mimeType, $permitidos)) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Tipo de arquivo não permitido. Use JPEG, PNG, GIF ou WebP',
+                    'mime_enviado' => $mimeType
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Validar tamanho (5MB máximo)
+            $tamanhoMaximo = 5 * 1024 * 1024; // 5MB
+            if ($uploadedFile->getSize() > $tamanhoMaximo) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Arquivo muito grande. Máximo 5MB',
+                    'tamanho_enviado' => $uploadedFile->getSize(),
+                    'tamanho_maximo' => $tamanhoMaximo
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Criar pasta de uploads se não existir
+            $uploadDir = __DIR__ . '/../../public/uploads/fotos';
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0755, true);
+            }
+
+            // Determinar extensão
+            $extensoes = [
+                'image/jpeg' => 'jpg',
+                'image/png' => 'png',
+                'image/gif' => 'gif',
+                'image/webp' => 'webp'
+            ];
+            $ext = $extensoes[$mimeType] ?? 'jpg';
+
+            // Remover foto antiga se existir
+            if ($usuario['foto_caminho']) {
+                $caminhoAntigo = __DIR__ . '/../../public' . $usuario['foto_caminho'];
+                if (file_exists($caminhoAntigo)) {
+                    unlink($caminhoAntigo);
+                }
+            }
+
+            // Gerar nome único do arquivo
+            $nomeArquivo = 'usuario_' . $userId . '_' . time() . '.' . $ext;
+            $caminhoCompleto = $uploadDir . '/' . $nomeArquivo;
+            $caminhoRelativo = '/uploads/fotos/' . $nomeArquivo;
+
+            // Salvar arquivo
+            $uploadedFile->moveTo($caminhoCompleto);
+            chmod($caminhoCompleto, 0644);
+
+            // Atualizar usuário com o caminho da foto
+            $stmt = $this->db->prepare(
+                "UPDATE usuarios SET foto_caminho = :foto_caminho, updated_at = NOW() WHERE id = :id"
+            );
+            $resultado = $stmt->execute([
+                'foto_caminho' => $caminhoRelativo,
+                'id' => $userId
+            ]);
+
+            if (!$resultado) {
+                // Remover arquivo se falhar ao salvar no banco
+                if (file_exists($caminhoCompleto)) {
+                    unlink($caminhoCompleto);
+                }
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Erro ao salvar referência da foto no banco de dados'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            }
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'message' => 'Foto de perfil atualizada com sucesso',
+                'data' => [
+                    'usuario_id' => $userId,
+                    'tamanho_original' => $uploadedFile->getSize(),
+                    'tipo_arquivo' => $mimeType,
+                    'nome_original' => $uploadedFile->getClientFilename(),
+                    'caminho_url' => $caminhoRelativo
+                ]
+            ]));
+
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
+
+        } catch (\Exception $e) {
+            error_log("Erro ao fazer upload de foto: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao processar upload',
+                'message' => $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * GET /mobile/perfil/foto
+     * Obtém a foto de perfil do usuário autenticado
+     */
+    public function obterFotoPerfil(Request $request, Response $response): Response
+    {
+        try {
+            $userId = $request->getAttribute('userId');
+            $tenantId = $request->getAttribute('tenantId');
+
+            // Buscar dados do usuário
+            $usuario = $this->usuarioModel->findById($userId, $tenantId);
+            if (!$usuario) {
+                return $response->withStatus(404);
+            }
+
+            // Se não tem foto, retornar 404
+            if (empty($usuario['foto_caminho'])) {
+                return $response->withStatus(404);
+            }
+
+            $caminhoCompleto = __DIR__ . '/../../public' . $usuario['foto_caminho'];
+
+            // Validar que o arquivo existe
+            if (!file_exists($caminhoCompleto)) {
+                return $response->withStatus(404);
+            }
+
+            // Determinar tipo MIME
+            $finfo = finfo_open(FILEINFO_MIME_TYPE);
+            $mimeType = finfo_file($finfo, $caminhoCompleto);
+            finfo_close($finfo);
+
+            // Validar que é uma imagem
+            if (strpos($mimeType, 'image/') !== 0) {
+                return $response->withStatus(400);
+            }
+
+            // Ler e enviar arquivo
+            $conteudo = file_get_contents($caminhoCompleto);
+            $response->getBody()->write($conteudo);
+
+            return $response
+                ->withHeader('Content-Type', $mimeType)
+                ->withHeader('Cache-Control', 'public, max-age=86400')
+                ->withStatus(200);
+
+        } catch (\Exception $e) {
+            error_log("Erro ao obter foto de perfil: " . $e->getMessage());
+            return $response->withStatus(500);
         }
     }
 }

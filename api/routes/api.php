@@ -189,6 +189,8 @@ return function ($app) {
     $app->group('/mobile', function ($group) {
         // Perfil completo com estatísticas
         $group->get('/perfil', [MobileController::class, 'perfil']);
+        $group->post('/perfil/foto', [MobileController::class, 'uploadFotoPerfil']);
+        $group->get('/perfil/foto', [MobileController::class, 'obterFotoPerfil']);
         
         // Tenants do usuário
         $group->get('/tenants', [MobileController::class, 'tenants']);

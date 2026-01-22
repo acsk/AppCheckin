@@ -429,7 +429,7 @@ class Checkin
                 u.id as usuario_id,
                 u.nome,
                 u.email,
-                u.foto_base64 as foto,
+                u.foto_caminho,
                 COUNT(c.id) as total_checkins
              FROM checkins c
              INNER JOIN usuarios u ON c.usuario_id = u.id
@@ -443,7 +443,7 @@ class Checkin
             $sql .= " AND t.modalidade_id = :modalidade_id";
         }
         
-        $sql .= " GROUP BY u.id, u.nome, u.email, u.foto_base64
+        $sql .= " GROUP BY u.id, u.nome, u.email, u.foto_caminho
                   ORDER BY total_checkins DESC
                   LIMIT :limite";
         
