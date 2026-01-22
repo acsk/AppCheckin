@@ -27,13 +27,17 @@
     },
     "web": {
       "meta": {
-        "theme-color": "#FF6B35"
+        "theme-color": "#FF6B35",
+        "mobile-web-app-capable": "yes",
+        "apple-mobile-web-app-capable": "yes",
+        "apple-mobile-web-app-status-bar-style": "black-translucent"
       },
       "output": "static",
       "favicon": "./assets/images/favicon.png",
       "bundler": "metro",
       "htmlTemplate": "./public/index.html",
       "themeColor": "#FF6B35",
+      "backgroundColor": "#FFFFFF",
       "build": {
         "babel": {
           "include": ["node_modules/react-native-web"]
