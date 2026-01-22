@@ -1,6 +1,6 @@
 import mobileService from "@/src/services/mobileService";
 import { colors } from "@/src/theme/colors";
-import { getApiUrlRuntime, getAssetsUrlRuntime } from "@/src/utils/apiConfig";
+import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { handleAuthError } from "@/src/utils/authHelpers";
 import AsyncStorage from "@/src/utils/storage";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -99,11 +99,9 @@ export default function AccountScreen() {
   };
 
   useEffect(() => {
-    // Initialize API URL and Assets URL
+    // Initialize API URL
     setApiUrl(getApiUrlRuntime());
-    setAssetsUrl(getAssetsUrlRuntime());
     console.log("📍 API URL (Account):", getApiUrlRuntime());
-    console.log("📷 ASSETS URL (Account):", getAssetsUrlRuntime());
     loadUserProfile();
   }, []);
 
@@ -126,21 +124,18 @@ export default function AccountScreen() {
     }
   }, [userProfile]);
 
-  // Debug: quando assetsUrl ou userProfile mudam
+  // Debug: quando apiUrl ou userProfile mudam
   useEffect(() => {
-    if (userProfile && assetsUrl) {
+    if (userProfile && apiUrl) {
       console.log("\n🔍 DEBUG: Render Photo");
-      console.log("   assetsUrl:", assetsUrl);
+      console.log("   apiUrl:", apiUrl);
       console.log("   photoUrl:", photoUrl || "vazio");
       console.log("   foto_caminho:", userProfile.foto_caminho || "vazio");
       if (userProfile.foto_caminho) {
-        console.log(
-          "   URL completa:",
-          `${assetsUrl}${userProfile.foto_caminho}`,
-        );
+        console.log("   URL completa:", `${apiUrl}${userProfile.foto_caminho}`);
       }
     }
-  }, [userProfile, assetsUrl, photoUrl]);
+  }, [userProfile, apiUrl, photoUrl]);
 
   // Carregar ranking quando modalidade selecionada muda
   useEffect(() => {
@@ -598,13 +593,13 @@ export default function AccountScreen() {
               ) : userProfile.foto_caminho ? (
                 <Image
                   source={{
-                    uri: `${assetsUrl}${userProfile.foto_caminho}`,
+                    uri: `${apiUrl}${userProfile.foto_caminho}`,
                   }}
                   style={styles.photoImage}
                   onError={(error) => {
                     console.error(
                       "❌ Erro ao carregar foto_caminho:",
-                      `${assetsUrl}${userProfile.foto_caminho}`,
+                      `${apiUrl}${userProfile.foto_caminho}`,
                       error,
                     );
                   }}
@@ -763,10 +758,10 @@ export default function AccountScreen() {
                         </Text>
                       </View>
                       <View style={styles.rankingAvatar}>
-                        {item.usuario.foto_caminho && assetsUrl ? (
+                        {item.usuario.foto_caminho && apiUrl ? (
                           <Image
                             source={{
-                              uri: `${assetsUrl}${item.usuario.foto_caminho}`,
+                              uri: `${apiUrl}${item.usuario.foto_caminho}`,
                             }}
                             style={styles.rankingAvatarImage}
                           />
