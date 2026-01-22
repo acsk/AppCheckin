@@ -1046,6 +1046,16 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
 
+            // Buscar dados do usuário para incluir na resposta
+            $usuario = $this->usuarioModel->findById($userId, $tenantId);
+            if (!$usuario) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Usuário não encontrado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
             // ============================================================
             // VALIDAÇÃO CRÍTICA: Garantir que usuário tem acesso ao tenant
             // Evita "dados cruzados" (cross-tenant pollution)
@@ -1219,6 +1229,12 @@ class MobileController
                 'message' => 'Check-in realizado com sucesso!',
                 'data' => [
                     'checkin_id' => $checkinId,
+                    'usuario' => [
+                        'id' => $userId,
+                        'nome' => $usuario['nome'],
+                        'email' => $usuario['email'],
+                        'foto_caminho' => $usuario['foto_caminho'] ?? null
+                    ],
                     'turma' => [
                         'id' => (int) $turma['id'],
                         'nome' => $turma['nome'],
@@ -1944,11 +1960,12 @@ class MobileController
                     u.id,
                     u.nome,
                     u.email,
+                    u.foto_caminho,
                     COUNT(c.id) as checkins_do_aluno
                 FROM usuarios u
                 INNER JOIN checkins c ON u.id = c.usuario_id
                 WHERE c.turma_id = :turma_id
-                GROUP BY u.id, u.nome, u.email
+                GROUP BY u.id, u.nome, u.email, u.foto_caminho
                 ORDER BY u.nome ASC
             ";
 
@@ -1962,6 +1979,7 @@ class MobileController
                     'usuario_id' => (int) $a['id'],
                     'nome' => $a['nome'],
                     'email' => $a['email'],
+                    'foto_caminho' => $a['foto_caminho'] ?? null,
                     'checkins' => (int) $a['checkins_do_aluno']
                 ];
             }, $alunos);

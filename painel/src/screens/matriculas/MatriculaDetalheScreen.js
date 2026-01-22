@@ -232,8 +232,14 @@ export default function MatriculaDetalheScreen() {
     );
   }
 
-  const pagamentosPendentes = pagamentos.filter((p) => Number(p.status_pagamento_id) === 1);
-  const pagamentosNaoPendentes = pagamentos.filter((p) => Number(p.status_pagamento_id) !== 1);
+  const pagamentosPendentes = pagamentos.filter((p) => {
+    const statusId = Number(p.status_pagamento_id);
+    return statusId === 1 || statusId === 3; // Aguardando (1) e Atrasado (3) são ambos pendentes
+  });
+  const pagamentosNaoPendentes = pagamentos.filter((p) => {
+    const statusId = Number(p.status_pagamento_id);
+    return statusId !== 1 && statusId !== 3;
+  });
 
   const resumo = calcularResumo();
 

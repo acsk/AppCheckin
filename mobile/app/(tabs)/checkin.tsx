@@ -71,17 +71,10 @@ export default function CheckinScreen() {
     ).toUpperCase();
   };
 
-  const getAvatarUrl = (nome: string = "", userId?: number) => {
-    // Usando randomuser.me para fotos reais de pessoas
-    // Cada userId gera uma foto consistente e realista
-    const seed =
-      userId ||
-      Math.abs(
-        nome.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0),
-      );
-    const gender = seed % 2 === 0 ? "women" : "men";
-    const photoId = (seed % 99) + 1;
-    return `https://randomuser.me/api/portraits/${gender}/${photoId}.jpg`;
+  const getUserPhotoUrl = (fotoCaminho?: string | null) => {
+    if (!fotoCaminho) return null;
+    if (/^https?:\/\//i.test(fotoCaminho)) return fotoCaminho;
+    return `${getApiUrlRuntime()}${fotoCaminho}`;
   };
 
   const mergeTurmaFromList = (
@@ -924,6 +917,7 @@ export default function CheckinScreen() {
                               const isCurrentUser =
                                 currentUserId &&
                                 Number(p.usuario_id) === Number(currentUserId);
+                              const photoUrl = getUserPhotoUrl(p.foto_caminho);
                               return (
                                 <View
                                   key={p.usuario_id || p.checkin_id || idx}
@@ -936,15 +930,18 @@ export default function CheckinScreen() {
                                         styles.participantAvatarCurrent,
                                     ]}
                                   >
-                                    <Image
-                                      source={{
-                                        uri: getAvatarUrl(
-                                          p.nome || p.usuario_nome,
-                                          p.usuario_id,
-                                        ),
-                                      }}
-                                      style={styles.participantAvatarImage}
-                                    />
+                                    {photoUrl ? (
+                                      <Image
+                                        source={{ uri: photoUrl }}
+                                        style={styles.participantAvatarImage}
+                                      />
+                                    ) : (
+                                      <Feather
+                                        name="user"
+                                        size={18}
+                                        color="#9ca3af"
+                                      />
+                                    )}
                                   </View>
                                   <View style={styles.participantInfo}>
                                     <Text style={styles.participantName}>
