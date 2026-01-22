@@ -43,7 +43,7 @@ $app->add(function ($request, $handler) {
         ->withHeader('Access-Control-Max-Age', '86400');
 });
 
-// Middleware de parsing de JSON
+// Middleware de parsing de JSONN
 $app->addBodyParsingMiddleware();
 
 // Middleware de erro
