@@ -21,7 +21,7 @@ curl -s "$API/ping" | jq .
 echo ""
 echo "✓ Se receber 'pong' com timestamp → PHP está rodando!"
 echo ""
-echo "---"
+echo "----"
 echo ""
 
 # ============ TESTE 2: Status ============
