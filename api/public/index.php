@@ -16,14 +16,22 @@ date_default_timezone_set('America/Sao_Paulo');
 
 $app = AppFactory::create();
 
-// Middleware de parsing de JSON
-$app->addBodyParsingMiddleware();
-
-// Middleware de erro
-$app->addErrorMiddleware(true, true, true);
-
-// CORS Middleware
+// ========================================
+// CORS Middleware (PRIMEIRO!)
+// ========================================
+// Executar ANTES de tudo para interceptar OPTIONS
 $app->add(function ($request, $handler) {
+    // Interceptar OPTIONS - retornar 200 imediatamente
+    if ($request->getMethod() === 'OPTIONS') {
+        $response = new \Slim\Psr7\Response();
+        return $response
+            ->withHeader('Access-Control-Allow-Origin', '*')
+            ->withHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Accept, Origin, Authorization')
+            ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
+            ->withStatus(200);
+    }
+    
+    // Para outros métodos, prosseguir normalmente
     $response = $handler->handle($request);
     return $response
         ->withHeader('Access-Control-Allow-Origin', '*')
@@ -31,7 +39,8 @@ $app->add(function ($request, $handler) {
         ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
 });
 
-// Rotas
-(require __DIR__ . '/../routes/api.php')($app);
+// Middleware de parsing de JSON
+$app->addBodyParsingMiddleware();
 
-$app->run();
+// Middleware de erro
+$app->addErrorMiddleware(true, true, true);
