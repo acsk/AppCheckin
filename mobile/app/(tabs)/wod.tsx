@@ -564,12 +564,12 @@ const styles = StyleSheet.create({
     marginLeft: -6,
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '800',
     color: '#fff',
   },
   headerSubtitle: {
-    fontSize: 13,
+    fontSize: 14,
     color: 'rgba(255,255,255,0.8)',
     textTransform: 'capitalize',
     marginTop: 4,
@@ -587,7 +587,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: 8,
-    fontSize: 14,
+    fontSize: 16,
     color: colors.textSecondary,
   },
   errorContainer: {
@@ -597,14 +597,14 @@ const styles = StyleSheet.create({
     paddingVertical: 40,
   },
   errorTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
     color: '#FF6B6B',
     marginTop: 12,
     marginBottom: 6,
   },
   errorMessage: {
-    fontSize: 14,
+    fontSize: 16,
     color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: 16,
@@ -618,7 +618,7 @@ const styles = StyleSheet.create({
   },
   retryButtonText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
   },
   errorMessageContainer: {
@@ -632,14 +632,14 @@ const styles = StyleSheet.create({
   },
   errorMessageText: {
     flex: 1,
-    fontSize: 14,
+    fontSize: 15,
     color: '#ef4444',
   },
   secaoContainer: {
     marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 17,
+    fontSize: 19,
     fontWeight: '700',
     color: colors.text,
     marginBottom: 12,
@@ -680,7 +680,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   wodHeaderBadgeText: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '700',
     color: '#fff',
   },
@@ -691,7 +691,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.6)',
   },
   wodTitulo: {
-    fontSize: 17,
+    fontSize: 19,
     fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
@@ -701,7 +701,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   descricaoLabel: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '600',
     color: colors.textMuted,
     textTransform: 'uppercase',
@@ -709,7 +709,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   wodDescricao: {
-    fontSize: 14,
+    fontSize: 16,
     lineHeight: 20,
     color: colors.textSecondary,
   },
@@ -723,7 +723,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   criadoPorText: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.textMuted,
     fontStyle: 'italic',
   },
@@ -755,7 +755,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   blocoOrdemText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: colors.primary,
   },
@@ -773,18 +773,18 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   blocoTipoText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: '700',
     color: colors.primary,
   },
   blocoTitulo: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '700',
     color: colors.text,
     marginBottom: 3,
   },
   blocoDescricao: {
-    fontSize: 12,
+    fontSize: 14,
     lineHeight: 16,
     color: colors.textSecondary,
   },
@@ -810,12 +810,12 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   variacaoNome: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: colors.primary,
   },
   variacaoDescricao: {
-    fontSize: 12,
+    fontSize: 14,
     lineHeight: 16,
     color: colors.textSecondary,
   },
@@ -846,28 +846,28 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   modalidadeListNome: {
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: '700',
     color: colors.text,
     marginBottom: 1,
   },
   modalidadeListHint: {
-    fontSize: 11,
+    fontSize: 12,
     color: colors.textMuted,
   },
   modalidadeListWodTitle: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '700',
     color: colors.text,
     marginBottom: 2,
   },
   modalidadeListWodMeta: {
-    fontSize: 11,
+    fontSize: 12,
     color: colors.textSecondary,
     marginBottom: 2,
   },
   modalidadeListWodDesc: {
-    fontSize: 11,
+    fontSize: 12,
     lineHeight: 14,
     color: colors.textSecondary,
   },
@@ -893,7 +893,7 @@ const styles = StyleSheet.create({
   },
   checkinButtonText: {
     color: '#fff',
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '700',
   },
 });

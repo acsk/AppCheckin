@@ -1288,7 +1288,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "800",
     color: "#fff",
   },
@@ -1303,7 +1303,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   switchLabel: {
-    fontSize: 12,
+    fontSize: 13,
     color: "#fff",
     fontWeight: "700",
   },
@@ -1354,7 +1354,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary,
   },
   calendarDayName: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.textMuted,
     marginBottom: 4,
     fontWeight: "500",
@@ -1363,7 +1363,7 @@ const styles = StyleSheet.create({
     color: "#fff",
   },
   calendarDayNumber: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "bold",
     color: colors.primary,
   },
@@ -1408,18 +1408,18 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   scheduleTimeText: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "bold",
     color: colors.text,
     marginBottom: 4,
   },
   scheduleName: {
-    fontSize: 13,
+    fontSize: 14,
     color: colors.textSecondary,
     fontWeight: "600",
   },
   scheduleSubtitle: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.textMuted,
     marginTop: 2,
   },
@@ -1433,7 +1433,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   modalidadeText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "700",
   },
   scheduleInfo: {
@@ -1463,7 +1463,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   infoText: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.textMuted,
     fontWeight: "600",
   },
@@ -1498,12 +1498,12 @@ const styles = StyleSheet.create({
     backgroundColor: "#f3f4f6",
   },
   participantsTitle: {
-    fontSize: 17,
+    fontSize: 19,
     fontWeight: "800",
     color: colors.text,
   },
   participantsSubtitle: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.textSecondary,
     marginTop: 2,
   },
@@ -1531,7 +1531,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   metaChipText: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.textSecondary,
     fontWeight: "600",
   },
@@ -1559,18 +1559,18 @@ const styles = StyleSheet.create({
   checkinButtonText: {
     color: "#fff",
     fontWeight: "700",
-    fontSize: 15,
+    fontSize: 17,
   },
   loadingText: {
     textAlign: "center",
     color: colors.textMuted,
-    fontSize: 14,
+    fontSize: 16,
     marginVertical: 20,
   },
   noSchedulesText: {
     textAlign: "center",
     color: colors.textMuted,
-    fontSize: 14,
+    fontSize: 16,
     marginVertical: 20,
   },
   participantItem: {
@@ -1599,7 +1599,7 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   participantAvatarText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "700",
     color: colors.textSecondary,
   },
@@ -1610,7 +1610,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   participantName: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "700",
     color: colors.text,
   },
@@ -1620,7 +1620,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   participantTimeText: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.textSecondary,
   },
   statsRow: {
@@ -1635,12 +1635,12 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.textSecondary,
     marginBottom: 4,
   },
   statValue: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: "700",
     color: colors.text,
   },
@@ -1673,7 +1673,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   checkinHourText: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.primary,
     fontWeight: "700",
   },
@@ -1696,7 +1696,7 @@ const styles = StyleSheet.create({
   },
   toastText: {
     color: "#111827",
-    fontSize: 13,
+    fontSize: 14,
     flex: 1,
     fontWeight: "600",
   },
@@ -1735,12 +1735,12 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   emptyTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "800",
     color: colors.text,
   },
   emptySubtitle: {
-    fontSize: 13,
+    fontSize: 14,
     color: colors.textSecondary,
   },
   // Modal de Erro Customizado
@@ -1796,14 +1796,14 @@ const styles = StyleSheet.create({
     backgroundColor: "#e8f5e9",
   },
   modalTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "700",
     color: "#000",
     marginBottom: 12,
     textAlign: "center",
   },
   modalMessage: {
-    fontSize: 16,
+    fontSize: 18,
     color: "#555",
     textAlign: "center",
     marginBottom: 24,
@@ -1831,7 +1831,7 @@ const styles = StyleSheet.create({
   },
   modalButtonText: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "700",
   },
 });

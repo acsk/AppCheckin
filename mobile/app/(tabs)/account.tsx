@@ -999,7 +999,7 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "800",
     color: "#fff",
   },
@@ -1099,13 +1099,13 @@ const styles = StyleSheet.create({
     color: "#fff",
   },
   userName: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: "800",
     color: colors.text,
     marginBottom: 4,
   },
   userEmail: {
-    fontSize: 14,
+    fontSize: 16,
     color: colors.textSecondary,
     marginBottom: 10,
   },
@@ -1128,7 +1128,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   sectionTitle: {
-    fontSize: 17,
+    fontSize: 19,
     fontWeight: "700",
     color: colors.text,
     marginBottom: 14,
@@ -1153,14 +1153,14 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   statLabel: {
-    fontSize: 11,
+    fontSize: 13,
     color: colors.textMuted,
     marginTop: 8,
     marginBottom: 4,
     textAlign: "center",
   },
   statValue: {
-    fontSize: 19,
+    fontSize: 21,
     fontWeight: "800",
     color: colors.primaryDark,
   },
@@ -1183,12 +1183,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   lastCheckinLabel: {
-    fontSize: 12,
+    fontSize: 14,
     color: colors.textMuted,
     marginBottom: 2,
   },
   lastCheckinValue: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: "700",
     color: colors.text,
   },
@@ -1217,12 +1217,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   infoLabel: {
-    fontSize: 12,
+    fontSize: 14,
     color: colors.textMuted,
     marginBottom: 4,
   },
   infoValue: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: "600",
     color: colors.text,
   },
@@ -1313,7 +1313,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   memberSinceText: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.textMuted,
   },
   contratosSection: {
@@ -1349,7 +1349,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   modalidadeChipText: {
-    fontSize: 12,
+    fontSize: 13,
     color: "#8b6b3b",
     fontWeight: "600",
   },
@@ -1431,12 +1431,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   rankingName: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: "600",
     color: "#111827",
   },
   rankingCheckins: {
-    fontSize: 11,
+    fontSize: 12,
     color: "#6b7280",
     marginTop: 2,
   },
@@ -1447,11 +1447,11 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   rankingLoadingText: {
-    fontSize: 12,
+    fontSize: 13,
     color: "#6b7280",
   },
   rankingErrorText: {
-    fontSize: 12,
+    fontSize: 13,
     color: "#b91c1c",
   },
   rankingDivider: {
@@ -1465,12 +1465,12 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   rankingUserLabel: {
-    fontSize: 11,
+    fontSize: 12,
     color: "#9ca3af",
     marginBottom: 2,
   },
   rankingUserName: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: "600",
     color: "#111827",
   },
@@ -1483,7 +1483,7 @@ const styles = StyleSheet.create({
     borderColor: colors.primary + "30",
   },
   rankingUserPositionText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: "700",
     color: colors.primary,
   },
@@ -1526,7 +1526,7 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   academiaName: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "700",
     color: colors.text,
     marginBottom: 10,
@@ -1538,7 +1538,7 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   academiaInfoText: {
-    fontSize: 12,
+    fontSize: 13,
     color: colors.textSecondary,
   },
   contratoCard: {
@@ -1677,7 +1677,7 @@ const styles = StyleSheet.create({
   },
   logoutText: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "700",
   },
 });
