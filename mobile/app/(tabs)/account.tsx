@@ -99,7 +99,9 @@ export default function AccountScreen() {
 
   useEffect(() => {
     // Initialize API URL
-    setApiUrl(getApiUrlRuntime());
+    const url = getApiUrlRuntime();
+    setApiUrl(url);
+    console.log("📍 API URL (Account):", url);
     loadUserProfile();
   }, []);
 
@@ -121,6 +123,19 @@ export default function AccountScreen() {
       }
     }
   }, [userProfile]);
+
+  // Debug: quando apiUrl ou userProfile mudam
+  useEffect(() => {
+    if (userProfile && apiUrl) {
+      console.log("\n🔍 DEBUG: Render Photo");
+      console.log("   apiUrl:", apiUrl);
+      console.log("   photoUrl:", photoUrl || "vazio");
+      console.log("   foto_caminho:", userProfile.foto_caminho || "vazio");
+      if (userProfile.foto_caminho) {
+        console.log("   URL completa:", `${apiUrl}${userProfile.foto_caminho}`);
+      }
+    }
+  }, [userProfile, apiUrl, photoUrl]);
 
   // Carregar ranking quando modalidade selecionada muda
   useEffect(() => {
@@ -211,9 +226,17 @@ export default function AccountScreen() {
       if (profileData.success) {
         console.log("✅ Perfil carregado com sucesso");
         console.log(
-          "📸 Foto do perfil:",
+          "📸 foto_base64:",
           profileData.data.foto_base64 ? "SIM" : "NÃO",
         );
+        console.log(
+          "📸 foto_caminho:",
+          profileData.data.foto_caminho || "NÃO TEM",
+        );
+        if (profileData.data.foto_caminho) {
+          const fullPhotoUrl = apiUrl + profileData.data.foto_caminho;
+          console.log("🖼️ URL COMPLETA DA FOTO:", fullPhotoUrl);
+        }
         setUserProfile(profileData.data);
       } else {
         Alert.alert(
@@ -560,13 +583,26 @@ export default function AccountScreen() {
               disabled={updatingPhoto}
             >
               {photoUrl ? (
-                <Image source={{ uri: photoUrl }} style={styles.photoImage} />
+                <Image
+                  source={{ uri: photoUrl }}
+                  style={styles.photoImage}
+                  onError={(error) => {
+                    console.error("❌ Erro ao carregar photoUrl:", error);
+                  }}
+                />
               ) : userProfile.foto_caminho ? (
                 <Image
                   source={{
                     uri: `${apiUrl}${userProfile.foto_caminho}`,
                   }}
                   style={styles.photoImage}
+                  onError={(error) => {
+                    console.error(
+                      "❌ Erro ao carregar foto_caminho:",
+                      `${apiUrl}${userProfile.foto_caminho}`,
+                      error,
+                    );
+                  }}
                 />
               ) : userProfile.foto_base64 ? (
                 <Image
@@ -574,6 +610,9 @@ export default function AccountScreen() {
                     uri: `data:image/jpeg;base64,${userProfile.foto_base64}`,
                   }}
                   style={styles.photoImage}
+                  onError={(error) => {
+                    console.error("❌ Erro ao carregar foto_base64:", error);
+                  }}
                 />
               ) : (
                 <Text style={styles.photoText}>👤</Text>
