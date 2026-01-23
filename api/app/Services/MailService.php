@@ -16,22 +16,37 @@ class MailService
         try {
             // Configuração SMTP
             $this->mailer->isSMTP();
-            $this->mailer->Host = $_ENV['MAIL_HOST'];
+            $this->mailer->Host = getenv('MAIL_HOST') ?: $_ENV['MAIL_HOST'] ?? 'smtp.hostinger.com';
             $this->mailer->SMTPAuth = true;
-            $this->mailer->Username = $_ENV['MAIL_USERNAME'];
-            $this->mailer->Password = $_ENV['MAIL_PASSWORD'];
-            $this->mailer->SMTPSecure = $_ENV['MAIL_ENCRYPTION'] ?? PHPMailer::ENCRYPTION_SMTPS;
-            $this->mailer->Port = (int)$_ENV['MAIL_PORT'];
+            $this->mailer->Username = getenv('MAIL_USERNAME') ?: $_ENV['MAIL_USERNAME'] ?? '';
+            $this->mailer->Password = getenv('MAIL_PASSWORD') ?: $_ENV['MAIL_PASSWORD'] ?? '';
+            
+            $encryption = getenv('MAIL_ENCRYPTION') ?: $_ENV['MAIL_ENCRYPTION'] ?? 'ssl';
+            $this->mailer->SMTPSecure = $encryption === 'ssl' ? PHPMailer::ENCRYPTION_SMTPS : PHPMailer::ENCRYPTION_STARTTLS;
+            
+            $this->mailer->Port = (int)(getenv('MAIL_PORT') ?: $_ENV['MAIL_PORT'] ?? 465);
+            $this->mailer->SMTPOptions = [
+                'ssl' => [
+                    'verify_peer' => false,
+                    'verify_peer_name' => false,
+                    'allow_self_signed' => true
+                ]
+            ];
+
+            // Debug modo (apenas em desenvolvimento)
+            $debug = getenv('MAIL_DEBUG') ?: $_ENV['MAIL_DEBUG'] ?? 'false';
+            if ($debug === 'true' || $debug === '1') {
+                $this->mailer->SMTPDebug = 2;
+            }
 
             // Charset
             $this->mailer->CharSet = 'UTF-8';
             $this->mailer->isHTML(true);
 
             // Remetente
-            $this->mailer->setFrom(
-                $_ENV['MAIL_FROM_ADDRESS'],
-                $_ENV['MAIL_FROM_NAME']
-            );
+            $fromAddress = getenv('MAIL_FROM_ADDRESS') ?: $_ENV['MAIL_FROM_ADDRESS'] ?? 'mail@appcheckin.com.br';
+            $fromName = getenv('MAIL_FROM_NAME') ?: $_ENV['MAIL_FROM_NAME'] ?? 'App Check-in';
+            $this->mailer->setFrom($fromAddress, $fromName);
         } catch (Exception $e) {
             throw new \RuntimeException("Erro ao configurar email: " . $e->getMessage());
         }
@@ -43,7 +58,8 @@ class MailService
     public function sendPasswordRecoveryEmail(string $email, string $nome, string $token, int $expirationMinutes = 15): bool
     {
         try {
-            $recoveryUrl = $_ENV['APP_URL'] . '/password-recovery?token=' . urlencode($token);
+            $appUrl = getenv('APP_URL') ?: $_ENV['APP_URL'] ?? 'https://api.appcheckin.com.br';
+            $recoveryUrl = $appUrl . '/password-recovery?token=' . urlencode($token);
             
             // HTML do email
             $html = $this->getPasswordRecoveryTemplate($nome, $recoveryUrl, $expirationMinutes);
@@ -66,7 +82,10 @@ class MailService
 
             return $result;
         } catch (Exception $e) {
-            error_log("Erro ao enviar email: " . $e->getMessage());
+            $errorMsg = "Erro ao enviar email para {$email}: " . $e->getMessage();
+            error_log($errorMsg);
+            // Também escrever em stderr
+            file_put_contents('php://stderr', $errorMsg . PHP_EOL);
             return false;
         }
     }
