@@ -4,6 +4,10 @@ import mobileService from "@/src/services/mobileService";
 import { colors } from "@/src/theme/colors";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { handleAuthError } from "@/src/utils/authHelpers";
+import {
+    compressImage,
+    logCompressionInfo,
+} from "@/src/utils/imageCompression";
 import AsyncStorage from "@/src/utils/storage";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
