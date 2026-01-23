@@ -29,7 +29,6 @@ use App\Controllers\WodVariacaoController;
 use App\Controllers\WodResultadoController;
 use App\Controllers\PresencaController;
 use App\Controllers\MaintenanceController;
-use App\Controllers\ImageController;
 use App\Middlewares\AuthMiddleware;
 use App\Middlewares\TenantMiddleware;
 use App\Middlewares\AdminMiddleware;
@@ -468,16 +467,6 @@ return function ($app) {
         $group->patch('/checkins/{checkinId}/presenca', [PresencaController::class, 'marcarPresenca']);
         $group->post('/turmas/{turmaId}/presencas/lote', [PresencaController::class, 'marcarPresencaLote']);
     })->add(AdminMiddleware::class)->add(AuthMiddleware::class);
-
-    // ========================================
-    // ROTAS DE IMAGEM (PÚBLICAS)
-    // ========================================
-    
-    // Converter imagem para WebP (otimizado)
-    $app->post('/images/convert-to-webp', [ImageController::class, 'converterParaWebP']);
-    
-    // Estatísticas de imagens
-    $app->get('/images/stats', [ImageController::class, 'obterEstatisticas']);
 
     // Rota de teste
     $app->get('/', function ($request, $response) {

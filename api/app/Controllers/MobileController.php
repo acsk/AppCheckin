@@ -2506,27 +2506,6 @@ class MobileController
             $uploadedFile->moveTo($caminhoCompleto);
             chmod($caminhoCompleto, 0644);
 
-            // Comprimir imagem para otimizar armazenamento
-            $imageCompression = new \App\Services\ImageCompressionService();
-            $resultadoCompressao = $imageCompression->comprimirImagem(
-                $caminhoCompleto,
-                $caminhoCompleto,
-                maxWidth: 1024,
-                maxHeight: 1024,
-                quality: 80
-            );
-
-            // Log de compressão
-            if ($resultadoCompressao['sucesso']) {
-                error_log(sprintf(
-                    "Foto comprimida - ID: %d, Original: %s, Comprimido: %s, Redução: %s%%",
-                    $userId,
-                    $this->formatarBytes($resultadoCompressao['tamanho_original']),
-                    $this->formatarBytes($resultadoCompressao['tamanho_comprimido']),
-                    $resultadoCompressao['reducao_percentual']
-                ));
-            }
-
             // Atualizar usuário com o caminho da foto
             $stmt = $this->db->prepare(
                 "UPDATE usuarios SET foto_caminho = :foto_caminho, updated_at = NOW() WHERE id = :id"
@@ -2557,13 +2536,7 @@ class MobileController
                     'tamanho_final' => filesize($caminhoCompleto),
                     'tipo_arquivo' => $mimeType,
                     'nome_original' => $uploadedFile->getClientFilename(),
-                    'caminho_url' => $caminhoRelativo,
-                    'compressao' => $resultadoCompressao['sucesso'] ? [
-                        'tamanho_original' => $resultadoCompressao['tamanho_original'],
-                        'tamanho_comprimido' => $resultadoCompressao['tamanho_comprimido'],
-                        'reducao_percentual' => $resultadoCompressao['reducao_percentual'],
-                        'dimensoes' => $resultadoCompressao['dimensoes']
-                    ] : null
+                    'caminho_url' => $caminhoRelativo
                 ]
             ]));
 
@@ -2631,22 +2604,5 @@ class MobileController
             error_log("Erro ao obter foto de perfil: " . $e->getMessage());
             return $response->withStatus(500);
         }
-    }
-
-    /**
-     * Formatar bytes para unidade legível (KB, MB, GB)
-     */
-    private function formatarBytes(int $bytes, int $casas = 2): string
-    {
-        $unidades = ['B', 'KB', 'MB', 'GB'];
-        $valor = $bytes;
-        $i = 0;
-
-        while ($valor >= 1024 && $i < count($unidades) - 1) {
-            $valor /= 1024;
-            $i++;
-        }
-
-        return round($valor, $casas) . ' ' . $unidades[$i];
     }
 }
