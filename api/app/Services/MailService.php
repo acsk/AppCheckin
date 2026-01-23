@@ -2,32 +2,55 @@
 
 namespace App\Services;
 
-use SendGrid;
-use SendGrid\Mail\Mail;
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+use App\Models\EmailLog;
+use PDO;
 
 class MailService
 {
-    private ?SendGrid $sendgrid = null;
     private string $fromAddress;
     private string $fromName;
+    private string $mailDriver;
+    
+    // Configurações SMTP (Amazon SES ou outro)
+    private ?string $smtpHost;
+    private ?int $smtpPort;
+    private ?string $smtpUsername;
+    private ?string $smtpPassword;
+    private ?string $smtpEncryption;
+    
+    // Auditoria
+    private ?EmailLog $emailLog = null;
+    private ?PDO $db = null;
 
-    public function __construct()
+    public function __construct(?PDO $db = null)
     {
+        // Conexão com banco para auditoria
+        $this->db = $db;
+        if ($this->db) {
+            $this->emailLog = new EmailLog($this->db);
+        }
+        
         // Configurar remetente
         $this->fromAddress = getenv('MAIL_FROM_ADDRESS') ?: $_ENV['MAIL_FROM_ADDRESS'] ?? 'noreply@appcheckin.com.br';
         $this->fromName = getenv('MAIL_FROM_NAME') ?: $_ENV['MAIL_FROM_NAME'] ?? 'App Check-in';
-
-        // Inicializar SendGrid se houver API key
-        $apiKey = getenv('SENDGRID_API_KEY') ?: $_ENV['SENDGRID_API_KEY'] ?? null;
-        if ($apiKey) {
-            $this->sendgrid = new SendGrid($apiKey);
-        }
+        
+        // Driver de email: 'ses', 'smtp', 'sendgrid'
+        $this->mailDriver = getenv('MAIL_DRIVER') ?: $_ENV['MAIL_DRIVER'] ?? 'ses';
+        
+        // Configurações SMTP (usadas para SES e SMTP genérico)
+        $this->smtpHost = getenv('MAIL_HOST') ?: $_ENV['MAIL_HOST'] ?? null;
+        $this->smtpPort = (int)(getenv('MAIL_PORT') ?: $_ENV['MAIL_PORT'] ?? 587);
+        $this->smtpUsername = getenv('MAIL_USERNAME') ?: $_ENV['MAIL_USERNAME'] ?? null;
+        $this->smtpPassword = getenv('MAIL_PASSWORD') ?: $_ENV['MAIL_PASSWORD'] ?? null;
+        $this->smtpEncryption = getenv('MAIL_ENCRYPTION') ?: $_ENV['MAIL_ENCRYPTION'] ?? 'tls';
     }
 
     /**
      * Enviar email de recuperação de senha
      */
-    public function sendPasswordRecoveryEmail(string $email, string $nome, string $token, int $expirationMinutes = 15): bool
+    public function sendPasswordRecoveryEmail(string $email, string $nome, string $token, int $expirationMinutes = 15, ?int $tenantId = null, ?int $usuarioId = null): bool
     {
         try {
             $appUrl = getenv('APP_URL') ?: $_ENV['APP_URL'] ?? 'https://api.appcheckin.com.br';
@@ -35,13 +58,17 @@ class MailService
             
             // HTML do email
             $html = $this->getPasswordRecoveryTemplate($nome, $recoveryUrl, $expirationMinutes);
+            $subject = 'Recuperação de Senha - App Check-in';
 
-            if ($this->sendgrid) {
-                return $this->sendViaApi($email, $nome, 'Recuperação de Senha - App Check-in', $html);
-            } else {
-                error_log("SendGrid não configurado. Configure SENDGRID_API_KEY no .env");
-                return false;
-            }
+            return $this->sendViaSMTP(
+                $email, 
+                $nome, 
+                $subject, 
+                $html,
+                EmailLog::TYPE_PASSWORD_RECOVERY,
+                $tenantId,
+                $usuarioId
+            );
         } catch (\Exception $e) {
             error_log("Erro ao enviar email de recuperação: " . $e->getMessage());
             return false;
@@ -49,30 +76,105 @@ class MailService
     }
 
     /**
-     * Enviar via SendGrid API
+     * Enviar via SMTP (Amazon SES ou outro servidor SMTP)
      */
-    private function sendViaApi(string $to, string $toName, string $subject, string $html): bool
-    {
+    private function sendViaSMTP(
+        string $to, 
+        string $toName, 
+        string $subject, 
+        string $html,
+        string $emailType = 'generic',
+        ?int $tenantId = null,
+        ?int $usuarioId = null
+    ): bool {
+        $logId = null;
+        
         try {
-            $email = new Mail();
-            $email->setFrom($this->fromAddress, $this->fromName);
-            $email->setSubject($subject);
-            $email->addTo($to, $toName);
-            $email->addContent("text/html", $html);
-            $email->addContent("text/plain", strip_tags($html));
+            // Registrar tentativa de envio no log (status: pending)
+            if ($this->emailLog) {
+                $logId = $this->emailLog->create([
+                    'tenant_id' => $tenantId,
+                    'usuario_id' => $usuarioId,
+                    'to_email' => $to,
+                    'to_name' => $toName,
+                    'from_email' => $this->fromAddress,
+                    'from_name' => $this->fromName,
+                    'subject' => $subject,
+                    'email_type' => $emailType,
+                    'body' => $html,
+                    'status' => EmailLog::STATUS_PENDING,
+                    'provider' => $this->mailDriver
+                ]);
+            }
+            
+            if (!$this->smtpHost || !$this->smtpUsername || !$this->smtpPassword) {
+                $errorMsg = "SMTP não configurado. Configure MAIL_HOST, MAIL_USERNAME e MAIL_PASSWORD no .env";
+                error_log($errorMsg);
+                
+                if ($logId && $this->emailLog) {
+                    $this->emailLog->updateStatus($logId, EmailLog::STATUS_FAILED, $errorMsg);
+                }
+                return false;
+            }
 
-            $response = $this->sendgrid->send($email);
+            $mailer = new PHPMailer(true);
             
-            // SendGrid retorna 202 em sucesso
-            $success = $response->statusCode() >= 200 && $response->statusCode() < 300;
+            // Configuração SMTP
+            $mailer->isSMTP();
+            $mailer->Host = $this->smtpHost;
+            $mailer->SMTPAuth = true;
+            $mailer->Username = $this->smtpUsername;
+            $mailer->Password = $this->smtpPassword;
+            $mailer->Port = $this->smtpPort;
             
-            if (!$success) {
-                error_log("SendGrid Error: " . $response->statusCode() . " - " . $response->body());
+            // Configurar criptografia
+            if ($this->smtpEncryption === 'tls') {
+                $mailer->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+            } elseif ($this->smtpEncryption === 'ssl') {
+                $mailer->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+            }
+            
+            // Opções SSL para evitar problemas de certificado
+            $mailer->SMTPOptions = [
+                'ssl' => [
+                    'verify_peer' => true,
+                    'verify_peer_name' => true,
+                    'allow_self_signed' => false
+                ]
+            ];
+            
+            $mailer->CharSet = 'UTF-8';
+            $mailer->isHTML(true);
+            
+            // Configurar email
+            $mailer->setFrom($this->fromAddress, $this->fromName);
+            $mailer->addAddress($to, $toName);
+            $mailer->Subject = $subject;
+            $mailer->Body = $html;
+            $mailer->AltBody = strip_tags($html);
+            
+            $success = $mailer->send();
+            
+            if ($success) {
+                error_log("Email enviado com sucesso para: {$to}");
+                
+                // Atualizar log com sucesso
+                if ($logId && $this->emailLog) {
+                    $messageId = $mailer->getLastMessageID();
+                    $this->emailLog->updateStatus($logId, EmailLog::STATUS_SENT, null, $messageId);
+                }
             }
             
             return $success;
-        } catch (\Exception $e) {
-            error_log("Erro SendGrid: " . $e->getMessage());
+        } catch (Exception $e) {
+            $errorMsg = $e->getMessage();
+            error_log("Erro SMTP ({$this->mailDriver}): " . $errorMsg);
+            
+            // Atualizar log com erro
+            if ($logId && $this->emailLog) {
+                $this->emailLog->updateStatus($logId, EmailLog::STATUS_FAILED, $errorMsg);
+            }
+            
             return false;
         }
     }
@@ -198,29 +300,31 @@ HTML;
     /**
      * Enviar email genérico
      */
-    public function send(string $to, string $subject, string $htmlBody, ?string $altBody = null): bool
+    public function send(
+        string $to, 
+        string $subject, 
+        string $htmlBody, 
+        ?string $altBody = null,
+        string $emailType = 'generic',
+        ?int $tenantId = null,
+        ?int $usuarioId = null
+    ): bool {
+        return $this->sendViaSMTP(
+            $to,
+            '', // toName vazio para envio genérico
+            $subject,
+            $htmlBody,
+            $emailType,
+            $tenantId,
+            $usuarioId
+        );
+    }
+
+    /**
+     * Obter instância do EmailLog para consultas externas
+     */
+    public function getEmailLog(): ?EmailLog
     {
-        try {
-            if (!$this->sendgrid) {
-                error_log("SendGrid não configurado");
-                return false;
-            }
-
-            $email = new Mail();
-            $email->setFrom($this->fromAddress, $this->fromName);
-            $email->setSubject($subject);
-            $email->addTo($to);
-            $email->addContent("text/html", $htmlBody);
-            
-            if ($altBody) {
-                $email->addContent("text/plain", $altBody);
-            }
-
-            $response = $this->sendgrid->send($email);
-            return $response->statusCode() >= 200 && $response->statusCode() < 300;
-        } catch (\Exception $e) {
-            error_log("Erro ao enviar email: " . $e->getMessage());
-            return false;
-        }
+        return $this->emailLog;
     }
 }
