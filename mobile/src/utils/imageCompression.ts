@@ -180,8 +180,8 @@ async function compressImageMobile(
     const manipResult = await manipulateAsync(imageUri, [
       {
         resize: {
-          width: options.maxWidth || 1080,
-          height: options.maxHeight || 1080,
+          width: options.maxWidth || 800,
+          height: options.maxHeight || 800,
         },
       },
     ]);
