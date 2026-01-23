@@ -8,3 +8,4 @@ composer.lock
 *.log
 database/backup*.sql*
 database/*.disabled
+public/uploads/
