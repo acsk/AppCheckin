@@ -3,6 +3,10 @@ import mobileService from "@/src/services/mobileService";
 import { colors } from "@/src/theme/colors";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { handleAuthError } from "@/src/utils/authHelpers";
+import {
+    compressImage,
+    logCompressionInfo,
+} from "@/src/utils/imageCompression";
 import AsyncStorage from "@/src/utils/storage";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -323,51 +327,70 @@ export default function AccountScreen() {
 
         setUpdatingPhoto(true);
 
-        // Criar FormData para upload (sem passar object, apenas uri)
-        const formData = new FormData();
-        const uri = asset.uri;
-        const filename = uri.split("/").pop() || "photo.jpg";
+        try {
+          // 🎨 Comprimir imagem antes de enviar
+          console.log("🎨 Iniciando compressão de imagem...");
+          const compressResult = await compressImage(asset.uri, {
+            maxWidth: 1080,
+            maxHeight: 1080,
+            quality: 0.8,
+            outputFormat: "jpeg",
+          });
 
-        // No web, converter blob; no mobile, usar uri
-        if (Platform.OS === "web") {
-          // Para web, fazer fetch da imagem e converter para blob
-          const response = await fetch(uri);
-          const blob = await response.blob();
-          formData.append("foto", blob, filename);
-        } else {
-          // Para mobile, usar uri diretamente
-          formData.append("foto", {
-            uri,
-            type: "image/jpeg",
-            name: filename,
-          } as any);
-        }
+          // Log das informações de compressão
+          logCompressionInfo(compressResult);
 
-        // Enviar para servidor
-        console.log("📸 Enviando foto para servidor...");
-        const response = await mobileService.atualizarFoto(formData);
-        console.log("📸 Resposta do servidor:", response);
+          // Criar FormData para upload com imagem comprimida
+          const formData = new FormData();
+          const filename = compressResult.uri.split("/").pop() || "photo.jpg";
 
-        if (response?.success) {
-          console.log("✅ Foto enviada com sucesso, recarregando perfil...");
-          // Armazenar URL da foto se disponível
-          if (response.data?.caminho_url) {
-            const apiUrl = getApiUrlRuntime();
-            setPhotoUrl(`${apiUrl}${response.data.caminho_url}`);
-            console.log(
-              "📸 URL da foto armazenada:",
-              `${apiUrl}${response.data.caminho_url}`,
+          // No web, converter blob; no mobile, usar uri
+          if (Platform.OS === "web") {
+            // Para web, fazer fetch da imagem comprimida e converter para blob
+            const response = await fetch(compressResult.uri);
+            const blob = await response.blob();
+            formData.append("foto", blob, filename);
+          } else {
+            // Para mobile, usar uri comprimida diretamente
+            formData.append("foto", {
+              uri: compressResult.uri,
+              type: "image/jpeg",
+              name: filename,
+            } as any);
+          }
+
+          // Enviar para servidor
+          console.log("📸 Enviando foto comprimida para servidor...");
+          const response = await mobileService.atualizarFoto(formData);
+          console.log("📸 Resposta do servidor:", response);
+
+          if (response?.success) {
+            console.log("✅ Foto enviada com sucesso, recarregando perfil...");
+            // Armazenar URL da foto se disponível
+            if (response.data?.caminho_url) {
+              const apiUrl = getApiUrlRuntime();
+              setPhotoUrl(`${apiUrl}${response.data.caminho_url}`);
+              console.log(
+                "📸 URL da foto armazenada:",
+                `${apiUrl}${response.data.caminho_url}`,
+              );
+            }
+            Alert.alert("Sucesso", "Foto atualizada com sucesso!");
+            // Recarregar perfil para pegar a nova foto
+            setUpdatingPhoto(false); // Desabilita loading ANTES de recarregar
+            await loadUserProfile();
+          } else {
+            console.error("❌ Erro na resposta:", response);
+            Alert.alert(
+              "Erro",
+              response?.error || response?.message || "Erro ao atualizar foto",
             );
           }
-          Alert.alert("Sucesso", "Foto atualizada com sucesso!");
-          // Recarregar perfil para pegar a nova foto
-          setUpdatingPhoto(false); // Desabilita loading ANTES de recarregar
-          await loadUserProfile();
-        } else {
-          console.error("❌ Erro na resposta:", response);
+        } catch (compressionError: any) {
+          console.error("❌ Erro ao comprimir imagem:", compressionError);
           Alert.alert(
             "Erro",
-            response?.error || response?.message || "Erro ao atualizar foto",
+            "Erro ao comprimir imagem. Tente com outra foto.",
           );
         }
       }
