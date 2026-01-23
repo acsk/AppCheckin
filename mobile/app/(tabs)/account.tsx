@@ -350,6 +350,12 @@ export default function AccountScreen() {
 
           try {
             console.log("⏳ Chamando compressImage()...");
+            console.log(
+              "📦 compressImage function type:",
+              typeof compressImage,
+            );
+            console.log("📦 compressImage function exists:", !!compressImage);
+
             const compressResult = await compressImage(asset.uri, {
               maxWidth: 1080,
               maxHeight: 1080,
@@ -365,6 +371,10 @@ export default function AccountScreen() {
             console.warn(
               "⚠️ Compressão falhou, usando imagem original:",
               compressionError,
+            );
+            console.error(
+              "❌ Erro de compressão (stack):",
+              compressionError.stack,
             );
             console.log(
               "📸 Usando imagem original:",

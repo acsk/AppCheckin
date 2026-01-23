@@ -46,17 +46,28 @@ export async function compressImage(
   imageUri: string,
   options: CompressionOptions = {},
 ): Promise<CompressionResult> {
+  console.log('🎨 [compressImage] ===== INICIANDO COMPRESSÃO =====');
+  console.log('📸 URI da imagem:', imageUri);
+  console.log('⚙️ Plataforma:', Platform.OS);
+  
   debugLogger.log('🎨 [compressImage] ===== INICIANDO COMPRESSÃO =====');
   debugLogger.log('📸 URI da imagem:', { uri: imageUri });
   debugLogger.log('⚙️ Plataforma:', { platform: Platform.OS });
   
   const config = { ...DEFAULT_COMPRESSION_OPTIONS, ...options };
+  console.log('⚙️ Configuração final:', config);
   debugLogger.log('⚙️ Configuração final:', config);
 
   try {
     if (Platform.OS === 'web') {
+      console.log('🌐 Usando compressão WEB (Canvas)');
       debugLogger.log('🌐 Usando compressão WEB (Canvas)');
       const result = await compressImageWeb(imageUri, config);
+      console.log('✅ Compressão WEB concluída:', {
+        originalSize: result.originalSize,
+        newSize: result.size,
+        ratio: `${(result.compressionRatio * 100).toFixed(1)}%`,
+      });
       debugLogger.log('✅ Compressão WEB concluída:', {
         originalSize: result.originalSize,
         newSize: result.size,
@@ -64,9 +75,16 @@ export async function compressImage(
       });
       return result;
     } else {
+      console.log('📱 Usando compressão MOBILE (expo-image-manipulator)');
       debugLogger.log('📱 Usando compressão MOBILE (expo-image-manipulator)');
+      console.log('🔍 Chamando compressImageMobile com URI:', imageUri);
       debugLogger.log('🔍 Chamando compressImageMobile com URI:', { uri: imageUri });
       const result = await compressImageMobile(imageUri, config);
+      console.log('✅ Compressão MOBILE concluída:', {
+        originalSize: result.originalSize,
+        newSize: result.size,
+        ratio: `${(result.compressionRatio * 100).toFixed(1)}%`,
+      });
       debugLogger.log('✅ Compressão MOBILE concluída:', {
         originalSize: result.originalSize,
         newSize: result.size,
@@ -75,8 +93,9 @@ export async function compressImage(
       return result;
     }
   } catch (error) {
-    debugLogger.error('❌ [compressImage] ERRO FATAL:', error);
     console.error('❌ [compressImage] ERRO FATAL:', error);
+    console.error('❌ [compressImage] Stack:', (error as any).stack);
+    debugLogger.error('❌ [compressImage] ERRO FATAL:', error);
     throw error;
   }
 }
