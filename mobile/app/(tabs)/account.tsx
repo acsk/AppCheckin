@@ -348,6 +348,10 @@ export default function AccountScreen() {
           let uploadUri = asset.uri;
           let uploadType = "image/jpeg";
 
+          // 🚫 COMPRESSÃO TEMPORARIAMENTE DESATIVADA PARA TESTES
+          console.log("❌ COMPRESSÃO DESATIVADA - Enviando imagem original");
+          
+          /*
           try {
             console.log("⏳ Chamando compressImage()...");
             console.log(
@@ -382,6 +386,7 @@ export default function AccountScreen() {
               "Tamanho desconhecido",
             );
           }
+          */
 
           // Criar FormData para upload
           const formData = new FormData();
@@ -435,6 +440,8 @@ export default function AccountScreen() {
             "Erro",
             error.message || "Erro ao processar foto. Tente novamente.",
           );
+        } finally {
+          setUpdatingPhoto(false);
         }
       }
     } catch (error: any) {
