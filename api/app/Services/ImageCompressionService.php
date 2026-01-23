@@ -2,26 +2,16 @@
 
 namespace App\Services;
 
-/**
- * ImageCompressionService
- * 
- * Serviço de compressão de imagens usando apenas PHP nativo (GD library)
- * Não requer dependências externas - funciona em qualquer servidor com GD instalado
- * 
- * @package App\Services
- */
+use Intervention\Image\ImageManager;
+use Intervention\Image\Drivers\GdDriver;
+
 class ImageCompressionService
 {
-    private bool $gdDisponivel = false;
+    private ImageManager $manager;
 
     public function __construct()
     {
-        // Verificar se GD library está disponível (nativa do PHP)
-        $this->gdDisponivel = extension_loaded('gd');
-        
-        if (!$this->gdDisponivel) {
-            error_log("[ImageCompressionService] GD library não disponível no servidor");
-        }
+        $this->manager = new ImageManager(new GdDriver());
     }
 
     /**
