@@ -64,6 +64,7 @@ export async function compressImage(
       return result;
     } else {
       console.log('📱 Usando compressão MOBILE (expo-image-manipulator)');
+      console.log('🔍 Chamando compressImageMobile com URI:', imageUri);
       const result = await compressImageMobile(imageUri, config);
       console.log('✅ Compressão MOBILE concluída:', {
         originalSize: result.originalSize,
@@ -171,8 +172,12 @@ async function compressImageMobile(
   imageUri: string,
   options: CompressionOptions,
 ): Promise<CompressionResult> {
-  console.log('📱 [compressImageMobile] Iniciando compressão mobile');
+  console.log('\n\n');
+  console.log('═══════════════════════════════════════════════════════════');
+  console.log('📱 [compressImageMobile] INICIANDO COMPRESSÃO MOBILE');
+  console.log('═══════════════════════════════════════════════════════════');
   console.log('📸 [compressImageMobile] URI:', imageUri);
+  console.log('⚙️ [compressImageMobile] Opções:', options);
   
   try {
     // Importar dinamicamente para não quebrar no web
@@ -186,7 +191,7 @@ async function compressImageMobile(
     console.log('📊 [compressImageMobile] Obtendo informações da imagem original...');
     const originalInfo = await FileSystem.getInfoAsync(imageUri);
     const originalSize = originalInfo.size || 0;
-    console.log('📏 [compressImageMobile] Tamanho original:', formatFileSize(originalSize));
+    console.log('📏 [compressImageMobile] Tamanho original:', formatFileSize(originalSize), `(${originalSize} bytes)`);
 
     // Definir formato de saída
     const formatMap: {
@@ -202,15 +207,17 @@ async function compressImageMobile(
     console.log('🎨 [compressImageMobile] Formato de saída:', options.outputFormat || 'jpeg');
 
     // Manipular imagem - REDIMENSIONAR
+    const resizeWidth = options.maxWidth || 800;
+    const resizeHeight = options.maxHeight || 800;
     console.log('🔧 [compressImageMobile] Redimensionando para:', {
-      width: options.maxWidth || 800,
-      height: options.maxHeight || 800,
+      width: resizeWidth,
+      height: resizeHeight,
     });
     const manipResult = await manipulateAsync(imageUri, [
       {
         resize: {
-          width: options.maxWidth || 800,
-          height: options.maxHeight || 800,
+          width: resizeWidth,
+          height: resizeHeight,
         },
       },
     ]);
@@ -221,12 +228,13 @@ async function compressImageMobile(
     });
 
     // Salvar imagem comprimida
-    console.log('💾 [compressImageMobile] Comprimindo com quality:', options.quality || 0.8);
+    const quality = options.quality || 0.8;
+    console.log('💾 [compressImageMobile] Comprimindo com quality:', quality);
     const compressResult = await manipulateAsync(
       manipResult.uri,
       [],
       {
-        compress: options.quality || 0.8,
+        compress: quality,
         format: saveFormat,
       },
     );
@@ -240,7 +248,7 @@ async function compressImageMobile(
     const compressedSize = compressedInfo.size || 0;
     const compressionPercentage = ((originalSize - compressedSize) / originalSize) * 100;
     
-    console.log('📏 [compressImageMobile] Tamanho comprimido:', formatFileSize(compressedSize));
+    console.log('📏 [compressImageMobile] Tamanho comprimido:', formatFileSize(compressedSize), `(${compressedSize} bytes)`);
     console.log('📊 [compressImageMobile] Taxa de compressão:', `${compressionPercentage.toFixed(1)}%`);
 
     const result = {
@@ -252,10 +260,13 @@ async function compressImageMobile(
       compressionRatio: compressionPercentage,
     };
 
-    console.log('✅ [compressImageMobile] SUCESSO - Compressão concluída:', result);
+    console.log('✅ [compressImageMobile] SUCESSO FINAL:', result);
+    console.log('═══════════════════════════════════════════════════════════\n\n');
     return result;
   } catch (error) {
     console.error('❌ [compressImageMobile] ERRO FATAL:', error);
+    console.error('❌ [compressImageMobile] Stack:', (error as any).stack);
+    console.log('═══════════════════════════════════════════════════════════\n\n');
     throw error;
   }
 }

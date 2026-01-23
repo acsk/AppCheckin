@@ -325,6 +325,17 @@ export default function AccountScreen() {
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
 
+        console.log("\n\n");
+        console.log("═══════════════════════════════════════════════════════");
+        console.log("🖼️ NOVO FLUXO DE UPLOAD - handleChangePhoto");
+        console.log("═══════════════════════════════════════════════════════");
+        console.log("📸 Asset selecionado:", {
+          uri: asset.uri,
+          width: asset.width,
+          height: asset.height,
+          type: asset.type,
+        });
+
         setUpdatingPhoto(true);
 
         try {
