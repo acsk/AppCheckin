@@ -11,12 +11,12 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef, useState } from "react";
 import { AppState, Platform } from "react-native";
 
+import { useColorScheme } from "@/hooks/use-color-scheme";
+
 // Importar Reanimated apenas no mobile
 if (Platform.OS !== "web") {
   require("react-native-reanimated");
 }
-
-import { useColorScheme } from "@/hooks/use-color-scheme";
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();

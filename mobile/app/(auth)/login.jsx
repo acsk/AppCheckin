@@ -2,18 +2,19 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import PasswordRecoveryModal from "../../components/PasswordRecoveryModal";
 import { authService } from "../../src/services/authService";
 import { colors } from "../../src/theme/colors";
 
@@ -24,6 +25,7 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState("");
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
 
   const handleLogin = async () => {
     // Proteção contra múltiplos cliques
@@ -202,10 +204,26 @@ export default function LoginScreen() {
                   <Text style={styles.loginButtonText}>Entrar</Text>
                 )}
               </TouchableOpacity>
+
+              {/* Forgot Password Link */}
+              <TouchableOpacity
+                style={styles.forgotPasswordContainer}
+                onPress={() => setShowRecoveryModal(true)}
+              >
+                <Text style={styles.forgotPasswordText}>
+                  Esqueceu sua senha?
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Password Recovery Modal */}
+      <PasswordRecoveryModal
+        visible={showRecoveryModal}
+        onClose={() => setShowRecoveryModal(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -358,5 +376,15 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     color: "#b91c1c",
+  },
+  forgotPasswordContainer: {
+    alignItems: "center",
+    marginTop: 16,
+    paddingVertical: 8,
+  },
+  forgotPasswordText: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: "500",
   },
 });

@@ -1,3 +1,4 @@
+import PasswordRecoveryModal from "@/components/PasswordRecoveryModal";
 import mobileService from "@/src/services/mobileService";
 import { colors } from "@/src/theme/colors";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
@@ -8,15 +9,15 @@ import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Image,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -88,6 +89,7 @@ export default function AccountScreen() {
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [apiUrl, setApiUrl] = useState<string>("");
   const [assetsUrl, setAssetsUrl] = useState<string>("");
+  const [showRecoveryModal, setShowRecoveryModal] = useState(false);
 
   const normalizeProfileModalidades = (
     items: UserProfile["ranking_modalidades"] = [],
@@ -477,104 +479,6 @@ export default function AccountScreen() {
       // Não fazer chamada recursiva aqui, deixar para useEffect
     } catch {
       setModalidadesFromTurmasLoaded(true);
-    }
-  };
-
-  const rankingMock = [
-    { id: 101, nome: "Marina Souza", checkins: 28 },
-    { id: 102, nome: "Joao Pedro", checkins: 25 },
-    { id: 103, nome: "Ana Clara", checkins: 23 },
-    { id: 104, nome: "Felipe Costa", checkins: 19 },
-    { id: 105, nome: "Livia Mendes", checkins: 17 },
-  ];
-
-  const handleLogout = async () => {
-    console.log("🔴 [LOGOUT] handleLogout chamado");
-    console.log("🔴 [LOGOUT] Platform.OS:", Platform.OS);
-
-    // Usar confirm() nativo para web, Alert para mobile
-    let confirmed = false;
-
-    if (Platform.OS === "web") {
-      // Web: usar window.confirm()
-      confirmed = window.confirm("Deseja realmente sair?");
-      console.log("🔴 [LOGOUT] Web confirm result:", confirmed);
-    } else {
-      // Mobile: usar Alert.alert() com Promise
-      confirmed = await new Promise((resolve) => {
-        Alert.alert("Sair", "Deseja realmente sair?", [
-          {
-            text: "Cancelar",
-            style: "cancel",
-            onPress: () => resolve(false),
-          },
-          {
-            text: "Sair",
-            style: "destructive",
-            onPress: () => resolve(true),
-          },
-        ]);
-      });
-      console.log("🔴 [LOGOUT] Mobile alert result:", confirmed);
-    }
-
-    if (!confirmed) {
-      console.log("🔵 [LOGOUT] Cancelado pelo usuário");
-      return;
-    }
-
-    try {
-      console.log("🟡 [LOGOUT] Iniciando logout...");
-
-      // Log do estado antes de remover
-      const tokenBefore = await AsyncStorage.getItem("@appcheckin:token");
-      console.log(
-        "🟡 [LOGOUT] Token antes de remover:",
-        tokenBefore ? "EXISTE" : "NÃO EXISTE",
-      );
-
-      // Remover token
-      console.log("🟡 [LOGOUT] Removendo token...");
-      const result1 = await AsyncStorage.removeItem("@appcheckin:token");
-      console.log("✅ [LOGOUT] Token removido - resultado:", result1);
-
-      // Verificar se removeu
-      const tokenAfter = await AsyncStorage.getItem("@appcheckin:token");
-      console.log(
-        "✅ [LOGOUT] Token após remover:",
-        tokenAfter ? "AINDA EXISTE" : "FOI REMOVIDO",
-      );
-
-      // Remover usuário
-      console.log("🟡 [LOGOUT] Removendo usuário...");
-      const result2 = await AsyncStorage.removeItem("@appcheckin:user");
-      console.log("✅ [LOGOUT] Usuário removido - resultado:", result2);
-
-      // Remover tenant
-      console.log("🟡 [LOGOUT] Removendo tenant...");
-      const result3 = await AsyncStorage.removeItem("@appcheckin:tenant");
-      console.log("✅ [LOGOUT] Tenant removido - resultado:", result3);
-
-      // Limpar estado local
-      console.log("🟡 [LOGOUT] Limpando estado local...");
-      setUserProfile(null);
-      console.log("✅ [LOGOUT] Estado local limpo");
-
-      // Redirecionar para login
-      console.log("🟡 [LOGOUT] Redirecionando para login...");
-      router.replace("/(auth)/login");
-      console.log("✅ [LOGOUT] Replace chamado");
-
-      console.log("🟢 [LOGOUT] Logout completo!");
-    } catch (error) {
-      console.error("❌ [LOGOUT] Erro ao fazer logout:", error);
-      console.error("❌ [LOGOUT] Error type:", typeof error);
-      console.error("❌ [LOGOUT] Error message:", error?.message);
-      console.error("❌ [LOGOUT] Error stack:", error?.stack);
-      Alert.alert(
-        "Erro",
-        "Erro ao fazer logout: " + (error?.message || "Tente novamente"),
-      );
     }
   };
 
@@ -969,12 +873,21 @@ export default function AccountScreen() {
           </View>
         )}
 
-        {/* Logout Button */}
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Feather name="log-out" size={20} color="#fff" />
-          <Text style={styles.logoutText}>Sair</Text>
+        {/* Change Password Button */}
+        <TouchableOpacity
+          style={styles.changePasswordButton}
+          onPress={() => setShowRecoveryModal(true)}
+        >
+          <Feather name="key" size={20} color="#fff" />
+          <Text style={styles.changePasswordText}>Alterar Senha</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Password Recovery Modal */}
+      <PasswordRecoveryModal
+        visible={showRecoveryModal}
+        onClose={() => setShowRecoveryModal(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -1661,8 +1574,8 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "600",
   },
-  logoutButton: {
-    backgroundColor: "#ef4444",
+  changePasswordButton: {
+    backgroundColor: colors.primary,
     borderRadius: 16,
     paddingVertical: 16,
     flexDirection: "row",
@@ -1675,7 +1588,7 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 3,
   },
-  logoutText: {
+  changePasswordText: {
     color: "#fff",
     fontSize: 17,
     fontWeight: "700",

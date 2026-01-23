@@ -189,6 +189,64 @@ export const authService = {
     const tenantJson = await AsyncStorage.getItem("@appcheckin:current_tenant");
     return tenantJson ? JSON.parse(tenantJson) : null;
   },
+
+  /**
+   * Solicita recuperação de senha enviando email com token
+   * @param {string} email - Email do usuário
+   * @returns {Promise<{message: string}>}
+   */
+  async requestPasswordRecovery(email) {
+    try {
+      const response = await api.post("/auth/password-recovery/request", {
+        email,
+      });
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data || error;
+      throw errorData;
+    }
+  },
+
+  /**
+   * Valida o token de recuperação de senha
+   * @param {string} token - Token de recuperação
+   * @returns {Promise<{message: string, user: object}>}
+   */
+  async validatePasswordToken(token) {
+    try {
+      const response = await api.post(
+        "/auth/password-recovery/validate-token",
+        {
+          token,
+        },
+      );
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data || error;
+      throw errorData;
+    }
+  },
+
+  /**
+   * Reseta a senha usando um token válido
+   * @param {string} token - Token de recuperação
+   * @param {string} nova_senha - Nova senha
+   * @param {string} confirmacao_senha - Confirmação da senha
+   * @returns {Promise<{message: string}>}
+   */
+  async resetPassword(token, nova_senha, confirmacao_senha) {
+    try {
+      const response = await api.post("/auth/password-recovery/reset", {
+        token,
+        nova_senha,
+        confirmacao_senha,
+      });
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data || error;
+      throw errorData;
+    }
+  },
 };
 
 export default authService;
