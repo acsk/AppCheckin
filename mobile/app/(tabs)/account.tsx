@@ -330,16 +330,21 @@ export default function AccountScreen() {
         try {
           // 🎨 Comprimir imagem antes de enviar
           console.log("🎨 Iniciando compressão de imagem...");
+          console.log("📸 Asset URI:", asset.uri);
+          console.log("📱 Platform.OS:", Platform.OS);
+
           let uploadUri = asset.uri;
           let uploadType = "image/jpeg";
 
           try {
+            console.log("⏳ Chamando compressImage()...");
             const compressResult = await compressImage(asset.uri, {
               maxWidth: 1080,
               maxHeight: 1080,
               quality: 0.8,
               outputFormat: "jpeg",
             });
+            console.log("✅ compressImage retornou:", compressResult);
 
             // Log das informações de compressão
             logCompressionInfo(compressResult);
