@@ -5,13 +5,22 @@ namespace App\Services;
 use Intervention\Image\ImageManager;
 use Intervention\Image\Drivers\GdDriver;
 
+/**
+ * ImageCompressionService
+ * Compressor de imagens usando Intervention/Image library
+ */
 class ImageCompressionService
 {
     private ImageManager $manager;
 
     public function __construct()
     {
-        $this->manager = new ImageManager(new GdDriver());
+        try {
+            $this->manager = new ImageManager(new GdDriver());
+        } catch (\Exception $e) {
+            error_log("[ImageCompressionService] Erro ao inicializar: " . $e->getMessage());
+            throw $e;
+        }
     }
 
     /**
@@ -32,14 +41,9 @@ class ImageCompressionService
         int $quality = 80
     ): array {
         try {
-            // Se biblioteca não disponível, copiar arquivo sem compressão
-            if (!$this->bibliotecaDisponivel) {
-                error_log("[ImageCompressionService] Biblioteca intervention/image não disponível. Usando fallback com copy.");
-                return $this->copiarSemCompressao($imagemOrigem, $imagemDestino);
-            }
-
             // Verificar se arquivo existe
             if (!file_exists($imagemOrigem)) {
+                error_log("[ImageCompressionService] Arquivo não encontrado: $imagemOrigem");
                 return [
                     'sucesso' => false,
                     'erro' => 'Arquivo não encontrado'
@@ -48,15 +52,21 @@ class ImageCompressionService
 
             // Obter tamanho original
             $tamanhoOriginal = filesize($imagemOrigem);
+            error_log("[ImageCompressionService] Iniciando compressão: " . basename($imagemOrigem) . " (" . $this->formatarBytes($tamanhoOriginal) . ")");
 
             // Ler imagem
             $image = $this->manager->read($imagemOrigem);
+            error_log("[ImageCompressionService] Imagem lida: {$image->width()}x{$image->height()}");
 
             // Redimensionar se necessário (mantendo proporção)
             if ($image->width() > $maxWidth || $image->height() > $maxHeight) {
+                $novaLargura = min($image->width(), $maxWidth);
+                $novaAltura = min($image->height(), $maxHeight);
+                error_log("[ImageCompressionService] Redimensionando para: {$novaLargura}x{$novaAltura}");
+                
                 $image->scale(
-                    width: min($image->width(), $maxWidth),
-                    height: min($image->height(), $maxHeight)
+                    width: $novaLargura,
+                    height: $novaAltura
                 );
             }
 
@@ -69,21 +79,22 @@ class ImageCompressionService
                 default => 'jpeg'
             };
 
+            error_log("[ImageCompressionService] Salvando como: $formato (qualidade: $quality)");
+
             // Salvar com compressão
             if ($formato === 'png') {
-                // PNG com compressão
                 $image->save($imagemDestino, compression: 9);
             } elseif ($formato === 'webp') {
-                // WebP com qualidade
                 $image->toWebp($quality)->save($imagemDestino);
             } else {
-                // JPEG com qualidade
                 $image->toJpeg($quality)->save($imagemDestino);
             }
 
             // Obter tamanho após compressão
             $tamanhoComprimido = filesize($imagemDestino);
             $reducao = round((1 - $tamanhoComprimido / $tamanhoOriginal) * 100, 2);
+
+            error_log("[ImageCompressionService] Sucesso: " . $this->formatarBytes($tamanhoComprimido) . " (redução: {$reducao}%)");
 
             return [
                 'sucesso' => true,
@@ -93,63 +104,17 @@ class ImageCompressionService
                 'dimensoes' => [
                     'largura' => $image->width(),
                     'altura' => $image->height()
-                ],
-                'formato' => $formato
+                ]
             ];
 
         } catch (\Exception $e) {
+            error_log("[ImageCompressionService] ERRO: " . $e->getMessage());
+            error_log("[ImageCompressionService] Stack: " . $e->getTraceAsString());
             return [
                 'sucesso' => false,
                 'erro' => $e->getMessage()
             ];
         }
-    }
-
-    /**
-     * Comprimir para múltiplos tamanhos (útil para diferentes resoluções)
-     *
-     * @param string $imagemOrigem Caminho da imagem original
-     * @param string $pastaDestino Pasta onde salvar as versões comprimidas
-     * @param string $nomeBase Nome base para os arquivos
-     * @return array Array com informações de cada versão criada
-     */
-    public function comprimirMultiplosTamanhos(
-        string $imagemOrigem,
-        string $pastaDestino,
-        string $nomeBase
-    ): array {
-        // Criar pasta se não existir
-        if (!is_dir($pastaDestino)) {
-            mkdir($pastaDestino, 0755, true);
-        }
-
-        $tamanhos = [
-            'thumb' => ['width' => 150, 'height' => 150, 'quality' => 85],
-            'small' => ['width' => 400, 'height' => 400, 'quality' => 80],
-            'medium' => ['width' => 800, 'height' => 800, 'quality' => 80],
-            'large' => ['width' => 1200, 'height' => 1200, 'quality' => 85],
-        ];
-
-        $resultados = [];
-
-        foreach ($tamanhos as $tipo => $config) {
-            $ext = pathinfo($imagemOrigem, PATHINFO_EXTENSION);
-            $caminhoDestino = $pastaDestino . '/' . $nomeBase . '_' . $tipo . '.' . $ext;
-
-            $resultado = $this->comprimirImagem(
-                $imagemOrigem,
-                $caminhoDestino,
-                $config['width'],
-                $config['height'],
-                $config['quality']
-            );
-
-            $resultados[$tipo] = array_merge($resultado, [
-                'caminho' => $caminhoDestino
-            ]);
-        }
-
-        return $resultados;
     }
 
     /**
@@ -191,6 +156,7 @@ class ImageCompressionService
             ];
 
         } catch (\Exception $e) {
+            error_log("[ImageCompressionService] Erro ao converter WebP: " . $e->getMessage());
             return [
                 'sucesso' => false,
                 'erro' => $e->getMessage()
@@ -199,46 +165,19 @@ class ImageCompressionService
     }
 
     /**
-     * Fallback: copiar arquivo sem compressão quando intervention/image não está disponível
-     * Retorna dados simulados de compressão
+     * Formatar bytes para unidade legível (KB, MB, GB)
      */
-    private function copiarSemCompressao(string $origem, string $destino): array
+    private function formatarBytes(int $bytes, int $casas = 2): string
     {
-        try {
-            if (!file_exists($origem)) {
-                return [
-                    'sucesso' => false,
-                    'erro' => 'Arquivo não encontrado'
-                ];
-            }
+        $unidades = ['B', 'KB', 'MB', 'GB'];
+        $valor = $bytes;
+        $i = 0;
 
-            $tamanhoOriginal = filesize($origem);
-
-            // Copiar arquivo
-            if (!copy($origem, $destino)) {
-                return [
-                    'sucesso' => false,
-                    'erro' => 'Falha ao copiar arquivo'
-                ];
-            }
-
-            $tamanhoFinal = filesize($destino);
-
-            return [
-                'sucesso' => true,
-                'fallback' => true,
-                'tamanho_original' => $tamanhoOriginal,
-                'tamanho_comprimido' => $tamanhoFinal,
-                'reducao_percentual' => 0,
-                'dimensoes' => ['largura' => null, 'altura' => null],
-                'aviso' => 'Compressão não disponível. Arquivo copiado sem otimização.'
-            ];
-
-        } catch (\Exception $e) {
-            return [
-                'sucesso' => false,
-                'erro' => $e->getMessage()
-            ];
+        while ($valor >= 1024 && $i < count($unidades) - 1) {
+            $valor /= 1024;
+            $i++;
         }
+
+        return round($valor, $casas) . ' ' . $unidades[$i];
     }
 }
