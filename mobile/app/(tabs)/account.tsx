@@ -344,10 +344,7 @@ export default function AccountScreen() {
           let uploadUri = asset.uri;
           let uploadType = "image/jpeg";
 
-          // 🚫 COMPRESSÃO TEMPORARIAMENTE DESATIVADA PARA TESTES
-          console.log("❌ COMPRESSÃO DESATIVADA - Enviando imagem original");
-
-          /*
+          // ✅ COMPRESSÃO ATIVADA
           try {
             console.log("⏳ Chamando compressImage()...");
             console.log(
@@ -382,7 +379,6 @@ export default function AccountScreen() {
               "Tamanho desconhecido",
             );
           }
-          */
 
           // Criar FormData para upload
           const formData = new FormData();
