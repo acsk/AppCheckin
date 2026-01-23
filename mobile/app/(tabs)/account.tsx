@@ -330,37 +330,53 @@ export default function AccountScreen() {
         try {
           // 🎨 Comprimir imagem antes de enviar
           console.log("🎨 Iniciando compressão de imagem...");
-          const compressResult = await compressImage(asset.uri, {
-            maxWidth: 1080,
-            maxHeight: 1080,
-            quality: 0.8,
-            outputFormat: "jpeg",
-          });
+          let uploadUri = asset.uri;
+          let uploadType = "image/jpeg";
 
-          // Log das informações de compressão
-          logCompressionInfo(compressResult);
+          try {
+            const compressResult = await compressImage(asset.uri, {
+              maxWidth: 1080,
+              maxHeight: 1080,
+              quality: 0.8,
+              outputFormat: "jpeg",
+            });
 
-          // Criar FormData para upload com imagem comprimida
+            // Log das informações de compressão
+            logCompressionInfo(compressResult);
+            uploadUri = compressResult.uri;
+          } catch (compressionError: any) {
+            console.warn(
+              "⚠️ Compressão falhou, usando imagem original:",
+              compressionError,
+            );
+            console.log(
+              "📸 Usando imagem original:",
+              asset.uri,
+              "Tamanho desconhecido",
+            );
+          }
+
+          // Criar FormData para upload
           const formData = new FormData();
-          const filename = compressResult.uri.split("/").pop() || "photo.jpg";
+          const filename = uploadUri.split("/").pop() || "photo.jpg";
 
           // No web, converter blob; no mobile, usar uri
           if (Platform.OS === "web") {
-            // Para web, fazer fetch da imagem comprimida e converter para blob
-            const response = await fetch(compressResult.uri);
+            // Para web, fazer fetch da imagem e converter para blob
+            const response = await fetch(uploadUri);
             const blob = await response.blob();
             formData.append("foto", blob, filename);
           } else {
-            // Para mobile, usar uri comprimida diretamente
+            // Para mobile, usar uri diretamente
             formData.append("foto", {
-              uri: compressResult.uri,
-              type: "image/jpeg",
+              uri: uploadUri,
+              type: uploadType,
               name: filename,
             } as any);
           }
 
           // Enviar para servidor
-          console.log("📸 Enviando foto comprimida para servidor...");
+          console.log("📸 Enviando foto para servidor...");
           const response = await mobileService.atualizarFoto(formData);
           console.log("📸 Resposta do servidor:", response);
 
@@ -386,11 +402,11 @@ export default function AccountScreen() {
               response?.error || response?.message || "Erro ao atualizar foto",
             );
           }
-        } catch (compressionError: any) {
-          console.error("❌ Erro ao comprimir imagem:", compressionError);
+        } catch (error: any) {
+          console.error("Erro ao processar foto:", error);
           Alert.alert(
             "Erro",
-            "Erro ao comprimir imagem. Tente com outra foto.",
+            error.message || "Erro ao processar foto. Tente novamente.",
           );
         }
       }
