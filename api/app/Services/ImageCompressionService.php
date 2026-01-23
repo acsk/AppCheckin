@@ -2,16 +2,26 @@
 
 namespace App\Services;
 
-use Intervention\Image\ImageManager;
-use Intervention\Image\Drivers\GdDriver;
-
+/**
+ * ImageCompressionService
+ * 
+ * Serviço de compressão de imagens usando apenas PHP nativo (GD library)
+ * Não requer dependências externas - funciona em qualquer servidor com GD instalado
+ * 
+ * @package App\Services
+ */
 class ImageCompressionService
 {
-    private ImageManager $manager;
+    private bool $gdDisponivel = false;
 
     public function __construct()
     {
-        $this->manager = new ImageManager(new GdDriver());
+        // Verificar se GD library está disponível (nativa do PHP)
+        $this->gdDisponivel = extension_loaded('gd');
+        
+        if (!$this->gdDisponivel) {
+            error_log("[ImageCompressionService] GD library não disponível no servidor");
+        }
     }
 
     /**
@@ -32,6 +42,12 @@ class ImageCompressionService
         int $quality = 80
     ): array {
         try {
+            // Se biblioteca não disponível, copiar arquivo sem compressão
+            if (!$this->bibliotecaDisponivel) {
+                error_log("[ImageCompressionService] Biblioteca intervention/image não disponível. Usando fallback com copy.");
+                return $this->copiarSemCompressao($imagemOrigem, $imagemDestino);
+            }
+
             // Verificar se arquivo existe
             if (!file_exists($imagemOrigem)) {
                 return [
@@ -182,6 +198,50 @@ class ImageCompressionService
                 'tamanho_original' => $tamanhoOriginal,
                 'tamanho_webp' => $tamanhoWebP,
                 'reducao_percentual' => $reducao
+            ];
+
+        } catch (\Exception $e) {
+            return [
+                'sucesso' => false,
+                'erro' => $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Fallback: copiar arquivo sem compressão quando intervention/image não está disponível
+     * Retorna dados simulados de compressão
+     */
+    private function copiarSemCompressao(string $origem, string $destino): array
+    {
+        try {
+            if (!file_exists($origem)) {
+                return [
+                    'sucesso' => false,
+                    'erro' => 'Arquivo não encontrado'
+                ];
+            }
+
+            $tamanhoOriginal = filesize($origem);
+
+            // Copiar arquivo
+            if (!copy($origem, $destino)) {
+                return [
+                    'sucesso' => false,
+                    'erro' => 'Falha ao copiar arquivo'
+                ];
+            }
+
+            $tamanhoFinal = filesize($destino);
+
+            return [
+                'sucesso' => true,
+                'fallback' => true,
+                'tamanho_original' => $tamanhoOriginal,
+                'tamanho_comprimido' => $tamanhoFinal,
+                'reducao_percentual' => 0,
+                'dimensoes' => ['largura' => null, 'altura' => null],
+                'aviso' => 'Compressão não disponível. Arquivo copiado sem otimização.'
             ];
 
         } catch (\Exception $e) {
