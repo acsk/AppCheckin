@@ -14,6 +14,9 @@ class MailService
         $this->mailer = new PHPMailer(true);
 
         try {
+            // Determinar provedor de email
+            $mailProvider = getenv('MAIL_PROVIDER') ?: $_ENV['MAIL_PROVIDER'] ?? 'hostinger';
+            
             // Configuração SMTP
             $this->mailer->isSMTP();
             $this->mailer->Host = getenv('MAIL_HOST') ?: $_ENV['MAIL_HOST'] ?? 'smtp.hostinger.com';
@@ -24,7 +27,10 @@ class MailService
             $encryption = getenv('MAIL_ENCRYPTION') ?: $_ENV['MAIL_ENCRYPTION'] ?? 'ssl';
             $this->mailer->SMTPSecure = $encryption === 'ssl' ? PHPMailer::ENCRYPTION_SMTPS : PHPMailer::ENCRYPTION_STARTTLS;
             
-            $this->mailer->Port = (int)(getenv('MAIL_PORT') ?: $_ENV['MAIL_PORT'] ?? 465);
+            $port = (int)(getenv('MAIL_PORT') ?: $_ENV['MAIL_PORT'] ?? 465);
+            $this->mailer->Port = $port;
+            
+            // Opções SSL mais flexíveis para hospedagem compartilhada
             $this->mailer->SMTPOptions = [
                 'ssl' => [
                     'verify_peer' => false,
