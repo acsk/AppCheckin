@@ -1,5 +1,5 @@
-import PasswordRecoveryModal from "@/components/PasswordRecoveryModal";
 import { DebugLogsViewer } from "@/components/DebugLogsViewer";
+import PasswordRecoveryModal from "@/components/PasswordRecoveryModal";
 import mobileService from "@/src/services/mobileService";
 import { colors } from "@/src/theme/colors";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
