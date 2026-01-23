@@ -47,7 +47,8 @@ return function ($app) {
         $response->getBody()->write(json_encode([
             'message' => 'pong',
             'timestamp' => date('Y-m-d H:i:s'),
-            'php_version' => phpversion()
+            'php_version' => phpversion(),
+            'app_env' => $_ENV['APP_ENV'] ?? 'unknown'
         ]));
         return $response
             ->withHeader('Content-Type', 'application/json')
