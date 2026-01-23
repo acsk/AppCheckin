@@ -2,59 +2,25 @@
 
 namespace App\Services;
 
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
+use SendGrid;
+use SendGrid\Mail\Mail;
 
 class MailService
 {
-    private PHPMailer $mailer;
+    private ?SendGrid $sendgrid = null;
+    private string $fromAddress;
+    private string $fromName;
 
     public function __construct()
     {
-        $this->mailer = new PHPMailer(true);
+        // Configurar remetente
+        $this->fromAddress = getenv('MAIL_FROM_ADDRESS') ?: $_ENV['MAIL_FROM_ADDRESS'] ?? 'noreply@appcheckin.com.br';
+        $this->fromName = getenv('MAIL_FROM_NAME') ?: $_ENV['MAIL_FROM_NAME'] ?? 'App Check-in';
 
-        try {
-            // Determinar provedor de email
-            $mailProvider = getenv('MAIL_PROVIDER') ?: $_ENV['MAIL_PROVIDER'] ?? 'hostinger';
-            
-            // Configuração SMTP
-            $this->mailer->isSMTP();
-            $this->mailer->Host = getenv('MAIL_HOST') ?: $_ENV['MAIL_HOST'] ?? 'smtp.hostinger.com';
-            $this->mailer->SMTPAuth = true;
-            $this->mailer->Username = getenv('MAIL_USERNAME') ?: $_ENV['MAIL_USERNAME'] ?? '';
-            $this->mailer->Password = getenv('MAIL_PASSWORD') ?: $_ENV['MAIL_PASSWORD'] ?? '';
-            
-            $encryption = getenv('MAIL_ENCRYPTION') ?: $_ENV['MAIL_ENCRYPTION'] ?? 'ssl';
-            $this->mailer->SMTPSecure = $encryption === 'ssl' ? PHPMailer::ENCRYPTION_SMTPS : PHPMailer::ENCRYPTION_STARTTLS;
-            
-            $port = (int)(getenv('MAIL_PORT') ?: $_ENV['MAIL_PORT'] ?? 465);
-            $this->mailer->Port = $port;
-            
-            // Opções SSL mais flexíveis para hospedagem compartilhada
-            $this->mailer->SMTPOptions = [
-                'ssl' => [
-                    'verify_peer' => false,
-                    'verify_peer_name' => false,
-                    'allow_self_signed' => true
-                ]
-            ];
-
-            // Debug modo (apenas em desenvolvimento)
-            $debug = getenv('MAIL_DEBUG') ?: $_ENV['MAIL_DEBUG'] ?? 'false';
-            if ($debug === 'true' || $debug === '1') {
-                $this->mailer->SMTPDebug = 2;
-            }
-
-            // Charset
-            $this->mailer->CharSet = 'UTF-8';
-            $this->mailer->isHTML(true);
-
-            // Remetente
-            $fromAddress = getenv('MAIL_FROM_ADDRESS') ?: $_ENV['MAIL_FROM_ADDRESS'] ?? 'mail@appcheckin.com.br';
-            $fromName = getenv('MAIL_FROM_NAME') ?: $_ENV['MAIL_FROM_NAME'] ?? 'App Check-in';
-            $this->mailer->setFrom($fromAddress, $fromName);
-        } catch (Exception $e) {
-            throw new \RuntimeException("Erro ao configurar email: " . $e->getMessage());
+        // Inicializar SendGrid se houver API key
+        $apiKey = getenv('SENDGRID_API_KEY') ?: $_ENV['SENDGRID_API_KEY'] ?? null;
+        if ($apiKey) {
+            $this->sendgrid = new SendGrid($apiKey);
         }
     }
 
@@ -70,28 +36,43 @@ class MailService
             // HTML do email
             $html = $this->getPasswordRecoveryTemplate($nome, $recoveryUrl, $expirationMinutes);
 
-            // Configurar destinatário
-            $this->mailer->addAddress($email, $nome);
+            if ($this->sendgrid) {
+                return $this->sendViaApi($email, $nome, 'Recuperação de Senha - App Check-in', $html);
+            } else {
+                error_log("SendGrid não configurado. Configure SENDGRID_API_KEY no .env");
+                return false;
+            }
+        } catch (\Exception $e) {
+            error_log("Erro ao enviar email de recuperação: " . $e->getMessage());
+            return false;
+        }
+    }
 
-            // Assunto
-            $this->mailer->Subject = 'Recuperação de Senha - App Check-in';
+    /**
+     * Enviar via SendGrid API
+     */
+    private function sendViaApi(string $to, string $toName, string $subject, string $html): bool
+    {
+        try {
+            $email = new Mail();
+            $email->setFrom($this->fromAddress, $this->fromName);
+            $email->setSubject($subject);
+            $email->addTo($to, $toName);
+            $email->addContent("text/html", $html);
+            $email->addContent("text/plain", strip_tags($html));
 
-            // Corpo
-            $this->mailer->Body = $html;
-            $this->mailer->AltBody = "Clique no link para recuperar sua senha: {$recoveryUrl}";
-
-            // Enviar
-            $result = $this->mailer->send();
-
-            // Limpar destinatários para próximo envio
-            $this->mailer->clearAddresses();
-
-            return $result;
-        } catch (Exception $e) {
-            $errorMsg = "Erro ao enviar email para {$email}: " . $e->getMessage();
-            error_log($errorMsg);
-            // Também escrever em stderr
-            file_put_contents('php://stderr', $errorMsg . PHP_EOL);
+            $response = $this->sendgrid->send($email);
+            
+            // SendGrid retorna 202 em sucesso
+            $success = $response->statusCode() >= 200 && $response->statusCode() < 300;
+            
+            if (!$success) {
+                error_log("SendGrid Error: " . $response->statusCode() . " - " . $response->body());
+            }
+            
+            return $success;
+        } catch (\Exception $e) {
+            error_log("Erro SendGrid: " . $e->getMessage());
             return false;
         }
     }
@@ -220,19 +201,24 @@ HTML;
     public function send(string $to, string $subject, string $htmlBody, ?string $altBody = null): bool
     {
         try {
-            $this->mailer->addAddress($to);
-            $this->mailer->Subject = $subject;
-            $this->mailer->Body = $htmlBody;
-            
-            if ($altBody) {
-                $this->mailer->AltBody = $altBody;
+            if (!$this->sendgrid) {
+                error_log("SendGrid não configurado");
+                return false;
             }
 
-            $result = $this->mailer->send();
-            $this->mailer->clearAddresses();
+            $email = new Mail();
+            $email->setFrom($this->fromAddress, $this->fromName);
+            $email->setSubject($subject);
+            $email->addTo($to);
+            $email->addContent("text/html", $htmlBody);
+            
+            if ($altBody) {
+                $email->addContent("text/plain", $altBody);
+            }
 
-            return $result;
-        } catch (Exception $e) {
+            $response = $this->sendgrid->send($email);
+            return $response->statusCode() >= 200 && $response->statusCode() < 300;
+        } catch (\Exception $e) {
             error_log("Erro ao enviar email: " . $e->getMessage());
             return false;
         }
