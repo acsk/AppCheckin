@@ -1,4 +1,5 @@
 import PasswordRecoveryModal from "@/components/PasswordRecoveryModal";
+import { DebugLogsViewer } from "@/components/DebugLogsViewer";
 import mobileService from "@/src/services/mobileService";
 import { colors } from "@/src/theme/colors";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
@@ -943,6 +944,9 @@ export default function AccountScreen() {
         visible={showRecoveryModal}
         onClose={() => setShowRecoveryModal(false)}
       />
+
+      {/* Debug Logs Viewer - Apenas em Desenvolvimento */}
+      {__DEV__ && <DebugLogsViewer />}
     </SafeAreaView>
   );
 }

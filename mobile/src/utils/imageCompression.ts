@@ -1,5 +1,6 @@
 import * as FileSystem from 'expo-file-system';
 import { Platform } from 'react-native';
+import { debugLogger } from './debugLogger';
 
 /**
  * Interface para configurações de compressão
@@ -45,28 +46,28 @@ export async function compressImage(
   imageUri: string,
   options: CompressionOptions = {},
 ): Promise<CompressionResult> {
-  console.log('🎨 [compressImage] ===== INICIANDO COMPRESSÃO =====');
-  console.log('📸 URI da imagem:', imageUri);
-  console.log('⚙️ Plataforma:', Platform.OS);
+  debugLogger.log('🎨 [compressImage] ===== INICIANDO COMPRESSÃO =====');
+  debugLogger.log('📸 URI da imagem:', { uri: imageUri });
+  debugLogger.log('⚙️ Plataforma:', { platform: Platform.OS });
   
   const config = { ...DEFAULT_COMPRESSION_OPTIONS, ...options };
-  console.log('⚙️ Configuração final:', config);
+  debugLogger.log('⚙️ Configuração final:', config);
 
   try {
     if (Platform.OS === 'web') {
-      console.log('🌐 Usando compressão WEB (Canvas)');
+      debugLogger.log('🌐 Usando compressão WEB (Canvas)');
       const result = await compressImageWeb(imageUri, config);
-      console.log('✅ Compressão WEB concluída:', {
+      debugLogger.log('✅ Compressão WEB concluída:', {
         originalSize: result.originalSize,
         newSize: result.size,
         ratio: `${(result.compressionRatio * 100).toFixed(1)}%`,
       });
       return result;
     } else {
-      console.log('📱 Usando compressão MOBILE (expo-image-manipulator)');
-      console.log('🔍 Chamando compressImageMobile com URI:', imageUri);
+      debugLogger.log('📱 Usando compressão MOBILE (expo-image-manipulator)');
+      debugLogger.log('🔍 Chamando compressImageMobile com URI:', { uri: imageUri });
       const result = await compressImageMobile(imageUri, config);
-      console.log('✅ Compressão MOBILE concluída:', {
+      debugLogger.log('✅ Compressão MOBILE concluída:', {
         originalSize: result.originalSize,
         newSize: result.size,
         ratio: `${(result.compressionRatio * 100).toFixed(1)}%`,
@@ -74,6 +75,7 @@ export async function compressImage(
       return result;
     }
   } catch (error) {
+    debugLogger.error('❌ [compressImage] ERRO FATAL:', error);
     console.error('❌ [compressImage] ERRO FATAL:', error);
     throw error;
   }
@@ -87,11 +89,19 @@ async function compressImageWeb(
   options: CompressionOptions,
 ): Promise<CompressionResult> {
   return new Promise((resolve, reject) => {
+    debugLogger.log('🌐 [compressImageWeb] Iniciando compressão web com Canvas');
+    debugLogger.log('📸 [compressImageWeb] URI:', { uri: imageUri });
+    
     const img = new Image();
     img.crossOrigin = 'anonymous';
 
     img.onload = () => {
       try {
+        debugLogger.log('🌐 [compressImageWeb] Imagem carregada:', {
+          naturalWidth: img.naturalWidth,
+          naturalHeight: img.naturalHeight,
+        });
+
         // Calcular novas dimensões mantendo aspect ratio
         let width = img.naturalWidth;
         let height = img.naturalHeight;
@@ -107,6 +117,11 @@ async function compressImageWeb(
           );
           width = Math.round(width * ratio);
           height = Math.round(height * ratio);
+          debugLogger.log('🌐 [compressImageWeb] Dimensões ajustadas:', {
+            newWidth: width,
+            newHeight: height,
+            ratio,
+          });
         }
 
         // Criar canvas
@@ -119,48 +134,83 @@ async function compressImageWeb(
           throw new Error('Não foi possível obter contexto do canvas');
         }
 
+        debugLogger.log('🌐 [compressImageWeb] Canvas criado:', {
+          width: canvas.width,
+          height: canvas.height,
+        });
+
         // Desenhar imagem no canvas
         ctx.drawImage(img, 0, 0, width, height);
+        debugLogger.log('🌐 [compressImageWeb] Imagem desenhada no canvas');
 
         // Converter para blob
         canvas.toBlob(
           (blob) => {
             if (!blob) {
-              throw new Error('Não foi possível converter canvas para blob');
+              const error = new Error('Não foi possível converter canvas para blob');
+              debugLogger.error('❌ [compressImageWeb] Erro ao converter:', error);
+              reject(error);
+              return;
             }
+
+            debugLogger.log('🌐 [compressImageWeb] Canvas convertido para blob:', {
+              blobSize: blob.size,
+            });
 
             // Criar URL da imagem comprimida
             const compressedUri = URL.createObjectURL(blob);
+            debugLogger.log('🌐 [compressImageWeb] Object URL criado:', {
+              uri: compressedUri,
+            });
 
             // Obter tamanho original
             fetch(imageUri)
-              .then((res) => res.blob())
+              .then((res) => {
+                debugLogger.log('🌐 [compressImageWeb] Fetch da imagem original retornou status:', res.status);
+                return res.blob();
+              })
               .then((originalBlob) => {
-                resolve({
+                const compressionRatio =
+                  ((originalBlob.size - blob.size) / originalBlob.size) * 100;
+
+                const result = {
                   uri: compressedUri,
                   width,
                   height,
                   size: blob.size,
                   originalSize: originalBlob.size,
-                  compressionRatio:
-                    ((originalBlob.size - blob.size) /
-                      originalBlob.size) *
-                    100,
+                  compressionRatio,
+                };
+
+                debugLogger.log('🌐 [compressImageWeb] Compressão concluída:', {
+                  originalSize: originalBlob.size,
+                  newSize: blob.size,
+                  ratio: `${compressionRatio.toFixed(1)}%`,
                 });
+
+                resolve(result);
+              })
+              .catch((error) => {
+                debugLogger.error('❌ [compressImageWeb] Erro ao fetch da imagem original:', error);
+                reject(error);
               });
           },
           `image/${options.outputFormat}`,
           options.quality,
         );
       } catch (error) {
+        debugLogger.error('❌ [compressImageWeb] Erro durante processamento:', error);
         reject(error);
       }
     };
 
     img.onerror = () => {
-      reject(new Error('Não foi possível carregar a imagem'));
+      const error = new Error('Não foi possível carregar a imagem');
+      debugLogger.error('❌ [compressImageWeb] Erro ao carregar imagem:', error);
+      reject(error);
     };
 
+    debugLogger.log('🌐 [compressImageWeb] Iniciando carregamento da imagem');
     img.src = imageUri;
   });
 }
