@@ -2,16 +2,16 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import PasswordRecoveryModal from "../../components/PasswordRecoveryModal";
@@ -20,7 +20,7 @@ import { colors } from "../../src/theme/colors";
 
 export default function LoginScreen() {
   const router = useRouter();
-  const [email, setEmail] = useState(__DEV__ ? "andreteste@gmail.com" : "");
+  const [email, setEmail] = useState(__DEV__ ? "andrecabrall@gmail.com" : "");
   const [senha, setSenha] = useState(__DEV__ ? "123456" : "");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);

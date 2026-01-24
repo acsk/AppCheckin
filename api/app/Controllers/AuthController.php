@@ -411,30 +411,30 @@ class AuthController
 
         // Gerar token único
         $token = bin2hex(random_bytes(32));
-        $expiresAt = date('Y-m-d H:i:s', time() + (60 * 60)); // 1 hora
 
-        // Salvar token no banco
+        // Salvar token no banco - usar DATE_ADD do MySQL para garantir timezone correto
         $db = require __DIR__ . '/../../config/database.php';
         $stmt = $db->prepare("
             UPDATE usuarios
             SET password_reset_token = :token,
-                password_reset_expires_at = :expires_at
+                password_reset_expires_at = DATE_ADD(NOW(), INTERVAL 60 MINUTE)
             WHERE id = :usuario_id
         ");
         $stmt->execute([
             ':token' => $token,
-            ':expires_at' => $expiresAt,
             ':usuario_id' => $usuario['id']
         ]);
 
         // Enviar email
         try {
-            $mailService = new \App\Services\MailService();
+            $mailService = new \App\Services\MailService($db);
             $mailService->sendPasswordRecoveryEmail(
                 $usuario['email'],
                 $usuario['nome'],
                 $token,
-                60
+                60,
+                null, // tenantId
+                $usuario['id'] // usuarioId para log
             );
         } catch (\Exception $e) {
             error_log("Erro ao enviar email de recuperação: " . $e->getMessage());
