@@ -4,6 +4,7 @@ namespace App\Services;
 
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
+use Resend;
 use App\Models\EmailLog;
 use PDO;
 
@@ -19,6 +20,9 @@ class MailService
     private ?string $smtpUsername;
     private ?string $smtpPassword;
     private ?string $smtpEncryption;
+    
+    // Resend API
+    private ?string $resendApiKey;
     
     // Auditoria
     private ?EmailLog $emailLog = null;
@@ -36,8 +40,11 @@ class MailService
         $this->fromAddress = getenv('MAIL_FROM_ADDRESS') ?: $_ENV['MAIL_FROM_ADDRESS'] ?? 'noreply@appcheckin.com.br';
         $this->fromName = getenv('MAIL_FROM_NAME') ?: $_ENV['MAIL_FROM_NAME'] ?? 'App Check-in';
         
-        // Driver de email: 'ses', 'smtp', 'sendgrid'
-        $this->mailDriver = getenv('MAIL_DRIVER') ?: $_ENV['MAIL_DRIVER'] ?? 'ses';
+        // Driver de email: 'resend', 'ses', 'smtp', 'sendgrid'
+        $this->mailDriver = getenv('MAIL_DRIVER') ?: $_ENV['MAIL_DRIVER'] ?? 'resend';
+        
+        // Resend API Key
+        $this->resendApiKey = getenv('RESEND_API_KEY') ?: $_ENV['RESEND_API_KEY'] ?? null;
         
         // Configurações SMTP (usadas para SES e SMTP genérico)
         $this->smtpHost = getenv('MAIL_HOST') ?: $_ENV['MAIL_HOST'] ?? null;
@@ -105,6 +112,11 @@ class MailService
                     'status' => EmailLog::STATUS_PENDING,
                     'provider' => $this->mailDriver
                 ]);
+            }
+            
+            // Se o driver for Resend, usar a API do Resend
+            if ($this->mailDriver === 'resend') {
+                return $this->sendViaResend($to, $toName, $subject, $html, $logId);
             }
             
             if (!$this->smtpHost || !$this->smtpUsername || !$this->smtpPassword) {
@@ -175,6 +187,63 @@ class MailService
                 $this->emailLog->updateStatus($logId, EmailLog::STATUS_FAILED, $errorMsg);
             }
             
+            return false;
+        }
+    }
+
+    /**
+     * Enviar via Resend API
+     */
+    private function sendViaResend(string $to, string $toName, string $subject, string $html, ?int $logId): bool
+    {
+        try {
+            if (!$this->resendApiKey) {
+                $errorMsg = "Resend API Key não configurada. Configure RESEND_API_KEY no .env";
+                error_log($errorMsg);
+                
+                if ($logId && $this->emailLog) {
+                    $this->emailLog->updateStatus($logId, EmailLog::STATUS_FAILED, $errorMsg);
+                }
+                return false;
+            }
+
+            $resend = Resend::client($this->resendApiKey);
+            
+            $toAddress = $toName ? "{$toName} <{$to}>" : $to;
+            $fromAddress = $this->fromName ? "{$this->fromName} <{$this->fromAddress}>" : $this->fromAddress;
+            
+            $result = $resend->emails->send([
+                'from' => $fromAddress,
+                'to' => [$toAddress],
+                'subject' => $subject,
+                'html' => $html,
+                'text' => strip_tags($html)
+            ]);
+            
+            if ($result && $result->id) {
+                error_log("Email enviado com sucesso via Resend para: {$to} (ID: {$result->id})");
+                
+                if ($logId && $this->emailLog) {
+                    $this->emailLog->updateStatus($logId, EmailLog::STATUS_SENT, null, $result->id);
+                }
+                return true;
+            }
+            
+            $errorMsg = "Resend não retornou ID de mensagem";
+            error_log($errorMsg);
+            
+            if ($logId && $this->emailLog) {
+                $this->emailLog->updateStatus($logId, EmailLog::STATUS_FAILED, $errorMsg);
+            }
+            return false;
+            
+        } catch (\Exception $e) {
+            $errorMsg = $e->getMessage();
+            error_log("Erro Resend: " . $errorMsg);
+            
+            if ($logId && $this->emailLog) {
+                $this->emailLog->updateStatus($logId, EmailLog::STATUS_FAILED, $errorMsg);
+            }
             return false;
         }
     }
