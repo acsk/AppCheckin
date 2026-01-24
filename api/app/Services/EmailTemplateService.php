@@ -10,7 +10,7 @@ class EmailTemplateService
 {
     private string $appName = 'App Check-in';
     private string $appUrl;
-    private string $supportEmail = 'suporte@appcheckin.com.br';
+    private string $supportEmail = 'mail@appcheckin.com.br';
     private string $primaryColor = '#667eea';
     private string $secondaryColor = '#764ba2';
     private int $currentYear;
