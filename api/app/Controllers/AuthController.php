@@ -411,7 +411,7 @@ class AuthController
 
         // Gerar token único
         $token = bin2hex(random_bytes(32));
-        $expiresAt = date('Y-m-d H:i:s', time() + (15 * 60)); // 15 minutos
+        $expiresAt = date('Y-m-d H:i:s', time() + (60 * 60)); // 1 hora
 
         // Salvar token no banco
         $db = require __DIR__ . '/../../config/database.php';
@@ -434,7 +434,7 @@ class AuthController
                 $usuario['email'],
                 $usuario['nome'],
                 $token,
-                15
+                60
             );
         } catch (\Exception $e) {
             error_log("Erro ao enviar email de recuperação: " . $e->getMessage());
@@ -483,7 +483,7 @@ class AuthController
                 'code' => 'INVALID_OR_EXPIRED_TOKEN',
                 'message' => 'Token inválido ou expirado'
             ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(401);
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
 
         $response->getBody()->write(json_encode([
@@ -550,7 +550,7 @@ class AuthController
                 'code' => 'INVALID_OR_EXPIRED_TOKEN',
                 'message' => 'Token inválido ou expirado'
             ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(401);
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
 
         // Atualizar senha e limpar token
