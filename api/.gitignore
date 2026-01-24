@@ -9,3 +9,6 @@ composer.lock
 database/backup*.sql*
 database/*.disabled
 public/uploads/
+
+# Arquivos de teste com credenciais
+test_*.php

@@ -6,6 +6,7 @@ use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 use Resend;
 use App\Models\EmailLog;
+use App\Services\EmailTemplateService;
 use PDO;
 
 class MailService
@@ -27,6 +28,9 @@ class MailService
     // Auditoria
     private ?EmailLog $emailLog = null;
     private ?PDO $db = null;
+    
+    // Template Service
+    private EmailTemplateService $templateService;
 
     public function __construct(?PDO $db = null)
     {
@@ -35,6 +39,9 @@ class MailService
         if ($this->db) {
             $this->emailLog = new EmailLog($this->db);
         }
+        
+        // Inicializar serviço de templates
+        $this->templateService = new EmailTemplateService();
         
         // Configurar remetente
         $this->fromAddress = getenv('MAIL_FROM_ADDRESS') ?: $_ENV['MAIL_FROM_ADDRESS'] ?? 'noreply@appcheckin.com.br';
@@ -60,12 +67,12 @@ class MailService
     public function sendPasswordRecoveryEmail(string $email, string $nome, string $token, int $expirationMinutes = 15, ?int $tenantId = null, ?int $usuarioId = null): bool
     {
         try {
-            $appUrl = getenv('APP_URL') ?: $_ENV['APP_URL'] ?? 'https://api.appcheckin.com.br';
-            $recoveryUrl = $appUrl . '/password-recovery?token=' . urlencode($token);
+            $appUrl = getenv('APP_URL') ?: $_ENV['APP_URL'] ?? 'https://painel.appcheckin.com.br';
+            $recoveryUrl = $appUrl . '/recuperar-senha?token=' . urlencode($token);
             
-            // HTML do email
-            $html = $this->getPasswordRecoveryTemplate($nome, $recoveryUrl, $expirationMinutes);
-            $subject = 'Recuperação de Senha - App Check-in';
+            // HTML do email usando o novo template service
+            $html = $this->templateService->passwordRecovery($nome, $recoveryUrl, $expirationMinutes);
+            $subject = '🔐 Recuperação de Senha - App Check-in';
 
             return $this->sendViaSMTP(
                 $email, 
@@ -78,6 +85,54 @@ class MailService
             );
         } catch (\Exception $e) {
             error_log("Erro ao enviar email de recuperação: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Enviar email de confirmação de alteração de senha
+     */
+    public function sendPasswordChangedEmail(string $email, string $nome, ?int $tenantId = null, ?int $usuarioId = null): bool
+    {
+        try {
+            $html = $this->templateService->passwordChanged($nome);
+            $subject = '✅ Senha Alterada com Sucesso - App Check-in';
+
+            return $this->sendViaSMTP(
+                $email, 
+                $nome, 
+                $subject, 
+                $html,
+                'password_changed',
+                $tenantId,
+                $usuarioId
+            );
+        } catch (\Exception $e) {
+            error_log("Erro ao enviar email de confirmação: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Enviar email de boas-vindas
+     */
+    public function sendWelcomeEmail(string $email, string $nome, ?int $tenantId = null, ?int $usuarioId = null): bool
+    {
+        try {
+            $html = $this->templateService->welcome($nome, $email);
+            $subject = '🎉 Bem-vindo ao App Check-in!';
+
+            return $this->sendViaSMTP(
+                $email, 
+                $nome, 
+                $subject, 
+                $html,
+                'welcome',
+                $tenantId,
+                $usuarioId
+            );
+        } catch (\Exception $e) {
+            error_log("Erro ao enviar email de boas-vindas: " . $e->getMessage());
             return false;
         }
     }
@@ -246,124 +301,6 @@ class MailService
             }
             return false;
         }
-    }
-
-    /**
-     * Template HTML do email de recuperação
-     */
-    private function getPasswordRecoveryTemplate(string $nome, string $url, int $minutes): string
-    {
-        return <<<HTML
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #f5f5f5;
-            margin: 0;
-            padding: 0;
-        }
-        .container {
-            max-width: 600px;
-            margin: 20px auto;
-            background-color: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-        .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            text-align: center;
-        }
-        .header h1 {
-            margin: 0;
-            font-size: 24px;
-        }
-        .content {
-            padding: 30px;
-            color: #333;
-        }
-        .button {
-            display: inline-block;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 12px 30px;
-            border-radius: 5px;
-            text-decoration: none;
-            margin: 20px 0;
-            font-weight: bold;
-        }
-        .button:hover {
-            opacity: 0.9;
-        }
-        .warning {
-            background-color: #fff3cd;
-            border-left: 4px solid #ffc107;
-            padding: 15px;
-            margin: 20px 0;
-            border-radius: 4px;
-            color: #856404;
-        }
-        .footer {
-            background-color: #f9f9f9;
-            padding: 20px;
-            text-align: center;
-            font-size: 12px;
-            color: #999;
-            border-top: 1px solid #eee;
-        }
-        .link-box {
-            background-color: #f0f0f0;
-            padding: 15px;
-            margin: 20px 0;
-            border-radius: 4px;
-            word-break: break-all;
-            font-size: 12px;
-            color: #666;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>🔐 Recuperação de Senha</h1>
-        </div>
-
-        <div class="content">
-            <p>Olá <strong>{$nome}</strong>,</p>
-
-            <p>Recebemos uma solicitação para recuperar sua senha na plataforma <strong>App Check-in</strong>.</p>
-
-            <p>Clique no botão abaixo para criar uma nova senha:</p>
-
-            <center>
-                <a href="{$url}" class="button">Recuperar Senha</a>
-            </center>
-
-            <p>Ou copie e cole o link no seu navegador:</p>
-            <div class="link-box">{$url}</div>
-
-            <div class="warning">
-                ⚠️ <strong>Atenção!</strong> Este link expira em {$minutes} minutos por motivos de segurança.
-            </div>
-
-            <p><strong>Se você não solicitou esta recuperação</strong>, ignore este email. Sua conta está segura.</p>
-
-            <p>Dúvidas? Entre em contato com nosso suporte através do email <strong>suporte@appcheckin.com.br</strong></p>
-        </div>
-
-        <div class="footer">
-            <p>&copy; 2026 App Check-in. Todos os direitos reservados.</p>
-            <p>Este é um email automático, não responda.</p>
-        </div>
-    </div>
-</body>
-</html>
-HTML;
     }
 
     /**
