@@ -67,12 +67,9 @@ class MailService
     public function sendPasswordRecoveryEmail(string $email, string $nome, string $token, int $expirationMinutes = 15, ?int $tenantId = null, ?int $usuarioId = null): bool
     {
         try {
-            $appUrl = getenv('APP_URL') ?: $_ENV['APP_URL'] ?? 'https://painel.appcheckin.com.br';
-            $recoveryUrl = $appUrl . '/recuperar-senha?token=' . urlencode($token);
-            
-            // HTML do email usando o novo template service
-            $html = $this->templateService->passwordRecovery($nome, $recoveryUrl, $expirationMinutes);
-            $subject = '🔐 Recuperação de Senha - App Check-in';
+            // HTML do email usando o template service - passa o token diretamente
+            $html = $this->templateService->passwordRecovery($nome, $token, $expirationMinutes);
+            $subject = '🔐 Código de Recuperação de Senha - App Check-in';
 
             return $this->sendViaSMTP(
                 $email, 

@@ -11,8 +11,8 @@ class EmailTemplateService
     private string $appName = 'App Check-in';
     private string $appUrl;
     private string $supportEmail = 'mail@appcheckin.com.br';
-    private string $primaryColor = '#667eea';
-    private string $secondaryColor = '#764ba2';
+    private string $primaryColor = '#fd8a05';
+    private string $secondaryColor = '#ec5903';
     private int $currentYear;
 
     public function __construct()
@@ -24,15 +24,15 @@ class EmailTemplateService
     /**
      * Template de recuperação de senha
      */
-    public function passwordRecovery(string $nome, string $resetUrl, int $expirationMinutes = 15): string
+    public function passwordRecovery(string $nome, string $token, int $expirationMinutes = 15): string
     {
         $content = <<<HTML
             <tr>
                 <td style="padding: 40px 30px;">
                     <!-- Ícone -->
                     <div style="text-align: center; margin-bottom: 30px;">
-                        <div style="display: inline-block; background: linear-gradient(135deg, {$this->primaryColor} 0%, {$this->secondaryColor} 100%); border-radius: 50%; padding: 20px; width: 60px; height: 60px;">
-                            <img src="https://api.appcheckin.com.br/assets/icons/lock-reset.png" alt="Recuperar Senha" style="width: 60px; height: 60px;" onerror="this.style.display='none'">
+                        <div style="display: inline-block; background: linear-gradient(135deg, {$this->primaryColor} 0%, {$this->secondaryColor} 100%); border-radius: 50%; padding: 25px;">
+                            <span style="font-size: 40px;">🔐</span>
                         </div>
                     </div>
 
@@ -46,33 +46,41 @@ class EmailTemplateService
 
                     <p style="color: #555555; font-size: 16px; line-height: 1.6; margin: 0 0 25px 0;">
                         Recebemos uma solicitação para redefinir a senha da sua conta no <strong>{$this->appName}</strong>. 
-                        Clique no botão abaixo para criar uma nova senha:
+                        Use o código abaixo no aplicativo para criar uma nova senha:
                     </p>
 
-                    <!-- Botão CTA -->
+                    <!-- Código Token -->
                     <div style="text-align: center; margin: 35px 0;">
-                        <a href="{$resetUrl}" 
-                           style="display: inline-block; background: linear-gradient(135deg, {$this->primaryColor} 0%, {$this->secondaryColor} 100%); color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 16px 40px; border-radius: 8px; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);">
-                            🔐 Redefinir Minha Senha
-                        </a>
+                        <p style="color: #888888; font-size: 14px; margin: 0 0 15px 0;">Seu código de recuperação:</p>
+                        <div style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); border: 2px dashed {$this->primaryColor}; border-radius: 12px; padding: 25px 20px; display: inline-block; min-width: 280px;">
+                            <span style="font-family: 'Courier New', monospace; font-size: 18px; font-weight: 700; color: #333333; letter-spacing: 1px; word-break: break-all;">
+                                {$token}
+                            </span>
+                        </div>
+                        <p style="color: #888888; font-size: 12px; margin: 15px 0 0 0;">
+                            📋 Copie este código e cole no aplicativo
+                        </p>
+                    </div>
+
+                    <!-- Instruções -->
+                    <div style="background-color: #e8f4fd; border-radius: 8px; padding: 20px; margin: 25px 0;">
+                        <p style="color: #0c5460; font-size: 14px; margin: 0 0 15px 0;">
+                            <strong>📱 Como redefinir sua senha:</strong>
+                        </p>
+                        <ol style="color: #0c5460; font-size: 14px; margin: 0; padding-left: 20px;">
+                            <li style="margin-bottom: 8px;">Abra o aplicativo <strong>{$this->appName}</strong></li>
+                            <li style="margin-bottom: 8px;">Toque em <strong>"Esqueci minha senha"</strong></li>
+                            <li style="margin-bottom: 8px;">Digite o código acima</li>
+                            <li>Crie sua nova senha</li>
+                        </ol>
                     </div>
 
                     <!-- Aviso de expiração -->
                     <div style="background-color: #fff8e6; border-left: 4px solid #f5a623; border-radius: 4px; padding: 15px 20px; margin: 25px 0;">
                         <p style="color: #8a6d3b; font-size: 14px; margin: 0;">
-                            ⏱️ <strong>Atenção:</strong> Este link é válido por apenas <strong>{$expirationMinutes} minutos</strong>. 
-                            Após esse período, você precisará solicitar um novo link.
+                            ⏱️ <strong>Atenção:</strong> Este código é válido por apenas <strong>{$expirationMinutes} minutos</strong>. 
+                            Após esse período, você precisará solicitar um novo código.
                         </p>
-                    </div>
-
-                    <!-- Link alternativo -->
-                    <p style="color: #888888; font-size: 13px; line-height: 1.6; margin: 25px 0 10px 0;">
-                        Se o botão não funcionar, copie e cole o link abaixo no seu navegador:
-                    </p>
-                    <div style="background-color: #f5f5f5; border-radius: 6px; padding: 12px 15px; word-break: break-all;">
-                        <a href="{$resetUrl}" style="color: {$this->primaryColor}; font-size: 12px; text-decoration: none;">
-                            {$resetUrl}
-                        </a>
                     </div>
 
                     <!-- Aviso de segurança -->
