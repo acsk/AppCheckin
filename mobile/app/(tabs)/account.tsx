@@ -2,6 +2,12 @@ import { DebugLogsViewer } from "@/components/DebugLogsViewer";
 import PasswordRecoveryModal from "@/components/PasswordRecoveryModal";
 import mobileService from "@/src/services/mobileService";
 import { colors } from "@/src/theme/colors";
+import {
+  DiaCheckin,
+  RankingItem,
+  RankingModalidade,
+  UserProfile,
+} from "@/src/types";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { handleAuthError } from "@/src/utils/authHelpers";
 import {
@@ -26,54 +32,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-interface UserProfile {
-  id?: number;
-  nome: string;
-  email: string;
-  cpf?: string;
-  telefone?: string;
-  data_nascimento?: string;
-  foto_base64?: string;
-  foto_caminho?: string;
-  membro_desde?: string;
-  tenant?: { nome: string };
-  tenants?: { id: string; nome: string; email?: string; telefone?: string }[];
-  estatisticas?: {
-    total_checkins: number;
-    checkins_mes: number;
-    sequencia_dias: number;
-    ultimo_checkin?: { data: string; hora: string };
-  };
-  ranking_modalidades?: {
-    modalidade_id: number;
-    modalidade_nome: string;
-    modalidade_icone?: string;
-    modalidade_cor?: string;
-    posicao: number;
-    total_checkins: number;
-    total_participantes: number;
-  }[];
-}
-
-interface RankingUsuario {
-  id: number;
-  nome: string;
-  foto_caminho?: string;
-}
-
-interface RankingItem {
-  posicao: number;
-  usuario: RankingUsuario;
-  total_checkins: number;
-}
-
-interface RankingModalidade {
-  id: number;
-  nome: string;
-  icone?: string;
-  cor?: string;
-}
-
 export default function AccountScreen() {
   const router = useRouter();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -95,6 +53,12 @@ export default function AccountScreen() {
   const [apiUrl, setApiUrl] = useState<string>("");
   const [assetsUrl, setAssetsUrl] = useState<string>("");
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+
+  // Estados do calendário semanal de check-ins
+  const [weekDias, setWeekDias] = useState<DiaCheckin[]>([]);
+  const [weekSemanaInicio, setWeekSemanaInicio] = useState<string | null>(null);
+  const [weekSemanaFim, setWeekSemanaFim] = useState<string | null>(null);
+  const [weekLoading, setWeekLoading] = useState(false);
 
   const normalizeProfileModalidades = (
     items: UserProfile["ranking_modalidades"] = [],
@@ -186,6 +150,119 @@ export default function AccountScreen() {
       loadRanking(selectedModalidadeId);
     }
   }, [selectedModalidadeId]);
+
+  // Carregar check-ins da semana quando userProfile carrega
+  useEffect(() => {
+    if (userProfile) {
+      loadWeekCheckins();
+    }
+  }, [userProfile]);
+
+  const loadWeekCheckins = async () => {
+    try {
+      setWeekLoading(true);
+      const token = await AsyncStorage.getItem("@appcheckin:token");
+      if (!token) return;
+
+      const url = `${getApiUrlRuntime()}/mobile/checkins/por-modalidade`;
+
+      console.log("📅 Carregando check-ins da semana:", url);
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data?.success) {
+        console.log("✅ Check-ins da semana carregados:", data.data);
+        setWeekSemanaInicio(data.data?.semana_inicio || null);
+        setWeekSemanaFim(data.data?.semana_fim || null);
+        setWeekDias(data.data?.dias || []);
+      } else {
+        console.warn("⚠️ Erro ao carregar check-ins da semana:", data?.error);
+        setWeekDias([]);
+      }
+    } catch (error) {
+      console.error("❌ Erro ao carregar check-ins da semana:", error);
+      setWeekDias([]);
+    } finally {
+      setWeekLoading(false);
+    }
+  };
+
+  // Gera os dias da semana (domingo a sábado) baseado na semana info
+  const getWeekDays = (): {
+    date: Date;
+    dayName: string;
+    dayNumber: number;
+    dateStr: string;
+  }[] => {
+    const days: {
+      date: Date;
+      dayName: string;
+      dayNumber: number;
+      dateStr: string;
+    }[] = [];
+    const dayNames = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+    if (weekSemanaInicio) {
+      // Usar data de início da semana da API
+      const startDate = new Date(weekSemanaInicio + "T00:00:00");
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(startDate);
+        date.setDate(startDate.getDate() + i);
+        const dateStr = date.toISOString().split("T")[0];
+        days.push({
+          date,
+          dayName: dayNames[date.getDay()],
+          dayNumber: date.getDate(),
+          dateStr,
+        });
+      }
+    } else {
+      // Fallback: calcular semana atual
+      const today = new Date();
+      const dayOfWeek = today.getDay(); // 0 = domingo
+      const startOfWeek = new Date(today);
+      startOfWeek.setDate(today.getDate() - dayOfWeek);
+
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(startOfWeek);
+        date.setDate(startOfWeek.getDate() + i);
+        const dateStr = date.toISOString().split("T")[0];
+        days.push({
+          date,
+          dayName: dayNames[date.getDay()],
+          dayNumber: date.getDate(),
+          dateStr,
+        });
+      }
+    }
+
+    return days;
+  };
+
+  // Verifica se um dia tem check-in
+  const getDayCheckins = (dateStr: string): DiaCheckin[] => {
+    return weekDias.filter((c) => c.data === dateStr);
+  };
+
+  // Formata o período da semana para exibição
+  const formatWeekPeriod = (): string => {
+    if (weekSemanaInicio && weekSemanaFim) {
+      const inicio = new Date(weekSemanaInicio + "T00:00:00");
+      const fim = new Date(weekSemanaFim + "T00:00:00");
+      const formatDate = (d: Date) =>
+        d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+      return `${formatDate(inicio)} - ${formatDate(fim)}`;
+    }
+    return "";
+  };
 
   const formatCPF = (cpf) => {
     if (!cpf) return "";
@@ -667,51 +744,104 @@ export default function AccountScreen() {
           )}
         </View>
 
-        {/* Statistics Section */}
-        {userProfile.estatisticas && (
-          <View style={styles.statisticsSection}>
-            <Text style={styles.sectionTitle}>Estatísticas</Text>
-
-            <View style={styles.statsGrid}>
-              <View style={styles.statCard}>
-                <Feather name="check-circle" size={24} color={colors.primary} />
-                <Text style={styles.statLabel}>Check-ins</Text>
-                <Text style={styles.statValue}>
-                  {userProfile.estatisticas.total_checkins}
-                </Text>
-              </View>
-
-              <View style={styles.statCard}>
-                <Feather name="calendar" size={24} color={colors.primary} />
-                <Text style={styles.statLabel}>Este Mês</Text>
-                <Text style={styles.statValue}>
-                  {userProfile.estatisticas.checkins_mes}
-                </Text>
-              </View>
-
-              <View style={styles.statCard}>
-                <Feather name="zap" size={24} color={colors.primary} />
-                <Text style={styles.statLabel}>Sequência</Text>
-                <Text style={styles.statValue}>
-                  {userProfile.estatisticas.sequencia_dias} dia(s)
-                </Text>
-              </View>
-            </View>
-
-            {userProfile.estatisticas.ultimo_checkin && (
-              <View style={styles.lastCheckinCard}>
-                <Feather name="clock" size={18} color={colors.primary} />
-                <View style={styles.lastCheckinContent}>
-                  <Text style={styles.lastCheckinLabel}>Último Check-in</Text>
-                  <Text style={styles.lastCheckinValue}>
-                    {userProfile.estatisticas.ultimo_checkin.data} às{" "}
-                    {userProfile.estatisticas.ultimo_checkin.hora}
-                  </Text>
-                </View>
-              </View>
-            )}
+        {/* Calendário Semanal de Check-ins */}
+        <View style={styles.weekCalendarSection}>
+          <View style={styles.weekCalendarHeader}>
+            <Text style={styles.sectionTitle}>Minha Semana</Text>
+            <Text style={styles.weekPeriodText}>{formatWeekPeriod()}</Text>
           </View>
-        )}
+
+          {weekLoading ? (
+            <View style={styles.weekCalendarLoading}>
+              <ActivityIndicator size="small" color={colors.primary} />
+            </View>
+          ) : (
+            <View style={styles.weekCalendarGrid}>
+              {getWeekDays().map((day) => {
+                const checkins = getDayCheckins(day.dateStr);
+                const hasCheckin = checkins.length > 0;
+                const today = new Date();
+                const isToday =
+                  day.date.toDateString() === today.toDateString();
+                const isPast = day.date < today && !isToday;
+
+                return (
+                  <View
+                    key={day.dateStr}
+                    style={[
+                      styles.weekDayItem,
+                      isToday && styles.weekDayItemToday,
+                      hasCheckin && styles.weekDayItemChecked,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.weekDayName,
+                        isToday && styles.weekDayNameToday,
+                        hasCheckin && styles.weekDayNameChecked,
+                      ]}
+                    >
+                      {day.dayName}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.weekDayNumber,
+                        isToday && styles.weekDayNumberToday,
+                        hasCheckin && styles.weekDayNumberChecked,
+                      ]}
+                    >
+                      {day.dayNumber}
+                    </Text>
+                    <View style={styles.weekDayCheckContainer}>
+                      {hasCheckin ? (
+                        <View style={styles.weekDayCheckIcon}>
+                          <Feather name="check" size={16} color="#fff" />
+                        </View>
+                      ) : isPast ? (
+                        <View style={styles.weekDayMissedIcon}>
+                          <Feather name="x" size={10} color="#d1d5db" />
+                        </View>
+                      ) : (
+                        <View style={styles.weekDayEmptyIcon} />
+                      )}
+                    </View>
+                    {/* Indicador de modalidade */}
+                    {hasCheckin && checkins[0]?.modalidade && (
+                      <View
+                        style={[
+                          styles.weekDayModalidadeDot,
+                          {
+                            backgroundColor:
+                              checkins[0].modalidade.cor || colors.primary,
+                          },
+                        ]}
+                      />
+                    )}
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
+          {/* Legenda */}
+          <View style={styles.weekCalendarLegend}>
+            <View style={styles.weekLegendItem}>
+              <View
+                style={[styles.weekLegendDot, { backgroundColor: "#10b981" }]}
+              />
+              <Text style={styles.weekLegendText}>Check-in feito</Text>
+            </View>
+            <View style={styles.weekLegendItem}>
+              <View
+                style={[
+                  styles.weekLegendDot,
+                  { backgroundColor: colors.primary, opacity: 0.3 },
+                ]}
+              />
+              <Text style={styles.weekLegendText}>Hoje</Text>
+            </View>
+          </View>
+        </View>
 
         {/* Ranking de Check-ins */}
         <View style={styles.rankingSection}>
@@ -1114,6 +1244,145 @@ const styles = StyleSheet.create({
   },
   statisticsSection: {
     marginBottom: 20,
+  },
+  // Calendário Semanal
+  weekCalendarSection: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#f0f1f4",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  weekCalendarHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  weekPeriodText: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontWeight: "500",
+  },
+  weekCalendarLoading: {
+    paddingVertical: 40,
+    alignItems: "center",
+  },
+  weekCalendarGrid: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 6,
+  },
+  weekDayItem: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: 10,
+    paddingHorizontal: 2,
+    borderRadius: 12,
+    backgroundColor: "#f9fafb",
+    minWidth: 38,
+  },
+  weekDayItemToday: {
+    backgroundColor: colors.primary + "15",
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
+  weekDayItemChecked: {
+    backgroundColor: "#dcfce7",
+    borderWidth: 2,
+    borderColor: "#10b981",
+  },
+  weekDayName: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: colors.textMuted,
+    marginBottom: 2,
+  },
+  weekDayNameToday: {
+    color: colors.primary,
+  },
+  weekDayNameChecked: {
+    color: "#059669",
+    fontWeight: "700",
+  },
+  weekDayNumber: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: colors.text,
+    marginBottom: 6,
+  },
+  weekDayNumberToday: {
+    color: colors.primary,
+  },
+  weekDayNumberChecked: {
+    color: "#059669",
+  },
+  weekDayCheckContainer: {
+    height: 26,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  weekDayCheckIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: "#10b981",
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#10b981",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  weekDayMissedIcon: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#e5e7eb",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  weekDayEmptyIcon: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "transparent",
+  },
+  weekDayModalidadeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginTop: 6,
+  },
+  weekCalendarLegend: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 20,
+    marginTop: 14,
+    paddingTop: 14,
+    borderTopWidth: 1,
+    borderTopColor: "#f0f1f4",
+  },
+  weekLegendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  weekLegendDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  weekLegendText: {
+    fontSize: 11,
+    color: colors.textMuted,
   },
   sectionTitle: {
     fontSize: 20,

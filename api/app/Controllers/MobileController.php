@@ -830,6 +830,222 @@ class MobileController
     }
 
     /**
+     * Retorna os dias de check-in do usuário na semana (domingo a sábado)
+     * Objeto enxuto para calendário semanal
+     */
+    #[OA\Get(
+        path: "/mobile/checkins/por-modalidade",
+        summary: "Dias de check-in por modalidade (semana)",
+        description: "Retorna lista dos dias que o usuário fez check-in na semana (domingo a sábado), com dados completos da modalidade. Use 'offset' para navegar entre semanas.",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        parameters: [
+            new OA\Parameter(
+                name: "offset", 
+                in: "query", 
+                description: "Offset de semanas (0 = semana atual, -1 = semana passada, 1 = próxima semana)", 
+                schema: new OA\Schema(type: "integer", default: 0)
+            ),
+            new OA\Parameter(
+                name: "data_referencia", 
+                in: "query", 
+                description: "Data de referência no formato YYYY-MM-DD (padrão: hoje). A semana será calculada a partir desta data.", 
+                schema: new OA\Schema(type: "string", format: "date")
+            )
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Dias retornados com sucesso",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "success", type: "boolean", example: true),
+                        new OA\Property(
+                            property: "data",
+                            type: "object",
+                            properties: [
+                                new OA\Property(property: "semana_inicio", type: "string", example: "2026-01-25", description: "Domingo da semana"),
+                                new OA\Property(property: "semana_fim", type: "string", example: "2026-01-31", description: "Sábado da semana"),
+                                new OA\Property(property: "total", type: "integer", example: 3),
+                                new OA\Property(
+                                    property: "dias",
+                                    type: "array",
+                                    items: new OA\Items(
+                                        properties: [
+                                            new OA\Property(property: "data", type: "string", example: "2026-01-28"),
+                                            new OA\Property(
+                                                property: "modalidade",
+                                                type: "object",
+                                                properties: [
+                                                    new OA\Property(property: "id", type: "integer", example: 1),
+                                                    new OA\Property(property: "nome", type: "string", example: "CrossFit"),
+                                                    new OA\Property(property: "cor", type: "string", example: "#FF5733"),
+                                                    new OA\Property(property: "icone", type: "string", example: "fitness_center")
+                                                ]
+                                            )
+                                        ],
+                                        type: "object"
+                                    )
+                                ),
+                                new OA\Property(
+                                    property: "modalidades",
+                                    type: "array",
+                                    description: "Lista única de modalidades para legenda",
+                                    items: new OA\Items(
+                                        properties: [
+                                            new OA\Property(property: "id", type: "integer"),
+                                            new OA\Property(property: "nome", type: "string"),
+                                            new OA\Property(property: "cor", type: "string"),
+                                            new OA\Property(property: "icone", type: "string"),
+                                            new OA\Property(property: "total", type: "integer")
+                                        ],
+                                        type: "object"
+                                    )
+                                )
+                            ]
+                        )
+                    ]
+                )
+            ),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
+    public function checkinsPorModalidade(Request $request, Response $response): Response
+    {
+        $userId = $request->getAttribute('userId');
+        $tenantId = $request->getAttribute('tenantId');
+        $queryParams = $request->getQueryParams();
+        
+        // Data de referência (padrão: hoje)
+        $dataReferencia = isset($queryParams['data_referencia']) 
+            ? new \DateTime($queryParams['data_referencia']) 
+            : new \DateTime();
+        
+        // Offset de semanas (0 = atual, -1 = passada, 1 = próxima)
+        $offset = isset($queryParams['offset']) ? (int) $queryParams['offset'] : 0;
+        
+        // Aplicar offset de semanas
+        if ($offset !== 0) {
+            $dataReferencia->modify("{$offset} weeks");
+        }
+        
+        // Calcular domingo da semana (início)
+        $diaSemana = (int) $dataReferencia->format('w'); // 0 = domingo
+        $domingo = clone $dataReferencia;
+        $domingo->modify("-{$diaSemana} days");
+        
+        // Calcular sábado da semana (fim)
+        $sabado = clone $domingo;
+        $sabado->modify('+6 days');
+        
+        $semanaInicio = $domingo->format('Y-m-d');
+        $semanaFim = $sabado->format('Y-m-d');
+        
+        $sql = "SELECT d.data, 
+                       m.id as modalidade_id, m.nome as modalidade_nome, 
+                       m.cor as modalidade_cor, m.icone as modalidade_icone
+                FROM checkins c
+                INNER JOIN alunos a ON a.id = c.aluno_id
+                INNER JOIN turmas t ON c.turma_id = t.id
+                INNER JOIN dias d ON t.dia_id = d.id
+                LEFT JOIN modalidades m ON t.modalidade_id = m.id
+                WHERE a.usuario_id = :user_id 
+                AND t.tenant_id = :tenant_id
+                AND d.data BETWEEN :semana_inicio AND :semana_fim
+                ORDER BY d.data ASC";
+        
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute([
+            'user_id' => $userId,
+            'tenant_id' => $tenantId,
+            'semana_inicio' => $semanaInicio,
+            'semana_fim' => $semanaFim
+        ]);
+        $checkins = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        
+        // Montar arrays
+        $dias = [];
+        $modalidadesMap = [];
+        
+        foreach ($checkins as $c) {
+            $modId = $c['modalidade_id'] ?? 0;
+            $modNome = $c['modalidade_nome'] ?? 'Outro';
+            $modCor = $c['modalidade_cor'] ?? '#999999';
+            $modIcone = $c['modalidade_icone'] ?? null;
+            
+            $dias[] = [
+                'data' => $c['data'],
+                'modalidade' => [
+                    'id' => $modId,
+                    'nome' => $modNome,
+                    'cor' => $modCor,
+                    'icone' => $modIcone
+                ]
+            ];
+            
+            // Agrupar modalidades únicas com contagem
+            if (!isset($modalidadesMap[$modId])) {
+                $modalidadesMap[$modId] = [
+                    'id' => $modId,
+                    'nome' => $modNome,
+                    'cor' => $modCor,
+                    'icone' => $modIcone,
+                    'total' => 0
+                ];
+            }
+            $modalidadesMap[$modId]['total']++;
+        }
+        
+        // Ordenar modalidades por total (decrescente)
+        $modalidades = array_values($modalidadesMap);
+        usort($modalidades, fn($a, $b) => $b['total'] - $a['total']);
+        
+        $response->getBody()->write(json_encode([
+            'success' => true,
+            'data' => [
+                'semana_inicio' => $semanaInicio,
+                'semana_fim' => $semanaFim,
+                'total' => count($dias),
+                'dias' => $dias,
+                'modalidades' => $modalidades
+            ]
+        ], JSON_UNESCAPED_UNICODE));
+        
+        return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+    }
+
+    /**
+     * Traduz o nome do dia da semana para português
+     */
+    private function traduzirDiaSemana(string $dayName): string
+    {
+        $dias = [
+            'Monday' => 'Segunda',
+            'Tuesday' => 'Terça',
+            'Wednesday' => 'Quarta',
+            'Thursday' => 'Quinta',
+            'Friday' => 'Sexta',
+            'Saturday' => 'Sábado',
+            'Sunday' => 'Domingo'
+        ];
+        return $dias[$dayName] ?? $dayName;
+    }
+
+    /**
+     * Traduz o número do mês para português
+     */
+    private function traduzirMes(int $mes): string
+    {
+        $meses = [
+            1 => 'Janeiro', 2 => 'Fevereiro', 3 => 'Março',
+            4 => 'Abril', 5 => 'Maio', 6 => 'Junho',
+            7 => 'Julho', 8 => 'Agosto', 9 => 'Setembro',
+            10 => 'Outubro', 11 => 'Novembro', 12 => 'Dezembro'
+        ];
+        return $meses[$mes] ?? (string) $mes;
+    }
+
+    /**
      * GET /mobile/planos
      * Retorna os planos que o usuário logado tem matrículas ativas/pendentes no tenant selecionado
      * Busca através da tabela de matrículas, não da tabela de planos

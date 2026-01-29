@@ -261,6 +261,7 @@ return function ($app) {
         $group->post('/checkin', [MobileController::class, 'registrarCheckin']);
         $group->delete('/checkin/{checkinId}/desfazer', [MobileController::class, 'desfazerCheckin']);
         $group->get('/checkins', [MobileController::class, 'historicoCheckins']);
+        $group->get('/checkins/por-modalidade', [MobileController::class, 'checkinsPorModalidade']);
         
         // Turmas e horários
         $group->get('/turmas', [MobileController::class, 'listarTurmas']);
