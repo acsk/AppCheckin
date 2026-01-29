@@ -109,6 +109,16 @@ COMMENT 'FK para alunos' AFTER `usuario_id`;
 CREATE INDEX IF NOT EXISTS `idx_pagamentos_aluno_id` ON `pagamentos_plano` (`aluno_id`);
 
 -- ============================================================================
+-- 6.1 ADICIONAR COLUNA aluno_id NA TABELA checkins
+-- ============================================================================
+ALTER TABLE `checkins` 
+ADD COLUMN IF NOT EXISTS `aluno_id` INT(11) DEFAULT NULL 
+COMMENT 'FK para alunos' AFTER `usuario_id`;
+
+-- Criar índice para aluno_id em checkins
+CREATE INDEX IF NOT EXISTS `idx_checkins_aluno_id` ON `checkins` (`aluno_id`);
+
+-- ============================================================================
 -- 7. POPULAR DADOS DE MIGRAÇÃO
 -- ============================================================================
 
@@ -161,7 +171,14 @@ SET pp.`aluno_id` = (
 )
 WHERE pp.`aluno_id` IS NULL;
 
--- 7.6 Migrar foto_caminho de usuarios para alunos (se existir)
+-- 7.6 Popular aluno_id nos checkins baseado no usuario_id
+UPDATE `checkins` c
+SET c.`aluno_id` = (
+    SELECT a.`id` FROM `alunos` a WHERE a.`usuario_id` = c.`usuario_id` LIMIT 1
+)
+WHERE c.`aluno_id` IS NULL;
+
+-- 7.7 Migrar foto_caminho de usuarios para alunos (se existir)
 UPDATE `alunos` a
 INNER JOIN `usuarios` u ON u.`id` = a.`usuario_id`
 SET a.`foto_caminho` = REPLACE(u.`foto_caminho`, 'usuario_', 'aluno_')
@@ -201,6 +218,10 @@ FROM `matriculas` WHERE `motivo_id` IS NULL;
 -- Verificar se todos os aluno_id foram populados
 SELECT 'VERIFICAÇÃO: Matrículas sem aluno_id' AS verificacao, COUNT(*) AS total
 FROM `matriculas` WHERE `aluno_id` IS NULL;
+
+-- Verificar se todos os aluno_id foram populados em checkins
+SELECT 'VERIFICAÇÃO: Checkins sem aluno_id' AS verificacao, COUNT(*) AS total
+FROM `checkins` WHERE `aluno_id` IS NULL;
 
 -- Verificar registros de alunos criados
 SELECT 'VERIFICAÇÃO: Total de alunos na tabela' AS verificacao, COUNT(*) AS total
