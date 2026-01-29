@@ -18,7 +18,7 @@ class Checkin
 
     /**
      * Buscar aluno_id a partir do usuario_id
-     * Necessário pois o JWT contém usuario_id, mas checkins usam aluno_id
+     * Usado quando aluno_id não está disponível no JWT (compatibilidade)
      */
     public function getAlunoIdFromUsuario(int $usuarioId, ?int $tenantId = null): ?int
     {
@@ -47,13 +47,12 @@ class Checkin
             }
             
             $stmt = $this->db->prepare(
-                "INSERT INTO checkins (aluno_id, usuario_id, horario_id, tenant_id, registrado_por_admin) 
-                 VALUES (:aluno_id, :usuario_id, :horario_id, :tenant_id, 0)"
+                "INSERT INTO checkins (aluno_id, horario_id, tenant_id, registrado_por_admin) 
+                 VALUES (:aluno_id, :horario_id, :tenant_id, 0)"
             );
             
             $stmt->execute([
                 'aluno_id' => $alunoId,
-                'usuario_id' => $usuarioId,
                 'horario_id' => $horarioId,
                 'tenant_id' => $tenantId
             ]);
@@ -80,13 +79,12 @@ class Checkin
             }
             
             $stmt = $this->db->prepare(
-                "INSERT INTO checkins (aluno_id, usuario_id, horario_id, tenant_id, registrado_por_admin, admin_id) 
-                 VALUES (:aluno_id, :usuario_id, :horario_id, :tenant_id, 1, :admin_id)"
+                "INSERT INTO checkins (aluno_id, horario_id, tenant_id, registrado_por_admin, admin_id) 
+                 VALUES (:aluno_id, :horario_id, :tenant_id, 1, :admin_id)"
             );
             
             $stmt->execute([
                 'aluno_id' => $alunoId,
-                'usuario_id' => $usuarioId,
                 'horario_id' => $horarioId,
                 'tenant_id' => $tenantId,
                 'admin_id' => $adminId
@@ -180,13 +178,12 @@ class Checkin
             }
             
             $stmt = $this->db->prepare(
-                "INSERT INTO checkins (aluno_id, usuario_id, turma_id, tenant_id, registrado_por_admin) 
-                 VALUES (:aluno_id, :usuario_id, :turma_id, :tenant_id, 0)"
+                "INSERT INTO checkins (aluno_id, turma_id, tenant_id, registrado_por_admin) 
+                 VALUES (:aluno_id, :turma_id, :tenant_id, 0)"
             );
             
             $stmt->execute([
                 'aluno_id' => $alunoId,
-                'usuario_id' => $usuarioId,
                 'turma_id' => $turmaId,
                 'tenant_id' => $tenantId
             ]);

@@ -301,4 +301,15 @@ COMMIT;
 --
 -- 3. A foto do aluno agora deve ser salva/lida da tabela alunos.foto_caminho
 --    e não mais de usuarios.foto_caminho
+--
+-- 4. A coluna checkins.usuario_id foi removida - usar apenas aluno_id
 -- ============================================================================
+
+-- ============================================================================
+-- FASE 2: LIMPEZA (executar após confirmar que tudo funciona)
+-- ============================================================================
+-- Descomentar e executar após validação completa:
+
+-- Remover coluna redundante usuario_id de checkins
+-- ALTER TABLE `checkins` DROP COLUMN IF EXISTS `usuario_id`;
+
