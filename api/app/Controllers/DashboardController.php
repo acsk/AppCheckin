@@ -16,6 +16,185 @@ class DashboardController
     }
 
     /**
+     * GET /admin/dashboard/cards
+     * Retorna os dados para os 4 cards principais do dashboard
+     * - Total de Alunos (ativos/inativos)
+     * - Receita Mensal (valor + contas pendentes)
+     * - Check-ins Hoje (hoje + total do mês)
+     * - Planos Vencendo (vencendo + novos este mês)
+     */
+    public function cards(Request $request, Response $response): Response
+    {
+        $tenantId = $request->getAttribute('tenantId');
+
+        try {
+            $dados = [
+                'total_alunos' => $this->getTotalAlunos($tenantId),
+                'receita_mensal' => $this->getReceitaMensal($tenantId),
+                'checkins_hoje' => $this->getCheckinsHoje($tenantId),
+                'planos_vencendo' => $this->getPlanosVencendo($tenantId),
+            ];
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'data' => $dados
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+        } catch (\Exception $e) {
+            error_log("Erro no dashboard/cards: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao carregar cards do dashboard',
+                'message' => $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
+        }
+    }
+
+    /**
+     * Total de Alunos (ativos e inativos)
+     */
+    private function getTotalAlunos(int $tenantId): array
+    {
+        // Contar alunos via tenant_usuario_papel com papel_id = 1 (Aluno)
+        $stmt = $this->db->prepare(
+            "SELECT 
+                COUNT(*) as total,
+                SUM(CASE WHEN tup.ativo = 1 THEN 1 ELSE 0 END) as ativos,
+                SUM(CASE WHEN tup.ativo = 0 THEN 1 ELSE 0 END) as inativos
+             FROM tenant_usuario_papel tup
+             WHERE tup.tenant_id = :tenant_id 
+             AND tup.papel_id = 1"
+        );
+        $stmt->execute(['tenant_id' => $tenantId]);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return [
+            'total' => (int) ($result['total'] ?? 0),
+            'ativos' => (int) ($result['ativos'] ?? 0),
+            'inativos' => (int) ($result['inativos'] ?? 0),
+        ];
+    }
+
+    /**
+     * Receita Mensal (pago + pendentes)
+     */
+    private function getReceitaMensal(int $tenantId): array
+    {
+        $ano = (int) date('Y');
+        $mes = (int) date('m');
+
+        // Total recebido no mês (status_pagamento_id = 2 = Pago)
+        $stmtPago = $this->db->prepare(
+            "SELECT COALESCE(SUM(valor), 0) as total
+             FROM pagamentos_plano
+             WHERE tenant_id = :tenant_id 
+             AND status_pagamento_id = 2
+             AND YEAR(data_pagamento) = :ano 
+             AND MONTH(data_pagamento) = :mes"
+        );
+        $stmtPago->execute(['tenant_id' => $tenantId, 'ano' => $ano, 'mes' => $mes]);
+        $valorPago = (float) $stmtPago->fetchColumn();
+
+        // Contas pendentes (status_pagamento_id = 1 = Aguardando ou 3 = Atrasado)
+        $stmtPendentes = $this->db->prepare(
+            "SELECT COUNT(*) as total
+             FROM pagamentos_plano
+             WHERE tenant_id = :tenant_id 
+             AND status_pagamento_id IN (1, 3)
+             AND YEAR(data_vencimento) = :ano 
+             AND MONTH(data_vencimento) = :mes"
+        );
+        $stmtPendentes->execute(['tenant_id' => $tenantId, 'ano' => $ano, 'mes' => $mes]);
+        $contasPendentes = (int) $stmtPendentes->fetchColumn();
+
+        return [
+            'valor' => $valorPago,
+            'valor_formatado' => 'R$ ' . number_format($valorPago, 2, ',', '.'),
+            'contas_pendentes' => $contasPendentes,
+        ];
+    }
+
+    /**
+     * Check-ins Hoje (hoje + total do mês)
+     */
+    private function getCheckinsHoje(int $tenantId): array
+    {
+        $hoje = date('Y-m-d');
+        $ano = (int) date('Y');
+        $mes = (int) date('m');
+
+        // Check-ins de hoje
+        $stmtHoje = $this->db->prepare(
+            "SELECT COUNT(*) as total
+             FROM checkins
+             WHERE tenant_id = :tenant_id 
+             AND DATE(data_checkin) = :hoje"
+        );
+        $stmtHoje->execute(['tenant_id' => $tenantId, 'hoje' => $hoje]);
+        $checkinsHoje = (int) $stmtHoje->fetchColumn();
+
+        // Check-ins do mês
+        $stmtMes = $this->db->prepare(
+            "SELECT COUNT(*) as total
+             FROM checkins
+             WHERE tenant_id = :tenant_id 
+             AND YEAR(data_checkin) = :ano
+             AND MONTH(data_checkin) = :mes"
+        );
+        $stmtMes->execute(['tenant_id' => $tenantId, 'ano' => $ano, 'mes' => $mes]);
+        $checkinsMes = (int) $stmtMes->fetchColumn();
+
+        return [
+            'hoje' => $checkinsHoje,
+            'no_mes' => $checkinsMes,
+        ];
+    }
+
+    /**
+     * Planos Vencendo (próximos 7 dias + novos este mês)
+     */
+    private function getPlanosVencendo(int $tenantId): array
+    {
+        $hoje = date('Y-m-d');
+        $em7Dias = date('Y-m-d', strtotime('+7 days'));
+        $ano = (int) date('Y');
+        $mes = (int) date('m');
+
+        // Matrículas vencendo nos próximos 7 dias (status_id = 1 = ativa)
+        $stmtVencendo = $this->db->prepare(
+            "SELECT COUNT(*) as total
+             FROM matriculas
+             WHERE tenant_id = :tenant_id 
+             AND status_id = 1
+             AND data_vencimento BETWEEN :hoje AND :em7dias"
+        );
+        $stmtVencendo->execute([
+            'tenant_id' => $tenantId, 
+            'hoje' => $hoje, 
+            'em7dias' => $em7Dias
+        ]);
+        $vencendo = (int) $stmtVencendo->fetchColumn();
+
+        // Novas matrículas este mês (motivo_id = 1 = nova)
+        $stmtNovos = $this->db->prepare(
+            "SELECT COUNT(*) as total
+             FROM matriculas
+             WHERE tenant_id = :tenant_id 
+             AND YEAR(data_matricula) = :ano
+             AND MONTH(data_matricula) = :mes"
+        );
+        $stmtNovos->execute(['tenant_id' => $tenantId, 'ano' => $ano, 'mes' => $mes]);
+        $novosEsteMes = (int) $stmtNovos->fetchColumn();
+
+        return [
+            'vencendo' => $vencendo,
+            'novos_este_mes' => $novosEsteMes,
+        ];
+    }
+
+    /**
      * GET /admin/dashboard
      * Retorna todos os contadores do dashboard
      */

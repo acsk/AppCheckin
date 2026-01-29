@@ -30,6 +30,7 @@ use App\Controllers\WodVariacaoController;
 use App\Controllers\WodResultadoController;
 use App\Controllers\PresencaController;
 use App\Controllers\MaintenanceController;
+use App\Controllers\DashboardController;
 use App\Middlewares\AuthMiddleware;
 use App\Middlewares\TenantMiddleware;
 use App\Middlewares\AdminMiddleware;
@@ -350,6 +351,7 @@ return function ($app) {
         });
         // Dashboard e estatísticas
         $group->get('/dashboard', [AdminController::class, 'dashboard']);
+        $group->get('/dashboard/cards', [DashboardController::class, 'cards']);
         
         // Gestão de Alunos (CRUD completo)
         $group->get('/alunos', [AlunoController::class, 'index']);

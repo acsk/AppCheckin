@@ -52,6 +52,7 @@ export default function CheckinScreen() {
   });
   const modalScale = useRef(new Animated.Value(0)).current;
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const [currentAlunoId, setCurrentAlunoId] = useState<number | null>(null);
   const [userCheckinId, setUserCheckinId] = useState<number | null>(null);
 
   const participantsToShow = participants;
@@ -194,7 +195,9 @@ export default function CheckinScreen() {
       if (userStr) {
         const user = JSON.parse(userStr);
         console.log("👤 ID do usuário carregado:", user.id);
+        console.log("👤 aluno_id do usuário:", user.aluno_id);
         setCurrentUserId(user.id);
+        setCurrentAlunoId(user.aluno_id || null);
       } else {
         console.log("❌ Nenhum usuário encontrado no AsyncStorage");
       }
@@ -226,10 +229,10 @@ export default function CheckinScreen() {
   }, [selectedDate]);
 
   useEffect(() => {
-    if (participantsTurma && currentUserId) {
+    if (participantsTurma && (currentUserId || currentAlunoId)) {
       checkUserHasCheckin();
     }
-  }, [participants, checkinsRecentes, currentUserId]);
+  }, [participants, checkinsRecentes, currentUserId, currentAlunoId]);
 
   const generateCalendarDays = () => {
     console.log("📅 GERANDO CALENDÁRIO");
@@ -513,11 +516,12 @@ export default function CheckinScreen() {
   const checkUserHasCheckin = () => {
     console.log("🔍 Verificando check-in do usuário");
     console.log("   currentUserId:", currentUserId);
+    console.log("   currentAlunoId:", currentAlunoId);
     console.log("   participants.length:", participants.length);
     console.log("   checkinsRecentes.length:", checkinsRecentes.length);
 
-    if (!currentUserId) {
-      console.log("   ❌ Sem currentUserId");
+    if (!currentUserId && !currentAlunoId) {
+      console.log("   ❌ Sem currentUserId e currentAlunoId");
       setUserCheckinId(null);
       return false;
     }
@@ -529,15 +533,19 @@ export default function CheckinScreen() {
         JSON.stringify(
           checkinsRecentes.map((c) => ({
             id: c.id,
-            usuario_id: c.usuario_id,
             checkin_id: c.checkin_id,
-            horario_id: c.horario_id,
+            aluno_id: c.aluno_id,
+            usuario_id: c.usuario_id,
           })),
         ),
       );
 
+      // Buscar por aluno_id ou usuario_id
       const userCheckin = checkinsRecentes.find(
-        (c) => Number(c.usuario_id) === Number(currentUserId),
+        (c) =>
+          (currentAlunoId && Number(c.aluno_id) === Number(currentAlunoId)) ||
+          Number(c.usuario_id) === Number(currentUserId) ||
+          Number(c.aluno_id) === Number(currentUserId),
       );
 
       if (userCheckin) {
@@ -545,30 +553,34 @@ export default function CheckinScreen() {
           "   ✅ Usuário encontrado em check-ins recentes:",
           userCheckin,
         );
-        const checkinId = userCheckin.id || userCheckin.checkin_id;
+        const checkinId = userCheckin.checkin_id || userCheckin.id;
         console.log("   📝 checkin_id dos recentes:", checkinId);
         setUserCheckinId(checkinId);
         return true;
       }
     }
 
-    // PRIORIDADE 2: Verificar nos participantes
+    // PRIORIDADE 2: Verificar nos participantes (alunos matriculados com check-in)
     if (participants.length > 0) {
       console.log(
         "   Participantes:",
         JSON.stringify(
           participants.map((p) => ({
+            aluno_id: p.aluno_id,
             id: p.id,
             usuario_id: p.usuario_id,
-            checkin_id: p.checkin_id,
+            checkins: p.checkins,
             nome: p.nome || p.usuario_nome,
           })),
         ),
       );
 
+      // Buscar por aluno_id ou usuario_id
       const userParticipant = participants.find(
         (p) =>
+          (currentAlunoId && Number(p.aluno_id) === Number(currentAlunoId)) ||
           Number(p.usuario_id) === Number(currentUserId) ||
+          Number(p.aluno_id) === Number(currentUserId) ||
           Number(p.id) === Number(currentUserId),
       );
 
@@ -577,15 +589,32 @@ export default function CheckinScreen() {
           "   ✅ Usuário encontrado nos participantes:",
           userParticipant,
         );
+
+        // Se tem checkins > 0, precisamos buscar o checkin_id nos checkinsRecentes
+        if (userParticipant.checkins > 0 && checkinsRecentes.length > 0) {
+          const checkin = checkinsRecentes.find(
+            (c) => Number(c.aluno_id) === Number(userParticipant.aluno_id),
+          );
+          if (checkin) {
+            const checkinId = checkin.checkin_id || checkin.id;
+            console.log(
+              "   📝 checkin_id encontrado via checkins_recentes:",
+              checkinId,
+            );
+            setUserCheckinId(checkinId);
+            return true;
+          }
+        }
+
         const checkinId = userParticipant.checkin_id || userParticipant.id;
         console.log("   📝 checkin_id dos participantes:", checkinId);
 
-        if (checkinId) {
+        if (checkinId && userParticipant.checkins > 0) {
           setUserCheckinId(checkinId);
           return true;
         } else {
           console.log(
-            "   ⚠️ Participante encontrado mas sem checkin_id válido",
+            "   ⚠️ Participante encontrado mas sem checkin_id válido ou sem checkins",
           );
         }
       }
@@ -750,7 +779,10 @@ export default function CheckinScreen() {
               <Switch
                 value={showOnlyAvailable}
                 onValueChange={setShowOnlyAvailable}
-                trackColor={{ false: "rgba(255,255,255,0.25)", true: "rgba(255,255,255,0.5)" }}
+                trackColor={{
+                  false: "rgba(255,255,255,0.25)",
+                  true: "rgba(255,255,255,0.5)",
+                }}
                 thumbColor="#fff"
               />
             </View>

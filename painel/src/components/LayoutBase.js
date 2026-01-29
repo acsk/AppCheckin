@@ -153,9 +153,9 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
       <ScrollView 
         className="flex-1" 
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingVertical: 12, paddingHorizontal: isMobileDrawer ? 12 : 10 }}
+        contentContainerStyle={{ paddingVertical: 8, paddingHorizontal: isMobileDrawer ? 12 : 10 }}
       >
-        <View className="gap-1">
+        <View className="gap-0">
           {MENU.filter(item => {
             const userRole = usuarioInfo?.role_id || 1;
             return item.roles.includes(userRole);
@@ -173,7 +173,7 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
                 style={({ pressed }) => [
                   { opacity: pressed ? 0.7 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }
                 ]}
-                className={`flex-row items-center gap-3 rounded-xl px-3.5 py-2.5 ${
+                className={`flex-row items-center gap-3 rounded-xl px-3.5 py-2 ${
                   selected 
                     ? 'bg-orange-500' 
                     : 'bg-transparent'

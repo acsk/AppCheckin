@@ -10,13 +10,15 @@ import {
   Alert,
   Platform,
   ToastAndroid,
+  useWindowDimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { authService } from '../../services/authService';
 import { superAdminService } from '../../services/superAdminService';
-import { buscarDashboard, buscarTurmasPorModalidade, buscarCheckinsUltimos7Dias } from '../../services/dashboardService';
+import { buscarDashboard, buscarDashboardCards } from '../../services/dashboardService';
+import { DASHBOARD_CARDS_DEFAULT, DashboardCardsData } from '../../models';
 import LayoutBase from '../../components/LayoutBase';
 import styles, { MENU, KPI, BAR_VALUES, MONTHS, FEED, CAL_DAYS, CAL_NUMS } from './styles';
 import LoaderOverlay from './components/LoaderOverlay';
@@ -80,6 +82,9 @@ const StatRow = ({ icon, label, value }) => (
 
 export default function Dashboard() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const isSmallScreen = width < 768;
+  const isMediumScreen = width >= 768 && width < 1024;
   const [usuarioInfo, setUsuarioInfo] = useState(null);
   const nome = usuarioInfo?.nome || 'Usuário';
   const email = usuarioInfo?.email || '';
@@ -91,8 +96,8 @@ export default function Dashboard() {
   
   // Estados do Dashboard
   const [dashboardData, setDashboardData] = useState(null);
-  const [turmasPorModalidade, setTurmasPorModalidade] = useState([]);
-  const [checkinsData, setCheckinsData] = useState([]);
+  /** @type {[DashboardCardsData | null, React.Dispatch<React.SetStateAction<DashboardCardsData | null>>]} */
+  const [cardsData, setCardsData] = useState(null);
   const [loadingDashboard, setLoadingDashboard] = useState(false);
   
   const [saving, setSaving] = useState(false);
@@ -149,37 +154,19 @@ export default function Dashboard() {
     setLoadingDashboard(true);
     try {
       // Buscar dados em paralelo
-      const [dashboard, turmas, checkins] = await Promise.all([
+      const [dashboard, cards] = await Promise.all([
         buscarDashboard().catch(err => {
           console.error('Erro ao buscar dashboard:', err);
           return { data: null };
         }),
-        buscarTurmasPorModalidade().catch(err => {
-          console.error('Erro ao buscar turmas por modalidade:', err);
-          return { data: [] };
-        }),
-        buscarCheckinsUltimos7Dias().catch(err => {
-          console.error('Erro ao buscar check-ins:', err);
-          return { data: [] };
+        buscarDashboardCards().catch(err => {
+          console.error('Erro ao buscar cards:', err);
+          return { data: null };
         }),
       ]);
       
       setDashboardData(dashboard?.data || dashboard);
-      
-      // Garantir que turmasPorModalidade é sempre um array
-      const turmasArray = Array.isArray(turmas?.data) ? turmas.data : Array.isArray(turmas) ? turmas : [];
-      setTurmasPorModalidade(turmasArray);
-      
-      // Garantir que checkinsData é sempre um array
-      const checkinsArray = Array.isArray(checkins?.data) ? checkins.data : Array.isArray(checkins) ? checkins : [];
-      setCheckinsData(checkinsArray);
-      
-      // Verificar se conseguiu carregar algum dado
-      const temDados = dashboard?.data || turmas?.data?.length > 0 || checkins?.data?.length > 0;
-      if (!temDados) {
-        console.warn('⚠️ Nenhum dado foi carregado. Verifique as permissões no backend.');
-        console.warn('As rotas /admin/dashboard/* devem aceitar role_id = 2 (admin) e 3 (super_admin)');
-      }
+      setCardsData(cards?.data || cards);
     } catch (error) {
       console.error('Erro geral ao carregar dashboard:', error);
     } finally {
@@ -331,23 +318,26 @@ export default function Dashboard() {
   );
 
   const renderDashboard = () => {
-    // Formatar valores do dashboard com os campos corretos da API
-    const totalAlunos = dashboardData?.total_alunos || 0;
-    const alunosAtivos = dashboardData?.alunos_ativos || 0;
-    const alunosInativos = dashboardData?.alunos_inativos || 0;
-    const novosAlunosMes = dashboardData?.novos_alunos_mes || 0;
-    const checkinsHoje = dashboardData?.total_checkins_hoje || 0;
-    const checkinsMes = dashboardData?.total_checkins_mes || 0;
-    const planosVencendo = dashboardData?.planos_vencendo || 0;
-    const receitaMensal = dashboardData?.receita_mensal || 0;
-    const contasPendentesQtd = dashboardData?.contas_pendentes_qtd || 0;
-    const contasPendentesValor = dashboardData?.contas_pendentes_valor || 0;
-    const contasVencidasQtd = dashboardData?.contas_vencidas_qtd || 0;
-    const contasVencidasValor = dashboardData?.contas_vencidas_valor || 0;
+    // Usar dados do endpoint /cards com fallback para o default
+    const cards = cardsData || DASHBOARD_CARDS_DEFAULT;
     
-    const totalTurmas = dashboardData?.turmas || 0;
-    const professores = dashboardData?.professores || 0;
-    const modalidades = dashboardData?.modalidades || 0;
+    const totalAlunos = cards.total_alunos.total;
+    const alunosAtivos = cards.total_alunos.ativos;
+    const alunosInativos = cards.total_alunos.inativos;
+    const novosAlunosMes = cards.planos_vencendo.novos_este_mes;
+    const checkinsHoje = cards.checkins_hoje.hoje;
+    const checkinsMes = cards.checkins_hoje.no_mes;
+    const planosVencendo = cards.planos_vencendo.vencendo;
+    const receitaMensal = cards.receita_mensal.valor;
+    const receitaMensalFormatada = cards.receita_mensal.valor_formatado;
+    const contasPendentesQtd = cards.receita_mensal.contas_pendentes;
+    const contasPendentesValor = dashboardData?.contas_pendentes_valor ?? 0;
+    const contasVencidasQtd = dashboardData?.contas_vencidas_qtd ?? 0;
+    const contasVencidasValor = dashboardData?.contas_vencidas_valor ?? 0;
+    
+    const totalTurmas = dashboardData?.turmas ?? 0;
+    const professores = dashboardData?.professores ?? 0;
+    const modalidades = dashboardData?.modalidades ?? 0;
 
     // Formatar moeda
     const formatMoney = (value) => {
@@ -371,7 +361,7 @@ export default function Dashboard() {
       },
       { 
         title: 'Receita Mensal', 
-        value: formatMoney(receitaMensal), 
+        value: receitaMensalFormatada || formatMoney(receitaMensal), 
         subtitle: `${contasPendentesQtd} contas pendentes`,
         icon: 'dollar-sign',
         color: '#10b981',
@@ -403,17 +393,22 @@ export default function Dashboard() {
             <Text style={{ marginTop: 16, color: '#64748b', fontSize: 14 }}>Carregando dados...</Text>
           </View>
         ) : (
-          <View style={{ padding: 24, gap: 24 }}>
+          <View style={{ padding: isSmallScreen ? 16 : 24, gap: isSmallScreen ? 16 : 24 }}>
             {/* Metrics Cards */}
-            <View style={{ flexDirection: 'row', gap: 16 }}>
+            <View style={{ 
+              flexDirection: isSmallScreen ? 'column' : 'row', 
+              flexWrap: 'wrap',
+              gap: isSmallScreen ? 12 : 16 
+            }}>
               {metricsCards.map((card, index) => (
                 <View 
                   key={index} 
                   style={{ 
-                    flex: 1, 
+                    flex: isSmallScreen ? undefined : 1,
+                    minWidth: isSmallScreen ? '100%' : isMediumScreen ? '48%' : undefined,
                     backgroundColor: '#ffffff', 
                     borderRadius: 12, 
-                    padding: 20,
+                    padding: isSmallScreen ? 16 : 20,
                     shadowColor: '#000',
                     shadowOffset: { width: 0, height: 1 },
                     shadowOpacity: 0.05,
@@ -434,7 +429,7 @@ export default function Dashboard() {
                       <Feather name={card.icon} size={16} color={card.color} />
                     </View>
                   </View>
-                  <Text style={{ fontSize: 28, fontWeight: '700', color: '#1e293b', marginBottom: 8 }}>
+                  <Text style={{ fontSize: isSmallScreen ? 22 : 28, fontWeight: '700', color: '#1e293b', marginBottom: 8 }}>
                     {card.value}
                   </Text>
                   <Text style={{ fontSize: 11, color: '#94a3b8' }}>
@@ -444,65 +439,14 @@ export default function Dashboard() {
               ))}
             </View>
 
-            {/* Charts Row */}
-            <View style={{ flexDirection: 'row', gap: 16 }}>
-              {/* Statistics Chart */}
-              <View style={{ 
-                flex: 2, 
-                backgroundColor: '#ffffff', 
-                borderRadius: 12, 
-                padding: 24,
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 1 },
-                shadowOpacity: 0.05,
-                shadowRadius: 3,
-                elevation: 2,
-              }}>
-                <Text style={{ fontSize: 16, fontWeight: '700', color: '#1e293b', marginBottom: 20 }}>
-                  Check-ins (Últimos 7 dias)
-                </Text>
-                {checkinsData.length > 0 ? (
-                  <View style={{ height: 200 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: '100%', gap: 12 }}>
-                      {checkinsData.map((item, index) => {
-                        const maxValue = Math.max(...checkinsData.map(d => d.total), 1);
-                        const heightPercent = (item.total / maxValue) * 100;
-                        const dateObj = new Date(item.data + 'T00:00:00');
-                        const day = dateObj.getDate();
-                        
-                        return (
-                          <View key={item.data} style={{ flex: 1, height: '100%', justifyContent: 'flex-end', alignItems: 'center' }}>
-                            <View 
-                              style={{ 
-                                width: '100%',
-                                height: `${Math.max(heightPercent, 8)}%`,
-                                backgroundColor: '#14b8a6',
-                                borderTopLeftRadius: 4,
-                                borderTopRightRadius: 4,
-                              }}
-                            />
-                            <Text style={{ fontSize: 10, color: '#64748b', marginTop: 8, fontWeight: '500' }}>
-                              {day}
-                            </Text>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  </View>
-                ) : (
-                  <View style={{ height: 200, alignItems: 'center', justifyContent: 'center' }}>
-                    <MaterialCommunityIcons name="chart-bar" size={48} color="#cbd5e1" />
-                    <Text style={{ color: '#94a3b8', fontSize: 13, marginTop: 8 }}>Nenhum check-in registrado</Text>
-                  </View>
-                )}
-              </View>
-
+            {/* Contas a Receber e Estatísticas de Alunos */}
+            <View style={{ flexDirection: isSmallScreen ? 'column' : 'row', gap: isSmallScreen ? 12 : 16 }}>
               {/* Contas Card */}
               <View style={{ 
-                flex: 1, 
+                flex: isSmallScreen ? undefined : 1, 
                 backgroundColor: '#ffffff', 
                 borderRadius: 12, 
-                padding: 24,
+                padding: isSmallScreen ? 16 : 24,
                 shadowColor: '#000',
                 shadowOffset: { width: 0, height: 1 },
                 shadowOpacity: 0.05,
@@ -567,10 +511,10 @@ export default function Dashboard() {
 
               {/* Alunos Stats */}
               <View style={{ 
-                flex: 1.2, 
+                flex: isSmallScreen ? undefined : 1.2, 
                 backgroundColor: '#ffffff', 
                 borderRadius: 12, 
-                padding: 24,
+                padding: isSmallScreen ? 16 : 24,
                 shadowColor: '#000',
                 shadowOffset: { width: 0, height: 1 },
                 shadowOpacity: 0.05,
@@ -584,10 +528,10 @@ export default function Dashboard() {
                 {/* Donut Chart Placeholder */}
                 <View style={{ alignItems: 'center', marginBottom: 20 }}>
                   <View style={{ 
-                    width: 120, 
-                    height: 120, 
-                    borderRadius: 60,
-                    borderWidth: 16,
+                    width: isSmallScreen ? 100 : 120, 
+                    height: isSmallScreen ? 100 : 120, 
+                    borderRadius: isSmallScreen ? 50 : 60,
+                    borderWidth: isSmallScreen ? 12 : 16,
                     borderColor: '#3b82f6',
                     borderRightColor: '#cbd5e1',
                     borderBottomColor: '#cbd5e1',
@@ -596,7 +540,7 @@ export default function Dashboard() {
                     transform: [{ rotate: '-90deg' }]
                   }}>
                     <View style={{ transform: [{ rotate: '90deg' }] }}>
-                      <Text style={{ fontSize: 28, fontWeight: '700', color: '#1e293b' }}>
+                      <Text style={{ fontSize: isSmallScreen ? 22 : 28, fontWeight: '700', color: '#1e293b' }}>
                         {totalAlunos}
                       </Text>
                     </View>
@@ -637,77 +581,21 @@ export default function Dashboard() {
               </View>
             </View>
 
-            {/* Turmas por Modalidade */}
-            <View style={{ 
-              backgroundColor: '#ffffff', 
-              borderRadius: 12, 
-              padding: 24,
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: 1 },
-              shadowOpacity: 0.05,
-              shadowRadius: 3,
-              elevation: 2,
-            }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                <Text style={{ fontSize: 16, fontWeight: '700', color: '#1e293b' }}>
-                  Turmas por Modalidade
-                </Text>
-                <Pressable onPress={() => router.push('/modalidades')}>
-                  <Text style={{ fontSize: 12, color: '#3b82f6', fontWeight: '600' }}>Ver todas →</Text>
-                </Pressable>
-              </View>
-              
-              <View style={{ gap: 16 }}>
-                {turmasPorModalidade.length > 0 ? (
-                  turmasPorModalidade.slice(0, 5).map((modalidade, index) => {
-                    const maxValue = Math.max(...turmasPorModalidade.map(m => m.total), 1);
-                    const widthPercent = (modalidade.total / maxValue) * 100;
-                    const colors = ['#3b82f6', '#10b981', '#f59e0b', '#a855f7', '#ef4444'];
-                    
-                    return (
-                      <View key={modalidade.id}>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                          <Text style={{ fontSize: 13, fontWeight: '600', color: '#1e293b' }}>
-                            {modalidade.nome}
-                          </Text>
-                          <Text style={{ fontSize: 13, fontWeight: '700', color: '#1e293b' }}>
-                            {modalidade.total}
-                          </Text>
-                        </View>
-                        <View style={{ height: 8, backgroundColor: '#f1f5f9', borderRadius: 4, overflow: 'hidden' }}>
-                          <View 
-                            style={{ 
-                              height: '100%',
-                              width: `${Math.max(widthPercent, 5)}%`,
-                              backgroundColor: colors[index % colors.length],
-                              borderRadius: 4,
-                            }}
-                          />
-                        </View>
-                      </View>
-                    );
-                  })
-                ) : (
-                  <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-                    <MaterialCommunityIcons name="dumbbell" size={48} color="#cbd5e1" />
-                    <Text style={{ marginTop: 12, color: '#94a3b8', fontSize: 13 }}>
-                      Nenhuma modalidade cadastrada
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </View>
-
             {/* Quick Actions */}
-            <View style={{ flexDirection: 'row', gap: 16 }}>
+            <View style={{ 
+              flexDirection: isSmallScreen ? 'column' : 'row', 
+              gap: isSmallScreen ? 12 : 16 
+            }}>
               <Pressable 
                 onPress={() => router.push('/turmas')}
                 style={{ 
-                  flex: 1,
+                  flex: isSmallScreen ? undefined : 1,
                   backgroundColor: '#3b82f6',
                   borderRadius: 12,
-                  padding: 20,
+                  padding: isSmallScreen ? 16 : 20,
                   alignItems: 'center',
+                  flexDirection: isSmallScreen ? 'row' : 'column',
+                  gap: isSmallScreen ? 12 : 0,
                   shadowColor: '#3b82f6',
                   shadowOffset: { width: 0, height: 4 },
                   shadowOpacity: 0.3,
@@ -716,7 +604,7 @@ export default function Dashboard() {
                 }}
               >
                 <Feather name="calendar" size={24} color="#ffffff" />
-                <Text style={{ marginTop: 8, color: '#ffffff', fontSize: 14, fontWeight: '600' }}>
+                <Text style={{ marginTop: isSmallScreen ? 0 : 8, color: '#ffffff', fontSize: 14, fontWeight: '600' }}>
                   Gerenciar Turmas
                 </Text>
               </Pressable>
@@ -724,11 +612,13 @@ export default function Dashboard() {
               <Pressable 
                 onPress={() => router.push('/usuarios')}
                 style={{ 
-                  flex: 1,
+                  flex: isSmallScreen ? undefined : 1,
                   backgroundColor: '#10b981',
                   borderRadius: 12,
-                  padding: 20,
+                  padding: isSmallScreen ? 16 : 20,
                   alignItems: 'center',
+                  flexDirection: isSmallScreen ? 'row' : 'column',
+                  gap: isSmallScreen ? 12 : 0,
                   shadowColor: '#10b981',
                   shadowOffset: { width: 0, height: 4 },
                   shadowOpacity: 0.3,
@@ -737,7 +627,7 @@ export default function Dashboard() {
                 }}
               >
                 <Feather name="users" size={24} color="#ffffff" />
-                <Text style={{ marginTop: 8, color: '#ffffff', fontSize: 14, fontWeight: '600' }}>
+                <Text style={{ marginTop: isSmallScreen ? 0 : 8, color: '#ffffff', fontSize: 14, fontWeight: '600' }}>
                   Ver Alunos
                 </Text>
               </Pressable>
@@ -745,11 +635,13 @@ export default function Dashboard() {
               <Pressable 
                 onPress={() => router.push('/contratos')}
                 style={{ 
-                  flex: 1,
+                  flex: isSmallScreen ? undefined : 1,
                   backgroundColor: '#f59e0b',
                   borderRadius: 12,
-                  padding: 20,
+                  padding: isSmallScreen ? 16 : 20,
                   alignItems: 'center',
+                  flexDirection: isSmallScreen ? 'row' : 'column',
+                  gap: isSmallScreen ? 12 : 0,
                   shadowColor: '#f59e0b',
                   shadowOffset: { width: 0, height: 4 },
                   shadowOpacity: 0.3,
@@ -758,7 +650,7 @@ export default function Dashboard() {
                 }}
               >
                 <Feather name="file-text" size={24} color="#ffffff" />
-                <Text style={{ marginTop: 8, color: '#ffffff', fontSize: 14, fontWeight: '600' }}>
+                <Text style={{ marginTop: isSmallScreen ? 0 : 8, color: '#ffffff', fontSize: 14, fontWeight: '600' }}>
                   Contratos
                 </Text>
               </Pressable>

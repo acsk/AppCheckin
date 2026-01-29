@@ -190,29 +190,43 @@ export default function MatriculaDetalheScreen() {
     }).format(value || 0);
   };
 
+  const isVencido = (dataVencimento) => {
+    if (!dataVencimento) return false;
+    const [year, month, day] = dataVencimento.split('-');
+    const vencimento = new Date(year, month - 1, day);
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    vencimento.setHours(0, 0, 0, 0);
+    return vencimento < hoje;
+  };
+
   const calcularResumo = () => {
     const getStatusId = (pagamento) => Number(pagamento.status_pagamento_id);
     // Excluir pagamentos cancelados (status 4) do total
     const pagamentosAtivos = pagamentos.filter((p) => getStatusId(p) !== 4);
-    
+
     const total = pagamentosAtivos.reduce((sum, p) => sum + parseFloat(p.valor || 0), 0);
-    
+
     // Pago = status 2
     const pago = pagamentos
       .filter((p) => getStatusId(p) === 2)
       .reduce((sum, p) => sum + parseFloat(p.valor || 0), 0);
-    
-    // Atrasado = status 3
+
+    // Atrasado = status 3 OU aguardando vencido
     const atrasado = pagamentos
-      .filter((p) => getStatusId(p) === 3)
-      .reduce((sum, p) => sum + parseFloat(p.valor || 0), 0);
-    
-    // Pendente = status 1 (aguardando)
-    const pendente = pagamentos
-      .filter((p) => getStatusId(p) === 1)
+      .filter((p) => {
+        const statusId = getStatusId(p);
+        if (statusId === 3) return true;
+        return statusId === 1 && isVencido(p.data_vencimento);
+      })
       .reduce((sum, p) => sum + parseFloat(p.valor || 0), 0);
 
-    return { total, pago, atrasado, pendente };
+    // Aguardando = status 1 e ainda não venceu
+    const aguardando = pagamentos
+      .filter((p) => getStatusId(p) === 1 && !isVencido(p.data_vencimento))
+      .reduce((sum, p) => sum + parseFloat(p.valor || 0), 0);
+
+    return { total, pago, atrasado, aguardando };
   };
 
   if (loading) {
@@ -245,12 +259,18 @@ export default function MatriculaDetalheScreen() {
 
   const pagamentosPendentes = pagamentos.filter((p) => {
     const statusId = Number(p.status_pagamento_id);
-    return statusId === 1 || statusId === 3; // Aguardando (1) e Atrasado (3) são ambos pendentes
+    if (statusId === 3) return true;
+    return statusId === 1 && isVencido(p.data_vencimento);
   });
-  const pagamentosNaoPendentes = pagamentos.filter((p) => {
-    const statusId = Number(p.status_pagamento_id);
-    return statusId !== 1 && statusId !== 3;
-  });
+  const isPagamentoPendente = (pagamento) => {
+    const statusId = Number(pagamento.status_pagamento_id);
+    if (statusId === 3) return true;
+    return statusId === 1 && isVencido(pagamento.data_vencimento);
+  };
+  const isPagamentoBaixavel = (pagamento) => {
+    const statusId = Number(pagamento.status_pagamento_id);
+    return statusId === 1 || statusId === 3;
+  };
 
   const resumo = calcularResumo();
 
@@ -357,158 +377,128 @@ export default function MatriculaDetalheScreen() {
             </View>
           </View>
 
-          {/* Parcela Pendente - Design Moderno */}
-          {matricula.status_id !== 3 && matricula.status_id !== 4 && 
-           pagamentosPendentes.map((pagamento, index) => (
-            <View key={pagamento.id || index} className="mb-6 overflow-hidden rounded-2xl border border-orange-300 bg-white shadow-md">
-              <View className="flex-row items-center justify-between border-b border-orange-100 bg-orange-50 px-5 py-4">
-                <View className="flex-row items-center gap-3">
-                  <View className="h-10 w-10 items-center justify-center rounded-xl bg-orange-500 shadow-sm">
-                    <MaterialCommunityIcons name="calendar-clock" size={20} color="#fff" />
-                  </View>
-                  <View>
-                    <Text className="text-[10px] font-semibold uppercase text-orange-600">
-                      Próximo pagamento
-                    </Text>
-                    <Text className="text-sm font-semibold text-slate-800">
-                      Parcela {pagamento.numero_parcela || index + 1}
-                    </Text>
-                  </View>
-                </View>
-                <View className="flex-row items-center gap-1 rounded-full bg-white px-2.5 py-1 shadow-sm">
-                  <MaterialCommunityIcons name="clock-outline" size={14} color="#f59e0b" />
-                  <Text className="text-[11px] font-semibold text-amber-600">
-                    Aguardando
-                  </Text>
-                </View>
-              </View>
-
-              <View className="flex-row items-center justify-between px-5 py-4">
-                <View>
-                  <Text className="text-xs text-slate-500">Valor a pagar</Text>
-                  <Text className="text-xl font-extrabold text-slate-800">
-                    {formatCurrency(pagamento.valor)}
-                  </Text>
-                </View>
-                <View className="h-10 w-px bg-slate-200" />
-                <View className="flex-row items-center gap-3">
-                  <View className="h-9 w-9 items-center justify-center rounded-full bg-slate-100">
-                    <Feather name="calendar" size={16} color="#94a3b8" />
-                  </View>
-                  <View>
-                    <Text className="text-xs text-slate-500">Vencimento</Text>
-                    <Text className="text-sm font-semibold text-slate-700">
-                      {formatDate(pagamento.data_vencimento)}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-
-              <Pressable
-                className="flex-row items-center justify-between bg-orange-500 px-5 py-3"
-                  style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                  onPress={() => handleBaixaPagamento(pagamento)}
-                >
-                  <View className="flex-row items-center gap-2">
-                    <View className="h-8 w-8 items-center justify-center rounded-full bg-white/20">
-                      <Feather name="check" size={16} color="#fff" />
-                    </View>
-                    <Text className="text-sm font-semibold text-white">Confirmar Pagamento</Text>
-                  </View>
-                  <View className="opacity-70">
-                    <Feather name="arrow-right" size={18} color="#fff" />
-                  </View>
-                </Pressable>
-            </View>
-          ))}
-
-          {matricula.status_id !== 3 && matricula.status_id !== 4 && pagamentosPendentes.length === 0 && (
-            <View className="mb-5 overflow-hidden rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
+          {/* Faturas (todas as parcelas em uma tabela única) */}
+          <View className="mb-6 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+            <View className="flex-row flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4">
               <View className="flex-row items-center gap-3">
-                <View className="h-10 w-10 items-center justify-center rounded-full bg-slate-100">
-                  <Feather name="info" size={18} color="#94a3b8" />
+                <View className="h-9 w-9 items-center justify-center rounded-full bg-orange-100">
+                  <Feather name="file-text" size={18} color="#f97316" />
                 </View>
-                <View className="flex-1">
-                  <Text className="text-sm font-semibold text-slate-700">Nenhum pagamento pendente</Text>
-                  <Text className="mt-1 text-xs text-slate-500">
-                    A matrícula ainda não gerou cobranças ou o backend não retornou parcelas.
+                <View>
+                  <Text className="text-sm font-semibold text-slate-800">Faturas da Matrícula</Text>
+                  <Text className="text-xs text-slate-500">
+                    {pagamentosPendentes.length} atrasado(s) • {pagamentos.length} total
                   </Text>
                 </View>
               </View>
               <Pressable
-                className="mt-4 items-center rounded-lg border border-slate-200 bg-white px-4 py-2"
+                className="items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5"
                 style={({ pressed }) => [pressed && { opacity: 0.8 }]}
                 onPress={carregarDados}
               >
-                <Text className="text-xs font-semibold text-slate-600">Recarregar pagamentos</Text>
+                <Text className="text-[11px] font-semibold text-slate-600">Recarregar</Text>
               </Pressable>
             </View>
-          )}
 
-          {/* Tabela de Histórico (Pagamentos Confirmados) */}
-          {pagamentosNaoPendentes.length > 0 && (
-            <View className="mb-6 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
-              <View className="flex-row items-center gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4">
-                <View className="h-9 w-9 items-center justify-center rounded-full bg-orange-100">
-                  <Feather name="list" size={18} color="#f97316" />
+            {pagamentos.length === 0 ? (
+              <View className="px-5 py-6">
+                <View className="flex-row items-center gap-3">
+                  <View className="h-10 w-10 items-center justify-center rounded-full bg-slate-100">
+                    <Feather name="info" size={18} color="#94a3b8" />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-sm font-semibold text-slate-700">Nenhuma fatura encontrada</Text>
+                    <Text className="mt-1 text-xs text-slate-500">
+                      A matrícula ainda não gerou cobranças ou o backend não retornou parcelas.
+                    </Text>
+                  </View>
                 </View>
-                <Text className="text-sm font-semibold text-slate-800">Histórico de Pagamentos</Text>
               </View>
-
+            ) : (
               <View className="px-4 py-3">
                 <View className="flex-row items-center border-b border-slate-200 pb-2">
-                  <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 0.6 }}>ID</Text>
-                  <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 0.8 }}>Parcela</Text>
-                  <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 1.2 }}>Vencimento</Text>
-                  <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 1.2 }}>Pagamento</Text>
-                  <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 1.5 }}>Baixado por</Text>
+                  <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 0.7 }}>Parcela</Text>
+                  <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 1.1 }}>Vencimento</Text>
+                  <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 1.1 }}>Pagamento</Text>
+                  <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 1.3 }}>Baixado por</Text>
                   <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-right" style={{ flex: 1 }}>Valor</Text>
-                  <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-center" style={{ flex: 1 }}>Status</Text>
+                  <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-center" style={{ flex: 0.9 }}>Status</Text>
+                  <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-center" style={{ flex: 1 }}>Ação</Text>
                 </View>
-                
-                {pagamentos
-                  .filter(p => Number(p.status_pagamento_id) !== 1)
-                  .sort((a, b) => new Date(b.data_vencimento) - new Date(a.data_vencimento))
-                  .map((pagamento, index) => (
-                  <View key={pagamento.id || index} className="flex-row items-center border-b border-slate-100 py-3">
-                    <Text className="text-[12px] text-slate-400" style={{ flex: 0.6 }}>#{pagamento.id}</Text>
-                    <Text className="text-[13px] text-slate-600" style={{ flex: 0.8 }}>
-                      {pagamento.numero_parcela || index + 1}
-                    </Text>
-                    <Text className="text-[13px] text-slate-600" style={{ flex: 1.2 }}>
-                      {formatDate(pagamento.data_vencimento)}
-                    </Text>
-                    <Text className="text-[13px] text-emerald-600" style={{ flex: 1.2 }}>
-                      {pagamento.data_pagamento ? formatDate(pagamento.data_pagamento) : '-'}
-                    </Text>
-                    <View style={{ flex: 1.5 }}>
-                      <Text className="text-[13px] font-medium text-slate-700">
-                        {pagamento.baixado_por_nome || '-'}
-                      </Text>
-                      {pagamento.tipo_baixa_nome && (
-                        <Text className="mt-0.5 text-[11px] text-slate-500">
-                          {pagamento.tipo_baixa_nome}
+
+                {(() => {
+                  const pagamentosOrdenados = pagamentos
+                    .slice()
+                    .sort((a, b) => new Date(b.data_vencimento) - new Date(a.data_vencimento));
+                  const numeroFallback = pagamentos
+                    .slice()
+                    .sort((a, b) => new Date(a.data_vencimento) - new Date(b.data_vencimento))
+                    .reduce((acc, pagamento, idx) => {
+                      acc.set(pagamento.id, idx + 1);
+                      return acc;
+                    }, new Map());
+
+                  return pagamentosOrdenados.map((pagamento, index) => {
+                    const pendente = isPagamentoPendente(pagamento);
+                    const baixavel = isPagamentoBaixavel(pagamento);
+                    const numeroParcela = pagamento.numero_parcela || numeroFallback.get(pagamento.id) || index + 1;
+                    return (
+                      <View key={pagamento.id || index} className="flex-row items-center border-b border-slate-100 py-3">
+                        <View style={{ flex: 0.7 }}>
+                          <Text className="text-[12px] text-slate-400">#{pagamento.id || '-'}</Text>
+                          <Text className="text-[13px] font-medium text-slate-700">
+                            Parcela {numeroParcela}
+                          </Text>
+                        </View>
+                        <Text className="text-[13px] text-slate-600" style={{ flex: 1.1 }}>
+                          {formatDate(pagamento.data_vencimento)}
                         </Text>
-                      )}
-                    </View>
-                    <Text className="text-[13px] font-semibold text-slate-700" style={{ flex: 1, textAlign: 'right' }}>
-                      {formatCurrency(pagamento.valor)}
-                    </Text>
-                    <View style={{ flex: 1, alignItems: 'center' }}>
-                      <View
-                        className="rounded-full px-2.5 py-1"
-                        style={{ backgroundColor: getPagamentoStatusColor(pagamento.status_pagamento_id) }}
-                      >
-                        <Text className="text-[11px] font-bold text-white">
-                          {getPagamentoStatusLabel(pagamento.status_pagamento_id)}
+                        <Text className={`text-[13px] ${pagamento.data_pagamento ? 'text-emerald-600' : 'text-slate-400'}`} style={{ flex: 1.1 }}>
+                          {pagamento.data_pagamento ? formatDate(pagamento.data_pagamento) : '-'}
                         </Text>
+                        <View style={{ flex: 1.3 }}>
+                          <Text className="text-[13px] font-medium text-slate-700">
+                            {pagamento.baixado_por_nome || '-'}
+                          </Text>
+                          {pagamento.tipo_baixa_nome && (
+                            <Text className="mt-0.5 text-[11px] text-slate-500">
+                              {pagamento.tipo_baixa_nome}
+                            </Text>
+                          )}
+                        </View>
+                        <Text className="text-[13px] font-semibold text-slate-700" style={{ flex: 1, textAlign: 'right' }}>
+                          {formatCurrency(pagamento.valor)}
+                        </Text>
+                        <View style={{ flex: 0.9, alignItems: 'center' }}>
+                          <View
+                            className="rounded-full px-2.5 py-1"
+                            style={{ backgroundColor: getPagamentoStatusColor(pagamento.status_pagamento_id) }}
+                          >
+                            <Text className="text-[11px] font-bold text-white">
+                              {getPagamentoStatusLabel(pagamento.status_pagamento_id)}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={{ flex: 1, alignItems: 'center' }}>
+                          {baixavel ? (
+                            <Pressable
+                              className="rounded-lg bg-orange-500 px-3 py-1.5"
+                              style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                              onPress={() => handleBaixaPagamento(pagamento)}
+                            >
+                              <Text className="text-[11px] font-semibold text-white">Dar baixa</Text>
+                            </Pressable>
+                          ) : (
+                            <Text className="text-[11px] text-slate-400">—</Text>
+                          )}
+                        </View>
                       </View>
-                    </View>
-                  </View>
-                ))}
+                    );
+                  });
+                })()}
               </View>
-            </View>
-          )}
+            )}
+          </View>
 
           {/* Card de Resumo Financeiro - Design Moderno */}
           {pagamentos.length > 0 && (
@@ -521,9 +511,9 @@ export default function MatriculaDetalheScreen() {
                   <View className="flex-1">
                     <Text className="text-sm font-semibold text-slate-800">Resumo Financeiro</Text>
                     <Text className="text-xs text-slate-500">
-                      {Math.round((resumo.pago / resumo.total) * 100)}% pago do total
-                    </Text>
-                  </View>
+                    {Math.round((resumo.pago / resumo.total) * 100)}% pago do total
+                  </Text>
+                </View>
                 </View>
 
                 <View className="mt-4 h-2 overflow-hidden rounded-full bg-slate-200">
@@ -539,7 +529,7 @@ export default function MatriculaDetalheScreen() {
                   )}
                   <View
                     className="h-2 bg-amber-400"
-                    style={{ width: `${(resumo.pendente / resumo.total) * 100}%` }}
+                    style={{ width: `${(resumo.aguardando / resumo.total) * 100}%` }}
                   />
                 </View>
               </View>
@@ -570,10 +560,10 @@ export default function MatriculaDetalheScreen() {
                 <View className="min-w-[220px] flex-1 rounded-xl border border-amber-100 bg-amber-50/80 p-4">
                   <View className="flex-row items-center gap-2">
                     <Feather name="clock" size={18} color="#f59e0b" />
-                    <Text className="text-xs font-semibold text-amber-700">Pendente</Text>
+                    <Text className="text-xs font-semibold text-amber-700">Aguardando</Text>
                   </View>
                   <Text className="mt-2 text-lg font-bold text-amber-600">
-                    {formatCurrency(resumo.pendente)}
+                    {formatCurrency(resumo.aguardando)}
                   </Text>
                 </View>
               </View>
