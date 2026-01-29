@@ -61,11 +61,22 @@ class AuthController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
 
+        // Buscar aluno_id se criou registro na tabela alunos
+        $alunoId = null;
+        $db = require __DIR__ . '/../../config/database.php';
+        $stmtAluno = $db->prepare("SELECT id FROM alunos WHERE usuario_id = ?");
+        $stmtAluno->execute([$userId]);
+        $aluno = $stmtAluno->fetch(\PDO::FETCH_ASSOC);
+        if ($aluno) {
+            $alunoId = $aluno['id'];
+        }
+
         // Gerar token
         $token = $this->jwtService->encode([
             'user_id' => $userId,
             'email' => $data['email'],
-            'tenant_id' => $tenantId
+            'tenant_id' => $tenantId,
+            'aluno_id' => $alunoId
         ]);
 
         $usuario = $this->usuarioModel->findById($userId);
@@ -165,11 +176,24 @@ class AuthController
                 }
             }
             
+            // Buscar aluno_id se o usuário for aluno (role_id = 1)
+            $alunoId = null;
+            if ($usuario['role_id'] == 1) {
+                $db = require __DIR__ . '/../../config/database.php';
+                $stmtAluno = $db->prepare("SELECT id FROM alunos WHERE usuario_id = ?");
+                $stmtAluno->execute([$usuario['id']]);
+                $aluno = $stmtAluno->fetch(\PDO::FETCH_ASSOC);
+                if ($aluno) {
+                    $alunoId = $aluno['id'];
+                }
+            }
+            
             // Gerar token com tenant único
             $token = $this->jwtService->encode([
                 'user_id' => $usuario['id'],
                 'email' => $usuario['email'],
-                'tenant_id' => $tenantId
+                'tenant_id' => $tenantId,
+                'aluno_id' => $alunoId
             ]);
         }
 
@@ -259,11 +283,24 @@ class AuthController
             }
         }
 
+        // Buscar aluno_id se o usuário for aluno (role_id = 1)
+        $alunoId = null;
+        if ($usuario['role_id'] == 1) {
+            $db = require __DIR__ . '/../../config/database.php';
+            $stmtAluno = $db->prepare("SELECT id FROM alunos WHERE usuario_id = ?");
+            $stmtAluno->execute([$usuario['id']]);
+            $aluno = $stmtAluno->fetch(\PDO::FETCH_ASSOC);
+            if ($aluno) {
+                $alunoId = $aluno['id'];
+            }
+        }
+
         // Gerar novo token com o tenant selecionado
         $token = $this->jwtService->encode([
             'user_id' => $usuario['id'],
             'email' => $usuario['email'],
-            'tenant_id' => $tenantId
+            'tenant_id' => $tenantId,
+            'aluno_id' => $alunoId
         ]);
 
         // Buscar informações do tenant selecionado
@@ -341,11 +378,24 @@ class AuthController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
         }
 
+        // Buscar aluno_id se o usuário for aluno (role_id = 1)
+        $alunoId = null;
+        if (($usuario['role_id'] ?? null) == 1) {
+            $db = require __DIR__ . '/../../config/database.php';
+            $stmtAluno = $db->prepare("SELECT id FROM alunos WHERE usuario_id = ?");
+            $stmtAluno->execute([$usuario['id']]);
+            $aluno = $stmtAluno->fetch(\PDO::FETCH_ASSOC);
+            if ($aluno) {
+                $alunoId = $aluno['id'];
+            }
+        }
+
         // Gerar token com o tenant selecionado
         $token = $this->jwtService->encode([
             'user_id' => $usuario['id'],
             'email' => $usuario['email'],
-            'tenant_id' => $tenantId
+            'tenant_id' => $tenantId,
+            'aluno_id' => $alunoId
         ]);
 
         // Buscar informações do tenant selecionado

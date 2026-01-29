@@ -35,12 +35,12 @@ class Checkin
         return $result ? (int) $result : null;
     }
 
-    public function create(int $usuarioId, int $horarioId): ?int
+    public function create(int $usuarioId, int $horarioId, ?int $alunoIdParam = null): ?int
     {
         try {
-            // Obter tenant_id e aluno_id
+            // Obter tenant_id e aluno_id (usa o parâmetro se fornecido, evitando query extra)
             $tenantId = $this->tenantService->getTenantIdFromUsuario($usuarioId);
-            $alunoId = $this->getAlunoIdFromUsuario($usuarioId);
+            $alunoId = $alunoIdParam ?? $this->getAlunoIdFromUsuario($usuarioId);
             
             if (!$alunoId) {
                 throw new \Exception("Aluno não encontrado para usuario_id: $usuarioId");
@@ -68,12 +68,12 @@ class Checkin
         }
     }
 
-    public function createByAdmin(int $usuarioId, int $horarioId, int $adminId): ?int
+    public function createByAdmin(int $usuarioId, int $horarioId, int $adminId, ?int $alunoIdParam = null): ?int
     {
         try {
-            // Obter tenant_id e aluno_id
+            // Obter tenant_id e aluno_id (usa o parâmetro se fornecido, evitando query extra)
             $tenantId = $this->tenantService->getTenantIdFromUsuario($usuarioId);
-            $alunoId = $this->getAlunoIdFromUsuario($usuarioId);
+            $alunoId = $alunoIdParam ?? $this->getAlunoIdFromUsuario($usuarioId);
             
             if (!$alunoId) {
                 throw new \Exception("Aluno não encontrado para usuario_id: $usuarioId");
@@ -168,12 +168,12 @@ class Checkin
      * Criar check-in em turma (novo método para mobile app)
      * Usa aluno_id para relacionamento correto
      */
-    public function createEmTurma(int $usuarioId, int $turmaId): ?int
+    public function createEmTurma(int $usuarioId, int $turmaId, ?int $alunoIdParam = null): ?int
     {
         try {
-            // Obter tenant_id e aluno_id
+            // Obter tenant_id e aluno_id (usa o parâmetro se fornecido, evitando query extra)
             $tenantId = $this->tenantService->getTenantIdFromUsuario($usuarioId);
-            $alunoId = $this->getAlunoIdFromUsuario($usuarioId);
+            $alunoId = $alunoIdParam ?? $this->getAlunoIdFromUsuario($usuarioId);
             
             if (!$alunoId) {
                 throw new \Exception("Aluno não encontrado para usuario_id: $usuarioId");

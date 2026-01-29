@@ -119,6 +119,16 @@ COMMENT 'FK para alunos' AFTER `usuario_id`;
 CREATE INDEX IF NOT EXISTS `idx_checkins_aluno_id` ON `checkins` (`aluno_id`);
 
 -- ============================================================================
+-- 6.2 ADICIONAR COLUNA usuario_id NA TABELA professores
+-- ============================================================================
+ALTER TABLE `professores` 
+ADD COLUMN IF NOT EXISTS `usuario_id` INT(11) DEFAULT NULL 
+COMMENT 'FK para usuarios (vinculo com conta de login)' AFTER `id`;
+
+-- Criar índice para usuario_id em professores
+CREATE INDEX IF NOT EXISTS `idx_professores_usuario_id` ON `professores` (`usuario_id`);
+
+-- ============================================================================
 -- 7. POPULAR DADOS DE MIGRAÇÃO
 -- ============================================================================
 
@@ -178,7 +188,45 @@ SET c.`aluno_id` = (
 )
 WHERE c.`aluno_id` IS NULL;
 
--- 7.7 Migrar foto_caminho de usuarios para alunos (se existir)
+-- 7.7 Criar usuarios para professores que não têm e vincular
+-- Primeiro, criar usuarios para professores existentes que ainda não têm usuario_id
+INSERT INTO `usuarios` (`nome`, `email`, `telefone`, `cpf`, `ativo`, `role_id`, `senha_hash`)
+SELECT 
+    p.`nome`,
+    p.`email`,
+    p.`telefone`,
+    p.`cpf`,
+    p.`ativo`,
+    2, -- role_id = 2 (admin/professor)
+    '$2y$10$gHLUPI9VrE60CMi.TTj4cujkftMVWZe2RLC9JZCCGYHwCv73iaGmW' -- senha padrão temporária
+FROM `professores` p
+WHERE p.`email` IS NOT NULL 
+AND NOT EXISTS (SELECT 1 FROM `usuarios` u WHERE u.`email` = p.`email`);
+
+-- 7.8 Popular usuario_id nos professores baseado no email
+UPDATE `professores` p
+SET p.`usuario_id` = (
+    SELECT u.`id` FROM `usuarios` u WHERE u.`email` = p.`email` LIMIT 1
+)
+WHERE p.`usuario_id` IS NULL AND p.`email` IS NOT NULL;
+
+-- 7.9 Criar registros em tenant_usuario_papel para professores (papel_id = 2)
+INSERT INTO `tenant_usuario_papel` (`tenant_id`, `usuario_id`, `papel_id`, `ativo`)
+SELECT DISTINCT
+    p.`tenant_id`,
+    p.`usuario_id`,
+    2, -- papel_id = 2 (professor)
+    1
+FROM `professores` p
+WHERE p.`usuario_id` IS NOT NULL
+AND NOT EXISTS (
+    SELECT 1 FROM `tenant_usuario_papel` tup 
+    WHERE tup.`tenant_id` = p.`tenant_id` 
+    AND tup.`usuario_id` = p.`usuario_id`
+    AND tup.`papel_id` = 2
+);
+
+-- 7.10 Migrar foto_caminho de usuarios para alunos (se existir)
 UPDATE `alunos` a
 INNER JOIN `usuarios` u ON u.`id` = a.`usuario_id`
 SET a.`foto_caminho` = REPLACE(u.`foto_caminho`, 'usuario_', 'aluno_')
@@ -222,6 +270,10 @@ FROM `matriculas` WHERE `aluno_id` IS NULL;
 -- Verificar se todos os aluno_id foram populados em checkins
 SELECT 'VERIFICAÇÃO: Checkins sem aluno_id' AS verificacao, COUNT(*) AS total
 FROM `checkins` WHERE `aluno_id` IS NULL;
+
+-- Verificar se todos os usuario_id foram populados em professores
+SELECT 'VERIFICAÇÃO: Professores sem usuario_id' AS verificacao, COUNT(*) AS total
+FROM `professores` WHERE `usuario_id` IS NULL;
 
 -- Verificar registros de alunos criados
 SELECT 'VERIFICAÇÃO: Total de alunos na tabela' AS verificacao, COUNT(*) AS total

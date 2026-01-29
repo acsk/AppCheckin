@@ -75,6 +75,7 @@ class AuthMiddleware
         $request = $request->withAttribute('userId', $decoded->user_id);
         $request = $request->withAttribute('userEmail', $decoded->email);
         $request = $request->withAttribute('tenant_id', $usuario['tenant_id']);
+        $request = $request->withAttribute('aluno_id', $decoded->aluno_id ?? null);
         $request = $request->withAttribute('usuario', $usuario);
 
         return $handler->handle($request);
