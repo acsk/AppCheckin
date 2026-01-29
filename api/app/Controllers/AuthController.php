@@ -6,6 +6,7 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Models\Usuario;
 use App\Services\JWTService;
+use OpenApi\Attributes as OA;
 
 class AuthController
 {
@@ -19,6 +20,38 @@ class AuthController
         $this->jwtService = new JWTService($_ENV['JWT_SECRET']);
     }
 
+    #[OA\Post(
+        path: "/auth/register",
+        summary: "Registrar novo usuário",
+        description: "Cria um novo usuário no sistema e retorna o token JWT",
+        tags: ["Autenticação"],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ["nome", "email", "senha"],
+                properties: [
+                    new OA\Property(property: "nome", type: "string", example: "João Silva"),
+                    new OA\Property(property: "email", type: "string", format: "email", example: "joao@email.com"),
+                    new OA\Property(property: "senha", type: "string", minLength: 6, example: "senha123")
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(
+                response: 201,
+                description: "Usuário criado com sucesso",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "message", type: "string", example: "Usuário criado com sucesso"),
+                        new OA\Property(property: "token", type: "string", example: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."),
+                        new OA\Property(property: "user", type: "object")
+                    ]
+                )
+            ),
+            new OA\Response(response: 422, description: "Erro de validação"),
+            new OA\Response(response: 500, description: "Erro interno")
+        ]
+    )]
     public function register(Request $request, Response $response): Response
     {
         $data = $request->getParsedBody();
@@ -90,6 +123,50 @@ class AuthController
         return $response->withHeader('Content-Type', 'application/json')->withStatus(201);
     }
 
+    #[OA\Post(
+        path: "/auth/login",
+        summary: "Login do usuário",
+        description: "Autentica o usuário e retorna token JWT. Se o usuário tiver múltiplos tenants, retorna lista para seleção.",
+        tags: ["Autenticação"],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ["email", "senha"],
+                properties: [
+                    new OA\Property(property: "email", type: "string", format: "email", example: "joao@email.com"),
+                    new OA\Property(property: "senha", type: "string", example: "senha123")
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Login realizado com sucesso",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "message", type: "string", example: "Login realizado com sucesso"),
+                        new OA\Property(property: "token", type: "string", nullable: true, example: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."),
+                        new OA\Property(
+                            property: "user",
+                            type: "object",
+                            properties: [
+                                new OA\Property(property: "id", type: "integer", example: 1),
+                                new OA\Property(property: "nome", type: "string", example: "João Silva"),
+                                new OA\Property(property: "email", type: "string", example: "joao@email.com"),
+                                new OA\Property(property: "foto_base64", type: "string", nullable: true),
+                                new OA\Property(property: "role_id", type: "integer", example: 1)
+                            ]
+                        ),
+                        new OA\Property(property: "tenants", type: "array", items: new OA\Items(type: "object")),
+                        new OA\Property(property: "requires_tenant_selection", type: "boolean", example: false)
+                    ]
+                )
+            ),
+            new OA\Response(response: 401, description: "Credenciais inválidas"),
+            new OA\Response(response: 403, description: "Sem acesso a tenant ou contrato inativo"),
+            new OA\Response(response: 422, description: "Dados incompletos")
+        ]
+    )]
     public function login(Request $request, Response $response): Response
     {
         $data = $request->getParsedBody();
@@ -218,6 +295,24 @@ class AuthController
         return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
     }
 
+    #[OA\Post(
+        path: "/auth/logout",
+        summary: "Logout do usuário",
+        description: "Confirma logout no backend. O cliente deve remover o token localmente.",
+        tags: ["Autenticação"],
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Logout realizado com sucesso",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "message", type: "string", example: "Logout realizado com sucesso")
+                    ]
+                )
+            )
+        ]
+    )]
     public function logout(Request $request, Response $response): Response
     {
         // No backend stateless (JWT), apenas confirmamos o logout
@@ -232,6 +327,37 @@ class AuthController
     /**
      * Selecionar tenant/academia após login (quando usuário tem múltiplos contratos)
      */
+    #[OA\Post(
+        path: "/auth/select-tenant",
+        summary: "Selecionar tenant/academia",
+        description: "Após login com múltiplos tenants, seleciona qual academia acessar e retorna novo token.",
+        tags: ["Autenticação"],
+        security: [["bearerAuth" => []]],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ["tenant_id"],
+                properties: [
+                    new OA\Property(property: "tenant_id", type: "integer", example: 1)
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Tenant selecionado com sucesso",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "message", type: "string", example: "Academia selecionada com sucesso"),
+                        new OA\Property(property: "token", type: "string", example: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."),
+                        new OA\Property(property: "tenant", type: "object")
+                    ]
+                )
+            ),
+            new OA\Response(response: 403, description: "Sem acesso ao tenant ou contrato inativo"),
+            new OA\Response(response: 422, description: "tenant_id não informado")
+        ]
+    )]
     public function selectTenant(Request $request, Response $response): Response
     {
         $data = $request->getParsedBody();

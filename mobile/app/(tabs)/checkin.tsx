@@ -469,7 +469,7 @@ export default function CheckinScreen() {
         return;
       }
 
-      const url = `${getApiUrlRuntime()}/checkin/${checkinId}/desfazer`;
+      const url = `${getApiUrlRuntime()}/mobile/checkin/${checkinId}/desfazer`;
       console.log("📍 URL DELETE:", url);
 
       const response = await fetch(url, {

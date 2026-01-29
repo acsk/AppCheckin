@@ -10,6 +10,7 @@ use App\Models\Checkin;
 use App\Models\Wod;
 use App\Models\WodBloco;
 use App\Models\WodVariacao;
+use OpenApi\Attributes as OA;
 
 /**
  * MobileController
@@ -45,13 +46,43 @@ class MobileController
     /**
      * Retorna o perfil completo do usuário logado com estatísticas
      * Endpoint otimizado para a tela de perfil do App Mobile
-     * 
-     * @param Request $request Requisição HTTP
-     * @param Response $response Resposta HTTP
-     * @return Response JSON com perfil completo
-     * 
-     * @api GET /mobile/perfil
      */
+    #[OA\Get(
+        path: "/mobile/perfil",
+        summary: "Perfil do usuário",
+        description: "Retorna o perfil completo do usuário logado com estatísticas, plano, ranking e dados de todos os tenants.",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Perfil retornado com sucesso",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "success", type: "boolean", example: true),
+                        new OA\Property(
+                            property: "data",
+                            type: "object",
+                            properties: [
+                                new OA\Property(property: "id", type: "integer", example: 1),
+                                new OA\Property(property: "aluno_id", type: "integer", example: 1),
+                                new OA\Property(property: "nome", type: "string", example: "João Silva"),
+                                new OA\Property(property: "email", type: "string", example: "joao@email.com"),
+                                new OA\Property(property: "telefone", type: "string", example: "(11) 99999-9999"),
+                                new OA\Property(property: "foto_url", type: "string", nullable: true),
+                                new OA\Property(property: "estatisticas", type: "object"),
+                                new OA\Property(property: "plano", type: "object"),
+                                new OA\Property(property: "ranking_modalidades", type: "array", items: new OA\Items(type: "object")),
+                                new OA\Property(property: "tenants", type: "array", items: new OA\Items(type: "object"))
+                            ]
+                        )
+                    ]
+                )
+            ),
+            new OA\Response(response: 401, description: "Não autorizado"),
+            new OA\Response(response: 404, description: "Usuário não encontrado")
+        ]
+    )]
     public function perfil(Request $request, Response $response): Response
     {
         try {
@@ -165,13 +196,13 @@ class MobileController
             $sequencia = $this->calcularSequencia($userId);
 
             // Último check-in
-            $sqlUltimo = "SELECT c.data_checkin, h.hora, d.data
+            $sqlUltimo = "SELECT c.data_checkin, t.horario_inicio as hora, d.data
                           FROM checkins c
                           INNER JOIN alunos a ON a.id = c.aluno_id
-                          INNER JOIN horarios h ON c.horario_id = h.id
-                          INNER JOIN dias d ON h.dia_id = d.id
+                          INNER JOIN turmas t ON c.turma_id = t.id
+                          INNER JOIN dias d ON t.dia_id = d.id
                           WHERE a.usuario_id = :user_id
-                          ORDER BY d.data DESC, h.hora DESC LIMIT 1";
+                          ORDER BY d.data DESC, t.horario_inicio DESC LIMIT 1";
             
             $stmtUltimo = $this->db->prepare($sqlUltimo);
             $stmtUltimo->execute(['user_id' => $userId]);
@@ -205,12 +236,12 @@ class MobileController
      */
     private function calcularSequencia(int $userId): int
     {
-        // Busca datas únicas de check-in usando a tabela dias (relacionada aos horarios)
+        // Busca datas únicas de check-in usando a tabela dias (relacionada às turmas)
         $sql = "SELECT DISTINCT d.data 
                 FROM checkins c
                 INNER JOIN alunos a ON a.id = c.aluno_id
-                INNER JOIN horarios h ON c.horario_id = h.id
-                INNER JOIN dias d ON h.dia_id = d.id
+                INNER JOIN turmas t ON c.turma_id = t.id
+                INNER JOIN dias d ON t.dia_id = d.id
                 WHERE a.usuario_id = :user_id
                 ORDER BY d.data DESC LIMIT 30";
         
@@ -336,9 +367,34 @@ class MobileController
      * @param Request $request Requisição HTTP
      * @param Response $response Resposta HTTP
      * @return Response JSON com lista de tenants
-     * 
-     * @api GET /mobile/tenants
      */
+    #[OA\Get(
+        path: "/mobile/tenants",
+        summary: "Listar tenants do usuário",
+        description: "Retorna todos os tenants/academias que o usuário tem acesso.",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Tenants retornados com sucesso",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "success", type: "boolean", example: true),
+                        new OA\Property(
+                            property: "data",
+                            type: "object",
+                            properties: [
+                                new OA\Property(property: "tenants", type: "array", items: new OA\Items(type: "object")),
+                                new OA\Property(property: "total", type: "integer", example: 1)
+                            ]
+                        )
+                    ]
+                )
+            ),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
     public function tenants(Request $request, Response $response): Response
     {
         $userId = $request->getAttribute('userId');
@@ -357,14 +413,28 @@ class MobileController
 
     /**
      * Lista os contratos/planos ativos do tenant
-     * Mostra qual é o plano ativo da academia
-     * 
-     * @param Request $request Requisição HTTP
-     * @param Response $response Resposta HTTP
-     * @return Response JSON com contrato ativo
-     * 
-     * @api GET /mobile/contratos
      */
+    #[OA\Get(
+        path: "/mobile/contratos",
+        summary: "Contrato ativo do tenant",
+        description: "Retorna o contrato/plano ativo da academia selecionada.",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Contrato retornado com sucesso",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "success", type: "boolean", example: true),
+                        new OA\Property(property: "data", type: "object")
+                    ]
+                )
+            ),
+            new OA\Response(response: 400, description: "Tenant não selecionado"),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
     public function contratos(Request $request, Response $response): Response
     {
         $tenantId = $request->getAttribute('tenantId');
@@ -499,15 +569,35 @@ class MobileController
 
     /**
      * Lista todos os contratos/planos do tenant
-     * Permite visualizar múltiplos planos (ativo, vencido, pendente, etc)
-     * Útil quando há múltiplos planos contratados
-     * 
-     * @param Request $request Requisição HTTP
-     * @param Response $response Resposta HTTP
-     * @return Response JSON com lista de contratos
-     * 
-     * @api GET /mobile/planos
      */
+    #[OA\Get(
+        path: "/mobile/planos",
+        summary: "Listar planos do tenant",
+        description: "Retorna todos os contratos/planos do tenant (ativos, vencidos, pendentes).",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Planos retornados com sucesso",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "success", type: "boolean", example: true),
+                        new OA\Property(
+                            property: "data",
+                            type: "object",
+                            properties: [
+                                new OA\Property(property: "planos", type: "array", items: new OA\Items(type: "object")),
+                                new OA\Property(property: "total", type: "integer", example: 2)
+                            ]
+                        )
+                    ]
+                )
+            ),
+            new OA\Response(response: 400, description: "Tenant não selecionado"),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
     public function planos(Request $request, Response $response): Response
     {
         $tenantId = $request->getAttribute('tenantId');
@@ -659,13 +749,40 @@ class MobileController
 
     /**
      * Lista o histórico de check-ins do usuário
-     * 
-     * @param Request $request Requisição HTTP
-     * @param Response $response Resposta HTTP
-     * @return Response JSON com histórico
-     * 
-     * @api GET /mobile/checkins
      */
+    #[OA\Get(
+        path: "/mobile/checkins",
+        summary: "Histórico de check-ins",
+        description: "Retorna o histórico de check-ins do usuário com paginação.",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        parameters: [
+            new OA\Parameter(name: "limit", in: "query", description: "Limite de registros (máx: 100)", schema: new OA\Schema(type: "integer", default: 30)),
+            new OA\Parameter(name: "offset", in: "query", description: "Offset para paginação", schema: new OA\Schema(type: "integer", default: 0))
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Histórico retornado com sucesso",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "success", type: "boolean", example: true),
+                        new OA\Property(
+                            property: "data",
+                            type: "object",
+                            properties: [
+                                new OA\Property(property: "checkins", type: "array", items: new OA\Items(type: "object")),
+                                new OA\Property(property: "total", type: "integer"),
+                                new OA\Property(property: "limit", type: "integer"),
+                                new OA\Property(property: "offset", type: "integer")
+                            ]
+                        )
+                    ]
+                )
+            ),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
     public function historicoCheckins(Request $request, Response $response): Response
     {
         $userId = $request->getAttribute('userId');
@@ -675,13 +792,13 @@ class MobileController
         $offset = (int) ($queryParams['offset'] ?? 0);
 
         $sql = "SELECT c.id, c.data_checkin, c.created_at,
-                       d.data, h.hora
+                       d.data, t.horario_inicio as hora, t.nome as turma_nome
                 FROM checkins c
                 INNER JOIN alunos a ON a.id = c.aluno_id
-                INNER JOIN horarios h ON c.horario_id = h.id
-                INNER JOIN dias d ON h.dia_id = d.id
+                INNER JOIN turmas t ON c.turma_id = t.id
+                INNER JOIN dias d ON t.dia_id = d.id
                 WHERE a.usuario_id = :user_id
-                ORDER BY d.data DESC, h.hora DESC 
+                ORDER BY d.data DESC, t.horario_inicio DESC 
                 LIMIT :limit OFFSET :offset";
         
         $stmt = $this->db->prepare($sql);
@@ -710,233 +827,6 @@ class MobileController
             ]
         ]));
         return $response->withHeader('Content-Type', 'application/json');
-    }
-
-    /**
-     * GET /mobile/horarios
-     * Retorna todos os horários disponíveis para hoje
-     * Útil para o aluno selecionar uma aula para fazer check-in
-     * 
-     * @param Request $request Requisição HTTP
-     * @param Response $response Resposta HTTP
-     * @return Response JSON com horários do dia
-     */
-    public function horariosHoje(Request $request, Response $response): Response
-    {
-        $tenantId = $request->getAttribute('tenantId');
-        
-        // Buscar o dia de hoje
-        $dataHoje = date('Y-m-d');
-        
-        $sql = "SELECT d.id, d.data, d.ativo,
-                h.id as horario_id, h.hora, h.horario_inicio, h.horario_fim, 
-                h.limite_alunos, h.tolerancia_minutos, h.ativo as horario_ativo,
-                COUNT(DISTINCT t.id) as total_turmas,
-                COUNT(DISTINCT c.id) as total_confirmados
-                FROM dias d
-                LEFT JOIN horarios h ON d.id = h.dia_id AND h.ativo = 1
-                LEFT JOIN turmas t ON h.id = t.horario_id AND t.ativo = 1
-                LEFT JOIN checkins c ON t.id = c.turma_id AND c.data_checkin = DATE(CURRENT_TIMESTAMP)
-                WHERE d.tenant_id = :tenant_id 
-                AND d.data = :data
-                AND d.ativo = 1
-                GROUP BY h.id
-                ORDER BY h.horario_inicio ASC";
-        
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute([
-            'tenant_id' => $tenantId,
-            'data' => $dataHoje
-        ]);
-        
-        $horarios = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        
-        $response->getBody()->write(json_encode([
-            'success' => true,
-            'data' => [
-                'data' => $dataHoje,
-                'horarios' => $horarios,
-                'total' => count($horarios)
-            ]
-        ], JSON_UNESCAPED_UNICODE));
-        return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
-    }
-
-    /**
-     * GET /mobile/horarios/proximos
-     * Retorna os próximos horários disponíveis (próximos 7 dias)
-     * 
-     * @param Request $request Requisição HTTP
-     * @param Response $response Resposta HTTP
-     * @return Response JSON com horários dos próximos dias
-     */
-    public function horariosProximos(Request $request, Response $response): Response
-    {
-        $tenantId = $request->getAttribute('tenantId');
-        $queryParams = $request->getQueryParams();
-        
-        // Dias a retornar (padrão: 7)
-        $dias = isset($queryParams['dias']) ? (int) $queryParams['dias'] : 7;
-        
-        $dataInicio = date('Y-m-d');
-        $dataFim = date('Y-m-d', strtotime("+{$dias} days"));
-        
-        $sql = "SELECT d.id, d.data, DAYNAME(d.data) as dia_semana, d.ativo,
-                h.id as horario_id, h.hora, h.horario_inicio, h.horario_fim, 
-                h.limite_alunos, h.tolerancia_minutos, h.ativo as horario_ativo,
-                COUNT(DISTINCT t.id) as total_turmas,
-                COUNT(DISTINCT c.id) as total_confirmados,
-                GROUP_CONCAT(DISTINCT m.nome SEPARATOR ', ') as modalidades,
-                GROUP_CONCAT(DISTINCT p.nome SEPARATOR ', ') as professores
-                FROM dias d
-                LEFT JOIN horarios h ON d.id = h.dia_id AND h.ativo = 1
-                LEFT JOIN turmas t ON h.id = t.horario_id AND t.ativo = 1
-                LEFT JOIN modalidades m ON t.modalidade_id = m.id
-                LEFT JOIN professores p ON t.professor_id = p.id
-                LEFT JOIN checkins c ON t.id = c.turma_id AND c.data_checkin = DATE(CURRENT_TIMESTAMP)
-                WHERE d.tenant_id = :tenant_id 
-                AND d.data BETWEEN :data_inicio AND :data_fim
-                AND d.ativo = 1
-                AND h.id IS NOT NULL
-                GROUP BY h.id
-                ORDER BY d.data ASC, h.horario_inicio ASC";
-        
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute([
-            'tenant_id' => $tenantId,
-            'data_inicio' => $dataInicio,
-            'data_fim' => $dataFim
-        ]);
-        
-        $horarios = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        
-        // Agrupar por data
-        $horariosPorData = [];
-        foreach ($horarios as $horario) {
-            $data = $horario['data'];
-            if (!isset($horariosPorData[$data])) {
-                $horariosPorData[$data] = [
-                    'data' => $data,
-                    'dia_semana' => $horario['dia_semana'],
-                    'ativo' => (bool) $horario['ativo'],
-                    'horarios' => []
-                ];
-            }
-            $horariosPorData[$data]['horarios'][] = $horario;
-        }
-        
-        $response->getBody()->write(json_encode([
-            'success' => true,
-            'data' => [
-                'periodo' => [
-                    'inicio' => $dataInicio,
-                    'fim' => $dataFim,
-                    'dias' => $dias
-                ],
-                'dias' => array_values($horariosPorData),
-                'total_dias' => count($horariosPorData),
-                'total_horarios' => count($horarios)
-            ]
-        ], JSON_UNESCAPED_UNICODE));
-        return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
-    }
-
-    /**
-     * GET /mobile/horarios/{diaId}
-     * Retorna todos os horários de um dia específico com detalhes das turmas
-     * 
-     * @param Request $request Requisição HTTP
-     * @param Response $response Resposta HTTP
-     * @return Response JSON com horários do dia
-     */
-    public function horariosPorDia(Request $request, Response $response, array $args): Response
-    {
-        $tenantId = $request->getAttribute('tenantId');
-        $diaId = (int) $args['diaId'];
-        
-        // Buscar informações do dia
-        $sqlDia = "SELECT id, data, ativo FROM dias WHERE id = :id AND tenant_id = :tenant_id";
-        $stmtDia = $this->db->prepare($sqlDia);
-        $stmtDia->execute(['id' => $diaId, 'tenant_id' => $tenantId]);
-        $dia = $stmtDia->fetch(\PDO::FETCH_ASSOC);
-        
-        if (!$dia) {
-            $response->getBody()->write(json_encode([
-                'success' => false,
-                'error' => 'Dia não encontrado'
-            ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
-        }
-        
-        // Buscar horários e turmas deste dia
-        $sql = "SELECT h.id as horario_id, h.hora, h.horario_inicio, h.horario_fim, 
-                h.limite_alunos, h.tolerancia_minutos, h.ativo as horario_ativo,
-                t.id as turma_id, t.nome as turma_nome, t.ativo as turma_ativa,
-                m.id as modalidade_id, m.nome as modalidade_nome, m.cor,
-                p.id as professor_id, p.nome as professor_nome,
-                COUNT(DISTINCT c.id) as confirmados,
-                (h.limite_alunos - COUNT(DISTINCT c.id)) as vagas
-                FROM horarios h
-                LEFT JOIN turmas t ON h.id = t.horario_id
-                LEFT JOIN modalidades m ON t.modalidade_id = m.id
-                LEFT JOIN professores p ON t.professor_id = p.id
-                LEFT JOIN checkins c ON t.id = c.turma_id
-                WHERE h.dia_id = :dia_id AND h.ativo = 1
-                GROUP BY h.id, t.id
-                ORDER BY h.horario_inicio ASC, t.nome ASC";
-        
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute(['dia_id' => $diaId]);
-        $dados = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        
-        // Agrupar por horário
-        $horarios = [];
-        foreach ($dados as $item) {
-            $horarioId = $item['horario_id'];
-            
-            if (!isset($horarios[$horarioId])) {
-                $horarios[$horarioId] = [
-                    'horario_id' => $horarioId,
-                    'hora' => $item['hora'],
-                    'horario_inicio' => $item['horario_inicio'],
-                    'horario_fim' => $item['horario_fim'],
-                    'limite_alunos' => $item['limite_alunos'],
-                    'tolerancia_minutos' => $item['tolerancia_minutos'],
-                    'ativo' => (bool) $item['horario_ativo'],
-                    'turmas' => []
-                ];
-            }
-            
-            // Adicionar turma ao horário
-            if ($item['turma_id']) {
-                $horarios[$horarioId]['turmas'][] = [
-                    'turma_id' => $item['turma_id'],
-                    'turma_nome' => $item['turma_nome'],
-                    'ativa' => (bool) $item['turma_ativa'],
-                    'modalidade' => [
-                        'id' => $item['modalidade_id'],
-                        'nome' => $item['modalidade_nome'],
-                        'cor' => $item['cor']
-                    ],
-                    'professor' => [
-                        'id' => $item['professor_id'],
-                        'nome' => $item['professor_nome']
-                    ],
-                    'confirmados' => (int) $item['confirmados'],
-                    'vagas' => (int) $item['vagas']
-                ];
-            }
-        }
-        
-        $response->getBody()->write(json_encode([
-            'success' => true,
-            'data' => [
-                'dia' => $dia,
-                'horarios' => array_values($horarios),
-                'total_horarios' => count($horarios)
-            ]
-        ], JSON_UNESCAPED_UNICODE));
-        return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
     }
 
     /**
@@ -1054,13 +944,50 @@ class MobileController
     }
 
     /**
-     * POST /mobile/checkin
      * Registra check-in do usuário em uma turma selecionada
-     * 
-     * @param Request $request Requisição HTTP
-     * @param Response $response Resposta HTTP
-     * @return Response JSON com confirmação
      */
+    #[OA\Post(
+        path: "/mobile/checkin",
+        summary: "Registrar check-in",
+        description: "Registra o check-in do usuário em uma turma específica. Verifica limites diários, créditos disponíveis e tolerância de horário.",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ["turma_id"],
+                properties: [
+                    new OA\Property(property: "turma_id", type: "integer", description: "ID da turma", example: 1)
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(
+                response: 201,
+                description: "Check-in realizado com sucesso",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "success", type: "boolean", example: true),
+                        new OA\Property(property: "message", type: "string", example: "Check-in realizado com sucesso"),
+                        new OA\Property(
+                            property: "data",
+                            type: "object",
+                            properties: [
+                                new OA\Property(property: "checkin_id", type: "integer", example: 123),
+                                new OA\Property(property: "turma", type: "object"),
+                                new OA\Property(property: "usuario", type: "object"),
+                                new OA\Property(property: "data_hora", type: "string", format: "date-time")
+                            ]
+                        )
+                    ]
+                )
+            ),
+            new OA\Response(response: 400, description: "turma_id obrigatório ou check-in duplicado"),
+            new OA\Response(response: 401, description: "Não autorizado"),
+            new OA\Response(response: 403, description: "Sem créditos ou fora do horário permitido"),
+            new OA\Response(response: 404, description: "Turma não encontrada")
+        ]
+    )]
     public function registrarCheckin(Request $request, Response $response): Response
     {
         try {
@@ -1301,10 +1228,25 @@ class MobileController
     }
 
     /**
-     * DELETE /mobile/checkin/{checkinId}/desfazer
      * Desfazer check-in com validação de horário
-     * Regra: Não pode desfazer se a aula já começou ou passou
      */
+    #[OA\Delete(
+        path: "/mobile/checkin/{checkinId}/desfazer",
+        summary: "Desfazer check-in",
+        description: "Cancela um check-in realizado. Só é permitido se a aula ainda não começou.",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        parameters: [
+            new OA\Parameter(name: "checkinId", in: "path", required: true, description: "ID do check-in", schema: new OA\Schema(type: "integer"))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: "Check-in desfeito com sucesso"),
+            new OA\Response(response: 400, description: "checkinId obrigatório ou aula já começou"),
+            new OA\Response(response: 401, description: "Não autorizado"),
+            new OA\Response(response: 403, description: "Sem permissão"),
+            new OA\Response(response: 404, description: "Check-in não encontrado")
+        ]
+    )]
     public function desfazerCheckin(Request $request, Response $response, array $args): Response
     {
         try {
@@ -1321,8 +1263,9 @@ class MobileController
             }
 
             // Buscar check-in
-            $sql = "SELECT c.id, c.aluno_id, c.turma_id, t.dia_id, d.data as dia_data
+            $sql = "SELECT c.id, c.aluno_id, c.turma_id, a.usuario_id, t.dia_id, d.data as dia_data
                     FROM checkins c
+                    INNER JOIN alunos a ON c.aluno_id = a.id
                     INNER JOIN turmas t ON c.turma_id = t.id
                     INNER JOIN dias d ON t.dia_id = d.id
                     WHERE c.id = :checkin_id AND t.tenant_id = :tenant_id";
@@ -1415,14 +1358,61 @@ class MobileController
     }
 
     /**
-     * GET /mobile/horarios-disponiveis
      * Retorna todos os horários/turmas disponíveis para uma data específica
-     * Útil para o app listar as aulas disponíveis para inscrição ou check-in
-     * 
-     * @param Request $request Requisição HTTP
-     * @param Response $response Resposta HTTP
-     * @return Response JSON com horários disponíveis
      */
+    #[OA\Get(
+        path: "/mobile/horarios-disponiveis",
+        summary: "Horários disponíveis",
+        description: "Retorna todos os horários/turmas disponíveis para uma data específica. Útil para listar as aulas disponíveis para check-in.",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        parameters: [
+            new OA\Parameter(
+                name: "data",
+                in: "query",
+                required: false,
+                description: "Data para consulta (padrão: hoje)",
+                schema: new OA\Schema(type: "string", format: "date", example: "2025-01-29")
+            )
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Horários retornados com sucesso",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "success", type: "boolean", example: true),
+                        new OA\Property(
+                            property: "data",
+                            type: "object",
+                            properties: [
+                                new OA\Property(property: "data", type: "string", example: "2025-01-29"),
+                                new OA\Property(property: "dia_semana", type: "string", example: "quarta"),
+                                new OA\Property(
+                                    property: "horarios",
+                                    type: "array",
+                                    items: new OA\Items(
+                                        type: "object",
+                                        properties: [
+                                            new OA\Property(property: "turma_id", type: "integer"),
+                                            new OA\Property(property: "nome", type: "string"),
+                                            new OA\Property(property: "hora_inicio", type: "string"),
+                                            new OA\Property(property: "hora_fim", type: "string"),
+                                            new OA\Property(property: "modalidade", type: "string"),
+                                            new OA\Property(property: "vagas_disponiveis", type: "integer"),
+                                            new OA\Property(property: "ja_tem_checkin", type: "boolean")
+                                        ]
+                                    )
+                                )
+                            ]
+                        )
+                    ]
+                )
+            ),
+            new OA\Response(response: 400, description: "Tenant não selecionado"),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
     public function horariosDisponiveis(Request $request, Response $response): Response
     {
         try {
@@ -1549,15 +1539,24 @@ class MobileController
     }
 
     /**
-     * GET /mobile/matriculas/{matriculaId}
-     * Retorna os detalhes completos de uma matrícula com todos os pagamentos
-     * Permite o usuário acompanhar status, vencimentos e histórico de pagamentos
-     * 
-     * @param Request $request Requisição HTTP
-     * @param Response $response Resposta HTTP
-     * @param array $args Argumentos da rota (matriculaId)
-     * @return Response JSON com detalhes da matrícula e pagamentos
+     * Retorna os detalhes completos de uma matrícula
      */
+    #[OA\Get(
+        path: "/mobile/matriculas/{matriculaId}",
+        summary: "Detalhes da matrícula",
+        description: "Retorna os detalhes completos de uma matrícula com histórico de pagamentos.",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        parameters: [
+            new OA\Parameter(name: "matriculaId", in: "path", required: true, description: "ID da matrícula", schema: new OA\Schema(type: "integer"))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: "Detalhes retornados com sucesso"),
+            new OA\Response(response: 400, description: "ID não informado"),
+            new OA\Response(response: 401, description: "Não autorizado"),
+            new OA\Response(response: 404, description: "Matrícula não encontrada")
+        ]
+    )]
     public function detalheMatricula(Request $request, Response $response, array $args): Response
     {
         try {
@@ -1675,17 +1674,23 @@ class MobileController
 
     /**
      * Visualizar participantes que fizeram check-in em uma turma
-     * 
-     * Retorna lista de usuários que realizaram check-in na turma especificada,
-     * com informações de hora do check-in e dados do usuário.
-     * 
-     * @param Request $request Requisição HTTP
-     * @param Response $response Resposta HTTP
-     * @param array $args Argumentos da rota (turma_id)
-     * @return Response JSON com lista de participantes
-     * 
-     * @api GET /mobile/turma/{turma_id}/participantes
      */
+    #[OA\Get(
+        path: "/mobile/turma/{turmaId}/participantes",
+        summary: "Participantes da turma",
+        description: "Retorna lista de usuários que realizaram check-in na turma especificada.",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        parameters: [
+            new OA\Parameter(name: "turmaId", in: "path", required: true, description: "ID da turma", schema: new OA\Schema(type: "integer"))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: "Participantes retornados com sucesso"),
+            new OA\Response(response: 400, description: "Tenant não selecionado ou turma_id obrigatório"),
+            new OA\Response(response: 401, description: "Não autorizado"),
+            new OA\Response(response: 404, description: "Turma não encontrada")
+        ]
+    )]
     public function participantesTurma(Request $request, Response $response, array $args): Response
     {
         try {
@@ -1795,16 +1800,36 @@ class MobileController
     }
 
     /**
-     * Retorna detalhes completos de uma turma ao clicar no card
-     * Inclui: dados da turma, alunos matriculados, check-ins, limite
-     * 
-     * @param Request $request Requisição HTTP
-     * @param Response $response Resposta HTTP
-     * @param array $args Argumentos da rota {turmaId}
-     * @return Response JSON com detalhes completos
-     * 
-     * @api GET /mobile/turma/{turmaId}/detalhes
+     * Lista todas as turmas ativas do tenant
      */
+    #[OA\Get(
+        path: "/mobile/turmas",
+        summary: "Listar turmas",
+        description: "Retorna todas as turmas ativas do tenant com informações básicas.",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Turmas retornadas com sucesso",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "success", type: "boolean", example: true),
+                        new OA\Property(
+                            property: "data",
+                            type: "object",
+                            properties: [
+                                new OA\Property(property: "turmas", type: "array", items: new OA\Items(type: "object")),
+                                new OA\Property(property: "total", type: "integer")
+                            ]
+                        )
+                    ]
+                )
+            ),
+            new OA\Response(response: 400, description: "Tenant não selecionado"),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
     public function listarTurmas(Request $request, Response $response): Response
     {
         try {
@@ -1829,9 +1854,8 @@ class MobileController
                        m.nome as modalidade,
                        m.icone,
                        m.cor,
-                       t.horario_id,
-                       h.horario_inicio,
-                       h.horario_fim,
+                       t.horario_inicio,
+                       t.horario_fim,
                        d.data as dia_aula,
                        d.id as dia_id,
                        t.limite_alunos,
@@ -1847,10 +1871,9 @@ class MobileController
                 FROM turmas t
                 INNER JOIN professores p ON t.professor_id = p.id
                 INNER JOIN modalidades m ON t.modalidade_id = m.id
-                INNER JOIN horarios h ON t.horario_id = h.id
                 INNER JOIN dias d ON t.dia_id = d.id
                 WHERE t.tenant_id = :tenant_id AND t.ativo = 1
-                ORDER BY d.data ASC, h.horario_inicio ASC
+                ORDER BY d.data ASC, t.horario_inicio ASC
             ";
             
             $stmt = $this->db->prepare($sql);
@@ -1908,16 +1931,24 @@ class MobileController
     }
 
     /**
-     * GET /mobile/turma/{turmaId}/detalhes
      * Retorna detalhes completos de uma turma com lista de participantes
-     * 
-     * @param Request $request Requisição HTTP
-     * @param Response $response Resposta HTTP
-     * @param array $args Argumentos da rota {turmaId}
-     * @return Response JSON com detalhes completos
-     * 
-     * @api GET /mobile/turma/{turmaId}/detalhes
      */
+    #[OA\Get(
+        path: "/mobile/turma/{turmaId}/detalhes",
+        summary: "Detalhes da turma",
+        description: "Retorna detalhes completos de uma turma com lista de alunos, check-ins e estatísticas.",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        parameters: [
+            new OA\Parameter(name: "turmaId", in: "path", required: true, description: "ID da turma", schema: new OA\Schema(type: "integer"))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: "Detalhes retornados com sucesso"),
+            new OA\Response(response: 400, description: "Tenant não selecionado ou turma_id obrigatório"),
+            new OA\Response(response: 401, description: "Não autorizado"),
+            new OA\Response(response: 404, description: "Turma não encontrada")
+        ]
+    )]
     public function detalheTurma(Request $request, Response $response, array $args): Response
     {
         try {
@@ -2122,16 +2153,24 @@ class MobileController
 
     /**
      * Retorna o WOD do dia
-     * Endpoint para o App Mobile exibir o treino do dia
-     * 
-     * @param Request $request Requisição HTTP
-     * @param Response $response Resposta HTTP
-     * @return Response JSON com WOD do dia
-     * 
-     * @api GET /mobile/wod/hoje
-     * @query-param modalidade_id (opcional) - ID da modalidade para filtrar
-     * @query-param data (opcional) - Data no formato YYYY-MM-DD (padrão: hoje)
      */
+    #[OA\Get(
+        path: "/mobile/wod/hoje",
+        summary: "WOD do dia",
+        description: "Retorna o WOD (Workout of the Day) do dia atual ou de uma data específica.",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        parameters: [
+            new OA\Parameter(name: "data", in: "query", description: "Data no formato YYYY-MM-DD (padrão: hoje)", schema: new OA\Schema(type: "string", format: "date")),
+            new OA\Parameter(name: "modalidade_id", in: "query", description: "ID da modalidade para filtrar", schema: new OA\Schema(type: "integer"))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: "WOD retornado com sucesso"),
+            new OA\Response(response: 400, description: "Formato de data inválido"),
+            new OA\Response(response: 401, description: "Não autorizado"),
+            new OA\Response(response: 404, description: "WOD não encontrado")
+        ]
+    )]
     public function wodDodia(Request $request, Response $response): Response
     {
         try {
@@ -2271,16 +2310,23 @@ class MobileController
     }
 
     /**
-     * Retorna todos os WODs do dia com dados da modalidade
-     * Endpoint para o App Mobile listar todos os treinos disponíveis
-     * 
-     * @param Request $request Requisição HTTP
-     * @param Response $response Resposta HTTP
-     * @return Response JSON com array de WODs
-     * 
-     * @api GET /mobile/wods/hoje
-     * @query-param data (opcional) - Data no formato YYYY-MM-DD (padrão: hoje)
+     * Retorna todos os WODs do dia
      */
+    #[OA\Get(
+        path: "/mobile/wods/hoje",
+        summary: "Todos os WODs do dia",
+        description: "Retorna todos os WODs publicados do dia com dados das modalidades.",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        parameters: [
+            new OA\Parameter(name: "data", in: "query", description: "Data no formato YYYY-MM-DD (padrão: hoje)", schema: new OA\Schema(type: "string", format: "date"))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: "WODs retornados com sucesso"),
+            new OA\Response(response: 400, description: "Formato de data inválido"),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
     public function wodsDodia(Request $request, Response $response): Response
     {
         try {
@@ -2399,8 +2445,37 @@ class MobileController
 
     /**
      * Ranking dos usuários com mais check-ins no mês atual
-     * GET /mobile/ranking/mensal?modalidade_id=1
      */
+    #[OA\Get(
+        path: "/mobile/ranking/mensal",
+        summary: "Ranking mensal",
+        description: "Retorna o ranking dos usuários com mais check-ins no mês atual.",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        parameters: [
+            new OA\Parameter(name: "modalidade_id", in: "query", description: "ID da modalidade para filtrar", schema: new OA\Schema(type: "integer"))
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Ranking retornado com sucesso",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "success", type: "boolean", example: true),
+                        new OA\Property(
+                            property: "data",
+                            type: "object",
+                            properties: [
+                                new OA\Property(property: "periodo", type: "string", example: "01/2026"),
+                                new OA\Property(property: "ranking", type: "array", items: new OA\Items(type: "object"))
+                            ]
+                        )
+                    ]
+                )
+            ),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
     public function rankingMensal(Request $request, Response $response): Response
     {
         $tenantId = $request->getAttribute('tenantId');
@@ -2460,11 +2535,32 @@ class MobileController
     }
 
     /**
-     * POST /mobile/perfil/foto
      * Upload de foto de perfil do usuário
-     * Aceita multipart/form-data com campo 'foto'
-     * Salva arquivo em public/uploads/fotos/
      */
+    #[OA\Post(
+        path: "/mobile/perfil/foto",
+        summary: "Upload de foto de perfil",
+        description: "Faz upload da foto de perfil do usuário. Aceita multipart/form-data com campo 'foto'.",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\MediaType(
+                mediaType: "multipart/form-data",
+                schema: new OA\Schema(
+                    properties: [
+                        new OA\Property(property: "foto", type: "string", format: "binary", description: "Arquivo de imagem (JPG, PNG, GIF, WebP)")
+                    ]
+                )
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: "Foto atualizada com sucesso"),
+            new OA\Response(response: 400, description: "Arquivo inválido ou não enviado"),
+            new OA\Response(response: 401, description: "Não autorizado"),
+            new OA\Response(response: 404, description: "Usuário ou aluno não encontrado")
+        ]
+    )]
     public function uploadFotoPerfil(Request $request, Response $response): Response
     {
         try {

@@ -268,9 +268,6 @@ return function ($app) {
         $group->get('/turma/{turmaId}/detalhes', [MobileController::class, 'detalheTurma']);
         
         // Horários das aulas
-        $group->get('/horarios', [MobileController::class, 'horariosHoje']);
-        $group->get('/horarios/proximos', [MobileController::class, 'horariosProximos']);
-        $group->get('/horarios/{diaId}', [MobileController::class, 'horariosPorDia']);
         $group->get('/horarios-disponiveis', [MobileController::class, 'horariosDisponiveis']);
         
         // WOD do dia

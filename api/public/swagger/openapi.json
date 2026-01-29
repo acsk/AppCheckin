@@ -1,0 +1,1433 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "App Checkin API",
+        "description": "API para sistema de check-in de academias e boxes de CrossFit",
+        "contact": {
+            "name": "Suporte App Checkin",
+            "email": "suporte@appcheckin.com.br"
+        },
+        "version": "1.0.0"
+    },
+    "servers": [
+        {
+            "url": "http://localhost:8080",
+            "description": "Servidor de Desenvolvimento"
+        },
+        {
+            "url": "https://api.appcheckin.com.br",
+            "description": "Servidor de Produção"
+        }
+    ],
+    "paths": {
+        "/auth/register": {
+            "post": {
+                "tags": [
+                    "Autenticação"
+                ],
+                "summary": "Registrar novo usuário",
+                "description": "Cria um novo usuário no sistema e retorna o token JWT",
+                "operationId": "10c02a951e844462c465d0e576b8c942",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "nome",
+                                    "email",
+                                    "senha"
+                                ],
+                                "properties": {
+                                    "nome": {
+                                        "type": "string",
+                                        "example": "João Silva"
+                                    },
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email",
+                                        "example": "joao@email.com"
+                                    },
+                                    "senha": {
+                                        "type": "string",
+                                        "minLength": 6,
+                                        "example": "senha123"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Usuário criado com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Usuário criado com sucesso"
+                                        },
+                                        "token": {
+                                            "type": "string",
+                                            "example": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+                                        },
+                                        "user": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Erro de validação"
+                    },
+                    "500": {
+                        "description": "Erro interno"
+                    }
+                }
+            }
+        },
+        "/auth/login": {
+            "post": {
+                "tags": [
+                    "Autenticação"
+                ],
+                "summary": "Login do usuário",
+                "description": "Autentica o usuário e retorna token JWT. Se o usuário tiver múltiplos tenants, retorna lista para seleção.",
+                "operationId": "363e422b5a8c763fa1ea6fd03a77481d",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "email",
+                                    "senha"
+                                ],
+                                "properties": {
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email",
+                                        "example": "joao@email.com"
+                                    },
+                                    "senha": {
+                                        "type": "string",
+                                        "example": "senha123"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Login realizado com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Login realizado com sucesso"
+                                        },
+                                        "token": {
+                                            "type": "string",
+                                            "example": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+                                            "nullable": true
+                                        },
+                                        "user": {
+                                            "properties": {
+                                                "id": {
+                                                    "type": "integer",
+                                                    "example": 1
+                                                },
+                                                "nome": {
+                                                    "type": "string",
+                                                    "example": "João Silva"
+                                                },
+                                                "email": {
+                                                    "type": "string",
+                                                    "example": "joao@email.com"
+                                                },
+                                                "foto_base64": {
+                                                    "type": "string",
+                                                    "nullable": true
+                                                },
+                                                "role_id": {
+                                                    "type": "integer",
+                                                    "example": 1
+                                                }
+                                            },
+                                            "type": "object"
+                                        },
+                                        "tenants": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object"
+                                            }
+                                        },
+                                        "requires_tenant_selection": {
+                                            "type": "boolean",
+                                            "example": false
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Credenciais inválidas"
+                    },
+                    "403": {
+                        "description": "Sem acesso a tenant ou contrato inativo"
+                    },
+                    "422": {
+                        "description": "Dados incompletos"
+                    }
+                }
+            }
+        },
+        "/auth/logout": {
+            "post": {
+                "tags": [
+                    "Autenticação"
+                ],
+                "summary": "Logout do usuário",
+                "description": "Confirma logout no backend. O cliente deve remover o token localmente.",
+                "operationId": "e39ef4c513f6d25e947a67cab73e4b5b",
+                "responses": {
+                    "200": {
+                        "description": "Logout realizado com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Logout realizado com sucesso"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/auth/select-tenant": {
+            "post": {
+                "tags": [
+                    "Autenticação"
+                ],
+                "summary": "Selecionar tenant/academia",
+                "description": "Após login com múltiplos tenants, seleciona qual academia acessar e retorna novo token.",
+                "operationId": "528a6d28d55b17c0ea85d97bfe278561",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "tenant_id"
+                                ],
+                                "properties": {
+                                    "tenant_id": {
+                                        "type": "integer",
+                                        "example": 1
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Tenant selecionado com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Academia selecionada com sucesso"
+                                        },
+                                        "token": {
+                                            "type": "string",
+                                            "example": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
+                                        },
+                                        "tenant": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Sem acesso ao tenant ou contrato inativo"
+                    },
+                    "422": {
+                        "description": "tenant_id não informado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/admin/dashboard/cards": {
+            "get": {
+                "tags": [
+                    "Dashboard"
+                ],
+                "summary": "Cards do Dashboard",
+                "description": "Retorna os dados para os 4 cards principais do dashboard: Total de Alunos, Receita Mensal, Check-ins Hoje e Planos Vencendo",
+                "operationId": "2c19f4fcbb6255fee3b820c259227971",
+                "responses": {
+                    "200": {
+                        "description": "Dados dos cards retornados com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "total_alunos": {
+                                                    "properties": {
+                                                        "total": {
+                                                            "type": "integer",
+                                                            "example": 6
+                                                        },
+                                                        "ativos": {
+                                                            "type": "integer",
+                                                            "example": 6
+                                                        },
+                                                        "inativos": {
+                                                            "type": "integer",
+                                                            "example": 0
+                                                        }
+                                                    },
+                                                    "type": "object"
+                                                },
+                                                "receita_mensal": {
+                                                    "properties": {
+                                                        "valor": {
+                                                            "type": "number",
+                                                            "example": 1500
+                                                        },
+                                                        "valor_formatado": {
+                                                            "type": "string",
+                                                            "example": "R$ 1.500,00"
+                                                        },
+                                                        "contas_pendentes": {
+                                                            "type": "integer",
+                                                            "example": 3
+                                                        }
+                                                    },
+                                                    "type": "object"
+                                                },
+                                                "checkins_hoje": {
+                                                    "properties": {
+                                                        "hoje": {
+                                                            "type": "integer",
+                                                            "example": 12
+                                                        },
+                                                        "no_mes": {
+                                                            "type": "integer",
+                                                            "example": 145
+                                                        }
+                                                    },
+                                                    "type": "object"
+                                                },
+                                                "planos_vencendo": {
+                                                    "properties": {
+                                                        "vencendo": {
+                                                            "type": "integer",
+                                                            "example": 2
+                                                        },
+                                                        "novos_este_mes": {
+                                                            "type": "integer",
+                                                            "example": 5
+                                                        }
+                                                    },
+                                                    "type": "object"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mobile/perfil": {
+            "get": {
+                "tags": [
+                    "Mobile"
+                ],
+                "summary": "Perfil do usuário",
+                "description": "Retorna o perfil completo do usuário logado com estatísticas, plano, ranking e dados de todos os tenants.",
+                "operationId": "3e0cf02b08b7a1b35ba6cd9a13d17e90",
+                "responses": {
+                    "200": {
+                        "description": "Perfil retornado com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "id": {
+                                                    "type": "integer",
+                                                    "example": 1
+                                                },
+                                                "aluno_id": {
+                                                    "type": "integer",
+                                                    "example": 1
+                                                },
+                                                "nome": {
+                                                    "type": "string",
+                                                    "example": "João Silva"
+                                                },
+                                                "email": {
+                                                    "type": "string",
+                                                    "example": "joao@email.com"
+                                                },
+                                                "telefone": {
+                                                    "type": "string",
+                                                    "example": "(11) 99999-9999"
+                                                },
+                                                "foto_url": {
+                                                    "type": "string",
+                                                    "nullable": true
+                                                },
+                                                "estatisticas": {
+                                                    "type": "object"
+                                                },
+                                                "plano": {
+                                                    "type": "object"
+                                                },
+                                                "ranking_modalidades": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object"
+                                                    }
+                                                },
+                                                "tenants": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object"
+                                                    }
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    },
+                    "404": {
+                        "description": "Usuário não encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mobile/tenants": {
+            "get": {
+                "tags": [
+                    "Mobile"
+                ],
+                "summary": "Listar tenants do usuário",
+                "description": "Retorna todos os tenants/academias que o usuário tem acesso.",
+                "operationId": "aceab49e5b3085a4a6c5508990cdf4a2",
+                "responses": {
+                    "200": {
+                        "description": "Tenants retornados com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "tenants": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object"
+                                                    }
+                                                },
+                                                "total": {
+                                                    "type": "integer",
+                                                    "example": 1
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mobile/contratos": {
+            "get": {
+                "tags": [
+                    "Mobile"
+                ],
+                "summary": "Contrato ativo do tenant",
+                "description": "Retorna o contrato/plano ativo da academia selecionada.",
+                "operationId": "0f53fa55881ac643163eb3acd0633925",
+                "responses": {
+                    "200": {
+                        "description": "Contrato retornado com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Tenant não selecionado"
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mobile/planos": {
+            "get": {
+                "tags": [
+                    "Mobile"
+                ],
+                "summary": "Listar planos do tenant",
+                "description": "Retorna todos os contratos/planos do tenant (ativos, vencidos, pendentes).",
+                "operationId": "c898653d010072397e497d3a18fa96f3",
+                "responses": {
+                    "200": {
+                        "description": "Planos retornados com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "planos": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object"
+                                                    }
+                                                },
+                                                "total": {
+                                                    "type": "integer",
+                                                    "example": 2
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Tenant não selecionado"
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mobile/checkins": {
+            "get": {
+                "tags": [
+                    "Mobile"
+                ],
+                "summary": "Histórico de check-ins",
+                "description": "Retorna o histórico de check-ins do usuário com paginação.",
+                "operationId": "bd68d38f737934cf27a8ac42c0ea345a",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "description": "Limite de registros (máx: 100)",
+                        "schema": {
+                            "type": "integer",
+                            "default": 30
+                        }
+                    },
+                    {
+                        "name": "offset",
+                        "in": "query",
+                        "description": "Offset para paginação",
+                        "schema": {
+                            "type": "integer",
+                            "default": 0
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Histórico retornado com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "checkins": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object"
+                                                    }
+                                                },
+                                                "total": {
+                                                    "type": "integer"
+                                                },
+                                                "limit": {
+                                                    "type": "integer"
+                                                },
+                                                "offset": {
+                                                    "type": "integer"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mobile/horarios": {
+            "get": {
+                "tags": [
+                    "Mobile"
+                ],
+                "summary": "Horários de hoje",
+                "description": "Retorna todos os horários/turmas disponíveis para o dia atual.",
+                "operationId": "0b3a01c504c049726578ceaf7e4c5522",
+                "responses": {
+                    "200": {
+                        "description": "Horários retornados com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mobile/horarios/proximos": {
+            "get": {
+                "tags": [
+                    "Mobile"
+                ],
+                "summary": "Horários próximos",
+                "description": "Retorna os próximos horários disponíveis (próximos 7 dias) agrupados por data.",
+                "operationId": "ac68e26ce9fe383e0d82a7a9f7543057",
+                "parameters": [
+                    {
+                        "name": "dias",
+                        "in": "query",
+                        "description": "Quantidade de dias (padrão: 7)",
+                        "schema": {
+                            "type": "integer",
+                            "default": 7
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Horários retornados com sucesso"
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mobile/horarios/{diaId}": {
+            "get": {
+                "tags": [
+                    "Mobile"
+                ],
+                "summary": "Horários por dia",
+                "description": "Retorna todos os horários de um dia específico com detalhes das turmas.",
+                "operationId": "d7a4e6759c574ea9c3bb478c2a7af112",
+                "parameters": [
+                    {
+                        "name": "diaId",
+                        "in": "path",
+                        "description": "ID do dia",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Horários retornados com sucesso"
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    },
+                    "404": {
+                        "description": "Dia não encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mobile/checkin": {
+            "post": {
+                "tags": [
+                    "Mobile"
+                ],
+                "summary": "Registrar check-in",
+                "description": "Registra o check-in do usuário em uma turma específica. Verifica limites diários, créditos disponíveis e tolerância de horário.",
+                "operationId": "15b02472cea24e2911d024fe25158922",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "turma_id"
+                                ],
+                                "properties": {
+                                    "turma_id": {
+                                        "description": "ID da turma",
+                                        "type": "integer",
+                                        "example": 1
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Check-in realizado com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Check-in realizado com sucesso"
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "checkin_id": {
+                                                    "type": "integer",
+                                                    "example": 123
+                                                },
+                                                "turma": {
+                                                    "type": "object"
+                                                },
+                                                "usuario": {
+                                                    "type": "object"
+                                                },
+                                                "data_hora": {
+                                                    "type": "string",
+                                                    "format": "date-time"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "turma_id obrigatório ou check-in duplicado"
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    },
+                    "403": {
+                        "description": "Sem créditos ou fora do horário permitido"
+                    },
+                    "404": {
+                        "description": "Turma não encontrada"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mobile/checkin/{checkinId}/desfazer": {
+            "delete": {
+                "tags": [
+                    "Mobile"
+                ],
+                "summary": "Desfazer check-in",
+                "description": "Cancela um check-in realizado. Só é permitido se a aula ainda não começou.",
+                "operationId": "9bc5895a4e10949b50f4772b89b6819d",
+                "parameters": [
+                    {
+                        "name": "checkinId",
+                        "in": "path",
+                        "description": "ID do check-in",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Check-in desfeito com sucesso"
+                    },
+                    "400": {
+                        "description": "checkinId obrigatório ou aula já começou"
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    },
+                    "403": {
+                        "description": "Sem permissão"
+                    },
+                    "404": {
+                        "description": "Check-in não encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mobile/horarios-disponiveis": {
+            "get": {
+                "tags": [
+                    "Mobile"
+                ],
+                "summary": "Horários disponíveis",
+                "description": "Retorna todos os horários/turmas disponíveis para uma data específica. Útil para listar as aulas disponíveis para check-in.",
+                "operationId": "4a74a85961e0faf01b77d244bdf2178e",
+                "parameters": [
+                    {
+                        "name": "data",
+                        "in": "query",
+                        "description": "Data para consulta (padrão: hoje)",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "format": "date",
+                            "example": "2025-01-29"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Horários retornados com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "data": {
+                                                    "type": "string",
+                                                    "example": "2025-01-29"
+                                                },
+                                                "dia_semana": {
+                                                    "type": "string",
+                                                    "example": "quarta"
+                                                },
+                                                "horarios": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "properties": {
+                                                            "turma_id": {
+                                                                "type": "integer"
+                                                            },
+                                                            "nome": {
+                                                                "type": "string"
+                                                            },
+                                                            "hora_inicio": {
+                                                                "type": "string"
+                                                            },
+                                                            "hora_fim": {
+                                                                "type": "string"
+                                                            },
+                                                            "modalidade": {
+                                                                "type": "string"
+                                                            },
+                                                            "vagas_disponiveis": {
+                                                                "type": "integer"
+                                                            },
+                                                            "ja_tem_checkin": {
+                                                                "type": "boolean"
+                                                            }
+                                                        },
+                                                        "type": "object"
+                                                    }
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Tenant não selecionado"
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mobile/matriculas/{matriculaId}": {
+            "get": {
+                "tags": [
+                    "Mobile"
+                ],
+                "summary": "Detalhes da matrícula",
+                "description": "Retorna os detalhes completos de uma matrícula com histórico de pagamentos.",
+                "operationId": "4c56f941cdbc1121d2a04cf600b7a8d7",
+                "parameters": [
+                    {
+                        "name": "matriculaId",
+                        "in": "path",
+                        "description": "ID da matrícula",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Detalhes retornados com sucesso"
+                    },
+                    "400": {
+                        "description": "ID não informado"
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    },
+                    "404": {
+                        "description": "Matrícula não encontrada"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mobile/turma/{turmaId}/participantes": {
+            "get": {
+                "tags": [
+                    "Mobile"
+                ],
+                "summary": "Participantes da turma",
+                "description": "Retorna lista de usuários que realizaram check-in na turma especificada.",
+                "operationId": "663abdfb511c49035dbac6b1d560da25",
+                "parameters": [
+                    {
+                        "name": "turmaId",
+                        "in": "path",
+                        "description": "ID da turma",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Participantes retornados com sucesso"
+                    },
+                    "400": {
+                        "description": "Tenant não selecionado ou turma_id obrigatório"
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    },
+                    "404": {
+                        "description": "Turma não encontrada"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mobile/turmas": {
+            "get": {
+                "tags": [
+                    "Mobile"
+                ],
+                "summary": "Listar turmas",
+                "description": "Retorna todas as turmas ativas do tenant com informações básicas.",
+                "operationId": "f816fecb6ea0df32c8655190c8878f67",
+                "responses": {
+                    "200": {
+                        "description": "Turmas retornadas com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "turmas": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object"
+                                                    }
+                                                },
+                                                "total": {
+                                                    "type": "integer"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Tenant não selecionado"
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mobile/turma/{turmaId}/detalhes": {
+            "get": {
+                "tags": [
+                    "Mobile"
+                ],
+                "summary": "Detalhes da turma",
+                "description": "Retorna detalhes completos de uma turma com lista de alunos, check-ins e estatísticas.",
+                "operationId": "3ba6e57b3edff10b424b444f3c23bdbb",
+                "parameters": [
+                    {
+                        "name": "turmaId",
+                        "in": "path",
+                        "description": "ID da turma",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Detalhes retornados com sucesso"
+                    },
+                    "400": {
+                        "description": "Tenant não selecionado ou turma_id obrigatório"
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    },
+                    "404": {
+                        "description": "Turma não encontrada"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mobile/wod/hoje": {
+            "get": {
+                "tags": [
+                    "Mobile"
+                ],
+                "summary": "WOD do dia",
+                "description": "Retorna o WOD (Workout of the Day) do dia atual ou de uma data específica.",
+                "operationId": "6680c252c1950fd8279a69ef5cc2c83e",
+                "parameters": [
+                    {
+                        "name": "data",
+                        "in": "query",
+                        "description": "Data no formato YYYY-MM-DD (padrão: hoje)",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    },
+                    {
+                        "name": "modalidade_id",
+                        "in": "query",
+                        "description": "ID da modalidade para filtrar",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "WOD retornado com sucesso"
+                    },
+                    "400": {
+                        "description": "Formato de data inválido"
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    },
+                    "404": {
+                        "description": "WOD não encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mobile/wods/hoje": {
+            "get": {
+                "tags": [
+                    "Mobile"
+                ],
+                "summary": "Todos os WODs do dia",
+                "description": "Retorna todos os WODs publicados do dia com dados das modalidades.",
+                "operationId": "ab67dd08b4abfb8162ab588ead105a9f",
+                "parameters": [
+                    {
+                        "name": "data",
+                        "in": "query",
+                        "description": "Data no formato YYYY-MM-DD (padrão: hoje)",
+                        "schema": {
+                            "type": "string",
+                            "format": "date"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "WODs retornados com sucesso"
+                    },
+                    "400": {
+                        "description": "Formato de data inválido"
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mobile/ranking/mensal": {
+            "get": {
+                "tags": [
+                    "Mobile"
+                ],
+                "summary": "Ranking mensal",
+                "description": "Retorna o ranking dos usuários com mais check-ins no mês atual.",
+                "operationId": "1ebeaa30dfa1132111c385d5da89cd4e",
+                "parameters": [
+                    {
+                        "name": "modalidade_id",
+                        "in": "query",
+                        "description": "ID da modalidade para filtrar",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Ranking retornado com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "periodo": {
+                                                    "type": "string",
+                                                    "example": "01/2026"
+                                                },
+                                                "ranking": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object"
+                                                    }
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mobile/perfil/foto": {
+            "post": {
+                "tags": [
+                    "Mobile"
+                ],
+                "summary": "Upload de foto de perfil",
+                "description": "Faz upload da foto de perfil do usuário. Aceita multipart/form-data com campo 'foto'.",
+                "operationId": "ccd7a794637cf863a84b30b08ab1e8dc",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "properties": {
+                                    "foto": {
+                                        "description": "Arquivo de imagem (JPG, PNG, GIF, WebP)",
+                                        "type": "string",
+                                        "format": "binary"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Foto atualizada com sucesso"
+                    },
+                    "400": {
+                        "description": "Arquivo inválido ou não enviado"
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    },
+                    "404": {
+                        "description": "Usuário ou aluno não encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        }
+    },
+    "components": {
+        "securitySchemes": {
+            "bearerAuth": {
+                "type": "http",
+                "description": "Token JWT obtido no login",
+                "bearerFormat": "JWT",
+                "scheme": "bearer"
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "Dashboard",
+            "description": "Estatísticas e cards do painel administrativo"
+        },
+        {
+            "name": "Mobile",
+            "description": "Endpoints otimizados para o App Mobile"
+        },
+        {
+            "name": "Autenticação",
+            "description": "Autenticação"
+        }
+    ]
+}

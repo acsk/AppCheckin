@@ -5,6 +5,7 @@ namespace App\Controllers;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use PDO;
+use OpenApi\Attributes as OA;
 
 class DashboardController
 {
@@ -18,11 +19,67 @@ class DashboardController
     /**
      * GET /admin/dashboard/cards
      * Retorna os dados para os 4 cards principais do dashboard
-     * - Total de Alunos (ativos/inativos)
-     * - Receita Mensal (valor + contas pendentes)
-     * - Check-ins Hoje (hoje + total do mês)
-     * - Planos Vencendo (vencendo + novos este mês)
      */
+    #[OA\Get(
+        path: "/admin/dashboard/cards",
+        summary: "Cards do Dashboard",
+        description: "Retorna os dados para os 4 cards principais do dashboard: Total de Alunos, Receita Mensal, Check-ins Hoje e Planos Vencendo",
+        tags: ["Dashboard"],
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Dados dos cards retornados com sucesso",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "success", type: "boolean", example: true),
+                        new OA\Property(
+                            property: "data",
+                            type: "object",
+                            properties: [
+                                new OA\Property(
+                                    property: "total_alunos",
+                                    type: "object",
+                                    properties: [
+                                        new OA\Property(property: "total", type: "integer", example: 6),
+                                        new OA\Property(property: "ativos", type: "integer", example: 6),
+                                        new OA\Property(property: "inativos", type: "integer", example: 0)
+                                    ]
+                                ),
+                                new OA\Property(
+                                    property: "receita_mensal",
+                                    type: "object",
+                                    properties: [
+                                        new OA\Property(property: "valor", type: "number", example: 1500.00),
+                                        new OA\Property(property: "valor_formatado", type: "string", example: "R$ 1.500,00"),
+                                        new OA\Property(property: "contas_pendentes", type: "integer", example: 3)
+                                    ]
+                                ),
+                                new OA\Property(
+                                    property: "checkins_hoje",
+                                    type: "object",
+                                    properties: [
+                                        new OA\Property(property: "hoje", type: "integer", example: 12),
+                                        new OA\Property(property: "no_mes", type: "integer", example: 145)
+                                    ]
+                                ),
+                                new OA\Property(
+                                    property: "planos_vencendo",
+                                    type: "object",
+                                    properties: [
+                                        new OA\Property(property: "vencendo", type: "integer", example: 2),
+                                        new OA\Property(property: "novos_este_mes", type: "integer", example: 5)
+                                    ]
+                                )
+                            ]
+                        )
+                    ]
+                )
+            ),
+            new OA\Response(response: 401, description: "Não autorizado"),
+            new OA\Response(response: 500, description: "Erro interno do servidor")
+        ]
+    )]
     public function cards(Request $request, Response $response): Response
     {
         $tenantId = $request->getAttribute('tenantId');

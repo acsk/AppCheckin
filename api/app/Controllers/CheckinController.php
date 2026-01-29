@@ -166,60 +166,44 @@ class CheckinController
         }
 
         // Validar se ainda é possível desfazer
-        // Se a turma foi deletada, permitir desfazer (pois não é mais uma aula ativa)
-        if ($checkin['turma_id'] && $checkin['turma_id'] > 0) {
-            // Buscar dados da turma
-            $turma = $this->turmaModel->findById($checkin['turma_id']);
+        // Se a turma foi deletada ou não tem dados, permitir desfazer
+        if ($checkin['turma_id'] && $checkin['horario_inicio'] && $checkin['data']) {
+            // Verificar se a aula já começou + tolerância
+            $agora = new \DateTime();
+            $dataHorarioInicio = new \DateTime($checkin['data'] . ' ' . $checkin['horario_inicio']);
+            
+            // Tolerar até X minutos após o início da aula
+            $tolerancia = (int) ($checkin['tolerancia_minutos'] ?? 10);
+            $dataLimiteDesfazer = clone $dataHorarioInicio;
+            $dataLimiteDesfazer->modify("+{$tolerancia} minutes");
 
-            if ($turma) {
-                // Precisamos da data do check-in para calcular os horários
-                // Como a turma tem dia_id, precisamos buscar o dia
-                $db = require __DIR__ . '/../../config/database.php';
-                $stmt = $db->prepare("SELECT data FROM dias WHERE id = ?");
-                $stmt->execute([$turma['dia_id']]);
-                $dia = $stmt->fetch(\PDO::FETCH_ASSOC);
-                
-                if ($dia) {
-                    // Verificar se a aula já começou + tolerância
-                    $agora = new \DateTime();
-                    $dataHorarioInicio = new \DateTime($dia['data'] . ' ' . $turma['horario_inicio']);
-                    
-                    // Tolerar até X minutos após o início da aula
-                    $tolerancia = (int) $turma['tolerancia_minutos'] ?? 10;
-                    $dataLimiteDesfazer = clone $dataHorarioInicio;
-                    $dataLimiteDesfazer->modify("+{$tolerancia} minutes");
+            // Se já passou do horário + tolerância, não pode desfazer
+            if ($agora > $dataLimiteDesfazer) {
+                $response->getBody()->write(json_encode([
+                    'error' => 'Não é possível desfazer o check-in. O prazo expirou (a aula já começou)',
+                    'turma' => [
+                        'data' => $checkin['data'],
+                        'inicio' => $checkin['horario_inicio'],
+                        'tolerancia_minutos' => $tolerancia,
+                        'limite_para_desfazer' => $dataLimiteDesfazer->format('Y-m-d H:i:s')
+                    ]
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
 
-                    // Se já passou do horário + tolerância, não pode desfazer
-                    if ($agora > $dataLimiteDesfazer) {
-                        return $response->withHeader('Content-Type', 'application/json')
-                            ->write(json_encode([
-                                'error' => 'Não é possível desfazer o check-in. O prazo expirou (a aula já começou)',
-                                'turma' => [
-                                    'data' => $dia['data'],
-                                    'inicio' => $turma['horario_inicio'],
-                                    'tolerancia_minutos' => $tolerancia,
-                                    'limite_para_desfazer' => $dataLimiteDesfazer->format('Y-m-d H:i:s')
-                                ]
-                            ], JSON_UNESCAPED_UNICODE))
-                            ->withStatus(400);
-                    }
-
-                    // Verificar se a aula ainda está acontecendo
-                    $dataHorarioFim = new \DateTime($dia['data'] . ' ' . $turma['horario_fim']);
-                    
-                    if ($agora > $dataHorarioFim) {
-                        return $response->withHeader('Content-Type', 'application/json')
-                            ->write(json_encode([
-                                'error' => 'Não é possível desfazer o check-in. A aula já terminou',
-                                'turma' => [
-                                    'data' => $dia['data'],
-                                    'inicio' => $turma['horario_inicio'],
-                                    'fim' => $turma['horario_fim']
-                                ]
-                            ], JSON_UNESCAPED_UNICODE))
-                            ->withStatus(400);
-                    }
-                }
+            // Verificar se a aula ainda está acontecendo
+            $dataHorarioFim = new \DateTime($checkin['data'] . ' ' . $checkin['horario_fim']);
+            
+            if ($agora > $dataHorarioFim) {
+                $response->getBody()->write(json_encode([
+                    'error' => 'Não é possível desfazer o check-in. A aula já terminou',
+                    'turma' => [
+                        'data' => $checkin['data'],
+                        'inicio' => $checkin['horario_inicio'],
+                        'fim' => $checkin['horario_fim']
+                    ]
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
         }
 

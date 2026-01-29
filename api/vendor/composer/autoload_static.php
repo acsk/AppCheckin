@@ -7,12 +7,12 @@ namespace Composer\Autoload;
 class ComposerStaticInit8fec87e7d05f5790afda9b873a3dda8e
 {
     public static $files = array (
-        '7b11c4dc42b3b3023073cb14e519683c' => __DIR__ . '/..' . '/ralouphie/getallheaders/src/getallheaders.php',
         '6e3fae29631ef280660b3cdad06f25a8' => __DIR__ . '/..' . '/symfony/deprecation-contracts/function.php',
+        '7b11c4dc42b3b3023073cb14e519683c' => __DIR__ . '/..' . '/ralouphie/getallheaders/src/getallheaders.php',
+        '320cde22f66dd4f5d3fd621d3e88b98f' => __DIR__ . '/..' . '/symfony/polyfill-ctype/bootstrap.php',
         '37a3dc5111fe8f707ab4c132ef1dbc62' => __DIR__ . '/..' . '/guzzlehttp/guzzle/src/functions_include.php',
         '253c157292f75eb38082b5acb06f3f01' => __DIR__ . '/..' . '/nikic/fast-route/src/functions.php',
         '79f66bc0a1900f77abe4a9a299057a0a' => __DIR__ . '/..' . '/starkbank/ecdsa/src/ellipticcurve.php',
-        '320cde22f66dd4f5d3fd621d3e88b98f' => __DIR__ . '/..' . '/symfony/polyfill-ctype/bootstrap.php',
         '0e6d7bf4a5811bfa5cf40c5ccd6fae6a' => __DIR__ . '/..' . '/symfony/polyfill-mbstring/bootstrap.php',
         'a4a119a56e50fbb293281d9a48007e0e' => __DIR__ . '/..' . '/symfony/polyfill-php80/bootstrap.php',
         '0754989a10baadda533479884b399278' => __DIR__ . '/..' . '/resend/resend-php/src/Resend.php',
@@ -24,6 +24,9 @@ class ComposerStaticInit8fec87e7d05f5790afda9b873a3dda8e
             'Symfony\\Polyfill\\Php80\\' => 23,
             'Symfony\\Polyfill\\Mbstring\\' => 26,
             'Symfony\\Polyfill\\Ctype\\' => 23,
+            'Symfony\\Component\\Yaml\\' => 23,
+            'Symfony\\Component\\TypeInfo\\' => 27,
+            'Symfony\\Component\\Finder\\' => 25,
             'Slim\\Psr7\\' => 10,
             'Slim\\' => 5,
             'SendGrid\\Stats\\' => 15,
@@ -36,6 +39,7 @@ class ComposerStaticInit8fec87e7d05f5790afda9b873a3dda8e
         'R' =>
         array (
             'Resend\\' => 7,
+            'Radebatz\\TypeInfoExtras\\' => 24,
         ),
         'P' =>
         array (
@@ -44,8 +48,14 @@ class ComposerStaticInit8fec87e7d05f5790afda9b873a3dda8e
             'Psr\\Http\\Message\\' => 17,
             'Psr\\Http\\Client\\' => 16,
             'Psr\\Container\\' => 14,
+            'PhpParser\\' => 10,
             'PhpOption\\' => 10,
+            'PHPStan\\PhpDocParser\\' => 21,
             'PHPMailer\\PHPMailer\\' => 20,
+        ),
+        'O' =>
+        array (
+            'OpenApi\\' => 8,
         ),
         'G' =>
         array (
@@ -83,6 +93,18 @@ class ComposerStaticInit8fec87e7d05f5790afda9b873a3dda8e
         array (
             0 => __DIR__ . '/..' . '/symfony/polyfill-ctype',
         ),
+        'Symfony\\Component\\Yaml\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/symfony/yaml',
+        ),
+        'Symfony\\Component\\TypeInfo\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/symfony/type-info',
+        ),
+        'Symfony\\Component\\Finder\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/symfony/finder',
+        ),
         'Slim\\Psr7\\' =>
         array (
             0 => __DIR__ . '/..' . '/slim/psr7/src',
@@ -119,6 +141,10 @@ class ComposerStaticInit8fec87e7d05f5790afda9b873a3dda8e
         array (
             0 => __DIR__ . '/..' . '/resend/resend-php/src',
         ),
+        'Radebatz\\TypeInfoExtras\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/radebatz/type-info-extras/src',
+        ),
         'Psr\\Log\\' =>
         array (
             0 => __DIR__ . '/..' . '/psr/log/src',
@@ -141,13 +167,25 @@ class ComposerStaticInit8fec87e7d05f5790afda9b873a3dda8e
         array (
             0 => __DIR__ . '/..' . '/psr/container/src',
         ),
+        'PhpParser\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/nikic/php-parser/lib/PhpParser',
+        ),
         'PhpOption\\' =>
         array (
             0 => __DIR__ . '/..' . '/phpoption/phpoption/src/PhpOption',
         ),
+        'PHPStan\\PhpDocParser\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/phpstan/phpdoc-parser/src',
+        ),
         'PHPMailer\\PHPMailer\\' =>
         array (
             0 => __DIR__ . '/..' . '/phpmailer/phpmailer/src',
+        ),
+        'OpenApi\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/zircote/swagger-php/src',
         ),
         'GuzzleHttp\\Psr7\\' =>
         array (

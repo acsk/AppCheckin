@@ -124,15 +124,18 @@ class Checkin
         $stmt = $this->db->prepare(
             "SELECT 
                 c.*, 
-                h.hora, 
-                h.horario_inicio,
-                h.horario_fim,
-                h.tolerancia_minutos,
+                a.usuario_id,
+                t.nome as turma_nome,
+                t.horario_inicio,
+                t.horario_fim,
+                t.tolerancia_minutos,
+                t.dia_id,
                 d.data,
                 COALESCE(d.data, DATE(c.created_at)) as data_aula
              FROM checkins c
-             LEFT JOIN horarios h ON c.horario_id = h.id
-             LEFT JOIN dias d ON h.dia_id = d.id
+             LEFT JOIN alunos a ON c.aluno_id = a.id
+             LEFT JOIN turmas t ON c.turma_id = t.id
+             LEFT JOIN dias d ON t.dia_id = d.id
              WHERE c.id = :id"
         );
         $stmt->execute(['id' => $id]);
