@@ -200,7 +200,7 @@ class AlunoController
                 
             } else {
                 // Criar novo usuário (isso automaticamente cria o aluno e vínculos)
-                $data['role_id'] = 1; // aluno
+                // O papel de aluno é definido via tenant_usuario_papel pelo create()
                 $usuarioId = $this->usuarioModel->create($data, $tenantId);
                 
                 if (!$usuarioId) {
@@ -780,7 +780,7 @@ class AlunoController
         }
         
         // Buscar dados atualizados do aluno
-        $alunoAtualizado = $this->getAlunoDetalhado($alunoId, $tenantId);
+        $alunoAtualizado = $this->alunoModel->findById($alunoId, $tenantId);
         
         $response->getBody()->write(json_encode([
             'success' => true,

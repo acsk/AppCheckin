@@ -34,7 +34,8 @@ class AdminController
             SELECT COUNT(DISTINCT ut.usuario_id) as total 
             FROM usuario_tenant ut
             INNER JOIN usuarios u ON u.id = ut.usuario_id
-            WHERE ut.tenant_id = ? AND u.role_id = 1
+            INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.tenant_id = ut.tenant_id AND tup.ativo = 1
+            WHERE ut.tenant_id = ? AND tup.papel_id = 1
         ");
         $stmtTotalAlunos->execute([$tenantId]);
         $totalAlunos = $stmtTotalAlunos->fetch()['total'];
@@ -53,7 +54,8 @@ class AdminController
                 END) as inativos
             FROM usuario_tenant ut
             INNER JOIN usuarios u ON u.id = ut.usuario_id
-            WHERE ut.tenant_id = ? AND u.role_id = 1
+            INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.tenant_id = ut.tenant_id AND tup.ativo = 1
+            WHERE ut.tenant_id = ? AND tup.papel_id = 1
         ");
         $stmtStatusAlunos->execute([$tenantId]);
         $statusAlunos = $stmtStatusAlunos->fetch();
@@ -106,8 +108,9 @@ class AdminController
             SELECT COUNT(DISTINCT ut.usuario_id) as total 
             FROM usuario_tenant ut
             INNER JOIN usuarios u ON u.id = ut.usuario_id
+            INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.tenant_id = ut.tenant_id AND tup.ativo = 1
             WHERE ut.tenant_id = ? 
-            AND u.role_id = 1
+            AND tup.papel_id = 1
             AND YEAR(ut.created_at) = YEAR(CURDATE())
             AND MONTH(ut.created_at) = MONTH(CURDATE())
         ");
@@ -158,7 +161,7 @@ class AdminController
     }
 
     /**
-     * Listar todos os alunos (apenas role_id = 1)
+     * Listar todos os alunos (apenas papel_id = 1)
      */
     public function listarAlunos(Request $request, Response $response): Response
     {
@@ -167,7 +170,7 @@ class AdminController
 
         $stmt = $db->prepare("
             SELECT 
-                u.id, u.nome, u.email, u.role_id, 
+                u.id, u.nome, u.email, tup.papel_id, 
                 u.foto_base64, u.created_at, u.updated_at,
                 m.plano_id, p.nome as plano_nome, p.valor as plano_valor,
                 COUNT(DISTINCT c.id) as total_checkins,
@@ -208,11 +211,12 @@ class AdminController
                 
             FROM usuarios u
             INNER JOIN usuario_tenant ut ON ut.usuario_id = u.id AND ut.status = 'ativo'
+            INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.tenant_id = ut.tenant_id AND tup.ativo = 1
             LEFT JOIN alunos al ON al.usuario_id = u.id
             LEFT JOIN matriculas m ON m.aluno_id = al.id AND m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1)
             LEFT JOIN planos p ON p.id = m.plano_id
             LEFT JOIN checkins c ON al.id = c.aluno_id
-            WHERE ut.tenant_id = ? AND u.role_id = 1
+            WHERE ut.tenant_id = ? AND tup.papel_id = 1
             GROUP BY u.id
             ORDER BY u.nome ASC
         ");
@@ -261,10 +265,11 @@ class AdminController
             SELECT u.id, u.nome, u.email
             FROM usuarios u
             INNER JOIN usuario_tenant ut ON ut.usuario_id = u.id AND ut.status = 'ativo'
+            INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.tenant_id = ut.tenant_id AND tup.ativo = 1
             INNER JOIN alunos al ON al.usuario_id = u.id
             LEFT JOIN matriculas m ON m.aluno_id = al.id AND m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1)
             WHERE ut.tenant_id = ? 
-            AND u.role_id = 1
+            AND tup.papel_id = 1
             AND m.id IS NOT NULL
             ORDER BY u.nome ASC
         ");
@@ -308,13 +313,11 @@ class AdminController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
         }
 
-        // Criar usuário com role_id = 1 (aluno)
+        // Criar usuário com papel_id = 1 (aluno)
         $usuarioId = $this->usuarioModel->create($data, $tenantId);
 
-        // Definir como aluno
-        if ($usuarioId) {
-            $this->usuarioModel->update($usuarioId, ['role_id' => 1]);
-        }
+        // Definir papel de aluno em tenant_usuario_papel (já feito pelo create)
+        // Não precisa mais atualizar role_id
 
         $usuario = $this->usuarioModel->findById($usuarioId, $tenantId);
 

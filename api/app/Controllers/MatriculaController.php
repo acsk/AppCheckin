@@ -64,8 +64,12 @@ class MatriculaController
 
         $planoId = $data['plano_id'];
         
-        // Verificar se usuário existe
-        $stmtUsuarioExiste = $db->prepare("SELECT * FROM usuarios WHERE id = ? AND role_id = 1");
+        // Verificar se usuário existe e é aluno
+        $stmtUsuarioExiste = $db->prepare("
+            SELECT u.* FROM usuarios u
+            INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.ativo = 1
+            WHERE u.id = ? AND tup.papel_id = 1
+        ");
         $stmtUsuarioExiste->execute([$usuarioId]);
         $usuarioExiste = $stmtUsuarioExiste->fetch();
         
@@ -99,7 +103,8 @@ class MatriculaController
             SELECT u.* 
             FROM usuarios u
             INNER JOIN usuario_tenant ut ON ut.usuario_id = u.id
-            WHERE u.id = ? AND ut.tenant_id = ? AND u.role_id = 1 AND ut.status = 'ativo'
+            INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.tenant_id = ut.tenant_id AND tup.ativo = 1
+            WHERE u.id = ? AND ut.tenant_id = ? AND tup.papel_id = 1 AND ut.status = 'ativo'
         ");
         $stmtUsuario->execute([$usuarioId, $tenantId]);
         $usuario = $stmtUsuario->fetch();

@@ -39,9 +39,9 @@ class ProfessorMiddleware
                 ->withHeader('Content-Type', 'application/json; charset=utf-8');
         }
 
-        // Super admin (role_id = 4) tem acesso total em qualquer tenant
-        $roleId = (int) ($usuario['role_id'] ?? 0);
-        if ($roleId === 4) {
+        // Super admin (papel_id = 4) tem acesso total em qualquer tenant
+        $papelId = (int) ($usuario['papel_id'] ?? 0);
+        if ($papelId === 4) {
             $request = $request->withAttribute('papel', [
                 'id' => 4,
                 'nome' => 'super_admin',

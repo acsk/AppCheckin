@@ -30,7 +30,7 @@ export default function NovoPlanoSistemaScreen() {
 
   const checkAccess = async () => {
     const user = await authService.getCurrentUser();
-    if (!user || user.role_id !== 4) {
+    if (!user || user.papel_id !== 4) {
       showError('Acesso negado. Apenas Super Admin pode acessar esta página.');
       router.replace('/');
       return;

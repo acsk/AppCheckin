@@ -55,8 +55,8 @@ export default function LoginScreen() {
       console.log('✅ Login response:', response);
 
       // Verificar se o usuário tem permissão para acessar o painel
-      // role_id 1 = Aluno (não pode acessar o painel)
-      if (response.user?.role_id === 1) {
+      // roles permitidos: 3 = Admin, 4 = Super Admin
+      if (![3, 4].includes(response.user?.papel_id)) {
         toast.error('Acesso não permitido. Este painel é exclusivo para administradores.', {
           duration: 5000,
           position: 'top-center',
@@ -153,7 +153,11 @@ export default function LoginScreen() {
       >
         <View style={styles.card}>
           <View style={styles.header}>
-            <Image source={require('../../../assets/img/logo.png')} style={styles.logo} />
+            <Image
+              source={require('../../../assets/img/logo.png')}
+              style={styles.logo}
+              resizeMode="contain"
+            />
             <Text style={styles.title}>Faça seu login</Text>
           </View>
 

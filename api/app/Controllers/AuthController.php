@@ -196,8 +196,19 @@ class AuthController
         // Inicializar token
         $token = null;
 
-        // Super admin (role_id = 4) não precisa de vínculo com tenant
-        if ($usuario['role_id'] == 4) {
+        // Buscar papel_id do usuário via tenant_usuario_papel
+        $db = require __DIR__ . '/../../config/database.php';
+        $stmtPapel = $db->prepare("
+            SELECT papel_id FROM tenant_usuario_papel 
+            WHERE usuario_id = :usuario_id AND ativo = 1 
+            ORDER BY papel_id DESC LIMIT 1
+        ");
+        $stmtPapel->execute(['usuario_id' => $usuario['id']]);
+        $papelResult = $stmtPapel->fetch(\PDO::FETCH_ASSOC);
+        $papelId = $papelResult ? (int)$papelResult['papel_id'] : null;
+
+        // Super admin (papel_id = 4 na tabela papeis) não precisa de vínculo com tenant
+        if ($papelId === 4) {
             // Super admin: pode acessar sem tenant específico
             $tenants = [];
             
@@ -226,13 +237,13 @@ class AuthController
         // Se tem múltiplos, retorna a lista para o usuário escolher
         $tenantId = null;
 
-        if ($usuario['role_id'] == 4) {
+        if ($papelId === 4) {
             // Super admin já tem token gerado acima, não precisa fazer nada
         } else if (count($tenants) === 1) {
             $tenantId = $tenants[0]['tenant']['id'];
             
-            // Se for Tenant Admin (role_id = 3), verificar contrato ativo
-            if ($usuario['role_id'] == 3) {
+            // Se for Tenant Admin (papel_id = 3), verificar contrato ativo
+            if ($papelId === 3) {
                 $db = require __DIR__ . '/../../config/database.php';
                 $stmt = $db->prepare("
                     SELECT COUNT(*) as tem_contrato
@@ -253,9 +264,9 @@ class AuthController
                 }
             }
             
-            // Buscar aluno_id se o usuário for aluno (role_id = 1)
+            // Buscar aluno_id se o usuário for aluno (papel_id = 1)
             $alunoId = null;
-            if ($usuario['role_id'] == 1) {
+            if ($papelId === 1) {
                 $db = require __DIR__ . '/../../config/database.php';
                 $stmtAluno = $db->prepare("SELECT id FROM alunos WHERE usuario_id = ?");
                 $stmtAluno->execute([$usuario['id']]);
@@ -286,7 +297,7 @@ class AuthController
                 'email' => $usuario['email'],
                 'email_global' => $usuario['email_global'] ?? $usuario['email'], // fallback para email se email_global não existir
                 'foto_base64' => $usuario['foto_base64'] ?? null,
-                'role_id' => $usuario['role_id'] ?? null
+                'papel_id' => $papelId
             ],
             'tenants' => $tenants,
             'requires_tenant_selection' => count($tenants) > 1
@@ -387,8 +398,8 @@ class AuthController
         // Buscar dados do usuário
         $usuario = $this->usuarioModel->findById($userId);
         
-        // Se for Tenant Admin (role_id = 3), verificar contrato ativo
-        if ($usuario['role_id'] == 3) {
+        // Se for Tenant Admin (papel_id = 3), verificar contrato ativo
+        if (($usuario['papel_id'] ?? null) == 3) {
             $db = require __DIR__ . '/../../config/database.php';
             $stmt = $db->prepare("
                 SELECT COUNT(*) as tem_contrato
@@ -409,9 +420,9 @@ class AuthController
             }
         }
 
-        // Buscar aluno_id se o usuário for aluno (role_id = 1)
+        // Buscar aluno_id se o usuário for aluno (papel_id = 1)
         $alunoId = null;
-        if ($usuario['role_id'] == 1) {
+        if (($usuario['papel_id'] ?? null) == 1) {
             $db = require __DIR__ . '/../../config/database.php';
             $stmtAluno = $db->prepare("SELECT id FROM alunos WHERE usuario_id = ?");
             $stmtAluno->execute([$usuario['id']]);
@@ -452,7 +463,7 @@ class AuthController
                 'email' => $usuario['email'],
                 'email_global' => $usuario['email_global'] ?? $usuario['email'],
                 'foto_base64' => $usuario['foto_base64'] ?? null,
-                'role_id' => $usuario['role_id'] ?? null
+                'papel_id' => $usuario['papel_id'] ?? null
             ],
             'tenant' => $tenantSelecionado
         ]));
@@ -504,9 +515,9 @@ class AuthController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
         }
 
-        // Buscar aluno_id se o usuário for aluno (role_id = 1)
+        // Buscar aluno_id se o usuário for aluno (papel_id = 1)
         $alunoId = null;
-        if (($usuario['role_id'] ?? null) == 1) {
+        if (($usuario['papel_id'] ?? null) == 1) {
             $db = require __DIR__ . '/../../config/database.php';
             $stmtAluno = $db->prepare("SELECT id FROM alunos WHERE usuario_id = ?");
             $stmtAluno->execute([$usuario['id']]);
@@ -547,7 +558,7 @@ class AuthController
                 'email' => $usuario['email'],
                 'email_global' => $usuario['email_global'] ?? $usuario['email'],
                 'foto_base64' => $usuario['foto_base64'] ?? null,
-                'role_id' => $usuario['role_id'] ?? null
+                'papel_id' => $usuario['papel_id'] ?? null
             ],
             'tenant' => $tenantSelecionado,
             'tenants' => $tenants

@@ -42,7 +42,7 @@ class SuperAdminController
         $user = $this->usuarioModel->findById($userId);
 
         // Verificar se é super admin
-        if ($user['role_id'] != 3) {
+        if (($user['papel_id'] ?? null) != 4) {
             $response->getBody()->write(json_encode([
                 'error' => 'Acesso negado. Apenas Super Admin pode acessar'
             ]));
@@ -90,7 +90,7 @@ class SuperAdminController
         $user = $this->usuarioModel->findById($userId);
 
         // Verificar se é super admin
-        if ($user['role_id'] != 3) {
+        if (($user['papel_id'] ?? null) != 4) {
             $response->getBody()->write(json_encode([
                 'error' => 'Acesso negado. Apenas Super Admin pode criar academias'
             ]));
@@ -160,7 +160,15 @@ class SuperAdminController
             'endereco' => $data['endereco'] ?? null
         ];
 
-        $tenantId = $this->tenantModel->create($academiaData);
+        try {
+            $tenantId = $this->tenantModel->create($academiaData);
+        } catch (\Exception $e) {
+            $statusCode = $e->getCode() == 409 ? 409 : 500;
+            $response->getBody()->write(json_encode([
+                'error' => $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus($statusCode);
+        }
 
         if (!$tenantId) {
             $response->getBody()->write(json_encode([
@@ -202,7 +210,7 @@ class SuperAdminController
             'bairro' => $data['bairro'] ?? null,
             'cidade' => $data['cidade'] ?? null,
             'estado' => $data['estado'] ?? null,
-            'role_id' => 2 // Admin
+            'papel_id' => 3 // Admin
         ];
 
         $adminId = $this->usuarioModel->criarUsuarioCompleto($adminData, $tenantId);
@@ -223,7 +231,7 @@ class SuperAdminController
                 'id' => $adminId,
                 'nome' => $adminData['nome'],
                 'email' => $adminData['email'],
-                'role_id' => 2
+                'papel_id' => 3
             ]
         ]));
 
@@ -241,7 +249,7 @@ class SuperAdminController
         $tenantId = (int) $args['id'];
 
         // Verificar se é super admin
-        if ($user['role_id'] != 3) {
+        if (($user['papel_id'] ?? null) != 4) {
             $response->getBody()->write(json_encode([
                 'error' => 'Acesso negado. Apenas Super Admin pode acessar'
             ]));
@@ -276,7 +284,7 @@ class SuperAdminController
         $tenantId = (int) $args['id'];
 
         // Verificar se é super admin
-        if ($user['role_id'] != 3) {
+        if (($user['papel_id'] ?? null) != 4) {
             $response->getBody()->write(json_encode([
                 'type' => 'error',
                 'message' => 'Acesso negado. Apenas Super Admin pode atualizar academias'
@@ -390,7 +398,7 @@ class SuperAdminController
         $tenantId = (int) $args['id'];
 
         // Verificar se é super admin
-        if ($user['role_id'] != 3) {
+        if (($user['papel_id'] ?? null) != 4) {
             $response->getBody()->write(json_encode([
                 'type' => 'error',
                 'message' => 'Acesso negado. Apenas Super Admin pode excluir academias'
@@ -448,7 +456,7 @@ class SuperAdminController
         $tenantId = (int) $args['tenantId'];
 
         // Verificar se é super admin
-        if ($user['role_id'] != 3) {
+        if (($user['papel_id'] ?? null) != 4) {
             $response->getBody()->write(json_encode([
                 'error' => 'Acesso negado. Apenas Super Admin pode criar admins'
             ]));
@@ -505,8 +513,14 @@ class SuperAdminController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
 
-        // Atualizar role para admin
-        $this->usuarioModel->update($adminId, ['role_id' => 2]);
+        // Criar papel do admin em tenant_usuario_papel
+        $db = require __DIR__ . '/../../config/database.php';
+        $stmtPapel = $db->prepare("
+            INSERT INTO tenant_usuario_papel (tenant_id, usuario_id, papel_id, ativo)
+            VALUES (:tenant_id, :usuario_id, 3, 1)
+            ON DUPLICATE KEY UPDATE papel_id = 3, ativo = 1
+        ");
+        $stmtPapel->execute(['tenant_id' => $tenantId, 'usuario_id' => $adminId]);
 
         // Vincular admin ao tenant
         $this->usuarioModel->vincularTenant($adminId, $tenantId);
@@ -519,7 +533,7 @@ class SuperAdminController
                 'id' => $admin['id'],
                 'nome' => $admin['nome'],
                 'email' => $admin['email'],
-                'role_id' => $admin['role_id'],
+                'papel_id' => $admin['papel_id'] ?? 3,
                 'tenant' => $tenant
             ]
         ]));
@@ -562,7 +576,7 @@ class SuperAdminController
         $tenantId = (int) $args['id'];
 
         // Verificar se é super admin
-        if ($user['role_id'] != 3) {
+        if (($user['papel_id'] ?? null) != 4) {
             $response->getBody()->write(json_encode([
                 'error' => 'Acesso negado. Apenas Super Admin pode criar contratos'
             ]));
@@ -634,7 +648,7 @@ class SuperAdminController
         $tenantId = (int) $args['id'];
 
         // Verificar se é super admin
-        if ($user['role_id'] != 3) {
+        if (($user['papel_id'] ?? null) != 4) {
             $response->getBody()->write(json_encode([
                 'error' => 'Acesso negado. Apenas Super Admin pode trocar planos'
             ]));
@@ -697,7 +711,7 @@ class SuperAdminController
         $tenantId = (int) $args['id'];
 
         // Verificar se é super admin
-        if ($user['role_id'] != 3) {
+        if (($user['papel_id'] ?? null) != 4) {
             $response->getBody()->write(json_encode([
                 'error' => 'Acesso negado. Apenas Super Admin pode visualizar contratos'
             ]));
@@ -736,7 +750,7 @@ class SuperAdminController
         $contratoId = (int) $args['id'];
 
         // Verificar se é super admin
-        if ($user['role_id'] != 3) {
+        if (($user['papel_id'] ?? null) != 4) {
             $response->getBody()->write(json_encode([
                 'error' => 'Acesso negado. Apenas Super Admin pode renovar contratos'
             ]));
@@ -773,7 +787,7 @@ class SuperAdminController
         $user = $this->usuarioModel->findById($userId);
 
         // Verificar se é super admin
-        if ($user['role_id'] != 3) {
+        if (($user['papel_id'] ?? null) != 4) {
             $response->getBody()->write(json_encode([
                 'error' => 'Acesso negado. Apenas Super Admin pode visualizar relatórios'
             ]));
@@ -804,7 +818,7 @@ class SuperAdminController
         $user = $this->usuarioModel->findById($userId);
 
         // Verificar se é super admin
-        if ($user['role_id'] != 3) {
+        if (($user['papel_id'] ?? null) != 4) {
             $response->getBody()->write(json_encode([
                 'error' => 'Acesso negado. Apenas Super Admin pode visualizar relatórios'
             ]));
@@ -831,7 +845,7 @@ class SuperAdminController
         $user = $this->usuarioModel->findById($userId);
 
         // Verificar se é super admin
-        if ($user['role_id'] != 3) {
+        if (($user['papel_id'] ?? null) != 4) {
             $response->getBody()->write(json_encode([
                 'error' => 'Acesso negado. Apenas Super Admin pode visualizar contratos'
             ]));
@@ -859,7 +873,7 @@ class SuperAdminController
         $contratoId = (int) $args['id'];
 
         // Verificar se é super admin
-        if ($user['role_id'] != 3) {
+        if (($user['papel_id'] ?? null) != 4) {
             $response->getBody()->write(json_encode([
                 'error' => 'Acesso negado. Apenas Super Admin pode cancelar contratos'
             ]));
@@ -897,7 +911,7 @@ class SuperAdminController
         $user = $this->usuarioModel->findById($userId);
 
         // Verificar se é super admin
-        if ($user['role_id'] != 3) {
+        if (($user['papel_id'] ?? null) != 4) {
             $response->getBody()->write(json_encode([
                 'error' => 'Acesso negado. Apenas Super Admin'
             ]));
@@ -925,7 +939,7 @@ class SuperAdminController
         $user = $this->usuarioModel->findById($userId);
 
         // Verificar se é super admin
-        if ($user['role_id'] != 3) {
+        if (($user['papel_id'] ?? null) != 4) {
             $response->getBody()->write(json_encode([
                 'error' => 'Acesso negado. Apenas Super Admin'
             ]));
@@ -953,7 +967,7 @@ class SuperAdminController
         $data = $request->getParsedBody();
 
         // Verificar se é super admin
-        if ($user['role_id'] != 3) {
+        if (($user['papel_id'] ?? null) != 4) {
             $response->getBody()->write(json_encode([
                 'error' => 'Acesso negado. Apenas Super Admin'
             ]));
@@ -1004,7 +1018,7 @@ class SuperAdminController
         $data = $request->getParsedBody();
 
         // Verificar se é super admin
-        if ($user['role_id'] != 3) {
+        if (($user['papel_id'] ?? null) != 4) {
             $response->getBody()->write(json_encode([
                 'error' => 'Acesso negado. Apenas Super Admin'
             ]));
@@ -1048,7 +1062,7 @@ class SuperAdminController
         $planoId = (int) $args['id'];
 
         // Verificar se é super admin
-        if ($user['role_id'] != 3) {
+        if (($user['papel_id'] ?? null) != 4) {
             $response->getBody()->write(json_encode([
                 'error' => 'Acesso negado. Apenas Super Admin'
             ]));
@@ -1083,7 +1097,7 @@ class SuperAdminController
         $planoId = (int) $args['id'];
 
         // Verificar se é super admin
-        if ($user['role_id'] != 3) {
+        if (($user['papel_id'] ?? null) != 4) {
             $response->getBody()->write(json_encode([
                 'error' => 'Acesso negado. Apenas Super Admin'
             ]));
@@ -1124,7 +1138,7 @@ class SuperAdminController
         $user = $this->usuarioModel->findById($userId);
 
         // Verificar se é super admin
-        if ($user['role_id'] != 3) {
+        if (($user['papel_id'] ?? null) != 4) {
             $response->getBody()->write(json_encode([
                 'error' => 'Acesso negado. Apenas Super Admin'
             ]));
@@ -1190,7 +1204,7 @@ class SuperAdminController
         $user = $this->usuarioModel->findById($userId);
 
         // Verificar se é super admin
-        if ($user['role_id'] != 3) {
+        if (($user['papel_id'] ?? null) != 4) {
             $response->getBody()->write(json_encode([
                 'error' => 'Acesso negado. Apenas Super Admin pode acessar'
             ]));

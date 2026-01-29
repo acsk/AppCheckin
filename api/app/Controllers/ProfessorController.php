@@ -147,7 +147,7 @@ class ProfessorController
                     'email' => $data['email'],
                     'email_global' => $data['email'],
                     'senha' => $senhaTemporaria,
-                    'role_id' => 1, // role_id global = aluno (o papel de professor é por tenant)
+                    // papel é definido via tenant_usuario_papel pelo método create()
                     'telefone' => $data['telefone'] ?? null,
                     'cpf' => $data['cpf'] ?? null,
                     'ativo' => 1

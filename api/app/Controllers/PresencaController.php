@@ -17,11 +17,10 @@ use PDO;
  * Papéis permitidos (via tenant_usuario_papel):
  * - 2: professor
  * - 3: admin
+ * - 4: super_admin (acesso total)
  * 
  * O papel é definido POR TENANT via tabela tenant_usuario_papel
  * Um usuário pode ter múltiplos papéis no mesmo tenant
- * 
- * Super admin (usuarios.role_id = 3) tem acesso total em qualquer tenant
  */
 class PresencaController
 {

@@ -29,7 +29,7 @@ class CheckinController
 
         // Verificar se usuário é admin (admins não podem fazer check-in próprio)
         $usuario = $this->usuarioModel->findById($userId);
-        if ($usuario && isset($usuario['role_id']) && ($usuario['role_id'] == 2 || $usuario['role_id'] == 3)) {
+        if ($usuario && isset($usuario['papel_id']) && ($usuario['papel_id'] == 2 || $usuario['papel_id'] == 3)) {
             $response->getBody()->write(json_encode([
                 'error' => 'Administradores não podem fazer check-in próprio. Use o painel admin para registrar check-ins de alunos.'
             ]));
@@ -250,7 +250,7 @@ class CheckinController
         $usuarioId = (int) $data['usuario_id'];
         $turmaId = (int) $data['turma_id'];
 
-        // Verificar se aluno existe e é realmente aluno (role_id = 1)
+        // Verificar se aluno existe e é realmente aluno (papel_id = 1)
         $aluno = $this->usuarioModel->findById($usuarioId);
         if (!$aluno) {
             $response->getBody()->write(json_encode([
@@ -259,7 +259,7 @@ class CheckinController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
         }
 
-        if ($aluno['role_id'] != 1) {
+        if (($aluno['papel_id'] ?? null) != 1) {
             $response->getBody()->write(json_encode([
                 'error' => 'Usuário não é um aluno'
             ]));

@@ -47,7 +47,7 @@ export default function FormUsuarioScreen() {
     bairro: '',
     cidade: '',
     estado: '',
-    role_id: 1,
+    papel_id: 1,
   });
   const [errors, setErrors] = useState({});
   const [loadingCep, setLoadingCep] = useState(false);
@@ -68,7 +68,7 @@ export default function FormUsuarioScreen() {
       let isSuperAdminUser = false;
       try {
         const meResponse = await api.get('/me');
-        isSuperAdminUser = meResponse.data?.role_id === 4;
+        isSuperAdminUser = meResponse.data?.papel_id === 4;
         setIsSuperAdmin(isSuperAdminUser);
       } catch (error) {
         console.log('Não foi possível verificar role do usuário');
@@ -101,7 +101,7 @@ export default function FormUsuarioScreen() {
         bairro: usuario.bairro || '',
         cidade: usuario.cidade || '',
         estado: usuario.estado || '',
-        role_id: usuario.role_id || 1,
+        papel_id: usuario.papel_id || 1,
       });
     } catch (error) {
       console.error('❌ Erro ao carregar usuário:', error);
@@ -301,7 +301,7 @@ export default function FormUsuarioScreen() {
       bairro: usuario.bairro || '',
       cidade: usuario.cidade || '',
       estado: usuario.estado || '',
-      role_id: usuario.role_id || 1,
+      papel_id: usuario.papel_id || 1,
     });
     setBuscarCpfModalVisible(false);
     showSuccess('Usuário encontrado! Dados preenchidos automaticamente.');

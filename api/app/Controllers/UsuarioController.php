@@ -254,8 +254,8 @@ class UsuarioController
         $queryParams = $request->getQueryParams();
         $apenasAtivos = isset($queryParams['ativos']) && $queryParams['ativos'] === 'true';
         
-        // SuperAdmin (role_id = 4) pode listar usuários de todos os tenants
-        $isSuperAdmin = isset($usuarioLogado['role_id']) && $usuarioLogado['role_id'] == 4;
+        // SuperAdmin (papel_id = 4) pode listar usuários de todos os tenants
+        $isSuperAdmin = isset($usuarioLogado['papel_id']) && $usuarioLogado['papel_id'] == 4;
 
         if ($isSuperAdmin) {
             // SuperAdmin: listar todos os usuários
@@ -268,7 +268,7 @@ class UsuarioController
         // Filtrar apenas alunos e professores - Admins não aparecem na tela de usuários (exceto para SuperAdmin)
         if (!$isSuperAdmin) {
             $usuarios = array_filter($usuarios, function($usuario) {
-                return in_array($usuario['role_id'], [1, 2]); // 1 = aluno, 2 = professor
+                return in_array($usuario['papel_id'] ?? 1, [1, 2]); // 1 = aluno, 2 = professor
             });
         }
 
@@ -302,8 +302,8 @@ class UsuarioController
         $usuarioLogado = $request->getAttribute('usuario');
         $tenantId = $request->getAttribute('tenantId');
         
-        // SuperAdmin (role_id = 4) pode acessar usuários de qualquer tenant
-        $isSuperAdmin = isset($usuarioLogado['role_id']) && $usuarioLogado['role_id'] == 4;
+        // SuperAdmin (papel_id = 4) pode acessar usuários de qualquer tenant
+        $isSuperAdmin = isset($usuarioLogado['papel_id']) && $usuarioLogado['papel_id'] == 4;
         
         // Se for SuperAdmin, não filtra por tenant
         $usuario = $this->usuarioModel->findById($id, $isSuperAdmin ? null : $tenantId);
@@ -315,8 +315,8 @@ class UsuarioController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
         }
 
-        // Bloquear visualização de usuários Admin (role_id >= 3) pela tela de usuários (exceto SuperAdmin)
-        if (!$isSuperAdmin && $usuario['role_id'] >= 3) {
+        // Bloquear visualização de usuários Admin (papel_id >= 3) pela tela de usuários (exceto SuperAdmin)
+        if (!$isSuperAdmin && isset($usuario['papel_id']) && $usuario['papel_id'] >= 3) {
             $response->getBody()->write(json_encode([
                 'error' => 'Usuários administradores só podem ser visualizados pela tela de Academia'
             ]));
@@ -424,8 +424,8 @@ class UsuarioController
         $tenantId = $request->getAttribute('tenantId');
         $data = $request->getParsedBody();
         
-        // SuperAdmin (role_id = 4) pode editar usuários de qualquer tenant
-        $isSuperAdmin = isset($usuarioLogado['role_id']) && $usuarioLogado['role_id'] == 4;
+        // SuperAdmin (papel_id = 4) pode editar usuários de qualquer tenant
+        $isSuperAdmin = isset($usuarioLogado['papel_id']) && $usuarioLogado['papel_id'] == 4;
 
         // Verificar se usuário pertence ao tenant (ou se é SuperAdmin)
         $usuarioExistente = $this->usuarioModel->findById($id, $isSuperAdmin ? null : $tenantId);
@@ -437,8 +437,8 @@ class UsuarioController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
         }
 
-        // Bloquear edição de usuários Admin (role_id >= 3) pela tela de usuários (exceto SuperAdmin)
-        if (!$isSuperAdmin && $usuarioExistente['role_id'] >= 3) {
+        // Bloquear edição de usuários Admin (papel_id >= 3) pela tela de usuários (exceto SuperAdmin)
+        if (!$isSuperAdmin && isset($usuarioExistente['papel_id']) && $usuarioExistente['papel_id'] >= 3) {
             $response->getBody()->write(json_encode([
                 'type' => 'error',
                 'message' => 'Usuários administradores só podem ser editados pela tela de Academia'
@@ -503,9 +503,9 @@ class UsuarioController
         $userId = $request->getAttribute('userId');
         $tenantId = $request->getAttribute('tenantId');
 
-        // Obter o usuário autenticado para verificar seu role
+        // Obter o usuário autenticado para verificar seu papel
         $userAuth = $this->usuarioModel->findById($userId, $tenantId);
-        $isSuperAdmin = $userAuth && isset($userAuth['role_id']) && $userAuth['role_id'] == 4;
+        $isSuperAdmin = $userAuth && isset($userAuth['papel_id']) && $userAuth['papel_id'] == 4;
 
         // Se for SuperAdmin, pode alterar status de usuários de qualquer tenant
         if ($isSuperAdmin) {
@@ -521,7 +521,7 @@ class UsuarioController
             }
 
             // Não permitir alterar status de outros SuperAdmins
-            if ($usuario['role_id'] == 4) {
+            if (isset($usuario['papel_id']) && $usuario['papel_id'] == 4) {
                 $response->getBody()->write(json_encode([
                     'type' => 'error',
                     'message' => 'Não é permitido alterar status de usuários SuperAdmin'
@@ -529,8 +529,8 @@ class UsuarioController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
             }
 
-            // Não permitir alterar status de Admins proprietários de tenants (role_id = 3)
-            if ($usuario['role_id'] == 3) {
+            // Não permitir alterar status de Admins proprietários de tenants (papel_id = 3)
+            if (isset($usuario['papel_id']) && $usuario['papel_id'] == 3) {
                 $response->getBody()->write(json_encode([
                     'type' => 'error',
                     'message' => 'Não é permitido alterar status de administradores de academias/tenants'
@@ -808,13 +808,7 @@ class UsuarioController
             $errors[] = 'Estado deve ter 2 caracteres (sigla UF)';
         }
 
-        // Validar role_id se fornecido
-        if (isset($data['role_id']) && !empty($data['role_id'])) {
-            // Role 1 = Aluno, Role 2 = Admin, Role 3 = SuperAdmin
-            if (!in_array($data['role_id'], [1, 2, 3])) {
-                $errors[] = 'Role inválido';
-            }
-        }
+        // role_id não é mais usado - papel é definido via tenant_usuario_papel
 
         return $errors;
     }

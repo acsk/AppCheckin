@@ -52,13 +52,15 @@ class AuthMiddleware
                 u.nome, 
                 u.email, 
                 u.email_global, 
-                u.role_id, 
                 u.foto_base64,
                 ut.tenant_id,
-                ut.status as tenant_status
+                ut.status as tenant_status,
+                tup.papel_id
             FROM usuarios u
             LEFT JOIN usuario_tenant ut ON ut.usuario_id = u.id AND ut.status = 'ativo'
+            LEFT JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.ativo = 1
             WHERE u.id = :user_id
+            ORDER BY tup.papel_id DESC
             LIMIT 1
         ");
         $stmt->execute(['user_id' => $decoded->user_id]);

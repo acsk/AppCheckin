@@ -124,8 +124,8 @@ export default function Dashboard() {
         // Carregar dados do dashboard (disponível para admin)
         carregarDadosDashboard();
         
-        // Carregar academias apenas para super_admin (role_id = 4)
-        if (user.role_id === 4) {
+        // Carregar academias apenas para super_admin (papel_id = 4)
+        if (user.papel_id === 4) {
           carregarAcademias();
         }
       } catch (error) {

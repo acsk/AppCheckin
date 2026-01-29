@@ -157,7 +157,7 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
       >
         <View className="gap-0">
           {MENU.filter(item => {
-            const userRole = usuarioInfo?.role_id || 1;
+            const userRole = usuarioInfo?.papel_id || 1;
             return item.roles.includes(userRole);
           }).map((item) => {
             const selected = pathname === item.path || 
@@ -211,7 +211,7 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
           <View className="flex-1">
             <Text className="text-sm font-semibold text-slate-900" numberOfLines={1}>{nome}</Text>
             <Text className="text-[11px] text-slate-400">
-              {usuarioInfo?.role_id === 4 ? 'Super Admin' : usuarioInfo?.role_id === 3 ? 'Admin' : 'Usuário'}
+              {usuarioInfo?.papel_id === 4 ? 'Super Admin' : usuarioInfo?.papel_id === 3 ? 'Admin' : 'Usuário'}
             </Text>
           </View>
           <TouchableOpacity 

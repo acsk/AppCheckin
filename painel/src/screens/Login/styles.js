@@ -24,7 +24,7 @@ export default StyleSheet.create({
     alignItems: 'center',
     marginBottom: 18,
   },
-  logo: { width: 210, height: 100, resizeMode: 'contain' },
+  logo: { width: 210, height: 100 },
   title: {
     color: '#fff',
     fontSize: 24,

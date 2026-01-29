@@ -84,9 +84,9 @@ export default function FormMatriculaScreen() {
         ? usuariosData.usuarios 
         : [];
 
-      // Filtrar apenas alunos (role_id = 1)
+      // Filtrar apenas alunos (papel_id = 1)
       const alunosAtivos = usuarios.filter(
-        (u) => u.role_id === 1 && u.status === 'ativo'
+        (u) => u.papel_id === 1 && u.status === 'ativo'
       );
       
       console.log('👥 Alunos ativos:', alunosAtivos);

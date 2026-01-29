@@ -7,10 +7,10 @@ use Psr\Http\Server\RequestHandlerInterface as RequestHandler;
 use Slim\Psr7\Response;
 
 /**
- * Middleware para validar que APENAS SuperAdmins (role_id = 4) 
+ * Middleware para validar que APENAS SuperAdmins (papel_id = 4) 
  * acessem rotas de gestão de academias
  * 
- * Papéis (tabela papeis):
+ * Papéis (tabela papeis via tenant_usuario_papel):
  * - 1: aluno
  * - 2: professor
  * - 3: admin
@@ -33,15 +33,15 @@ class SuperAdminMiddleware
                 ->withHeader('Content-Type', 'application/json');
         }
 
-        // Verificar se é superadmin (role_id = 4)
-        $roleId = $usuario['role_id'] ?? null;
+        // Verificar se é superadmin (papel_id = 4 via tenant_usuario_papel)
+        $papelId = isset($usuario['papel_id']) ? (int)$usuario['papel_id'] : null;
         
-        if ($roleId !== 4) {
+        if ($papelId !== 4) {
             $response = new Response();
             $response->getBody()->write(json_encode([
                 'erro' => 'Acesso negado. Apenas super administradores podem acessar este recurso.',
-                'role_necessaria' => 'super_admin',
-                'role_atual' => $roleId
+                'papel_necessario' => 'super_admin',
+                'papel_atual' => $papelId
             ]));
             return $response
                 ->withStatus(403)

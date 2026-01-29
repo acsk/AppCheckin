@@ -28,7 +28,7 @@ export default function UsuariosScreen() {
   const checkUserRole = async () => {
     try {
       const user = await authService.getCurrentUser();
-      const isSuper = user?.role_id === 4;
+      const isSuper = user?.papel_id === 4;
       setIsSuperAdmin(isSuper);
     } catch (error) {
       console.error('Erro ao verificar role do usuário:', error);
@@ -39,7 +39,7 @@ export default function UsuariosScreen() {
     try {
       setLoading(true);
       const user = await authService.getCurrentUser();
-      const isSuper = user?.role_id === 4;
+      const isSuper = user?.papel_id === 4;
       
       let response;
       if (isSuper) {
@@ -134,7 +134,7 @@ export default function UsuariosScreen() {
   };
 
   const renderMobileCard = (usuario) => {
-    const roleBadge = getRoleBadge(usuario.role_id);
+    const roleBadge = getRoleBadge(usuario.papel_id);
     
     return (
     <View key={usuario.id} style={styles.card}>
@@ -214,7 +214,7 @@ export default function UsuariosScreen() {
       {/* Linhas da Tabela */}
       <ScrollView className="max-h-[520px]" showsVerticalScrollIndicator={true}>
         {usuariosFiltrados.map((usuario) => {
-          const roleBadge = getRoleBadge(usuario.role_id);
+          const roleBadge = getRoleBadge(usuario.papel_id);
           
           return (
           <View key={usuario.id} className="flex-row items-center border-b border-slate-100 px-4 py-3">

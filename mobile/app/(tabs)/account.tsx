@@ -770,6 +770,7 @@ export default function AccountScreen() {
                     key={day.dateStr}
                     style={[
                       styles.weekDayItem,
+                      isPast && !hasCheckin && styles.weekDayItemMissed,
                       isToday && styles.weekDayItemToday,
                       hasCheckin && styles.weekDayItemChecked,
                     ]}
@@ -799,7 +800,7 @@ export default function AccountScreen() {
                         </View>
                       ) : isPast ? (
                         <View style={styles.weekDayMissedIcon}>
-                          <Feather name="x" size={10} color="#d1d5db" />
+                          <Feather name="x" size={14} color="#fff" />
                         </View>
                       ) : (
                         <View style={styles.weekDayEmptyIcon} />
@@ -1285,7 +1286,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 2,
     borderRadius: 12,
-    backgroundColor: "#f9fafb",
+    backgroundColor: "#e5e7eb",
     minWidth: 38,
   },
   weekDayItemToday: {
@@ -1297,6 +1298,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#dcfce7",
     borderWidth: 2,
     borderColor: "#10b981",
+  },
+  weekDayItemMissed: {
+    backgroundColor: "#f3f4f6",
+    borderWidth: 1,
+    borderColor: "#d1d5db",
   },
   weekDayName: {
     fontSize: 11,
@@ -1342,12 +1348,17 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   weekDayMissedIcon: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: "#e5e7eb",
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "#ef4444",
     justifyContent: "center",
     alignItems: "center",
+    shadowColor: "#ef4444",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 2,
   },
   weekDayEmptyIcon: {
     width: 20,

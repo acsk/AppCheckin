@@ -31,8 +31,8 @@ class Usuario
             // 1. Inserir usuário (dados de autenticação)
             // Nota: mantendo campos de perfil em usuarios por compatibilidade, mas também salvando em alunos
             $stmt = $this->db->prepare(
-                "INSERT INTO usuarios (nome, email, email_global, senha_hash, role_id, cpf, cep, logradouro, numero, complemento, bairro, cidade, estado, telefone, ativo) 
-                 VALUES (:nome, :email, :email_global, :senha_hash, :role_id, :cpf, :cep, :logradouro, :numero, :complemento, :bairro, :cidade, :estado, :telefone, :ativo)"
+                "INSERT INTO usuarios (nome, email, email_global, senha_hash, cpf, cep, logradouro, numero, complemento, bairro, cidade, estado, telefone, ativo) 
+                 VALUES (:nome, :email, :email_global, :senha_hash, :cpf, :cep, :logradouro, :numero, :complemento, :bairro, :cidade, :estado, :telefone, :ativo)"
             );
             
             $stmt->execute([
@@ -40,7 +40,6 @@ class Usuario
                 'email' => $data['email'],
                 'email_global' => $data['email_global'] ?? $data['email'],
                 'senha_hash' => password_hash($data['senha'], PASSWORD_BCRYPT),
-                'role_id' => $data['role_id'] ?? 1,
                 'cpf' => $cpfLimpo ?: null,
                 'cep' => $cepLimpo ?: null,
                 'logradouro' => $logradouro,
@@ -139,13 +138,14 @@ class Usuario
         
         $sql = "
             SELECT u.id, COALESCE(ut.tenant_id, :fallback_tenant) as tenant_id, ut.status, 
-                   u.nome, u.email, u.role_id, 
+                   u.nome, u.email, tup.papel_id, 
                    u.foto_base64, u.foto_caminho, u.telefone,
                    u.cpf, u.cep, u.logradouro, u.numero, u.complemento, u.bairro, u.cidade, u.estado,
                    u.created_at, u.updated_at,
                    p.nome as role_nome, p.descricao as role_descricao
             FROM usuarios u
-            LEFT JOIN papeis p ON u.role_id = p.id
+            LEFT JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.ativo = 1
+            LEFT JOIN papeis p ON tup.papel_id = p.id
             {$joinType} usuario_tenant ut ON ut.usuario_id = u.id
         ";
         
@@ -158,6 +158,7 @@ class Usuario
         }
         
         $sql .= " WHERE " . implode(' AND ', $conditions);
+        $sql .= " ORDER BY tup.papel_id DESC LIMIT 1";
         
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
@@ -168,9 +169,9 @@ class Usuario
         }
         
         // Estruturar com objeto role se existir
-        if ($user['role_id']) {
+        if ($user['papel_id']) {
             $user['role'] = [
-                'id' => $user['role_id'],
+                'id' => $user['papel_id'],
                 'nome' => $user['role_nome'],
                 'descricao' => $user['role_descricao']
             ];
@@ -205,10 +206,7 @@ class Usuario
             $params['foto_base64'] = $data['foto_base64'];
         }
 
-        if (isset($data['role_id'])) {
-            $fields[] = 'role_id = :role_id';
-            $params['role_id'] = $data['role_id'];
-        }
+        // role_id foi removido - agora usa tenant_usuario_papel
 
         if (isset($data['telefone'])) {
             $fields[] = 'telefone = :telefone';
@@ -535,18 +533,17 @@ class Usuario
                 u.email,
                 u.telefone,
                 u.cpf,
-                COALESCE(tup.papel_id, u.role_id) as role_id,
+                tup.papel_id,
                 u.foto_base64,
                 u.created_at,
                 u.updated_at,
-                COALESCE(p_tenant.nome, p_global.nome) as role_nome,
+                p_tenant.nome as papel_nome,
                 ut.status,
                 CASE 
                     WHEN ut.status = 'ativo' THEN 1
                     ELSE 0
                 END as ativo
             FROM usuarios u
-            LEFT JOIN papeis p_global ON u.role_id = p_global.id
             INNER JOIN usuario_tenant ut ON u.id = ut.usuario_id
             LEFT JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.tenant_id = ut.tenant_id AND tup.ativo = 1
             LEFT JOIN papeis p_tenant ON tup.papel_id = p_tenant.id
@@ -594,8 +591,8 @@ class Usuario
                     'email' => $row['email'],
                     'telefone' => $row['telefone'] ?? null,
                     'cpf' => $row['cpf'] ?? null,
-                    'role_id' => $row['role_id'],
-                    'role_nome' => $row['role_nome'],
+                    'papel_id' => $row['papel_id'],
+                    'papel_nome' => $row['papel_nome'],
                     'ativo' => (bool) $row['ativo'],
                     'status' => $row['status'],
                     'created_at' => $row['created_at'],
@@ -623,18 +620,17 @@ class Usuario
                 u.email, 
                 u.telefone,
                 u.cpf,
-                COALESCE(tup.papel_id, u.role_id) as role_id,
+                tup.papel_id,
                 u.foto_base64,
                 u.created_at,
                 u.updated_at,
-                COALESCE(p_tenant.nome, p_global.nome) as role_nome,
+                p_tenant.nome as papel_nome,
                 ut.status,
                 CASE 
                     WHEN ut.status = 'ativo' THEN 1
                     ELSE 0
                 END as ativo
             FROM usuarios u
-            LEFT JOIN papeis p_global ON u.role_id = p_global.id
             INNER JOIN usuario_tenant ut ON u.id = ut.usuario_id
             LEFT JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.tenant_id = ut.tenant_id AND tup.ativo = 1
             LEFT JOIN papeis p_tenant ON tup.papel_id = p_tenant.id
@@ -662,8 +658,8 @@ class Usuario
                 'email' => $row['email'],
                 'telefone' => $row['telefone'] ?? null,
                 'cpf' => $row['cpf'] ?? null,
-                'role_id' => $row['role_id'],
-                'role_nome' => $row['role_nome'],
+                'papel_id' => $row['papel_id'],
+                'papel_nome' => $row['papel_nome'],
                 'ativo' => (bool) $row['ativo'],
                 'status' => $row['status'],
                 'created_at' => $row['created_at'],
@@ -685,9 +681,9 @@ class Usuario
         
         $sql = "
             INSERT INTO usuarios 
-            (nome, email, senha_hash, telefone, cpf, role_id) 
+            (nome, email, senha_hash, telefone, cpf) 
             VALUES 
-            (:nome, :email, :senha_hash, :telefone, :cpf, :role_id)
+            (:nome, :email, :senha_hash, :telefone, :cpf)
         ";
         
         $stmt = $this->db->prepare($sql);
@@ -698,15 +694,29 @@ class Usuario
             'senha_hash' => password_hash($data['senha'], PASSWORD_BCRYPT),
             'telefone' => $data['telefone'] ?? null,
             'cpf' => $cpfLimpo ?: null,
-            'role_id' => $data['role_id'] ?? 1, // Default: Aluno
         ]);
 
         $usuarioId = (int) $this->db->lastInsertId();
 
-        // Criar vínculo na tabela tenant_usuarios
+        // Criar vínculo na tabela tenant_usuarios e tenant_usuario_papel
         if ($usuarioId) {
             try {
                 $this->vincularTenant($usuarioId, $tenantId, $data['plano_id'] ?? null);
+                
+                // Criar papel do usuário em tenant_usuario_papel
+                $papelId = $data['papel_id'] ?? 1; // Default: Aluno
+                $sqlPapel = "
+                    INSERT INTO tenant_usuario_papel (tenant_id, usuario_id, papel_id, ativo)
+                    VALUES (:tenant_id, :usuario_id, :papel_id, 1)
+                    ON DUPLICATE KEY UPDATE papel_id = :papel_id2, ativo = 1
+                ";
+                $stmtPapel = $this->db->prepare($sqlPapel);
+                $stmtPapel->execute([
+                    'tenant_id' => $tenantId,
+                    'usuario_id' => $usuarioId,
+                    'papel_id' => $papelId,
+                    'papel_id2' => $papelId
+                ]);
             } catch (\PDOException $e) {
                 // Se falhar, não é crítico (pode ser que a tabela não exista ainda)
             }
@@ -824,12 +834,15 @@ class Usuario
         $cpfLimpo = preg_replace('/[^0-9]/', '', $cpf);
         
         $sql = "
-            SELECT u.id, u.nome, u.email, u.email_global, u.role_id, u.telefone,
+            SELECT u.id, u.nome, u.email, u.email_global, u.telefone,
                    u.cpf, u.cep, u.logradouro, u.numero, u.complemento, 
                    u.bairro, u.cidade, u.estado, u.ativo,
-                   u.created_at, u.updated_at
+                   u.created_at, u.updated_at,
+                   tup.papel_id
             FROM usuarios u
+            LEFT JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.ativo = 1
             WHERE u.cpf = :cpf
+            ORDER BY tup.papel_id DESC
             LIMIT 1
         ";
         

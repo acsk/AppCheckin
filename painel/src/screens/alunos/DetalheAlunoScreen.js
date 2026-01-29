@@ -40,7 +40,7 @@ export default function DetalheAlunoScreen() {
   const ensureAdminAccess = async () => {
     try {
       const user = await authService.getCurrentUser();
-      if (!user || ![3, 4].includes(user.role_id)) {
+      if (!user || ![3, 4].includes(user.papel_id)) {
         showError('Acesso restrito aos administradores');
         router.replace('/');
       }

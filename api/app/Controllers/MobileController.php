@@ -142,8 +142,8 @@ class MobileController
                 'bairro' => $aluno['bairro'] ?? null,
                 'cidade' => $aluno['cidade'] ?? null,
                 'estado' => $aluno['estado'] ?? null,
-                'role_id' => $usuario['role_id'],
-                'role_nome' => $this->getRoleName($usuario['role_id']),
+                'papel_id' => $usuario['papel_id'] ?? 1,
+                'papel_nome' => $this->getPapelName($usuario['papel_id'] ?? 1),
                 'membro_desde' => $usuario['created_at'],
                 'tenants' => $tenants,
                 'plano' => $plano,
@@ -349,16 +349,25 @@ class MobileController
     }
 
     /**
-     * Retorna o nome da role
+     * Retorna o nome do papel
+     */
+    private function getPapelName(?int $papelId): string
+    {
+        $papeis = [
+            1 => 'Aluno',
+            2 => 'Professor',
+            3 => 'Admin',
+            4 => 'Super Admin'
+        ];
+        return $papeis[$papelId] ?? 'Usuário';
+    }
+
+    /**
+     * @deprecated Use getPapelName() instead
      */
     private function getRoleName(?int $roleId): string
     {
-        $roles = [
-            1 => 'Aluno',
-            2 => 'Admin',
-            3 => 'Super Admin'
-        ];
-        return $roles[$roleId] ?? 'Usuário';
+        return $this->getPapelName($roleId);
     }
 
     /**
