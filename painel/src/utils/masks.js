@@ -58,7 +58,12 @@ export const mascaraCPF = (value) => {
  * @returns {string} - Telefone formatado
  */
 export const mascaraTelefone = (value) => {
-  const numeros = apenasNumeros(value);
+  let numeros = apenasNumeros(value);
+  
+  // Limitar a 11 dígitos (celular)
+  if (numeros.length > 11) {
+    numeros = numeros.substring(0, 11);
+  }
   
   if (numeros.length <= 2) {
     return numeros;

@@ -19,11 +19,14 @@ class MatriculaController
         $data = $request->getParsedBody();
         $db = require __DIR__ . '/../../config/database.php';
 
-        // Validações
+        // Validações - aceita tanto aluno_id quanto usuario_id (retrocompatibilidade)
         $errors = [];
         
-        if (empty($data['usuario_id'])) {
-            $errors[] = 'Aluno é obrigatório';
+        $alunoIdInput = $data['aluno_id'] ?? null;
+        $usuarioIdInput = $data['usuario_id'] ?? null;
+        
+        if (empty($alunoIdInput) && empty($usuarioIdInput)) {
+            $errors[] = 'Aluno é obrigatório (envie aluno_id ou usuario_id)';
         }
         
         if (empty($data['plano_id'])) {
@@ -35,7 +38,30 @@ class MatriculaController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
         }
 
-        $usuarioId = $data['usuario_id'];
+        // Se recebeu aluno_id, buscar usuario_id
+        if ($alunoIdInput) {
+            $stmtBuscaUsuario = $db->prepare("SELECT usuario_id FROM alunos WHERE id = ?");
+            $stmtBuscaUsuario->execute([$alunoIdInput]);
+            $alunoRow = $stmtBuscaUsuario->fetch();
+            if (!$alunoRow) {
+                $response->getBody()->write(json_encode(['error' => 'Aluno não encontrado']));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+            $usuarioId = $alunoRow['usuario_id'];
+            $alunoId = $alunoIdInput;
+        } else {
+            $usuarioId = $usuarioIdInput;
+            // Buscar aluno_id a partir do usuario_id
+            $stmtAluno = $db->prepare("SELECT id FROM alunos WHERE usuario_id = ?");
+            $stmtAluno->execute([$usuarioId]);
+            $alunoRow = $stmtAluno->fetch();
+            if (!$alunoRow) {
+                $response->getBody()->write(json_encode(['error' => 'Aluno não encontrado na tabela de alunos']));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+            $alunoId = $alunoRow['id'];
+        }
+
         $planoId = $data['plano_id'];
         
         // Verificar se usuário existe
@@ -44,7 +70,7 @@ class MatriculaController
         $usuarioExiste = $stmtUsuarioExiste->fetch();
         
         if (!$usuarioExiste) {
-            $response->getBody()->write(json_encode(['error' => 'Aluno não encontrado']));
+            $response->getBody()->write(json_encode(['error' => 'Usuário não encontrado ou não é aluno']));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
         }
         
@@ -98,10 +124,11 @@ class MatriculaController
             SELECT m.*, p.modalidade_id 
             FROM matriculas m
             INNER JOIN planos p ON p.id = m.plano_id
-            WHERE m.usuario_id = ? AND m.tenant_id = ? AND m.status = 'ativa'
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            WHERE m.aluno_id = ? AND m.tenant_id = ? AND sm.codigo = 'ativa'
             ORDER BY m.created_at DESC
         ");
-        $stmtAtiva->execute([$usuarioId, $tenantId]);
+        $stmtAtiva->execute([$alunoId, $tenantId]);
         $matriculasAtivas = $stmtAtiva->fetchAll();
         
         // Buscar modalidade do novo plano
@@ -162,6 +189,19 @@ class MatriculaController
             $planoAnteriorId = $matriculaMesmaModalidade['plano_id'];
             $matriculaAnteriorId = $matriculaMesmaModalidade['id'];
             
+            // REGRA: Qualquer nova matrícula (renovação ou troca) só é permitida no dia do vencimento ou após
+            $dataVencimentoAtual = $matriculaMesmaModalidade['data_vencimento'];
+            $hoje = date('Y-m-d');
+            
+            if ($hoje < $dataVencimentoAtual) {
+                $dataFormatada = date('d/m/Y', strtotime($dataVencimentoAtual));
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'message' => "Já existe um plano vigente nesta modalidade com vencimento em {$dataFormatada}. Aguarde o vencimento para renovar ou trocar de plano."
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+            
             if ($planoId == $planoAnteriorId) {
                 $motivo = 'renovacao';
             } else {
@@ -187,7 +227,8 @@ class MatriculaController
             
             if ($atrasos && $atrasos['total_atraso'] > 0) {
                 $response->getBody()->write(json_encode([
-                    'error' => "Não é possível alterar o plano. Existem {$atrasos['total_atraso']} parcela(s) em atraso na matrícula atual. Por favor, regularize os pagamentos antes de prosseguir."
+                    'type' => 'error',
+                    'message' => "Não é possível alterar o plano. Existem {$atrasos['total_atraso']} parcela(s) em atraso na matrícula atual. Por favor, regularize os pagamentos antes de prosseguir."
                 ]));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
@@ -195,29 +236,41 @@ class MatriculaController
             // Finalizar apenas a matrícula da mesma modalidade
             $stmtFinalizar = $db->prepare("
                 UPDATE matriculas 
-                SET status = 'finalizada', updated_at = NOW()
+                SET status_id = (SELECT id FROM status_matricula WHERE codigo = 'finalizada'), updated_at = NOW()
                 WHERE id = ?
             ");
             $stmtFinalizar->execute([$matriculaMesmaModalidade['id']]);
         }
 
+        // Buscar IDs de status e motivo
+        $stmtStatusPendente = $db->prepare("SELECT id FROM status_matricula WHERE codigo = 'pendente'");
+        $stmtStatusPendente->execute();
+        $statusPendente = $stmtStatusPendente->fetch();
+        $statusPendenteId = $statusPendente ? $statusPendente['id'] : 5; // 5 = pendente
+
+        $stmtMotivo = $db->prepare("SELECT id FROM motivo_matricula WHERE codigo = ?");
+        $stmtMotivo->execute([$motivo]);
+        $motivoRow = $stmtMotivo->fetch();
+        $motivoId = $motivoRow ? $motivoRow['id'] : 1; // 1 = nova
+
         // Criar matrícula como PENDENTE (primeira parcela precisa ser paga)
         $stmtInsert = $db->prepare("
             INSERT INTO matriculas 
-            (tenant_id, usuario_id, plano_id, data_matricula, data_inicio, data_vencimento, 
-             valor, status, motivo, matricula_anterior_id, plano_anterior_id, observacoes, criado_por)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 'pendente', ?, ?, ?, ?, ?)
+            (tenant_id, aluno_id, plano_id, data_matricula, data_inicio, data_vencimento, 
+             valor, status_id, motivo_id, matricula_anterior_id, plano_anterior_id, observacoes, criado_por)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         
         $stmtInsert->execute([
             $tenantId,
-            $usuarioId,
+            $alunoId,
             $planoId,
             $dataMatricula,
             $dataInicio,
             $dataVencimento,
             $valor,
-            $motivo,
+            $statusPendenteId,
+            $motivoId,
             $matriculaAnteriorId,
             $planoAnteriorId,
             $data['observacoes'] ?? null,
@@ -234,16 +287,6 @@ class MatriculaController
         error_log("Plano ID: " . $planoId);
         error_log("Valor: " . $valor);
         error_log("Data Início: " . $dataInicio);
-
-        // Atualizar status_id com o ID correspondente em status_matricula
-        $stmtStatusId = $db->prepare("
-            UPDATE matriculas m
-            SET m.status_id = (
-                SELECT sm.id FROM status_matricula sm WHERE sm.codigo = 'pendente' AND sm.ativo = TRUE
-            )
-            WHERE m.id = ?
-        ");
-        $stmtStatusId->execute([$matriculaId]);
 
         // Registrar no histórico de planos
         $stmtHistorico = $db->prepare("
@@ -270,15 +313,15 @@ class MatriculaController
         // Criar primeiro pagamento do plano
         $stmtPagamento = $db->prepare("
             INSERT INTO pagamentos_plano
-            (tenant_id, matricula_id, usuario_id, plano_id, valor, data_vencimento, 
+            (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento, 
              status_pagamento_id, observacoes, criado_por)
             VALUES (?, ?, ?, ?, ?, ?, 1, 'Primeiro pagamento da matrícula', ?)
         ");
         
         $stmtPagamento->execute([
             $tenantId,
+            $alunoId,
             $matriculaId,
-            $usuarioId,
             $planoId,
             $valor,
             $dataInicio, // primeiro pagamento vence na data de início
@@ -287,47 +330,18 @@ class MatriculaController
         
         $pagamentoId = (int) $db->lastInsertId();
 
-        // Se foi UPGRADE ou DOWNGRADE, calcular e criar pagamento de ajuste
-        $ajusteInfo = null;
-        if ($matriculaMesmaModalidade && $matriculaMesmaModalidade['plano_id'] != $planoId) {
-            // Buscar plano anterior completo
-            $stmtPlanoAnt = $db->prepare("SELECT * FROM planos WHERE id = ?");
-            $stmtPlanoAnt->execute([$planoAnteriorId]);
-            $planoAnteriorCompleto = $stmtPlanoAnt->fetch();
-            
-            // Calcular proporcional
-            $ajusteInfo = $this->calcularProporcionalPlano(
-                $planoAnteriorCompleto,
-                $plano,
-                $matriculaMesmaModalidade['data_vencimento']
-            );
-            
-            // Se houver diferença, criar pagamento de ajuste
-            if ($ajusteInfo['valor'] > 0 && $ajusteInfo['tipo'] !== 'igual') {
-                $this->criarPagamentoAjuste(
-                    $db,
-                    $matriculaId,
-                    $usuarioId,
-                    $planoId,
-                    $tenantId,
-                    $ajusteInfo['valor'],
-                    $ajusteInfo['tipo'],
-                    $adminId
-                );
-            }
-        }
-
         // Buscar matrícula criada
         $stmtMatricula = $db->prepare("
             SELECT 
                 m.*,
-                u.nome as aluno_nome,
+                a.nome as aluno_nome,
                 u.email as aluno_email,
                 p.nome as plano_nome,
                 p.duracao_dias,
                 admin.nome as criado_por_nome
             FROM matriculas m
-            INNER JOIN usuarios u ON m.usuario_id = u.id
+            INNER JOIN alunos a ON m.aluno_id = a.id
+            INNER JOIN usuarios u ON a.usuario_id = u.id
             INNER JOIN planos p ON m.plano_id = p.id
             LEFT JOIN usuarios admin ON m.criado_por = admin.id
             WHERE m.id = ?
@@ -360,79 +374,9 @@ class MatriculaController
             'matricula' => $matricula,
             'pagamentos' => $pagamentos ?? [],
             'total' => (float) $totalPagamentos,
-            'pagamento_criado' => $pagamentoId > 0,
-            'ajuste_plano' => $ajusteInfo ? [
-                'tipo' => $ajusteInfo['tipo'],
-                'valor' => $ajusteInfo['valor'],
-                'dias_restantes' => $ajusteInfo['dias_restantes'],
-                'descricao' => $ajusteInfo['tipo'] === 'upgrade' 
-                    ? "Cobrança proporcional de R$ {$ajusteInfo['valor']} para upgradar o plano"
-                    : "Crédito de R$ {$ajusteInfo['valor']} para downgrades de plano"
-            ] : null
+            'pagamento_criado' => $pagamentoId > 0
         ]));
         return $response->withHeader('Content-Type', 'application/json')->withStatus(201);
-    }
-
-    /**
-     * Calcular valor proporcional para upgrade/downgrade de plano
-     * Retorna: ['tipo' => 'upgrade|downgrade|igual', 'valor' => 0.00, 'dias_restantes' => 0]
-     */
-    private function calcularProporcionalPlano($planoAnterior, $planoNovo, $dataVencimentoAnterior): array
-    {
-        $hoje = date('Y-m-d');
-        $dataVencimento = new \DateTime($dataVencimentoAnterior);
-        $dataHoje = new \DateTime($hoje);
-        
-        // Calcular dias restantes
-        $intervalo = $dataHoje->diff($dataVencimento);
-        $diasRestantes = $intervalo->days;
-        
-        if ($diasRestantes <= 0) {
-            return ['tipo' => 'igual', 'valor' => 0.00, 'dias_restantes' => 0];
-        }
-        
-        $valorDiarioAnterior = $planoAnterior['valor'] / $planoAnterior['duracao_dias'];
-        $valorDiarioNovo = $planoNovo['valor'] / $planoNovo['duracao_dias'];
-        
-        $diferenca = ($valorDiarioNovo - $valorDiarioAnterior) * $diasRestantes;
-        $diferenca = round($diferenca, 2);
-        
-        if ($diferenca > 0) {
-            return ['tipo' => 'upgrade', 'valor' => $diferenca, 'dias_restantes' => $diasRestantes];
-        } elseif ($diferenca < 0) {
-            return ['tipo' => 'downgrade', 'valor' => abs($diferenca), 'dias_restantes' => $diasRestantes];
-        } else {
-            return ['tipo' => 'igual', 'valor' => 0.00, 'dias_restantes' => $diasRestantes];
-        }
-    }
-
-    /**
-     * Criar pagamento de ajuste para upgrade ou downgrade
-     */
-    private function criarPagamentoAjuste($db, $matriculaId, $usuarioId, $planoId, $tenantId, $valor, $tipo, $adminId): int
-    {
-        $stmtAjuste = $db->prepare("
-            INSERT INTO pagamentos_plano
-            (tenant_id, matricula_id, usuario_id, plano_id, valor, data_vencimento, 
-             status_pagamento_id, observacoes, criado_por)
-            VALUES (?, ?, ?, ?, ?, NOW(), 1, ?, ?)
-        ");
-        
-        $observacao = $tipo === 'upgrade' 
-            ? "Ajuste de upgrade - Diferença proporcional a cobrar"
-            : "Ajuste de downgrade - Crédito para aplicar";
-        
-        $stmtAjuste->execute([
-            $tenantId,
-            $matriculaId,
-            $usuarioId,
-            $planoId,
-            $valor,
-            $observacao,
-            $adminId
-        ]);
-        
-        return (int) $db->lastInsertId();
     }
 
     /**
@@ -450,8 +394,9 @@ class MatriculaController
         $sql = "
             SELECT 
                 m.*,
-                u.nome as usuario_nome,
+                a.nome as usuario_nome,
                 u.email as usuario_email,
+                a.usuario_id,
                 p.nome as plano_nome,
                 p.valor as plano_valor,
                 p.duracao_dias,
@@ -461,7 +406,8 @@ class MatriculaController
                 modalidade.cor as modalidade_cor,
                 admin_criou.nome as criado_por_nome
             FROM matriculas m
-            INNER JOIN usuarios u ON m.usuario_id = u.id
+            INNER JOIN alunos a ON m.aluno_id = a.id
+            INNER JOIN usuarios u ON a.usuario_id = u.id
             INNER JOIN planos p ON m.plano_id = p.id
             LEFT JOIN modalidades modalidade ON p.modalidade_id = modalidade.id
             LEFT JOIN usuarios admin_criou ON m.criado_por = admin_criou.id
@@ -470,13 +416,13 @@ class MatriculaController
         
         $executeParams = [$tenantId];
         
-        if (isset($params['usuario_id'])) {
-            $sql .= " AND m.usuario_id = ?";
-            $executeParams[] = $params['usuario_id'];
+        if (isset($params['aluno_id'])) {
+            $sql .= " AND m.aluno_id = ?";
+            $executeParams[] = $params['aluno_id'];
         }
         
         if (isset($params['status'])) {
-            $sql .= " AND m.status = ?";
+            $sql .= " AND m.status_id = (SELECT id FROM status_matricula WHERE codigo = ? LIMIT 1)";
             $executeParams[] = $params['status'];
         }
         
@@ -528,8 +474,9 @@ class MatriculaController
         $sql = "
             SELECT 
                 m.*,
-                u.nome as usuario_nome,
+                a.nome as usuario_nome,
                 u.email as usuario_email,
+                a.usuario_id,
                 p.nome as plano_nome,
                 p.valor,
                 p.duracao_dias,
@@ -539,7 +486,8 @@ class MatriculaController
                 modalidade.cor as modalidade_cor,
                 admin_criou.nome as criado_por_nome
             FROM matriculas m
-            INNER JOIN usuarios u ON m.usuario_id = u.id
+            INNER JOIN alunos a ON m.aluno_id = a.id
+            INNER JOIN usuarios u ON a.usuario_id = u.id
             INNER JOIN planos p ON m.plano_id = p.id
             LEFT JOIN modalidades modalidade ON p.modalidade_id = modalidade.id
             LEFT JOIN usuarios admin_criou ON m.criado_por = admin_criou.id
@@ -590,11 +538,10 @@ class MatriculaController
         $sqlVencida = "
             UPDATE matriculas m
             SET 
-                m.status = 'vencida',
                 m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'vencida' LIMIT 1),
                 m.updated_at = NOW()
             WHERE m.tenant_id = :tenant_id 
-            AND m.status IN ('ativa', 'vencida')
+            AND m.status_id IN (SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'vencida'))
             AND EXISTS (
                 SELECT 1
                 FROM pagamentos_plano pp
@@ -613,11 +560,10 @@ class MatriculaController
         $sqlCancelada = "
             UPDATE matriculas m
             SET 
-                m.status = 'cancelada',
                 m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'cancelada' LIMIT 1),
                 m.updated_at = NOW()
             WHERE m.tenant_id = :tenant_id 
-            AND m.status IN ('ativa', 'vencida')
+            AND m.status_id IN (SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'vencida'))
             AND EXISTS (
                 SELECT 1
                 FROM pagamentos_plano pp
@@ -672,7 +618,7 @@ class MatriculaController
                 pp.*,
                 sp.nome as status_pagamento_nome,
                 fp.nome as forma_pagamento_nome,
-                u.nome as aluno_nome,
+                a.nome as aluno_nome,
                 pl.nome as plano_nome,
                 criador.nome as criado_por_nome,
                 baixador.nome as baixado_por_nome,
@@ -680,7 +626,7 @@ class MatriculaController
             FROM pagamentos_plano pp
             INNER JOIN status_pagamento sp ON pp.status_pagamento_id = sp.id
             LEFT JOIN formas_pagamento fp ON pp.forma_pagamento_id = fp.id
-            INNER JOIN usuarios u ON pp.usuario_id = u.id
+            INNER JOIN alunos a ON pp.aluno_id = a.id
             INNER JOIN planos pl ON pp.plano_id = pl.id
             LEFT JOIN usuarios criador ON pp.criado_por = criador.id
             LEFT JOIN usuarios baixador ON pp.baixado_por = baixador.id
@@ -711,7 +657,12 @@ class MatriculaController
         $data = $request->getParsedBody();
         $db = require __DIR__ . '/../../config/database.php';
         
-        $stmt = $db->prepare("SELECT * FROM matriculas WHERE id = ? AND tenant_id = ?");
+        $stmt = $db->prepare("
+            SELECT m.*, sm.codigo as status_codigo 
+            FROM matriculas m 
+            LEFT JOIN status_matricula sm ON sm.id = m.status_id 
+            WHERE m.id = ? AND m.tenant_id = ?
+        ");
         $stmt->execute([$matriculaId, $tenantId]);
         $matricula = $stmt->fetch();
         
@@ -720,7 +671,7 @@ class MatriculaController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
         }
         
-        if ($matricula['status'] === 'cancelada') {
+        if ($matricula['status_codigo'] === 'cancelada') {
             $response->getBody()->write(json_encode(['error' => 'Matrícula já está cancelada']));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
@@ -729,7 +680,7 @@ class MatriculaController
         
         $stmtUpdate = $db->prepare("
             UPDATE matriculas 
-            SET status = 'cancelada',
+            SET status_id = (SELECT id FROM status_matricula WHERE codigo = 'cancelada'),
                 cancelado_por = ?,
                 data_cancelamento = CURDATE(),
                 motivo_cancelamento = ?,
@@ -739,23 +690,30 @@ class MatriculaController
         
         $stmtUpdate->execute([$adminId, $motivoCancelamento, $matriculaId]);
         
-        // Remover plano do aluno
-        $stmtUpdateUsuario = $db->prepare("
-            UPDATE usuarios 
-            SET plano_id = NULL, data_vencimento_plano = NULL
-            WHERE id = ?
-        ");
-        $stmtUpdateUsuario->execute([$matricula['usuario_id']]);
+        // Remover plano do aluno - buscar usuario_id via aluno
+        $stmtAluno = $db->prepare("SELECT usuario_id FROM alunos WHERE id = ?");
+        $stmtAluno->execute([$matricula['aluno_id']]);
+        $alunoRow = $stmtAluno->fetch();
+        
+        if ($alunoRow) {
+            $stmtUpdateUsuario = $db->prepare("
+                UPDATE usuarios 
+                SET plano_id = NULL, data_vencimento_plano = NULL
+                WHERE id = ?
+            ");
+            $stmtUpdateUsuario->execute([$alunoRow['usuario_id']]);
+        }
 
         // Buscar matrícula atualizada com pagamentos
         $stmtMatricula = $db->prepare("
             SELECT 
                 m.*,
-                u.nome as usuario_nome,
+                a.nome as usuario_nome,
                 u.email as usuario_email,
                 p.nome as plano_nome
             FROM matriculas m
-            INNER JOIN usuarios u ON m.usuario_id = u.id
+            INNER JOIN alunos a ON m.aluno_id = a.id
+            INNER JOIN usuarios u ON a.usuario_id = u.id
             INNER JOIN planos p ON m.plano_id = p.id
             WHERE m.id = ?
         ");
@@ -854,11 +812,10 @@ class MatriculaController
         // Atualizar status da matrícula para 'ativa' se era 'pendente'
         $stmtMatricula = $db->prepare("
             UPDATE matriculas 
-            SET status = 'ativa',
-                status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1),
+            SET status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1),
                 updated_at = NOW()
             WHERE id = ? 
-            AND status = 'pendente'
+            AND status_id = (SELECT id FROM status_matricula WHERE codigo = 'pendente' LIMIT 1)
         ");
         $stmtMatricula->execute([$pagamento['matricula_id']]);
         
@@ -871,8 +828,8 @@ class MatriculaController
             $stmtProxima = $db->prepare("
                 INSERT INTO pagamentos_plano (
                     tenant_id,
+                    aluno_id,
                     matricula_id,
-                    usuario_id,
                     plano_id,
                     valor,
                     data_vencimento,
@@ -885,8 +842,8 @@ class MatriculaController
             
             $stmtProxima->execute([
                 $pagamento['tenant_id'],
+                $pagamento['aluno_id'],
                 $pagamento['matricula_id'],
-                $pagamento['usuario_id'],
                 $pagamento['plano_id'],
                 $pagamento['valor'],
                 $proximoVencimento->format('Y-m-d'),

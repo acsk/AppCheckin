@@ -6,11 +6,12 @@ import { professorService } from '../../services/professorService';
 import LayoutBase from '../../components/LayoutBase';
 import ConfirmModal from '../../components/ConfirmModal';
 import { showSuccess, showError } from '../../utils/toast';
+import { mascaraTelefone, mascaraCPF } from '../../utils/masks';
 
 export default function ProfessoresScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
-  const isMobile = width < 768;
+  const isMobile = width < 960;
   const [professores, setProfessores] = useState([]);
   const [professoresFiltrados, setProfessoresFiltrados] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -79,12 +80,13 @@ export default function ProfessoresScreen() {
 
   const handleToggleStatus = async (professor) => {
     try {
+      const novoStatus = professor.ativo ? 0 : 1;
       await professorService.atualizar(professor.id, {
-        ativo: !professor.ativo
+        ativo: novoStatus
       });
       
       const updated = professores.map(p =>
-        p.id === professor.id ? { ...p, ativo: !p.ativo } : p
+        p.id === professor.id ? { ...p, ativo: novoStatus } : p
       );
       setProfessores(updated);
       setProfessoresFiltrados(updated.filter(p => {
@@ -103,6 +105,83 @@ export default function ProfessoresScreen() {
       showError('Erro ao atualizar status');
     }
   };
+
+  const renderCards = () => (
+    <ScrollView className="px-4 pb-4" showsVerticalScrollIndicator={false}>
+      {professoresFiltrados.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Feather name="users" size={40} color="#d1d5db" />
+          <Text style={styles.emptyText}>Nenhum professor encontrado</Text>
+        </View>
+      ) : (
+        <View className="gap-3">
+          {professoresFiltrados.map((professor) => (
+            <View key={professor.id} className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm">
+              {/* Header do Card */}
+              <View className="flex-row items-center justify-between mb-3">
+                <View className="flex-row items-center gap-3 flex-1">
+                  <View className="w-12 h-12 rounded-full bg-orange-100 items-center justify-center">
+                    <Feather name="user" size={22} color="#f97316" />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-[15px] font-bold text-slate-800" numberOfLines={1}>{professor.nome}</Text>
+                    <Text className="text-[13px] text-slate-500" numberOfLines={1}>{professor.email || 'Sem email'}</Text>
+                  </View>
+                </View>
+                <View className={`px-2.5 py-1 rounded-full ${professor.ativo ? 'bg-emerald-100' : 'bg-rose-100'}`}>
+                  <Text className={`text-[11px] font-bold ${professor.ativo ? 'text-emerald-700' : 'text-rose-700'}`}>
+                    {professor.ativo ? 'Ativo' : 'Inativo'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Info do Card */}
+              <View className="flex-row flex-wrap gap-x-4 gap-y-2 mb-4 pt-3 border-t border-slate-100">
+                <View className="flex-row items-center gap-2">
+                  <Feather name="credit-card" size={14} color="#9ca3af" />
+                  <Text className="text-[13px] text-slate-600">{professor.cpf ? mascaraCPF(professor.cpf) : '-'}</Text>
+                </View>
+                <View className="flex-row items-center gap-2">
+                  <Feather name="phone" size={14} color="#9ca3af" />
+                  <Text className="text-[13px] text-slate-600">{professor.telefone ? mascaraTelefone(professor.telefone) : '-'}</Text>
+                </View>
+              </View>
+
+              {/* Ações do Card */}
+              <View className="flex-row gap-2 pt-3 border-t border-slate-100">
+                <TouchableOpacity
+                  className="flex-1 flex-row items-center justify-center gap-2 py-2.5 rounded-lg bg-orange-50 border border-orange-200"
+                  onPress={() => router.push(`/professores/${professor.id}`)}
+                >
+                  <Feather name="edit-2" size={16} color="#f97316" />
+                  <Text className="text-[13px] font-semibold text-orange-600">Editar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  className={`flex-1 flex-row items-center justify-center gap-2 py-2.5 rounded-lg border ${professor.ativo ? 'bg-rose-50 border-rose-200' : 'bg-emerald-50 border-emerald-200'}`}
+                  onPress={() => handleToggleStatus(professor)}
+                >
+                  <Feather 
+                    name={professor.ativo ? "toggle-left" : "toggle-right"} 
+                    size={16} 
+                    color={professor.ativo ? '#ef4444' : '#16a34a'} 
+                  />
+                  <Text className={`text-[13px] font-semibold ${professor.ativo ? 'text-rose-600' : 'text-emerald-600'}`}>
+                    {professor.ativo ? 'Inativar' : 'Ativar'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  className="w-11 items-center justify-center rounded-lg bg-slate-50 border border-slate-200"
+                  onPress={() => handleDeletar(professor.id, professor.nome)}
+                >
+                  <Feather name="trash-2" size={16} color="#ef4444" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+    </ScrollView>
+  );
 
   const renderTable = () => (
     <View className="mx-4 my-3 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -128,8 +207,8 @@ export default function ProfessoresScreen() {
             <View key={professor.id} className="flex-row items-center border-b border-slate-100 px-4 py-3">
               <Text className="text-[13px] font-semibold text-slate-800" style={styles.colNome} numberOfLines={2}>{professor.nome}</Text>
               <Text className="text-[13px] text-slate-600" style={styles.colEmail} numberOfLines={1}>{professor.email || '-'}</Text>
-              <Text className="text-[13px] text-slate-600" style={styles.colCPF} numberOfLines={1}>{professor.cpf || '-'}</Text>
-              <Text className="text-[13px] text-slate-600" style={styles.colTelefone} numberOfLines={1}>{professor.telefone || '-'}</Text>
+              <Text className="text-[13px] text-slate-600" style={styles.colCPF} numberOfLines={1}>{professor.cpf ? mascaraCPF(professor.cpf) : '-'}</Text>
+              <Text className="text-[13px] text-slate-600" style={styles.colTelefone} numberOfLines={1}>{professor.telefone ? mascaraTelefone(professor.telefone) : '-'}</Text>
               
               <View style={styles.colStatus}>
                 <View className={`self-start rounded-full px-2.5 py-1 ${professor.ativo ? 'bg-emerald-100' : 'bg-rose-100'}`}>
@@ -249,8 +328,8 @@ export default function ProfessoresScreen() {
           </View>
         </View>
 
-        {/* Tabela */}
-        {renderTable()}
+        {/* Tabela ou Cards */}
+        {isMobile ? renderCards() : renderTable()}
       </View>
 
       <ConfirmModal

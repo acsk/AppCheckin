@@ -17,12 +17,12 @@ $senha = 'SuperAdmin@2024!'; // MUDE ISSO EM PRODUÇÃO
 $nome = 'Super Admin';
 $cpf = '00000000000'; // Usar algo genérico para SuperAdmin
 $telefone = '0000000000';
-$role_id = 3; // 3 = SuperAdmin
+$role_id = 4; // 4 = SuperAdmin (tabela papeis)
 $tenant_id = 1; // Tenant padrão
 
 try {
     // 1. Verificar se SuperAdmin já existe
-    $checkStmt = $db->prepare("SELECT id FROM usuarios WHERE email = ? AND role_id = 3");
+    $checkStmt = $db->prepare("SELECT id FROM usuarios WHERE email = ? AND role_id = 4");
     $checkStmt->execute([$email]);
     $existing = $checkStmt->fetch();
     

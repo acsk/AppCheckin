@@ -88,33 +88,44 @@ export default function MatriculaDetalheScreen() {
     }
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'ativa':
-        return '#10b981';
-      case 'vencida':
-        return '#f59e0b';
-      case 'cancelada':
-        return '#ef4444';
-      case 'finalizada':
-        return '#6b7280';
+  // Status de Matrícula: 1=Ativa, 2=Vencida, 3=Cancelada, 4=Finalizada, 5=Pendente, 6=Bloqueado
+  const getStatusColor = (statusId) => {
+    const id = Number(statusId);
+    switch (id) {
+      case 1:
+        return '#10b981'; // Ativa (verde)
+      case 2:
+        return '#f97316'; // Vencida (laranja)
+      case 3:
+        return '#ef4444'; // Cancelada (vermelho)
+      case 4:
+        return '#6b7280'; // Finalizada (cinza)
+      case 5:
+        return '#f59e0b'; // Pendente (amarelo)
+      case 6:
+        return '#8b5cf6'; // Bloqueado (roxo)
       default:
         return '#6b7280';
     }
   };
 
-  const getStatusLabel = (status) => {
-    switch (status) {
-      case 'ativa':
+  const getStatusLabel = (statusId) => {
+    const id = Number(statusId);
+    switch (id) {
+      case 1:
         return 'Ativa';
-      case 'vencida':
+      case 2:
         return 'Vencida';
-      case 'cancelada':
+      case 3:
         return 'Cancelada';
-      case 'finalizada':
+      case 4:
         return 'Finalizada';
+      case 5:
+        return 'Pendente';
+      case 6:
+        return 'Bloqueado';
       default:
-        return status;
+        return 'Desconhecido';
     }
   };
 
@@ -267,10 +278,10 @@ export default function MatriculaDetalheScreen() {
               </View>
               <View
                 className="self-start rounded-full px-3 py-1"
-                style={{ backgroundColor: getStatusColor(matricula.status) }}
+                style={{ backgroundColor: getStatusColor(matricula.status_id) }}
               >
                 <Text className="text-[11px] font-bold tracking-wide text-white">
-                  {getStatusLabel(matricula.status)}
+                  {getStatusLabel(matricula.status_id)}
                 </Text>
               </View>
             </View>
@@ -300,9 +311,9 @@ export default function MatriculaDetalheScreen() {
               </View>
               <View
                 className="self-start rounded-full px-3 py-1"
-                style={{ backgroundColor: getStatusColor(matricula.status) }}
+                style={{ backgroundColor: getStatusColor(matricula.status_id) }}
               >
-                <Text className="text-[11px] font-bold tracking-wide text-white">{getStatusLabel(matricula.status)}</Text>
+                <Text className="text-[11px] font-bold tracking-wide text-white">{getStatusLabel(matricula.status_id)}</Text>
               </View>
             </View>
 
@@ -347,7 +358,7 @@ export default function MatriculaDetalheScreen() {
           </View>
 
           {/* Parcela Pendente - Design Moderno */}
-          {matricula.status !== 'cancelada' && matricula.status !== 'finalizada' && 
+          {matricula.status_id !== 3 && matricula.status_id !== 4 && 
            pagamentosPendentes.map((pagamento, index) => (
             <View key={pagamento.id || index} className="mb-6 overflow-hidden rounded-2xl border border-orange-300 bg-white shadow-md">
               <View className="flex-row items-center justify-between border-b border-orange-100 bg-orange-50 px-5 py-4">
@@ -411,7 +422,7 @@ export default function MatriculaDetalheScreen() {
             </View>
           ))}
 
-          {matricula.status !== 'cancelada' && matricula.status !== 'finalizada' && pagamentosPendentes.length === 0 && (
+          {matricula.status_id !== 3 && matricula.status_id !== 4 && pagamentosPendentes.length === 0 && (
             <View className="mb-5 overflow-hidden rounded-2xl border border-slate-100 bg-white p-5 shadow-sm">
               <View className="flex-row items-center gap-3">
                 <View className="h-10 w-10 items-center justify-center rounded-full bg-slate-100">

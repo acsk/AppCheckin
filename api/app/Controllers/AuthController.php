@@ -108,8 +108,8 @@ class AuthController
         // Inicializar token
         $token = null;
 
-        // Super admin (role_id = 3) não precisa de vínculo com tenant
-        if ($usuario['role_id'] == 3) {
+        // Super admin (role_id = 4) não precisa de vínculo com tenant
+        if ($usuario['role_id'] == 4) {
             // Super admin: pode acessar sem tenant específico
             $tenants = [];
             
@@ -138,13 +138,13 @@ class AuthController
         // Se tem múltiplos, retorna a lista para o usuário escolher
         $tenantId = null;
 
-        if ($usuario['role_id'] == 3) {
+        if ($usuario['role_id'] == 4) {
             // Super admin já tem token gerado acima, não precisa fazer nada
         } else if (count($tenants) === 1) {
             $tenantId = $tenants[0]['tenant']['id'];
             
-            // Se for Tenant Admin (role_id = 2), verificar contrato ativo
-            if ($usuario['role_id'] == 2) {
+            // Se for Tenant Admin (role_id = 3), verificar contrato ativo
+            if ($usuario['role_id'] == 3) {
                 $db = require __DIR__ . '/../../config/database.php';
                 $stmt = $db->prepare("
                     SELECT COUNT(*) as tem_contrato
@@ -237,8 +237,8 @@ class AuthController
         // Buscar dados do usuário
         $usuario = $this->usuarioModel->findById($userId);
         
-        // Se for Tenant Admin (role_id = 2), verificar contrato ativo
-        if ($usuario['role_id'] == 2) {
+        // Se for Tenant Admin (role_id = 3), verificar contrato ativo
+        if ($usuario['role_id'] == 3) {
             $db = require __DIR__ . '/../../config/database.php';
             $stmt = $db->prepare("
                 SELECT COUNT(*) as tem_contrato

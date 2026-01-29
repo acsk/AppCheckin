@@ -28,7 +28,8 @@ class Usuario
             $cidade = isset($data['cidade']) ? mb_strtoupper(trim($data['cidade']), 'UTF-8') : null;
             $estado = isset($data['estado']) ? mb_strtoupper(trim($data['estado']), 'UTF-8') : null;
             
-            // 1. Inserir usuário (sem tenant_id, pois isso vai para usuario_tenant)
+            // 1. Inserir usuário (dados de autenticação)
+            // Nota: mantendo campos de perfil em usuarios por compatibilidade, mas também salvando em alunos
             $stmt = $this->db->prepare(
                 "INSERT INTO usuarios (nome, email, email_global, senha_hash, role_id, cpf, cep, logradouro, numero, complemento, bairro, cidade, estado, telefone, ativo) 
                  VALUES (:nome, :email, :email_global, :senha_hash, :role_id, :cpf, :cep, :logradouro, :numero, :complemento, :bairro, :cidade, :estado, :telefone, :ativo)"
@@ -63,6 +64,38 @@ class Usuario
             $stmtTenant->execute([
                 'usuario_id' => $usuarioId,
                 'tenant_id' => $tenantId
+            ]);
+            
+            // 3. Criar registro em alunos (perfil separado)
+            $stmtAluno = $this->db->prepare(
+                "INSERT INTO alunos (usuario_id, nome, telefone, cpf, cep, logradouro, numero, complemento, bairro, cidade, estado, ativo)
+                 VALUES (:usuario_id, :nome, :telefone, :cpf, :cep, :logradouro, :numero, :complemento, :bairro, :cidade, :estado, :ativo)"
+            );
+            
+            $stmtAluno->execute([
+                'usuario_id' => $usuarioId,
+                'nome' => $nome,
+                'telefone' => $data['telefone'] ?? null,
+                'cpf' => $cpfLimpo ?: null,
+                'cep' => $cepLimpo ?: null,
+                'logradouro' => $logradouro,
+                'numero' => $data['numero'] ?? null,
+                'complemento' => $complemento,
+                'bairro' => $bairro,
+                'cidade' => $cidade,
+                'estado' => $estado,
+                'ativo' => $data['ativo'] ?? 1
+            ]);
+            
+            // 4. Adicionar papel de aluno no tenant
+            $stmtPapel = $this->db->prepare(
+                "INSERT IGNORE INTO tenant_usuario_papel (tenant_id, usuario_id, papel_id, ativo)
+                 VALUES (:tenant_id, :usuario_id, 1, 1)"
+            );
+            
+            $stmtPapel->execute([
+                'tenant_id' => $tenantId,
+                'usuario_id' => $usuarioId
             ]);
             
             return $usuarioId;
@@ -110,9 +143,9 @@ class Usuario
                    u.foto_base64, u.foto_caminho, u.telefone,
                    u.cpf, u.cep, u.logradouro, u.numero, u.complemento, u.bairro, u.cidade, u.estado,
                    u.created_at, u.updated_at,
-                   r.nome as role_nome, r.descricao as role_descricao
+                   p.nome as role_nome, p.descricao as role_descricao
             FROM usuarios u
-            LEFT JOIN roles r ON u.role_id = r.id
+            LEFT JOIN papeis p ON u.role_id = p.id
             {$joinType} usuario_tenant ut ON ut.usuario_id = u.id
         ";
         
@@ -228,8 +261,58 @@ class Usuario
 
         $sql = "UPDATE usuarios SET " . implode(', ', $fields) . " WHERE id = :id";
         $stmt = $this->db->prepare($sql);
+        $result = $stmt->execute($params);
         
-        return $stmt->execute($params);
+        // Também atualizar na tabela alunos (manter sincronia)
+        if ($result) {
+            $this->sincronizarAluno($id, $data);
+        }
+        
+        return $result;
+    }
+    
+    /**
+     * Sincroniza dados de perfil com a tabela alunos
+     */
+    private function sincronizarAluno(int $usuarioId, array $data): void
+    {
+        // Campos de perfil que devem ser sincronizados com alunos
+        $camposPerfil = ['nome', 'telefone', 'cpf', 'cep', 'logradouro', 'numero', 
+                        'complemento', 'bairro', 'cidade', 'estado', 'foto_base64'];
+        
+        $updates = [];
+        $params = ['usuario_id' => $usuarioId];
+        
+        foreach ($camposPerfil as $campo) {
+            if (array_key_exists($campo, $data)) {
+                $valor = $data[$campo];
+                
+                // Aplicar mesmas transformações do update
+                if ($campo === 'cpf' || $campo === 'cep') {
+                    $valor = $valor ? preg_replace('/[^0-9]/', '', $valor) : null;
+                } elseif (in_array($campo, ['nome', 'logradouro', 'complemento', 'bairro', 'cidade', 'estado'])) {
+                    $valor = $valor ? mb_strtoupper(trim($valor), 'UTF-8') : null;
+                }
+                
+                $updates[] = "$campo = :$campo";
+                $params[$campo] = $valor;
+            }
+        }
+        
+        if (empty($updates)) {
+            return;
+        }
+        
+        $updates[] = "updated_at = CURRENT_TIMESTAMP";
+        $sql = "UPDATE alunos SET " . implode(', ', $updates) . " WHERE usuario_id = :usuario_id";
+        
+        try {
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($params);
+        } catch (\PDOException $e) {
+            // Log do erro mas não falha a operação principal
+            error_log("Erro ao sincronizar aluno: " . $e->getMessage());
+        }
     }
 
     public function emailExists(string $email, ?int $excludeId = null, ?int $tenantId = null): bool
@@ -280,8 +363,10 @@ class Usuario
             return null;
         }
 
-        // Contar total de checkins
-        $sqlCheckins = "SELECT COUNT(*) as total_checkins FROM checkins WHERE usuario_id = ?";
+        // Contar total de checkins via aluno_id
+        $sqlCheckins = "SELECT COUNT(*) as total_checkins FROM checkins c
+                        INNER JOIN alunos a ON a.id = c.aluno_id
+                        WHERE a.usuario_id = ?";
         $stmtCheckins = $this->db->prepare($sqlCheckins);
         $stmtCheckins->execute([$userId]);
         $totalCheckins = $stmtCheckins->fetch()['total_checkins'] ?? 0;
@@ -450,19 +535,21 @@ class Usuario
                 u.email,
                 u.telefone,
                 u.cpf,
-                u.role_id,
+                COALESCE(tup.papel_id, u.role_id) as role_id,
                 u.foto_base64,
                 u.created_at,
                 u.updated_at,
-                r.nome as role_nome,
+                COALESCE(p_tenant.nome, p_global.nome) as role_nome,
                 ut.status,
                 CASE 
                     WHEN ut.status = 'ativo' THEN 1
                     ELSE 0
                 END as ativo
             FROM usuarios u
-            LEFT JOIN roles r ON u.role_id = r.id
+            LEFT JOIN papeis p_global ON u.role_id = p_global.id
             INNER JOIN usuario_tenant ut ON u.id = ut.usuario_id
+            LEFT JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.tenant_id = ut.tenant_id AND tup.ativo = 1
+            LEFT JOIN papeis p_tenant ON tup.papel_id = p_tenant.id
         ";
         
         $conditions = [];
@@ -536,19 +623,21 @@ class Usuario
                 u.email, 
                 u.telefone,
                 u.cpf,
-                u.role_id,
+                COALESCE(tup.papel_id, u.role_id) as role_id,
                 u.foto_base64,
                 u.created_at,
                 u.updated_at,
-                r.nome as role_nome,
+                COALESCE(p_tenant.nome, p_global.nome) as role_nome,
                 ut.status,
                 CASE 
                     WHEN ut.status = 'ativo' THEN 1
                     ELSE 0
                 END as ativo
             FROM usuarios u
-            LEFT JOIN roles r ON u.role_id = r.id
+            LEFT JOIN papeis p_global ON u.role_id = p_global.id
             INNER JOIN usuario_tenant ut ON u.id = ut.usuario_id
+            LEFT JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.tenant_id = ut.tenant_id AND tup.ativo = 1
+            LEFT JOIN papeis p_tenant ON tup.papel_id = p_tenant.id
             WHERE ut.tenant_id = :tenant_id
         ";
 

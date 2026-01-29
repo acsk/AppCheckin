@@ -254,8 +254,8 @@ class UsuarioController
         $queryParams = $request->getQueryParams();
         $apenasAtivos = isset($queryParams['ativos']) && $queryParams['ativos'] === 'true';
         
-        // SuperAdmin (role_id = 3) pode listar usuários de todos os tenants
-        $isSuperAdmin = isset($usuarioLogado['role_id']) && $usuarioLogado['role_id'] == 3;
+        // SuperAdmin (role_id = 4) pode listar usuários de todos os tenants
+        $isSuperAdmin = isset($usuarioLogado['role_id']) && $usuarioLogado['role_id'] == 4;
 
         if ($isSuperAdmin) {
             // SuperAdmin: listar todos os usuários
@@ -265,10 +265,10 @@ class UsuarioController
             $usuarios = $this->usuarioModel->listarPorTenant($tenantId, $apenasAtivos);
         }
 
-        // Filtrar apenas alunos (role_id = 1) - Admins não aparecem na tela de usuários (exceto para SuperAdmin)
+        // Filtrar apenas alunos e professores - Admins não aparecem na tela de usuários (exceto para SuperAdmin)
         if (!$isSuperAdmin) {
             $usuarios = array_filter($usuarios, function($usuario) {
-                return $usuario['role_id'] == 1;
+                return in_array($usuario['role_id'], [1, 2]); // 1 = aluno, 2 = professor
             });
         }
 
@@ -302,8 +302,8 @@ class UsuarioController
         $usuarioLogado = $request->getAttribute('usuario');
         $tenantId = $request->getAttribute('tenantId');
         
-        // SuperAdmin (role_id = 3) pode acessar usuários de qualquer tenant
-        $isSuperAdmin = isset($usuarioLogado['role_id']) && $usuarioLogado['role_id'] == 3;
+        // SuperAdmin (role_id = 4) pode acessar usuários de qualquer tenant
+        $isSuperAdmin = isset($usuarioLogado['role_id']) && $usuarioLogado['role_id'] == 4;
         
         // Se for SuperAdmin, não filtra por tenant
         $usuario = $this->usuarioModel->findById($id, $isSuperAdmin ? null : $tenantId);
@@ -315,8 +315,8 @@ class UsuarioController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
         }
 
-        // Bloquear visualização de usuários Admin (role_id >= 2) pela tela de usuários (exceto SuperAdmin)
-        if (!$isSuperAdmin && $usuario['role_id'] >= 2) {
+        // Bloquear visualização de usuários Admin (role_id >= 3) pela tela de usuários (exceto SuperAdmin)
+        if (!$isSuperAdmin && $usuario['role_id'] >= 3) {
             $response->getBody()->write(json_encode([
                 'error' => 'Usuários administradores só podem ser visualizados pela tela de Academia'
             ]));
@@ -424,8 +424,8 @@ class UsuarioController
         $tenantId = $request->getAttribute('tenantId');
         $data = $request->getParsedBody();
         
-        // SuperAdmin (role_id = 3) pode editar usuários de qualquer tenant
-        $isSuperAdmin = isset($usuarioLogado['role_id']) && $usuarioLogado['role_id'] == 3;
+        // SuperAdmin (role_id = 4) pode editar usuários de qualquer tenant
+        $isSuperAdmin = isset($usuarioLogado['role_id']) && $usuarioLogado['role_id'] == 4;
 
         // Verificar se usuário pertence ao tenant (ou se é SuperAdmin)
         $usuarioExistente = $this->usuarioModel->findById($id, $isSuperAdmin ? null : $tenantId);
@@ -437,8 +437,8 @@ class UsuarioController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
         }
 
-        // Bloquear edição de usuários Admin (role_id >= 2) pela tela de usuários (exceto SuperAdmin)
-        if (!$isSuperAdmin && $usuarioExistente['role_id'] >= 2) {
+        // Bloquear edição de usuários Admin (role_id >= 3) pela tela de usuários (exceto SuperAdmin)
+        if (!$isSuperAdmin && $usuarioExistente['role_id'] >= 3) {
             $response->getBody()->write(json_encode([
                 'type' => 'error',
                 'message' => 'Usuários administradores só podem ser editados pela tela de Academia'
@@ -505,7 +505,7 @@ class UsuarioController
 
         // Obter o usuário autenticado para verificar seu role
         $userAuth = $this->usuarioModel->findById($userId, $tenantId);
-        $isSuperAdmin = $userAuth && isset($userAuth['role_id']) && $userAuth['role_id'] == 3;
+        $isSuperAdmin = $userAuth && isset($userAuth['role_id']) && $userAuth['role_id'] == 4;
 
         // Se for SuperAdmin, pode alterar status de usuários de qualquer tenant
         if ($isSuperAdmin) {
@@ -521,7 +521,7 @@ class UsuarioController
             }
 
             // Não permitir alterar status de outros SuperAdmins
-            if ($usuario['role_id'] == 3) {
+            if ($usuario['role_id'] == 4) {
                 $response->getBody()->write(json_encode([
                     'type' => 'error',
                     'message' => 'Não é permitido alterar status de usuários SuperAdmin'
@@ -529,8 +529,8 @@ class UsuarioController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
             }
 
-            // Não permitir alterar status de Admins proprietários de tenants (role_id = 2)
-            if ($usuario['role_id'] == 2) {
+            // Não permitir alterar status de Admins proprietários de tenants (role_id = 3)
+            if ($usuario['role_id'] == 3) {
                 $response->getBody()->write(json_encode([
                     'type' => 'error',
                     'message' => 'Não é permitido alterar status de administradores de academias/tenants'

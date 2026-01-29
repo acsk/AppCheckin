@@ -54,6 +54,26 @@ export default function LoginScreen() {
       const response = await authService.login(email, senha);
       console.log('✅ Login response:', response);
 
+      // Verificar se o usuário tem permissão para acessar o painel
+      // role_id 1 = Aluno (não pode acessar o painel)
+      if (response.user?.role_id === 1) {
+        toast.error('Acesso não permitido. Este painel é exclusivo para administradores.', {
+          duration: 5000,
+          position: 'top-center',
+          style: {
+            background: '#ef4444',
+            color: '#fff',
+            padding: '16px',
+            borderRadius: '8px',
+            fontSize: '14px',
+            fontWeight: '500',
+            fontFamily: 'system-ui, -apple-system, sans-serif',
+          },
+        });
+        await authService.logout();
+        return;
+      }
+
       // Se requer seleção de tenant, exibir modal
       if (response.requires_tenant_selection && response.tenants && response.tenants.length > 0) {
         setUser(response.user);

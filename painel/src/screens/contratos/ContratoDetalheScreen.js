@@ -26,7 +26,7 @@ export default function ContratoDetalheScreen() {
 
   const checkAccess = async () => {
     const user = await authService.getCurrentUser();
-    if (!user || user.role_id !== 3) {
+    if (!user || user.role_id !== 4) {
       showError('Acesso negado. Apenas Super Admin pode acessar esta página.');
       router.replace('/');
       return;

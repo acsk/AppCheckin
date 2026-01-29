@@ -69,6 +69,19 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
             }
 
+            // Buscar dados do aluno (foto fica em alunos, não em usuarios)
+            // Aluno é encontrado via tenant_usuario_papel com papel_id=1 (Aluno)
+            $stmtAluno = $this->db->prepare(
+                "SELECT a.id, a.foto_caminho, a.cep, a.logradouro, a.numero, a.complemento, a.bairro, a.cidade, a.estado 
+                 FROM alunos a
+                 INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = a.usuario_id 
+                   AND tup.tenant_id = :tenant_id 
+                   AND tup.papel_id = 1
+                 WHERE a.usuario_id = :usuario_id"
+            );
+            $stmtAluno->execute(['usuario_id' => $userId, 'tenant_id' => $tenantId]);
+            $aluno = $stmtAluno->fetch(\PDO::FETCH_ASSOC);
+
             // Buscar estatísticas de check-ins
             $estatisticas = $this->getEstatisticasCheckin($userId, $tenantId);
 
@@ -81,17 +94,23 @@ class MobileController
             // Buscar ranking do usuário em cada modalidade no mês atual
             $rankingModalidades = $this->checkinModel->rankingUsuarioPorModalidade($userId, $tenantId);
 
-            // Montar resposta
+            // Montar resposta - dados de perfil vem do aluno, auth vem do usuario
             $perfil = [
                 'id' => $usuario['id'],
+                'aluno_id' => $aluno['id'] ?? null,
                 'nome' => $usuario['nome'],
                 'email' => $usuario['email'],
                 'email_global' => $usuario['email'] ?? null,
                 'cpf' => $usuario['cpf'] ?? null,
                 'telefone' => $usuario['telefone'] ?? null,
-                'foto_base64' => $usuario['foto_base64'] ?? null,
-                'foto_caminho' => $usuario['foto_caminho'] ?? null,
-                'data_nascimento' => $usuario['data_nascimento'] ?? null,
+                'foto_caminho' => $aluno['foto_caminho'] ?? null, // Foto vem do aluno agora
+                'cep' => $aluno['cep'] ?? null,
+                'logradouro' => $aluno['logradouro'] ?? null,
+                'numero' => $aluno['numero'] ?? null,
+                'complemento' => $aluno['complemento'] ?? null,
+                'bairro' => $aluno['bairro'] ?? null,
+                'cidade' => $aluno['cidade'] ?? null,
+                'estado' => $aluno['estado'] ?? null,
                 'role_id' => $usuario['role_id'],
                 'role_nome' => $this->getRoleName($usuario['role_id']),
                 'membro_desde' => $usuario['created_at'],
@@ -119,21 +138,25 @@ class MobileController
 
     /**
      * Retorna estatísticas de check-in do usuário
+     * Usa aluno_id para relacionamento correto
      */
     private function getEstatisticasCheckin(int $userId, ?int $tenantId): array
     {
         try {
-            // Total de check-ins do usuário
-            $sqlTotal = "SELECT COUNT(*) as total FROM checkins WHERE usuario_id = :user_id";
+            // Total de check-ins do usuário (via aluno_id)
+            $sqlTotal = "SELECT COUNT(*) as total FROM checkins c
+                         INNER JOIN alunos a ON a.id = c.aluno_id
+                         WHERE a.usuario_id = :user_id";
             $stmt = $this->db->prepare($sqlTotal);
             $stmt->execute(['user_id' => $userId]);
             $totalCheckins = (int) ($stmt->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
 
             // Check-ins do mês atual
-            $sqlMes = "SELECT COUNT(*) as total FROM checkins 
-                       WHERE usuario_id = :user_id 
-                       AND MONTH(data_checkin) = MONTH(CURRENT_DATE())
-                       AND YEAR(data_checkin) = YEAR(CURRENT_DATE())";
+            $sqlMes = "SELECT COUNT(*) as total FROM checkins c
+                       INNER JOIN alunos a ON a.id = c.aluno_id
+                       WHERE a.usuario_id = :user_id 
+                       AND MONTH(c.data_checkin) = MONTH(CURRENT_DATE())
+                       AND YEAR(c.data_checkin) = YEAR(CURRENT_DATE())";
             $stmtMes = $this->db->prepare($sqlMes);
             $stmtMes->execute(['user_id' => $userId]);
             $checkinsMes = (int) ($stmtMes->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
@@ -144,9 +167,10 @@ class MobileController
             // Último check-in
             $sqlUltimo = "SELECT c.data_checkin, h.hora, d.data
                           FROM checkins c
+                          INNER JOIN alunos a ON a.id = c.aluno_id
                           INNER JOIN horarios h ON c.horario_id = h.id
                           INNER JOIN dias d ON h.dia_id = d.id
-                          WHERE c.usuario_id = :user_id
+                          WHERE a.usuario_id = :user_id
                           ORDER BY d.data DESC, h.hora DESC LIMIT 1";
             
             $stmtUltimo = $this->db->prepare($sqlUltimo);
@@ -184,9 +208,10 @@ class MobileController
         // Busca datas únicas de check-in usando a tabela dias (relacionada aos horarios)
         $sql = "SELECT DISTINCT d.data 
                 FROM checkins c
+                INNER JOIN alunos a ON a.id = c.aluno_id
                 INNER JOIN horarios h ON c.horario_id = h.id
                 INNER JOIN dias d ON h.dia_id = d.id
-                WHERE c.usuario_id = :user_id
+                WHERE a.usuario_id = :user_id
                 ORDER BY d.data DESC LIMIT 30";
         
         $stmt = $this->db->prepare($sql);
@@ -269,12 +294,14 @@ class MobileController
         try {
             // Buscar plano através da matrícula mais recente ativa
             $sql = "SELECT p.id, p.nome, p.valor, p.duracao_dias, p.descricao,
-                           m.data_inicio, m.data_vencimento as data_fim, m.status as vinculo_status
+                           m.data_inicio, m.data_vencimento as data_fim, sm.codigo as vinculo_status
                     FROM matriculas m
                     INNER JOIN planos p ON m.plano_id = p.id
-                    WHERE m.usuario_id = :user_id 
+                    INNER JOIN alunos a ON a.id = m.aluno_id
+                    INNER JOIN status_matricula sm ON sm.id = m.status_id
+                    WHERE a.usuario_id = :user_id 
                     AND m.tenant_id = :tenant_id
-                    AND m.status IN ('ativa', 'pendente')
+                    AND sm.codigo IN ('ativa', 'pendente')
                     ORDER BY m.data_vencimento DESC
                     LIMIT 1";
             
@@ -650,9 +677,10 @@ class MobileController
         $sql = "SELECT c.id, c.data_checkin, c.created_at,
                        d.data, h.hora
                 FROM checkins c
+                INNER JOIN alunos a ON a.id = c.aluno_id
                 INNER JOIN horarios h ON c.horario_id = h.id
                 INNER JOIN dias d ON h.dia_id = d.id
-                WHERE c.usuario_id = :user_id
+                WHERE a.usuario_id = :user_id
                 ORDER BY d.data DESC, h.hora DESC 
                 LIMIT :limit OFFSET :offset";
         
@@ -665,7 +693,9 @@ class MobileController
         $checkins = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
         // Contar total
-        $sqlCount = "SELECT COUNT(*) as total FROM checkins WHERE usuario_id = :user_id";
+        $sqlCount = "SELECT COUNT(*) as total FROM checkins c
+                     INNER JOIN alunos a ON a.id = c.aluno_id
+                     WHERE a.usuario_id = :user_id";
         $stmtCount = $this->db->prepare($sqlCount);
         $stmtCount->execute(['user_id' => $userId]);
         $total = (int) $stmtCount->fetch()['total'];
@@ -939,11 +969,11 @@ class MobileController
             $retornarTodas = isset($queryParams['todas']) && $queryParams['todas'] === 'true';
             
             // Buscar matrículas do usuário com detalhes do plano
-            $sql = "SELECT mat.id, mat.usuario_id, mat.plano_id, mat.data_matricula, mat.data_inicio, mat.data_vencimento, mat.valor, mat.status, mat.motivo, p.id as plano_id_ref, p.tenant_id, p.modalidade_id, p.nome as plano_nome, p.descricao, p.valor as plano_valor, p.duracao_dias, p.checkins_semanais, p.ativo, p.created_at, p.updated_at FROM matriculas mat INNER JOIN planos p ON mat.plano_id = p.id WHERE mat.usuario_id = :user_id AND mat.tenant_id = :tenant_id";
+            $sql = "SELECT mat.id, mat.aluno_id, mat.plano_id, mat.data_matricula, mat.data_inicio, mat.data_vencimento, mat.valor, sm.nome as status, mm.nome as motivo, p.id as plano_id_ref, p.tenant_id, p.modalidade_id, p.nome as plano_nome, p.descricao, p.valor as plano_valor, p.duracao_dias, p.checkins_semanais, p.ativo, p.created_at, p.updated_at FROM matriculas mat INNER JOIN planos p ON mat.plano_id = p.id INNER JOIN alunos a ON a.id = mat.aluno_id LEFT JOIN status_matricula sm ON sm.id = mat.status_id LEFT JOIN motivo_matricula mm ON mm.id = mat.motivo_id WHERE a.usuario_id = :user_id AND mat.tenant_id = :tenant_id";
             
             // Filtra por status ativo da matrícula
             if (!$retornarTodas) {
-                $sql .= " AND mat.status = 'ativa'";
+                $sql .= " AND mat.status_id = (SELECT id FROM status_matricula WHERE nome = 'ativa')";
             }
             
             $sql .= " ORDER BY mat.data_vencimento DESC";
@@ -1055,6 +1085,18 @@ class MobileController
                 ]));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
             }
+
+            // Buscar dados do aluno (foto está na tabela alunos)
+            // Aluno é encontrado via tenant_usuario_papel com papel_id=1 (Aluno)
+            $stmtAluno = $this->db->prepare(
+                "SELECT a.id, a.foto_caminho FROM alunos a
+                 INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = a.usuario_id 
+                   AND tup.tenant_id = :tenant_id 
+                   AND tup.papel_id = 1
+                 WHERE a.usuario_id = :usuario_id"
+            );
+            $stmtAluno->execute(['usuario_id' => $userId, 'tenant_id' => $tenantId]);
+            $aluno = $stmtAluno->fetch(\PDO::FETCH_ASSOC);
 
             // ============================================================
             // VALIDAÇÃO CRÍTICA: Garantir que usuário tem acesso ao tenant
@@ -1233,7 +1275,7 @@ class MobileController
                         'id' => $userId,
                         'nome' => $usuario['nome'],
                         'email' => $usuario['email'],
-                        'foto_caminho' => $usuario['foto_caminho'] ?? null
+                        'foto_caminho' => $aluno['foto_caminho'] ?? null
                     ],
                     'turma' => [
                         'id' => (int) $turma['id'],
@@ -1279,7 +1321,7 @@ class MobileController
             }
 
             // Buscar check-in
-            $sql = "SELECT c.id, c.usuario_id, c.turma_id, t.dia_id, d.data as dia_data
+            $sql = "SELECT c.id, c.aluno_id, c.turma_id, t.dia_id, d.data as dia_data
                     FROM checkins c
                     INNER JOIN turmas t ON c.turma_id = t.id
                     INNER JOIN dias d ON t.dia_id = d.id
@@ -1446,7 +1488,7 @@ class MobileController
             $turmas = $stmtTurmas->fetchAll(\PDO::FETCH_ASSOC);
 
             // Para cada turma, contar o número de check-ins (alunos que já marcaram presença)
-            $sqlCheckinsCount = "SELECT COUNT(DISTINCT usuario_id) as total_checkins FROM checkins WHERE turma_id = :turma_id";
+            $sqlCheckinsCount = "SELECT COUNT(DISTINCT aluno_id) as total_checkins FROM checkins WHERE turma_id = :turma_id";
             $stmtCheckinsCount = $this->db->prepare($sqlCheckinsCount);
 
             // Formatar turmas
@@ -1532,7 +1574,7 @@ class MobileController
             }
 
             // Buscar detalhes da matrícula com plano
-            $sqlMatricula = "SELECT m.id, m.usuario_id, m.plano_id, m.data_matricula, m.data_inicio, m.data_vencimento, m.valor, m.status, m.motivo, u.nome as usuario_nome FROM matriculas m INNER JOIN usuarios u ON m.usuario_id = u.id WHERE m.id = :matricula_id AND m.usuario_id = :user_id AND m.tenant_id = :tenant_id";
+            $sqlMatricula = "SELECT m.id, m.aluno_id, m.plano_id, m.data_matricula, m.data_inicio, m.data_vencimento, m.valor, sm.nome as status, mm.nome as motivo, al.nome as usuario_nome FROM matriculas m INNER JOIN alunos al ON m.aluno_id = al.id LEFT JOIN status_matricula sm ON sm.id = m.status_id LEFT JOIN motivo_matricula mm ON mm.id = m.motivo_id WHERE m.id = :matricula_id AND al.usuario_id = :user_id AND m.tenant_id = :tenant_id";
             
             $stmtMatricula = $this->db->prepare($sqlMatricula);
             $stmtMatricula->execute([
@@ -1684,14 +1726,15 @@ class MobileController
             $sqlParticipantes = "
                 SELECT 
                     c.id as checkin_id,
-                    c.usuario_id,
-                    u.nome as usuario_nome,
+                    c.aluno_id,
+                    a.nome as usuario_nome,
                     u.email,
                     c.created_at as data_checkin,
                     TIME_FORMAT(c.created_at, '%H:%i:%s') as hora_checkin,
                     DATE_FORMAT(c.created_at, '%d/%m/%Y') as data_checkin_formatada
                 FROM checkins c
-                INNER JOIN usuarios u ON c.usuario_id = u.id
+                INNER JOIN alunos a ON c.aluno_id = a.id
+                INNER JOIN usuarios u ON a.usuario_id = u.id
                 WHERE c.turma_id = :turma_id
                 ORDER BY c.created_at DESC
             ";
@@ -1704,7 +1747,7 @@ class MobileController
             $participantesFormatados = array_map(function($p) {
                 return [
                     'checkin_id' => (int) $p['checkin_id'],
-                    'usuario_id' => (int) $p['usuario_id'],
+                    'aluno_id' => (int) $p['aluno_id'],
                     'nome' => $p['usuario_nome'],
                     'email' => $p['email'],
                     'data_checkin' => $p['data_checkin'],
@@ -1938,7 +1981,7 @@ class MobileController
 
             // Contar alunos matriculados separadamente
             $stmtAlunosCount = $this->db->prepare("
-                SELECT COUNT(DISTINCT usuario_id) as total FROM checkins 
+                SELECT COUNT(DISTINCT aluno_id) as total FROM checkins 
                 WHERE turma_id = :turma_id
             ");
             $stmtAlunosCount->execute(['turma_id' => $turmaId]);
@@ -1957,15 +2000,16 @@ class MobileController
             // Buscar alunos que fizeram check-in (como base de alunos da turma)
             $sqlAlunos = "
                 SELECT 
-                    u.id,
-                    u.nome,
+                    a.id,
+                    a.nome,
                     u.email,
-                    u.foto_caminho,
+                    a.foto_caminho,
                     COUNT(c.id) as checkins_do_aluno
-                FROM usuarios u
-                INNER JOIN checkins c ON u.id = c.usuario_id
+                FROM alunos a
+                INNER JOIN usuarios u ON u.id = a.usuario_id
+                INNER JOIN checkins c ON a.id = c.aluno_id
                 WHERE c.turma_id = :turma_id
-                GROUP BY u.id, u.nome, u.email, u.foto_caminho
+                GROUP BY a.id, a.nome, u.email, a.foto_caminho
                 ORDER BY u.nome ASC
             ";
 
@@ -1976,7 +2020,7 @@ class MobileController
             // Formatar alunos
             $alunosFormatados = array_map(function($a) {
                 return [
-                    'usuario_id' => (int) $a['id'],
+                    'aluno_id' => (int) $a['id'],
                     'nome' => $a['nome'],
                     'email' => $a['email'],
                     'foto_caminho' => $a['foto_caminho'] ?? null,
@@ -1988,13 +2032,13 @@ class MobileController
             $sqlCheckins = "
                 SELECT 
                     c.id as checkin_id,
-                    c.usuario_id,
-                    u.nome as usuario_nome,
+                    c.aluno_id,
+                    a.nome as usuario_nome,
                     c.created_at as data_checkin,
                     TIME_FORMAT(c.created_at, '%H:%i:%s') as hora_checkin,
                     DATE_FORMAT(c.created_at, '%d/%m/%Y') as data_checkin_formatada
                 FROM checkins c
-                INNER JOIN usuarios u ON c.usuario_id = u.id
+                INNER JOIN alunos a ON c.aluno_id = a.id
                 WHERE c.turma_id = :turma_id
                 ORDER BY c.created_at DESC
                 LIMIT 10
@@ -2008,7 +2052,7 @@ class MobileController
             $checkinsFormatados = array_map(function($c) {
                 return [
                     'checkin_id' => (int) $c['checkin_id'],
-                    'usuario_id' => (int) $c['usuario_id'],
+                    'aluno_id' => (int) $c['aluno_id'],
                     'usuario_nome' => $c['usuario_nome'],
                     'data_checkin' => $c['data_checkin'],
                     'hora_checkin' => $c['hora_checkin'],
@@ -2370,8 +2414,8 @@ class MobileController
             $rankingFormatado = array_map(function($item, $index) {
                 return [
                     'posicao' => $index + 1,
-                    'usuario' => [
-                        'id' => (int) $item['usuario_id'],
+                    'aluno' => [
+                        'id' => (int) $item['aluno_id'],
                         'nome' => $item['nome'],
                         'email' => $item['email'],
                         'foto_caminho' => $item['foto_caminho'] ?? null
@@ -2437,6 +2481,26 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
             }
 
+            // Buscar dados do aluno (foto fica na tabela alunos)
+            // Aluno é encontrado via tenant_usuario_papel com papel_id=1 (Aluno)
+            $stmtAluno = $this->db->prepare(
+                "SELECT a.id, a.foto_caminho FROM alunos a
+                 INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = a.usuario_id 
+                   AND tup.tenant_id = :tenant_id 
+                   AND tup.papel_id = 1
+                 WHERE a.usuario_id = :usuario_id"
+            );
+            $stmtAluno->execute(['usuario_id' => $userId, 'tenant_id' => $tenantId]);
+            $aluno = $stmtAluno->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$aluno) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Aluno não encontrado para este usuário'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
             // Obter arquivos enviados
             $uploadedFiles = $request->getUploadedFiles();
             
@@ -2489,16 +2553,16 @@ class MobileController
             ];
             $ext = $extensoes[$mimeType] ?? 'jpg';
 
-            // Remover foto antiga se existir
-            if ($usuario['foto_caminho']) {
-                $caminhoAntigo = __DIR__ . '/../../public' . $usuario['foto_caminho'];
+            // Remover foto antiga se existir (da tabela alunos)
+            if ($aluno['foto_caminho']) {
+                $caminhoAntigo = __DIR__ . '/../../public' . $aluno['foto_caminho'];
                 if (file_exists($caminhoAntigo)) {
                     unlink($caminhoAntigo);
                 }
             }
 
-            // Gerar nome único do arquivo
-            $nomeArquivo = 'usuario_' . $userId . '_' . time() . '.' . $ext;
+            // Gerar nome único do arquivo (usando aluno_id para organização)
+            $nomeArquivo = 'aluno_' . $aluno['id'] . '_' . time() . '.' . $ext;
             $caminhoCompleto = $uploadDir . '/' . $nomeArquivo;
             $caminhoRelativo = '/uploads/fotos/' . $nomeArquivo;
 
@@ -2506,13 +2570,13 @@ class MobileController
             $uploadedFile->moveTo($caminhoCompleto);
             chmod($caminhoCompleto, 0644);
 
-            // Atualizar usuário com o caminho da foto
+            // Atualizar aluno com o caminho da foto (não mais usuarios)
             $stmt = $this->db->prepare(
-                "UPDATE usuarios SET foto_caminho = :foto_caminho, updated_at = NOW() WHERE id = :id"
+                "UPDATE alunos SET foto_caminho = :foto_caminho, updated_at = NOW() WHERE id = :id"
             );
             $resultado = $stmt->execute([
                 'foto_caminho' => $caminhoRelativo,
-                'id' => $userId
+                'id' => $aluno['id']
             ]);
 
             if (!$resultado) {
@@ -2531,6 +2595,7 @@ class MobileController
                 'success' => true,
                 'message' => 'Foto de perfil atualizada com sucesso',
                 'data' => [
+                    'aluno_id' => $aluno['id'],
                     'usuario_id' => $userId,
                     'tamanho_original' => $uploadedFile->getSize(),
                     'tamanho_final' => filesize($caminhoCompleto),
@@ -2555,7 +2620,7 @@ class MobileController
 
     /**
      * GET /mobile/perfil/foto
-     * Obtém a foto de perfil do usuário autenticado
+     * Obtém a foto de perfil do usuário autenticado (foto do aluno)
      */
     public function obterFotoPerfil(Request $request, Response $response): Response
     {
@@ -2563,18 +2628,28 @@ class MobileController
             $userId = $request->getAttribute('userId');
             $tenantId = $request->getAttribute('tenantId');
 
-            // Buscar dados do usuário
-            $usuario = $this->usuarioModel->findById($userId, $tenantId);
-            if (!$usuario) {
+            // Buscar dados do aluno (foto está na tabela alunos)
+            // Aluno é encontrado via tenant_usuario_papel com papel_id=1 (Aluno)
+            $stmtAluno = $this->db->prepare(
+                "SELECT a.id, a.foto_caminho FROM alunos a
+                 INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = a.usuario_id 
+                   AND tup.tenant_id = :tenant_id 
+                   AND tup.papel_id = 1
+                 WHERE a.usuario_id = :usuario_id"
+            );
+            $stmtAluno->execute(['usuario_id' => $userId, 'tenant_id' => $tenantId]);
+            $aluno = $stmtAluno->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$aluno) {
                 return $response->withStatus(404);
             }
 
             // Se não tem foto, retornar 404
-            if (empty($usuario['foto_caminho'])) {
+            if (empty($aluno['foto_caminho'])) {
                 return $response->withStatus(404);
             }
 
-            $caminhoCompleto = __DIR__ . '/../../public' . $usuario['foto_caminho'];
+            $caminhoCompleto = __DIR__ . '/../../public' . $aluno['foto_caminho'];
 
             // Validar que o arquivo existe
             if (!file_exists($caminhoCompleto)) {

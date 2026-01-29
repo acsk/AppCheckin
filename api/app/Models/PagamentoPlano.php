@@ -19,17 +19,17 @@ class PagamentoPlano
     public function criar(array $dados): int
     {
         $sql = "INSERT INTO pagamentos_plano 
-                (tenant_id, matricula_id, usuario_id, plano_id, valor, data_vencimento, 
+                (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento, 
                  data_pagamento, status_pagamento_id, forma_pagamento_id, comprovante, observacoes, criado_por)
                 VALUES 
-                (:tenant_id, :matricula_id, :usuario_id, :plano_id, :valor, :data_vencimento,
+                (:tenant_id, :aluno_id, :matricula_id, :plano_id, :valor, :data_vencimento,
                  :data_pagamento, :status_pagamento_id, :forma_pagamento_id, :comprovante, :observacoes, :criado_por)";
         
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([
             'tenant_id' => $dados['tenant_id'],
+            'aluno_id' => $dados['aluno_id'],
             'matricula_id' => $dados['matricula_id'],
-            'usuario_id' => $dados['usuario_id'],
             'plano_id' => $dados['plano_id'],
             'valor' => $dados['valor'],
             'data_vencimento' => $dados['data_vencimento'],
@@ -53,7 +53,7 @@ class PagamentoPlano
                     p.*,
                     sp.nome as status_pagamento_nome,
                     fp.nome as forma_pagamento_nome,
-                    u.nome as aluno_nome,
+                    a.nome as aluno_nome,
                     pl.nome as plano_nome,
                     criador.nome as criado_por_nome,
                     baixador.nome as baixado_por_nome,
@@ -61,7 +61,7 @@ class PagamentoPlano
                 FROM pagamentos_plano p
                 INNER JOIN status_pagamento sp ON p.status_pagamento_id = sp.id
                 LEFT JOIN formas_pagamento fp ON p.forma_pagamento_id = fp.id
-                INNER JOIN usuarios u ON p.usuario_id = u.id
+                INNER JOIN alunos a ON p.aluno_id = a.id
                 INNER JOIN planos pl ON p.plano_id = pl.id
                 LEFT JOIN usuarios criador ON p.criado_por = criador.id
                 LEFT JOIN usuarios baixador ON p.baixado_por = baixador.id
@@ -79,7 +79,7 @@ class PagamentoPlano
     }
 
     /**
-     * Listar pagamentos de um usuário
+     * Listar pagamentos de um usuário (via aluno_id)
      */
     public function listarPorUsuario(int $tenantId, int $usuarioId, ?array $filtros = []): array
     {
@@ -94,7 +94,8 @@ class PagamentoPlano
                 LEFT JOIN formas_pagamento fp ON p.forma_pagamento_id = fp.id
                 INNER JOIN planos pl ON p.plano_id = pl.id
                 INNER JOIN matriculas m ON p.matricula_id = m.id
-                WHERE p.tenant_id = :tenant_id AND p.usuario_id = :usuario_id";
+                INNER JOIN alunos a ON p.aluno_id = a.id
+                WHERE p.tenant_id = :tenant_id AND a.usuario_id = :usuario_id";
         
         $params = [
             'tenant_id' => $tenantId,
@@ -123,12 +124,12 @@ class PagamentoPlano
                     p.*,
                     sp.nome as status_nome,
                     fp.nome as forma_pagamento_nome,
-                    u.nome as aluno_nome,
+                    a.nome as aluno_nome,
                     pl.nome as plano_nome
                 FROM pagamentos_plano p
                 INNER JOIN status_pagamento sp ON p.status_pagamento_id = sp.id
                 LEFT JOIN formas_pagamento fp ON p.forma_pagamento_id = fp.id
-                INNER JOIN usuarios u ON p.usuario_id = u.id
+                INNER JOIN alunos a ON p.aluno_id = a.id
                 INNER JOIN planos pl ON p.plano_id = pl.id
                 WHERE p.tenant_id = :tenant_id";
         
@@ -139,9 +140,9 @@ class PagamentoPlano
             $params['status_pagamento_id'] = $filtros['status_pagamento_id'];
         }
         
-        if (!empty($filtros['usuario_id'])) {
-            $sql .= " AND p.usuario_id = :usuario_id";
-            $params['usuario_id'] = $filtros['usuario_id'];
+        if (!empty($filtros['aluno_id'])) {
+            $sql .= " AND p.aluno_id = :aluno_id";
+            $params['aluno_id'] = $filtros['aluno_id'];
         }
         
         if (!empty($filtros['data_inicio'])) {
@@ -171,14 +172,14 @@ class PagamentoPlano
                     p.*,
                     sp.nome as status_nome,
                     fp.nome as forma_pagamento_nome,
-                    u.nome as aluno_nome,
+                    a.nome as aluno_nome,
                     pl.nome as plano_nome,
                     m.data_inicio as matricula_data_inicio,
                     m.data_vencimento as matricula_data_vencimento
                 FROM pagamentos_plano p
                 INNER JOIN status_pagamento sp ON p.status_pagamento_id = sp.id
                 LEFT JOIN formas_pagamento fp ON p.forma_pagamento_id = fp.id
-                INNER JOIN usuarios u ON p.usuario_id = u.id
+                INNER JOIN alunos a ON p.aluno_id = a.id
                 INNER JOIN planos pl ON p.plano_id = pl.id
                 INNER JOIN matriculas m ON p.matricula_id = m.id
                 WHERE p.tenant_id = :tenant_id AND p.id = :id";

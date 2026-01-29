@@ -84,12 +84,12 @@ try {
         }
     }
     
-    // Limpar usuários (manter SuperAdmin)
-    $db->exec("DELETE FROM usuarios WHERE role_id != 3");
+    // Limpar usuários (manter SuperAdmin role_id = 4)
+    $db->exec("DELETE FROM usuarios WHERE role_id != 4");
     echo "{$colors['green']}✓{$colors['reset']} Usuários limpos (SuperAdmin mantido)\n";
     
     // Limpar usuario_tenant (manter SuperAdmin)
-    $db->exec("DELETE FROM usuario_tenant WHERE usuario_id NOT IN (SELECT id FROM usuarios WHERE role_id = 3)");
+    $db->exec("DELETE FROM usuario_tenant WHERE usuario_id NOT IN (SELECT id FROM usuarios WHERE role_id = 4)");
     echo "{$colors['green']}✓{$colors['reset']} Relações usuario_tenant limpas\n";
     
     // Limpar tenants > 1
@@ -108,11 +108,11 @@ try {
     echo "=============================================\n{$colors['reset']}";
     
     echo "\n{$colors['blue']}Dados mantidos:{$colors['reset']}\n";
-    echo "  • SuperAdmin (role_id = 3)\n";
+    echo "  • SuperAdmin (role_id = 4)\n";
     echo "  • Planos do Sistema\n";
     echo "  • Formas de Pagamento\n";
     echo "  • Tenant padrão (ID = 1)\n";
-    echo "  • Roles\n";
+    echo "  • Papéis\n";
     echo "  • Status\n\n";
     
 } catch (\PDOException $e) {

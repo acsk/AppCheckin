@@ -16,7 +16,17 @@
 export const extrairMensagemErro = (error) => {
   if (!error) return 'Erro desconhecido';
   
-  let mensagem = error.message || error.error || error || 'Erro desconhecido';
+  // Se o erro já é uma string, retornar diretamente
+  if (typeof error === 'string') {
+    return error;
+  }
+  
+  // Verificar se o objeto tem type: "error" e uma mensagem (formato comum do backend)
+  if (error.type === 'error' && error.message) {
+    return error.message;
+  }
+  
+  let mensagem = error.message || error.error || 'Erro desconhecido';
   
   // Se a mensagem contém SQLSTATE, extrair apenas a mensagem após o código
   // Formato: "SQLSTATE[45000]: <<Unknown error>>: 1644 Mensagem real aqui"
@@ -37,6 +47,8 @@ export const extrairMensagemErro = (error) => {
  * @returns {any} - Objeto com mensagemLimpa adicionada
  */
 export const prepararErro = (errorData) => {
+  console.log('🔍 prepararErro recebeu:', JSON.stringify(errorData, null, 2));
+  
   if (!errorData) {
     return { mensagemLimpa: 'Erro desconhecido' };
   }
@@ -46,6 +58,7 @@ export const prepararErro = (errorData) => {
     : { ...errorData };
     
   erro.mensagemLimpa = extrairMensagemErro(erro);
+  console.log('✅ Mensagem extraída:', erro.mensagemLimpa);
   return erro;
 };
 

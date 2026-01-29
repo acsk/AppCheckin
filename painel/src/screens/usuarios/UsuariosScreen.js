@@ -28,7 +28,7 @@ export default function UsuariosScreen() {
   const checkUserRole = async () => {
     try {
       const user = await authService.getCurrentUser();
-      const isSuper = user?.role_id === 3;
+      const isSuper = user?.role_id === 4;
       setIsSuperAdmin(isSuper);
     } catch (error) {
       console.error('Erro ao verificar role do usuário:', error);
@@ -39,7 +39,7 @@ export default function UsuariosScreen() {
     try {
       setLoading(true);
       const user = await authService.getCurrentUser();
-      const isSuper = user?.role_id === 3;
+      const isSuper = user?.role_id === 4;
       
       let response;
       if (isSuper) {
@@ -126,8 +126,9 @@ export default function UsuariosScreen() {
   const getRoleBadge = (roleId) => {
     const roles = {
       1: { label: 'Aluno', color: '#10b981', icon: 'user' },
-      2: { label: 'Admin', color: '#f97316', icon: 'shield' },
-      3: { label: 'SuperAdmin', color: '#8b5cf6', icon: 'star' }
+      2: { label: 'Professor', color: '#3b82f6', icon: 'book' },
+      3: { label: 'Admin', color: '#f97316', icon: 'shield' },
+      4: { label: 'SuperAdmin', color: '#8b5cf6', icon: 'star' }
     };
     return roles[roleId] || roles[1];
   };

@@ -5,8 +5,8 @@ import { colors } from "@/src/theme/colors";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { handleAuthError } from "@/src/utils/authHelpers";
 import {
-    compressImage,
-    logCompressionInfo,
+  compressImage,
+  logCompressionInfo,
 } from "@/src/utils/imageCompression";
 import AsyncStorage from "@/src/utils/storage";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -14,15 +14,15 @@ import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -774,17 +774,20 @@ export default function AccountScreen() {
               <>
                 <View style={styles.rankingList}>
                   {ranking.slice(0, 3).map((item) => (
-                    <View key={item.usuario.id} style={styles.rankingListItem}>
+                    <View
+                      key={item.aluno?.id ?? item.posicao}
+                      style={styles.rankingListItem}
+                    >
                       <View style={styles.rankingPosition}>
                         <Text style={styles.rankingPositionNumber}>
                           {item.posicao}
                         </Text>
                       </View>
                       <View style={styles.rankingAvatar}>
-                        {item.usuario.foto_caminho && apiUrl ? (
+                        {item.aluno?.foto_caminho && apiUrl ? (
                           <Image
                             source={{
-                              uri: `${apiUrl}${item.usuario.foto_caminho}`,
+                              uri: `${apiUrl}${item.aluno.foto_caminho}`,
                             }}
                             style={styles.rankingAvatarImage}
                           />
@@ -800,7 +803,7 @@ export default function AccountScreen() {
                       </View>
                       <View style={styles.rankingListContent}>
                         <Text style={styles.rankingName}>
-                          {item.usuario.nome}
+                          {item.aluno?.nome ?? "Usuário"}
                         </Text>
                         <Text style={styles.rankingCheckins}>
                           {item.total_checkins} check-ins
@@ -823,7 +826,7 @@ export default function AccountScreen() {
                         (item) => item.modalidade_id === selectedModalidadeId,
                       )?.posicao ||
                         ranking.find(
-                          (item) => item.usuario.id === userProfile.id,
+                          (item) => item.aluno?.id === userProfile.id,
                         )?.posicao ||
                         "--"}
                     </Text>

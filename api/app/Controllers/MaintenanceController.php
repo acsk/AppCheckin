@@ -87,9 +87,9 @@ class MaintenanceController
                 }
             }
             
-            // Limpar dados
-            $db->exec("DELETE FROM usuarios WHERE role_id != 3");
-            $db->exec("DELETE FROM usuario_tenant WHERE usuario_id NOT IN (SELECT id FROM usuarios WHERE role_id = 3)");
+            // Limpar dados (manter apenas super_admin = role_id 4)
+            $db->exec("DELETE FROM usuarios WHERE role_id != 4");
+            $db->exec("DELETE FROM usuario_tenant WHERE usuario_id NOT IN (SELECT id FROM usuarios WHERE role_id = 4)");
             $db->exec("DELETE FROM tenant_planos WHERE tenant_id > 1");
             $db->exec("DELETE FROM tenant_formas_pagamento WHERE tenant_id > 1");
             $db->exec("DELETE FROM tenant_planos_sistema WHERE tenant_id > 1");

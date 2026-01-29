@@ -208,9 +208,10 @@ class AdminController
                 
             FROM usuarios u
             INNER JOIN usuario_tenant ut ON ut.usuario_id = u.id AND ut.status = 'ativo'
-            LEFT JOIN matriculas m ON m.usuario_id = u.id AND m.status = 'ativa'
+            LEFT JOIN alunos al ON al.usuario_id = u.id
+            LEFT JOIN matriculas m ON m.aluno_id = al.id AND m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1)
             LEFT JOIN planos p ON p.id = m.plano_id
-            LEFT JOIN checkins c ON u.id = c.usuario_id
+            LEFT JOIN checkins c ON al.id = c.aluno_id
             WHERE ut.tenant_id = ? AND u.role_id = 1
             GROUP BY u.id
             ORDER BY u.nome ASC
@@ -260,7 +261,8 @@ class AdminController
             SELECT u.id, u.nome, u.email
             FROM usuarios u
             INNER JOIN usuario_tenant ut ON ut.usuario_id = u.id AND ut.status = 'ativo'
-            LEFT JOIN matriculas m ON m.usuario_id = u.id AND m.status = 'ativa'
+            INNER JOIN alunos al ON al.usuario_id = u.id
+            LEFT JOIN matriculas m ON m.aluno_id = al.id AND m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1)
             WHERE ut.tenant_id = ? 
             AND u.role_id = 1
             AND m.id IS NOT NULL
@@ -412,9 +414,15 @@ class AdminController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
         }
 
+        // Buscar aluno_id a partir do usuario_id
+        $stmtAlunoId = $db->prepare("SELECT id FROM alunos WHERE usuario_id = ?");
+        $stmtAlunoId->execute([$alunoId]);
+        $alunoRecord = $stmtAlunoId->fetch();
+        $realAlunoId = $alunoRecord ? $alunoRecord['id'] : null;
+
         // Verificar se o aluno tem check-ins
-        $stmtCheckins = $db->prepare("SELECT COUNT(*) as total FROM checkins WHERE usuario_id = ?");
-        $stmtCheckins->execute([$alunoId]);
+        $stmtCheckins = $db->prepare("SELECT COUNT(*) as total FROM checkins WHERE aluno_id = ?");
+        $stmtCheckins->execute([$realAlunoId]);
         $totalCheckins = $stmtCheckins->fetch()['total'];
 
         if ($totalCheckins > 0) {

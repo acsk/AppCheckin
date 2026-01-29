@@ -68,7 +68,7 @@ export default function FormUsuarioScreen() {
       let isSuperAdminUser = false;
       try {
         const meResponse = await api.get('/me');
-        isSuperAdminUser = meResponse.data?.role_id === 3;
+        isSuperAdminUser = meResponse.data?.role_id === 4;
         setIsSuperAdmin(isSuperAdminUser);
       } catch (error) {
         console.log('Não foi possível verificar role do usuário');

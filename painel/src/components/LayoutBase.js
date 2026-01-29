@@ -7,40 +7,46 @@ import {
   useWindowDimensions, 
   TouchableOpacity,
   Animated,
-  Easing
+  Easing,
+  Platform,
+  StatusBar
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useRouter, usePathname } from 'expo-router';
 import { authService } from '../services/authService';
 
 const MENU = [
-  { label: 'Dashboard', path: '/', icon: 'home', roles: [1, 2, 3] }, // Todos
-  { label: 'Academias', path: '/academias', icon: 'briefcase', roles: [3] }, // SuperAdmin apenas
-  { label: 'Contratos', path: '/contratos', icon: 'file-text', roles: [3] }, // SuperAdmin apenas
-  { label: 'Matrículas', path: '/matriculas', icon: 'user-check', roles: [2, 3] }, // Admin e SuperAdmin
-  { label: 'Planos', path: '/planos', icon: 'package', roles: [2, 3] }, // Admin e SuperAdmin
-  { label: 'Modalidades', path: '/modalidades', icon: 'activity', roles: [2, 3] }, // Admin e SuperAdmin
-  { label: 'Professores', path: '/professores', icon: 'user', roles: [2, 3] }, // Admin e SuperAdmin
-  { label: 'Aulas', path: '/turmas', icon: 'calendar', roles: [2, 3] }, // Admin e SuperAdmin
-  { label: 'WOD', path: '/wods', icon: 'zap', roles: [2, 3] }, // Admin e SuperAdmin
-  { label: 'Planos Sistema', path: '/planos-sistema', icon: 'layers', roles: [3] }, // SuperAdmin apenas
-  { label: 'Usuários', path: '/usuarios', icon: 'users', roles: [2, 3] }, // Admin e SuperAdmin
-  { label: 'Formas de Pagamento', path: '/formas-pagamento', icon: 'credit-card', roles: [2, 3] }, // Admin e SuperAdmin
+  { label: 'Dashboard', path: '/', icon: 'home', roles: [3, 4] },
+  { label: 'Academias', path: '/academias', icon: 'briefcase', roles: [4] },
+  { label: 'Contratos', path: '/contratos', icon: 'file-text', roles: [4] },
+  { label: 'Alunos', path: '/alunos', icon: 'users', roles: [3, 4] },
+  { label: 'Matrículas', path: '/matriculas', icon: 'user-check', roles: [3, 4] },
+  { label: 'Planos', path: '/planos', icon: 'package', roles: [3, 4] },
+  { label: 'Modalidades', path: '/modalidades', icon: 'activity', roles: [3, 4] },
+  { label: 'Professores', path: '/professores', icon: 'user', roles: [3, 4] },
+  { label: 'Aulas', path: '/turmas', icon: 'calendar', roles: [3, 4] },
+  { label: 'WOD', path: '/wods', icon: 'zap', roles: [3, 4] },
+  { label: 'Planos Sistema', path: '/planos-sistema', icon: 'layers', roles: [4] },
+  { label: 'Usuários', path: '/usuarios', icon: 'users', roles: [3, 4] },
+  { label: 'Formas de Pagamento', path: '/formas-pagamento', icon: 'credit-card', roles: [3, 4] },
 ];
 
 const BREAKPOINT_MOBILE = 768;
 const BREAKPOINT_TABLET = 1024;
+const DRAWER_WIDTH = 280;
 
 export default function LayoutBase({ children, title = 'Dashboard', subtitle = 'Overview', noPadding = false }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const [usuarioInfo, setUsuarioInfo] = React.useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerVisible, setDrawerVisible] = useState(false);
   
   // Animações
-  const slideAnim = useRef(new Animated.Value(-280)).current;
+  const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
 
   const isMobile = width < BREAKPOINT_MOBILE;
   const isTablet = width >= BREAKPOINT_MOBILE && width < BREAKPOINT_TABLET;
@@ -62,33 +68,47 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
   // Animação de abertura/fechamento
   useEffect(() => {
     if (drawerOpen) {
+      setDrawerVisible(true);
       Animated.parallel([
-        Animated.timing(slideAnim, {
+        Animated.spring(slideAnim, {
           toValue: 0,
-          duration: 300,
-          easing: Easing.out(Easing.cubic),
+          tension: 65,
+          friction: 11,
           useNativeDriver: true,
         }),
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 300,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          tension: 65,
+          friction: 11,
           useNativeDriver: true,
         }),
       ]).start();
     } else {
       Animated.parallel([
         Animated.timing(slideAnim, {
-          toValue: -280,
-          duration: 250,
+          toValue: -DRAWER_WIDTH,
+          duration: 200,
           easing: Easing.in(Easing.cubic),
           useNativeDriver: true,
         }),
         Animated.timing(fadeAnim, {
           toValue: 0,
-          duration: 250,
+          duration: 200,
           useNativeDriver: true,
         }),
-      ]).start();
+        Animated.timing(scaleAnim, {
+          toValue: 0.95,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start(() => {
+        setDrawerVisible(false);
+      });
     }
   }, [drawerOpen]);
 
@@ -102,23 +122,44 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
 
   const nome = usuarioInfo?.nome || 'Usuário';
 
-  const renderSidebarContent = () => (
-    <View className="flex-1 px-4 pb-3 pt-4">
-      <View className="mb-3 items-start gap-1">
-        <View className="h-7 w-7 items-center justify-center rounded-lg bg-orange-500/15">
-          <Feather name="activity" size={16} color="#f97316" />
+  const renderSidebarContent = (isMobileDrawer = false) => (
+    <View className="flex-1">
+      {/* Header do Sidebar */}
+      <View className={`flex-row items-center justify-between ${isMobileDrawer ? 'px-5 pt-4 pb-3' : 'px-4 pt-4 pb-3'}`}>
+        <View className="flex-row items-center gap-2.5">
+          <View className="h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-orange-600" style={{ backgroundColor: '#f97316' }}>
+            <Feather name="activity" size={18} color="#fff" />
+          </View>
+          <View>
+            <Text className="text-sm font-bold text-slate-900">CHECK-IN</Text>
+            <Text className="text-[10px] text-slate-400">Painel Admin</Text>
+          </View>
         </View>
-        <Text className="text-[9px] tracking-[3px] text-slate-500">CHECK-IN</Text>
+        {isMobileDrawer && (
+          <TouchableOpacity
+            className="h-8 w-8 items-center justify-center rounded-full bg-slate-100"
+            onPress={closeDrawer}
+            activeOpacity={0.7}
+          >
+            <Feather name="x" size={18} color="#64748b" />
+          </TouchableOpacity>
+        )}
       </View>
 
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
-        <View className="gap-1 pb-4">
+      {/* Divider */}
+      <View className={`h-px bg-slate-100 ${isMobileDrawer ? 'mx-5' : 'mx-4'}`} />
+
+      {/* Menu Items */}
+      <ScrollView 
+        className="flex-1" 
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingVertical: 12, paddingHorizontal: isMobileDrawer ? 12 : 10 }}
+      >
+        <View className="gap-1">
           {MENU.filter(item => {
-            // Filtrar menu baseado no role do usuário
             const userRole = usuarioInfo?.role_id || 1;
             return item.roles.includes(userRole);
           }).map((item) => {
-            // Evita que /planos-sistema ative o menu /planos
             const selected = pathname === item.path || 
               (item.path !== '/' && pathname.startsWith(item.path + '/'));
 
@@ -130,17 +171,31 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
                   if (isMobile) closeDrawer();
                 }}
                 style={({ pressed }) => [
-                  pressed && { opacity: 0.8 }
+                  { opacity: pressed ? 0.7 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }
                 ]}
-                className={`relative rounded-lg px-3 py-2 ${selected ? 'bg-orange-100 border-l-2 border-orange-500' : 'border-l-2 border-transparent'}`}
+                className={`flex-row items-center gap-3 rounded-xl px-3.5 py-2.5 ${
+                  selected 
+                    ? 'bg-orange-500' 
+                    : 'bg-transparent'
+                }`}
               >
-                <View className="flex-row items-center justify-between">
-                  <View className="flex-row items-center gap-3">
-                    <Feather name={item.icon} size={16} color={selected ? '#f97316' : '#94a3b8'} />
-                    <Text className={`${selected ? 'text-slate-900 font-semibold' : 'text-slate-500 font-medium'} text-xs`}>{item.label}</Text>
-                  </View>
-                  {selected && <View className="h-1.5 w-1.5 rounded-full bg-orange-500" />}
+                <View className={`h-8 w-8 items-center justify-center rounded-lg ${
+                  selected ? 'bg-white/20' : 'bg-slate-100'
+                }`}>
+                  <Feather 
+                    name={item.icon} 
+                    size={16} 
+                    color={selected ? '#ffffff' : '#64748b'} 
+                  />
                 </View>
+                <Text className={`flex-1 text-[13px] font-medium ${
+                  selected ? 'text-white' : 'text-slate-600'
+                }`}>
+                  {item.label}
+                </Text>
+                {selected && (
+                  <View className="h-2 w-2 rounded-full bg-white" />
+                )}
               </Pressable>
             );
           })}
@@ -148,21 +203,25 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
       </ScrollView>
 
       {/* Footer do Menu */}
-      <View className="mt-1 flex-row items-center justify-between border-t border-slate-200 pt-3 pb-2">
-        <View className="flex-1 flex-row items-center gap-2">
-          <View className="h-9 w-9 items-center justify-center rounded-full bg-orange-500">
-            <Text className="text-[12px] font-black text-white">{nome.slice(0, 2).toUpperCase()}</Text>
+      <View className={`border-t border-slate-100 ${isMobileDrawer ? 'mx-5 px-0 py-4' : 'mx-4 px-0 py-3'}`}>
+        <View className="flex-row items-center gap-3">
+          <View className="h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-orange-600" style={{ backgroundColor: '#f97316' }}>
+            <Text className="text-sm font-black text-white">{nome.slice(0, 2).toUpperCase()}</Text>
           </View>
           <View className="flex-1">
-            <Text className="text-[12px] font-semibold text-slate-900">{nome}</Text>
-            <Text className="text-[10px] text-slate-500">
-              {usuarioInfo?.role_id === 3 ? 'Super Admin' : usuarioInfo?.role_id === 2 ? 'Admin' : 'Usuário'}
+            <Text className="text-sm font-semibold text-slate-900" numberOfLines={1}>{nome}</Text>
+            <Text className="text-[11px] text-slate-400">
+              {usuarioInfo?.role_id === 4 ? 'Super Admin' : usuarioInfo?.role_id === 3 ? 'Admin' : 'Usuário'}
             </Text>
           </View>
+          <TouchableOpacity 
+            className="h-9 w-9 items-center justify-center rounded-lg bg-red-50"
+            onPress={handleLogout}
+            activeOpacity={0.7}
+          >
+            <Feather name="log-out" size={16} color="#ef4444" />
+          </TouchableOpacity>
         </View>
-        <Pressable className="rounded-md bg-slate-100 p-1.5" onPress={handleLogout}>
-          <Feather name="log-out" size={14} color="#94a3b8" />
-        </Pressable>
       </View>
     </View>
   );
@@ -171,69 +230,106 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
     <View className="flex-1 flex-row bg-slate-50">
       {/* Sidebar Desktop/Tablet */}
       {!isMobile && (
-        <View className="w-56 border-r border-slate-200 bg-white">
-          {renderSidebarContent()}
+        <View className="w-60 border-r border-slate-200 bg-white">
+          {renderSidebarContent(false)}
         </View>
       )}
 
       {/* Drawer Mobile com Animação */}
-      {isMobile && drawerOpen && (
-        <View className="absolute inset-0 z-50">
-          {/* Overlay com fade */}
+      {isMobile && drawerVisible && (
+        <View 
+          className="absolute inset-0 z-50"
+          style={{ 
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+          }}
+        >
+          {/* Overlay com blur effect */}
           <Animated.View 
-            style={[
-              { opacity: fadeAnim }
-            ]}
-            className="absolute inset-0 bg-black/30"
+            style={{ 
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(15, 23, 42, 0.6)',
+              opacity: fadeAnim 
+            }}
           >
             <TouchableOpacity
-              className="flex-1"
+              style={{ flex: 1 }}
               activeOpacity={1}
               onPress={closeDrawer}
             />
           </Animated.View>
 
-          {/* Drawer com slide */}
+          {/* Drawer Panel */}
           <Animated.View
-            style={[
-              {
-                transform: [{ translateX: slideAnim }]
-              }
-            ]}
-            className="absolute bottom-0 left-0 top-0 w-[260px] bg-white px-4 pb-3 pt-4 shadow-2xl"
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              bottom: 0,
+              width: DRAWER_WIDTH,
+              backgroundColor: '#ffffff',
+              transform: [
+                { translateX: slideAnim },
+                { scale: scaleAnim }
+              ],
+              borderTopRightRadius: 24,
+              borderBottomRightRadius: 24,
+              shadowColor: '#000',
+              shadowOffset: { width: 4, height: 0 },
+              shadowOpacity: 0.15,
+              shadowRadius: 20,
+              elevation: 20,
+            }}
           >
-            {renderSidebarContent()}
-            
-            {/* Botão fechar */}
-            <TouchableOpacity
-              className="absolute right-4 top-4 rounded-lg bg-slate-100 p-2"
-              onPress={closeDrawer}
-            >
-              <Feather name="x" size={24} color="#94a3b8" />
-            </TouchableOpacity>
+            {renderSidebarContent(true)}
           </Animated.View>
         </View>
       )}
 
       {/* Content Area */}
       <View className="flex-1 bg-slate-50">
-        <View className={`flex-row items-center justify-between border-b border-slate-200 bg-white ${isMobile ? 'px-3 py-2.5' : 'px-5 pt-3 pb-2.5'}`}>
+        {/* Header Bar - Redesigned for Mobile */}
+        <View 
+          className={`flex-row items-center justify-between border-b border-slate-200 bg-white ${isMobile ? 'px-4 py-3' : 'px-5 pt-3 pb-2.5'}`}
+          style={isMobile ? { 
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.05,
+            shadowRadius: 4,
+            elevation: 3,
+          } : {}}
+        >
           {/* Menu Hamburger - Mobile */}
           {isMobile && (
             <TouchableOpacity
-              className="mr-3 rounded-md bg-slate-100 p-1.5"
+              className="mr-3 items-center justify-center rounded-xl bg-gradient-to-r from-orange-500 to-orange-400 p-2.5"
               onPress={openDrawer}
+              style={{
+                backgroundColor: '#f97316',
+                shadowColor: '#f97316',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.3,
+                shadowRadius: 4,
+                elevation: 4,
+              }}
             >
-              <Feather name="menu" size={20} color="#f97316" />
+              <Feather name="menu" size={20} color="#ffffff" />
             </TouchableOpacity>
           )}
 
           <View className="flex-1">
-            <Text className={`${isMobile ? 'text-base' : 'text-xl'} font-bold text-slate-900`}>{title}</Text>
+            <Text className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold text-slate-900`}>{title}</Text>
             {!isMobile && <Text className="text-[11px] text-slate-500">{subtitle}</Text>}
           </View>
 
-          <View className={`flex-row items-center ${isMobile ? 'gap-1.5' : isTablet ? 'gap-2' : 'gap-2.5'}`}>
+          <View className={`flex-row items-center ${isMobile ? 'gap-2' : isTablet ? 'gap-2' : 'gap-2.5'}`}>
             {!isMobile && (
               <>
                 <View className="rounded-md bg-slate-100 px-2 py-1">
@@ -244,9 +340,19 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
                 </View>
               </>
             )}
-            <Pressable className="rounded-md bg-slate-100 px-2 py-1" onPress={handleLogout}>
-              <Feather name="log-out" size={14} color="#f97316" />
-            </Pressable>
+            {isMobile && (
+              <TouchableOpacity 
+                className="items-center justify-center rounded-xl bg-slate-100 p-2"
+                onPress={() => {}}
+              >
+                <Feather name="bell" size={18} color="#64748b" />
+              </TouchableOpacity>
+            )}
+            {!isMobile && (
+              <Pressable className="rounded-md bg-slate-100 px-2 py-1" onPress={handleLogout}>
+                <Feather name="log-out" size={14} color="#f97316" />
+              </Pressable>
+            )}
             {!isMobile && (
               <>
                 <View className="rounded-md bg-slate-100 px-2 py-1">
@@ -255,9 +361,18 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
                 <Text className={`text-xs font-semibold text-slate-800 ${isTablet ? 'hidden' : ''}`}>{nome}</Text>
               </>
             )}
-            <View className="h-8 w-8 items-center justify-center rounded-full bg-orange-500">
-              <Text className="text-[11px] font-black text-white">{nome.slice(0, 2).toUpperCase()}</Text>
-            </View>
+            <TouchableOpacity 
+              className="h-9 w-9 items-center justify-center rounded-full bg-orange-500"
+              style={{
+                shadowColor: '#f97316',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.3,
+                shadowRadius: 4,
+                elevation: 4,
+              }}
+            >
+              <Text className="text-xs font-black text-white">{nome.slice(0, 2).toUpperCase()}</Text>
+            </TouchableOpacity>
           </View>
         </View>
 

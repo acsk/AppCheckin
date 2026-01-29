@@ -143,11 +143,10 @@ try {
             // 2. Atualizar matrículas para VENCIDA (1-4 dias de atraso)
             $sqlVencida = "
                 UPDATE matriculas m
-                SET m.status = 'vencida',
-                    m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'vencida' LIMIT 1),
+                SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'vencida' LIMIT 1),
                     m.updated_at = NOW()
                 WHERE m.tenant_id = :tenant_id 
-                AND m.status = 'ativa'
+                AND m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1)
                 AND EXISTS (
                     SELECT 1 FROM pagamentos_plano pp
                     WHERE pp.matricula_id = m.id
@@ -166,11 +165,10 @@ try {
             // 3. Atualizar matrículas para CANCELADA (5+ dias de atraso)
             $sqlCancelada = "
                 UPDATE matriculas m
-                SET m.status = 'cancelada',
-                    m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'cancelada' LIMIT 1),
+                SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'cancelada' LIMIT 1),
                     m.updated_at = NOW()
                 WHERE m.tenant_id = :tenant_id 
-                AND m.status IN ('ativa', 'vencida')
+                AND m.status_id IN (SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'vencida'))
                 AND EXISTS (
                     SELECT 1 FROM pagamentos_plano pp
                     WHERE pp.matricula_id = m.id
@@ -188,11 +186,10 @@ try {
             // 4. Reativar matrículas que foram regularizadas
             $sqlReativar = "
                 UPDATE matriculas m
-                SET m.status = 'ativa',
-                    m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1),
+                SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1),
                     m.updated_at = NOW()
                 WHERE m.tenant_id = :tenant_id 
-                AND m.status IN ('vencida')
+                AND m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'vencida' LIMIT 1)
                 AND NOT EXISTS (
                     SELECT 1 FROM pagamentos_plano pp
                     WHERE pp.matricula_id = m.id

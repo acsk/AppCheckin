@@ -4,6 +4,7 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { professorService } from '../../services/professorService';
 import { showSuccess, showError } from '../../utils/toast';
+import { mascaraTelefone, mascaraCPF, apenasNumeros } from '../../utils/masks';
 import LayoutBase from '../../components/LayoutBase';
 
 export default function FormProfessorScreen({ professorId }) {
@@ -16,7 +17,6 @@ export default function FormProfessorScreen({ professorId }) {
     email: '',
     telefone: '',
     cpf: '',
-    foto_url: '',
     ativo: true
   });
 
@@ -30,15 +30,20 @@ export default function FormProfessorScreen({ professorId }) {
     try {
       setLoading(true);
       const data = await professorService.buscarPorId(professorId);
+      console.log('📥 Dados recebidos da API:', data);
+      console.log('📥 Telefone recebido:', data.telefone, '| Tipo:', typeof data.telefone);
+      console.log('📥 CPF recebido:', data.cpf, '| Tipo:', typeof data.cpf);
+      
       setProfessor(data);
-      setFormData({
+      const novoFormData = {
         nome: data.nome || '',
         email: data.email || '',
-        telefone: data.telefone || '',
-        cpf: data.cpf || '',
-        foto_url: data.foto_url || '',
-        ativo: data.ativo ?? true
-      });
+        telefone: data.telefone ? mascaraTelefone(data.telefone) : '',
+        cpf: data.cpf ? mascaraCPF(data.cpf) : '',
+        ativo: data.ativo === 1 || data.ativo === true
+      };
+      console.log('📝 FormData após carregar:', novoFormData);
+      setFormData(novoFormData);
     } catch (error) {
       showError('Erro ao carregar professor');
       console.error(error);
@@ -54,8 +59,15 @@ export default function FormProfessorScreen({ professorId }) {
       return false;
     }
 
-    if (formData.cpf && formData.cpf.length < 11) {
-      showError('CPF inválido');
+    const cpfLimpo = apenasNumeros(formData.cpf);
+    if (cpfLimpo && cpfLimpo.length !== 11) {
+      showError('CPF deve ter 11 dígitos');
+      return false;
+    }
+
+    const telefoneLimpo = apenasNumeros(formData.telefone);
+    if (telefoneLimpo && telefoneLimpo.length < 10) {
+      showError('Telefone inválido');
       return false;
     }
 
@@ -67,11 +79,32 @@ export default function FormProfessorScreen({ professorId }) {
 
     try {
       setSubmitting(true);
+      
+      console.log('🔍 formData atual:', formData);
+      console.log('🔍 formData.telefone:', formData.telefone, '| Tipo:', typeof formData.telefone);
+      console.log('🔍 apenasNumeros(telefone):', apenasNumeros(formData.telefone));
+      console.log('🔍 formData.cpf:', formData.cpf, '| Tipo:', typeof formData.cpf);
+      console.log('🔍 apenasNumeros(cpf):', apenasNumeros(formData.cpf));
+      
+      // Preparar dados para envio (remover máscaras e converter ativo para número)
+      const telefoneLimpo = apenasNumeros(formData.telefone);
+      const cpfLimpo = apenasNumeros(formData.cpf);
+      
+      const dadosParaEnviar = {
+        nome: formData.nome.trim(),
+        email: formData.email.trim() || null,
+        telefone: telefoneLimpo || null,
+        cpf: cpfLimpo || null,
+        ativo: formData.ativo ? 1 : 0
+      };
+
+      console.log('📤 Enviando dados do professor:', JSON.stringify(dadosParaEnviar, null, 2));
+
       if (professorId) {
-        await professorService.atualizar(professorId, formData);
+        await professorService.atualizar(professorId, dadosParaEnviar);
         showSuccess('Professor atualizado com sucesso');
       } else {
-        await professorService.criar(formData);
+        await professorService.criar(dadosParaEnviar);
         showSuccess('Professor criado com sucesso');
       }
       setTimeout(() => router.back(), 1500);
@@ -173,39 +206,27 @@ export default function FormProfessorScreen({ professorId }) {
                     placeholder="(11) 99999-9999"
                     placeholderTextColor="#999"
                     value={formData.telefone}
-                    onChangeText={(text) => setFormData({ ...formData, telefone: text })}
+                    onChangeText={(text) => setFormData({ ...formData, telefone: mascaraTelefone(text) })}
                     keyboardType="phone-pad"
+                    maxLength={15}
                     editable={!submitting}
                   />
                 </View>
               </View>
 
-              <View style={styles.row}>
-                <View style={[styles.inputGroup, styles.flex1]}>
+              <View style={styles.inputGroup}>
                   <Text style={styles.label}>CPF</Text>
                   <TextInput
                     style={styles.input}
                     placeholder="123.456.789-00"
                     placeholderTextColor="#999"
                     value={formData.cpf}
-                    onChangeText={(text) => setFormData({ ...formData, cpf: text })}
+                    onChangeText={(text) => setFormData({ ...formData, cpf: mascaraCPF(text) })}
                     keyboardType="numeric"
+                    maxLength={14}
                     editable={!submitting}
                   />
                 </View>
-
-                <View style={[styles.inputGroup, styles.flex1]}>
-                  <Text style={styles.label}>Foto (URL)</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="https://..."
-                    placeholderTextColor="#999"
-                    value={formData.foto_url}
-                    onChangeText={(text) => setFormData({ ...formData, foto_url: text })}
-                    editable={!submitting}
-                  />
-                </View>
-              </View>
             </View>
           </View>
 

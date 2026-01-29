@@ -177,9 +177,10 @@ class Plano
     public function countUsuarios(int $planoId): int
     {
         $stmt = $this->db->prepare("
-            SELECT COUNT(DISTINCT usuario_id) as total
-            FROM matriculas 
-            WHERE plano_id = ? AND tenant_id = ? AND status = 'ativa'
+            SELECT COUNT(DISTINCT aluno_id) as total
+            FROM matriculas m
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            WHERE m.plano_id = ? AND m.tenant_id = ? AND sm.codigo = 'ativa'
         ");
         $stmt->execute([$planoId, $this->tenantId]);
         
@@ -194,8 +195,9 @@ class Plano
     {
         $stmt = $this->db->prepare("
             SELECT COUNT(*) as total
-            FROM matriculas 
-            WHERE plano_id = ? AND tenant_id = ? AND status != 'cancelada'
+            FROM matriculas m
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            WHERE m.plano_id = ? AND m.tenant_id = ? AND sm.codigo != 'cancelada'
         ");
         $stmt->execute([$planoId, $this->tenantId]);
         

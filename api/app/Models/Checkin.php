@@ -16,18 +16,43 @@ class Checkin
         $this->tenantService = new TenantService($db);
     }
 
+    /**
+     * Buscar aluno_id a partir do usuario_id
+     * Necessário pois o JWT contém usuario_id, mas checkins usam aluno_id
+     */
+    public function getAlunoIdFromUsuario(int $usuarioId, ?int $tenantId = null): ?int
+    {
+        $sql = "SELECT id FROM alunos WHERE usuario_id = :usuario_id";
+        $params = ['usuario_id' => $usuarioId];
+        
+        // Se tenant_id foi especificado, usa ele para garantir isolamento
+        // Nota: alunos não tem tenant_id direto, mas podemos validar via tenant_usuario_papel
+        
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        $result = $stmt->fetchColumn();
+        
+        return $result ? (int) $result : null;
+    }
+
     public function create(int $usuarioId, int $horarioId): ?int
     {
         try {
-            // Obter tenant_id do usuário (substitui função MySQL)
+            // Obter tenant_id e aluno_id
             $tenantId = $this->tenantService->getTenantIdFromUsuario($usuarioId);
+            $alunoId = $this->getAlunoIdFromUsuario($usuarioId);
+            
+            if (!$alunoId) {
+                throw new \Exception("Aluno não encontrado para usuario_id: $usuarioId");
+            }
             
             $stmt = $this->db->prepare(
-                "INSERT INTO checkins (usuario_id, horario_id, tenant_id, registrado_por_admin) 
-                 VALUES (:usuario_id, :horario_id, :tenant_id, 0)"
+                "INSERT INTO checkins (aluno_id, usuario_id, horario_id, tenant_id, registrado_por_admin) 
+                 VALUES (:aluno_id, :usuario_id, :horario_id, :tenant_id, 0)"
             );
             
             $stmt->execute([
+                'aluno_id' => $alunoId,
                 'usuario_id' => $usuarioId,
                 'horario_id' => $horarioId,
                 'tenant_id' => $tenantId
@@ -46,15 +71,21 @@ class Checkin
     public function createByAdmin(int $usuarioId, int $horarioId, int $adminId): ?int
     {
         try {
-            // Obter tenant_id do usuário (substitui função MySQL)
+            // Obter tenant_id e aluno_id
             $tenantId = $this->tenantService->getTenantIdFromUsuario($usuarioId);
+            $alunoId = $this->getAlunoIdFromUsuario($usuarioId);
+            
+            if (!$alunoId) {
+                throw new \Exception("Aluno não encontrado para usuario_id: $usuarioId");
+            }
             
             $stmt = $this->db->prepare(
-                "INSERT INTO checkins (usuario_id, horario_id, tenant_id, registrado_por_admin, admin_id) 
-                 VALUES (:usuario_id, :horario_id, :tenant_id, 1, :admin_id)"
+                "INSERT INTO checkins (aluno_id, usuario_id, horario_id, tenant_id, registrado_por_admin, admin_id) 
+                 VALUES (:aluno_id, :usuario_id, :horario_id, :tenant_id, 1, :admin_id)"
             );
             
             $stmt->execute([
+                'aluno_id' => $alunoId,
                 'usuario_id' => $usuarioId,
                 'horario_id' => $horarioId,
                 'tenant_id' => $tenantId,
@@ -79,9 +110,10 @@ class Checkin
                     d.data,
                     CONCAT(d.data, ' ', h.hora) as data_hora_completa
              FROM checkins c
+             INNER JOIN alunos a ON a.id = c.aluno_id
              INNER JOIN horarios h ON c.horario_id = h.id
              INNER JOIN dias d ON h.dia_id = d.id
-             WHERE c.usuario_id = :usuario_id
+             WHERE a.usuario_id = :usuario_id
              ORDER BY d.data DESC, h.hora DESC"
         );
         $stmt->execute(['usuario_id' => $usuarioId]);
@@ -120,7 +152,9 @@ class Checkin
     public function usuarioTemCheckin(int $usuarioId, int $horarioId): bool
     {
         $stmt = $this->db->prepare(
-            "SELECT COUNT(*) FROM checkins WHERE usuario_id = :usuario_id AND horario_id = :horario_id"
+            "SELECT COUNT(*) FROM checkins c
+             INNER JOIN alunos a ON a.id = c.aluno_id
+             WHERE a.usuario_id = :usuario_id AND c.horario_id = :horario_id"
         );
         $stmt->execute([
             'usuario_id' => $usuarioId,
@@ -132,19 +166,26 @@ class Checkin
 
     /**
      * Criar check-in em turma (novo método para mobile app)
+     * Usa aluno_id para relacionamento correto
      */
     public function createEmTurma(int $usuarioId, int $turmaId): ?int
     {
         try {
-            // Obter tenant_id do usuário (substitui função MySQL)
+            // Obter tenant_id e aluno_id
             $tenantId = $this->tenantService->getTenantIdFromUsuario($usuarioId);
+            $alunoId = $this->getAlunoIdFromUsuario($usuarioId);
+            
+            if (!$alunoId) {
+                throw new \Exception("Aluno não encontrado para usuario_id: $usuarioId");
+            }
             
             $stmt = $this->db->prepare(
-                "INSERT INTO checkins (usuario_id, turma_id, tenant_id, registrado_por_admin) 
-                 VALUES (:usuario_id, :turma_id, :tenant_id, 0)"
+                "INSERT INTO checkins (aluno_id, usuario_id, turma_id, tenant_id, registrado_por_admin) 
+                 VALUES (:aluno_id, :usuario_id, :turma_id, :tenant_id, 0)"
             );
             
             $stmt->execute([
+                'aluno_id' => $alunoId,
                 'usuario_id' => $usuarioId,
                 'turma_id' => $turmaId,
                 'tenant_id' => $tenantId
@@ -162,11 +203,14 @@ class Checkin
 
     /**
      * Verificar se usuário já tem check-in em uma turma específica
+     * Busca via aluno_id (relacionamento correto)
      */
     public function usuarioTemCheckinNaTurma(int $usuarioId, int $turmaId): bool
     {
         $stmt = $this->db->prepare(
-            "SELECT COUNT(*) FROM checkins WHERE usuario_id = :usuario_id AND turma_id = :turma_id"
+            "SELECT COUNT(*) FROM checkins c
+             INNER JOIN alunos a ON a.id = c.aluno_id
+             WHERE a.usuario_id = :usuario_id AND c.turma_id = :turma_id"
         );
         $stmt->execute([
             'usuario_id' => $usuarioId,
@@ -184,9 +228,10 @@ class Checkin
         $stmt = $this->db->prepare(
             "SELECT COUNT(*) as total, MAX(c.id) as ultimo_checkin_id
              FROM checkins c
+             INNER JOIN alunos a ON a.id = c.aluno_id
              INNER JOIN turmas t ON c.turma_id = t.id
              INNER JOIN dias d ON t.dia_id = d.id
-             WHERE c.usuario_id = :usuario_id
+             WHERE a.usuario_id = :usuario_id
              AND DATE(d.data) = :data"
         );
         $stmt->execute([
@@ -209,9 +254,10 @@ class Checkin
     {
         $sql = "SELECT COUNT(*) as total, MAX(c.id) as ultimo_checkin_id
                 FROM checkins c
+                INNER JOIN alunos a ON a.id = c.aluno_id
                 INNER JOIN turmas t ON c.turma_id = t.id
                 INNER JOIN dias d ON t.dia_id = d.id
-                WHERE c.usuario_id = :usuario_id
+                WHERE a.usuario_id = :usuario_id
                 AND DATE(d.data) = :data";
         
         $params = [
@@ -244,14 +290,15 @@ class Checkin
      */
     public function contarCheckinsNaSemana(int $usuarioId, ?int $modalidadeId = null): int
     {
-        $sql = "SELECT COUNT(*) FROM checkins c";
+        $sql = "SELECT COUNT(*) FROM checkins c
+                INNER JOIN alunos a ON a.id = c.aluno_id";
         $params = ['usuario_id' => $usuarioId];
         
         if ($modalidadeId) {
             $sql .= " INNER JOIN turmas t ON c.turma_id = t.id";
         }
         
-        $sql .= " WHERE c.usuario_id = :usuario_id
+        $sql .= " WHERE a.usuario_id = :usuario_id
                   AND YEARWEEK(c.created_at, 1) = YEARWEEK(NOW(), 1)";
         
         if ($modalidadeId) {
@@ -279,9 +326,10 @@ class Checkin
         $sql = "SELECT p.checkins_semanais, p.nome as plano_nome, p.modalidade_id
              FROM matriculas m
              INNER JOIN planos p ON m.plano_id = p.id
-             WHERE m.usuario_id = :usuario_id
+             INNER JOIN alunos a ON a.id = m.aluno_id
+             WHERE a.usuario_id = :usuario_id
              AND m.tenant_id = :tenant_id
-             AND m.status = 'ativa'
+             AND m.status_id = (SELECT id FROM status_matricula WHERE nome = 'ativa')
              AND m.data_inicio <= CURDATE()
              AND m.data_vencimento >= CURDATE()";
         
@@ -316,15 +364,16 @@ class Checkin
     public function listarCheckinsTurma(int $turmaId, int $tenantId): array
     {
         $stmt = $this->db->prepare(
-            "SELECT c.id, c.usuario_id, c.turma_id, c.data_checkin, 
+            "SELECT c.id, c.aluno_id, c.turma_id, c.data_checkin, 
                     c.presente, c.presenca_confirmada_em, c.presenca_confirmada_por,
-                    u.nome as aluno_nome, u.email as aluno_email,
+                    a.nome as aluno_nome, u.email as aluno_email,
                     conf.nome as confirmado_por_nome
              FROM checkins c
-             INNER JOIN usuarios u ON c.usuario_id = u.id
+             INNER JOIN alunos a ON c.aluno_id = a.id
+             INNER JOIN usuarios u ON a.usuario_id = u.id
              LEFT JOIN usuarios conf ON c.presenca_confirmada_por = conf.id
              WHERE c.turma_id = :turma_id
-             ORDER BY u.nome ASC"
+             ORDER BY a.nome ASC"
         );
         $stmt->execute(['turma_id' => $turmaId]);
         
@@ -418,6 +467,188 @@ class Checkin
     }
 
     /**
+     * Remover check-ins de alunos marcados como falta
+     * Isso libera o crédito do aluno para que ele possa remarcar em outra turma
+     * @param int $turmaId ID da turma
+     * @param int $tenantId ID do tenant
+     * @return array IDs dos check-ins removidos e informações dos alunos
+     */
+    public function removerCheckinsFaltantes(int $turmaId, int $tenantId): array
+    {
+        // Primeiro, buscar os check-ins que serão removidos para retornar informações
+        $stmt = $this->db->prepare(
+            "SELECT c.id, c.aluno_id, c.turma_id, c.data_checkin,
+                    a.nome as aluno_nome, u.email as aluno_email
+             FROM checkins c
+             INNER JOIN alunos a ON c.aluno_id = a.id
+             INNER JOIN usuarios u ON a.usuario_id = u.id
+             WHERE c.turma_id = :turma_id
+             AND c.tenant_id = :tenant_id
+             AND c.presente = 0"
+        );
+        $stmt->execute(['turma_id' => $turmaId, 'tenant_id' => $tenantId]);
+        $checkinsFaltantes = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        
+        if (empty($checkinsFaltantes)) {
+            return [
+                'removidos' => 0,
+                'checkins' => []
+            ];
+        }
+        
+        // Extrair IDs para deletar
+        $ids = array_column($checkinsFaltantes, 'id');
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        
+        // Deletar os check-ins de faltantes
+        $stmtDelete = $this->db->prepare(
+            "DELETE FROM checkins WHERE id IN ($placeholders)"
+        );
+        $stmtDelete->execute($ids);
+        $removidos = $stmtDelete->rowCount();
+        
+        return [
+            'removidos' => $removidos,
+            'checkins' => $checkinsFaltantes
+        ];
+    }
+
+    /**
+     * Confirmar presença da turma inteira
+     * Marca todos os check-ins não verificados como presente ou falta
+     * @param int $turmaId ID da turma
+     * @param int $tenantId ID do tenant
+     * @param array $presencas Array com [checkin_id => presente (true/false)]
+     * @param int $confirmadoPor ID do usuário que está confirmando (professor/admin)
+     * @param bool $removerFaltantes Se true, remove check-ins de faltantes após confirmar
+     * @return array Resultado da operação
+     */
+    public function confirmarPresencaTurma(
+        int $turmaId, 
+        int $tenantId, 
+        array $presencas, 
+        int $confirmadoPor,
+        bool $removerFaltantes = false
+    ): array {
+        $this->db->beginTransaction();
+        
+        try {
+            $confirmados = 0;
+            $faltasRegistradas = 0;
+            $presencasRegistradas = 0;
+            
+            foreach ($presencas as $checkinId => $presente) {
+                $presente = filter_var($presente, FILTER_VALIDATE_BOOLEAN);
+                
+                $stmt = $this->db->prepare(
+                    "UPDATE checkins 
+                     SET presente = :presente,
+                         presenca_confirmada_em = NOW(),
+                         presenca_confirmada_por = :confirmado_por
+                     WHERE id = :checkin_id
+                     AND turma_id = :turma_id
+                     AND tenant_id = :tenant_id"
+                );
+                
+                $result = $stmt->execute([
+                    'presente' => $presente ? 1 : 0,
+                    'confirmado_por' => $confirmadoPor,
+                    'checkin_id' => $checkinId,
+                    'turma_id' => $turmaId,
+                    'tenant_id' => $tenantId
+                ]);
+                
+                if ($result && $stmt->rowCount() > 0) {
+                    $confirmados++;
+                    if ($presente) {
+                        $presencasRegistradas++;
+                    } else {
+                        $faltasRegistradas++;
+                    }
+                }
+            }
+            
+            // Se deve remover check-ins de faltantes, executar após confirmar
+            $checkinsRemovidos = ['removidos' => 0, 'checkins' => []];
+            if ($removerFaltantes && $faltasRegistradas > 0) {
+                $checkinsRemovidos = $this->removerCheckinsFaltantes($turmaId, $tenantId);
+            }
+            
+            $this->db->commit();
+            
+            return [
+                'success' => true,
+                'confirmados' => $confirmados,
+                'presencas' => $presencasRegistradas,
+                'faltas' => $faltasRegistradas,
+                'checkins_removidos' => $checkinsRemovidos
+            ];
+            
+        } catch (\Exception $e) {
+            $this->db->rollBack();
+            throw $e;
+        }
+    }
+
+    /**
+     * Listar turmas do professor com check-ins pendentes de confirmação
+     * @param int $professorId ID do professor na tabela professores
+     * @param int $tenantId ID do tenant
+     * @return array Turmas com check-ins pendentes
+     */
+    public function listarTurmasComCheckinsPendentes(int $professorId, int $tenantId): array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT DISTINCT t.id, t.nome, t.horario_inicio, t.horario_fim,
+                    d.data as dia_data,
+                    m.nome as modalidade_nome,
+                    m.icone as modalidade_icone,
+                    m.cor as modalidade_cor,
+                    (SELECT COUNT(*) FROM checkins c2 WHERE c2.turma_id = t.id AND c2.presente IS NULL) as pendentes,
+                    (SELECT COUNT(*) FROM checkins c3 WHERE c3.turma_id = t.id) as total_checkins
+             FROM turmas t
+             INNER JOIN dias d ON t.dia_id = d.id
+             INNER JOIN modalidades m ON t.modalidade_id = m.id
+             INNER JOIN checkins c ON c.turma_id = t.id
+             WHERE t.professor_id = :professor_id
+             AND t.tenant_id = :tenant_id
+             AND t.ativo = 1
+             AND c.presente IS NULL
+             ORDER BY d.data DESC, t.horario_inicio DESC"
+        );
+        $stmt->execute([
+            'professor_id' => $professorId,
+            'tenant_id' => $tenantId
+        ]);
+        
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Verificar se turma pertence ao professor
+     * @param int $turmaId ID da turma
+     * @param int $professorId ID do professor
+     * @param int $tenantId ID do tenant
+     * @return bool
+     */
+    public function turmaPertenceAoProfessor(int $turmaId, int $professorId, int $tenantId): bool
+    {
+        $stmt = $this->db->prepare(
+            "SELECT COUNT(*) FROM turmas 
+             WHERE id = :turma_id 
+             AND professor_id = :professor_id 
+             AND tenant_id = :tenant_id"
+        );
+        $stmt->execute([
+            'turma_id' => $turmaId,
+            'professor_id' => $professorId,
+            'tenant_id' => $tenantId
+        ]);
+        
+        return (int) $stmt->fetchColumn() > 0;
+    }
+
+    /**
      * Ranking de usuários com mais check-ins no mês atual
      * @param int $tenantId ID do tenant
      * @param int $limite Quantidade de resultados (default 3)
@@ -426,15 +657,15 @@ class Checkin
     public function rankingMesAtual(int $tenantId, int $limite = 3, ?int $modalidadeId = null): array
     {
         $sql = "SELECT 
-                u.id as usuario_id,
-                u.nome,
+                a.id as aluno_id,
+                a.nome,
                 u.email,
-                u.foto_caminho,
+                a.foto_caminho,
                 COUNT(c.id) as total_checkins
              FROM checkins c
-             INNER JOIN usuarios u ON c.usuario_id = u.id
+             INNER JOIN alunos a ON c.aluno_id = a.id
+             INNER JOIN usuarios u ON a.usuario_id = u.id
              INNER JOIN turmas t ON c.turma_id = t.id AND t.tenant_id = c.tenant_id
-             INNER JOIN usuario_tenant ut ON c.usuario_id = ut.usuario_id AND ut.tenant_id = c.tenant_id
              WHERE c.tenant_id = :tenant_id
                AND MONTH(c.data_checkin_date) = MONTH(CURRENT_DATE())
                AND YEAR(c.data_checkin_date) = YEAR(CURRENT_DATE())";
@@ -443,7 +674,7 @@ class Checkin
             $sql .= " AND t.modalidade_id = :modalidade_id";
         }
         
-        $sql .= " GROUP BY u.id, u.nome, u.email, u.foto_caminho
+        $sql .= " GROUP BY a.id, a.nome, u.email, a.foto_caminho
                   ORDER BY total_checkins DESC
                   LIMIT :limite";
         
@@ -473,9 +704,10 @@ class Checkin
                 m.icone as modalidade_icone,
                 m.cor as modalidade_cor
              FROM checkins c
+             INNER JOIN alunos a ON c.aluno_id = a.id
              INNER JOIN turmas t ON c.turma_id = t.id AND t.tenant_id = c.tenant_id
              INNER JOIN modalidades m ON t.modalidade_id = m.id
-             WHERE c.usuario_id = :usuario_id
+             WHERE a.usuario_id = :usuario_id
                AND c.tenant_id = :tenant_id
                AND MONTH(c.data_checkin_date) = MONTH(CURRENT_DATE())
                AND YEAR(c.data_checkin_date) = YEAR(CURRENT_DATE())";
@@ -487,26 +719,25 @@ class Checkin
         $rankings = [];
         
         foreach ($modalidades as $modalidade) {
-            // Para cada modalidade, calcular a posição do usuário (apenas usuários vinculados ao tenant)
+            // Para cada modalidade, calcular a posição do usuário
             $sqlRanking = "SELECT 
-                    usuario_id,
+                    aluno_id,
                     total_checkins,
                     posicao
                 FROM (
                     SELECT 
-                        c.usuario_id,
+                        c.aluno_id,
                         COUNT(c.id) as total_checkins,
                         RANK() OVER (ORDER BY COUNT(c.id) DESC) as posicao
                     FROM checkins c
                     INNER JOIN turmas t ON c.turma_id = t.id AND t.tenant_id = c.tenant_id
-                    INNER JOIN usuario_tenant ut ON c.usuario_id = ut.usuario_id AND ut.tenant_id = c.tenant_id
                     WHERE c.tenant_id = :tenant_id
                       AND t.modalidade_id = :modalidade_id
                       AND MONTH(c.data_checkin_date) = MONTH(CURRENT_DATE())
                       AND YEAR(c.data_checkin_date) = YEAR(CURRENT_DATE())
-                    GROUP BY c.usuario_id
+                    GROUP BY c.aluno_id
                 ) ranking
-                WHERE usuario_id = :usuario_id";
+                WHERE aluno_id = (SELECT id FROM alunos WHERE usuario_id = :usuario_id LIMIT 1)";
             
             $stmtRanking = $this->db->prepare($sqlRanking);
             $stmtRanking->execute([
@@ -516,11 +747,10 @@ class Checkin
             ]);
             $posicao = $stmtRanking->fetch(\PDO::FETCH_ASSOC);
             
-            // Contar total de participantes na modalidade (apenas usuários vinculados ao tenant)
-            $sqlTotal = "SELECT COUNT(DISTINCT c.usuario_id) as total
+            // Contar total de participantes na modalidade
+            $sqlTotal = "SELECT COUNT(DISTINCT c.aluno_id) as total
                 FROM checkins c
                 INNER JOIN turmas t ON c.turma_id = t.id AND t.tenant_id = c.tenant_id
-                INNER JOIN usuario_tenant ut ON c.usuario_id = ut.usuario_id AND ut.tenant_id = c.tenant_id
                 WHERE c.tenant_id = :tenant_id
                   AND t.modalidade_id = :modalidade_id
                   AND MONTH(c.data_checkin_date) = MONTH(CURRENT_DATE())

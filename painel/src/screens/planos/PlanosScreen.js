@@ -34,7 +34,7 @@ export default function PlanosScreen() {
 
   const checkUserAndLoadData = async () => {
     const user = await authService.getCurrentUser();
-    const superAdmin = user?.role_id === 3;
+    const superAdmin = user?.role_id === 4;
     setIsSuperAdmin(superAdmin);
     
     if (superAdmin) {

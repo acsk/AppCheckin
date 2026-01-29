@@ -7,6 +7,7 @@ use App\Controllers\UsuarioController;
 use App\Controllers\TurmaController;
 use App\Controllers\ProfessorController;
 use App\Controllers\AdminController;
+use App\Controllers\AlunoController;
 use App\Controllers\PlanoController;
 use App\Controllers\ContasReceberController;
 use App\Controllers\MatriculaController;
@@ -33,6 +34,7 @@ use App\Middlewares\AuthMiddleware;
 use App\Middlewares\TenantMiddleware;
 use App\Middlewares\AdminMiddleware;
 use App\Middlewares\SuperAdminMiddleware;
+use App\Middlewares\ProfessorMiddleware;
 
 return function ($app) {
     // Aplicar TenantMiddleware globalmente
@@ -349,14 +351,16 @@ return function ($app) {
         // Dashboard e estatísticas
         $group->get('/dashboard', [AdminController::class, 'dashboard']);
         
-        // Gestão de Alunos
-        $group->get('/alunos', [AdminController::class, 'listarAlunos']);
-        $group->get('/alunos/basico', [AdminController::class, 'listarAlunosBasico']);
-        $group->get('/alunos/{id}', [AdminController::class, 'buscarAluno']);
-        $group->get('/alunos/{id}/historico-planos', [AdminController::class, 'historicoPlanos']);
-        $group->post('/alunos', [AdminController::class, 'criarAluno']);
-        $group->put('/alunos/{id}', [AdminController::class, 'atualizarAluno']);
-        $group->delete('/alunos/{id}', [AdminController::class, 'desativarAluno']);
+        // Gestão de Alunos (CRUD completo)
+        $group->get('/alunos', [AlunoController::class, 'index']);
+        $group->get('/alunos/basico', [AlunoController::class, 'listarBasico']);
+        $group->get('/alunos/buscar-cpf/{cpf}', [AlunoController::class, 'buscarPorCpf']);
+        $group->post('/alunos/associar', [AlunoController::class, 'associarAluno']);
+        $group->get('/alunos/{id}', [AlunoController::class, 'show']);
+        $group->get('/alunos/{id}/historico-planos', [AlunoController::class, 'historicoPlanos']);
+        $group->post('/alunos', [AlunoController::class, 'create']);
+        $group->put('/alunos/{id}', [AlunoController::class, 'update']);
+        $group->delete('/alunos/{id}', [AlunoController::class, 'delete']);
         
         // Gestão de Planos
         $group->get('/planos/{id}', [PlanoController::class, 'show']);
@@ -467,6 +471,28 @@ return function ($app) {
         $group->patch('/checkins/{checkinId}/presenca', [PresencaController::class, 'marcarPresenca']);
         $group->post('/turmas/{turmaId}/presencas/lote', [PresencaController::class, 'marcarPresencaLote']);
     })->add(AdminMiddleware::class)->add(AuthMiddleware::class);
+
+    // ========================================
+    // Rotas Professor (papel_id = 2 no tenant)
+    // Permite também acesso de Admin (papel_id = 3) e Super Admin (role_id = 3)
+    // O papel é verificado em usuario_tenant.papel_id, não em usuarios.role_id
+    // ========================================
+    $app->group('/professor', function ($group) {
+        // Dashboard do professor
+        $group->get('/dashboard', [PresencaController::class, 'dashboardProfessor']);
+        
+        // Turmas com check-ins pendentes de confirmação
+        $group->get('/turmas/pendentes', [PresencaController::class, 'listarTurmasPendentes']);
+        
+        // Listar check-ins de uma turma para marcar presença
+        $group->get('/turmas/{turmaId}/checkins', [PresencaController::class, 'listarCheckinsParaPresenca']);
+        
+        // Confirmar presença da turma (marca presentes/faltas e opcionalmente remove faltantes)
+        $group->post('/turmas/{turmaId}/confirmar-presenca', [PresencaController::class, 'confirmarPresencaTurma']);
+        
+        // Remover check-ins de faltantes manualmente (libera créditos para remarcar)
+        $group->delete('/turmas/{turmaId}/faltantes', [PresencaController::class, 'removerFaltantes']);
+    })->add(ProfessorMiddleware::class)->add(AuthMiddleware::class);
 
     // Rota de teste
     $app->get('/', function ($request, $response) {

@@ -203,10 +203,12 @@ export default function FormMatriculaScreen() {
       router.push('/matriculas');
     } catch (error) {
       console.error('❌ Erro ao criar matrícula:', error);
+      console.log('📋 Estrutura do erro:', JSON.stringify(error, null, 2));
       setShowConfirmModal(false);
       // Usar mensagemLimpa se disponível, senão usar error/message padrão
-      const mensagemErro = error.mensagemLimpa || error.error || error.message || 'Não foi possível realizar a matrícula';
-      Alert.alert('Erro', mensagemErro);
+      const mensagemErro = error.mensagemLimpa || error.message || error.error || 'Não foi possível realizar a matrícula';
+      console.log('📢 Mensagem a exibir:', mensagemErro);
+      showToast(mensagemErro);
     } finally {
       setSaving(false);
     }
@@ -219,6 +221,31 @@ export default function FormMatriculaScreen() {
   const showToast = (message) => {
     if (Platform.OS === 'android') {
       ToastAndroid.show(message, ToastAndroid.SHORT);
+    } else if (Platform.OS === 'web') {
+      // Criar toast customizado para web
+      const toast = document.createElement('div');
+      toast.textContent = message;
+      toast.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background-color: #333;
+        color: white;
+        padding: 12px 24px;
+        border-radius: 8px;
+        z-index: 10000;
+        font-size: 14px;
+        max-width: 80%;
+        text-align: center;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      `;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s';
+        setTimeout(() => document.body.removeChild(toast), 300);
+      }, 3000);
     } else {
       Alert.alert('', message);
     }
@@ -264,23 +291,19 @@ export default function FormMatriculaScreen() {
             {/* Campo de Busca de Aluno */}
             <View className="mb-5">
               <Text className="mb-2 text-sm font-semibold text-slate-700">Aluno *</Text>
-              <View className="relative">
+              <View style={{ position: 'relative', zIndex: 1000 }}>
                 <TextInput
                   className={`h-12 rounded-lg border px-4 text-sm text-slate-800 ${errors.usuario_id ? 'border-rose-400' : 'border-slate-200'}`}
                   placeholder="Buscar aluno por nome ou email..."
                   value={searchText}
                   onChangeText={(text) => {
                     setSearchText(text);
-                    if (text.trim() !== '') {
+                    if (text.trim().length >= 3) {
                       setShowAlunosList(true);
                     } else {
                       setShowAlunosList(false);
-                      if (formData.usuario_id) {
-                        limparAluno();
-                      }
                     }
                   }}
-                  onFocus={() => setShowAlunosList(true)}
                 />
                 {formData.usuario_id && (
                   <Pressable
@@ -290,38 +313,57 @@ export default function FormMatriculaScreen() {
                     <Feather name="x" size={18} color="#6b7280" />
                   </Pressable>
                 )}
+
+                {/* Lista de alunos filtrados */}
+                {showAlunosList && !formData.usuario_id && searchText.trim().length >= 3 && (
+                  <View
+                    className="mt-2"
+                    style={{
+                      maxHeight: 240,
+                      backgroundColor: '#ffffff',
+                      borderRadius: 8,
+                      borderWidth: 1,
+                      borderColor: '#e2e8f0',
+                      shadowColor: '#000',
+                      shadowOffset: { width: 0, height: 4 },
+                      shadowOpacity: 0.2,
+                      shadowRadius: 12,
+                      elevation: 10,
+                    }}
+                  >
+                    <ScrollView style={{ maxHeight: 240 }} nestedScrollEnabled>
+                      {alunosFiltrados.length > 0 ? (
+                        alunosFiltrados.map((aluno) => (
+                          <Pressable
+                            key={aluno.id}
+                            className="flex-row items-center justify-between border-b border-slate-100 px-4 py-3"
+                            style={({ pressed }) => [
+                              { backgroundColor: '#ffffff' },
+                              pressed && { backgroundColor: '#f8fafc' }
+                            ]}
+                            onPress={() => selecionarAluno(aluno.id)}
+                          >
+                            <View className="flex-1">
+                              <Text className="text-sm font-semibold text-slate-800">{aluno.nome}</Text>
+                              <Text className="text-xs text-slate-500">{aluno.email}</Text>
+                            </View>
+                            <Feather name="check-circle" size={20} color="#10b981" />
+                          </Pressable>
+                        ))
+                      ) : (
+                        <View className="items-center px-4 py-6" style={{ backgroundColor: '#ffffff' }}>
+                          <Text className="text-xs text-slate-400">Nenhum aluno encontrado</Text>
+                        </View>
+                      )}
+                    </ScrollView>
+                  </View>
+                )}
               </View>
 
               {errors.usuario_id && (
                 <View className="mt-2 flex-row items-center gap-2">
                   <Feather name="alert-circle" size={14} color="#ef4444" />
                   <Text className="text-xs font-medium text-rose-500">{errors.usuario_id}</Text>
-                </View>
-              )}
-
-              {/* Lista de alunos filtrados */}
-              {showAlunosList && !formData.usuario_id && (
-                <View className="mt-2 max-h-60 overflow-hidden rounded-lg border border-slate-200 bg-white">
-                  {alunosFiltrados.length > 0 ? (
-                    alunosFiltrados.map((aluno) => (
-                      <Pressable
-                        key={aluno.id}
-                        className="flex-row items-center justify-between border-b border-slate-100 px-4 py-3"
-                        style={({ pressed }) => [pressed && { backgroundColor: '#f8fafc' }]}
-                        onPress={() => selecionarAluno(aluno.id)}
-                      >
-                        <View className="flex-1">
-                          <Text className="text-sm font-semibold text-slate-800">{aluno.nome}</Text>
-                          <Text className="text-xs text-slate-500">{aluno.email}</Text>
-                        </View>
-                        <Feather name="check-circle" size={20} color="#10b981" />
-                      </Pressable>
-                    ))
-                  ) : (
-                    <View className="items-center px-4 py-6">
-                      <Text className="text-xs text-slate-400">Nenhum aluno encontrado</Text>
-                    </View>
-                  )}
                 </View>
               )}
 

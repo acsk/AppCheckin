@@ -185,9 +185,10 @@ class Horario
     public function getAlunosByHorarioId(int $id): array
     {
         $stmt = $this->db->prepare(
-            "SELECT u.id as usuario_id, u.nome, u.email, c.id as checkin_id, c.data_checkin, c.created_at
+            "SELECT a.id as aluno_id, a.nome, u.email, c.id as checkin_id, c.data_checkin, c.created_at
              FROM checkins c
-             INNER JOIN usuarios u ON u.id = c.usuario_id
+             INNER JOIN alunos a ON a.id = c.aluno_id
+             INNER JOIN usuarios u ON u.id = a.usuario_id
              WHERE c.horario_id = :horario_id
              ORDER BY c.data_checkin ASC"
         );
@@ -207,9 +208,10 @@ class Horario
         $stmt = $this->db->prepare(
             "SELECT h.id
              FROM checkins c
+             INNER JOIN alunos a ON a.id = c.aluno_id
              INNER JOIN horarios h ON h.id = c.horario_id
              INNER JOIN dias d ON d.id = h.dia_id
-             WHERE c.usuario_id = :usuario_id AND d.data = :data
+             WHERE a.usuario_id = :usuario_id AND d.data = :data
              LIMIT 1"
         );
         $stmt->execute([

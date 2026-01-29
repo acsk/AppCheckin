@@ -35,7 +35,9 @@ export default function MatriculasScreen() {
       matricula.plano_nome?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       matricula.modalidade_nome?.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchStatus = statusFilter === 'todos' || matricula.status === statusFilter;
+    // Mapear filtro de texto para status_id
+    const statusMap = { 'ativa': 1, 'vencida': 2, 'cancelada': 3, 'finalizada': 4, 'pendente': 5, 'bloqueado': 6 };
+    const matchStatus = statusFilter === 'todos' || matricula.status_id === statusMap[statusFilter];
     
     return matchSearch && matchStatus;
   });
@@ -100,37 +102,44 @@ export default function MatriculasScreen() {
     }
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'ativa':
-        return '#10b981';
-      case 'pendente':
-        return '#f59e0b';
-      case 'vencida':
-        return '#f97316';
-      case 'cancelada':
-        return '#ef4444';
-      case 'finalizada':
-        return '#6b7280';
+  // Status de Matrícula: 1=Ativa, 2=Vencida, 3=Cancelada, 4=Finalizada, 5=Pendente, 6=Bloqueado
+  const getStatusColor = (statusId) => {
+    const id = Number(statusId);
+    switch (id) {
+      case 1:
+        return '#10b981'; // Ativa (verde)
+      case 2:
+        return '#f97316'; // Vencida (laranja)
+      case 3:
+        return '#ef4444'; // Cancelada (vermelho)
+      case 4:
+        return '#6b7280'; // Finalizada (cinza)
+      case 5:
+        return '#f59e0b'; // Pendente (amarelo)
+      case 6:
+        return '#8b5cf6'; // Bloqueado (roxo)
       default:
         return '#6b7280';
     }
   };
 
-  const getStatusLabel = (status) => {
-    switch (status) {
-      case 'ativa':
+  const getStatusLabel = (statusId) => {
+    const id = Number(statusId);
+    switch (id) {
+      case 1:
         return 'Ativa';
-      case 'pendente':
-        return 'Pendente';
-      case 'vencida':
+      case 2:
         return 'Vencida';
-      case 'cancelada':
+      case 3:
         return 'Cancelada';
-      case 'finalizada':
+      case 4:
         return 'Finalizada';
+      case 5:
+        return 'Pendente';
+      case 6:
+        return 'Bloqueado';
       default:
-        return status;
+        return 'Desconhecido';
     }
   };
 
@@ -174,9 +183,9 @@ export default function MatriculasScreen() {
         </View>
         <View
           className="self-start rounded-full px-2.5 py-1"
-          style={{ backgroundColor: getStatusColor(matricula.status) }}
+          style={{ backgroundColor: getStatusColor(matricula.status_id) }}
         >
-          <Text className="text-[11px] font-bold text-white">{getStatusLabel(matricula.status)}</Text>
+          <Text className="text-[11px] font-bold text-white">{getStatusLabel(matricula.status_id)}</Text>
         </View>
       </View>
 
@@ -213,7 +222,7 @@ export default function MatriculasScreen() {
           <Feather name="file-text" size={16} color="#3b82f6" />
           <Text style={styles.btnDetalhesText}>Detalhes</Text>
         </Pressable>
-        {matricula.status !== 'cancelada' && matricula.status !== 'finalizada' && (
+        {matricula.status_id !== 3 && matricula.status_id !== 4 && (
           <Pressable
             onPress={() => handleCancelar(matricula)}
             style={({ pressed }) => [
@@ -284,9 +293,9 @@ export default function MatriculasScreen() {
           <View style={styles.colStatus}>
             <View
               className="self-start rounded-full px-2.5 py-1"
-              style={{ backgroundColor: getStatusColor(matricula.status) }}
+              style={{ backgroundColor: getStatusColor(matricula.status_id) }}
             >
-              <Text className="text-[11px] font-bold text-white">{getStatusLabel(matricula.status)}</Text>
+              <Text className="text-[11px] font-bold text-white">{getStatusLabel(matricula.status_id)}</Text>
             </View>
           </View>
           <View className="flex-row justify-end gap-2" style={styles.colAcoes}>
@@ -297,7 +306,7 @@ export default function MatriculasScreen() {
             >
               <Feather name="file-text" size={18} color="#f97316" />
             </Pressable>
-            {matricula.status !== 'cancelada' && matricula.status !== 'finalizada' && (
+            {matricula.status_id !== 3 && matricula.status_id !== 4 && (
               <Pressable
                 onPress={() => handleCancelar(matricula)}
                 className="h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
@@ -349,7 +358,7 @@ export default function MatriculasScreen() {
           
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
             <View style={styles.filterContainer}>
-              {['todos', 'pendente', 'ativa', 'vencida', 'cancelada', 'finalizada'].map(status => (
+              {['todos', 'ativa', 'pendente', 'vencida', 'cancelada', 'finalizada', 'bloqueado'].map(status => (
                 <Pressable
                   key={status}
                   onPress={() => setStatusFilter(status)}

@@ -104,11 +104,12 @@ try {
             
             // 2. Buscar usuários com múltiplas matrículas ativas
             $sqlUsuarios = "
-                SELECT DISTINCT m.usuario_id
+                SELECT DISTINCT m.aluno_id
                 FROM matriculas m
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
                 WHERE m.tenant_id = :tenant_id
-                AND m.status IN ('ativa', 'pendente', 'vencida')
-                GROUP BY m.usuario_id
+                AND sm.codigo IN ('ativa', 'pendente', 'vencida')
+                GROUP BY m.aluno_id
                 HAVING COUNT(*) > 1
             ";
             
@@ -119,26 +120,27 @@ try {
             logMessage("  Usuários com múltiplas matrículas: " . count($usuarios) . "\n", $quiet);
             
             foreach ($usuarios as $usr) {
-                $usrId = $usr['usuario_id'];
+                $alunoId = $usr['aluno_id'];
                 
                 // Buscar todas as matrículas do usuário neste tenant com info de pagamentos
                 $sqlMatriculas = "
-                    SELECT m.id, m.data_matricula, m.data_vencimento, m.data_inicio, m.status, m.created_at,
+                    SELECT m.id, m.data_matricula, m.data_vencimento, m.data_inicio, sm.codigo as status, m.created_at,
                            p.nome as plano_nome, mo.nome as modalidade_nome, mo.id as modalidade_id,
                            COUNT(DISTINCT pp.id) as total_pagamentos
                     FROM matriculas m
                     INNER JOIN planos p ON m.plano_id = p.id
                     INNER JOIN modalidades mo ON p.modalidade_id = mo.id
+                    INNER JOIN status_matricula sm ON sm.id = m.status_id
                     LEFT JOIN pagamentos_plano pp ON m.id = pp.matricula_id
-                    WHERE m.usuario_id = :usuario_id
+                    WHERE m.aluno_id = :aluno_id
                     AND m.tenant_id = :tenant_id
-                    AND m.status IN ('ativa', 'pendente')
+                    AND sm.codigo IN ('ativa', 'pendente')
                     GROUP BY m.id
                     ORDER BY m.data_matricula DESC, m.created_at DESC
                 ";
                 
                 $stmt = $db->prepare($sqlMatriculas);
-                $stmt->execute(['usuario_id' => $usrId, 'tenant_id' => $tId]);
+                $stmt->execute(['aluno_id' => $alunoId, 'tenant_id' => $tId]);
                 $matriculas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
                 
                 // Agrupar por modalidade

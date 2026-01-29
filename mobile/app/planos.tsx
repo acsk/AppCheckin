@@ -7,13 +7,13 @@ import { useRoute } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -328,9 +328,9 @@ export default function PlanosScreen() {
     return `R$ ${parseFloat(valor).toFixed(2).replace(".", ",")}`;
   };
 
-  // Sempre mostrar apenas as ativas
+  // Sempre mostrar apenas as ativas (case-insensitive)
   const matriculasFiltradas = matriculas
-    .filter((m) => m.status === "ativa")
+    .filter((m) => m.status?.toLowerCase() === "ativa")
     .filter((m) =>
       tenantId ? m.plano.tenant_id === parseInt(tenantId) : true,
     );
@@ -517,98 +517,66 @@ export default function PlanosScreen() {
             {matriculasFiltradas.map((matricula) => (
               <TouchableOpacity
                 key={matricula.matricula_id}
-                style={[
-                  styles.planoCard,
-                  matricula.plano.modalidade && {
-                    borderLeftColor: matricula.plano.modalidade.cor,
-                  },
-                ]}
+                style={styles.planoCardCompact}
                 onPress={() => handleSelectPlano(matricula)}
                 activeOpacity={0.7}
               >
-                <View style={styles.planoCardContent}>
-                  {/* Header: Modalidade Badge */}
-                  <View style={styles.planoCardHeader}>
-                    {matricula.plano.modalidade && (
-                      <View
-                        style={[
-                          styles.modalidadeBadgeCard,
-                          {
-                            backgroundColor:
-                              matricula.plano.modalidade.cor + "20",
-                          },
-                        ]}
-                      >
-                        <View
-                          style={[
-                            styles.modalidadeBadgeDot,
-                            { backgroundColor: matricula.plano.modalidade.cor },
-                          ]}
-                        />
-                        <Text
-                          style={[
-                            styles.modalidadeBadgeText,
-                            { color: matricula.plano.modalidade.cor },
-                          ]}
-                        >
-                          {matricula.plano.modalidade.nome}
-                        </Text>
-                      </View>
-                    )}
+                {/* Header: Modalidade + Status */}
+                <View style={styles.planoCardHeaderCompact}>
+                  {matricula.plano.modalidade && (
+                    <Text style={styles.modalidadeTextCompact}>
+                      {matricula.plano.modalidade.nome}
+                    </Text>
+                  )}
+                  <View
+                    style={[
+                      styles.statusBadgeCompact,
+                      matricula.status?.toLowerCase() === "ativa"
+                        ? styles.statusBadgeAtiva
+                        : styles.statusBadgeInativa,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.statusTextCompact,
+                        matricula.status?.toLowerCase() === "ativa"
+                          ? styles.statusTextAtiva
+                          : styles.statusTextInativa,
+                      ]}
+                    >
+                      {matricula.status}
+                    </Text>
                   </View>
+                </View>
 
-                  {/* Nome do Plano */}
-                  <Text style={styles.planoCardNome}>
+                {/* Nome do Plano + Valor */}
+                <View style={styles.planoCardBodyCompact}>
+                  <Text style={styles.planoNomeCompact}>
                     {matricula.plano.nome}
                   </Text>
+                  <Text style={styles.planoValorCompact}>
+                    {formatarValor(matricula.plano.valor)}
+                    <Text style={styles.planoValorSubCompact}>/mês</Text>
+                  </Text>
+                </View>
 
-                  {/* Valor destacado */}
-                  <View style={styles.planoCardValorContainer}>
-                    <Text style={styles.planoCardValor}>
-                      {formatarValor(matricula.plano.valor)}
+                {/* Info Row Compacta */}
+                <View style={styles.planoCardInfoCompact}>
+                  <View style={styles.infoItemCompact}>
+                    <Feather name="calendar" size={14} color="#666" />
+                    <Text style={styles.infoTextCompact}>
+                      {matricula.plano.duracao_dias} dias
                     </Text>
-                    <Text style={styles.planoCardValorSubtext}>/mês</Text>
                   </View>
-
-                  {/* Info Row: Duração + Check-ins */}
-                  <View style={styles.planoCardInfoRow}>
-                    <View style={styles.infoItemCard}>
-                      <Feather
-                        name="calendar"
-                        size={16}
-                        color={colors.primary}
-                      />
-                      <View style={styles.infoItemContent}>
-                        <Text style={styles.infoItemLabel}>Duração</Text>
-                        <Text style={styles.infoItemValue}>
-                          {matricula.plano.duracao_dias} dias
-                        </Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.infoItemCard}>
-                      <Feather name="repeat" size={16} color={colors.primary} />
-                      <View style={styles.infoItemContent}>
-                        <Text style={styles.infoItemLabel}>Por semana</Text>
-                        <Text style={styles.infoItemValue}>
-                          {matricula.plano.checkins_semanais === 999
-                            ? "Ilimitado"
-                            : `${matricula.plano.checkins_semanais}x`}
-                        </Text>
-                      </View>
-                    </View>
+                  <View style={styles.infoItemCompact}>
+                    <Feather name="repeat" size={14} color="#666" />
+                    <Text style={styles.infoTextCompact}>
+                      {matricula.plano.checkins_semanais === 999
+                        ? "Ilimitado"
+                        : `${matricula.plano.checkins_semanais}x/sem`}
+                    </Text>
                   </View>
-
-                  {/* Status - Apenas mostra se a matrícula não está ativa */}
-                  {matricula.status !== "ativa" && (
-                    <View style={styles.planoCardStatusBadge}>
-                      <Feather name="alert-circle" size={14} color="#F44336" />
-                      <Text style={styles.planoCardStatusText}>
-                        {matricula.status.charAt(0).toUpperCase() +
-                          matricula.status.slice(1)}
-                      </Text>
-                    </View>
-                  )}
+                  <Feather name="chevron-right" size={18} color="#CBD5E1" />
                 </View>
               </TouchableOpacity>
             ))}
@@ -632,7 +600,7 @@ export default function PlanosScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#F6F7F9",
   },
   headerTop: {
     flexDirection: "row",
@@ -752,7 +720,96 @@ const styles = StyleSheet.create({
     color: "#999",
   },
 
-  /* Plano Cards */
+  /* Plano Cards - Compact */
+  planoCardCompact: {
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    marginBottom: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#E6E8EB",
+    shadowColor: "#0F172A",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
+  },
+  planoCardHeaderCompact: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  modalidadeTextCompact: {
+    fontSize: 12,
+    color: "#667085",
+    fontWeight: "600",
+  },
+  statusBadgeCompact: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  statusBadgeAtiva: {
+    backgroundColor: "#DCFCE7",
+    borderColor: "#22C55E",
+  },
+  statusBadgeInativa: {
+    backgroundColor: "#FEE2E2",
+    borderColor: "#EF4444",
+  },
+  statusTextCompact: {
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "capitalize",
+  },
+  statusTextAtiva: {
+    color: "#15803D",
+  },
+  statusTextInativa: {
+    color: "#B91C1C",
+  },
+  planoCardBodyCompact: {
+    marginBottom: 12,
+  },
+  planoNomeCompact: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#0F172A",
+    marginBottom: 4,
+  },
+  planoValorCompact: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#111827",
+  },
+  planoValorSubCompact: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#94A3B8",
+  },
+  planoCardInfoCompact: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#EEF1F4",
+  },
+  infoItemCompact: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  infoTextCompact: {
+    fontSize: 13,
+    color: "#475569",
+    fontWeight: "500",
+  },
+
+  /* Plano Cards - Legacy (mantido para compatibilidade) */
   planoCard: {
     backgroundColor: "#fff",
     borderRadius: 16,
