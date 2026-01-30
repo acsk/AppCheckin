@@ -232,10 +232,10 @@ export default function CheckinScreen() {
   }, [selectedDate]);
 
   useEffect(() => {
-    if (participantsTurma && (currentUserId || currentAlunoId)) {
+    if (participantsTurma && (currentUserId || currentAlunoId || currentUserEmail)) {
       checkUserHasCheckin();
     }
-  }, [participants, checkinsRecentes, currentUserId, currentAlunoId]);
+  }, [participants, checkinsRecentes, currentUserId, currentAlunoId, currentUserEmail]);
 
   const generateCalendarDays = () => {
     console.log("📅 GERANDO CALENDÁRIO");
@@ -520,18 +520,56 @@ export default function CheckinScreen() {
     console.log("🔍 Verificando check-in do usuário");
     console.log("   currentUserId:", currentUserId);
     console.log("   currentAlunoId:", currentAlunoId);
+    console.log("   currentUserEmail:", currentUserEmail);
     console.log("   participants.length:", participants.length);
     console.log("   checkinsRecentes.length:", checkinsRecentes.length);
 
-    if (!currentUserId && !currentAlunoId) {
-      console.log("   ❌ Sem currentUserId e currentAlunoId");
+    if (!currentUserId && !currentAlunoId && !currentUserEmail) {
+      console.log("   ❌ Sem currentUserId, currentAlunoId e currentUserEmail");
       setUserCheckinId(null);
       return false;
     }
 
-    // PRIORIDADE 1: Verificar em checkinsRecentes pelo aluno_id (mais direto)
-    // A API retorna checkin_id e aluno_id nos check-ins recentes
-    if (checkinsRecentes.length > 0) {
+    // PRIORIDADE 1: Verificar nos participantes pelo email (mais confiável)
+    // A API retorna email na lista de alunos
+    if (participants.length > 0 && currentUserEmail) {
+      console.log(
+        "   Participantes:",
+        JSON.stringify(
+          participants.map((p) => ({
+            aluno_id: p.aluno_id,
+            email: p.email,
+            checkins: p.checkins,
+            nome: p.nome,
+          })),
+        ),
+      );
+
+      const userByEmail = participants.find(
+        (p) => p.email && currentUserEmail && 
+          p.email.toLowerCase() === currentUserEmail.toLowerCase(),
+      );
+
+      if (userByEmail && userByEmail.checkins > 0) {
+        console.log("   ✅ Usuário encontrado pelo EMAIL:", userByEmail);
+
+        // Buscar o checkin_id nos checkinsRecentes usando o aluno_id encontrado
+        if (checkinsRecentes.length > 0) {
+          const checkin = checkinsRecentes.find(
+            (c) => Number(c.aluno_id) === Number(userByEmail.aluno_id),
+          );
+          if (checkin) {
+            const checkinId = checkin.checkin_id || checkin.id;
+            console.log("   📝 checkin_id encontrado:", checkinId);
+            setUserCheckinId(checkinId);
+            return true;
+          }
+        }
+      }
+    }
+
+    // PRIORIDADE 2: Verificar em checkinsRecentes pelo aluno_id
+    if (checkinsRecentes.length > 0 && currentAlunoId) {
       console.log(
         "   Check-ins recentes:",
         JSON.stringify(
@@ -543,9 +581,8 @@ export default function CheckinScreen() {
         ),
       );
 
-      // Buscar por aluno_id
       const userCheckin = checkinsRecentes.find(
-        (c) => currentAlunoId && Number(c.aluno_id) === Number(currentAlunoId),
+        (c) => Number(c.aluno_id) === Number(currentAlunoId),
       );
 
       if (userCheckin) {
@@ -560,22 +597,10 @@ export default function CheckinScreen() {
       }
     }
 
-    // PRIORIDADE 2: Verificar nos participantes pelo aluno_id
-    if (participants.length > 0) {
-      console.log(
-        "   Participantes:",
-        JSON.stringify(
-          participants.map((p) => ({
-            aluno_id: p.aluno_id,
-            checkins: p.checkins,
-            nome: p.nome,
-          })),
-        ),
-      );
-
-      // Buscar por aluno_id
+    // PRIORIDADE 3: Verificar nos participantes pelo aluno_id
+    if (participants.length > 0 && currentAlunoId) {
       const userParticipant = participants.find(
-        (p) => currentAlunoId && Number(p.aluno_id) === Number(currentAlunoId),
+        (p) => Number(p.aluno_id) === Number(currentAlunoId),
       );
 
       if (userParticipant && userParticipant.checkins > 0) {
@@ -584,7 +609,6 @@ export default function CheckinScreen() {
           userParticipant,
         );
 
-        // Buscar o checkin_id nos checkinsRecentes
         if (checkinsRecentes.length > 0) {
           const checkin = checkinsRecentes.find(
             (c) => Number(c.aluno_id) === Number(userParticipant.aluno_id),
