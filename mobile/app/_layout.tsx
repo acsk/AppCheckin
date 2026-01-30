@@ -82,7 +82,8 @@ export default function RootLayout() {
     if (isLoggedIn === null) return; // Ainda carregando
 
     const inAuthGroup = segments[0] === "(auth)";
-    const isIndexRoute = segments.length === 0;
+    const inTabsGroup = segments[0] === "(tabs)";
+    const isIndexRoute = segments.length === 0 || segments[0] === "index";
 
     console.log(
       "🔐 Route Protection - isLoggedIn:",
@@ -95,13 +96,13 @@ export default function RootLayout() {
 
     // Se não está autenticado
     if (!isLoggedIn) {
-      if (!inAuthGroup && !isIndexRoute) {
+      if (!inAuthGroup) {
         console.log("🚀 Redirecionando para login (desautenticado)");
         router.replace("/(auth)/login");
       }
     } else {
       // Se está autenticado
-      if (inAuthGroup) {
+      if (inAuthGroup || isIndexRoute) {
         console.log("🚀 Redirecionando para tabs (já autenticado)");
         router.replace("/(tabs)");
       }
