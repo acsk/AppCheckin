@@ -814,8 +814,22 @@ export default function AccountScreen() {
                         <View style={styles.weekDayMissedIcon}>
                           <Feather name="x" size={14} color="#B91C1C" />
                         </View>
+                      ) : isToday ? (
+                        <View style={styles.weekDayIconContainer}>
+                          <Feather
+                            name="calendar"
+                            size={12}
+                            color={colors.gray500}
+                          />
+                        </View>
                       ) : (
-                        <View style={styles.weekDayEmptyIcon} />
+                        <View style={styles.weekDayIconContainer}>
+                          <Feather
+                            name="clock"
+                            size={12}
+                            color={colors.gray400}
+                          />
+                        </View>
                       )}
                     </View>
                     {/* Indicador de modalidade */}
@@ -1566,6 +1580,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 1,
     borderColor: "#FCA5A5",
+  },
+  weekDayIconContainer: {
+    width: 24,
+    height: 24,
+    justifyContent: "center",
+    alignItems: "center",
   },
   weekDayEmptyIcon: {
     width: 20,
