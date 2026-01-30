@@ -18,12 +18,16 @@ import AsyncStorage from "@/src/utils/storage";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
+  Dimensions,
   Image,
+  Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -53,6 +57,10 @@ export default function AccountScreen() {
   const [apiUrl, setApiUrl] = useState<string>("");
   const [assetsUrl, setAssetsUrl] = useState<string>("");
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(false);
+  const sidebarTranslateX = useRef(
+    new Animated.Value(-Dimensions.get("window").width),
+  ).current;
 
   // Estados do calendário semanal de check-ins
   const [weekDias, setWeekDias] = useState<DiaCheckin[]>([]);
@@ -114,6 +122,32 @@ export default function AccountScreen() {
     console.log("📍 API URL (Account):", getApiUrlRuntime());
     loadUserProfile();
   }, []);
+
+  const openSidebar = () => {
+    const screenWidth = Dimensions.get("window").width;
+    sidebarTranslateX.setValue(-screenWidth);
+    setShowSidebar(true);
+    requestAnimationFrame(() => {
+      Animated.timing(sidebarTranslateX, {
+        toValue: 0,
+        duration: 260,
+        useNativeDriver: true,
+      }).start();
+    });
+  };
+
+  const closeSidebar = () => {
+    const screenWidth = Dimensions.get("window").width;
+    Animated.timing(sidebarTranslateX, {
+      toValue: -screenWidth,
+      duration: 220,
+      useNativeDriver: true,
+    }).start(({ finished }) => {
+      if (finished) {
+        setShowSidebar(false);
+      }
+    });
+  };
 
   useEffect(() => {
     if (userProfile) {
@@ -656,94 +690,72 @@ export default function AccountScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header com Botão Recarregar */}
+      {/* Header com dados do usuário */}
       <View style={styles.headerTop}>
-        <Text style={styles.headerTitle}>Minha Conta</Text>
-        <TouchableOpacity
-          style={styles.refreshButton}
-          onPress={loadUserProfile}
-        >
-          <Feather name="refresh-cw" size={20} color="#fff" />
-        </TouchableOpacity>
+        <View style={styles.headerUserRow}>
+          <View style={styles.headerUserLeft}>
+            <View style={styles.headerPhotoWrapper}>
+              <View style={styles.headerPhotoContainer}>
+                {photoUrl ? (
+                  <Image
+                    source={{ uri: photoUrl }}
+                    style={styles.headerPhotoImage}
+                    onError={(error) => {
+                      console.error("❌ Erro ao carregar photoUrl:", error);
+                    }}
+                  />
+                ) : userProfile.foto_caminho ? (
+                  <Image
+                    source={{
+                      uri: `${apiUrl}${userProfile.foto_caminho}`,
+                    }}
+                    style={styles.headerPhotoImage}
+                    onError={(error) => {
+                      console.error(
+                        "❌ Erro ao carregar foto_caminho:",
+                        `${apiUrl}${userProfile.foto_caminho}`,
+                        error,
+                      );
+                    }}
+                  />
+                ) : userProfile.foto_base64 ? (
+                  <Image
+                    source={{
+                      uri: `data:image/jpeg;base64,${userProfile.foto_base64}`,
+                    }}
+                    style={styles.headerPhotoImage}
+                    onError={(error) => {
+                      console.error("❌ Erro ao carregar foto_base64:", error);
+                    }}
+                  />
+                ) : (
+                  <Text style={styles.headerPhotoInitials}>
+                    {getInitials(userProfile.nome)}
+                  </Text>
+                )}
+                {updatingPhoto && (
+                  <View style={styles.headerPhotoLoading}>
+                    <ActivityIndicator size="small" color="#fff" />
+                  </View>
+                )}
+              </View>
+            </View>
+            <Text style={styles.headerUserName}>{userProfile.nome}</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.headerMenuButton}
+            onPress={openSidebar}
+            accessibilityLabel="Abrir menu"
+          >
+            <Feather name="menu" size={22} color="#fff" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Profile Header */}
-        <View style={styles.profileSection}>
-          {/* Photo Placeholder */}
-          <View style={styles.photoWrapper}>
-            <TouchableOpacity
-              style={styles.photoContainer}
-              onPress={handleChangePhoto}
-              disabled={updatingPhoto}
-            >
-              {photoUrl ? (
-                <Image
-                  source={{ uri: photoUrl }}
-                  style={styles.photoImage}
-                  onError={(error) => {
-                    console.error("❌ Erro ao carregar photoUrl:", error);
-                  }}
-                />
-              ) : userProfile.foto_caminho ? (
-                <Image
-                  source={{
-                    uri: `${apiUrl}${userProfile.foto_caminho}`,
-                  }}
-                  style={styles.photoImage}
-                  onError={(error) => {
-                    console.error(
-                      "❌ Erro ao carregar foto_caminho:",
-                      `${apiUrl}${userProfile.foto_caminho}`,
-                      error,
-                    );
-                  }}
-                />
-              ) : userProfile.foto_base64 ? (
-                <Image
-                  source={{
-                    uri: `data:image/jpeg;base64,${userProfile.foto_base64}`,
-                  }}
-                  style={styles.photoImage}
-                  onError={(error) => {
-                    console.error("❌ Erro ao carregar foto_base64:", error);
-                  }}
-                />
-              ) : (
-                <Text style={styles.photoInitials}>
-                  {getInitials(userProfile.nome)}
-                </Text>
-              )}
-              {updatingPhoto && (
-                <View style={styles.photoLoading}>
-                  <ActivityIndicator size="small" color={colors.primary} />
-                </View>
-              )}
-            </TouchableOpacity>
-            <View style={styles.photoCameraIcon}>
-              <Feather name="camera" size={16} color="#fff" />
-            </View>
-          </View>
-
-          {/* Name and Email */}
-          <Text style={styles.userName}>{userProfile.nome}</Text>
-          <Text style={styles.userEmail}>{userProfile.email}</Text>
-
-          {/* Tenant */}
-          {userProfile.tenant && (
-            <TouchableOpacity
-              style={styles.tenantButton}
-              onPress={() => router.push("/planos")}
-            >
-              <Text style={styles.tenantName}>{userProfile.tenant.nome}</Text>
-              <Feather name="chevron-right" size={16} color="#fff" />
-            </TouchableOpacity>
-          )}
-        </View>
-
         {/* Calendário Semanal de Check-ins */}
         <View style={styles.weekCalendarSection}>
           <View style={styles.weekCalendarHeader}>
@@ -800,7 +812,7 @@ export default function AccountScreen() {
                         </View>
                       ) : isPast ? (
                         <View style={styles.weekDayMissedIcon}>
-                          <Feather name="x" size={14} color="#fff" />
+                          <Feather name="x" size={14} color="#B91C1C" />
                         </View>
                       ) : (
                         <View style={styles.weekDayEmptyIcon} />
@@ -968,103 +980,6 @@ export default function AccountScreen() {
           </View>
         </View>
 
-        {/* Personal Information */}
-        <View style={styles.infoSection}>
-          <Text style={styles.sectionTitle}>Informações Pessoais</Text>
-
-          <View style={styles.infoItem}>
-            <Feather name="mail" size={18} color={colors.primary} />
-            <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Email</Text>
-              <Text style={styles.infoValue}>{userProfile.email}</Text>
-            </View>
-          </View>
-
-          {userProfile.cpf && (
-            <View style={styles.infoItem}>
-              <Feather name="credit-card" size={18} color={colors.primary} />
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>CPF</Text>
-                <Text style={styles.infoValue}>
-                  {formatCPF(userProfile.cpf)}
-                </Text>
-              </View>
-            </View>
-          )}
-
-          {userProfile.telefone && (
-            <View style={styles.infoItem}>
-              <Feather name="phone" size={18} color={colors.primary} />
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>Telefone</Text>
-                <Text style={styles.infoValue}>
-                  {formatPhone(userProfile.telefone)}
-                </Text>
-              </View>
-            </View>
-          )}
-
-          {userProfile.data_nascimento && (
-            <View style={styles.infoItem}>
-              <Feather name="calendar" size={18} color={colors.primary} />
-              <View style={styles.infoContent}>
-                <Text style={styles.infoLabel}>Data de Nascimento</Text>
-                <Text style={styles.infoValue}>
-                  {new Date(userProfile.data_nascimento).toLocaleDateString(
-                    "pt-BR",
-                  )}
-                </Text>
-              </View>
-            </View>
-          )}
-        </View>
-
-        {/* Academias Section */}
-        {userProfile.tenants && userProfile.tenants.length > 0 && (
-          <View style={styles.academiasSection}>
-            <Text style={styles.sectionTitle}>Minhas Academias</Text>
-
-            {userProfile.tenants.map((tenant) => (
-              <TouchableOpacity
-                key={tenant.id}
-                style={styles.academiaCard}
-                onPress={() => router.push(`/planos?tenantId=${tenant.id}`)}
-                activeOpacity={0.7}
-              >
-                <View style={styles.academiaCardContent}>
-                  {/* Nome da Academia */}
-                  <Text style={styles.academiaName}>{tenant.nome}</Text>
-
-                  {/* Email */}
-                  {tenant.email && (
-                    <View style={styles.academiaInfo}>
-                      <Feather name="mail" size={14} color={colors.primary} />
-                      <Text style={styles.academiaInfoText}>
-                        {tenant.email}
-                      </Text>
-                    </View>
-                  )}
-
-                  {/* Telefone */}
-                  {tenant.telefone && (
-                    <View style={styles.academiaInfo}>
-                      <Feather name="phone" size={14} color={colors.primary} />
-                      <Text style={styles.academiaInfoText}>
-                        {tenant.telefone}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-                <Feather
-                  name="chevron-right"
-                  size={20}
-                  color={colors.primary}
-                />
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
         {/* Member Since */}
         {userProfile.membro_desde && (
           <View style={styles.memberSinceSection}>
@@ -1086,6 +1001,178 @@ export default function AccountScreen() {
         </TouchableOpacity>
       </ScrollView>
 
+      <Modal transparent visible={showSidebar} animationType="none">
+        <Pressable style={styles.sidebarOverlay} onPress={closeSidebar} />
+        <Animated.View
+          style={[
+            styles.sidebarContainer,
+            { transform: [{ translateX: sidebarTranslateX }] },
+          ]}
+        >
+            <View style={styles.sidebarHeader}>
+            <TouchableOpacity
+              style={styles.sidebarPhotoContainer}
+              onPress={handleChangePhoto}
+              disabled={updatingPhoto}
+            >
+              {photoUrl ? (
+                <Image source={{ uri: photoUrl }} style={styles.sidebarPhotoImage} />
+              ) : userProfile.foto_caminho ? (
+                <Image
+                  source={{ uri: `${apiUrl}${userProfile.foto_caminho}` }}
+                  style={styles.sidebarPhotoImage}
+                />
+              ) : userProfile.foto_base64 ? (
+                <Image
+                  source={{
+                    uri: `data:image/jpeg;base64,${userProfile.foto_base64}`,
+                  }}
+                  style={styles.sidebarPhotoImage}
+                />
+              ) : (
+                <Text style={styles.sidebarPhotoInitials}>
+                  {getInitials(userProfile.nome)}
+                </Text>
+              )}
+            </TouchableOpacity>
+            <View style={styles.sidebarPhotoCameraIcon}>
+              <Feather name="camera" size={12} color="#fff" />
+            </View>
+            <View style={styles.sidebarHeaderInfo}>
+              <Text style={styles.sidebarUserName}>{userProfile.nome}</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.sidebarCloseButton}
+              onPress={closeSidebar}
+            >
+              <Feather name="chevron-right" size={20} color="#fff" />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            contentContainerStyle={styles.sidebarContent}
+            showsVerticalScrollIndicator={false}
+          >
+            <View style={styles.infoSectionSidebar}>
+              <Text style={styles.sidebarSectionTitle}>
+                Informações Pessoais
+              </Text>
+
+              <View style={styles.sidebarInfoItem}>
+                <View style={styles.sidebarIconBubble}>
+                  <Feather name="mail" size={14} color="#fff" />
+                </View>
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoLabelSidebar}>Email</Text>
+                  <Text style={styles.infoValueSidebar}>{userProfile.email}</Text>
+                </View>
+              </View>
+
+              {userProfile.cpf && (
+                <View style={styles.sidebarInfoItem}>
+                  <View style={styles.sidebarIconBubble}>
+                    <Feather name="credit-card" size={14} color="#fff" />
+                  </View>
+                  <View style={styles.infoContent}>
+                    <Text style={styles.infoLabelSidebar}>CPF</Text>
+                    <Text style={styles.infoValueSidebar}>
+                      {formatCPF(userProfile.cpf)}
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {userProfile.telefone && (
+                <View style={styles.sidebarInfoItem}>
+                  <View style={styles.sidebarIconBubble}>
+                    <Feather name="phone" size={14} color="#fff" />
+                  </View>
+                  <View style={styles.infoContent}>
+                    <Text style={styles.infoLabelSidebar}>Telefone</Text>
+                    <Text style={styles.infoValueSidebar}>
+                      {formatPhone(userProfile.telefone)}
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {userProfile.data_nascimento && (
+                <View style={styles.sidebarInfoItem}>
+                  <View style={styles.sidebarIconBubble}>
+                    <Feather name="calendar" size={14} color="#fff" />
+                  </View>
+                  <View style={styles.infoContent}>
+                    <Text style={styles.infoLabelSidebar}>
+                      Data de Nascimento
+                    </Text>
+                    <Text style={styles.infoValueSidebar}>
+                      {new Date(userProfile.data_nascimento).toLocaleDateString(
+                        "pt-BR",
+                      )}
+                    </Text>
+                  </View>
+                </View>
+              )}
+            </View>
+
+            {userProfile.tenants && userProfile.tenants.length > 0 && (
+              <View style={styles.academiasSectionSidebar}>
+                <Text style={styles.sidebarSectionTitle}>
+                  Minhas Academias
+                </Text>
+                {userProfile.tenants.map((tenant) => (
+                  <TouchableOpacity
+                    key={tenant.id}
+                    style={styles.academiaCardSidebar}
+                    onPress={() => {
+                      closeSidebar();
+                      router.push(`/planos?tenantId=${tenant.id}`);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.academiaCardContent}>
+                      <Text style={styles.academiaNameSidebar}>
+                        {tenant.nome}
+                      </Text>
+                      {tenant.email && (
+                        <View style={styles.academiaInfoSidebar}>
+                          <Feather name="mail" size={12} color="#fff" />
+                          <Text style={styles.academiaInfoTextSidebar}>
+                            {tenant.email}
+                          </Text>
+                        </View>
+                      )}
+                      {tenant.telefone && (
+                        <View style={styles.academiaInfoSidebar}>
+                          <Feather name="phone" size={12} color="#fff" />
+                          <Text style={styles.academiaInfoTextSidebar}>
+                            {tenant.telefone}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.sidebarChevronButton}>
+                      <Feather name="chevron-right" size={18} color="#fff" />
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={styles.sidebarLogoutButton}
+              onPress={() => {
+                closeSidebar();
+                router.push("/logout");
+              }}
+            >
+              <Feather name="log-out" size={16} color="#fff" />
+              <Text style={styles.sidebarLogoutText}>Sair</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </Animated.View>
+      </Modal>
+
       {/* Password Recovery Modal */}
       <PasswordRecoveryModal
         visible={showRecoveryModal}
@@ -1104,9 +1191,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.backgroundSecondary,
   },
   headerTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
     paddingHorizontal: 18,
     paddingVertical: 16,
     backgroundColor: colors.primary,
@@ -1117,13 +1201,232 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 8,
   },
-  headerTitle: {
-    fontSize: 24,
+  headerUserRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  headerUserLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    flex: 1,
+  },
+  headerUserName: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#fff",
+    flexShrink: 1,
+  },
+  headerMenuButton: {
+    marginLeft: 6,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  headerPhotoWrapper: {
+    position: "relative",
+    width: 68,
+    height: 68,
+  },
+  headerPhotoContainer: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.6)",
+  },
+  headerPhotoImage: {
+    width: "100%",
+    height: "100%",
+  },
+  headerPhotoInitials: {
+    fontSize: 20,
     fontWeight: "800",
     color: "#fff",
   },
-  refreshButton: {
-    padding: 8,
+  headerPhotoLoading: {
+    position: "absolute",
+    width: "100%",
+    height: "100%",
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  sidebarOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+  sidebarContainer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    bottom: 0,
+    width: "82%",
+    backgroundColor: colors.primary,
+    paddingTop: 24,
+    paddingHorizontal: 18,
+  },
+  sidebarHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.22)",
+  },
+  sidebarHeaderInfo: {
+    flex: 1,
+  },
+  sidebarUserName: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#fff",
+  },
+  sidebarCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  sidebarPhotoContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+    borderWidth: 2,
+    borderColor: "rgba(255,255,255,0.7)",
+  },
+  sidebarPhotoCameraIcon: {
+    position: "absolute",
+    left: 44,
+    top: 44,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.7)",
+  },
+  sidebarPhotoImage: {
+    width: "100%",
+    height: "100%",
+  },
+  sidebarPhotoInitials: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#fff",
+  },
+  sidebarContent: {
+    paddingTop: 18,
+    paddingBottom: 32,
+  },
+  sidebarSectionTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.7)",
+    marginBottom: 12,
+  },
+  infoSectionSidebar: {
+    marginBottom: 20,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.16)",
+  },
+  academiasSectionSidebar: {
+    marginBottom: 20,
+    padding: 14,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.16)",
+  },
+  academiaCardSidebar: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.18)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  academiaNameSidebar: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#fff",
+    marginBottom: 6,
+  },
+  sidebarInfoItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 10,
+    gap: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "rgba(255,255,255,0.12)",
+  },
+  sidebarIconBubble: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.22)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  infoLabelSidebar: {
+    fontSize: 11,
+    color: "rgba(255,255,255,0.7)",
+    marginBottom: 2,
+  },
+  infoValueSidebar: {
+    fontSize: 13,
+    color: "#fff",
+    fontWeight: "600",
+  },
+  academiaInfoSidebar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 4,
+  },
+  academiaInfoTextSidebar: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.85)",
+  },
+  sidebarChevronButton: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: "rgba(255,255,255,0.25)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  sidebarLogoutButton: {
+    marginTop: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+  sidebarLogoutText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#fff",
   },
   scrollContent: {
     padding: 18,
@@ -1149,99 +1452,6 @@ const styles = StyleSheet.create({
   retryButtonText: {
     color: "#fff",
     fontWeight: "600",
-  },
-  profileSection: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    padding: 26,
-    alignItems: "center",
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: "#f0f1f4",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 4,
-  },
-  photoWrapper: {
-    position: "relative",
-    width: 112,
-    height: 112,
-    marginBottom: 18,
-  },
-  photoContainer: {
-    width: 112,
-    height: 112,
-    borderRadius: 56,
-    backgroundColor: "#f3f4f6",
-    justifyContent: "center",
-    alignItems: "center",
-    overflow: "hidden",
-    borderWidth: 2,
-    borderColor: "#fff",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  photoImage: {
-    width: "100%",
-    height: "100%",
-  },
-  photoLoading: {
-    position: "absolute",
-    width: "100%",
-    height: "100%",
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  photoCameraIcon: {
-    position: "absolute",
-    bottom: -2,
-    right: -2,
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: colors.primary,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 3,
-    borderColor: "#fff",
-    zIndex: 10,
-  },
-  photoInitials: {
-    fontSize: 36,
-    fontWeight: "800",
-    color: "#fff",
-  },
-  userName: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: colors.text,
-    marginBottom: 4,
-  },
-  userEmail: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    marginBottom: 10,
-  },
-  tenantName: {
-    fontSize: 12,
-    color: "#fff",
-    fontWeight: "700",
-  },
-  tenantButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    marginTop: 4,
-    backgroundColor: colors.primary,
-    borderRadius: 999,
   },
   statisticsSection: {
     marginBottom: 20,
@@ -1286,7 +1496,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 2,
     borderRadius: 12,
-    backgroundColor: "#e5e7eb",
+    backgroundColor: "#F1F3F5",
     minWidth: 38,
   },
   weekDayItemToday: {
@@ -1300,9 +1510,9 @@ const styles = StyleSheet.create({
     borderColor: "#10b981",
   },
   weekDayItemMissed: {
-    backgroundColor: "#f3f4f6",
+    backgroundColor: "#F6F7F9",
     borderWidth: 1,
-    borderColor: "#d1d5db",
+    borderColor: "#E5E7EB",
   },
   weekDayName: {
     fontSize: 11,
@@ -1343,22 +1553,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
     shadowColor: "#10b981",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 2,
   },
   weekDayMissedIcon: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: "#ef4444",
+    backgroundColor: "#FDE2E2",
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#ef4444",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: "#FCA5A5",
   },
   weekDayEmptyIcon: {
     width: 20,
