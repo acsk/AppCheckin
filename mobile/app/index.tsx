@@ -1,139 +1,77 @@
-import { useColorScheme } from "@/hooks/use-color-scheme";
-import { colors } from "@/src/theme/colors";
-import { Feather } from "@expo/vector-icons";
-import { useState } from "react";
-import {
-    Platform,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
-} from "react-native";
+import AsyncStorage from "@/src/utils/storage";
+import { Redirect } from "expo-router";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, Text, View } from "react-native";
 
-// Importar as telas
-import AccountScreen from "./(tabs)/account";
-import CheckinScreen from "./(tabs)/checkin";
+export default function Index() {
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasToken, setHasToken] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-export default function MainApp() {
-  const [currentTab, setCurrentTab] = useState("account");
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === "dark";
+  useEffect(() => {
+    console.log("📍 Index - Iniciando verificação de token");
+    checkToken();
+  }, []);
 
-  const renderScreen = () => {
-    switch (currentTab) {
-      case "account":
-        return <AccountScreen />;
-      case "checkin":
-        return <CheckinScreen />;
-      default:
-        return <AccountScreen />;
+  const checkToken = async () => {
+    try {
+      console.log("📍 Index - Buscando token...");
+      const token = await AsyncStorage.getItem("@appcheckin:token");
+      console.log("📍 Index - Token encontrado:", !!token);
+      setHasToken(!!token);
+    } catch (err) {
+      console.error("📍 Index - Erro ao buscar token:", err);
+      setError(String(err));
+      setHasToken(false);
+    } finally {
+      console.log("📍 Index - Finalizando verificação");
+      setIsLoading(false);
     }
   };
 
-  return (
-    <View
-      style={[
-        styles.container,
-        { backgroundColor: isDark ? "#1a1a1a" : "#f5f5f5" },
-      ]}
-    >
-      {/* Conteúdo */}
-      <View style={styles.content}>{renderScreen()}</View>
-
-      {/* Navegação Customizada */}
-      <View
-        style={[
-          styles.customNav,
-          {
-            backgroundColor: isDark ? "#1a1a1a" : "#fff",
-            borderTopColor: isDark ? "#333" : "#e5e5e5",
-          },
-        ]}
-      >
-        <TouchableOpacity
-          style={[
-            styles.navItem,
-            currentTab === "account" && styles.navItemActive,
-          ]}
-          onPress={() => setCurrentTab("account")}
-        >
-          <Feather
-            name="user"
-            size={24}
-            color={currentTab === "account" ? colors.primary : "#999"}
-          />
-          <Text
-            style={[
-              styles.navLabel,
-              {
-                color: currentTab === "account" ? colors.primary : "#999",
-              },
-            ]}
-          >
-            Minha Conta
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.navItem,
-            currentTab === "checkin" && styles.navItemActive,
-          ]}
-          onPress={() => setCurrentTab("checkin")}
-        >
-          <Feather
-            name="check-square"
-            size={24}
-            color={currentTab === "checkin" ? colors.primary : "#999"}
-          />
-          <Text
-            style={[
-              styles.navLabel,
-              {
-                color: currentTab === "checkin" ? colors.primary : "#999",
-              },
-            ]}
-          >
-            Checkin
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+  console.log(
+    "📍 Index - Render: isLoading=",
+    isLoading,
+    "hasToken=",
+    hasToken,
   );
-}
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f5f5f5",
-  },
-  content: {
-    flex: 1,
-    backgroundColor: "#f5f5f5",
-  },
-  customNav: {
-    flexDirection: "row",
-    borderTopWidth: 1,
-    paddingBottom: Platform.OS === "web" ? 8 : 0,
-    paddingTop: Platform.OS === "web" ? 8 : 4,
-    paddingHorizontal: 0,
-    height: Platform.OS === "web" ? "auto" : 65,
-    minHeight: 65,
-    overflow: "hidden",
-  },
-  navItem: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 4,
-    paddingVertical: Platform.OS === "web" ? 4 : 0,
-  },
-  navItemActive: {
-    opacity: 1,
-  },
-  navLabel: {
-    fontSize: 12,
-    fontWeight: "500",
-    marginTop: 2,
-  },
-});
+  if (error) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: "#fff",
+        }}
+      >
+        <Text style={{ color: "red" }}>Erro: {error}</Text>
+      </View>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: "#fff",
+        }}
+      >
+        <ActivityIndicator size="large" color="#FF6B35" />
+        <Text style={{ marginTop: 10 }}>Carregando...</Text>
+      </View>
+    );
+  }
+
+  if (hasToken) {
+    console.log("📍 Index - Redirecionando para /(tabs)");
+    return <Redirect href="/(tabs)" />;
+  }
+
+  console.log("📍 Index - Redirecionando para /(auth)/login");
+  return <Redirect href="/(auth)/login" />;
+}
