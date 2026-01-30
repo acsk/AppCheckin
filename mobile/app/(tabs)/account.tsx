@@ -151,7 +151,7 @@ export default function AccountScreen() {
     }
   }, [selectedModalidadeId]);
 
-  // Carregar check-ins da semana quando userProfile carrega
+  // Carregar check-ins da semana quando userProfile xcarrega
   useEffect(() => {
     if (userProfile) {
       loadWeekCheckins();
