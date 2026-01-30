@@ -232,10 +232,19 @@ export default function CheckinScreen() {
   }, [selectedDate]);
 
   useEffect(() => {
-    if (participantsTurma && (currentUserId || currentAlunoId || currentUserEmail)) {
+    if (
+      participantsTurma &&
+      (currentUserId || currentAlunoId || currentUserEmail)
+    ) {
       checkUserHasCheckin();
     }
-  }, [participants, checkinsRecentes, currentUserId, currentAlunoId, currentUserEmail]);
+  }, [
+    participants,
+    checkinsRecentes,
+    currentUserId,
+    currentAlunoId,
+    currentUserEmail,
+  ]);
 
   const generateCalendarDays = () => {
     console.log("📅 GERANDO CALENDÁRIO");
@@ -546,7 +555,9 @@ export default function CheckinScreen() {
       );
 
       const userByEmail = participants.find(
-        (p) => p.email && currentUserEmail && 
+        (p) =>
+          p.email &&
+          currentUserEmail &&
           p.email.toLowerCase() === currentUserEmail.toLowerCase(),
       );
 
