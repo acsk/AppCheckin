@@ -82,9 +82,13 @@ class TenantMiddleware
         if (!$tenantId) {
             // Allowlist de rotas que não exigem tenant
             $allowlistPrefixes = [
-                '/auth',       // login, register, select-tenant-initial, etc.
-                '/swagger',    // documentação
-                '/php-test',   // utilidades públicas
+                '/auth',            // login, register, select-tenant-initial, etc.
+                '/swagger',         // documentação
+                '/php-test',        // utilidades públicas
+                '/health',          // health e health/basic
+                '/status',          // status público
+                '/ping',            // ping simples
+                '/uploads/fotos',   // servir fotos públicas
                 '/test-simple',
                 '/diagnose',
                 '/diagnostico.php',

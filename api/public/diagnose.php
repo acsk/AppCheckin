@@ -120,7 +120,41 @@ try {
 
 <?php
 // ============================================
-// 6. INFORMAÇÕES EXTRAS
+// 6. VARIÁVEIS DE AMBIENTE
+// ============================================
+$keys = ['APP_ENV','JWT_SECRET','DB_HOST','DB_NAME','DB_USER','DB_PASS'];
+echo '<div class="section"><h2>Variáveis de Ambiente</h2>';
+foreach ($keys as $k) {
+    $val = $_ENV[$k] ?? $_SERVER[$k] ?? getenv($k);
+    $masked = ($k === 'DB_PASS' || $k === 'JWT_SECRET') ? ($val ? '***' : '') : $val;
+    $exists = $val !== false && $val !== null && $val !== '';
+    $class = $exists ? 'success' : 'warning';
+    echo "<div class='$class'>" . ($exists ? '✓' : '⚠') . " $k: " . ($masked !== '' ? htmlspecialchars((string)$masked) : 'não definido') . "</div>";
+}
+echo '</div>';
+?>
+
+<?php
+// ============================================
+// 7. TESTE DE CONEXÃO COM BANCO (PDO via config)
+// ============================================
+try {
+    $db = require __DIR__ . '/../config/database.php';
+    $stmt = $db->query('SELECT 1');
+    $ok = $stmt !== false;
+    echo '<div class="section ' . ($ok ? 'success' : 'error') . '"><h2>' . ($ok ? '✓' : '✗') . ' Banco de Dados</h2>';
+    echo '<p>Status: ' . ($ok ? 'conectado' : 'desconectado') . '</p>';
+    echo '</div>';
+} catch (\Throwable $e) {
+    echo '<div class="section error"><h2>✗ Erro ao conectar ao Banco</h2>';
+    echo '<pre>' . htmlspecialchars($e->getMessage()) . '</pre>';
+    echo '</div>';
+}
+?>
+
+<?php
+// ============================================
+// 8. INFORMAÇÕES EXTRAS
 // ============================================
 ?>
 <div class="section">
