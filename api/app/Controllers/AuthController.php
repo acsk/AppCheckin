@@ -12,11 +12,18 @@ class AuthController
 {
     private Usuario $usuarioModel;
     private JWTService $jwtService;
+    private ?string $dbInitError = null;
 
     public function __construct()
     {
-        $db = require __DIR__ . '/../../config/database.php';
-        $this->usuarioModel = new Usuario($db);
+        try {
+            $db = require __DIR__ . '/../../config/database.php';
+            $this->usuarioModel = new Usuario($db);
+        } catch (\Throwable $e) {
+            // Evitar 500 "vazio" por falha ao instanciar controlador
+            $this->dbInitError = $e->getMessage();
+            error_log('[AuthController::__construct] DB init error: ' . $this->dbInitError);
+        }
         $this->jwtService = new JWTService($_ENV['JWT_SECRET']);
     }
 
@@ -169,6 +176,17 @@ class AuthController
     )]
     public function login(Request $request, Response $response): Response
     {
+        // Verificar se a conexão de DB falhou ao iniciar o controlador
+        if ($this->dbInitError !== null || !isset($this->usuarioModel)) {
+            $response->getBody()->write(json_encode([
+                'status' => 'error',
+                'code' => 'DATABASE_CONNECTION_FAILED',
+                'message' => 'Falha ao conectar ao banco de dados',
+                'hint' => 'Verifique variáveis de ambiente (DB_HOST, DB_NAME, DB_USER, DB_PASS) e credenciais.',
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(503);
+        }
+
         $data = $request->getParsedBody();
         
         // DEBUG: Log para verificar o que está chegando

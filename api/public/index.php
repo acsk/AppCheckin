@@ -52,7 +52,36 @@ $app->add(function ($request, $handler) {
 $app->addBodyParsingMiddleware();
 
 // Middleware de erro
-$app->addErrorMiddleware(true, true, true);
+// Middleware de erro com resposta JSON
+$errorMiddleware = $app->addErrorMiddleware(true, true, true);
+$errorMiddleware->setDefaultErrorHandler(function (
+    Request $request,
+    \Throwable $exception,
+    bool $displayErrorDetails,
+    bool $logErrors,
+    bool $logErrorDetails
+) use ($app) {
+    // Log básico
+    error_log('[ErrorMiddleware] ' . $exception->getMessage());
+
+    $status = 500;
+    $payload = [
+        'status' => 'error',
+        'message' => 'Erro interno no servidor',
+    ];
+
+    // Quando possível, retornar detalhes úteis (apenas se habilitado)
+    if ($displayErrorDetails) {
+        $payload['details'] = [
+            'type' => get_class($exception),
+            'error' => $exception->getMessage(),
+        ];
+    }
+
+    $response = $app->getResponseFactory()->createResponse($status);
+    $response->getBody()->write(json_encode($payload, JSON_UNESCAPED_UNICODE));
+    return $response->withHeader('Content-Type', 'application/json');
+});
 
 // ========================================
 // CARREGAR ROTAS
