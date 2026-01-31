@@ -8,8 +8,13 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 require __DIR__ . '/../vendor/autoload.php';
 
 // Carregar variáveis de ambiente
-$dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/..');
-$dotenv->load();
+try {
+    $dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/..');
+    $dotenv->load();
+} catch (\Throwable $e) {
+    // Em produção, pode não existir .env; seguir com variáveis do ambiente
+    error_log('[index.php] .ENV não carregado: ' . $e->getMessage());
+}
 
 // Configurar timezone para Brasil
 date_default_timezone_set('America/Sao_Paulo');

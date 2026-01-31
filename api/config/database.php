@@ -1,9 +1,27 @@
 <?php
 
-$host = $_ENV['DB_HOST'];
-$dbname = $_ENV['DB_NAME'];
-$user = $_ENV['DB_USER'];
-$pass = $_ENV['DB_PASS'];
+// Helper para obter variável de ambiente com fallback de nomes
+function env_or_server(string $key, array $fallbacks = []): ?string {
+    if (isset($_ENV[$key]) && $_ENV[$key] !== '') return $_ENV[$key];
+    if (isset($_SERVER[$key]) && $_SERVER[$key] !== '') return $_SERVER[$key];
+    foreach ($fallbacks as $alt) {
+        if (isset($_ENV[$alt]) && $_ENV[$alt] !== '') return $_ENV[$alt];
+        if (isset($_SERVER[$alt]) && $_SERVER[$alt] !== '') return $_SERVER[$alt];
+        $val = getenv($alt);
+        if ($val !== false && $val !== '') return $val;
+    }
+    $val = getenv($key);
+    return ($val !== false && $val !== '') ? $val : null;
+}
+
+$host = env_or_server('DB_HOST', ['MYSQL_HOST', 'DBHOST']);
+$dbname = env_or_server('DB_NAME', ['MYSQL_DATABASE', 'DBNAME']);
+$user = env_or_server('DB_USER', ['MYSQL_USER', 'DBUSER', 'DB_USERNAME']);
+$pass = env_or_server('DB_PASS', ['MYSQL_PASSWORD', 'DBPASS', 'DB_PASSWORD']);
+
+if (!$host || !$dbname || !$user) {
+    error_log("[database.php] Variáveis de ambiente de DB ausentes: host=" . ($host ?? 'null') . ", dbname=" . ($dbname ?? 'null') . ", user=" . ($user ?? 'null'));
+}
 
 try {
     $pdo = new PDO(
@@ -23,5 +41,6 @@ try {
     
     return $pdo;
 } catch (PDOException $e) {
-    die("Erro ao conectar ao banco de dados: " . $e->getMessage());
+    error_log("[database.php] Erro ao conectar ao banco de dados: " . $e->getMessage());
+    throw $e;
 }
