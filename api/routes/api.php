@@ -219,9 +219,15 @@ return function ($app) {
     
     // Rotas públicas
     $app->post('/auth/register', [AuthController::class, 'register']);
-    $app->post('/auth/login', [AuthController::class, 'login']);
+    $app->post('/auth/login', function($request, $response) {
+        $controller = new AuthController();
+        return $controller->login($request, $response);
+    });
     // Rota alternativa para login (contorno de possíveis bloqueios em /auth)
-    $app->post('/signin', [AuthController::class, 'login']);
+    $app->post('/signin', function($request, $response) {
+        $controller = new AuthController();
+        return $controller->login($request, $response);
+    });
     // Diagnóstico de POST (ecoar headers e body)
     $app->post('/auth/diagnose', function($request, $response) {
         $rawBody = (string)$request->getBody();
