@@ -402,6 +402,16 @@ class AuthController
     )]
     public function listTenants(Request $request, Response $response): Response
     {
+        // Guardar contra falha de inicialização de DB
+        if ($this->dbInitError !== null || !isset($this->usuarioModel)) {
+            $response->getBody()->write(json_encode([
+                'status' => 'error',
+                'code' => 'DATABASE_CONNECTION_FAILED',
+                'message' => 'Falha ao conectar ao banco de dados',
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(503);
+        }
+
         $userId = $request->getAttribute('userId');
         if (!$userId) {
             $response->getBody()->write(json_encode([

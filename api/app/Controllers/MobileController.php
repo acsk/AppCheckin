@@ -31,16 +31,22 @@ class MobileController
     private WodBloco $wodBlocoModel;
     private WodVariacao $wodVariacaoModel;
     private \PDO $db;
+    private ?string $dbInitError = null;
 
     public function __construct()
     {
-        $this->db = require __DIR__ . '/../../config/database.php';
-        $this->usuarioModel = new Usuario($this->db);
-        $this->turmaModel = new Turma($this->db);
-        $this->checkinModel = new Checkin($this->db);
-        $this->wodModel = new Wod($this->db);
-        $this->wodBlocoModel = new WodBloco($this->db);
-        $this->wodVariacaoModel = new WodVariacao($this->db);
+        try {
+            $this->db = require __DIR__ . '/../../config/database.php';
+            $this->usuarioModel = new Usuario($this->db);
+            $this->turmaModel = new Turma($this->db);
+            $this->checkinModel = new Checkin($this->db);
+            $this->wodModel = new Wod($this->db);
+            $this->wodBlocoModel = new WodBloco($this->db);
+            $this->wodVariacaoModel = new WodVariacao($this->db);
+        } catch (\Throwable $e) {
+            $this->dbInitError = $e->getMessage();
+            error_log('[MobileController::__construct] DB init error: ' . $this->dbInitError);
+        }
     }
 
     /**
@@ -86,6 +92,15 @@ class MobileController
     public function perfil(Request $request, Response $response): Response
     {
         try {
+            if ($this->dbInitError !== null || !isset($this->usuarioModel)) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'DATABASE_CONNECTION_FAILED',
+                    'message' => 'Falha ao conectar ao banco de dados'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(503);
+            }
             $userId = $request->getAttribute('userId');
             $tenantId = $request->getAttribute('tenantId');
             

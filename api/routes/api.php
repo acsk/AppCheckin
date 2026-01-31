@@ -628,6 +628,39 @@ return function ($app) {
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
             }
         });
+
+        // tenants alias (rota alternativa sem prefixo /auth)
+        $group->get('/tenants', function($request, $response) {
+            try {
+                $controller = new AuthController();
+                return $controller->listTenants($request, $response);
+            } catch (\Throwable $e) {
+                error_log('[Route /v1/tenants] EXCEPTION: ' . $e->getMessage());
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'code' => 'TENANTS_INTERNAL_ERROR',
+                    'message' => 'Erro ao listar academias do usuário'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            }
+        })->add(AuthMiddleware::class);
+
+        // perfil alias (rota alternativa sem prefixo /mobile)
+        $group->get('/profile', function($request, $response) {
+            try {
+                $controller = new MobileController();
+                return $controller->perfil($request, $response);
+            } catch (\Throwable $e) {
+                error_log('[Route /v1/profile] EXCEPTION: ' . $e->getMessage());
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'MOBILE_PERFIL_INTERNAL_ERROR',
+                    'message' => 'Erro ao carregar perfil do usuário'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            }
+        })->add(AuthMiddleware::class);
     });
     $app->post('/auth/password-recovery/request', [AuthController::class, 'forgotPassword']);
     $app->post('/auth/password-recovery/validate-token', [AuthController::class, 'validatePasswordToken']);
