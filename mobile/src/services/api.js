@@ -51,32 +51,17 @@ const api = {
 
       // Buscar token do storage
       const token = await AsyncStorage.getItem("@appcheckin:token");
-      // Buscar tenant atual
-      let tenantHeader = {};
-      try {
-        const tenantJson = await AsyncStorage.getItem(
-          "@appcheckin:current_tenant",
-        );
-        const tenant = tenantJson ? JSON.parse(tenantJson) : null;
-        const tenantId = tenant?.tenant?.id ?? tenant?.id;
-        const tenantSlug = tenant?.tenant?.slug ?? tenant?.slug;
-        if (tenantId) {
-          tenantHeader = { "X-Tenant-Id": String(tenantId) };
-        } else if (tenantSlug) {
-          tenantHeader = { "X-Tenant-Slug": String(tenantSlug) };
-        }
-      } catch (e) {
-        // Sem tenant, backend pode retornar 400 em rotas sensíveis
-      }
 
       // Debug: listar todas as chaves do storage
       const allKeys = await AsyncStorage.getAllKeys?.();
       console.log("🔍 Chaves no storage:", allKeys);
 
       // Montar headers base
+      // Atenção: não injeta X-Tenant-* por padrão.
+      // O backend usa o tenant do JWT. Caso alguma rota específica exija,
+      // passe explicitamente via config.headers.
       const headers = {
         ...config.headers,
-        ...tenantHeader,
       };
 
       // Content-Type:

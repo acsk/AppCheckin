@@ -29,16 +29,11 @@ class TenantMiddleware
         $tenantSource = 'none';
         $path = $request->getUri()->getPath();
         
-        // 1. Priorizar X-Tenant-Id (permite troca dinâmica pelo front sem reemitir token)
+        // 1. Priorizar X-Tenant-Id (sem consulta ao banco no middleware)
         $tenantIdHeader = $request->getHeaderLine('X-Tenant-Id');
         if ($tenantIdHeader !== '') {
-            $db = require __DIR__ . '/../../config/database.php';
-            $tenantModel = new Tenant($db);
-            $tenant = $tenantModel->findById((int)$tenantIdHeader);
-            if (!$tenant) {
-                return $this->errorResponse('Tenant não encontrado ou inativo');
-            }
-            $tenantId = (int)$tenant['id'];
+            // Confiar no ID informado; validações mais profundas devem ocorrer nos controllers/services
+            $tenantId = (int)$tenantIdHeader;
             $tenantSource = 'header-id';
         }
 
@@ -46,13 +41,8 @@ class TenantMiddleware
         if (!$tenantId) {
             $tenantSlug = $request->getHeaderLine('X-Tenant-Slug');
             if ($tenantSlug) {
-                $db = require __DIR__ . '/../../config/database.php';
-                $tenantModel = new Tenant($db);
-                $tenant = $tenantModel->findBySlug($tenantSlug);
-                if (!$tenant) {
-                    return $this->errorResponse('Tenant não encontrado ou inativo');
-                }
-                $tenantId = (int)$tenant['id'];
+                // Não resolver slug aqui; anexar para resolução posterior
+                $request = $request->withAttribute('tenantSlug', $tenantSlug);
                 $tenantSource = 'header-slug';
             }
         }

@@ -204,13 +204,6 @@ export default function AccountScreen() {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
-          ...(currentTenant?.tenant?.id || currentTenant?.id
-            ? {
-                "X-Tenant-Id": String(
-                  currentTenant?.tenant?.id ?? currentTenant?.id,
-                ),
-              }
-            : {}),
         },
       });
       const data = await response.json();
@@ -272,13 +265,6 @@ export default function AccountScreen() {
           method: "GET",
           headers: {
             Authorization: `Bearer ${token}`,
-            ...(currentTenant?.tenant?.id || currentTenant?.id
-              ? {
-                  "X-Tenant-Id": String(
-                    currentTenant?.tenant?.id ?? currentTenant?.id,
-                  ),
-                }
-              : {}),
           },
         });
         const data = await response.json();
