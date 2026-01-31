@@ -2,6 +2,9 @@
     RewriteEngine On
     RewriteBase /
 
+    # Garantir que o header Authorization esteja disponível no PHP (Hostinger/LiteSpeed)
+    SetEnvIf Authorization ".+" HTTP_AUTHORIZATION=$0
+
     # Força HTTPS, respeitando proxies
     RewriteCond %{HTTPS} !=on
     RewriteCond %{HTTP:X-Forwarded-Proto} !https

@@ -1,17 +1,19 @@
 <?php
 
 // Helper para obter variável de ambiente com fallback de nomes
-function env_or_server(string $key, array $fallbacks = []): ?string {
-    if (isset($_ENV[$key]) && $_ENV[$key] !== '') return $_ENV[$key];
-    if (isset($_SERVER[$key]) && $_SERVER[$key] !== '') return $_SERVER[$key];
-    foreach ($fallbacks as $alt) {
-        if (isset($_ENV[$alt]) && $_ENV[$alt] !== '') return $_ENV[$alt];
-        if (isset($_SERVER[$alt]) && $_SERVER[$alt] !== '') return $_SERVER[$alt];
-        $val = getenv($alt);
-        if ($val !== false && $val !== '') return $val;
+if (!function_exists('env_or_server')) {
+    function env_or_server(string $key, array $fallbacks = []): ?string {
+        if (isset($_ENV[$key]) && $_ENV[$key] !== '') return $_ENV[$key];
+        if (isset($_SERVER[$key]) && $_SERVER[$key] !== '') return $_SERVER[$key];
+        foreach ($fallbacks as $alt) {
+            if (isset($_ENV[$alt]) && $_ENV[$alt] !== '') return $_ENV[$alt];
+            if (isset($_SERVER[$alt]) && $_SERVER[$alt] !== '') return $_SERVER[$alt];
+            $val = getenv($alt);
+            if ($val !== false && $val !== '') return $val;
+        }
+        $val = getenv($key);
+        return ($val !== false && $val !== '') ? $val : null;
     }
-    $val = getenv($key);
-    return ($val !== false && $val !== '') ? $val : null;
 }
 
 $host = env_or_server('DB_HOST', ['MYSQL_HOST', 'DBHOST']);
