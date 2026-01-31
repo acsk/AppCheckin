@@ -2,6 +2,10 @@
     RewriteEngine On
     RewriteBase /
     
+    # Tratar preflight CORS diretamente no Apache (garante sucesso mesmo antes do PHP)
+    RewriteCond %{REQUEST_METHOD} OPTIONS
+    RewriteRule ^ - [R=200,L]
+    
     # Se for arquivo ou diretório real, deixa passar
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d
@@ -19,6 +23,15 @@
     AddOutputFilterByType DEFLATE text/css
     AddOutputFilterByType DEFLATE application/javascript
     AddOutputFilterByType DEFLATE application/json
+</IfModule>
+
+
+# Headers CORS (fallback em nível de servidor)
+<IfModule mod_headers.c>
+    Header always set Access-Control-Allow-Origin "*"
+    Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+    Header always set Access-Control-Allow-Headers "X-Requested-With, Content-Type, Accept, Origin, Authorization, X-Tenant-Id, X-Tenant-Slug"
+    Header always set Access-Control-Max-Age "86400"
 </IfModule>
 
 
