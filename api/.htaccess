@@ -2,9 +2,14 @@
     RewriteEngine On
     RewriteBase /
     
-    # Força HTTPS (PRIMEIRO!)
-    RewriteCond %{HTTPS} off
+    # Força HTTPS respeitando proxies (X-Forwarded-Proto)
+    RewriteCond %{HTTPS} !=on
+    RewriteCond %{HTTP:X-Forwarded-Proto} !https
     RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+    # Tratar preflight CORS diretamente
+    RewriteCond %{REQUEST_METHOD} OPTIONS
+    RewriteRule ^ - [R=200,L]
     
     # Se for arquivo real (não reescreve)
     RewriteCond %{REQUEST_FILENAME} -f
@@ -19,6 +24,13 @@
 </IfModule>
 
 # Headers de segurança (LiteSpeed pode ignorar, mas não prejudica)
+
+# Headers CORS (fallback em nível de servidor)
+<IfModule mod_headers.c>
+    Header always set Access-Control-Allow-Origin "*"
+    Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+    Header always set Access-Control-Allow-Headers "X-Requested-With, Content-Type, Accept, Origin, Authorization, X-Tenant-Id, X-Tenant-Slug"
+    Header always set Access-Control-Max-Age "86400"
 </IfModule>
 
 # Desabilita listagem de diretórios
