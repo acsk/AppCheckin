@@ -179,6 +179,7 @@ return function ($app) {
     
     // Seleção de tenant/academia (protegido, mas não precisa de tenant no contexto ainda)
     $app->post('/auth/select-tenant', [AuthController::class, 'selectTenant'])->add(AuthMiddleware::class);
+    $app->get('/auth/tenants', [AuthController::class, 'listTenants'])->add(AuthMiddleware::class);
     
     // Seleção inicial de tenant durante login (rota pública - usada quando múltiplos tenants)
     $app->post('/auth/select-tenant-initial', [AuthController::class, 'selectTenantPublic']);
@@ -270,6 +271,9 @@ return function ($app) {
         
         // Horários das aulas
         $group->get('/horarios-disponiveis', [MobileController::class, 'horariosDisponiveis']);
+        
+        // Presença (professor marca se aluno veio ou não)
+        $group->post('/turma/{turmaId}/confirmar-presenca', [MobileController::class, 'confirmarPresenca']);
         
         // WOD do dia
         $group->get('/wod/hoje', [MobileController::class, 'wodDodia']);

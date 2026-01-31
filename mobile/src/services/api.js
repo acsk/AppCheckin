@@ -51,19 +51,49 @@ const api = {
 
       // Buscar token do storage
       const token = await AsyncStorage.getItem("@appcheckin:token");
+      // Buscar tenant atual
+      let tenantHeader = {};
+      try {
+        const tenantJson = await AsyncStorage.getItem(
+          "@appcheckin:current_tenant",
+        );
+        const tenant = tenantJson ? JSON.parse(tenantJson) : null;
+        const tenantId = tenant?.tenant?.id ?? tenant?.id;
+        const tenantSlug = tenant?.tenant?.slug ?? tenant?.slug;
+        if (tenantId) {
+          tenantHeader = { "X-Tenant-Id": String(tenantId) };
+        } else if (tenantSlug) {
+          tenantHeader = { "X-Tenant-Slug": String(tenantSlug) };
+        }
+      } catch (e) {
+        // Sem tenant, backend pode retornar 400 em rotas sensíveis
+      }
 
       // Debug: listar todas as chaves do storage
       const allKeys = await AsyncStorage.getAllKeys?.();
       console.log("🔍 Chaves no storage:", allKeys);
 
-      // Montar headers
+      // Montar headers base
       const headers = {
         ...config.headers,
+        ...tenantHeader,
       };
 
-      // Adicionar Content-Type apenas se não for FormData
-      if (!(data instanceof FormData)) {
-        headers["Content-Type"] = "application/json";
+      // Content-Type:
+      // - Não enviar em GET/DELETE para evitar preflight CORS
+      // - Enviar apenas em métodos com corpo (POST/PUT/PATCH) quando não for FormData
+      const methodHasBody = ["POST", "PUT", "PATCH"].includes(method);
+      const isFormData = data instanceof FormData;
+      if (methodHasBody && !isFormData) {
+        // Só define se o chamador não definiu manualmente
+        if (!headers["Content-Type"]) {
+          headers["Content-Type"] = "application/json";
+        }
+      } else {
+        // Garante remoção de Content-Type em GET/DELETE
+        if (headers["Content-Type"]) {
+          delete headers["Content-Type"];
+        }
       }
 
       // Adicionar token se existir
@@ -155,6 +185,21 @@ const api = {
         throw {
           response: {
             status: 401,
+            data: responseData,
+          },
+          message: errorMessage,
+          code: errorCode,
+        };
+      }
+
+      // Tratar erros de contrato inativo (403)
+      if (response.status === 403) {
+        const errorMessage =
+          responseData?.message || responseData?.error || "Acesso negado";
+        const errorCode = responseData?.code;
+        throw {
+          response: {
+            status: 403,
             data: responseData,
           },
           message: errorMessage,

@@ -85,3 +85,44 @@ export const handleRequestError = async (error: any, defaultMessage: string = 'E
   // Se não conseguiu extrair mensagem, usar a padrão
   return errorMessage || defaultMessage;
 };
+
+/**
+ * Decodifica um JWT e retorna o payload.
+ * Suporta Base64 URL-safe.
+ */
+export const decodeJwtPayload = (token?: string): any | null => {
+  if (!token) return null;
+  try {
+    const parts = token.split('.');
+    if (parts.length < 2) return null;
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => `%${('00' + c.charCodeAt(0).toString(16)).slice(-2)}`)
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch (e) {
+    console.warn('⚠️ Falha ao decodificar JWT:', e);
+    return null;
+  }
+};
+
+/**
+ * Obtém o payload do token armazenado.
+ */
+export const getTokenPayload = async (): Promise<any | null> => {
+  const token = await AsyncStorage.getItem('@appcheckin:token');
+  return decodeJwtPayload(token || undefined);
+};
+
+/**
+ * Obtém o tenant_id presente no token atual.
+ */
+export const getTokenTenantId = async (): Promise<number | null> => {
+  const payload = await getTokenPayload();
+  const tid = payload?.tenant_id ?? payload?.tenantId;
+  return typeof tid === 'number' ? tid : tid ? Number(tid) : null;
+};

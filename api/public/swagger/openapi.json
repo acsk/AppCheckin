@@ -227,6 +227,52 @@
                 ]
             }
         },
+        "/auth/tenants": {
+            "get": {
+                "tags": [
+                    "Autenticação"
+                ],
+                "summary": "Listar tenants do usuário",
+                "description": "Retorna os tenants/academias vinculados ao usuário autenticado e indica se é necessária seleção.",
+                "operationId": "a83a50a33f138a63474ece3b01ed395e",
+                "responses": {
+                    "200": {
+                        "description": "Tenants retornados com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "tenants": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object"
+                                            }
+                                        },
+                                        "requires_tenant_selection": {
+                                            "type": "boolean",
+                                            "example": false
+                                        },
+                                        "current_tenant_id": {
+                                            "type": "integer",
+                                            "nullable": true
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
         "/auth/select-tenant": {
             "post": {
                 "tags": [
@@ -1034,6 +1080,48 @@
                                                             },
                                                             "ja_tem_checkin": {
                                                                 "type": "boolean"
+                                                            },
+                                                            "checkin": {
+                                                                "properties": {
+                                                                    "disponivel": {
+                                                                        "description": "Se o check-in está disponível agora",
+                                                                        "type": "boolean",
+                                                                        "example": true
+                                                                    },
+                                                                    "ja_abriu": {
+                                                                        "description": "Se o horário de check-in já foi liberado",
+                                                                        "type": "boolean",
+                                                                        "example": true
+                                                                    },
+                                                                    "ja_fechou": {
+                                                                        "description": "Se o horário de check-in já encerrou",
+                                                                        "type": "boolean",
+                                                                        "example": false
+                                                                    },
+                                                                    "abertura": {
+                                                                        "description": "Data/hora de abertura do check-in",
+                                                                        "type": "string",
+                                                                        "format": "datetime",
+                                                                        "example": "2025-01-29 10:00:00"
+                                                                    },
+                                                                    "fechamento": {
+                                                                        "description": "Data/hora de fechamento do check-in",
+                                                                        "type": "string",
+                                                                        "format": "datetime",
+                                                                        "example": "2025-01-29 18:10:00"
+                                                                    },
+                                                                    "tolerancia_antes_minutos": {
+                                                                        "description": "Minutos antes do horário que o check-in abre",
+                                                                        "type": "integer",
+                                                                        "example": 480
+                                                                    },
+                                                                    "tolerancia_depois_minutos": {
+                                                                        "description": "Minutos após o horário que o check-in fecha",
+                                                                        "type": "integer",
+                                                                        "example": 10
+                                                                    }
+                                                                },
+                                                                "type": "object"
                                                             }
                                                         },
                                                         "type": "object"
@@ -1223,6 +1311,65 @@
                     },
                     "401": {
                         "description": "Não autorizado"
+                    },
+                    "404": {
+                        "description": "Turma não encontrada"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/mobile/turma/{turmaId}/confirmar-presenca": {
+            "post": {
+                "tags": [
+                    "Mobile"
+                ],
+                "summary": "Confirmar presença da turma",
+                "description": "Professor marca presença/falta dos alunos. Opcionalmente remove check-ins de faltantes (libera crédito).",
+                "operationId": "266d9668fa439cb83f6cc1221adc8acd",
+                "parameters": [
+                    {
+                        "name": "turmaId",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "presencas": {
+                                        "description": "Objeto com checkin_id => boolean",
+                                        "type": "object"
+                                    },
+                                    "remover_faltantes": {
+                                        "description": "Se true, remove check-ins de faltantes",
+                                        "type": "boolean"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Presença confirmada com sucesso"
+                    },
+                    "400": {
+                        "description": "Dados inválidos"
+                    },
+                    "403": {
+                        "description": "Sem permissão"
                     },
                     "404": {
                         "description": "Turma não encontrada"

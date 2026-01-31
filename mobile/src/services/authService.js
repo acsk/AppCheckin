@@ -14,6 +14,13 @@ export const authService = {
     try {
       const response = await api.post("/auth/login", { email, senha });
 
+      console.log("🔐 LOGIN RESPONSE COMPLETO:", JSON.stringify(response.data, null, 2));
+      console.log("🔐 USER no login:", response.data.user);
+      console.log("🔐 TENANTS no login:", response.data.tenants);
+      if (response.data.tenants?.[0]) {
+        console.log("🔐 PRIMEIRO TENANT DETALHES:", JSON.stringify(response.data.tenants[0], null, 2));
+      }
+
       // Se tem token, já salva (usuário tem apenas 1 tenant)
       if (response.data.token) {
         await AsyncStorage.setItem("@appcheckin:token", response.data.token);
@@ -79,6 +86,10 @@ export const authService = {
       });
 
       if (response.data.token) {
+        console.log("🔐 SELECT-TENANT-INITIAL RESPONSE:", JSON.stringify(response.data, null, 2));
+        console.log("🔐 USER após select-tenant:", response.data.user);
+        console.log("🔐 USER.papel_id após select-tenant:", response.data.user?.papel_id);
+        
         await AsyncStorage.setItem("@appcheckin:token", response.data.token);
         await AsyncStorage.setItem(
           "@appcheckin:user",
@@ -99,6 +110,16 @@ export const authService = {
             "@appcheckin:current_tenant",
             JSON.stringify(response.data.tenant),
           );
+          const t = response.data.tenant;
+          if (t?.id) {
+            await AsyncStorage.setItem("@appcheckin:tenant_id", String(t.id));
+          }
+          if (t?.slug) {
+            await AsyncStorage.setItem("@appcheckin:tenant_slug", t.slug);
+          }
+          if (t?.nome) {
+            await AsyncStorage.setItem("@appcheckin:tenant_nome", t.nome);
+          }
         }
       }
 
@@ -131,6 +152,16 @@ export const authService = {
             "@appcheckin:current_tenant",
             JSON.stringify(response.data.tenant),
           );
+          const t = response.data.tenant;
+          if (t?.id) {
+            await AsyncStorage.setItem("@appcheckin:tenant_id", String(t.id));
+          }
+          if (t?.slug) {
+            await AsyncStorage.setItem("@appcheckin:tenant_slug", t.slug);
+          }
+          if (t?.nome) {
+            await AsyncStorage.setItem("@appcheckin:tenant_nome", t.nome);
+          }
         }
       }
 
@@ -178,8 +209,20 @@ export const authService = {
    * Retorna os tenants disponíveis do usuário
    */
   async getTenants() {
-    const tenantsJson = await AsyncStorage.getItem("@appcheckin:tenants");
-    return tenantsJson ? JSON.parse(tenantsJson) : null;
+    try {
+      const response = await api.get("/auth/tenants");
+      const list = response?.data?.tenants || response?.data || [];
+      if (Array.isArray(list)) {
+        await AsyncStorage.setItem(
+          "@appcheckin:tenants",
+          JSON.stringify(list),
+        );
+      }
+      return list;
+    } catch (error) {
+      const errorData = error.response?.data || error;
+      throw errorData;
+    }
   },
 
   /**

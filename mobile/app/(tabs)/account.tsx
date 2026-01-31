@@ -1,6 +1,7 @@
 import { DebugLogsViewer } from "@/components/DebugLogsViewer";
 import PasswordRecoveryModal from "@/components/PasswordRecoveryModal";
-import mobileService from "@/src/services/mobileService";
+import AuthService from "@/src/services/authService";
+import MobileService from "@/src/services/mobileService";
 import { colors } from "@/src/theme/colors";
 import {
   DiaCheckin,
@@ -9,7 +10,7 @@ import {
   UserProfile,
 } from "@/src/types";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
-import { handleAuthError } from "@/src/utils/authHelpers";
+import { getTokenTenantId, handleAuthError } from "@/src/utils/authHelpers";
 import {
   compressImage,
   logCompressionInfo,
@@ -18,7 +19,7 @@ import AsyncStorage from "@/src/utils/storage";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -39,6 +40,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 export default function AccountScreen() {
   const router = useRouter();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [currentTenant, setCurrentTenant] = useState<any | null>(null);
+  const [tenants, setTenants] = useState<any[]>([]);
+  const [showTenantModal, setShowTenantModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [rankingLoading, setRankingLoading] = useState(false);
   const [rankingError, setRankingError] = useState<string | null>(null);
@@ -50,17 +54,23 @@ export default function AccountScreen() {
   const [selectedModalidadeId, setSelectedModalidadeId] = useState<
     number | null
   >(null);
-  const [modalidadesFromTurmasLoaded, setModalidadesFromTurmasLoaded] =
-    useState(false);
+  // Removido: carregamento de modalidades a partir de turmas (não utilizado)
   const [updatingPhoto, setUpdatingPhoto] = useState(false);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [apiUrl, setApiUrl] = useState<string>("");
-  const [assetsUrl, setAssetsUrl] = useState<string>("");
+  // const [assetsUrl, setAssetsUrl] = useState<string>("");
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
   const sidebarTranslateX = useRef(
     new Animated.Value(-Dimensions.get("window").width),
   ).current;
+  // Flags para evitar chamadas duplicadas e controlar ciclo de fetch
+  const hasLoadedWeekRef = useRef(false);
+  const lastRankingCalledIdRef = useRef<number | null>(null);
+  const hasVerifiedTokenTenantRef = useRef(false);
+  const latestProfileReqRef = useRef<number>(0);
+  const latestRankingReqRef = useRef<number>(0);
+  const latestWeekReqRef = useRef<number>(0);
 
   // Estados do calendário semanal de check-ins
   const [weekDias, setWeekDias] = useState<DiaCheckin[]>([]);
@@ -116,12 +126,284 @@ export default function AccountScreen() {
     ).toUpperCase();
   };
 
+  // Memoized loaders to satisfy hook dependencies
+  const loadUserProfileMemo = useCallback(async () => {
+    try {
+      console.log("\n🔄 INICIANDO CARREGAMENTO DE PERFIL");
+      const expectedTenantId =
+        currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
+      const reqId = Date.now();
+      latestProfileReqRef.current = reqId;
+      const token = await AsyncStorage.getItem("@appcheckin:token");
+      if (!token) {
+        console.error("❌ Token não encontrado");
+        router.replace("/(auth)/login");
+        return;
+      }
+      const profileData = await MobileService.getPerfil();
+      if (profileData?.success) {
+        // Garantir que aplicamos apenas a resposta mais recente e do tenant esperado
+        const tokenTid = await getTokenTenantId();
+        if (latestProfileReqRef.current !== reqId) {
+          console.warn("⏭️ Ignorando resposta de perfil (requisição obsoleta)");
+          return;
+        }
+        if (expectedTenantId && tokenTid && tokenTid !== expectedTenantId) {
+          console.warn("⏭️ Ignorando resposta de perfil (tenant divergente)");
+          return;
+        }
+        setUserProfile(profileData.data);
+        if (profileData.data?.foto_caminho) {
+          const fullPhotoUrl = apiUrl + profileData.data.foto_caminho;
+          console.log("🖼️ URL COMPLETA DA FOTO:", fullPhotoUrl);
+        }
+      } else {
+        const errorMsg =
+          profileData?.error || "Não foi possível carregar o perfil";
+        Alert.alert("Erro", errorMsg);
+      }
+    } catch (error: any) {
+      const status = error?.response?.status;
+      if (status === 401) {
+        console.log("🔑 Detectado 401 - Token inválido/expirado");
+        await handleAuthError();
+        router.replace("/(auth)/login");
+        return;
+      }
+      if (status === 403) {
+        const code = error?.code || error?.response?.data?.code;
+        if (code === "NO_ACTIVE_CONTRACT") {
+          Alert.alert(
+            "Contrato Inativo",
+            "Seu acesso a esta academia está bloqueado. Verifique seu plano/contrato.",
+          );
+          return;
+        }
+      }
+      Alert.alert("Erro", error?.message || "Erro ao conectar com o servidor");
+    } finally {
+      setLoading(false);
+    }
+  }, [apiUrl, router, currentTenant]);
+
+  const loadWeekCheckinsMemo = useCallback(async () => {
+    try {
+      setWeekLoading(true);
+      const expectedTenantId =
+        currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
+      const reqId = Date.now();
+      latestWeekReqRef.current = reqId;
+      const token = await AsyncStorage.getItem("@appcheckin:token");
+      if (!token) return;
+      const url = `${getApiUrlRuntime()}/mobile/checkins/por-modalidade`;
+      console.log("📅 [Semana] Request iniciada", {
+        tenantId: expectedTenantId,
+        url,
+      });
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(currentTenant?.tenant?.id || currentTenant?.id
+            ? {
+                "X-Tenant-Id": String(
+                  currentTenant?.tenant?.id ?? currentTenant?.id,
+                ),
+              }
+            : {}),
+        },
+      });
+      const data = await response.json();
+      const tokenTid = await getTokenTenantId();
+      if (latestWeekReqRef.current !== reqId) {
+        console.warn("⏭️ [Semana] Ignorando resposta (requisição obsoleta)");
+        return;
+      }
+      if (expectedTenantId && tokenTid && tokenTid !== expectedTenantId) {
+        console.warn("⏭️ [Semana] Ignorando resposta (tenant divergente)");
+        return;
+      }
+      if (response.ok && data?.success) {
+        console.log("✅ [Semana] Sucesso", {
+          semana_inicio: data.data?.semana_inicio,
+          semana_fim: data.data?.semana_fim,
+          diasCount: Array.isArray(data.data?.dias) ? data.data.dias.length : 0,
+        });
+        setWeekSemanaInicio(data.data?.semana_inicio || null);
+        setWeekSemanaFim(data.data?.semana_fim || null);
+        setWeekDias(data.data?.dias || []);
+      } else {
+        console.warn("⚠️ Erro ao carregar check-ins da semana:", data?.error);
+        setWeekDias([]);
+      }
+    } catch (error) {
+      console.error("❌ Erro ao carregar check-ins da semana:", error);
+      setWeekDias([]);
+    } finally {
+      setWeekLoading(false);
+    }
+  }, [currentTenant]);
+
+  // Carrega modalidades a partir das turmas disponíveis
+  // Removido: função loadModalidadesFromTurmas (não utilizada)
+
+  const loadRankingMemo = useCallback(
+    async (modalidadeId?: number | null) => {
+      try {
+        setRankingError(null);
+        setRankingLoading(true);
+        const expectedTenantId =
+          currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
+        const reqId = Date.now();
+        latestRankingReqRef.current = reqId;
+        const token = await AsyncStorage.getItem("@appcheckin:token");
+        if (!token) {
+          setRankingError("Token não encontrado");
+          return;
+        }
+        const params = modalidadeId ? `?modalidade_id=${modalidadeId}` : "";
+        const url = `${getApiUrlRuntime()}/mobile/ranking/mensal${params}`;
+        console.log("🏆 [Ranking] Request iniciada", {
+          tenantId: expectedTenantId,
+          modalidadeId: modalidadeId ?? null,
+          url,
+        });
+        const response = await fetch(url, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            ...(currentTenant?.tenant?.id || currentTenant?.id
+              ? {
+                  "X-Tenant-Id": String(
+                    currentTenant?.tenant?.id ?? currentTenant?.id,
+                  ),
+                }
+              : {}),
+          },
+        });
+        const data = await response.json();
+        const tokenTid = await getTokenTenantId();
+        if (latestRankingReqRef.current !== reqId) {
+          console.warn("⏭️ [Ranking] Ignorando resposta (requisição obsoleta)");
+          return;
+        }
+        if (expectedTenantId && tokenTid && tokenTid !== expectedTenantId) {
+          console.warn("⏭️ [Ranking] Ignorando resposta (tenant divergente)");
+          return;
+        }
+        if (!response.ok || !data?.success) {
+          throw new Error(data?.error || "Erro ao carregar ranking");
+        }
+        const rankingData = data?.data;
+        console.log("✅ [Ranking] Sucesso", {
+          periodo: rankingData?.periodo,
+          rankingTop3Count: Array.isArray(rankingData?.ranking)
+            ? Math.min(3, rankingData.ranking.length)
+            : 0,
+          modalidadesCount: Array.isArray(rankingData?.modalidades)
+            ? rankingData.modalidades.length
+            : 0,
+        });
+        setRanking(rankingData?.ranking || []);
+        setRankingPeriodo(rankingData?.periodo || "");
+        const apiModalidades = normalizeApiModalidades(
+          Array.isArray(rankingData?.modalidades)
+            ? rankingData.modalidades
+            : [],
+        );
+        const profileModalidades = normalizeProfileModalidades(
+          userProfile?.ranking_modalidades || [],
+        );
+        const mergedModalidades = mergeModalidades(
+          apiModalidades,
+          profileModalidades,
+        );
+        setRankingModalidades(mergedModalidades);
+      } catch (error: any) {
+        setRankingError(error?.message || "Erro ao carregar ranking");
+      } finally {
+        setRankingLoading(false);
+      }
+    },
+    [currentTenant, userProfile],
+  );
+
+  // Inicializa API URL e carrega tenants no mount
+
   useEffect(() => {
-    // Initialize API URL
     setApiUrl(getApiUrlRuntime());
     console.log("📍 API URL (Account):", getApiUrlRuntime());
-    loadUserProfile();
+    (async () => {
+      try {
+        const ts = await AuthService.getTenants();
+        setTenants(Array.isArray(ts) ? ts : []);
+        const ct = await AuthService.getCurrentTenant();
+        setCurrentTenant(ct);
+      } catch (e) {
+        console.warn("⚠️ Falha ao carregar tenants atuais", e);
+      }
+    })();
   }, []);
+
+  // Carrega perfil quando API URL estiver disponível
+  useEffect(() => {
+    if (apiUrl) {
+      loadUserProfileMemo();
+    }
+  }, [apiUrl, loadUserProfileMemo]);
+
+  // Recarrega perfil quando o tenant mudar (após troca de academia)
+  useEffect(() => {
+    const tenantId = currentTenant?.tenant?.id ?? currentTenant?.id;
+    if (apiUrl && tenantId) {
+      loadUserProfileMemo();
+    }
+  }, [currentTenant, apiUrl, loadUserProfileMemo]);
+
+  // Garante que o token esteja alinhado com o tenant atual
+  useEffect(() => {
+    const ensureTenantTokenAlignment = async () => {
+      const tenantId = currentTenant?.tenant?.id ?? currentTenant?.id;
+      if (!tenantId) return; // Aguarda tenant
+      if (hasVerifiedTokenTenantRef.current) return; // Evita duplicidade
+      const tokenTenantId = await getTokenTenantId();
+      if (tokenTenantId && tokenTenantId !== tenantId) {
+        console.log(
+          `🔁 Realinhando token: token.tenant_id=${tokenTenantId} → atual=${tenantId}`,
+        );
+        try {
+          await AuthService.selectTenant(tenantId);
+          await loadUserProfileMemo();
+          const ct = await AuthService.getCurrentTenant();
+          setCurrentTenant(ct);
+        } catch (e) {
+          console.warn("⚠️ Falha ao realinhar token com tenant", e);
+        }
+      }
+      hasVerifiedTokenTenantRef.current = true;
+    };
+    ensureTenantTokenAlignment();
+  }, [currentTenant, loadUserProfileMemo]);
+
+  // Logs de auditoria: token vs tenant corrente
+  useEffect(() => {
+    const logTenantAlignment = async () => {
+      const tenantId = currentTenant?.tenant?.id ?? currentTenant?.id;
+      const tenantNome = currentTenant?.tenant?.nome ?? currentTenant?.nome;
+      if (!tenantId) return;
+      const tokenTenantId = await getTokenTenantId();
+      console.log(
+        `🏷️ Tenant atual: id=${tenantId} nome=${tenantNome ?? "(sem nome)"}`,
+      );
+      console.log(`🔎 JWT tenant_id: ${tokenTenantId ?? "null"}`);
+      if (tokenTenantId && tokenTenantId !== tenantId) {
+        console.warn("⚠️ Divergência: token aponta para outro tenant");
+      } else {
+        console.log("✅ Token alinhado com tenant atual");
+      }
+    };
+    logTenantAlignment();
+  }, [currentTenant]);
 
   const openSidebar = () => {
     const screenWidth = Dimensions.get("window").width;
@@ -150,22 +432,32 @@ export default function AccountScreen() {
   };
 
   useEffect(() => {
-    if (userProfile) {
-      loadRanking();
+    if (!userProfile) return;
+
+    // Carrega ranking apenas uma vez quando ainda não temos modalidades
+    if (rankingModalidades.length === 0) {
+      loadRankingMemo();
+
+      // Semeia modalidades a partir do perfil apenas na primeira carga
       if (userProfile.ranking_modalidades?.length) {
         const modalidades = normalizeProfileModalidades(
           userProfile.ranking_modalidades,
         );
         setRankingModalidades(modalidades);
-        // Sempre seta a primeira modalidade ao carregar
-        if (!selectedModalidadeId) {
+        if (!selectedModalidadeId && modalidades[0]) {
           setSelectedModalidadeId(modalidades[0].id);
         }
       }
     }
-  }, [userProfile]);
+  }, [
+    userProfile,
+    loadRankingMemo,
+    selectedModalidadeId,
+    rankingModalidades.length,
+  ]);
 
   // Debug: quando apiUrl ou userProfile mudam
+
   useEffect(() => {
     if (userProfile && apiUrl) {
       console.log("\n🔍 DEBUG: Render Photo");
@@ -179,53 +471,63 @@ export default function AccountScreen() {
   }, [userProfile, apiUrl, photoUrl]);
 
   // Carregar ranking quando modalidade selecionada muda
+
   useEffect(() => {
+    const tenantId = currentTenant?.tenant?.id ?? currentTenant?.id;
+    if (!tenantId) return; // Aguarda tenant carregado
     if (selectedModalidadeId && userProfile) {
-      loadRanking(selectedModalidadeId);
+      console.log("🔸 [Ranking] Trigger por mudança de modalidade", {
+        tenantId,
+        selectedModalidadeId,
+      });
+      if (lastRankingCalledIdRef.current === selectedModalidadeId) {
+        return;
+      }
+      lastRankingCalledIdRef.current = selectedModalidadeId;
+      loadRankingMemo(selectedModalidadeId);
     }
-  }, [selectedModalidadeId]);
+  }, [selectedModalidadeId, userProfile, loadRankingMemo, currentTenant]);
 
   // Carregar check-ins da semana quando userProfile xcarrega
   useEffect(() => {
-    if (userProfile) {
-      loadWeekCheckins();
-    }
-  }, [userProfile]);
-
-  const loadWeekCheckins = async () => {
-    try {
-      setWeekLoading(true);
-      const token = await AsyncStorage.getItem("@appcheckin:token");
-      if (!token) return;
-
-      const url = `${getApiUrlRuntime()}/mobile/checkins/por-modalidade`;
-
-      console.log("📅 Carregando check-ins da semana:", url);
-
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
+    const tenantId = currentTenant?.tenant?.id ?? currentTenant?.id;
+    if (!tenantId) return; // Aguarda tenant carregado
+    if (userProfile && !hasLoadedWeekRef.current) {
+      console.log("🔹 [Semana] Trigger por carregamento de perfil", {
+        tenantId,
       });
+      hasLoadedWeekRef.current = true;
+      loadWeekCheckinsMemo();
+    }
+  }, [userProfile, loadWeekCheckinsMemo, currentTenant]);
 
-      const data = await response.json();
+  // Reset flags ao trocar de tenant
+  useEffect(() => {
+    hasLoadedWeekRef.current = false;
+    lastRankingCalledIdRef.current = null;
+    hasVerifiedTokenTenantRef.current = false;
+    // Limpa dados dependentes de tenant para evitar exibição de informações antigas
+    setRanking([]);
+    setRankingPeriodo("");
+    setRankingModalidades([]);
+    setSelectedModalidadeId(null);
+    setWeekDias([]);
+    setWeekSemanaInicio(null);
+    setWeekSemanaFim(null);
+  }, [currentTenant]);
 
-      if (response.ok && data?.success) {
-        console.log("✅ Check-ins da semana carregados:", data.data);
-        setWeekSemanaInicio(data.data?.semana_inicio || null);
-        setWeekSemanaFim(data.data?.semana_fim || null);
-        setWeekDias(data.data?.dias || []);
-      } else {
-        console.warn("⚠️ Erro ao carregar check-ins da semana:", data?.error);
-        setWeekDias([]);
-      }
-    } catch (error) {
-      console.error("❌ Erro ao carregar check-ins da semana:", error);
-      setWeekDias([]);
-    } finally {
-      setWeekLoading(false);
+  // loadWeekCheckins replaced by memoized version above
+
+  const handleSelectTenant = async (tenantId: number) => {
+    try {
+      await AuthService.selectTenant(tenantId);
+      setShowTenantModal(false);
+      const ct = await AuthService.getCurrentTenant();
+      setCurrentTenant(ct);
+      // Perfil será recarregado pelo efeito que depende de currentTenant
+    } catch (e: any) {
+      console.warn("⚠️ Falha ao selecionar tenant", e);
+      Alert.alert("Erro", "Não foi possível trocar de academia.");
     }
   };
 
@@ -298,7 +600,7 @@ export default function AccountScreen() {
     return "";
   };
 
-  const formatCPF = (cpf) => {
+  const formatCPF = (cpf: string) => {
     if (!cpf) return "";
     const cleaned = cpf.replace(/\D/g, "");
     return cleaned.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
@@ -313,104 +615,7 @@ export default function AccountScreen() {
     return cleaned.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3");
   };
 
-  const loadUserProfile = async () => {
-    try {
-      console.log("\n🔄 INICIANDO CARREGAMENTO DE PERFIL");
-
-      const token = await AsyncStorage.getItem("@appcheckin:token");
-
-      if (!token) {
-        console.error("❌ Token não encontrado");
-        router.replace("/(auth)/login");
-        return;
-      }
-      console.log("✅ Token encontrado");
-
-      const headers = {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      };
-
-      const baseUrl = getApiUrlRuntime();
-      const url = `${baseUrl}/mobile/perfil`;
-      console.log("📍 URL:", url);
-
-      const profileResponse = await fetch(url, {
-        method: "GET",
-        headers: headers,
-      });
-
-      console.log("📡 RESPOSTA DO SERVIDOR");
-      console.log("   Status:", profileResponse.status);
-      console.log("   Status Text:", profileResponse.statusText);
-
-      const responseText = await profileResponse.text();
-      console.log(
-        "   Body (primeiros 500 chars):",
-        responseText.substring(0, 500),
-      );
-
-      if (!profileResponse.ok) {
-        // Se for 401, token expirou ou é inválido
-        if (profileResponse.status === 401) {
-          console.log("🔑 Detectado 401 - Token inválido/expirado");
-          await handleAuthError();
-          router.replace("/(auth)/login");
-          return;
-        }
-
-        console.error("❌ ERRO NA REQUISIÇÃO");
-        console.error("   Status:", profileResponse.status);
-        console.error("   Body completo:", responseText);
-        throw new Error(`Erro HTTP: ${profileResponse.status}`);
-      }
-
-      let profileData;
-      try {
-        profileData = JSON.parse(responseText);
-        console.log("✅ JSON parseado com sucesso");
-        console.log("   Dados:", JSON.stringify(profileData, null, 2));
-      } catch (parseError) {
-        console.error("❌ ERRO AO FAZER PARSE DO JSON");
-        console.error("   Erro:", parseError.message);
-        console.error("   Body:", responseText);
-        throw parseError;
-      }
-
-      if (profileData.success) {
-        console.log("✅ Perfil carregado com sucesso");
-        console.log(
-          "📸 foto_base64:",
-          profileData.data.foto_base64 ? "SIM" : "NÃO",
-        );
-        console.log(
-          "📸 foto_caminho:",
-          profileData.data.foto_caminho || "NÃO TEM",
-        );
-        if (profileData.data.foto_caminho) {
-          const fullPhotoUrl = apiUrl + profileData.data.foto_caminho;
-          console.log("🖼️ URL COMPLETA DA FOTO:", fullPhotoUrl);
-        }
-        setUserProfile(profileData.data);
-      } else {
-        Alert.alert(
-          "Erro",
-          profileData.error || "Não foi possível carregar o perfil",
-        );
-      }
-    } catch (error: any) {
-      if (error instanceof SyntaxError) {
-        Alert.alert(
-          "Servidor",
-          "Servidor indisponível. Tente novamente em alguns instantes.",
-        );
-      } else {
-        Alert.alert("Erro", "Erro ao conectar com o servidor");
-      }
-    } finally {
-      setLoading(false);
-    }
-  };
+  // loadUserProfile replaced by memoized version above
 
   const handleChangePhoto = async () => {
     try {
@@ -516,7 +721,7 @@ export default function AccountScreen() {
 
           // Enviar para servidor
           console.log("📸 Enviando foto para servidor...");
-          const response = await mobileService.atualizarFoto(formData);
+          const response: any = await MobileService.atualizarFoto(formData);
           console.log("📸 Resposta do servidor:", response);
 
           if (response?.success) {
@@ -533,7 +738,7 @@ export default function AccountScreen() {
             Alert.alert("Sucesso", "Foto atualizada com sucesso!");
             // Recarregar perfil para pegar a nova foto
             setUpdatingPhoto(false); // Desabilita loading ANTES de recarregar
-            await loadUserProfile();
+            await loadUserProfileMemo();
           } else {
             console.error("❌ Erro na resposta:", response);
             Alert.alert(
@@ -562,105 +767,9 @@ export default function AccountScreen() {
     }
   };
 
-  const loadRanking = async (modalidadeId?: number | null) => {
-    try {
-      setRankingError(null);
-      setRankingLoading(true);
-      const token = await AsyncStorage.getItem("@appcheckin:token");
-      if (!token) {
-        setRankingError("Token não encontrado");
-        return;
-      }
+  // loadRanking replaced by memoized version above
 
-      const params = modalidadeId ? `?modalidade_id=${modalidadeId}` : "";
-      const url = `${getApiUrlRuntime()}/mobile/ranking/mensal${params}`;
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      const data = await response.json();
-      if (!response.ok || !data?.success) {
-        throw new Error(data?.error || "Erro ao carregar ranking");
-      }
-
-      const rankingData = data?.data;
-      setRanking(rankingData?.ranking || []);
-      setRankingPeriodo(rankingData?.periodo || "");
-
-      const apiModalidades = normalizeApiModalidades(
-        Array.isArray(rankingData?.modalidades) ? rankingData.modalidades : [],
-      );
-      const profileModalidades = normalizeProfileModalidades(
-        userProfile?.ranking_modalidades || [],
-      );
-      const mergedModalidades = mergeModalidades(
-        apiModalidades,
-        profileModalidades,
-        rankingModalidades,
-      );
-
-      if (mergedModalidades.length > 0) {
-        setRankingModalidades(mergedModalidades);
-        if (!selectedModalidadeId) {
-          setSelectedModalidadeId(mergedModalidades[0].id);
-        }
-        // Não fazer chamada recursiva aqui, deixar para useEffect
-      } else if (!modalidadesFromTurmasLoaded) {
-        await loadModalidadesFromTurmas();
-      }
-    } catch (error: any) {
-      setRankingError(error?.message || "Erro ao carregar ranking");
-    } finally {
-      setRankingLoading(false);
-    }
-  };
-
-  const loadModalidadesFromTurmas = async () => {
-    try {
-      const token = await AsyncStorage.getItem("@appcheckin:token");
-      if (!token) {
-        return;
-      }
-      const hoje = new Date().toISOString().split("T")[0];
-      const url = `${getApiUrlRuntime()}/mobile/horarios-disponiveis?data=${hoje}`;
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-      if (!response.ok) {
-        return;
-      }
-      const data = await response.json();
-      const turmas = data?.data?.turmas || [];
-      const modalidadesMap = new Map<number, RankingModalidade>();
-      turmas.forEach((turma: any) => {
-        const mod = turma?.modalidade;
-        if (mod?.id && mod?.nome) {
-          if (!modalidadesMap.has(mod.id)) {
-            modalidadesMap.set(mod.id, {
-              id: mod.id,
-              nome: mod.nome,
-              icone: mod.icone,
-              cor: mod.cor,
-            });
-          }
-        }
-      });
-      const modalidades = Array.from(modalidadesMap.values());
-      setRankingModalidades(modalidades);
-      setModalidadesFromTurmasLoaded(true);
-      // Não fazer chamada recursiva aqui, deixar para useEffect
-    } catch {
-      setModalidadesFromTurmasLoaded(true);
-    }
-  };
+  // (removidas: definições duplicadas tardias de loadModalidadesFromTurmas e loadRankingMemo)
 
   if (loading) {
     return (
@@ -679,7 +788,7 @@ export default function AccountScreen() {
           <Text style={styles.errorText}>Erro ao carregar perfil</Text>
           <TouchableOpacity
             style={styles.retryButton}
-            onPress={loadUserProfile}
+            onPress={loadUserProfileMemo}
           >
             <Text style={styles.retryButtonText}>Tentar Novamente</Text>
           </TouchableOpacity>
@@ -740,7 +849,26 @@ export default function AccountScreen() {
                 )}
               </View>
             </View>
-            <Text style={styles.headerUserName}>{userProfile.nome}</Text>
+            <View style={styles.headerUserInfo}>
+              <Text style={styles.headerUserName}>{userProfile.nome}</Text>
+              {((currentTenant &&
+                (currentTenant.nome || currentTenant?.tenant?.nome)) ||
+                tenants.length > 1) && (
+                <TouchableOpacity
+                  style={styles.tenantSwitchButton}
+                  onPress={() => setShowTenantModal(true)}
+                  accessibilityLabel="Trocar de academia"
+                  activeOpacity={0.8}
+                >
+                  <Feather name="shuffle" size={12} color="#fff" />
+                  <Text style={styles.tenantSwitchText}>
+                    {currentTenant?.nome ||
+                      currentTenant?.tenant?.nome ||
+                      "Trocar de academia"}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
           <TouchableOpacity
             style={styles.headerMenuButton}
@@ -891,7 +1019,6 @@ export default function AccountScreen() {
                     ]}
                     onPress={() => {
                       setSelectedModalidadeId(modalidade.id);
-                      loadRanking(modalidade.id);
                     }}
                   >
                     <View style={styles.modalidadeChipContent}>
@@ -1023,14 +1150,17 @@ export default function AccountScreen() {
             { transform: [{ translateX: sidebarTranslateX }] },
           ]}
         >
-            <View style={styles.sidebarHeader}>
+          <View style={styles.sidebarHeader}>
             <TouchableOpacity
               style={styles.sidebarPhotoContainer}
               onPress={handleChangePhoto}
               disabled={updatingPhoto}
             >
               {photoUrl ? (
-                <Image source={{ uri: photoUrl }} style={styles.sidebarPhotoImage} />
+                <Image
+                  source={{ uri: photoUrl }}
+                  style={styles.sidebarPhotoImage}
+                />
               ) : userProfile.foto_caminho ? (
                 <Image
                   source={{ uri: `${apiUrl}${userProfile.foto_caminho}` }}
@@ -1078,7 +1208,9 @@ export default function AccountScreen() {
                 </View>
                 <View style={styles.infoContent}>
                   <Text style={styles.infoLabelSidebar}>Email</Text>
-                  <Text style={styles.infoValueSidebar}>{userProfile.email}</Text>
+                  <Text style={styles.infoValueSidebar}>
+                    {userProfile.email}
+                  </Text>
                 </View>
               </View>
 
@@ -1131,9 +1263,7 @@ export default function AccountScreen() {
 
             {userProfile.tenants && userProfile.tenants.length > 0 && (
               <View style={styles.academiasSectionSidebar}>
-                <Text style={styles.sidebarSectionTitle}>
-                  Minhas Academias
-                </Text>
+                <Text style={styles.sidebarSectionTitle}>Minhas Academias</Text>
                 {userProfile.tenants.map((tenant) => (
                   <TouchableOpacity
                     key={tenant.id}
@@ -1187,6 +1317,46 @@ export default function AccountScreen() {
         </Animated.View>
       </Modal>
 
+      {/* Tenant Switch Modal */}
+      <Modal transparent visible={showTenantModal} animationType="fade">
+        <Pressable
+          style={styles.tenantModalOverlay}
+          onPress={() => setShowTenantModal(false)}
+        />
+        <View style={styles.tenantModalContainer}>
+          <View style={styles.tenantModalCard}>
+            <Text style={styles.tenantModalTitle}>Trocar de academia</Text>
+            <View style={{ gap: 10 }}>
+              {tenants.map((t) => {
+                const id = t?.tenant?.id ?? t?.id;
+                const nome = t?.tenant?.nome ?? t?.nome ?? "Academia";
+                return (
+                  <TouchableOpacity
+                    key={String(id)}
+                    style={styles.tenantOptionButton}
+                    onPress={() => handleSelectTenant(id)}
+                    activeOpacity={0.8}
+                  >
+                    <Feather name="home" size={16} color="#fff" />
+                    <Text style={styles.tenantOptionText}>{nome}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.tenantOptionButton,
+                { marginTop: 14, backgroundColor: "#6b7280" },
+              ]}
+              onPress={() => setShowTenantModal(false)}
+            >
+              <Feather name="x" size={16} color="#fff" />
+              <Text style={styles.tenantOptionText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* Password Recovery Modal */}
       <PasswordRecoveryModal
         visible={showRecoveryModal}
@@ -1205,15 +1375,18 @@ const styles = StyleSheet.create({
     backgroundColor: colors.backgroundSecondary,
   },
   headerTop: {
-    paddingHorizontal: 18,
-    paddingVertical: 16,
+    paddingHorizontal: 20,
+    paddingTop: 18,
+    paddingBottom: 20,
     backgroundColor: colors.primary,
     borderBottomWidth: 0,
+    borderBottomLeftRadius: 22,
+    borderBottomRightRadius: 22,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 8,
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    elevation: 6,
   },
   headerUserRow: {
     flexDirection: "row",
@@ -1227,9 +1400,13 @@ const styles = StyleSheet.create({
     gap: 12,
     flex: 1,
   },
+  headerUserInfo: {
+    flex: 1,
+    gap: 6,
+  },
   headerUserName: {
-    fontSize: 16,
-    fontWeight: "700",
+    fontSize: 17,
+    fontWeight: "800",
     color: "#fff",
     flexShrink: 1,
   },
@@ -1238,19 +1415,21 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.25)",
     justifyContent: "center",
     alignItems: "center",
   },
   headerPhotoWrapper: {
     position: "relative",
-    width: 68,
-    height: 68,
+    width: 64,
+    height: 64,
   },
   headerPhotoContainer: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: "rgba(255,255,255,0.2)",
     justifyContent: "center",
     alignItems: "center",
@@ -2174,5 +2353,71 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 17,
     fontWeight: "700",
+  },
+  tenantSwitchButton: {
+    marginTop: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    alignSelf: "flex-start",
+  },
+  tenantSwitchText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  tenantOptionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 12,
+    justifyContent: "center",
+  },
+  tenantOptionText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 16,
+  },
+  tenantModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+  },
+  tenantModalContainer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  tenantModalCard: {
+    width: "100%",
+    maxWidth: 520,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: "#f0f1f4",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  tenantModalTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: colors.text,
+    marginBottom: 12,
+    textAlign: "center",
   },
 });

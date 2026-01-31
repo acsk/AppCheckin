@@ -170,6 +170,14 @@ class AuthController
     public function login(Request $request, Response $response): Response
     {
         $data = $request->getParsedBody();
+        
+        // DEBUG: Log para verificar o que está chegando
+        error_log("=== LOGIN DEBUG ===");
+        error_log("Content-Type: " . ($request->getHeaderLine('Content-Type') ?? 'N/A'));
+        error_log("Raw Body: " . (string)$request->getBody());
+        error_log("Parsed Body: " . json_encode($data));
+        error_log("Email recebido: " . ($data['email'] ?? 'VAZIO'));
+        error_log("Senha recebida: " . (isset($data['senha']) ? '[PRESENTE]' : 'VAZIO'));
 
         // Validações
         if (empty($data['email']) || empty($data['senha'])) {
@@ -330,6 +338,51 @@ class AuthController
         // O cliente irá remover o token do localStorage
         $response->getBody()->write(json_encode([
             'message' => 'Logout realizado com sucesso'
+        ]));
+
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    #[OA\Get(
+        path: "/auth/tenants",
+        summary: "Listar tenants do usuário",
+        description: "Retorna os tenants/academias vinculados ao usuário autenticado e indica se é necessária seleção.",
+        tags: ["Autenticação"],
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Tenants retornados com sucesso",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "tenants", type: "array", items: new OA\Items(type: "object")),
+                        new OA\Property(property: "requires_tenant_selection", type: "boolean", example: false),
+                        new OA\Property(property: "current_tenant_id", type: "integer", nullable: true)
+                    ]
+                )
+            ),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
+    public function listTenants(Request $request, Response $response): Response
+    {
+        $userId = $request->getAttribute('userId');
+        if (!$userId) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'code' => 'UNAUTHORIZED',
+                'message' => 'Usuário não autenticado'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(401);
+        }
+
+        $tenants = $this->usuarioModel->getTenantsByUsuario((int)$userId);
+        $currentTenantId = $request->getAttribute('tenantId');
+
+        $response->getBody()->write(json_encode([
+            'tenants' => $tenants,
+            'requires_tenant_selection' => count($tenants) > 1,
+            'current_tenant_id' => $currentTenantId
         ]));
 
         return $response->withHeader('Content-Type', 'application/json');

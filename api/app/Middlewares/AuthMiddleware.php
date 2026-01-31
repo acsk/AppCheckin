@@ -76,7 +76,13 @@ class AuthMiddleware
         // Adicionar dados do usuário ao request
         $request = $request->withAttribute('userId', $decoded->user_id);
         $request = $request->withAttribute('userEmail', $decoded->email);
-        $request = $request->withAttribute('tenant_id', $usuario['tenant_id']);
+
+        // Se TenantMiddleware já definiu tenantId (via cabeçalho/slug), respeitar esse valor
+        $existingTenantId = $request->getAttribute('tenantId');
+        $resolvedTenantId = $existingTenantId ? (int)$existingTenantId : (int)$usuario['tenant_id'];
+        $request = $request->withAttribute('tenantId', $resolvedTenantId);
+        $request = $request->withAttribute('tenant_id', $resolvedTenantId);
+
         $request = $request->withAttribute('aluno_id', $decoded->aluno_id ?? null);
         $request = $request->withAttribute('usuario', $usuario);
 

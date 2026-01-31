@@ -285,6 +285,8 @@ class Checkin
      */
     /**
      * Contar check-ins do usuário na semana atual
+     * Apenas checkins com presente = true ou NULL (pendentes) são contados
+     * Checkins com presente = false (faltas) NÃO contam no limite semanal
      * @param int $usuarioId ID do usuário
      * @param int|null $modalidadeId Filtrar por modalidade (opcional)
      */
@@ -298,8 +300,11 @@ class Checkin
             $sql .= " INNER JOIN turmas t ON c.turma_id = t.id";
         }
         
+        // presente = 1 (presente) ou presente IS NULL (pendente) contam
+        // presente = 0 (falta) NÃO conta - libera crédito para reposição
         $sql .= " WHERE a.usuario_id = :usuario_id
-                  AND YEARWEEK(c.created_at, 1) = YEARWEEK(NOW(), 1)";
+                  AND YEARWEEK(c.created_at, 1) = YEARWEEK(NOW(), 1)
+                  AND (c.presente IS NULL OR c.presente = 1)";
         
         if ($modalidadeId) {
             $sql .= " AND t.modalidade_id = :modalidade_id";

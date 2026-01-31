@@ -89,6 +89,28 @@ class MobileController
             $userId = $request->getAttribute('userId');
             $tenantId = $request->getAttribute('tenantId');
             
+            // Validar tenant obrigatório para rotas mobile
+            if (!$tenantId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'MISSING_TENANT',
+                    'message' => 'Tenant não informado. Envie X-Tenant-Id ou utilize um token com tenant_id.'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Verificar acesso do usuário ao tenant selecionado
+            if (!$this->usuarioModel->temAcessoTenant($userId, (int)$tenantId)) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'TENANT_ACCESS_DENIED',
+                    'message' => 'Você não tem acesso a esta academia'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+            }
+            
             // Buscar dados do usuário
             $usuario = $this->usuarioModel->findById($userId, $tenantId);
 
@@ -924,6 +946,8 @@ class MobileController
         $userId = $request->getAttribute('userId');
         $tenantId = $request->getAttribute('tenantId');
         $queryParams = $request->getQueryParams();
+        // Debug rápido de tenant usado
+        error_log("[mobile/checkins/por-modalidade] tenantId=" . (int)$tenantId . ", userId=" . (int)$userId . ", queryParams=" . json_encode($queryParams));
         
         // Data de referência (padrão: hoje)
         $dataReferencia = isset($queryParams['data_referencia']) 
@@ -951,15 +975,16 @@ class MobileController
         $semanaFim = $sabado->format('Y-m-d');
         
         $sql = "SELECT d.data, 
-                       m.id as modalidade_id, m.nome as modalidade_nome, 
-                       m.cor as modalidade_cor, m.icone as modalidade_icone
-                FROM checkins c
+                   m.id as modalidade_id, m.nome as modalidade_nome, 
+                   m.cor as modalidade_cor, m.icone as modalidade_icone
+            FROM checkins c
                 INNER JOIN alunos a ON a.id = c.aluno_id
                 INNER JOIN turmas t ON c.turma_id = t.id
                 INNER JOIN dias d ON t.dia_id = d.id
                 LEFT JOIN modalidades m ON t.modalidade_id = m.id
                 WHERE a.usuario_id = :user_id 
                 AND t.tenant_id = :tenant_id
+                AND c.tenant_id = :tenant_id_c
                 AND d.data BETWEEN :semana_inicio AND :semana_fim
                 ORDER BY d.data ASC";
         
@@ -967,6 +992,7 @@ class MobileController
         $stmt->execute([
             'user_id' => $userId,
             'tenant_id' => $tenantId,
+            'tenant_id_c' => $tenantId,
             'semana_inicio' => $semanaInicio,
             'semana_fim' => $semanaFim
         ]);
@@ -1625,7 +1651,20 @@ class MobileController
                                             new OA\Property(property: "hora_fim", type: "string"),
                                             new OA\Property(property: "modalidade", type: "string"),
                                             new OA\Property(property: "vagas_disponiveis", type: "integer"),
-                                            new OA\Property(property: "ja_tem_checkin", type: "boolean")
+                                            new OA\Property(property: "ja_tem_checkin", type: "boolean"),
+                                            new OA\Property(
+                                                property: "checkin",
+                                                type: "object",
+                                                properties: [
+                                                    new OA\Property(property: "disponivel", type: "boolean", description: "Se o check-in está disponível agora", example: true),
+                                                    new OA\Property(property: "ja_abriu", type: "boolean", description: "Se o horário de check-in já foi liberado", example: true),
+                                                    new OA\Property(property: "ja_fechou", type: "boolean", description: "Se o horário de check-in já encerrou", example: false),
+                                                    new OA\Property(property: "abertura", type: "string", format: "datetime", description: "Data/hora de abertura do check-in", example: "2025-01-29 10:00:00"),
+                                                    new OA\Property(property: "fechamento", type: "string", format: "datetime", description: "Data/hora de fechamento do check-in", example: "2025-01-29 18:10:00"),
+                                                    new OA\Property(property: "tolerancia_antes_minutos", type: "integer", description: "Minutos antes do horário que o check-in abre", example: 480),
+                                                    new OA\Property(property: "tolerancia_depois_minutos", type: "integer", description: "Minutos após o horário que o check-in fecha", example: 10)
+                                                ]
+                                            )
                                         ]
                                     )
                                 )
@@ -1685,8 +1724,9 @@ class MobileController
 
             // Buscar turmas disponíveis para este dia (apenas ativas)
             // Nota: O COUNT de check-ins será feito em query separada para evitar problemas com GROUP BY
-            $sqlTurmas = "SELECT t.id, t.tenant_id, t.professor_id, t.modalidade_id, t.dia_id, 
+                 $sqlTurmas = "SELECT t.id, t.tenant_id, t.professor_id, t.modalidade_id, t.dia_id, 
                           t.horario_inicio, t.horario_fim, t.nome, t.limite_alunos, t.ativo, 
+                          t.tolerancia_minutos, t.tolerancia_antes_minutos,
                           t.created_at, t.updated_at,
                           p.nome as professor_nome,
                           m.nome as modalidade_nome, m.icone as modalidade_icone, m.cor as modalidade_cor,
@@ -1695,23 +1735,49 @@ class MobileController
                    INNER JOIN dias d ON t.dia_id = d.id
                    INNER JOIN professores p ON t.professor_id = p.id
                    INNER JOIN modalidades m ON t.modalidade_id = m.id
-                   WHERE d.id = :dia_id AND t.ativo = 1
+                     WHERE d.id = :dia_id AND t.ativo = 1 AND t.tenant_id = :tenant_id
                    ORDER BY t.horario_inicio ASC";
             
             $stmtTurmas = $this->db->prepare($sqlTurmas);
-            $stmtTurmas->execute(['dia_id' => $dia['id']]);
+                 $stmtTurmas->execute(['dia_id' => $dia['id'], 'tenant_id' => (int)$tenantId]);
             $turmas = $stmtTurmas->fetchAll(\PDO::FETCH_ASSOC);
 
-            // Para cada turma, contar o número de check-ins (alunos que já marcaram presença)
-            $sqlCheckinsCount = "SELECT COUNT(DISTINCT aluno_id) as total_checkins FROM checkins WHERE turma_id = :turma_id";
+                 // Para cada turma, contar o número de check-ins (alunos que já marcaram presença) restritos ao tenant
+                 $sqlCheckinsCount = "SELECT COUNT(DISTINCT aluno_id) as total_checkins 
+                             FROM checkins 
+                             WHERE turma_id = :turma_id AND tenant_id = :tenant_id";
             $stmtCheckinsCount = $this->db->prepare($sqlCheckinsCount);
 
+            // Obter data e hora atuais para calcular disponibilidade de check-in
+            $dataHoraAtual = new \DateTime('now', new \DateTimeZone('America/Sao_Paulo'));
+
             // Formatar turmas
-            $turmasFormatadas = array_map(function($turma) use ($stmtCheckinsCount) {
+            $turmasFormatadas = array_map(function($turma) use ($stmtCheckinsCount, $data, $dataHoraAtual, $tenantId) {
                 // Contar check-ins para esta turma
-                $stmtCheckinsCount->execute(['turma_id' => $turma['id']]);
+                $stmtCheckinsCount->execute(['turma_id' => $turma['id'], 'tenant_id' => (int)$tenantId]);
                 $checkinsData = $stmtCheckinsCount->fetch(\PDO::FETCH_ASSOC);
                 $checkinsCount = (int) ($checkinsData['total_checkins'] ?? 0);
+                
+                // Calcular horários de disponibilidade do check-in
+                $horarioInicio = $turma['horario_inicio']; // Ex: "18:00:00"
+                $toleranciaAntes = (int) ($turma['tolerancia_antes_minutos'] ?? 480); // Padrão: 8 horas
+                $toleranciaDepois = (int) ($turma['tolerancia_minutos'] ?? 10); // Padrão: 10 minutos
+                
+                // Criar DateTime para o horário da turma
+                $dataHoraTurma = \DateTime::createFromFormat('Y-m-d H:i:s', $data . ' ' . $horarioInicio, new \DateTimeZone('America/Sao_Paulo'));
+                
+                // Calcular horário de abertura do check-in (horário da turma - tolerância antes)
+                $horarioAberturaCheckin = clone $dataHoraTurma;
+                $horarioAberturaCheckin->modify("-{$toleranciaAntes} minutes");
+                
+                // Calcular horário de fechamento do check-in (horário da turma + tolerância depois)
+                $horarioFechamentoCheckin = clone $dataHoraTurma;
+                $horarioFechamentoCheckin->modify("+{$toleranciaDepois} minutes");
+                
+                // Verificar se o check-in está disponível agora
+                $checkinDisponivel = ($dataHoraAtual >= $horarioAberturaCheckin && $dataHoraAtual <= $horarioFechamentoCheckin);
+                $checkinJaAbriu = ($dataHoraAtual >= $horarioAberturaCheckin);
+                $checkinJaFechou = ($dataHoraAtual > $horarioFechamentoCheckin);
                 
                 return [
                     'id' => (int) $turma['id'],
@@ -1729,6 +1795,15 @@ class MobileController
                     'horario' => [
                         'inicio' => $turma['horario_inicio'],
                         'fim' => $turma['horario_fim']
+                    ],
+                    'checkin' => [
+                        'disponivel' => $checkinDisponivel,
+                        'ja_abriu' => $checkinJaAbriu,
+                        'ja_fechou' => $checkinJaFechou,
+                        'abertura' => $horarioAberturaCheckin->format('Y-m-d H:i:s'),
+                        'fechamento' => $horarioFechamentoCheckin->format('Y-m-d H:i:s'),
+                        'tolerancia_antes_minutos' => $toleranciaAntes,
+                        'tolerancia_depois_minutos' => $toleranciaDepois
                     ],
                     'limite_alunos' => (int) $turma['limite_alunos'],
                     'alunos_inscritos' => $checkinsCount,
@@ -1748,7 +1823,9 @@ class MobileController
                         'ativo' => (bool) $dia['ativo']
                     ],
                     'turmas' => $turmasFormatadas,
-                    'total' => count($turmasFormatadas)
+                    'total' => count($turmasFormatadas),
+                    // Diagnóstico de tenant
+                    'tenant_id_resolvido' => (int) $tenantId
                 ]
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
@@ -2284,7 +2361,7 @@ class MobileController
                 ];
             }, $alunos);
 
-            // Buscar check-ins recentes
+            // Buscar check-ins recentes (com status de presença)
             $sqlCheckins = "
                 SELECT 
                     c.id as checkin_id,
@@ -2292,12 +2369,15 @@ class MobileController
                     a.nome as usuario_nome,
                     c.created_at as data_checkin,
                     TIME_FORMAT(c.created_at, '%H:%i:%s') as hora_checkin,
-                    DATE_FORMAT(c.created_at, '%d/%m/%Y') as data_checkin_formatada
+                    DATE_FORMAT(c.created_at, '%d/%m/%Y') as data_checkin_formatada,
+                    c.presente,
+                    c.presenca_confirmada_em,
+                    c.presenca_confirmada_por
                 FROM checkins c
                 INNER JOIN alunos a ON c.aluno_id = a.id
                 WHERE c.turma_id = :turma_id
                 ORDER BY c.created_at DESC
-                LIMIT 10
+                LIMIT 50
             ";
 
             $stmtCheckins = $this->db->prepare($sqlCheckins);
@@ -2312,7 +2392,10 @@ class MobileController
                     'usuario_nome' => $c['usuario_nome'],
                     'data_checkin' => $c['data_checkin'],
                     'hora_checkin' => $c['hora_checkin'],
-                    'data_checkin_formatada' => $c['data_checkin_formatada']
+                    'data_checkin_formatada' => $c['data_checkin_formatada'],
+                    'presente' => $c['presente'] === null ? null : (bool) $c['presente'],
+                    'presenca_confirmada_em' => $c['presenca_confirmada_em'],
+                    'presenca_confirmada_por' => $c['presenca_confirmada_por'] ? (int) $c['presenca_confirmada_por'] : null
                 ];
             }, $checkins);
 
@@ -2372,6 +2455,206 @@ class MobileController
                 'error' => 'Erro ao carregar detalhes da turma',
                 'message' => $e->getMessage()
             ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * Confirmar presença dos alunos em uma turma
+     * POST /mobile/turma/{turmaId}/confirmar-presenca
+     * Body: { "presencas": { "checkin_id": true/false, ... }, "remover_faltantes": bool }
+     */
+    #[OA\Post(
+        path: "/mobile/turma/{turmaId}/confirmar-presenca",
+        summary: "Confirmar presença da turma",
+        description: "Professor marca presença/falta dos alunos. Opcionalmente remove check-ins de faltantes (libera crédito).",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        parameters: [
+            new OA\Parameter(name: "turmaId", in: "path", required: true, schema: new OA\Schema(type: "integer"))
+        ],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                properties: [
+                    new OA\Property(property: "presencas", type: "object", description: "Objeto com checkin_id => boolean"),
+                    new OA\Property(property: "remover_faltantes", type: "boolean", description: "Se true, remove check-ins de faltantes")
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: "Presença confirmada com sucesso"),
+            new OA\Response(response: 400, description: "Dados inválidos"),
+            new OA\Response(response: 403, description: "Sem permissão"),
+            new OA\Response(response: 404, description: "Turma não encontrada")
+        ]
+    )]
+    public function confirmarPresenca(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $tenantId = $request->getAttribute('tenantId');
+            $userId = $request->getAttribute('userId');
+            $turmaId = (int) ($args['turmaId'] ?? 0);
+
+            if (!$tenantId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Nenhum tenant selecionado'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            if (!$turmaId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'turma_id é obrigatório'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Verificar se turma existe
+            $stmtTurma = $this->db->prepare("SELECT id, nome FROM turmas WHERE id = :id AND tenant_id = :tenant_id");
+            $stmtTurma->execute(['id' => $turmaId, 'tenant_id' => $tenantId]);
+            $turma = $stmtTurma->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$turma) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Turma não encontrada'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            // Parse body
+            $body = json_decode($request->getBody()->getContents(), true) ?? [];
+            $presencasRaw = $body['presencas'] ?? [];
+            $removerFaltantes = (bool) ($body['remover_faltantes'] ?? false);
+
+            // Normalizar formato: aceita array de objetos ou objeto com checkin_id => presente
+            // Array: [{"checkin_id": 38, "presente": true}, ...]
+            // Objeto: {"38": true, "39": false, ...}
+            $presencas = [];
+            if (!empty($presencasRaw)) {
+                // Verifica se é array de objetos (formato do frontend)
+                if (isset($presencasRaw[0]) && is_array($presencasRaw[0])) {
+                    foreach ($presencasRaw as $item) {
+                        if (isset($item['checkin_id'])) {
+                            $presencas[$item['checkin_id']] = $item['presente'] ?? false;
+                        }
+                    }
+                } else {
+                    // Formato objeto: {checkin_id: presente}
+                    $presencas = $presencasRaw;
+                }
+            }
+
+            if (empty($presencas)) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Nenhuma presença informada'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            $this->db->beginTransaction();
+
+            $confirmados = 0;
+            $presentes = 0;
+            $faltas = 0;
+
+            foreach ($presencas as $checkinId => $presente) {
+                $presente = filter_var($presente, FILTER_VALIDATE_BOOLEAN);
+
+                $stmt = $this->db->prepare("
+                    UPDATE checkins 
+                    SET presente = :presente,
+                        presenca_confirmada_em = NOW(),
+                        presenca_confirmada_por = :confirmado_por
+                    WHERE id = :checkin_id
+                    AND turma_id = :turma_id
+                    AND tenant_id = :tenant_id
+                ");
+
+                $result = $stmt->execute([
+                    'presente' => $presente ? 1 : 0,
+                    'confirmado_por' => $userId,
+                    'checkin_id' => (int) $checkinId,
+                    'turma_id' => $turmaId,
+                    'tenant_id' => $tenantId
+                ]);
+
+                if ($result && $stmt->rowCount() > 0) {
+                    $confirmados++;
+                    if ($presente) {
+                        $presentes++;
+                    } else {
+                        $faltas++;
+                    }
+                }
+            }
+
+            // Se deve remover check-ins de faltantes, executar após confirmar
+            $checkinsRemovidos = 0;
+            $alunosLiberados = [];
+
+            if ($removerFaltantes && $faltas > 0) {
+                // Buscar check-ins de faltantes para retornar info
+                $stmtFaltantes = $this->db->prepare("
+                    SELECT c.id, a.nome as aluno_nome, u.email as aluno_email
+                    FROM checkins c
+                    INNER JOIN alunos a ON c.aluno_id = a.id
+                    INNER JOIN usuarios u ON a.usuario_id = u.id
+                    WHERE c.turma_id = :turma_id
+                    AND c.tenant_id = :tenant_id
+                    AND c.presente = 0
+                ");
+                $stmtFaltantes->execute(['turma_id' => $turmaId, 'tenant_id' => $tenantId]);
+                $faltantes = $stmtFaltantes->fetchAll(\PDO::FETCH_ASSOC);
+
+                if (!empty($faltantes)) {
+                    $ids = array_column($faltantes, 'id');
+                    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+
+                    $stmtDelete = $this->db->prepare("DELETE FROM checkins WHERE id IN ($placeholders)");
+                    $stmtDelete->execute($ids);
+                    $checkinsRemovidos = $stmtDelete->rowCount();
+
+                    $alunosLiberados = array_map(function($f) {
+                        return ['nome' => $f['aluno_nome'], 'email' => $f['aluno_email']];
+                    }, $faltantes);
+                }
+            }
+
+            $this->db->commit();
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'message' => "Presença confirmada: {$presentes} presentes, {$faltas} faltas",
+                'data' => [
+                    'turma_id' => $turmaId,
+                    'turma_nome' => $turma['nome'],
+                    'confirmados' => $confirmados,
+                    'presentes' => $presentes,
+                    'faltas' => $faltas,
+                    'checkins_removidos' => $checkinsRemovidos,
+                    'alunos_liberados' => $alunosLiberados,
+                    'confirmado_por' => $userId,
+                    'confirmado_em' => date('Y-m-d H:i:s')
+                ]
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(200);
+
+        } catch (\Exception $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            error_log("Erro em confirmarPresenca: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao confirmar presença',
+                'message' => $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
     }
@@ -2706,8 +2989,20 @@ class MobileController
         $tenantId = $request->getAttribute('tenantId');
         $queryParams = $request->getQueryParams();
         $modalidadeId = isset($queryParams['modalidade_id']) ? (int) $queryParams['modalidade_id'] : null;
+        // Debug rápido de tenant usado
+        error_log("[mobile/ranking/mensal] tenantId=" . (int)$tenantId . ", modalidadeId=" . ($modalidadeId ?? 'null'));
         
         try {
+            // Métrica de diagnóstico: total de check-ins do tenant no mês atual
+            $stmtTotal = $this->db->prepare(
+                "SELECT COUNT(*) AS total FROM checkins c
+                 WHERE c.tenant_id = :tenant_id
+                   AND MONTH(c.data_checkin_date) = MONTH(CURRENT_DATE())
+                   AND YEAR(c.data_checkin_date) = YEAR(CURRENT_DATE())"
+            );
+            $stmtTotal->execute(['tenant_id' => (int)$tenantId]);
+            $totalTenantMes = (int) ($stmtTotal->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
+
             $ranking = $this->checkinModel->rankingMesAtual($tenantId, 3, $modalidadeId);
             
             // Formatar resposta com posição no ranking
@@ -2738,7 +3033,10 @@ class MobileController
                 'mes' => (int) date('n'),
                 'ano' => (int) date('Y'),
                 'modalidade_id' => $modalidadeId,
-                'ranking' => $rankingFormatado
+                'ranking' => $rankingFormatado,
+                // Diagnóstico: mostrar tenant resolvido e total de check-ins do mês
+                'tenant_id_resolvido' => (int) $tenantId,
+                'total_checkins_tenant_mes' => $totalTenantMes
             ];
             
             $response->getBody()->write(json_encode([

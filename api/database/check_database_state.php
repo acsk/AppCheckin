@@ -96,25 +96,30 @@ class DatabaseStateChecker
         echo $this->color("👤 USUÁRIOS\n", 'bold');
         echo str_repeat("-", 50) . "\n";
 
-        // Contar por role
-        $roleNames = [
-            1 => 'Professor',
-            2 => 'Admin',
-            3 => 'SuperAdmin',
-            4 => 'Cliente/Aluno',
-            5 => 'Staff'
+        // Contar por papel (via tenant_usuario_papel)
+        $papelNames = [
+            1 => 'Aluno',
+            2 => 'Professor',
+            3 => 'Admin',
+            4 => 'SuperAdmin'
         ];
 
-        foreach ($roleNames as $roleId => $roleName) {
-            $stmt = $this->db->prepare("SELECT COUNT(*) as count FROM usuarios WHERE role_id = ?");
-            $stmt->execute([$roleId]);
+        foreach ($papelNames as $papelId => $papelName) {
+            $stmt = $this->db->prepare("SELECT COUNT(DISTINCT usuario_id) as count FROM tenant_usuario_papel WHERE papel_id = ? AND ativo = 1");
+            $stmt->execute([$papelId]);
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-            printf("  • %s: %d\n", $roleName, $row['count']);
+            printf("  • %s: %d\n", $papelName, $row['count']);
         }
 
         // Listar SuperAdmins
         echo "\n  " . $this->color("SuperAdmins:", 'yellow') . "\n";
-        $stmt = $this->db->query("SELECT id, email, nome FROM usuarios WHERE role_id = 3 ORDER BY id");
+        $stmt = $this->db->query("
+            SELECT u.id, u.email, u.nome 
+            FROM usuarios u
+            INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.ativo = 1
+            WHERE tup.papel_id = 4 
+            ORDER BY u.id
+        ");
         $superadmins = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         
         if (empty($superadmins)) {
@@ -204,7 +209,7 @@ class DatabaseStateChecker
         $checks = [
             [
                 'name' => 'SuperAdmin existe',
-                'query' => "SELECT COUNT(*) as count FROM usuarios WHERE role_id = 3",
+                'query' => "SELECT COUNT(*) as count FROM tenant_usuario_papel WHERE papel_id = 4 AND ativo = 1",
                 'minValue' => 1
             ],
             [
@@ -259,7 +264,7 @@ class DatabaseStateChecker
         echo str_repeat("-", 50) . "\n";
 
         $totalUsers = $this->db->query("SELECT COUNT(*) as count FROM usuarios")->fetch(\PDO::FETCH_ASSOC)['count'];
-        $superAdmins = $this->db->query("SELECT COUNT(*) as count FROM usuarios WHERE role_id = 3")->fetch(\PDO::FETCH_ASSOC)['count'];
+        $superAdmins = $this->db->query("SELECT COUNT(*) as count FROM tenant_usuario_papel WHERE papel_id = 4 AND ativo = 1")->fetch(\PDO::FETCH_ASSOC)['count'];
         $totalCheckins = $this->db->query("SELECT COUNT(*) as count FROM checkins")->fetch(\PDO::FETCH_ASSOC)['count'];
         $totalTurmas = $this->db->query("SELECT COUNT(*) as count FROM turmas")->fetch(\PDO::FETCH_ASSOC)['count'];
         $totalMatriculas = $this->db->query("SELECT COUNT(*) as count FROM matriculas")->fetch(\PDO::FETCH_ASSOC)['count'];

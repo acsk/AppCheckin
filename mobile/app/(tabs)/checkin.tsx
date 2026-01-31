@@ -1,8 +1,9 @@
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
   Image,
@@ -15,6 +16,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import AuthService from "../../src/services/authService";
 import { colors } from "../../src/theme/colors";
 import { handleAuthError } from "../../src/utils/authHelpers";
 import { normalizeUtf8 } from "../../src/utils/utf8";
@@ -25,12 +27,11 @@ export default function CheckinScreen() {
   const [availableSchedules, setAvailableSchedules] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [calendarDays, setCalendarDays] = useState<Date[]>([]);
-  const [participantsLoading, setParticipantsLoading] = useState(false);
   const [participants, setParticipants] = useState<any[]>([]);
   const [participantsTurma, setParticipantsTurma] = useState<any | null>(null);
   const [checkinLoading, setCheckinLoading] = useState(false);
   const [checkinsRecentes, setCheckinsRecentes] = useState<any[]>([]);
-  const [resumoTurma, setResumoTurma] = useState<any | null>(null);
+  const [participantsLoading, setParticipantsLoading] = useState(false);
   const [alunosTotal, setAlunosTotal] = useState<number>(0);
   const [toastVisible, setToastVisible] = useState(false);
   const [toast, setToast] = useState<{
@@ -54,7 +55,47 @@ export default function CheckinScreen() {
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
   const [currentAlunoId, setCurrentAlunoId] = useState<number | null>(null);
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
+  const [currentUserPapelId, setCurrentUserPapelId] = useState<number | null>(
+    null,
+  );
   const [userCheckinId, setUserCheckinId] = useState<number | null>(null);
+  const [presencas, setPresencas] = useState<Record<number, boolean | null>>(
+    {},
+  );
+  const [confirmandoPresenca, setConfirmandoPresenca] = useState(false);
+  const [currentTenant, setCurrentTenant] = useState<any | null>(null);
+  const [tenantsList] = useState<any[]>([]);
+  const [tenantModalVisible, setTenantModalVisible] = useState(false);
+  const selectedDateRef = useRef<Date | null>(null);
+  const isFetchingSchedulesRef = useRef(false);
+  const latestSchedulesReqRef = useRef<number>(0);
+
+  // papel_id: 1 = Aluno, 2 = Professor, 3 = Admin, 4 = Super Admin
+  // Regras:
+  // - Professor/Admin/Super Admin: controlam presenças e visualizam lista completa
+  // - Aluno: pode fazer/desfazer check-in
+  // - Em ambiente multi-tenant, se o usuário possui aluno_id no tenant atual
+  //   ele deve ver o fluxo de aluno.
+  const isProfessorOuAdmin =
+    currentUserPapelId === 2 ||
+    currentUserPapelId === 3 ||
+    currentUserPapelId === 4;
+  const isAluno =
+    currentUserPapelId === 1 ||
+    (currentAlunoId !== null && !isProfessorOuAdmin) ||
+    currentUserPapelId === null;
+
+  // Debug: Mostrar valores de papel no console
+  console.log(
+    "🎭 PAPEL DEBUG - papel:",
+    currentUserPapelId,
+    "aluno_id:",
+    currentAlunoId,
+    "| isAluno:",
+    isAluno,
+    "| isProfessorOuAdmin:",
+    isProfessorOuAdmin,
+  );
 
   const participantsToShow = participants;
   const participantsCount = participantsTurma
@@ -64,14 +105,7 @@ export default function CheckinScreen() {
       0
     : 0;
 
-  const getInitials = (nome: string = "") => {
-    const parts = normalizeUtf8(nome).split(" ").filter(Boolean);
-    if (parts.length === 0) return "?";
-    if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
-    return (
-      parts[0].charAt(0) + parts[parts.length - 1].charAt(0)
-    ).toUpperCase();
-  };
+  // Removido: função não utilizada
 
   const getUserPhotoUrl = (fotoCaminho?: string | null) => {
     if (!fotoCaminho) return null;
@@ -127,6 +161,37 @@ export default function CheckinScreen() {
 
     if (base.length > 0) return base;
     return modalidadeNome || "Turma";
+  };
+
+  // Carregar tenant atual ao montar
+  useEffect(() => {
+    (async () => {
+      try {
+        const tenantJson = await AsyncStorage.getItem(
+          "@appcheckin:current_tenant",
+        );
+        const tenant = tenantJson ? JSON.parse(tenantJson) : null;
+        setCurrentTenant(tenant);
+      } catch (e) {
+        console.warn("Falha ao obter tenant atual", e);
+      }
+    })();
+  }, []);
+
+  // seletor de tenant removido do header; função de abertura do modal não é mais usada aqui
+
+  const selectTenantAndReload = async (tenantId: number | string) => {
+    try {
+      await AuthService.selectTenant(tenantId);
+      const tenant = await AuthService.getCurrentTenant();
+      setCurrentTenant(tenant);
+      setTenantModalVisible(false);
+      // Recarregar dados da tela
+      await generateCalendarDays();
+    } catch (e) {
+      console.error("Erro ao trocar de tenant:", e);
+      showErrorModal("Não foi possível trocar de academia.", "error");
+    }
   };
 
   const showToast = (
@@ -186,6 +251,48 @@ export default function CheckinScreen() {
     loadCurrentUserId();
   }, []);
 
+  // Mantém o selectedDate atual em ref para uso em efeitos sem dependência
+  useEffect(() => {
+    selectedDateRef.current = selectedDate;
+  }, [selectedDate]);
+
+  // Ao focar na aba Checkin, recarrega tenant e horários do dia selecionado sem alterar o estado da data
+  useFocusEffect(
+    useCallback(() => {
+      console.log("🔁 Aba Checkin focada: atualizando horários do dia atual");
+      (async () => {
+        try {
+          const tenantJson = await AsyncStorage.getItem(
+            "@appcheckin:current_tenant",
+          );
+          const tenant = tenantJson ? JSON.parse(tenantJson) : null;
+          setCurrentTenant(tenant);
+        } catch (e) {
+          console.warn("Falha ao atualizar tenant ao focar aba", e);
+        }
+        const dateToRefresh = selectedDateRef.current || new Date();
+        const tenantIdOverride =
+          currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
+        // Usa tenant lido do storage quando disponível para garantir cabeçalho correto na primeira chamada
+        const tenantFromStorageJson = await AsyncStorage.getItem(
+          "@appcheckin:current_tenant",
+        );
+        const tenantFromStorage = tenantFromStorageJson
+          ? JSON.parse(tenantFromStorageJson)
+          : null;
+        const tenantIdFromStorage =
+          tenantFromStorage?.tenant?.id ??
+          tenantFromStorage?.id ??
+          tenantIdOverride;
+        await fetchAvailableSchedules(
+          dateToRefresh,
+          tenantIdFromStorage ?? undefined,
+        );
+      })();
+      return () => {};
+    }, []), // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
   const loadCurrentUserId = async () => {
     try {
       const userStr = await AsyncStorage.getItem("@appcheckin:user");
@@ -198,9 +305,19 @@ export default function CheckinScreen() {
         console.log("👤 ID do usuário carregado:", user.id);
         console.log("👤 aluno_id do usuário:", user.aluno_id);
         console.log("👤 email do usuário:", user.email);
+        console.log(
+          "👤 papel_id do usuário:",
+          user.papel_id,
+          "tipo:",
+          typeof user.papel_id,
+        );
         setCurrentUserId(user.id);
         setCurrentAlunoId(user.aluno_id || null);
         setCurrentUserEmail(user.email || null);
+        // Garantir que papel_id seja número
+        const papelIdNumero = user.papel_id ? Number(user.papel_id) : null;
+        console.log("👤 papel_id convertido:", papelIdNumero);
+        setCurrentUserPapelId(papelIdNumero);
       } else {
         console.log("❌ Nenhum usuário encontrado no AsyncStorage");
       }
@@ -223,28 +340,12 @@ export default function CheckinScreen() {
     setParticipantsTurma(null);
     setParticipants([]);
     setCheckinsRecentes([]);
-    setResumoTurma(null);
     setAlunosTotal(0);
     // Depois carrega os horários
     if (selectedDate) {
       fetchAvailableSchedules(selectedDate);
     }
-  }, [selectedDate]);
-
-  useEffect(() => {
-    if (
-      participantsTurma &&
-      (currentUserId || currentAlunoId || currentUserEmail)
-    ) {
-      checkUserHasCheckin();
-    }
-  }, [
-    participants,
-    checkinsRecentes,
-    currentUserId,
-    currentAlunoId,
-    currentUserEmail,
-  ]);
+  }, [selectedDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const generateCalendarDays = () => {
     console.log("📅 GERANDO CALENDÁRIO");
@@ -252,7 +353,8 @@ export default function CheckinScreen() {
     console.log("   Data hoje:", today);
     const days: Date[] = [];
 
-    for (let i = 0; i < 7; i++) {
+    // Começa do dia anterior (-1) até 6 dias à frente (total 8 dias)
+    for (let i = -1; i < 7; i++) {
       const date = new Date(today);
       date.setDate(today.getDate() + i);
       days.push(date);
@@ -268,10 +370,20 @@ export default function CheckinScreen() {
     return `${year}-${month}-${day}`;
   };
 
-  const fetchAvailableSchedules = async (date: Date) => {
+  const fetchAvailableSchedules = async (
+    date: Date,
+    tenantIdOverride?: number,
+  ) => {
+    if (isFetchingSchedulesRef.current) {
+      console.log("⏳ Ignorando fetch duplicado de horários");
+      return;
+    }
+    isFetchingSchedulesRef.current = true;
     setLoading(true);
     try {
       console.log("\n🔄 INICIANDO CARREGAMENTO DE HORÁRIOS");
+      const reqId = Date.now();
+      latestSchedulesReqRef.current = reqId;
 
       const token = await AsyncStorage.getItem("@appcheckin:token");
       if (!token) {
@@ -291,7 +403,13 @@ export default function CheckinScreen() {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
+          ...(currentTenant?.tenant?.id || currentTenant?.id
+            ? {
+                "X-Tenant-Id": String(
+                  currentTenant?.tenant?.id ?? currentTenant?.id,
+                ),
+              }
+            : {}),
         },
       });
 
@@ -334,6 +452,10 @@ export default function CheckinScreen() {
         throw parseError;
       }
 
+      if (latestSchedulesReqRef.current !== reqId) {
+        console.warn("⏭️ Ignorando resposta de horários (requisição obsoleta)");
+        return;
+      }
       console.log("   Response completa:", JSON.stringify(data, null, 2));
 
       if (data.success && data.data?.turmas) {
@@ -369,6 +491,7 @@ export default function CheckinScreen() {
       showToast("Falha ao carregar horários disponíveis", "error");
     } finally {
       setLoading(false);
+      isFetchingSchedulesRef.current = false;
     }
   };
 
@@ -401,6 +524,13 @@ export default function CheckinScreen() {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
+          ...(currentTenant?.tenant?.id || currentTenant?.id
+            ? {
+                "X-Tenant-Id": String(
+                  currentTenant?.tenant?.id ?? currentTenant?.id,
+                ),
+              }
+            : {}),
         },
         body: JSON.stringify(payload),
       });
@@ -409,7 +539,7 @@ export default function CheckinScreen() {
       let data: any = {};
       try {
         data = text ? JSON.parse(text) : {};
-      } catch (e) {
+      } catch {
         data = {};
       }
 
@@ -489,6 +619,13 @@ export default function CheckinScreen() {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
+          ...(currentTenant?.tenant?.id || currentTenant?.id
+            ? {
+                "X-Tenant-Id": String(
+                  currentTenant?.tenant?.id ?? currentTenant?.id,
+                ),
+              }
+            : {}),
         },
       });
 
@@ -496,7 +633,7 @@ export default function CheckinScreen() {
       let data: any = {};
       try {
         data = text ? JSON.parse(text) : {};
-      } catch (e) {
+      } catch {
         data = {};
       }
 
@@ -525,7 +662,116 @@ export default function CheckinScreen() {
     }
   };
 
-  const checkUserHasCheckin = () => {
+  // Função para alternar presença de um aluno (apenas visual, local)
+  const togglePresenca = (checkinId: number) => {
+    setPresencas((prev) => {
+      const atual = prev[checkinId];
+      // Ciclo: null -> true -> false -> null
+      let novo: boolean | null;
+      if (atual === null || atual === undefined) {
+        novo = true; // Presente
+      } else if (atual === true) {
+        novo = false; // Falta
+      } else {
+        novo = null; // Pendente
+      }
+      return { ...prev, [checkinId]: novo };
+    });
+  };
+
+  // Função para confirmar todas as presenças marcadas
+  const confirmarPresencas = async () => {
+    if (!participantsTurma?.id) return;
+
+    // Filtrar apenas os checkins que têm presença marcada (true ou false)
+    const presencasParaEnviar = Object.entries(presencas)
+      .filter(([_, valor]) => valor !== null)
+      .map(([checkinId, presente]) => ({
+        checkin_id: Number(checkinId),
+        presente: presente as boolean,
+      }));
+
+    // Regra: professor/admin deve marcar TODOS os alunos (sem valores nulos)
+    const totalCheckins = checkinsRecentes.length;
+    const totalMarcados = presencasParaEnviar.length;
+    if (totalCheckins === 0) {
+      showToast("Nenhum check-in para confirmar", "warning");
+      return;
+    }
+    if (totalMarcados < totalCheckins) {
+      const faltantes = totalCheckins - totalMarcados;
+      showErrorModal(
+        `Você deve marcar presença ou falta para todos os alunos antes de confirmar. Faltam ${faltantes}.`,
+        "warning",
+      );
+      return;
+    }
+
+    setConfirmandoPresenca(true);
+    try {
+      const token = await AsyncStorage.getItem("@appcheckin:token");
+      if (!token) {
+        showErrorModal("Token não encontrado. Faça login novamente.", "error");
+        return;
+      }
+
+      const url = `${getApiUrlRuntime()}/mobile/turma/${participantsTurma.id}/confirmar-presenca`;
+      console.log("📝 Confirmando presenças:", presencasParaEnviar);
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(currentTenant?.tenant?.id || currentTenant?.id
+            ? {
+                "X-Tenant-Id": String(
+                  currentTenant?.tenant?.id ?? currentTenant?.id,
+                ),
+              }
+            : {}),
+        },
+        body: JSON.stringify({ presencas: presencasParaEnviar }),
+      });
+
+      const text = await response.text();
+      let data: any = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = {};
+      }
+
+      if (!response.ok) {
+        const apiMessage =
+          data?.error ||
+          data?.message ||
+          text ||
+          "Não foi possível confirmar as presenças.";
+        console.warn(
+          "Erro ao confirmar presenças:",
+          response.status,
+          apiMessage,
+        );
+        showErrorModal(normalizeUtf8(String(apiMessage)), "error");
+        return;
+      }
+
+      const msg = data?.message || "Presenças confirmadas com sucesso!";
+      showErrorModal(normalizeUtf8(msg), "success");
+
+      // Recarregar os dados da turma
+      await openParticipants(
+        mergeTurmaFromList(participantsTurma.id, participantsTurma),
+      );
+    } catch (error) {
+      console.error("Erro ao confirmar presenças:", error);
+      showErrorModal("Falha ao confirmar as presenças.", "error");
+    } finally {
+      setConfirmandoPresenca(false);
+    }
+  };
+
+  const checkUserHasCheckin = useCallback(() => {
     console.log("🔍 Verificando check-in do usuário");
     console.log("   currentUserId:", currentUserId);
     console.log("   currentAlunoId:", currentAlunoId);
@@ -608,6 +854,43 @@ export default function CheckinScreen() {
       }
     }
 
+    // NOVO: Verificar em checkinsRecentes pelo EMAIL do usuário (c.usuario_email)
+    if (checkinsRecentes.length > 0 && currentUserEmail) {
+      const userByEmailCheckin = checkinsRecentes.find(
+        (c) =>
+          c.usuario_email &&
+          currentUserEmail &&
+          String(c.usuario_email).toLowerCase() ===
+            String(currentUserEmail).toLowerCase(),
+      );
+      if (userByEmailCheckin) {
+        const checkinId =
+          userByEmailCheckin.checkin_id || userByEmailCheckin.id;
+        console.log("   ✅ Usuário encontrado em check-ins pelo EMAIL:", {
+          checkinId,
+          usuario_email: userByEmailCheckin.usuario_email,
+        });
+        setUserCheckinId(checkinId);
+        return true;
+      }
+    }
+
+    // NOVO: Verificar em checkinsRecentes pelo usuario_id
+    if (checkinsRecentes.length > 0 && currentUserId) {
+      const userByIdCheckin = checkinsRecentes.find(
+        (c) => Number(c.usuario_id) === Number(currentUserId),
+      );
+      if (userByIdCheckin) {
+        const checkinId = userByIdCheckin.checkin_id || userByIdCheckin.id;
+        console.log("   ✅ Usuário encontrado em check-ins pelo usuario_id:", {
+          checkinId,
+          usuario_id: userByIdCheckin.usuario_id,
+        });
+        setUserCheckinId(checkinId);
+        return true;
+      }
+    }
+
     // PRIORIDADE 3: Verificar nos participantes pelo aluno_id
     if (participants.length > 0 && currentAlunoId) {
       const userParticipant = participants.find(
@@ -637,14 +920,19 @@ export default function CheckinScreen() {
     console.log("   ❌ Usuário não encontrado - sem check-in");
     setUserCheckinId(null);
     return false;
-  };
+  }, [
+    participants,
+    checkinsRecentes,
+    currentUserId,
+    currentAlunoId,
+    currentUserEmail,
+  ]);
 
   const openParticipants = async (turma: any) => {
     if (!turma?.id) return;
     setParticipantsLoading(true);
     setParticipants([]);
     setCheckinsRecentes([]);
-    setResumoTurma(null);
     setAlunosTotal(0);
     setParticipantsTurma(mergeTurmaFromList(turma.id, turma));
 
@@ -695,9 +983,18 @@ export default function CheckinScreen() {
 
       setParticipants(alunosLista);
       setCheckinsRecentes(checkinsLista);
-      setResumoTurma(resumoData);
+      // resumoTurma removido; mantemos apenas o log e demais estados
       setAlunosTotal(alunosCount);
       setParticipantsTurma(mergeTurmaFromList(turmaApi.id, turmaApi));
+
+      // Inicializar estado de presenças com valores da API
+      const presencasIniciais: Record<number, boolean | null> = {};
+      checkinsLista.forEach((c: any) => {
+        if (c.checkin_id) {
+          presencasIniciais[c.checkin_id] = c.presente ?? null;
+        }
+      });
+      setPresencas(presencasIniciais);
     } catch (error) {
       console.error("Erro participantes:", error);
       showToast("Não foi possível carregar participantes", "error");
@@ -706,11 +1003,24 @@ export default function CheckinScreen() {
     }
   };
 
+  // Efeito para verificar se o usuário tem check-in, após definir o callback
+  useEffect(() => {
+    if (
+      participantsTurma &&
+      (currentUserId || currentAlunoId || currentUserEmail)
+    ) {
+      checkUserHasCheckin();
+    }
+  }, [
+    participantsTurma,
+    checkUserHasCheckin,
+    currentUserId,
+    currentAlunoId,
+    currentUserEmail,
+  ]);
+
   // Helpers para cálculo de disponibilidade por horário
-  const sameDay = (a: Date, b: Date) =>
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate();
+  // Removido: helper sameDay não utilizado
 
   const combineDateTime = (date: Date, timeHHMMSS: string) => {
     const [hh, mm, ss] = (timeHHMMSS || "00:00:00")
@@ -748,6 +1058,33 @@ export default function CheckinScreen() {
     }
   };
 
+  // Exibe verdadeiro somente durante o período da aula no dia selecionado (início <= agora <= fim)
+  const isDurantePeriodo = (
+    turma: any,
+    refDate: Date = selectedDate,
+  ): boolean => {
+    try {
+      const today = new Date();
+      const ref = new Date(refDate);
+      ref.setHours(0, 0, 0, 0);
+      const dayStart = new Date(today);
+      dayStart.setHours(0, 0, 0, 0);
+
+      // Só durante o dia atual
+      if (ref.getTime() !== dayStart.getTime()) return false;
+
+      const inicio = getHoraInicio(turma);
+      const fim = getHoraFim(turma);
+      if (!inicio || !fim) return false;
+
+      const start = combineDateTime(refDate, inicio ?? "00:00:00");
+      const end = combineDateTime(refDate, fim ?? "23:59:59");
+      return today >= start && today <= end;
+    } catch {
+      return false;
+    }
+  };
+
   const isCheckinDisabled = (turma: any): boolean => {
     if (!turma) return true;
     if (isTurmaDisabled(turma, selectedDate)) return true;
@@ -777,16 +1114,93 @@ export default function CheckinScreen() {
     turma?.hora_inicio || turma?.horario?.inicio;
   const getHoraFim = (turma: any) => turma?.hora_fim || turma?.horario?.fim;
 
+  // Hora limite para check-in (inclui tolerância): extrai HH:mm de turma.checkin.fechamento
+  const getHoraLimiteCheckin = (turma: any): string | null => {
+    try {
+      const fechamento: string | undefined = turma?.checkin?.fechamento;
+      if (!fechamento) return null;
+      // formatos possíveis: "YYYY-MM-DD HH:mm:ss" ou "HH:mm:ss"
+      const timePart = fechamento.includes(" ")
+        ? fechamento.split(" ")[1]
+        : fechamento;
+      return timePart?.slice(0, 5) || null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Data/hora de abertura do check-in, se fornecida pela API
+  const getDataAberturaCheckin = (turma: any): Date | null => {
+    try {
+      const abertura: string | undefined = turma?.checkin?.abertura;
+      if (!abertura) return null;
+      // formatos possíveis: "YYYY-MM-DD HH:mm:ss" ou ISO
+      if (abertura.includes(" ")) {
+        const [datePart, timePart] = abertura.split(" ");
+        const [yyyy, mm, dd] = datePart.split("-").map((n) => parseInt(n, 10));
+        const [hh, mi, ss] = timePart.split(":").map((n) => parseInt(n, 10));
+        const d = new Date(
+          yyyy,
+          (mm || 1) - 1,
+          dd || 1,
+          hh || 0,
+          mi || 0,
+          ss || 0,
+          0,
+        );
+        return d;
+      }
+      const d = new Date(abertura);
+      return isNaN(d.getTime()) ? null : d;
+    } catch {
+      return null;
+    }
+  };
+
+  // Minutos restantes para abrir o check-in (<=0 se já abriu)
+  const getMinutosParaAbrirCheckin = (turma: any): number => {
+    try {
+      const dtAbertura = getDataAberturaCheckin(turma);
+      if (!dtAbertura) return 0;
+      const now = new Date();
+      const diffMs = dtAbertura.getTime() - now.getTime();
+      return Math.ceil(diffMs / 60000);
+    } catch {
+      return 0;
+    }
+  };
+
+  const formatMinutos = (min: number): string => {
+    if (min <= 0) return "agora";
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    if (h > 0 && m > 0) return `${h}h ${m}min`;
+    if (h > 0) return `${h}h`;
+    return `${m}min`;
+  };
+
   const schedulesToRender = showOnlyAvailable
     ? availableSchedules.filter((turma) => !isCheckinDisabled(turma))
     : availableSchedules;
+
+  // Debug: Log dos estados para verificar papel do usuário
+  console.log(
+    "🎯 RENDER - currentUserPapelId:",
+    currentUserPapelId,
+    "isAluno:",
+    isAluno,
+    "isProfessorOuAdmin:",
+    isProfessorOuAdmin,
+  );
 
   return (
     <>
       <SafeAreaView style={styles.container} edges={["top"]}>
         {/* Header com Botão Recarregar */}
         <View style={styles.headerTop}>
-          <Text style={styles.headerTitle}>Checkin</Text>
+          <View style={{ flexDirection: "column" }}>
+            <Text style={styles.headerTitle}>Checkin</Text>
+          </View>
           <View style={styles.headerActions}>
             <View style={styles.switchRow}>
               <Text style={styles.switchLabel}>Só disponíveis</Text>
@@ -808,6 +1222,61 @@ export default function CheckinScreen() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Modal para trocar de tenant */}
+        <Modal
+          visible={tenantModalVisible}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setTenantModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContainer, { maxWidth: 420 }]}>
+              <View style={[styles.modalContent, styles.modalContentInfo]}>
+                <View
+                  style={[
+                    styles.modalIconContainer,
+                    styles.modalIconContainerInfo,
+                  ]}
+                >
+                  <Feather name="home" size={36} color={colors.primary} />
+                </View>
+                <Text style={styles.modalTitle}>Trocar de Academia</Text>
+                <Text style={styles.modalMessage}>
+                  Selecione uma academia para focar apenas nos seus recursos.
+                </Text>
+                <View style={{ width: "100%", gap: 10 }}>
+                  {tenantsList && tenantsList.length > 0 ? (
+                    tenantsList.map((t) => (
+                      <TouchableOpacity
+                        key={t.id}
+                        style={styles.tenantOptionButton}
+                        onPress={() => selectTenantAndReload(t.id)}
+                      >
+                        <Feather name="home" size={16} color="#fff" />
+                        <Text style={styles.tenantOptionText}>
+                          {normalizeUtf8(t.nome || String(t.id))}
+                        </Text>
+                      </TouchableOpacity>
+                    ))
+                  ) : (
+                    <Text style={styles.modalMessage}>
+                      Nenhuma academia disponível.
+                    </Text>
+                  )}
+                </View>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.modalButtonInfo]}
+                  onPress={() => setTenantModalVisible(false)}
+                >
+                  <Text style={{ color: "#fff", fontWeight: "700" }}>
+                    Fechar
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         <ScrollView
           contentContainerStyle={[styles.scrollContent, styles.scrollGrow]}
@@ -937,6 +1406,20 @@ export default function CheckinScreen() {
                         {getHoraFim(participantsTurma)?.slice(0, 5)}
                       </Text>
                     </View>
+                    {getHoraLimiteCheckin(participantsTurma) ? (
+                      <View style={styles.metaChip}>
+                        <Feather
+                          name="clock"
+                          size={14}
+                          color={
+                            participantsTurma?.modalidade?.cor || colors.primary
+                          }
+                        />
+                        <Text style={styles.metaChipText}>
+                          Check-in até {getHoraLimiteCheckin(participantsTurma)}
+                        </Text>
+                      </View>
+                    ) : null}
                     <View style={styles.metaChip}>
                       <Feather
                         name="users"
@@ -957,23 +1440,41 @@ export default function CheckinScreen() {
                       <Text style={styles.loadingText}>Carregando...</Text>
                     ) : (
                       <>
-                        {participantsToShow.length > 0 ? (
+                        {/* Lista de check-ins recentes (visível para todos; botões só para professor/admin) */}
+                        {checkinsRecentes.length > 0 && (
                           <View style={styles.participantsListContainer}>
-                            {participantsToShow.map((p, idx) => {
-                              const isCurrentUser =
-                                currentUserId &&
-                                Number(p.usuario_id) === Number(currentUserId);
-                              const photoUrl = getUserPhotoUrl(p.foto_caminho);
+                            {checkinsRecentes.map((c, idx) => {
+                              const presencaAtual = presencas[c.checkin_id];
+                              // Foto pode não vir em checkins_recentes; buscar em alunos.lista (participants)
+                              const alunoFoto = participants.find(
+                                (p) =>
+                                  Number(p.aluno_id) === Number(c.aluno_id),
+                              )?.foto_caminho;
+                              const photoUrl = getUserPhotoUrl(
+                                c.foto_caminho || alunoFoto || null,
+                              );
+                              // Borda de status: cinza (não confirmada), verde (presente), vermelha (falta)
+                              const isConfirmed = Boolean(
+                                c.presenca_confirmada_em,
+                              );
+                              let statusBorderColor = "#9ca3af"; // cinza padrão
+                              if (isConfirmed) {
+                                statusBorderColor = c.presente
+                                  ? "#10b981"
+                                  : "#ef4444";
+                              }
                               return (
                                 <View
-                                  key={p.usuario_id || p.checkin_id || idx}
+                                  key={c.checkin_id || idx}
                                   style={styles.participantItem}
                                 >
                                   <View
                                     style={[
                                       styles.participantAvatar,
-                                      isCurrentUser &&
-                                        styles.participantAvatarCurrent,
+                                      {
+                                        borderWidth: 3,
+                                        borderColor: statusBorderColor,
+                                      },
                                     ]}
                                   >
                                     {photoUrl ? (
@@ -992,76 +1493,245 @@ export default function CheckinScreen() {
                                   <View style={styles.participantInfo}>
                                     <Text style={styles.participantName}>
                                       {normalizeUtf8(
-                                        p.nome || p.usuario_nome || "Aluno",
+                                        c.usuario_nome || "Aluno",
                                       ).toUpperCase()}
-                                      {isCurrentUser && " (Você)"}
                                     </Text>
                                   </View>
+                                  {/* Botões de presença (somente para professor/admin) */}
+                                  {isProfessorOuAdmin && (
+                                    <View style={styles.presencaButtons}>
+                                      <TouchableOpacity
+                                        style={[
+                                          styles.presencaBtn,
+                                          presencaAtual === true &&
+                                            styles.presencaBtnPresente,
+                                        ]}
+                                        onPress={() =>
+                                          togglePresenca(c.checkin_id)
+                                        }
+                                      >
+                                        <Feather
+                                          name="check"
+                                          size={22}
+                                          color={
+                                            presencaAtual === true
+                                              ? "#fff"
+                                              : "#9ca3af"
+                                          }
+                                        />
+                                      </TouchableOpacity>
+                                      <TouchableOpacity
+                                        style={[
+                                          styles.presencaBtn,
+                                          presencaAtual === false &&
+                                            styles.presencaBtnFalta,
+                                        ]}
+                                        onPress={() => {
+                                          setPresencas((prev) => ({
+                                            ...prev,
+                                            [c.checkin_id]:
+                                              prev[c.checkin_id] === false
+                                                ? null
+                                                : false,
+                                          }));
+                                        }}
+                                      >
+                                        <Feather
+                                          name="x"
+                                          size={22}
+                                          color={
+                                            presencaAtual === false
+                                              ? "#fff"
+                                              : "#9ca3af"
+                                          }
+                                        />
+                                      </TouchableOpacity>
+                                    </View>
+                                  )}
                                 </View>
                               );
                             })}
                           </View>
-                        ) : (
-                          <Text style={styles.loadingText}>
-                            Nenhum participante ainda
-                          </Text>
                         )}
+
+                        {/* Mensagem quando não há check-ins */}
+                        {(!isProfessorOuAdmin ||
+                          checkinsRecentes.length === 0) &&
+                          participantsToShow.length === 0 && (
+                            <Text style={styles.loadingText}>
+                              Nenhum participante ainda
+                            </Text>
+                          )}
                       </>
                     )}
                   </View>
 
-                  <TouchableOpacity
-                    style={[
-                      styles.checkinButton,
-                      {
-                        backgroundColor:
-                          participantsTurma?.modalidade?.cor || colors.primary,
-                      },
-                      {
-                        shadowColor:
-                          participantsTurma?.modalidade?.cor || colors.primary,
-                      },
-                      userCheckinId ? styles.checkinButtonUndo : null,
-                      (checkinLoading ||
-                        (!userCheckinId &&
-                          isCheckinDisabled(participantsTurma))) &&
-                        styles.checkinButtonDisabled,
-                    ]}
-                    onPress={() => {
-                      if (userCheckinId) {
-                        handleUndoCheckin(userCheckinId, participantsTurma);
-                      } else {
-                        handleCheckin(participantsTurma);
-                      }
-                    }}
-                    disabled={
-                      checkinLoading ||
-                      (!userCheckinId && isCheckinDisabled(participantsTurma))
-                    }
-                  >
-                    {checkinLoading ? (
-                      <>
-                        <Feather name="loader" size={18} color="#fff" />
-                        <Text style={styles.checkinButtonText}>
-                          Processando...
-                        </Text>
-                      </>
-                    ) : userCheckinId ? (
-                      <>
-                        <Feather name="rotate-ccw" size={18} color="#fff" />
-                        <Text style={styles.checkinButtonText}>
-                          Desfazer Check-in
-                        </Text>
-                      </>
-                    ) : (
-                      <>
-                        <Feather name="check-circle" size={18} color="#fff" />
-                        <Text style={styles.checkinButtonText}>
-                          Fazer Check-in
-                        </Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
+                  {/* Botão de confirmar presenças (professor/admin sempre vê; fora do período alerta ao clicar) */}
+                  {isProfessorOuAdmin &&
+                    checkinsRecentes.length > 0 &&
+                    (() => {
+                      const foraPeriodo = !isDurantePeriodo(
+                        participantsTurma,
+                        selectedDate,
+                      );
+                      const horaInicio = getHoraInicio(
+                        participantsTurma,
+                      )?.slice(0, 5);
+                      const horaFim = getHoraFim(participantsTurma)?.slice(
+                        0,
+                        5,
+                      );
+                      return (
+                        <>
+                          <TouchableOpacity
+                            style={[
+                              styles.checkinButton,
+                              { backgroundColor: "#3b82f6" },
+                              confirmandoPresenca &&
+                                styles.checkinButtonDisabled,
+                            ]}
+                            onPress={() => {
+                              if (foraPeriodo) {
+                                const msg =
+                                  horaInicio && horaFim
+                                    ? `Fora do período da aula. Horário: ${horaInicio} - ${horaFim}.`
+                                    : horaInicio
+                                      ? `Fora do período da aula. Abre às ${horaInicio}.`
+                                      : "Fora do período da aula.";
+                                showErrorModal(msg, "warning");
+                                return;
+                              }
+                              confirmarPresencas();
+                            }}
+                            disabled={confirmandoPresenca}
+                          >
+                            {confirmandoPresenca ? (
+                              <>
+                                <Feather name="loader" size={18} color="#fff" />
+                                <Text style={styles.checkinButtonText}>
+                                  Confirmando...
+                                </Text>
+                              </>
+                            ) : (
+                              <>
+                                <Feather
+                                  name="check-square"
+                                  size={18}
+                                  color="#fff"
+                                />
+                                <Text style={styles.checkinButtonText}>
+                                  Confirmar Presenças
+                                </Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
+                          {foraPeriodo && horaInicio && horaFim ? (
+                            <Text style={styles.outOfPeriodHint}>
+                              Disponível das {horaInicio} às {horaFim}
+                            </Text>
+                          ) : null}
+                        </>
+                      );
+                    })()}
+
+                  {/* Botão de check-in só aparece para alunos */}
+                  {isAluno &&
+                    (() => {
+                      const minutosParaAbrir =
+                        getMinutosParaAbrirCheckin(participantsTurma);
+                      const checkinNaoAbriu = minutosParaAbrir > 0;
+                      return (
+                        <>
+                          <TouchableOpacity
+                            style={[
+                              styles.checkinButton,
+                              {
+                                backgroundColor:
+                                  participantsTurma?.modalidade?.cor ||
+                                  colors.primary,
+                              },
+                              {
+                                shadowColor:
+                                  participantsTurma?.modalidade?.cor ||
+                                  colors.primary,
+                              },
+                              userCheckinId ? styles.checkinButtonUndo : null,
+                              (checkinLoading ||
+                                checkinNaoAbriu ||
+                                (!userCheckinId &&
+                                  isCheckinDisabled(participantsTurma))) &&
+                                styles.checkinButtonDisabled,
+                            ]}
+                            onPress={() => {
+                              if (userCheckinId) {
+                                handleUndoCheckin(
+                                  userCheckinId,
+                                  participantsTurma,
+                                );
+                              } else {
+                                if (checkinNaoAbriu) {
+                                  const aberturaStr =
+                                    getDataAberturaCheckin(participantsTurma);
+                                  const label =
+                                    aberturaStr instanceof Date
+                                      ? `Abre em ${formatMinutos(
+                                          minutosParaAbrir,
+                                        )}`
+                                      : "Ainda não disponível";
+                                  showErrorModal(label, "warning");
+                                  return;
+                                }
+                                handleCheckin(participantsTurma);
+                              }
+                            }}
+                            disabled={
+                              checkinLoading ||
+                              checkinNaoAbriu ||
+                              (!userCheckinId &&
+                                isCheckinDisabled(participantsTurma))
+                            }
+                          >
+                            {checkinLoading ? (
+                              <>
+                                <Feather name="loader" size={18} color="#fff" />
+                                <Text style={styles.checkinButtonText}>
+                                  Processando...
+                                </Text>
+                              </>
+                            ) : userCheckinId ? (
+                              <>
+                                <Feather
+                                  name="rotate-ccw"
+                                  size={18}
+                                  color="#fff"
+                                />
+                                <Text style={styles.checkinButtonText}>
+                                  Desfazer Check-in
+                                </Text>
+                              </>
+                            ) : (
+                              <>
+                                <Feather
+                                  name="check-circle"
+                                  size={18}
+                                  color="#fff"
+                                />
+                                <Text style={styles.checkinButtonText}>
+                                  Fazer Check-in
+                                </Text>
+                              </>
+                            )}
+                          </TouchableOpacity>
+                          {checkinNaoAbriu ? (
+                            <Text style={styles.outOfPeriodHint}>
+                              Abre em {formatMinutos(minutosParaAbrir)}
+                            </Text>
+                          ) : null}
+                        </>
+                      );
+                    })()}
+
+                  {/* Card 'Meu check-in' removido para manter layout original */}
                 </View>
               </>
             ) : loading ? (
@@ -1073,6 +1743,7 @@ export default function CheckinScreen() {
                   const statusColor = disabled ? "#d9534f" : "#2e7d32";
                   const professorName =
                     turma.professor?.nome || turma.professor || "";
+                  const horaLimite = getHoraLimiteCheckin(turma);
 
                   return (
                     <TouchableOpacity
@@ -1144,6 +1815,26 @@ export default function CheckinScreen() {
                               {turma.alunos_inscritos}/{turma.limite_alunos}
                             </Text>
                           </View>
+                          {(() => {
+                            const minutos = getMinutosParaAbrirCheckin(turma);
+                            const isFuture = minutos > 0;
+                            return isFuture ? (
+                              <View style={styles.infoItem}>
+                                <Feather name="clock" size={14} color="#999" />
+                                <Text style={styles.infoText}>
+                                  Abre em {formatMinutos(minutos)}
+                                </Text>
+                              </View>
+                            ) : null;
+                          })()}
+                          {!disabled && horaLimite ? (
+                            <View style={styles.infoItem}>
+                              <Feather name="clock" size={14} color="#999" />
+                              <Text style={styles.infoText}>
+                                Até {horaLimite}
+                              </Text>
+                            </View>
+                          ) : null}
                           {disabled && (
                             <>
                               <View style={styles.statusDot} />
@@ -1553,8 +2244,8 @@ const styles = StyleSheet.create({
   participantsListContainer: {
     borderTopWidth: 1,
     borderTopColor: "#eef2f7",
-    paddingTop: 8,
-    gap: 4,
+    paddingTop: 6,
+    gap: 2,
   },
   participantsContent: {
     gap: 12,
@@ -1604,6 +2295,13 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     fontSize: 17,
   },
+  outOfPeriodHint: {
+    marginTop: 6,
+    textAlign: "center",
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: "600",
+  },
   loadingText: {
     textAlign: "center",
     color: colors.textMuted,
@@ -1619,10 +2317,10 @@ const styles = StyleSheet.create({
   participantItem: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderBottomWidth: 1,
     borderBottomColor: "#eef2f7",
-    gap: 12,
+    gap: 8,
   },
   participantAvatar: {
     width: 40,
@@ -1665,6 +2363,36 @@ const styles = StyleSheet.create({
   participantTimeText: {
     fontSize: 13,
     color: colors.textSecondary,
+  },
+  presencaButtons: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  presencaBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#f3f4f6",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 2,
+    borderColor: "#e5e7eb",
+  },
+  presencaBtnPresente: {
+    backgroundColor: "#10b981",
+    borderColor: "#10b981",
+  },
+  presencaBtnFalta: {
+    backgroundColor: "#ef4444",
+    borderColor: "#ef4444",
+  },
+  sectionLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.textSecondary,
+    marginBottom: 8,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   statsRow: {
     flexDirection: "row",
@@ -1821,6 +2549,10 @@ const styles = StyleSheet.create({
     borderTopWidth: 4,
     borderTopColor: "#388e3c",
   },
+  modalContentInfo: {
+    borderTopWidth: 4,
+    borderTopColor: colors.primary,
+  },
   modalIconContainer: {
     width: 80,
     height: 80,
@@ -1837,6 +2569,9 @@ const styles = StyleSheet.create({
   },
   modalIconContainerSuccess: {
     backgroundColor: "#e8f5e9",
+  },
+  modalIconContainerInfo: {
+    backgroundColor: colors.primary + "15",
   },
   modalTitle: {
     fontSize: 24,
@@ -1872,9 +2607,42 @@ const styles = StyleSheet.create({
   modalButtonSuccess: {
     backgroundColor: "#388e3c",
   },
+  modalButtonInfo: {
+    backgroundColor: colors.primary,
+  },
   modalButtonText: {
     color: "#fff",
     fontSize: 17,
     fontWeight: "700",
+  },
+  tenantSwitchButton: {
+    marginTop: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    alignSelf: "flex-start",
+  },
+  tenantSwitchText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
+  },
+  tenantOptionButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 12,
+  },
+  tenantOptionText: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 16,
   },
 });
