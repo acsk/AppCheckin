@@ -7,6 +7,14 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 
 require __DIR__ . '/../vendor/autoload.php';
 
+// Trace simples: registrar última requisição (para diagnóstico)
+try {
+    $trace = sprintf("[%s] %s %s\n", date('Y-m-d H:i:s'), $_SERVER['REQUEST_METHOD'] ?? '-', $_SERVER['REQUEST_URI'] ?? '-');
+    @file_put_contents(__DIR__ . '/last_request.txt', $trace, FILE_APPEND);
+} catch (\Throwable $e) {
+    // silencioso
+}
+
 // Carregar variáveis de ambiente
 try {
     $dotenv = Dotenv\Dotenv::createImmutable(__DIR__ . '/..');
