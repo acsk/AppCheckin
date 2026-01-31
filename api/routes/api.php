@@ -222,6 +222,24 @@ return function ($app) {
     $app->post('/auth/login', [AuthController::class, 'login']);
     // Rota alternativa para login (contorno de possíveis bloqueios em /auth)
     $app->post('/signin', [AuthController::class, 'login']);
+    // Diagnóstico de POST (ecoar headers e body)
+    $app->post('/auth/diagnose', function($request, $response) {
+        $rawBody = (string)$request->getBody();
+        $parsed = $request->getParsedBody();
+        $headers = [];
+        foreach ($request->getHeaders() as $name => $values) {
+            $headers[$name] = implode(', ', $values);
+        }
+        $response->getBody()->write(json_encode([
+            'method' => $request->getMethod(),
+            'path' => $request->getUri()->getPath(),
+            'content_type' => $request->getHeaderLine('Content-Type'),
+            'headers' => $headers,
+            'raw_body' => $rawBody,
+            'parsed_body' => is_array($parsed) ? $parsed : null,
+        ], JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
+    });
 
     // =====================
     // Aliases sob /v1
