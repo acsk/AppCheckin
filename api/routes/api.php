@@ -220,13 +220,237 @@ return function ($app) {
     // Rotas públicas
     $app->post('/auth/register', [AuthController::class, 'register']);
     $app->post('/auth/login', function($request, $response) {
-        $controller = new AuthController();
-        return $controller->login($request, $response);
+        try {
+            // Parse body com fallback
+            $data = $request->getParsedBody();
+            if (!is_array($data)) {
+                $raw = (string)$request->getBody();
+                $decoded = json_decode($raw, true);
+                $data = is_array($decoded) ? $decoded : [];
+            }
+
+            $email = $data['email'] ?? null;
+            $senha = $data['senha'] ?? null;
+
+            if (empty($email) || empty($senha)) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'code' => 'MISSING_CREDENTIALS',
+                    'message' => 'Email e senha são obrigatórios'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+            }
+
+            // Models/Serviços
+            $db = require __DIR__ . '/../config/database.php';
+            $usuarioModel = new \App\Models\Usuario($db);
+            $jwtService = new \App\Services\JWTService($_ENV['JWT_SECRET']);
+
+            // Usuário
+            $usuario = $usuarioModel->findByEmailGlobal($email);
+            if (!$usuario || !isset($usuario['senha_hash']) || !password_verify($senha, $usuario['senha_hash'])) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'code' => 'INVALID_CREDENTIALS',
+                    'message' => 'Email ou senha inválidos'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(401);
+            }
+
+            // Papel
+            $stmtPapel = $db->prepare("\n                SELECT papel_id FROM tenant_usuario_papel\n                WHERE usuario_id = :usuario_id AND ativo = 1\n                ORDER BY papel_id DESC LIMIT 1\n            ");
+            $stmtPapel->execute(['usuario_id' => $usuario['id']]);
+            $papelResult = $stmtPapel ? $stmtPapel->fetch(\PDO::FETCH_ASSOC) : null;
+            $papelId = $papelResult ? (int)$papelResult['papel_id'] : null;
+
+            $tenants = [];
+            $token = null;
+
+            if ($papelId === 4) {
+                // Super admin
+                $tenants = [];
+                $token = $jwtService->encode([
+                    'user_id' => $usuario['id'],
+                    'email' => $usuario['email'],
+                    'tenant_id' => null,
+                    'is_super_admin' => true
+                ]);
+            } else {
+                $tenants = $usuarioModel->getTenantsByUsuario($usuario['id']);
+                if (empty($tenants)) {
+                    $response->getBody()->write(json_encode([
+                        'type' => 'error',
+                        'code' => 'NO_TENANT_ACCESS',
+                        'message' => 'Usuário não possui vínculo com nenhuma academia'
+                    ]));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+                }
+
+                if (count($tenants) === 1) {
+                    $tenantId = $tenants[0]['tenant']['id'] ?? ($tenants[0]['tenant_id'] ?? null);
+
+                    // Verificar contrato ativo para Admin
+                    if ($papelId === 3 && $tenantId !== null) {
+                        $stmt = $db->prepare("\n                            SELECT COUNT(*) as tem_contrato\n                            FROM tenant_planos_sistema\n                            WHERE tenant_id = :tenant_id\n                            AND status_id = 1\n                        ");
+                        $stmt->execute(['tenant_id' => $tenantId]);
+                        $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+                        if (!$result || (int)$result['tem_contrato'] === 0) {
+                            $response->getBody()->write(json_encode([
+                                'type' => 'error',
+                                'code' => 'NO_ACTIVE_CONTRACT',
+                                'message' => 'Sua academia não possui contrato ativo. Entre em contato com o suporte.'
+                            ], JSON_UNESCAPED_UNICODE));
+                            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+                        }
+                    }
+
+                    // aluno_id
+                    $alunoId = null;
+                    if ($papelId === 1) {
+                        $stmtAluno = $db->prepare("SELECT id FROM alunos WHERE usuario_id = ?");
+                        $stmtAluno->execute([$usuario['id']]);
+                        $aluno = $stmtAluno->fetch(\PDO::FETCH_ASSOC);
+                        if ($aluno) {
+                            $alunoId = $aluno['id'];
+                        }
+                    }
+
+                    // token
+                    $token = $jwtService->encode([
+                        'user_id' => $usuario['id'],
+                        'email' => $usuario['email'],
+                        'tenant_id' => $tenantId,
+                        'aluno_id' => $alunoId
+                    ]);
+                }
+            }
+
+            unset($usuario['senha_hash']);
+
+            $response->getBody()->write(json_encode([
+                'message' => 'Login realizado com sucesso',
+                'token' => $token,
+                'user' => [
+                    'id' => $usuario['id'],
+                    'nome' => $usuario['nome'],
+                    'email' => $usuario['email'],
+                    'email_global' => $usuario['email_global'] ?? $usuario['email'],
+                    'foto_base64' => $usuario['foto_base64'] ?? null,
+                    'papel_id' => $papelId
+                ],
+                'tenants' => $tenants,
+                'requires_tenant_selection' => count($tenants) > 1
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
+        } catch (\Throwable $e) {
+            error_log('[Route /auth/login] EXCEPTION: ' . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'code' => 'LOGIN_INTERNAL_ERROR',
+                'message' => 'Erro interno ao realizar login'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
     });
     // Rota alternativa para login (contorno de possíveis bloqueios em /auth)
     $app->post('/signin', function($request, $response) {
-        $controller = new AuthController();
-        return $controller->login($request, $response);
+        // Reutiliza a mesma lógica de /auth/login
+        return (function($request, $response) {
+            try {
+                $data = $request->getParsedBody();
+                if (!is_array($data)) {
+                    $raw = (string)$request->getBody();
+                    $decoded = json_decode($raw, true);
+                    $data = is_array($decoded) ? $decoded : [];
+                }
+                $email = $data['email'] ?? null;
+                $senha = $data['senha'] ?? null;
+                if (empty($email) || empty($senha)) {
+                    $response->getBody()->write(json_encode([
+                        'type' => 'error',
+                        'code' => 'MISSING_CREDENTIALS',
+                        'message' => 'Email e senha são obrigatórios'
+                    ]));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+                }
+                $db = require __DIR__ . '/../config/database.php';
+                $usuarioModel = new \App\Models\Usuario($db);
+                $jwtService = new \App\Services\JWTService($_ENV['JWT_SECRET']);
+                $usuario = $usuarioModel->findByEmailGlobal($email);
+                if (!$usuario || !isset($usuario['senha_hash']) || !password_verify($senha, $usuario['senha_hash'])) {
+                    $response->getBody()->write(json_encode([
+                        'type' => 'error',
+                        'code' => 'INVALID_CREDENTIALS',
+                        'message' => 'Email ou senha inválidos'
+                    ]));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(401);
+                }
+                $stmtPapel = $db->prepare("\n                    SELECT papel_id FROM tenant_usuario_papel\n                    WHERE usuario_id = :usuario_id AND ativo = 1\n                    ORDER BY papel_id DESC LIMIT 1\n                ");
+                $stmtPapel->execute(['usuario_id' => $usuario['id']]);
+                $papelResult = $stmtPapel ? $stmtPapel->fetch(\PDO::FETCH_ASSOC) : null;
+                $papelId = $papelResult ? (int)$papelResult['papel_id'] : null;
+                $tenants = [];
+                $token = null;
+                if ($papelId === 4) {
+                    $token = $jwtService->encode([
+                        'user_id' => $usuario['id'],
+                        'email' => $usuario['email'],
+                        'tenant_id' => null,
+                        'is_super_admin' => true
+                    ]);
+                } else {
+                    $tenants = $usuarioModel->getTenantsByUsuario($usuario['id']);
+                    if (empty($tenants)) {
+                        $response->getBody()->write(json_encode([
+                            'type' => 'error',
+                            'code' => 'NO_TENANT_ACCESS',
+                            'message' => 'Usuário não possui vínculo com nenhuma academia'
+                        ]));
+                        return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+                    }
+                    if (count($tenants) === 1) {
+                        $tenantId = $tenants[0]['tenant']['id'] ?? ($tenants[0]['tenant_id'] ?? null);
+                        $alunoId = null;
+                        if ($papelId === 1) {
+                            $stmtAluno = $db->prepare("SELECT id FROM alunos WHERE usuario_id = ?");
+                            $stmtAluno->execute([$usuario['id']]);
+                            $aluno = $stmtAluno->fetch(\PDO::FETCH_ASSOC);
+                            if ($aluno) { $alunoId = $aluno['id']; }
+                        }
+                        $token = $jwtService->encode([
+                            'user_id' => $usuario['id'],
+                            'email' => $usuario['email'],
+                            'tenant_id' => $tenantId,
+                            'aluno_id' => $alunoId
+                        ]);
+                    }
+                }
+                unset($usuario['senha_hash']);
+                $response->getBody()->write(json_encode([
+                    'message' => 'Login realizado com sucesso',
+                    'token' => $token,
+                    'user' => [
+                        'id' => $usuario['id'],
+                        'nome' => $usuario['nome'],
+                        'email' => $usuario['email'],
+                        'email_global' => $usuario['email_global'] ?? $usuario['email'],
+                        'foto_base64' => $usuario['foto_base64'] ?? null,
+                        'papel_id' => $papelId
+                    ],
+                    'tenants' => $tenants,
+                    'requires_tenant_selection' => count($tenants) > 1
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
+            } catch (\Throwable $e) {
+                error_log('[Route /signin] EXCEPTION: ' . $e->getMessage());
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'code' => 'LOGIN_INTERNAL_ERROR',
+                    'message' => 'Erro interno ao realizar login'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            }
+        })($request, $response);
     });
     // Diagnóstico de POST (ecoar headers e body)
     $app->post('/auth/diagnose', function($request, $response) {
