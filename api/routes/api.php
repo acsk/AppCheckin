@@ -86,6 +86,47 @@ return function ($app) {
                 ->withStatus(503);
         }
     });
+
+    // Teste simples de ambiente e conexão (público)
+    $app->get('/php-test', function($request, $response) {
+        $envKeys = ['DB_HOST','DB_NAME','DB_USER','DB_PASS','APP_ENV'];
+        $env = [];
+        foreach ($envKeys as $k) {
+            $val = $_ENV[$k] ?? $_SERVER[$k] ?? getenv($k) ?: null;
+            if ($val !== null) {
+                $env[$k] = $k === 'DB_PASS' ? '***' : $val;
+            } else {
+                $env[$k] = null;
+            }
+        }
+
+        $dbStatus = 'unknown';
+        $dbError = null;
+        try {
+            $db = require __DIR__ . '/../config/database.php';
+            $stmt = $db->query('SELECT 1');
+            $dbStatus = $stmt !== false ? 'connected' : 'disconnected';
+        } catch (\Throwable $e) {
+            $dbStatus = 'error';
+            $dbError = $e->getMessage();
+        }
+
+        $response->getBody()->write(json_encode([
+            'php_version' => phpversion(),
+            'app_env' => $_ENV['APP_ENV'] ?? 'unknown',
+            'timestamp' => date('Y-m-d H:i:s'),
+            'request' => [
+                'method' => $request->getMethod(),
+                'path' => $request->getUri()->getPath(),
+            ],
+            'env' => $env,
+            'database' => [
+                'status' => $dbStatus,
+                'error' => $dbError
+            ]
+        ], JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
+    });
     
     // Status da API - verifica se está online
     $app->get('/status', function($request, $response) {
