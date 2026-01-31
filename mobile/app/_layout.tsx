@@ -1,3 +1,4 @@
+import ErrorBoundary from "@/components/ErrorBoundary";
 import { setOnUnauthorized } from "@/src/services/api";
 import { handleAuthError } from "@/src/utils/authHelpers";
 import {
@@ -41,18 +42,23 @@ export default function RootLayout() {
 
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="planos" options={{ headerShown: false }} />
-        <Stack.Screen
-          name="matricula-detalhes"
-          options={{ headerShown: false }}
-        />
-        <Stack.Screen name="turma-detalhes" options={{ headerShown: false }} />
-      </Stack>
-      <StatusBar style="auto" />
+      <ErrorBoundary>
+        <Stack>
+          <Stack.Screen name="index" options={{ headerShown: false }} />
+          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="planos" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="matricula-detalhes"
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="turma-detalhes"
+            options={{ headerShown: false }}
+          />
+        </Stack>
+        <StatusBar style="auto" />
+      </ErrorBoundary>
     </ThemeProvider>
   );
 }
