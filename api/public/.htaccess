@@ -1,35 +1,14 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteBase /
-    
-    # Todas as requisições (incluindo OPTIONS) serão roteadas para index.php
-    
-    # Se for arquivo ou diretório real, deixa passar
+
+    # Se for arquivo ou diretório real, não reescreve
     RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d
     RewriteRule ^ - [L]
-    
-    # Redireciona tudo para index.php
-    RewriteRule ^(.*)$ index.php [QSA,L]
-</IfModule>
 
-# Compressão GZIP
-<IfModule mod_deflate.c>
-    AddOutputFilterByType DEFLATE text/plain
-    AddOutputFilterByType DEFLATE text/html
-    AddOutputFilterByType DEFLATE text/xml
-    AddOutputFilterByType DEFLATE text/css
-    AddOutputFilterByType DEFLATE application/javascript
-    AddOutputFilterByType DEFLATE application/json
-</IfModule>
-
-
-# Headers CORS (fallback em nível de servidor)
-<IfModule mod_headers.c>
-    Header always set Access-Control-Allow-Origin "*"
-    Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, PATCH, OPTIONS"
-    Header always set Access-Control-Allow-Headers "X-Requested-With, Content-Type, Accept, Origin, Authorization, X-Tenant-Id, X-Tenant-Slug"
-    Header always set Access-Control-Max-Age "86400"
+    # Todas as outras requisições vão para index.php
+    RewriteRule ^ index.php [QSA,L]
 </IfModule>
 
 

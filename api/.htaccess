@@ -1,34 +1,19 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteBase /
-    
-    # Força HTTPS respeitando proxies (X-Forwarded-Proto)
+
+    # Força HTTPS, respeitando proxies
     RewriteCond %{HTTPS} !=on
     RewriteCond %{HTTP:X-Forwarded-Proto} !https
-    RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+    RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
-    # Todas as requisições (incluindo OPTIONS) serão roteadas para index.php
-    
-    # Se for arquivo real (não reescreve)
-    RewriteCond %{REQUEST_FILENAME} -f
-    RewriteRule ^ - [L]
-    
-    # Se for diretório real (não reescreve)
+    # Se for arquivo ou diretório real, não reescreve
+    RewriteCond %{REQUEST_FILENAME} -f [OR]
     RewriteCond %{REQUEST_FILENAME} -d
     RewriteRule ^ - [L]
-    
-    # Redireciona tudo para index.php (exceto arquivos/diretórios reais)
-    RewriteRule ^(.*)$ index.php [QSA,L]
-</IfModule>
 
-# Headers de segurança (LiteSpeed pode ignorar, mas não prejudica)
-
-# Headers CORS (fallback em nível de servidor)
-<IfModule mod_headers.c>
-    Header always set Access-Control-Allow-Origin "*"
-    Header always set Access-Control-Allow-Methods "GET, POST, PUT, DELETE, PATCH, OPTIONS"
-    Header always set Access-Control-Allow-Headers "X-Requested-With, Content-Type, Accept, Origin, Authorization, X-Tenant-Id, X-Tenant-Slug"
-    Header always set Access-Control-Max-Age "86400"
+    # Todas as outras requisições vão para index.php
+    RewriteRule ^ index.php [QSA,L]
 </IfModule>
 
 # Desabilita listagem de diretórios
