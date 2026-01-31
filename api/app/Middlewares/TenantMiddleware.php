@@ -89,6 +89,8 @@ class TenantMiddleware
                 '/status',          // status público
                 '/ping',            // ping simples
                 '/uploads/fotos',   // servir fotos públicas
+                '/ok',              // rota alternativa de health básico
+                '/signin',          // rota alternativa de login
                 '/test-simple',
                 '/diagnose',
                 '/diagnostico.php',

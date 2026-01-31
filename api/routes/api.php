@@ -155,6 +155,19 @@ return function ($app) {
             ->withStatus(200);
     });
 
+    // OK básico (alternativo ao /health/basic)
+    $app->get('/ok', function($request, $response) {
+        $response->getBody()->write(json_encode([
+            'status' => 'ok',
+            'php' => 'running',
+            'timestamp' => date('Y-m-d H:i:s'),
+            'environment' => $_ENV['APP_ENV'] ?? 'unknown'
+        ]));
+        return $response
+            ->withHeader('Content-Type', 'application/json')
+            ->withStatus(200);
+    });
+
     // Rota pública para servir fotos de perfil (sem autenticação)
     $app->get('/uploads/fotos/{filename}', function($request, $response, $args) {
         try {
@@ -207,6 +220,8 @@ return function ($app) {
     // Rotas públicas
     $app->post('/auth/register', [AuthController::class, 'register']);
     $app->post('/auth/login', [AuthController::class, 'login']);
+    // Rota alternativa para login (contorno de possíveis bloqueios em /auth)
+    $app->post('/signin', [AuthController::class, 'login']);
     $app->post('/auth/password-recovery/request', [AuthController::class, 'forgotPassword']);
     $app->post('/auth/password-recovery/validate-token', [AuthController::class, 'validatePasswordToken']);
     $app->post('/auth/password-recovery/reset', [AuthController::class, 'resetPassword']);
