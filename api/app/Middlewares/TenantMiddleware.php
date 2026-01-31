@@ -91,6 +91,10 @@ class TenantMiddleware
                 '/uploads/fotos',   // servir fotos públicas
                 '/ok',              // rota alternativa de health básico
                 '/signin',          // rota alternativa de login
+                '/v1/status',       // aliases sob /v1
+                '/v1/ping',
+                '/v1/ok',
+                '/v1/auth',
                 '/test-simple',
                 '/diagnose',
                 '/diagnostico.php',

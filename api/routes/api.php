@@ -222,6 +222,53 @@ return function ($app) {
     $app->post('/auth/login', [AuthController::class, 'login']);
     // Rota alternativa para login (contorno de possíveis bloqueios em /auth)
     $app->post('/signin', [AuthController::class, 'login']);
+
+    // =====================
+    // Aliases sob /v1
+    // =====================
+    $app->group('/v1', function($group) {
+        // status alias
+        $group->get('/status', function($request, $response) {
+            $response->getBody()->write(json_encode([
+                'status' => 'online',
+                'app' => 'AppCheckin API',
+                'version' => '1.0.0',
+                'timestamp' => date('Y-m-d H:i:s')
+            ]));
+            return $response
+                ->withHeader('Content-Type', 'application/json')
+                ->withStatus(200);
+        });
+
+        // ok alias
+        $group->get('/ok', function($request, $response) {
+            $response->getBody()->write(json_encode([
+                'status' => 'ok',
+                'php' => 'running',
+                'timestamp' => date('Y-m-d H:i:s'),
+                'environment' => $_ENV['APP_ENV'] ?? 'unknown'
+            ]));
+            return $response
+                ->withHeader('Content-Type', 'application/json')
+                ->withStatus(200);
+        });
+
+        // ping alias
+        $group->get('/ping', function($request, $response) {
+            $response->getBody()->write(json_encode([
+                'message' => 'pong',
+                'timestamp' => date('Y-m-d H:i:s'),
+                'php_version' => phpversion(),
+                'app_env' => $_ENV['APP_ENV'] ?? 'unknown'
+            ]));
+            return $response
+                ->withHeader('Content-Type', 'application/json')
+                ->withStatus(200);
+        });
+
+        // login alias
+        $group->post('/auth/login', [AuthController::class, 'login']);
+    });
     $app->post('/auth/password-recovery/request', [AuthController::class, 'forgotPassword']);
     $app->post('/auth/password-recovery/validate-token', [AuthController::class, 'validatePasswordToken']);
     $app->post('/auth/password-recovery/reset', [AuthController::class, 'resetPassword']);
