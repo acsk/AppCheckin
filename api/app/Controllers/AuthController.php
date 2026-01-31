@@ -63,159 +63,169 @@ class AuthController
     {
         $data = $request->getParsedBody();
         $tenantId = $request->getAttribute('tenantId', 1);
+            try {
+                // Verificar se a conexão de DB falhou ao iniciar o controlador
+                if ($this->dbInitError !== null || !isset($this->usuarioModel)) {
+                    $response->getBody()->write(json_encode([
+                        'status' => 'error',
+                        'code' => 'DATABASE_CONNECTION_FAILED',
+                        'message' => 'Falha ao conectar ao banco de dados',
+                        'hint' => 'Verifique variáveis de ambiente (DB_HOST, DB_NAME, DB_USER, DB_PASS) e credenciais.',
+                    ], JSON_UNESCAPED_UNICODE));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(503);
+                }
 
-        // Validações
-        $errors = [];
+                // Body parsing robusto (fallback para JSON manual)
+                $data = $request->getParsedBody();
+                if (!is_array($data)) {
+                    $raw = (string)$request->getBody();
+                    $decoded = json_decode($raw, true);
+                    $data = is_array($decoded) ? $decoded : [];
+                }
 
-        if (empty($data['nome'])) {
-            $errors[] = 'Nome é obrigatório';
-        }
+                // DEBUG: Log para verificar o que está chegando
+                error_log("=== LOGIN DEBUG ===");
+                error_log("Content-Type: " . ($request->getHeaderLine('Content-Type') ?? 'N/A'));
+                error_log("Raw Body: " . (string)$request->getBody());
+                error_log("Parsed Body: " . json_encode($data));
+                $email = $data['email'] ?? null;
+                $senha = $data['senha'] ?? null;
+                error_log("Email recebido: " . ($email ?? 'VAZIO'));
+                error_log("Senha recebida: " . ($senha !== null ? '[PRESENTE]' : 'VAZIO'));
 
-        if (empty($data['email']) || !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
-            $errors[] = 'Email válido é obrigatório';
-        }
+                // Validações
+                if (empty($email) || empty($senha)) {
+                    $response->getBody()->write(json_encode([
+                        'type' => 'error',
+                        'code' => 'MISSING_CREDENTIALS',
+                        'message' => 'Email e senha são obrigatórios'
+                    ]));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+                }
 
-        if (empty($data['senha']) || strlen($data['senha']) < 6) {
-            $errors[] = 'Senha deve ter no mínimo 6 caracteres';
-        }
+                // Buscar usuário por email global (independente de tenant)
+                $usuario = $this->usuarioModel->findByEmailGlobal($email);
 
-        // Verificar se email já existe
-        if (!empty($data['email']) && $this->usuarioModel->emailExists($data['email'], null, $tenantId)) {
-            $errors[] = 'Email já cadastrado';
-        }
+                if (!$usuario || !isset($usuario['senha_hash']) || !password_verify($senha, $usuario['senha_hash'])) {
+                    $response->getBody()->write(json_encode([
+                        'type' => 'error',
+                        'code' => 'INVALID_CREDENTIALS',
+                        'message' => 'Email ou senha inválidos'
+                    ]));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(401);
+                }
 
-        if (!empty($errors)) {
-            $response->getBody()->write(json_encode([
-                'errors' => $errors
-            ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
-        }
+                // Inicializar token
+                $token = null;
 
-        // Criar usuário
-        $userId = $this->usuarioModel->create($data, $tenantId);
+                // Buscar papel_id do usuário via tenant_usuario_papel
+                $db = require __DIR__ . '/../../config/database.php';
+                $stmtPapel = $db->prepare("\n                SELECT papel_id FROM tenant_usuario_papel \n                WHERE usuario_id = :usuario_id AND ativo = 1 \n                ORDER BY papel_id DESC LIMIT 1\n            ");
+                $stmtPapel->execute(['usuario_id' => $usuario['id']]);
+                $papelResult = $stmtPapel ? $stmtPapel->fetch(\PDO::FETCH_ASSOC) : null;
+                $papelId = $papelResult ? (int)$papelResult['papel_id'] : null;
 
-        if (!$userId) {
-            $response->getBody()->write(json_encode([
-                'error' => 'Erro ao criar usuário'
-            ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
-        }
+                // Super admin (papel_id = 4 na tabela papeis) não precisa de vínculo com tenant
+                if ($papelId === 4) {
+                    // Super admin: pode acessar sem tenant específico
+                    $tenants = [];
+                
+                    // Gerar token sem tenant_id
+                    $token = $this->jwtService->encode([
+                        'user_id' => $usuario['id'],
+                        'email' => $usuario['email'],
+                        'tenant_id' => null,
+                        'is_super_admin' => true
+                    ]);
+                } else {
+                    // Buscar todos os tenants/academias do usuário
+                    $tenants = $this->usuarioModel->getTenantsByUsuario($usuario['id']);
 
-        // Buscar aluno_id se criou registro na tabela alunos
-        $alunoId = null;
-        $db = require __DIR__ . '/../../config/database.php';
-        $stmtAluno = $db->prepare("SELECT id FROM alunos WHERE usuario_id = ?");
-        $stmtAluno->execute([$userId]);
-        $aluno = $stmtAluno->fetch(\PDO::FETCH_ASSOC);
-        if ($aluno) {
-            $alunoId = $aluno['id'];
-        }
+                    if (empty($tenants)) {
+                        $response->getBody()->write(json_encode([
+                            'type' => 'error',
+                            'code' => 'NO_TENANT_ACCESS',
+                            'message' => 'Usuário não possui vínculo com nenhuma academia'
+                        ]));
+                        return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+                    }
+                }
 
-        // Gerar token
-        $token = $this->jwtService->encode([
-            'user_id' => $userId,
-            'email' => $data['email'],
-            'tenant_id' => $tenantId,
-            'aluno_id' => $alunoId
-        ]);
+                // Se usuário tem apenas um tenant, já retorna o token com ele
+                // Se tem múltiplos, retorna a lista para o usuário escolher
+                $tenantId = null;
 
-        $usuario = $this->usuarioModel->findById($userId);
+                if ($papelId === 4) {
+                    // Super admin já tem token gerado acima, não precisa fazer nada
+                } else if (count($tenants) === 1) {
+                    $tenantId = $tenants[0]['tenant']['id'] ?? ($tenants[0]['tenant_id'] ?? null);
+                
+                    // Se for Tenant Admin (papel_id = 3), verificar contrato ativo
+                    if ($papelId === 3 && $tenantId !== null) {
+                        $db = require __DIR__ . '/../../config/database.php';
+                        $stmt = $db->prepare("\n                        SELECT COUNT(*) as tem_contrato\n                        FROM tenant_planos_sistema\n                        WHERE tenant_id = :tenant_id\n                        AND status_id = 1\n                    ");
+                        $stmt->execute(['tenant_id' => $tenantId]);
+                        $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+                    
+                        if (!$result || (int)$result['tem_contrato'] === 0) {
+                            $response->getBody()->write(json_encode([
+                                'type' => 'error',
+                                'code' => 'NO_ACTIVE_CONTRACT',
+                                'message' => 'Sua academia não possui contrato ativo. Entre em contato com o suporte.'
+                            ], JSON_UNESCAPED_UNICODE));
+                            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+                        }
+                    }
+                
+                    // Buscar aluno_id se o usuário for aluno (papel_id = 1)
+                    $alunoId = null;
+                    if ($papelId === 1) {
+                        $db = require __DIR__ . '/../../config/database.php';
+                        $stmtAluno = $db->prepare("SELECT id FROM alunos WHERE usuario_id = ?");
+                        $stmtAluno->execute([$usuario['id']]);
+                        $aluno = $stmtAluno->fetch(\PDO::FETCH_ASSOC);
+                        if ($aluno) {
+                            $alunoId = $aluno['id'];
+                        }
+                    }
+                
+                    // Gerar token com tenant único
+                    $token = $this->jwtService->encode([
+                        'user_id' => $usuario['id'],
+                        'email' => $usuario['email'],
+                        'tenant_id' => $tenantId,
+                        'aluno_id' => $alunoId
+                    ]);
+                }
 
-        $response->getBody()->write(json_encode([
-            'message' => 'Usuário criado com sucesso',
-            'token' => $token,
-            'user' => $usuario
-        ]));
+                // Remover senha do retorno
+                unset($usuario['senha_hash']);
 
-        return $response->withHeader('Content-Type', 'application/json')->withStatus(201);
-    }
+                $response->getBody()->write(json_encode([
+                    'message' => 'Login realizado com sucesso',
+                    'token' => $token, // null se múltiplos tenants
+                    'user' => [
+                        'id' => $usuario['id'],
+                        'nome' => $usuario['nome'],
+                        'email' => $usuario['email'],
+                        'email_global' => $usuario['email_global'] ?? $usuario['email'], // fallback para email se email_global não existir
+                        'foto_base64' => $usuario['foto_base64'] ?? null,
+                        'papel_id' => $papelId
+                    ],
+                    'tenants' => $tenants,
+                    'requires_tenant_selection' => count($tenants) > 1
+                ]));
 
-    #[OA\Post(
-        path: "/auth/login",
-        summary: "Login do usuário",
-        description: "Autentica o usuário e retorna token JWT. Se o usuário tiver múltiplos tenants, retorna lista para seleção.",
-        tags: ["Autenticação"],
-        requestBody: new OA\RequestBody(
-            required: true,
-            content: new OA\JsonContent(
-                required: ["email", "senha"],
-                properties: [
-                    new OA\Property(property: "email", type: "string", format: "email", example: "joao@email.com"),
-                    new OA\Property(property: "senha", type: "string", example: "senha123")
-                ]
-            )
-        ),
-        responses: [
-            new OA\Response(
-                response: 200,
-                description: "Login realizado com sucesso",
-                content: new OA\JsonContent(
-                    properties: [
-                        new OA\Property(property: "message", type: "string", example: "Login realizado com sucesso"),
-                        new OA\Property(property: "token", type: "string", nullable: true, example: "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."),
-                        new OA\Property(
-                            property: "user",
-                            type: "object",
-                            properties: [
-                                new OA\Property(property: "id", type: "integer", example: 1),
-                                new OA\Property(property: "nome", type: "string", example: "João Silva"),
-                                new OA\Property(property: "email", type: "string", example: "joao@email.com"),
-                                new OA\Property(property: "foto_base64", type: "string", nullable: true),
-                                new OA\Property(property: "role_id", type: "integer", example: 1)
-                            ]
-                        ),
-                        new OA\Property(property: "tenants", type: "array", items: new OA\Items(type: "object")),
-                        new OA\Property(property: "requires_tenant_selection", type: "boolean", example: false)
-                    ]
-                )
-            ),
-            new OA\Response(response: 401, description: "Credenciais inválidas"),
-            new OA\Response(response: 403, description: "Sem acesso a tenant ou contrato inativo"),
-            new OA\Response(response: 422, description: "Dados incompletos")
-        ]
-    )]
-    public function login(Request $request, Response $response): Response
-    {
-        // Verificar se a conexão de DB falhou ao iniciar o controlador
-        if ($this->dbInitError !== null || !isset($this->usuarioModel)) {
-            $response->getBody()->write(json_encode([
-                'status' => 'error',
-                'code' => 'DATABASE_CONNECTION_FAILED',
-                'message' => 'Falha ao conectar ao banco de dados',
-                'hint' => 'Verifique variáveis de ambiente (DB_HOST, DB_NAME, DB_USER, DB_PASS) e credenciais.',
-            ], JSON_UNESCAPED_UNICODE));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(503);
-        }
-
-        // Body parsing robusto (fallback para JSON manual)
-        $data = $request->getParsedBody();
-        if (!is_array($data)) {
-            $raw = (string)$request->getBody();
-            $decoded = json_decode($raw, true);
-            $data = is_array($decoded) ? $decoded : [];
-        }
-
-        // DEBUG: Log para verificar o que está chegando
-        error_log("=== LOGIN DEBUG ===");
-        error_log("Content-Type: " . ($request->getHeaderLine('Content-Type') ?? 'N/A'));
-        error_log("Raw Body: " . (string)$request->getBody());
-        error_log("Parsed Body: " . json_encode($data));
-        $email = $data['email'] ?? null;
-        $senha = $data['senha'] ?? null;
-        error_log("Email recebido: " . ($email ?? 'VAZIO'));
-        error_log("Senha recebida: " . ($senha !== null ? '[PRESENTE]' : 'VAZIO'));
-
-        // Validações
-        if (empty($email) || empty($senha)) {
-            $response->getBody()->write(json_encode([
-                'type' => 'error',
-                'code' => 'MISSING_CREDENTIALS',
-                'message' => 'Email e senha são obrigatórios'
-            ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
-        }
-
-        // Buscar usuário por email global (independente de tenant)
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
+            } catch (\Throwable $e) {
+                error_log('[AuthController::login] EXCEPTION: ' . $e->getMessage());
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'code' => 'LOGIN_INTERNAL_ERROR',
+                    'message' => 'Erro interno ao realizar login',
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            }
         $usuario = $this->usuarioModel->findByEmailGlobal($email);
 
         if (!$usuario || !password_verify($senha, $usuario['senha_hash'])) {
