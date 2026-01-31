@@ -5,6 +5,21 @@ use Psr\Container\ContainerInterface;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
+// Habilitar log de erros da aplicação sem necessidade de sudo
+// Escrever em public/php-error.log para facilitar tail
+try {
+    ini_set('log_errors', 'On');
+    ini_set('display_errors', 'Off');
+    $logFile = __DIR__ . '/php-error.log';
+    ini_set('error_log', $logFile);
+    if (!file_exists($logFile)) {
+        @touch($logFile);
+        @chmod($logFile, 0664);
+    }
+} catch (\Throwable $e) {
+    // silencioso
+}
+
 require __DIR__ . '/../vendor/autoload.php';
 
 // Trace simples: registrar última requisição (para diagnóstico)
