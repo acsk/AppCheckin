@@ -661,6 +661,48 @@ return function ($app) {
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
             }
         })->add(AuthMiddleware::class);
+
+        // bootstrap agregado: retorna tenants e perfil em uma única chamada
+        $group->get('/bootstrap', function($request, $response) {
+            try {
+                // Executar tenants
+                $authController = new AuthController();
+                $tenantsResponse = $authController->listTenants($request, new \Slim\Psr7\Response());
+                $tenantsBody = (string)$tenantsResponse->getBody();
+                $tenantsData = json_decode($tenantsBody, true);
+
+                // Executar perfil
+                $mobileController = new MobileController();
+                $perfilResponse = $mobileController->perfil($request, new \Slim\Psr7\Response());
+                $perfilBody = (string)$perfilResponse->getBody();
+                $perfilData = json_decode($perfilBody, true);
+
+                // Montar resposta agregada
+                $payload = [
+                    'success' => true,
+                    'bootstrap' => [
+                        'tenants' => $tenantsData ?? null,
+                        'perfil' => $perfilData ?? null,
+                    ],
+                    'meta' => [
+                        'timestamp' => date('Y-m-d H:i:s'),
+                        'environment' => $_ENV['APP_ENV'] ?? 'unknown'
+                    ]
+                ];
+
+                $response->getBody()->write(json_encode($payload, JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
+            } catch (\Throwable $e) {
+                error_log('[Route /v1/bootstrap] EXCEPTION: ' . $e->getMessage());
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'BOOTSTRAP_INTERNAL_ERROR',
+                    'message' => 'Erro ao carregar dados iniciais (tenants e perfil)'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            }
+        })->add(AuthMiddleware::class);
     });
     $app->post('/auth/password-recovery/request', [AuthController::class, 'forgotPassword']);
     $app->post('/auth/password-recovery/validate-token', [AuthController::class, 'validatePasswordToken']);
