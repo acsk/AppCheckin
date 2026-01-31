@@ -187,18 +187,26 @@ class AuthController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(503);
         }
 
+        // Body parsing robusto (fallback para JSON manual)
         $data = $request->getParsedBody();
-        
+        if (!is_array($data)) {
+            $raw = (string)$request->getBody();
+            $decoded = json_decode($raw, true);
+            $data = is_array($decoded) ? $decoded : [];
+        }
+
         // DEBUG: Log para verificar o que está chegando
         error_log("=== LOGIN DEBUG ===");
         error_log("Content-Type: " . ($request->getHeaderLine('Content-Type') ?? 'N/A'));
         error_log("Raw Body: " . (string)$request->getBody());
         error_log("Parsed Body: " . json_encode($data));
-        error_log("Email recebido: " . ($data['email'] ?? 'VAZIO'));
-        error_log("Senha recebida: " . (isset($data['senha']) ? '[PRESENTE]' : 'VAZIO'));
+        $email = $data['email'] ?? null;
+        $senha = $data['senha'] ?? null;
+        error_log("Email recebido: " . ($email ?? 'VAZIO'));
+        error_log("Senha recebida: " . ($senha !== null ? '[PRESENTE]' : 'VAZIO'));
 
         // Validações
-        if (empty($data['email']) || empty($data['senha'])) {
+        if (empty($email) || empty($senha)) {
             $response->getBody()->write(json_encode([
                 'type' => 'error',
                 'code' => 'MISSING_CREDENTIALS',
@@ -208,9 +216,9 @@ class AuthController
         }
 
         // Buscar usuário por email global (independente de tenant)
-        $usuario = $this->usuarioModel->findByEmailGlobal($data['email']);
+        $usuario = $this->usuarioModel->findByEmailGlobal($email);
 
-        if (!$usuario || !password_verify($data['senha'], $usuario['senha_hash'])) {
+        if (!$usuario || !password_verify($senha, $usuario['senha_hash'])) {
             $response->getBody()->write(json_encode([
                 'type' => 'error',
                 'code' => 'INVALID_CREDENTIALS',

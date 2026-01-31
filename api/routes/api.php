@@ -75,7 +75,8 @@ return function ($app) {
             return $response
                 ->withHeader('Content-Type', 'application/json')
                 ->withStatus(200);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            // Garantir resposta JSON mesmo para erros fatais (TypeError, Error, etc.)
             $response->getBody()->write(json_encode([
                 'status' => 'error',
                 'message' => $e->getMessage(),
@@ -85,6 +86,19 @@ return function ($app) {
                 ->withHeader('Content-Type', 'application/json')
                 ->withStatus(503);
         }
+    });
+
+    // Health básico - não acessa DB, útil para validar roteamento/app
+    $app->get('/health/basic', function($request, $response) {
+        $response->getBody()->write(json_encode([
+            'status' => 'ok',
+            'php' => 'running',
+            'timestamp' => date('Y-m-d H:i:s'),
+            'environment' => $_ENV['APP_ENV'] ?? 'unknown'
+        ]));
+        return $response
+            ->withHeader('Content-Type', 'application/json')
+            ->withStatus(200);
     });
 
     // Teste simples de ambiente e conexão (público)
@@ -184,7 +198,7 @@ return function ($app) {
                 ->withHeader('Content-Type', $mimeType)
                 ->withHeader('Cache-Control', 'public, max-age=86400')
                 ->withStatus(200);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             error_log("Erro ao servir foto: " . $e->getMessage());
             return $response->withStatus(500);
         }
