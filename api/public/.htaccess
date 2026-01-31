@@ -11,4 +11,7 @@
     RewriteRule ^ index.php [QSA,L]
 </IfModule>
 
+# Definir arquivo padrão
+DirectoryIndex index.php
+
 

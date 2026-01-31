@@ -12,9 +12,12 @@
     RewriteCond %{REQUEST_FILENAME} -d
     RewriteRule ^ - [L]
 
-    # Todas as outras requisições vão para index.php
-    RewriteRule ^ index.php [QSA,L]
+    # Todas as outras requisições vão para public/index.php
+    RewriteRule ^ public/index.php [QSA,L]
 </IfModule>
 
 # Desabilita listagem de diretórios
 Options -Indexes
+
+# Definir arquivo padrão
+DirectoryIndex public/index.php index.php
