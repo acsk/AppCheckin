@@ -45,26 +45,38 @@ class AuthMiddleware
         }
 
         // Buscar dados completos do usuário
-        $db = require __DIR__ . '/../../config/database.php';
-        $stmt = $db->prepare("
-            SELECT 
-                u.id, 
-                u.nome, 
-                u.email, 
-                u.email_global, 
-                u.foto_base64,
-                ut.tenant_id,
-                ut.status as tenant_status,
-                tup.papel_id
-            FROM usuarios u
-            LEFT JOIN usuario_tenant ut ON ut.usuario_id = u.id AND ut.status = 'ativo'
-            LEFT JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.ativo = 1
-            WHERE u.id = :user_id
-            ORDER BY tup.papel_id DESC
-            LIMIT 1
-        ");
-        $stmt->execute(['user_id' => $decoded->user_id]);
-        $usuario = $stmt->fetch(\PDO::FETCH_ASSOC);
+            // Buscar dados completos do usuário com proteção ao banco
+            try {
+                $db = require __DIR__ . '/../../config/database.php';
+                $stmt = $db->prepare("
+                    SELECT 
+                        u.id, 
+                        u.nome, 
+                        u.email, 
+                        u.email_global, 
+                        u.foto_base64,
+                        ut.tenant_id,
+                        ut.status as tenant_status,
+                        tup.papel_id
+                    FROM usuarios u
+                    LEFT JOIN usuario_tenant ut ON ut.usuario_id = u.id AND ut.status = 'ativo'
+                    LEFT JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.ativo = 1
+                    WHERE u.id = :user_id
+                    ORDER BY tup.papel_id DESC
+                    LIMIT 1
+                ");
+                $stmt->execute(['user_id' => $decoded->user_id]);
+                $usuario = $stmt->fetch(\PDO::FETCH_ASSOC);
+            } catch (\Throwable $e) {
+                error_log('[AuthMiddleware] DB error: ' . $e->getMessage());
+                $resp = new SlimResponse();
+                $resp->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'code' => 'DATABASE_CONNECTION_FAILED',
+                    'message' => 'Falha ao conectar ao banco de dados'
+                ]));
+                return $resp->withHeader('Content-Type', 'application/json')->withStatus(503);
+            }
 
         if (!$usuario) {
             return $this->unauthorizedResponse(

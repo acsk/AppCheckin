@@ -20,7 +20,8 @@ class TenantMiddleware
             return $resp
                 ->withHeader('Access-Control-Allow-Origin', '*')
                 ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
-                ->withHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Accept, Origin, Authorization, X-Tenant-Id, X-Tenant-Slug')
+                // Removido X-Tenant-* dos headers permitidos
+                ->withHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Accept, Origin, Authorization')
                 ->withHeader('Access-Control-Max-Age', '86400')
                 ->withStatus(204);
         }
@@ -29,25 +30,9 @@ class TenantMiddleware
         $tenantSource = 'none';
         $path = $request->getUri()->getPath();
         
-        // 1. Priorizar X-Tenant-Id (sem consulta ao banco no middleware)
-        $tenantIdHeader = $request->getHeaderLine('X-Tenant-Id');
-        if ($tenantIdHeader !== '') {
-            // Confiar no ID informado; validações mais profundas devem ocorrer nos controllers/services
-            $tenantId = (int)$tenantIdHeader;
-            $tenantSource = 'header-id';
-        }
+        // Removido suporte a X-Tenant-*; resolver apenas via JWT
 
-        // 2. Se não tem header id, tentar X-Tenant-Slug
-        if (!$tenantId) {
-            $tenantSlug = $request->getHeaderLine('X-Tenant-Slug');
-            if ($tenantSlug) {
-                // Não resolver slug aqui; anexar para resolução posterior
-                $request = $request->withAttribute('tenantSlug', $tenantSlug);
-                $tenantSource = 'header-slug';
-            }
-        }
-
-        // 3. Se ainda não tem tenant, tentar obter do JWT
+        // 1. Tentar obter tenant do JWT
         if (!$tenantId) {
             $authHeader = $request->getHeaderLine('Authorization');
             if ($authHeader && preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
@@ -68,7 +53,7 @@ class TenantMiddleware
             }
         }
 
-        // 4. Se ainda não tem tenant, decidir conforme a rota
+        // 2. Se ainda não tem tenant, decidir conforme a rota
         if (!$tenantId) {
             // Allowlist de rotas que não exigem tenant
             $allowlistPrefixes = [
@@ -101,7 +86,7 @@ class TenantMiddleware
 
             // Para rotas sensíveis (ex.: /mobile), exigir tenant
             if (!$isAllowlisted) {
-                return $this->errorResponse('Tenant não informado. Informe X-Tenant-Id ou X-Tenant-Slug, ou utilize um token com tenant_id.');
+                return $this->errorResponse('Tenant não informado. Utilize um token (JWT) contendo tenant_id.');
             }
         }
 
