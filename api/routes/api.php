@@ -544,7 +544,20 @@ return function ($app) {
     
     // Seleção de tenant/academia (protegido, mas não precisa de tenant no contexto ainda)
     $app->post('/auth/select-tenant', [AuthController::class, 'selectTenant'])->add(AuthMiddleware::class);
-    $app->get('/auth/tenants', [AuthController::class, 'listTenants'])->add(AuthMiddleware::class);
+    $app->get('/auth/tenants', function($request, $response) {
+        try {
+            $controller = new AuthController();
+            return $controller->listTenants($request, $response);
+        } catch (\Throwable $e) {
+            error_log('[Route /auth/tenants] EXCEPTION: ' . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'code' => 'TENANTS_INTERNAL_ERROR',
+                'message' => 'Erro ao listar academias do usuário'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    })->add(AuthMiddleware::class);
     
     // Seleção inicial de tenant durante login (rota pública - usada quando múltiplos tenants)
     $app->post('/auth/select-tenant-initial', [AuthController::class, 'selectTenantPublic']);
@@ -610,12 +623,40 @@ return function ($app) {
     // ========================================
     $app->group('/mobile', function ($group) {
         // Perfil completo com estatísticas
-        $group->get('/perfil', [MobileController::class, 'perfil']);
+        $group->get('/perfil', function($request, $response) {
+            try {
+                $controller = new MobileController();
+                return $controller->perfil($request, $response);
+            } catch (\Throwable $e) {
+                error_log('[Route /mobile/perfil] EXCEPTION: ' . $e->getMessage());
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'MOBILE_PERFIL_INTERNAL_ERROR',
+                    'message' => 'Erro ao carregar perfil do usuário'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            }
+        });
         $group->post('/perfil/foto', [MobileController::class, 'uploadFotoPerfil']);
         $group->get('/perfil/foto', [MobileController::class, 'obterFotoPerfil']);
         
         // Tenants do usuário
-        $group->get('/tenants', [MobileController::class, 'tenants']);
+        $group->get('/tenants', function($request, $response) {
+            try {
+                $controller = new MobileController();
+                return $controller->tenants($request, $response);
+            } catch (\Throwable $e) {
+                error_log('[Route /mobile/tenants] EXCEPTION: ' . $e->getMessage());
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'MOBILE_TENANTS_INTERNAL_ERROR',
+                    'message' => 'Erro ao carregar academias do usuário'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            }
+        });
         
         // Planos de alunos disponíveis
         $group->get('/planos', [MobileController::class, 'planosDoUsuario']);
