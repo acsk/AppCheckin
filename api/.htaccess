@@ -7,9 +7,7 @@
     RewriteCond %{HTTP:X-Forwarded-Proto} !https
     RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
-    # Tratar preflight CORS diretamente
-    RewriteCond %{REQUEST_METHOD} OPTIONS
-    RewriteRule ^ - [R=200,L]
+    # Todas as requisições (incluindo OPTIONS) serão roteadas para index.php
     
     # Se for arquivo real (não reescreve)
     RewriteCond %{REQUEST_FILENAME} -f

@@ -2,9 +2,7 @@
     RewriteEngine On
     RewriteBase /
     
-    # Tratar preflight CORS diretamente no Apache (garante sucesso mesmo antes do PHP)
-    RewriteCond %{REQUEST_METHOD} OPTIONS
-    RewriteRule ^ - [R=200,L]
+    # Todas as requisições (incluindo OPTIONS) serão roteadas para index.php
     
     # Se for arquivo ou diretório real, deixa passar
     RewriteCond %{REQUEST_FILENAME} -f [OR]
