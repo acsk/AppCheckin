@@ -58,6 +58,12 @@ const formatPhone = (value) => {
   return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
 };
 
+const formatCep = (value) => {
+  const digits = value.replace(/\D/g, "").slice(0, 8);
+  if (digits.length <= 5) return digits;
+  return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+};
+
 const isValidCpf = (value) => {
   if (!value || value.length !== 11) {
     return false;
@@ -138,6 +144,14 @@ export default function RegisterMobileScreen() {
       errors.cpf = "CPF inválido";
     }
 
+    if (!form.telefone.trim()) {
+      errors.telefone = "Informe o telefone";
+    }
+
+    if (!form.whatsapp.trim()) {
+      errors.whatsapp = "Informe o WhatsApp";
+    }
+
     setFieldErrors(errors);
     return errors;
   };
@@ -184,7 +198,7 @@ export default function RegisterMobileScreen() {
   };
 
   const handleCepChange = (value) => {
-    handleChange("cep", value);
+    handleChange("cep", formatCep(value));
   };
 
   useEffect(() => {
@@ -400,7 +414,12 @@ export default function RegisterMobileScreen() {
                 <Text style={styles.fieldErrorText}>{fieldErrors.cpf}</Text>
               ) : null}
 
-              <View style={styles.inputWrapper}>
+              <View
+                style={[
+                  styles.inputWrapper,
+                  fieldErrors.telefone && styles.inputWrapperError,
+                ]}
+              >
                 <Feather
                   name="phone"
                   size={20}
@@ -409,7 +428,7 @@ export default function RegisterMobileScreen() {
                 />
                 <TextInput
                   style={styles.input}
-                  placeholder="Telefone (opcional)"
+                  placeholder="Telefone"
                   placeholderTextColor="#999"
                   keyboardType="phone-pad"
                   value={form.telefone}
@@ -417,8 +436,18 @@ export default function RegisterMobileScreen() {
                   editable={!loading}
                 />
               </View>
+              {fieldErrors.telefone ? (
+                <Text style={styles.fieldErrorText}>
+                  {fieldErrors.telefone}
+                </Text>
+              ) : null}
 
-              <View style={styles.inputWrapper}>
+              <View
+                style={[
+                  styles.inputWrapper,
+                  fieldErrors.whatsapp && styles.inputWrapperError,
+                ]}
+              >
                 <Feather
                   name="message-circle"
                   size={20}
@@ -427,7 +456,7 @@ export default function RegisterMobileScreen() {
                 />
                 <TextInput
                   style={styles.input}
-                  placeholder="WhatsApp (opcional)"
+                  placeholder="WhatsApp"
                   placeholderTextColor="#999"
                   keyboardType="phone-pad"
                   value={form.whatsapp}
@@ -435,6 +464,11 @@ export default function RegisterMobileScreen() {
                   editable={!loading}
                 />
               </View>
+              {fieldErrors.whatsapp ? (
+                <Text style={styles.fieldErrorText}>
+                  {fieldErrors.whatsapp}
+                </Text>
+              ) : null}
 
               <View style={styles.sectionTitleWrapper}>
                 <Text style={styles.sectionTitle}>Endereço (opcional)</Text>
