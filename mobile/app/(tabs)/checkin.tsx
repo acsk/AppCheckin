@@ -403,13 +403,6 @@ export default function CheckinScreen() {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
-          ...(currentTenant?.tenant?.id || currentTenant?.id
-            ? {
-                "X-Tenant-Id": String(
-                  currentTenant?.tenant?.id ?? currentTenant?.id,
-                ),
-              }
-            : {}),
         },
       });
 
@@ -524,13 +517,6 @@ export default function CheckinScreen() {
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
-          ...(currentTenant?.tenant?.id || currentTenant?.id
-            ? {
-                "X-Tenant-Id": String(
-                  currentTenant?.tenant?.id ?? currentTenant?.id,
-                ),
-              }
-            : {}),
         },
         body: JSON.stringify(payload),
       });
@@ -618,14 +604,6 @@ export default function CheckinScreen() {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-          ...(currentTenant?.tenant?.id || currentTenant?.id
-            ? {
-                "X-Tenant-Id": String(
-                  currentTenant?.tenant?.id ?? currentTenant?.id,
-                ),
-              }
-            : {}),
         },
       });
 
@@ -722,13 +700,7 @@ export default function CheckinScreen() {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
-          ...(currentTenant?.tenant?.id || currentTenant?.id
-            ? {
-                "X-Tenant-Id": String(
-                  currentTenant?.tenant?.id ?? currentTenant?.id,
-                ),
-              }
-            : {}),
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({ presencas: presencasParaEnviar }),
       });
@@ -948,7 +920,6 @@ export default function CheckinScreen() {
         method: "GET",
         headers: {
           Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
         },
       });
 

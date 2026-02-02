@@ -71,6 +71,8 @@ export default function AccountScreen() {
   const latestProfileReqRef = useRef<number>(0);
   const latestRankingReqRef = useRef<number>(0);
   const latestWeekReqRef = useRef<number>(0);
+  const profileLoadTriggeredRef = useRef(false);
+  const lastLoadedTenantIdRef = useRef<number | null>(null);
 
   // Estados do calendário semanal de check-ins
   const [weekDias, setWeekDias] = useState<DiaCheckin[]>([]);
@@ -124,6 +126,43 @@ export default function AccountScreen() {
     return (
       parts[0].charAt(0) + parts[parts.length - 1].charAt(0)
     ).toUpperCase();
+  };
+
+  // Exibir exatamente o nome fornecido pelo backend, sem normalizações
+
+  const getTenantName = () => {
+    // Preferir o nome vindo de /auth/tenants (lista) que reflete o display desejado
+    const currentId = currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
+    if (currentId && Array.isArray(tenants) && tenants.length > 0) {
+      const match = tenants.find(
+        (t: any) => t?.tenant?.id === currentId || t?.id === currentId,
+      );
+      const nomeLista = match?.tenant?.nome ?? match?.nome;
+      if (nomeLista) return nomeLista;
+    }
+    // Fallback para nome do objeto currentTenant
+    return currentTenant?.tenant?.nome ?? currentTenant?.nome ?? "Academia";
+  };
+
+  const getTenantDisplayName = () => getTenantName();
+
+  const getTenantImageUrl = () => {
+    const raw =
+      currentTenant?.tenant?.logo_caminho ??
+      currentTenant?.tenant?.logo ??
+      currentTenant?.tenant?.imagem ??
+      currentTenant?.tenant?.foto_caminho ??
+      currentTenant?.tenant?.foto ??
+      currentTenant?.logo_caminho ??
+      currentTenant?.logo ??
+      currentTenant?.imagem ??
+      currentTenant?.foto_caminho ??
+      currentTenant?.foto ??
+      null;
+    if (!raw) return null;
+    if (/^https?:\/\//i.test(raw)) return raw;
+    if (!apiUrl) return raw;
+    return `${apiUrl}${raw}`;
   };
 
   // Memoized loaders to satisfy hook dependencies
@@ -331,19 +370,29 @@ export default function AccountScreen() {
     })();
   }, []);
 
-  // Carrega perfil quando API URL estiver disponível
+  // Carrega perfil apenas quando tenant estiver definido e evita duplicidade
   useEffect(() => {
-    if (apiUrl) {
-      loadUserProfileMemo();
+    const tenantId = currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
+    if (!apiUrl || !tenantId) return;
+    if (
+      profileLoadTriggeredRef.current &&
+      lastLoadedTenantIdRef.current === tenantId
+    ) {
+      return;
     }
-  }, [apiUrl, loadUserProfileMemo]);
+    profileLoadTriggeredRef.current = true;
+    lastLoadedTenantIdRef.current = tenantId;
+    loadUserProfileMemo();
+  }, [apiUrl, currentTenant, loadUserProfileMemo]);
 
   // Recarrega perfil quando o tenant mudar (após troca de academia)
+  // Recarrega perfil quando o tenant mudar de fato (id diferente)
   useEffect(() => {
-    const tenantId = currentTenant?.tenant?.id ?? currentTenant?.id;
-    if (apiUrl && tenantId) {
-      loadUserProfileMemo();
-    }
+    const tenantId = currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
+    if (!apiUrl || !tenantId) return;
+    if (lastLoadedTenantIdRef.current === tenantId) return;
+    lastLoadedTenantIdRef.current = tenantId;
+    loadUserProfileMemo();
   }, [currentTenant, apiUrl, loadUserProfileMemo]);
 
   // Garante que o token esteja alinhado com o tenant atual
@@ -359,7 +408,6 @@ export default function AccountScreen() {
         );
         try {
           await AuthService.selectTenant(tenantId);
-          await loadUserProfileMemo();
           const ct = await AuthService.getCurrentTenant();
           setCurrentTenant(ct);
         } catch (e) {
@@ -783,6 +831,8 @@ export default function AccountScreen() {
     );
   }
 
+  const tenantImageUrl = getTenantImageUrl();
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header com dados do usuário */}
@@ -791,52 +841,25 @@ export default function AccountScreen() {
           <View style={styles.headerUserLeft}>
             <View style={styles.headerPhotoWrapper}>
               <View style={styles.headerPhotoContainer}>
-                {photoUrl ? (
+                {tenantImageUrl ? (
                   <Image
-                    source={{ uri: photoUrl }}
-                    style={styles.headerPhotoImage}
-                    onError={(error) => {
-                      console.error("❌ Erro ao carregar photoUrl:", error);
-                    }}
-                  />
-                ) : userProfile.foto_caminho ? (
-                  <Image
-                    source={{
-                      uri: `${apiUrl}${userProfile.foto_caminho}`,
-                    }}
+                    source={{ uri: tenantImageUrl }}
                     style={styles.headerPhotoImage}
                     onError={(error) => {
                       console.error(
-                        "❌ Erro ao carregar foto_caminho:",
-                        `${apiUrl}${userProfile.foto_caminho}`,
+                        "❌ Erro ao carregar logo do tenant:",
                         error,
                       );
                     }}
                   />
-                ) : userProfile.foto_base64 ? (
-                  <Image
-                    source={{
-                      uri: `data:image/jpeg;base64,${userProfile.foto_base64}`,
-                    }}
-                    style={styles.headerPhotoImage}
-                    onError={(error) => {
-                      console.error("❌ Erro ao carregar foto_base64:", error);
-                    }}
-                  />
                 ) : (
                   <Text style={styles.headerPhotoInitials}>
-                    {getInitials(userProfile.nome)}
+                    {getInitials(getTenantDisplayName())}
                   </Text>
-                )}
-                {updatingPhoto && (
-                  <View style={styles.headerPhotoLoading}>
-                    <ActivityIndicator size="small" color="#fff" />
-                  </View>
                 )}
               </View>
             </View>
             <View style={styles.headerUserInfo}>
-              <Text style={styles.headerUserName}>{userProfile.nome}</Text>
               {((currentTenant &&
                 (currentTenant.nome || currentTenant?.tenant?.nome)) ||
                 tenants.length > 1) && (
@@ -848,9 +871,7 @@ export default function AccountScreen() {
                 >
                   <Feather name="shuffle" size={12} color="#fff" />
                   <Text style={styles.tenantSwitchText}>
-                    {currentTenant?.nome ||
-                      currentTenant?.tenant?.nome ||
-                      "Trocar de academia"}
+                    {getTenantDisplayName() || "Trocar de academia"}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -926,7 +947,7 @@ export default function AccountScreen() {
                         </View>
                       ) : isPast ? (
                         <View style={styles.weekDayMissedIcon}>
-                          <Feather name="x" size={14} color="#B91C1C" />
+                          <Feather name="x" size={14} color={colors.gray400} />
                         </View>
                       ) : isToday ? (
                         <View style={styles.weekDayIconContainer}>
@@ -990,7 +1011,11 @@ export default function AccountScreen() {
             Ranking de Check-ins{rankingPeriodo ? ` • ${rankingPeriodo}` : ""}
           </Text>
           {rankingModalidades.length > 0 && (
-            <View style={styles.modalidadeFilter}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.modalidadeTabs}
+            >
               {rankingModalidades.map((modalidade) => {
                 const active = selectedModalidadeId === modalidade.id;
                 const chipColor = modalidade.cor || colors.primary;
@@ -998,10 +1023,12 @@ export default function AccountScreen() {
                   <TouchableOpacity
                     key={modalidade.id}
                     style={[
-                      styles.modalidadeChip,
-                      active && styles.modalidadeChipActive,
-                      { borderColor: active ? chipColor : "#f8e5d1" },
-                      active && { backgroundColor: `${chipColor}15` },
+                      styles.modalidadeTab,
+                      active && styles.modalidadeTabActive,
+                      {
+                        borderColor: active ? chipColor : "#f3e6d9",
+                        backgroundColor: active ? chipColor : "#fff",
+                      },
                     ]}
                     onPress={() => {
                       setSelectedModalidadeId(modalidade.id);
@@ -1012,23 +1039,31 @@ export default function AccountScreen() {
                         <MaterialCommunityIcons
                           name={modalidade.icone as any}
                           size={14}
-                          color={chipColor}
+                          color={active ? "#fff" : chipColor}
                         />
                       ) : null}
                       <Text
                         style={[
                           styles.modalidadeChipText,
                           active && styles.modalidadeChipTextActive,
-                          { color: active ? chipColor : "#8b6b3b" },
+                          { color: active ? "#fff" : "#8b6b3b" },
                         ]}
                       >
                         {modalidade.nome}
                       </Text>
                     </View>
+                    {active && (
+                      <View
+                        style={[
+                          styles.modalidadeTabIndicator,
+                          { backgroundColor: chipColor },
+                        ]}
+                      />
+                    )}
                   </TouchableOpacity>
                 );
               })}
-            </View>
+            </ScrollView>
           )}
           <View style={styles.rankingCard}>
             {rankingLoading ? (
@@ -1043,44 +1078,94 @@ export default function AccountScreen() {
             ) : (
               <>
                 <View style={styles.rankingList}>
-                  {ranking.slice(0, 3).map((item) => (
-                    <View
-                      key={item.aluno?.id ?? item.posicao}
-                      style={styles.rankingListItem}
-                    >
-                      <View style={styles.rankingPosition}>
-                        <Text style={styles.rankingPositionNumber}>
-                          {item.posicao}
-                        </Text>
-                      </View>
-                      <View style={styles.rankingAvatar}>
-                        {item.aluno?.foto_caminho && apiUrl ? (
-                          <Image
-                            source={{
-                              uri: `${apiUrl}${item.aluno.foto_caminho}`,
-                            }}
-                            style={styles.rankingAvatarImage}
-                          />
-                        ) : (
-                          <View style={styles.rankingAvatarPlaceholder}>
+                  {ranking.slice(0, 3).map((item) => {
+                    const pos = Number(item.posicao) || 0;
+                    const isGold = pos === 1;
+                    const isSilver = pos === 2;
+                    const isBronze = pos === 3;
+                    const badgeColor = isGold
+                      ? "#f59e0b"
+                      : isSilver
+                        ? "#94a3b8"
+                        : "#d97706";
+                    const badgeSoft = isGold
+                      ? "#fff7ed"
+                      : isSilver
+                        ? "#f8fafc"
+                        : "#fff7ed";
+                    return (
+                      <View
+                        key={item.aluno?.id ?? item.posicao}
+                        style={[
+                          styles.rankingListItem,
+                          isGold && styles.rankingListItemGold,
+                          isSilver && styles.rankingListItemSilver,
+                          isBronze && styles.rankingListItemBronze,
+                        ]}
+                      >
+                        <View
+                          style={[
+                            styles.rankingPosition,
+                            { backgroundColor: badgeColor },
+                          ]}
+                        >
+                          {isGold && (
                             <MaterialCommunityIcons
-                              name="account"
-                              size={20}
-                              color="#9ca3af"
+                              name="crown"
+                              size={14}
+                              color="#fff"
                             />
+                          )}
+                          <Text style={styles.rankingPositionNumber}>
+                            {item.posicao}
+                          </Text>
+                        </View>
+                        <View style={styles.rankingAvatar}>
+                          {item.aluno?.foto_caminho && apiUrl ? (
+                            <Image
+                              source={{
+                                uri: `${apiUrl}${item.aluno.foto_caminho}`,
+                              }}
+                              style={styles.rankingAvatarImage}
+                            />
+                          ) : (
+                            <View style={styles.rankingAvatarPlaceholder}>
+                              <MaterialCommunityIcons
+                                name="account"
+                                size={20}
+                                color="#9ca3af"
+                              />
+                            </View>
+                          )}
+                        </View>
+                        <View style={styles.rankingListContent}>
+                          <View style={styles.rankingNameRow}>
+                            <Text style={styles.rankingName}>
+                              {item.aluno?.nome ?? "Usuário"}
+                            </Text>
+                            <View
+                              style={[
+                                styles.rankingTopBadge,
+                                { backgroundColor: badgeSoft },
+                              ]}
+                            >
+                              <Text
+                                style={[
+                                  styles.rankingTopBadgeText,
+                                  { color: badgeColor },
+                                ]}
+                              >
+                                TOP {item.posicao}
+                              </Text>
+                            </View>
                           </View>
-                        )}
+                          <Text style={styles.rankingCheckins}>
+                            {item.total_checkins} check-ins
+                          </Text>
+                        </View>
                       </View>
-                      <View style={styles.rankingListContent}>
-                        <Text style={styles.rankingName}>
-                          {item.aluno?.nome ?? "Usuário"}
-                        </Text>
-                        <Text style={styles.rankingCheckins}>
-                          {item.total_checkins} check-ins
-                        </Text>
-                      </View>
-                    </View>
-                  ))}
+                    );
+                  })}
                 </View>
                 <View style={styles.rankingDivider} />
                 <View style={styles.rankingUserRow}>
@@ -1689,9 +1774,9 @@ const styles = StyleSheet.create({
     borderColor: "#10b981",
   },
   weekDayItemMissed: {
-    backgroundColor: "#F6F7F9",
+    backgroundColor: colors.gray100,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: colors.gray200,
   },
   weekDayName: {
     fontSize: 11,
@@ -1740,11 +1825,11 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: "#FDE2E2",
+    backgroundColor: colors.gray100,
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#FCA5A5",
+    borderColor: colors.gray200,
   },
   weekDayIconContainer: {
     width: 24,
@@ -1985,23 +2070,29 @@ const styles = StyleSheet.create({
   rankingSection: {
     marginBottom: 20,
   },
-  modalidadeFilter: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 10,
-    marginBottom: 14,
-  },
-  modalidadeChip: {
-    paddingHorizontal: 14,
+  modalidadeTabs: {
+    gap: 12,
     paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: "#fff2e6",
-    borderWidth: 1,
-    borderColor: colors.primary + "50",
+    paddingHorizontal: 4,
+    marginBottom: 16,
   },
-  modalidadeChipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+  modalidadeTab: {
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 16,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#fde3c8",
+  },
+  modalidadeTabActive: {
+    backgroundColor: "transparent",
+    borderColor: "transparent",
+  },
+  modalidadeTabIndicator: {
+    marginTop: 6,
+    height: 3,
+    borderRadius: 999,
+    alignSelf: "stretch",
   },
   modalidadeChipContent: {
     flexDirection: "row",
@@ -2009,9 +2100,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   modalidadeChipText: {
-    fontSize: 14,
-    color: colors.primaryDark,
-    fontWeight: "700",
+    fontSize: 15,
+    color: "#9a5b1e",
+    fontWeight: "800",
   },
   modalidadeChipTextActive: {
     color: "#fff",
@@ -2042,15 +2133,27 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.primary + "25",
   },
+  rankingListItemGold: {
+    borderColor: "#f59e0b55",
+    backgroundColor: "#fffbeb",
+  },
+  rankingListItemSilver: {
+    borderColor: "#94a3b855",
+    backgroundColor: "#f8fafc",
+  },
+  rankingListItemBronze: {
+    borderColor: "#d9770655",
+    backgroundColor: "#fff7ed",
+  },
   rankingPosition: {
-    width: 46,
-    height: 38,
+    minWidth: 46,
+    height: 40,
     borderRadius: 12,
-    backgroundColor: colors.primary,
     borderWidth: 1,
-    borderColor: colors.primary,
+    borderColor: "rgba(255,255,255,0.6)",
     alignItems: "center",
     justifyContent: "center",
+    gap: 2,
   },
   rankingPositionNumber: {
     fontSize: 14,
@@ -2086,6 +2189,16 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+  },
+  rankingTopBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  rankingTopBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.5,
   },
   rankingListContent: {
     flex: 1,
@@ -2353,8 +2466,8 @@ const styles = StyleSheet.create({
   },
   tenantSwitchText: {
     color: "#fff",
-    fontSize: 12,
-    fontWeight: "700",
+    fontSize: 14,
+    fontWeight: "500",
   },
   tenantOptionButton: {
     flexDirection: "row",
