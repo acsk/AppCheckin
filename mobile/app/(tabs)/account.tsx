@@ -133,15 +133,27 @@ export default function AccountScreen() {
   const getTenantName = () => {
     // Preferir o nome vindo de /auth/tenants (lista) que reflete o display desejado
     const currentId = currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
+    console.log(
+      "🔎 [getTenantName] currentId:",
+      currentId,
+      "tenants.length:",
+      Array.isArray(tenants) ? tenants.length : 0,
+    );
     if (currentId && Array.isArray(tenants) && tenants.length > 0) {
       const match = tenants.find(
         (t: any) => t?.tenant?.id === currentId || t?.id === currentId,
       );
       const nomeLista = match?.tenant?.nome ?? match?.nome;
-      if (nomeLista) return nomeLista;
+      if (nomeLista) {
+        console.log("✅ [getTenantName] Nome encontrado na lista:", nomeLista);
+        return nomeLista;
+      }
     }
     // Fallback para nome do objeto currentTenant
-    return currentTenant?.tenant?.nome ?? currentTenant?.nome ?? "Academia";
+    const fallbackName =
+      currentTenant?.tenant?.nome ?? currentTenant?.nome ?? "Academia";
+    console.log("⚠️ [getTenantName] Usando fallback:", fallbackName);
+    return fallbackName;
   };
 
   const getTenantDisplayName = () => getTenantName();
@@ -169,6 +181,8 @@ export default function AccountScreen() {
   const loadUserProfileMemo = useCallback(async () => {
     try {
       console.log("\n🔄 INICIANDO CARREGAMENTO DE PERFIL");
+      console.log("📊 [loadUserProfileMemo] currentTenant:", currentTenant);
+      console.log("📊 [loadUserProfileMemo] apiUrl:", apiUrl);
       const expectedTenantId =
         currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
       const reqId = Date.now();
@@ -192,6 +206,10 @@ export default function AccountScreen() {
           return;
         }
         setUserProfile(profileData.data);
+        console.log(
+          "✅ [loadUserProfileMemo] Perfil carregado com sucesso:",
+          profileData.data?.nome,
+        );
         if (profileData.data?.foto_caminho) {
           const fullPhotoUrl = apiUrl + profileData.data.foto_caminho;
           console.log("🖼️ URL COMPLETA DA FOTO:", fullPhotoUrl);
@@ -202,6 +220,10 @@ export default function AccountScreen() {
         Alert.alert("Erro", errorMsg);
       }
     } catch (error: any) {
+      console.error(
+        "❌ [loadUserProfileMemo] Erro ao carregar perfil:",
+        error?.message || error,
+      );
       const status = error?.response?.status;
       if (status === 401) {
         console.log("🔑 Detectado 401 - Token inválido/expirado");
@@ -239,6 +261,7 @@ export default function AccountScreen() {
         tenantId: expectedTenantId,
         url,
       });
+      console.log("📅 [loadWeekCheckinsMemo] Iniciando carregamento...");
       const response = await fetch(url, {
         method: "GET",
         headers: {
@@ -300,6 +323,7 @@ export default function AccountScreen() {
           modalidadeId: modalidadeId ?? null,
           url,
         });
+        console.log("🏆 [loadRankingMemo] Iniciando carregamento...");
         const response = await fetch(url, {
           method: "GET",
           headers: {
@@ -356,13 +380,17 @@ export default function AccountScreen() {
   // Inicializa API URL e carrega tenants no mount
 
   useEffect(() => {
+    console.log("🎬 [Account Mount] Iniciando...");
     setApiUrl(getApiUrlRuntime());
     console.log("📍 API URL (Account):", getApiUrlRuntime());
     (async () => {
       try {
+        console.log("🔄 [Account Mount] Carregando tenants...");
         const ts = await AuthService.getTenants();
+        console.log("✅ [Account Mount] Tenants carregados:", ts);
         setTenants(Array.isArray(ts) ? ts : []);
         const ct = await AuthService.getCurrentTenant();
+        console.log("✅ [Account Mount] currentTenant:", ct);
         setCurrentTenant(ct);
       } catch (e) {
         console.warn("⚠️ Falha ao carregar tenants atuais", e);
@@ -373,13 +401,27 @@ export default function AccountScreen() {
   // Carrega perfil apenas quando tenant estiver definido e evita duplicidade
   useEffect(() => {
     const tenantId = currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
-    if (!apiUrl || !tenantId) return;
+    console.log(
+      "🔹 [Effect 1] Carregamento de perfil - tenantId:",
+      tenantId,
+      "apiUrl:",
+      apiUrl ? "set" : "vazio",
+    );
+    if (!apiUrl || !tenantId) {
+      console.log("⏭️ [Effect 1] Aguardando apiUrl ou tenantId...");
+      return;
+    }
     if (
       profileLoadTriggeredRef.current &&
       lastLoadedTenantIdRef.current === tenantId
     ) {
+      console.log("⏭️ [Effect 1] Já carregado para tenantId:", tenantId);
       return;
     }
+    console.log(
+      "🚀 [Effect 1] Disparando loadUserProfileMemo para tenantId:",
+      tenantId,
+    );
     profileLoadTriggeredRef.current = true;
     lastLoadedTenantIdRef.current = tenantId;
     loadUserProfileMemo();
