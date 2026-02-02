@@ -7,7 +7,7 @@
 
 ## Requisitos
 - Campos obrigatórios: `nome`, `email`, `cpf`
-- Campos opcionais: `telefone`, `cep`, `logradouro`, `numero`, `complemento`, `bairro`, `cidade`, `estado`
+- Campos opcionais: `telefone`, `whatsapp`, `cep`, `logradouro`, `numero`, `complemento`, `bairro`, `cidade`, `estado`
 - Regras:
   - `cpf` deve conter 11 dígitos (os caracteres não numéricos são ignorados)
   - `email` e `cpf` devem ser únicos no sistema
@@ -19,6 +19,7 @@
   "email": "joao.silva@example.com",
   "cpf": "123.456.789-09",
   "telefone": "(11) 99999-9999",
+  "whatsapp": "(11) 98888-7777",
   "cep": "01234-567",
   "logradouro": "Rua A",
   "numero": "123",
@@ -51,6 +52,7 @@ curl -i -X POST https://api.appcheckin.com.br/auth/register-mobile \
     "nome": "JOÃO DA SILVA",
     "email": "joao.silva@example.com",
     "telefone": "(11) 99999-9999",
+    "whatsapp": "(11) 98888-7777",
     "cpf": "12345678909"
   }
 }

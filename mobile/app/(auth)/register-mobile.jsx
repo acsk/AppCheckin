@@ -1,17 +1,17 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { authService } from "../../src/services/authService";
@@ -22,6 +22,7 @@ const INITIAL_FORM = {
   email: "",
   cpf: "",
   telefone: "",
+  whatsapp: "",
   cep: "",
   logradouro: "",
   numero: "",
@@ -45,6 +46,16 @@ const formatCpf = (value) => {
     6,
     9,
   )}-${digits.slice(9)}`;
+};
+
+const formatPhone = (value) => {
+  const digits = value.replace(/\D/g, "").slice(0, 11);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  if (digits.length <= 10) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  }
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
 };
 
 const isValidCpf = (value) => {
@@ -91,6 +102,7 @@ export default function RegisterMobileScreen() {
   const lastCepRequestedRef = useRef("");
 
   const cpfDigits = useMemo(() => normalizeCpf(form.cpf), [form.cpf]);
+  const cepDigits = useMemo(() => normalizeCep(form.cep), [form.cep]);
 
   const handleChange = (field, value) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -101,6 +113,10 @@ export default function RegisterMobileScreen() {
 
   const handleCpfChange = (value) => {
     handleChange("cpf", formatCpf(value));
+  };
+
+  const handlePhoneChange = (field, value) => {
+    handleChange(field, formatPhone(value));
   };
 
   const validateFields = () => {
@@ -143,18 +159,22 @@ export default function RegisterMobileScreen() {
       );
       const data = await response.json();
 
-      if (data?.erro) {
-        Alert.alert("CEP não encontrado", "Verifique o CEP informado.");
+      if (data?.erro === true || data?.erro === "true") {
+        setFieldErrors((prev) => ({
+          ...prev,
+          cep: "CEP não encontrado",
+        }));
         return;
       }
 
       setForm((prev) => ({
         ...prev,
-        cep: cepDigitsValue,
+        cep: data.cep || cepDigitsValue,
         logradouro: data.logradouro || prev.logradouro,
+        complemento: data.complemento || prev.complemento,
         bairro: data.bairro || prev.bairro,
         cidade: data.localidade || prev.cidade,
-        estado: data.uf || prev.estado,
+        estado: data.estado || data.uf || prev.estado,
       }));
     } catch (error) {
       Alert.alert("Erro ao buscar CEP", "Não foi possível consultar o CEP.");
@@ -164,12 +184,19 @@ export default function RegisterMobileScreen() {
   };
 
   const handleCepChange = (value) => {
-    const cepDigitsValue = normalizeCep(value);
     handleChange("cep", value);
-    if (cepDigitsValue.length === 8) {
-      fetchCep(cepDigitsValue);
-    }
   };
+
+  useEffect(() => {
+    if (cepDigits.length === 8) {
+      fetchCep(cepDigits);
+      return;
+    }
+
+    if (cepDigits.length < 8) {
+      lastCepRequestedRef.current = "";
+    }
+  }, [cepDigits]);
 
   const buildPayload = () => {
     const payload = {
@@ -180,6 +207,7 @@ export default function RegisterMobileScreen() {
 
     const optionalFields = [
       "telefone",
+      "whatsapp",
       "cep",
       "logradouro",
       "numero",
@@ -212,13 +240,10 @@ export default function RegisterMobileScreen() {
 
     const validation = validateForm();
     if (validation) {
-      setFormError(validation);
-      Alert.alert("Atenção", validation);
       return;
     }
 
     setLoading(true);
-    setFormError("");
 
     try {
       const payload = buildPayload();
@@ -227,16 +252,45 @@ export default function RegisterMobileScreen() {
       if (response?.token) {
         Alert.alert("Sucesso", "Cadastro realizado com sucesso");
         await new Promise((resolve) => setTimeout(resolve, 400));
-        router.replace("/(tabs)");
+        router.replace("/(auth)/register-success");
       } else {
         Alert.alert("Erro", "Não foi possível concluir o cadastro");
       }
     } catch (error) {
+      const errorMessage = error?.message || "";
+      const errorCode = error?.code || "";
+
+      // Detectar erro de email já cadastrado
+      if (
+        errorCode === "EMAIL_ALREADY_EXISTS" ||
+        errorMessage.toLowerCase().includes("email já cadastrado") ||
+        errorMessage.toLowerCase().includes("email already exists")
+      ) {
+        setFieldErrors((prev) => ({
+          ...prev,
+          email: "Email já cadastrado",
+        }));
+        return;
+      }
+
+      // Detectar erro de CPF já cadastrado
+      if (
+        errorCode === "CPF_ALREADY_EXISTS" ||
+        errorMessage.toLowerCase().includes("cpf já cadastrado") ||
+        errorMessage.toLowerCase().includes("cpf already exists")
+      ) {
+        setFieldErrors((prev) => ({
+          ...prev,
+          cpf: "CPF já cadastrado",
+        }));
+        return;
+      }
+
+      // Outros erros
       const message =
-        error?.message ||
+        errorMessage ||
         (Array.isArray(error?.errors) ? error.errors.join("\n") : null) ||
         "Não foi possível concluir o cadastro";
-      setFormError(message);
       Alert.alert("Erro no cadastro", message);
     } finally {
       setLoading(false);
@@ -245,12 +299,6 @@ export default function RegisterMobileScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View pointerEvents="none" style={styles.backgroundDecor}>
-        <View style={styles.headerAccent} />
-        <View style={styles.accentCircle} />
-        <View style={styles.accentCircleSmall} />
-      </View>
-
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.keyboardView}
@@ -271,13 +319,6 @@ export default function RegisterMobileScreen() {
           <View style={styles.formContainer}>
             <View style={styles.formCard}>
               <Text style={styles.welcomeSubtext}>Informe seus dados</Text>
-
-              {formError ? (
-                <View style={styles.formError}>
-                  <Feather name="alert-circle" size={16} color="#b91c1c" />
-                  <Text style={styles.formErrorText}>{formError}</Text>
-                </View>
-              ) : null}
 
               <View
                 style={[
@@ -372,7 +413,25 @@ export default function RegisterMobileScreen() {
                   placeholderTextColor="#999"
                   keyboardType="phone-pad"
                   value={form.telefone}
-                  onChangeText={(value) => handleChange("telefone", value)}
+                  onChangeText={(value) => handlePhoneChange("telefone", value)}
+                  editable={!loading}
+                />
+              </View>
+
+              <View style={styles.inputWrapper}>
+                <Feather
+                  name="message-circle"
+                  size={20}
+                  color={colors.primary}
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="WhatsApp (opcional)"
+                  placeholderTextColor="#999"
+                  keyboardType="phone-pad"
+                  value={form.whatsapp}
+                  onChangeText={(value) => handlePhoneChange("whatsapp", value)}
                   editable={!loading}
                 />
               </View>
@@ -381,7 +440,12 @@ export default function RegisterMobileScreen() {
                 <Text style={styles.sectionTitle}>Endereço (opcional)</Text>
               </View>
 
-              <View style={styles.inputWrapper}>
+              <View
+                style={[
+                  styles.inputWrapper,
+                  fieldErrors.cep && styles.inputWrapperError,
+                ]}
+              >
                 <Feather
                   name="map-pin"
                   size={20}
@@ -398,6 +462,9 @@ export default function RegisterMobileScreen() {
                   editable={!loading}
                 />
               </View>
+              {fieldErrors.cep ? (
+                <Text style={styles.fieldErrorText}>{fieldErrors.cep}</Text>
+              ) : null}
 
               <View style={styles.inputWrapper}>
                 <Feather
@@ -517,16 +584,6 @@ export default function RegisterMobileScreen() {
                   <Text style={styles.loginButtonText}>Cadastrar</Text>
                 )}
               </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.linkButton}
-                onPress={() => router.back()}
-                disabled={loading}
-              >
-                <Text style={styles.linkButtonText}>
-                  Já possui conta? Entrar
-                </Text>
-              </TouchableOpacity>
             </View>
           </View>
         </ScrollView>
@@ -538,7 +595,7 @@ export default function RegisterMobileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff",
+    backgroundColor: "#f7f4f1",
   },
   keyboardView: {
     flex: 1,
@@ -549,59 +606,70 @@ const styles = StyleSheet.create({
     height: "100%",
   },
   headerAccent: {
-    height: 220,
+    height: 260,
     backgroundColor: colors.primary,
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
+    borderBottomLeftRadius: 36,
+    borderBottomRightRadius: 36,
+  },
+  headerGlow: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 180,
+    backgroundColor: "rgba(255,255,255,0.12)",
   },
   accentCircle: {
     position: "absolute",
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: "rgba(255, 255, 255, 0.15)",
-    top: 40,
-    right: -60,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    top: 30,
+    right: -70,
   },
   accentCircleSmall: {
     position: "absolute",
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: "rgba(255, 255, 255, 0.15)",
-    top: 140,
-    left: -40,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: "rgba(255, 255, 255, 0.12)",
+    top: 150,
+    left: -50,
   },
   scrollContent: {
-    padding: 24,
-    paddingBottom: 48,
+    padding: 20,
+    paddingTop: 14,
+    paddingBottom: 44,
   },
   logoContainer: {
     alignItems: "center",
-    marginBottom: 24,
+    marginBottom: 18,
   },
   logoCircle: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
     shadowColor: "#000",
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.4)",
   },
   appName: {
-    fontSize: 26,
+    fontSize: 22,
     fontWeight: "700",
-    color: colors.textPrimary,
-    marginTop: 12,
+    color: "#1f2937",
+    marginTop: 10,
   },
   tagline: {
-    fontSize: 14,
-    color: colors.textSecondary,
+    fontSize: 13,
+    color: "#6b7280",
     marginTop: 4,
   },
   formContainer: {
@@ -609,17 +677,19 @@ const styles = StyleSheet.create({
   },
   formCard: {
     backgroundColor: "#fff",
-    borderRadius: 20,
-    padding: 20,
+    borderRadius: 24,
+    padding: 22,
     shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
+    shadowOpacity: 0.1,
+    shadowRadius: 24,
     shadowOffset: { width: 0, height: 6 },
     elevation: 4,
+    borderWidth: 1,
+    borderColor: "#f4e1d1",
   },
   welcomeSubtext: {
-    fontSize: 16,
-    color: colors.textSecondary,
+    fontSize: 15,
+    color: "#7c6a5d",
     marginBottom: 16,
     fontWeight: "500",
   },
@@ -639,11 +709,13 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#f8fafc",
-    borderRadius: 12,
+    backgroundColor: "#fff",
+    borderRadius: 14,
     paddingHorizontal: 12,
     paddingVertical: 10,
     marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#efe7df",
   },
   inputWrapperError: {
     borderWidth: 1,
@@ -670,7 +742,7 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     color: "#0f172a",
-    fontSize: 14,
+    fontSize: 15,
     outlineStyle: "none",
     outlineWidth: 0,
   },
@@ -679,28 +751,35 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   sectionTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#8b7b70",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
   },
   loginButton: {
     backgroundColor: colors.primary,
-    paddingVertical: 14,
-    borderRadius: 14,
+    paddingVertical: 16,
+    borderRadius: 16,
     alignItems: "center",
     marginTop: 6,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 4,
   },
   loginButtonText: {
     color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 17,
+    fontWeight: "700",
   },
   linkButton: {
-    marginTop: 16,
+    marginTop: 18,
     alignItems: "center",
   },
   linkButtonText: {
     color: colors.primary,
-    fontWeight: "600",
+    fontWeight: "700",
   },
 });

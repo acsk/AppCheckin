@@ -49,6 +49,13 @@
         </div>
       </div>
 
+      <div class="row-1">
+        <div>
+          <label>WhatsApp</label>
+          <input type="text" id="whatsapp" placeholder="(00) 00000-0000" />
+        </div>
+      </div>
+
       <div class="row">
         <div>
           <label>CEP</label>
@@ -110,6 +117,7 @@
       document.getElementById('email').value = `joao.silva+${Date.now()}@example.com`;
       document.getElementById('cpf').value = '123.456.789-09';
       document.getElementById('telefone').value = '(11) 99999-9999';
+      document.getElementById('whatsapp').value = '(11) 98888-7777';
       document.getElementById('cep').value = '01234-567';
       document.getElementById('logradouro').value = 'Rua A';
       document.getElementById('numero').value = '123';
@@ -136,6 +144,7 @@
         return v ? v : undefined;
       };
       payload.telefone = opt('telefone');
+      payload.whatsapp = opt('whatsapp');
       payload.cep = opt('cep');
       payload.logradouro = opt('logradouro');
       payload.numero = opt('numero');

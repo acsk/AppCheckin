@@ -236,6 +236,7 @@ return function ($app) {
             $cpf = trim($data['cpf'] ?? '');
             $tenantId = isset($data['tenant_id']) ? (int)$data['tenant_id'] : null;
             $telefone = $data['telefone'] ?? null;
+            $whatsapp = $data['whatsapp'] ?? null;
             $endereco = [
                 'cep' => $data['cep'] ?? null,
                 'logradouro' => $data['logradouro'] ?? null,
@@ -299,6 +300,7 @@ return function ($app) {
                 'senha' => $cpfLimpo,
                 'cpf' => $cpfLimpo,
                 'telefone' => $telefone,
+                'whatsapp' => $whatsapp,
                 'ativo' => 1,
             ], $endereco);
 
@@ -335,6 +337,7 @@ return function ($app) {
                     'nome' => mb_strtoupper($nome, 'UTF-8'),
                     'email' => $email,
                     'telefone' => $telefone,
+                    'whatsapp' => $whatsapp,
                     'cpf' => $cpfLimpo,
                 ],
             ], JSON_UNESCAPED_UNICODE));

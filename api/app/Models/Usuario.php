@@ -72,14 +72,15 @@ class Usuario
             
             // 3. Criar registro em alunos (perfil separado)
             $stmtAluno = $this->db->prepare(
-                "INSERT INTO alunos (usuario_id, nome, telefone, cpf, cep, logradouro, numero, complemento, bairro, cidade, estado, ativo)
-                 VALUES (:usuario_id, :nome, :telefone, :cpf, :cep, :logradouro, :numero, :complemento, :bairro, :cidade, :estado, :ativo)"
+                "INSERT INTO alunos (usuario_id, nome, telefone, whatsapp, cpf, cep, logradouro, numero, complemento, bairro, cidade, estado, ativo)
+                 VALUES (:usuario_id, :nome, :telefone, :whatsapp, :cpf, :cep, :logradouro, :numero, :complemento, :bairro, :cidade, :estado, :ativo)"
             );
             
             $stmtAluno->execute([
                 'usuario_id' => $usuarioId,
                 'nome' => $nome,
                 'telefone' => $data['telefone'] ?? null,
+                'whatsapp' => $data['whatsapp'] ?? null,
                 'cpf' => $cpfLimpo ?: null,
                 'cep' => $cepLimpo ?: null,
                 'logradouro' => $logradouro,
@@ -281,8 +282,8 @@ class Usuario
     private function sincronizarAluno(int $usuarioId, array $data): void
     {
         // Campos de perfil que devem ser sincronizados com alunos
-        $camposPerfil = ['nome', 'telefone', 'cpf', 'cep', 'logradouro', 'numero', 
-                        'complemento', 'bairro', 'cidade', 'estado', 'foto_base64'];
+        $camposPerfil = ['nome', 'telefone', 'whatsapp', 'cpf', 'cep', 'logradouro', 'numero', 
+                'complemento', 'bairro', 'cidade', 'estado', 'foto_base64'];
         
         $updates = [];
         $params = ['usuario_id' => $usuarioId];
