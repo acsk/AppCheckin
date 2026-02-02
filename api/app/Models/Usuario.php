@@ -13,12 +13,16 @@ class Usuario
         $this->db = $db;
     }
 
-    public function create(array $data, int $tenantId = 1): ?int
+    public function create(array $data, ?int $tenantId = null): ?int
     {
         try {
             // Limpar CPF e CEP (remover formatação)
             $cpfLimpo = isset($data['cpf']) ? preg_replace('/[^0-9]/', '', $data['cpf']) : null;
             $cepLimpo = isset($data['cep']) ? preg_replace('/[^0-9]/', '', $data['cep']) : null;
+            
+            // Normalizar email para minúsculo e sem espaços
+            $emailNormalizado = isset($data['email']) ? mb_strtolower(trim($data['email']), 'UTF-8') : null;
+            $emailGlobalNormalizado = isset($data['email_global']) ? mb_strtolower(trim($data['email_global']), 'UTF-8') : $emailNormalizado;
             
             // Converter campos de texto para maiúsculas
             $nome = isset($data['nome']) ? mb_strtoupper(trim($data['nome']), 'UTF-8') : null;
@@ -37,8 +41,8 @@ class Usuario
             
             $stmt->execute([
                 'nome' => $nome,
-                'email' => $data['email'],
-                'email_global' => $data['email_global'] ?? $data['email'],
+                'email' => $emailNormalizado,
+                'email_global' => $emailGlobalNormalizado,
                 'senha_hash' => password_hash($data['senha'], PASSWORD_BCRYPT),
                 'cpf' => $cpfLimpo ?: null,
                 'cep' => $cepLimpo ?: null,
@@ -54,16 +58,17 @@ class Usuario
             
             $usuarioId = (int) $this->db->lastInsertId();
             
-            // 2. Criar vínculo com tenant em usuario_tenant
-            $stmtTenant = $this->db->prepare(
-                "INSERT INTO usuario_tenant (usuario_id, tenant_id, status, data_inicio) 
-                 VALUES (:usuario_id, :tenant_id, 'ativo', CURDATE())"
-            );
-            
-            $stmtTenant->execute([
-                'usuario_id' => $usuarioId,
-                'tenant_id' => $tenantId
-            ]);
+            // 2. Criar vínculo com tenant em usuario_tenant (opcional)
+            if ($tenantId !== null) {
+                $stmtTenant = $this->db->prepare(
+                    "INSERT INTO usuario_tenant (usuario_id, tenant_id, status, data_inicio) 
+                     VALUES (:usuario_id, :tenant_id, 'ativo', CURDATE())"
+                );
+                $stmtTenant->execute([
+                    'usuario_id' => $usuarioId,
+                    'tenant_id' => $tenantId
+                ]);
+            }
             
             // 3. Criar registro em alunos (perfil separado)
             $stmtAluno = $this->db->prepare(
@@ -86,16 +91,17 @@ class Usuario
                 'ativo' => $data['ativo'] ?? 1
             ]);
             
-            // 4. Adicionar papel de aluno no tenant
-            $stmtPapel = $this->db->prepare(
-                "INSERT IGNORE INTO tenant_usuario_papel (tenant_id, usuario_id, papel_id, ativo)
-                 VALUES (:tenant_id, :usuario_id, 1, 1)"
-            );
-            
-            $stmtPapel->execute([
-                'tenant_id' => $tenantId,
-                'usuario_id' => $usuarioId
-            ]);
+            // 4. Adicionar papel de aluno no tenant (opcional)
+            if ($tenantId !== null) {
+                $stmtPapel = $this->db->prepare(
+                    "INSERT IGNORE INTO tenant_usuario_papel (tenant_id, usuario_id, papel_id, ativo)
+                     VALUES (:tenant_id, :usuario_id, 1, 1)"
+                );
+                $stmtPapel->execute([
+                    'tenant_id' => $tenantId,
+                    'usuario_id' => $usuarioId
+                ]);
+            }
             
             return $usuarioId;
         } catch (\PDOException $e) {
@@ -333,9 +339,9 @@ class Usuario
                 $params['id'] = $excludeId;
             }
         } else {
-            // Verificar email_global (único no sistema inteiro)
-            $sql = "SELECT COUNT(*) FROM usuarios WHERE email_global = :email";
-            $params = ['email' => $email];
+            // Verificar globalmente tanto email_global quanto email (compatibilidade com dados antigos)
+            $sql = "SELECT COUNT(*) FROM usuarios WHERE (email_global = :email OR email = :email2)";
+            $params = ['email' => $email, 'email2' => $email];
             
             if ($excludeId) {
                 $sql .= " AND id != :id";

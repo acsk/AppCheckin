@@ -219,6 +219,136 @@ return function ($app) {
     
     // Rotas públicas
     $app->post('/auth/register', [AuthController::class, 'register']);
+    // Cadastro público para Mobile: cria usuário com senha = CPF e vincula ao tenant
+    $app->post('/auth/register-mobile', function($request, $response) {
+        try {
+            // Parse body com fallback
+            $data = $request->getParsedBody();
+            if (!is_array($data)) {
+                $raw = (string)$request->getBody();
+                $decoded = json_decode($raw, true);
+                $data = is_array($decoded) ? $decoded : [];
+            }
+
+            $nome = trim($data['nome'] ?? '');
+            $email = trim($data['email'] ?? '');
+            $emailNorm = $email !== '' ? mb_strtolower($email, 'UTF-8') : '';
+            $cpf = trim($data['cpf'] ?? '');
+            $tenantId = isset($data['tenant_id']) ? (int)$data['tenant_id'] : null;
+            $telefone = $data['telefone'] ?? null;
+            $endereco = [
+                'cep' => $data['cep'] ?? null,
+                'logradouro' => $data['logradouro'] ?? null,
+                'numero' => $data['numero'] ?? null,
+                'complemento' => $data['complemento'] ?? null,
+                'bairro' => $data['bairro'] ?? null,
+                'cidade' => $data['cidade'] ?? null,
+                'estado' => $data['estado'] ?? null,
+            ];
+
+            // Validações
+            $erros = [];
+            if ($nome === '') $erros[] = 'nome é obrigatório';
+            if ($email === '') $erros[] = 'email é obrigatório';
+            if ($cpf === '') $erros[] = 'cpf é obrigatório';
+            // tenant_id passa a ser opcional
+
+            $cpfLimpo = preg_replace('/[^0-9]/', '', $cpf);
+            if ($cpfLimpo === null || strlen($cpfLimpo) !== 11) {
+                $erros[] = 'cpf inválido (use 11 dígitos)';
+            }
+
+            if (!empty($erros)) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'code' => 'VALIDATION_ERROR',
+                    'errors' => $erros
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+            }
+
+            // Serviços/Modelos
+            $db = require __DIR__ . '/../config/database.php';
+            $usuarioModel = new \App\Models\Usuario($db);
+            $jwtService = new \App\Services\JWTService($_ENV['JWT_SECRET']);
+
+            // Regras de unicidade
+            if ($usuarioModel->emailExists($emailNorm)) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'code' => 'EMAIL_ALREADY_EXISTS',
+                    'message' => 'Email já cadastrado'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(409);
+            }
+
+            if ($usuarioModel->findByCpf($cpfLimpo)) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'code' => 'CPF_ALREADY_EXISTS',
+                    'message' => 'CPF já cadastrado'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(409);
+            }
+
+            // Montar payload para criação (senha = cpf)
+            $payload = array_merge([
+                'nome' => $nome,
+                'email' => $emailNorm,
+                'email_global' => $emailNorm,
+                'senha' => $cpfLimpo,
+                'cpf' => $cpfLimpo,
+                'telefone' => $telefone,
+                'ativo' => 1,
+            ], $endereco);
+
+            $usuarioId = $usuarioModel->create($payload, null);
+
+            if (!$usuarioId) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'code' => 'USER_CREATION_FAILED',
+                    'message' => 'Não foi possível criar o usuário'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            }
+
+            // Buscar aluno_id
+            $stmtAluno = $db->prepare('SELECT id FROM alunos WHERE usuario_id = ? LIMIT 1');
+            $stmtAluno->execute([$usuarioId]);
+            $aluno = $stmtAluno->fetch(\PDO::FETCH_ASSOC);
+            $alunoId = $aluno['id'] ?? null;
+
+            // Gerar token imediato (login automático)
+            $token = $jwtService->encode([
+                'user_id' => $usuarioId,
+                'email' => $emailNorm,
+                'tenant_id' => null, // pode ser null
+                'aluno_id' => $alunoId
+            ]);
+
+            $response->getBody()->write(json_encode([
+                'message' => 'Cadastro realizado com sucesso',
+                'token' => $token,
+                'user' => [
+                    'id' => $usuarioId,
+                    'nome' => mb_strtoupper($nome, 'UTF-8'),
+                    'email' => $email,
+                    'telefone' => $telefone,
+                    'cpf' => $cpfLimpo,
+                ],
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(201);
+        } catch (\Throwable $e) {
+            error_log('[Route /auth/register-mobile] EXCEPTION: ' . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'code' => 'REGISTER_INTERNAL_ERROR',
+                'message' => 'Erro interno ao realizar cadastro'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    });
     $app->post('/auth/login', function($request, $response) {
         try {
             // Parse body com fallback

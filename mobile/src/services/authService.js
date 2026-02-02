@@ -95,6 +95,39 @@ export const authService = {
   },
 
   /**
+   * Cadastro público para mobile (cria usuário aluno e retorna token)
+   */
+  async registerMobile(payload) {
+    try {
+      const response = await api.post("/auth/register-mobile", payload);
+
+      if (response.data?.token) {
+        await AsyncStorage.setItem("@appcheckin:token", response.data.token);
+        if (response.data.user) {
+          await AsyncStorage.setItem(
+            "@appcheckin:user",
+            JSON.stringify(response.data.user),
+          );
+        }
+
+        const tenantId = response.data.tenant_id || response.data.tenant?.id;
+        if (tenantId) {
+          await AsyncStorage.setItem("@appcheckin:tenant_id", String(tenantId));
+          await AsyncStorage.setItem(
+            "@appcheckin:current_tenant",
+            JSON.stringify(response.data.tenant || { id: tenantId }),
+          );
+        }
+      }
+
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data || error;
+      throw errorData;
+    }
+  },
+
+  /**
    * Seleção inicial de tenant durante login (endpoint público)
    * Usada quando o login retorna múltiplos tenants sem token
    */

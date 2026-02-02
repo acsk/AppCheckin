@@ -39,7 +39,12 @@ export const CONFIG = {
   },
 
   // Endpoints que não precisam de autenticação
-  publicEndpoints: ["/auth/login", "/auth/register", "/auth/select-tenant"],
+  publicEndpoints: [
+    "/auth/login",
+    "/auth/register",
+    "/auth/register-mobile",
+    "/auth/select-tenant",
+  ],
 
   // Headers padrão
   defaultHeaders: {

@@ -2,16 +2,16 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import PasswordRecoveryModal from "../../components/PasswordRecoveryModal";
@@ -214,6 +214,13 @@ export default function LoginScreen() {
                   Esqueceu sua senha?
                 </Text>
               </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.registerContainer}
+                onPress={() => router.push("/(auth)/register-mobile")}
+              >
+                <Text style={styles.registerText}>Criar uma conta</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </ScrollView>
@@ -386,5 +393,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.primary,
     fontWeight: "500",
+  },
+  registerContainer: {
+    alignItems: "center",
+    marginTop: 4,
+    paddingVertical: 6,
+  },
+  registerText: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: "600",
   },
 });
