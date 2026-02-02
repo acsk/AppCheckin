@@ -1,0 +1,5 @@
+
+> mobile@1.0.0 web:build
+> mv .env.development .env.development.bak && cp .env.production .env && expo export --platform web --clear && rm .env && mv .env.development.bak .env.development && cp -r assets dist/ && mkdir -p dist/fonts && cp -r node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/* dist/fonts/ && bash scripts/inject-fonts.sh && cp public/fonts.css dist/fonts.css
+
+mv: .env.development: No such file or directory

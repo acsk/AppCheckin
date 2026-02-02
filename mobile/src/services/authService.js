@@ -35,6 +35,27 @@ export const authService = {
             "@appcheckin:tenants",
             JSON.stringify(response.data.tenants),
           );
+          
+          // Salvar o tenant atual (primeiro da lista)
+          if (response.data.tenants.length > 0) {
+            const firstTenantData = response.data.tenants[0];
+            const tenantToSave = firstTenantData.tenant || firstTenantData;
+            
+            await AsyncStorage.setItem(
+              "@appcheckin:current_tenant",
+              JSON.stringify(tenantToSave),
+            );
+            
+            if (tenantToSave?.id) {
+              await AsyncStorage.setItem("@appcheckin:tenant_id", String(tenantToSave.id));
+            }
+            if (tenantToSave?.slug) {
+              await AsyncStorage.setItem("@appcheckin:tenant_slug", tenantToSave.slug);
+            }
+            if (tenantToSave?.nome) {
+              await AsyncStorage.setItem("@appcheckin:tenant_nome", tenantToSave.nome);
+            }
+          }
         }
 
         return response.data;
