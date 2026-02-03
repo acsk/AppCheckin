@@ -238,6 +238,8 @@ return function ($app) {
             $tenantId = isset($data['tenant_id']) ? (int)$data['tenant_id'] : null;
             $telefone = $data['telefone'] ?? null;
             $whatsapp = $data['whatsapp'] ?? null;
+            $telefone = $telefone !== null ? preg_replace('/[^0-9]/', '', $telefone) : null;
+            $whatsapp = $whatsapp !== null ? preg_replace('/[^0-9]/', '', $whatsapp) : null;
             $endereco = [
                 'cep' => $data['cep'] ?? null,
                 'logradouro' => $data['logradouro'] ?? null,

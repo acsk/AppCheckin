@@ -251,9 +251,16 @@ export default function RegisterMobileScreen() {
       }
     }
 
+    // Adicionar telefone e whatsapp sem máscara (somente números)
+    if (form.telefone.trim()) {
+      payload.telefone = form.telefone.replace(/\D/g, "");
+    }
+
+    if (form.whatsapp.trim()) {
+      payload.whatsapp = form.whatsapp.replace(/\D/g, "");
+    }
+
     const optionalFields = [
-      "telefone",
-      "whatsapp",
       "cep",
       "logradouro",
       "numero",

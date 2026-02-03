@@ -175,6 +175,9 @@ class Aluno
         $cidade = isset($data['cidade']) ? mb_strtoupper(trim($data['cidade']), 'UTF-8') : null;
         $estado = isset($data['estado']) ? mb_strtoupper(trim($data['estado']), 'UTF-8') : null;
         
+        $telefoneLimpo = isset($data['telefone']) ? preg_replace('/[^0-9]/', '', $data['telefone']) : null;
+        $whatsappLimpo = isset($data['whatsapp']) ? preg_replace('/[^0-9]/', '', $data['whatsapp']) : null;
+
         $stmt = $this->db->prepare(
             "INSERT INTO alunos (usuario_id, nome, telefone, cpf, data_nascimento, cep, logradouro, numero, 
                      complemento, bairro, cidade, estado, foto_url, foto_base64, ativo) 
@@ -185,7 +188,7 @@ class Aluno
         $stmt->execute([
             'usuario_id' => $data['usuario_id'],
             'nome' => $nome,
-            'telefone' => $data['telefone'] ?? null,
+            'telefone' => $telefoneLimpo,
             'cpf' => $cpfLimpo ?: null,
             'data_nascimento' => $data['data_nascimento'] ?? null,
             'cep' => $cepLimpo ?: null,
@@ -211,13 +214,15 @@ class Aluno
         $updates = [];
         $params = ['id' => $id];
         
-        $allowed = ['nome', 'telefone', 'cpf', 'data_nascimento', 'cep', 'logradouro', 'numero', 
+        $allowed = ['nome', 'telefone', 'whatsapp', 'cpf', 'data_nascimento', 'cep', 'logradouro', 'numero', 
                 'complemento', 'bairro', 'cidade', 'estado', 'foto_url', 'foto_base64', 'ativo'];
         
         foreach ($allowed as $field) {
             if (array_key_exists($field, $data)) {
                 // Tratar campos específicos
                 if ($field === 'cpf') {
+                    $value = $data[$field] ? preg_replace('/[^0-9]/', '', $data[$field]) : null;
+                } elseif (in_array($field, ['telefone', 'whatsapp'])) {
                     $value = $data[$field] ? preg_replace('/[^0-9]/', '', $data[$field]) : null;
                 } elseif ($field === 'cep') {
                     $value = $data[$field] ? preg_replace('/[^0-9]/', '', $data[$field]) : null;

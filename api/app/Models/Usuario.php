@@ -23,6 +23,10 @@ class Usuario
             // Normalizar email para minúsculo e sem espaços
             $emailNormalizado = isset($data['email']) ? mb_strtolower(trim($data['email']), 'UTF-8') : null;
             $emailGlobalNormalizado = isset($data['email_global']) ? mb_strtolower(trim($data['email_global']), 'UTF-8') : $emailNormalizado;
+
+            // Normalizar telefone/whatsapp (somente números)
+            $telefoneLimpo = isset($data['telefone']) ? preg_replace('/[^0-9]/', '', $data['telefone']) : null;
+            $whatsappLimpo = isset($data['whatsapp']) ? preg_replace('/[^0-9]/', '', $data['whatsapp']) : null;
             
             // Converter campos de texto para maiúsculas
             $nome = isset($data['nome']) ? mb_strtoupper(trim($data['nome']), 'UTF-8') : null;
@@ -52,7 +56,7 @@ class Usuario
                 'bairro' => $bairro,
                 'cidade' => $cidade,
                 'estado' => $estado,
-                'telefone' => $data['telefone'] ?? null,
+                'telefone' => $telefoneLimpo,
                 'ativo' => $data['ativo'] ?? 1
             ]);
             
@@ -79,8 +83,8 @@ class Usuario
             $stmtAluno->execute([
                 'usuario_id' => $usuarioId,
                 'nome' => $nome,
-                'telefone' => $data['telefone'] ?? null,
-                'whatsapp' => $data['whatsapp'] ?? null,
+                'telefone' => $telefoneLimpo,
+                'whatsapp' => $whatsappLimpo,
                 'cpf' => $cpfLimpo ?: null,
                 'data_nascimento' => $data['data_nascimento'] ?? null,
                 'cep' => $cepLimpo ?: null,
@@ -218,7 +222,7 @@ class Usuario
 
         if (isset($data['telefone'])) {
             $fields[] = 'telefone = :telefone';
-            $params['telefone'] = $data['telefone'];
+            $params['telefone'] = preg_replace('/[^0-9]/', '', $data['telefone']);
         }
 
         if (isset($data['cpf'])) {
