@@ -222,12 +222,56 @@ return function ($app) {
     // Cadastro público para Mobile: cria usuário com senha = CPF e vincula ao tenant
     $app->post('/auth/register-mobile', function($request, $response) {
         try {
+            // 1. Rate Limiting - verificar tentativas por IP
+            $db = require __DIR__ . '/../config/database.php';
+            $rateLimiter = new \App\Services\RateLimiter(
+                $db,
+                (int)($_ENV['RATE_LIMIT_REGISTER_MAX_ATTEMPTS'] ?? 5),
+                (int)($_ENV['RATE_LIMIT_REGISTER_DECAY_MINUTES'] ?? 15)
+            );
+
+            $clientIp = \App\Services\RateLimiter::getClientIp();
+            $rateLimitResult = $rateLimiter->attempt($clientIp, 'register-mobile');
+
+            if (!$rateLimitResult['allowed']) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'code' => 'RATE_LIMIT_EXCEEDED',
+                    'message' => 'Muitas tentativas de cadastro. Tente novamente em ' . ceil($rateLimitResult['retryAfter'] / 60) . ' minutos',
+                    'retryAfter' => $rateLimitResult['retryAfter']
+                ], JSON_UNESCAPED_UNICODE));
+                return $response
+                    ->withHeader('Content-Type', 'application/json')
+                    ->withHeader('Retry-After', (string)$rateLimitResult['retryAfter'])
+                    ->withStatus(429);
+            }
+
             // Parse body com fallback
             $data = $request->getParsedBody();
             if (!is_array($data)) {
                 $raw = (string)$request->getBody();
                 $decoded = json_decode($raw, true);
                 $data = is_array($decoded) ? $decoded : [];
+            }
+
+            // 2. Validação reCAPTCHA v3
+            $recaptchaToken = $data['recaptcha_token'] ?? null;
+            $recaptchaService = new \App\Services\ReCaptchaService(
+                $_ENV['RECAPTCHA_SECRET_KEY'] ?? '',
+                (float)($_ENV['RECAPTCHA_MINIMUM_SCORE'] ?? 0.5)
+            );
+
+            $recaptchaResult = $recaptchaService->verify($recaptchaToken, $clientIp);
+            
+            if (!$recaptchaResult['success']) {
+                error_log("reCAPTCHA falhou para IP $clientIp: {$recaptchaResult['error']} (Score: {$recaptchaResult['score']})");
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'code' => 'RECAPTCHA_VALIDATION_FAILED',
+                    'message' => 'Falha na validação de segurança. Por favor, tente novamente',
+                    'details' => $_ENV['APP_ENV'] === 'development' ? $recaptchaResult['error'] : null
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
             }
 
             $nome = trim($data['nome'] ?? '');
@@ -280,8 +324,7 @@ return function ($app) {
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
             }
 
-            // Serviços/Modelos
-            $db = require __DIR__ . '/../config/database.php';
+            // Serviços/Modelos - reutilizar $db já instanciado
             $usuarioModel = new \App\Models\Usuario($db);
             $jwtService = new \App\Services\JWTService($_ENV['JWT_SECRET']);
 
@@ -341,6 +384,9 @@ return function ($app) {
                 'tenant_id' => null, // pode ser null
                 'aluno_id' => $alunoId
             ]);
+
+            // Resetar rate limit em caso de sucesso
+            $rateLimiter->reset($clientIp, 'register-mobile');
 
             $response->getBody()->write(json_encode([
                 'message' => 'Cadastro realizado com sucesso',

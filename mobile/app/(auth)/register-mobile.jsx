@@ -14,8 +14,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import RecaptchaWebView from "../../components/RecaptchaWebView";
-import CONFIG from "../../src/config/urls";
 import { authService } from "../../src/services/authService";
 import { colors } from "../../src/theme/colors";
 
@@ -116,7 +114,6 @@ export default function RegisterMobileScreen() {
   const [fieldErrors, setFieldErrors] = useState({});
   const [cepLoading, setCepLoading] = useState(false);
   const lastCepRequestedRef = useRef("");
-  const recaptchaRef = useRef(null);
 
   const cpfDigits = useMemo(() => normalizeCpf(form.cpf), [form.cpf]);
   const cepDigits = useMemo(() => normalizeCep(form.cep), [form.cep]);
@@ -299,19 +296,10 @@ export default function RegisterMobileScreen() {
       return;
     }
 
-    // Abrir reCAPTCHA
-    if (recaptchaRef.current) {
-      recaptchaRef.current.open();
-    }
-  };
-
-  const onRecaptchaVerify = async (token) => {
     setLoading(true);
 
     try {
       const payload = buildPayload();
-      payload.recaptcha_token = token;
-
       const response = await authService.registerMobile(payload);
 
       if (response?.token) {
@@ -357,15 +345,6 @@ export default function RegisterMobileScreen() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const onRecaptchaExpire = () => {
-    Alert.alert("Atenção", "Verificação expirada. Tente novamente.");
-  };
-
-  const onRecaptchaError = (error) => {
-    Alert.alert("Erro", "Falha na verificação de segurança. Tente novamente.");
-    console.error("reCAPTCHA error:", error);
   };
 
   return (
@@ -707,16 +686,6 @@ export default function RegisterMobileScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-
-      <RecaptchaWebView
-        ref={recaptchaRef}
-        siteKey={CONFIG.recaptcha.siteKey}
-        onVerify={onRecaptchaVerify}
-        onExpire={onRecaptchaExpire}
-        onError={onRecaptchaError}
-        theme="light"
-        size="normal"
-      />
     </SafeAreaView>
   );
 }
