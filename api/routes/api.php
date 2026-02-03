@@ -254,28 +254,10 @@ return function ($app) {
                 $data = is_array($decoded) ? $decoded : [];
             }
 
-            // 2. Validação reCAPTCHA v3 (apenas para web, opcional para mobile)
+            // 2. Validação reCAPTCHA v3 (opcional - confiar no rate limiting)
             $recaptchaToken = $data['recaptcha_token'] ?? null;
-            $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
-            $isMobileApp = stripos($userAgent, 'okhttp') !== false || 
-                          stripos($userAgent, 'dart') !== false || 
-                          stripos($userAgent, 'flutter') !== false ||
-                          stripos($userAgent, 'appcheckin') !== false;
             
-            // Log para debug
-            error_log("[register-mobile] IP: $clientIp, User-Agent: $userAgent, isMobileApp: " . ($isMobileApp ? 'yes' : 'no') . ", recaptcha_token presente: " . ($recaptchaToken ? 'sim' : 'não'));
-            
-            // Apenas exigir reCAPTCHA para requisições web (não mobile app)
-            if (!$isMobileApp && empty($recaptchaToken)) {
-                $response->getBody()->write(json_encode([
-                    'type' => 'error',
-                    'code' => 'RECAPTCHA_REQUIRED',
-                    'message' => 'Token reCAPTCHA é obrigatório para cadastro via web'
-                ], JSON_UNESCAPED_UNICODE));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
-            }
-            
-            // Se tem token, validar (independente de ser app ou web)
+            // Se tem token, validar. Se não tem, continuar (protegido por rate limiting)
             if (!empty($recaptchaToken)) {
                 $recaptchaService = new \App\Services\ReCaptchaService(
                     $_ENV['RECAPTCHA_SECRET_KEY'] ?? '',

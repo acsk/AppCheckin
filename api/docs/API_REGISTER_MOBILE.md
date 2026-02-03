@@ -7,12 +7,12 @@
 
 ## Requisitos
 - Campos obrigatórios: `nome`, `email`, `cpf`, `data_nascimento`
-- Campo obrigatório para Web: `recaptcha_token` (não necessário para apps mobile nativos)
+- Campo opcional (mas recomendado): `recaptcha_token`
 - Campos opcionais: `telefone`, `whatsapp`, `cep`, `logradouro`, `numero`, `complemento`, `bairro`, `cidade`, `estado`
 - Regras:
   - `cpf` deve conter 11 dígitos (os caracteres não numéricos são ignorados)
   - `email` e `cpf` devem ser únicos no sistema
-  - `recaptcha_token` é obrigatório apenas para cadastros via navegador web
+  - `recaptcha_token` é opcional, mas recomendado para maior segurança
   - `telefone` e `whatsapp` são salvos apenas com números (máscaras são removidas)
   - Rate limit: máximo 5 tentativas a cada 15 minutos por IP
 
@@ -148,14 +148,10 @@ curl -i -X POST https://api.appcheckin.com.br/auth/register-mobile \
 
 ## Segurança
 
-### Detecção Automática de App Mobile
-A API detecta automaticamente se a requisição vem de um app mobile nativo através do User-Agent:
-- Apps Flutter, React Native, ou nativos não precisam enviar `recaptcha_token`
-- Requisições via navegador web **devem** incluir `recaptcha_token`
-- User-Agents detectados como mobile: `okhttp`, `dart`, `flutter`, `appcheckin`
+### Google reCAPTCHA v3 (Opcional)
+O reCAPTCHA é **opcional** mas **recomendado** para aumentar a segurança. Se você incluir o token, ele será validado.
 
-### Google reCAPTCHA v3 (apenas Web)
-Para cadastros via navegador web, implemente o reCAPTCHA v3:
+Para implementar no frontend web ou WebView:
 
 ```html
 <script src="https://www.google.com/recaptcha/api.js?render=6Lc4Q18sAAAAAH-aVJ28-3pG93k3wy2Kl7Eh8Xv9"></script>
@@ -173,14 +169,14 @@ grecaptcha.ready(function() {
           email: 'joao@example.com',
           cpf: '12345678909',
           data_nascimento: '2001-05-20',
-          recaptcha_token: token
+          recaptcha_token: token  // Incluir se disponível
         })
       });
     });
 });
 ```
 
-### Rate Limiting (aplicado a todos)
+### Rate Limiting (obrigatório para todos)
 - Máximo de **5 tentativas** por IP
 - Janela de tempo: **15 minutos**
 - Após 5 tentativas falhas, o IP será bloqueado temporariamente
@@ -188,9 +184,4 @@ grecaptcha.ready(function() {
 - Headers retornados em erro 429:
   - `Retry-After`: segundos até poder tentar novamente
 
-### Recomendação para App Mobile
-Para aumentar a segurança do app mobile, considere:
-1. ✅ **Rate Limiting** (já implementado)
-2. Adicionar header customizado: `X-App-Version` para validar versão do app
-3. Implementar certificado SSL pinning no app
-4. Usar device fingerprinting (device ID, modelo, SO)
+**O Rate Limiting é a principal proteção contra spam e bots**, mesmo sem reCAPTCHA.
