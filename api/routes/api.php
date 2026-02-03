@@ -391,6 +391,21 @@ return function ($app) {
             // Resetar rate limit em caso de sucesso
             $rateLimiter->reset($clientIp, 'register-mobile');
 
+            // Enviar email de boas-vindas com dados de acesso
+            try {
+                $mailService = new \App\Services\MailService($db);
+                $mailService->sendWelcomeAlunoEmail(
+                    $emailNorm,
+                    $nome,
+                    $cpfLimpo,
+                    null, // tenant_id
+                    $usuarioId
+                );
+            } catch (\Exception $e) {
+                error_log('[register-mobile] Erro ao enviar email de boas-vindas: ' . $e->getMessage());
+                // Não falha o cadastro se o email falhar
+            }
+
             $response->getBody()->write(json_encode([
                 'message' => 'Cadastro realizado com sucesso',
                 'token' => $token,

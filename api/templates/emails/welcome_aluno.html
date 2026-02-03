@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bem-vindo ao AppCheckin</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+        .container {
+            max-width: 600px;
+            margin: 20px auto;
+            background-color: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .header {
+            background: linear-gradient(135deg, #FF6B35 0%, #FF8C42 100%);
+            padding: 40px 20px;
+            text-align: center;
+            color: white;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: 600;
+        }
+        .content {
+            padding: 40px 30px;
+        }
+        .greeting {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        .credentials-box {
+            background-color: #f8f9fa;
+            border-left: 4px solid #FF6B35;
+            padding: 20px;
+            margin: 25px 0;
+            border-radius: 4px;
+        }
+        .credentials-box h3 {
+            margin-top: 0;
+            color: #FF6B35;
+            font-size: 16px;
+            font-weight: 600;
+        }
+        .credential-item {
+            margin: 15px 0;
+        }
+        .credential-label {
+            font-weight: 600;
+            color: #666;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .credential-value {
+            font-size: 16px;
+            color: #333;
+            font-weight: 600;
+            margin-top: 5px;
+            font-family: 'Courier New', monospace;
+        }
+        .info-box {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .info-box p {
+            margin: 0;
+            color: #856404;
+            font-size: 14px;
+        }
+        .info-box strong {
+            color: #664d03;
+        }
+        .steps {
+            margin: 25px 0;
+        }
+        .step {
+            display: flex;
+            margin: 20px 0;
+            align-items: flex-start;
+        }
+        .step-number {
+            background-color: #FF6B35;
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+            flex-shrink: 0;
+            margin-right: 15px;
+        }
+        .step-content {
+            flex: 1;
+            padding-top: 2px;
+        }
+        .step-content strong {
+            color: #333;
+            font-size: 15px;
+        }
+        .step-content p {
+            margin: 5px 0 0 0;
+            color: #666;
+            font-size: 14px;
+        }
+        .button {
+            display: inline-block;
+            padding: 14px 32px;
+            background: linear-gradient(135deg, #FF6B35 0%, #FF8C42 100%);
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 600;
+            margin: 25px 0;
+            text-align: center;
+            transition: transform 0.2s;
+        }
+        .button:hover {
+            transform: translateY(-2px);
+        }
+        .footer {
+            background-color: #f8f9fa;
+            padding: 25px 30px;
+            text-align: center;
+            border-top: 1px solid #e9ecef;
+        }
+        .footer p {
+            margin: 5px 0;
+            color: #6c757d;
+            font-size: 13px;
+        }
+        .footer a {
+            color: #FF6B35;
+            text-decoration: none;
+        }
+        @media only screen and (max-width: 600px) {
+            .container {
+                margin: 0;
+                border-radius: 0;
+            }
+            .content {
+                padding: 30px 20px;
+            }
+            .header {
+                padding: 30px 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎉 Bem-vindo ao AppCheckin!</h1>
+        </div>
+        
+        <div class="content">
+            <div class="greeting">
+                Olá <strong>{{NOME}}</strong>,
+            </div>
+            
+            <p>Seu cadastro foi realizado com sucesso! Agora você já pode acessar o aplicativo e começar a fazer check-in nas suas aulas.</p>
+            
+            <div class="credentials-box">
+                <h3>📱 Seus Dados de Acesso</h3>
+                <div class="credential-item">
+                    <div class="credential-label">E-mail</div>
+                    <div class="credential-value">{{EMAIL}}</div>
+                </div>
+                <div class="credential-item">
+                    <div class="credential-label">Senha Inicial</div>
+                    <div class="credential-value">{{CPF}}</div>
+                </div>
+            </div>
+            
+            <div class="info-box">
+                <p><strong>🔐 Importante:</strong> Sua senha inicial é o seu CPF (apenas números). Recomendamos que você altere sua senha após o primeiro acesso para maior segurança.</p>
+            </div>
+            
+            <div class="steps">
+                <h3 style="color: #333; margin-bottom: 20px;">Como acessar o aplicativo:</h3>
+                
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <strong>Baixe o aplicativo</strong>
+                        <p>Procure por "AppCheckin" na App Store ou Google Play</p>
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <strong>Faça login</strong>
+                        <p>Use seu e-mail ({{EMAIL}}) e CPF ({{CPF}}) como senha</p>
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <strong>Complete seu perfil</strong>
+                        <p>Adicione uma foto e altere sua senha para maior segurança</p>
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <strong>Pronto!</strong>
+                        <p>Agora você já pode fazer check-in nas aulas e acompanhar sua frequência</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="text-align: center;">
+                <a href="{{APP_URL}}" class="button">Acessar o Aplicativo</a>
+            </div>
+        </div>
+        
+        <div class="footer">
+            <p><strong>AppCheckin</strong></p>
+            <p>Tem dúvidas? Entre em contato conosco pelo e-mail <a href="mailto:suporte@appcheckin.com.br">suporte@appcheckin.com.br</a></p>
+            <p style="margin-top: 15px; color: #adb5bd; font-size: 12px;">
+                Este é um e-mail automático, por favor não responda.
+            </p>
+        </div>
+    </div>
+</body>
+</html>

@@ -135,6 +135,45 @@ class MailService
     }
 
     /**
+     * Enviar email de boas-vindas para novo aluno com dados de acesso
+     */
+    public function sendWelcomeAlunoEmail(string $email, string $nome, string $cpf, ?int $tenantId = null, ?int $usuarioId = null): bool
+    {
+        try {
+            // Carregar template HTML
+            $templatePath = __DIR__ . '/../../templates/emails/welcome_aluno.html';
+            
+            if (!file_exists($templatePath)) {
+                error_log("Template welcome_aluno.html não encontrado em: $templatePath");
+                return false;
+            }
+            
+            $html = file_get_contents($templatePath);
+            
+            // Substituir variáveis no template
+            $html = str_replace('{{NOME}}', htmlspecialchars($nome, ENT_QUOTES, 'UTF-8'), $html);
+            $html = str_replace('{{EMAIL}}', htmlspecialchars($email, ENT_QUOTES, 'UTF-8'), $html);
+            $html = str_replace('{{CPF}}', htmlspecialchars($cpf, ENT_QUOTES, 'UTF-8'), $html);
+            $html = str_replace('{{APP_URL}}', $_ENV['APP_URL'] ?? 'https://app.appcheckin.com.br', $html);
+            
+            $subject = '🎉 Bem-vindo ao AppCheckin - Seus Dados de Acesso';
+
+            return $this->sendViaSMTP(
+                $email, 
+                $nome, 
+                $subject, 
+                $html,
+                'welcome_aluno',
+                $tenantId,
+                $usuarioId
+            );
+        } catch (\Exception $e) {
+            error_log("Erro ao enviar email de boas-vindas para aluno: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Enviar via SMTP (Amazon SES ou outro servidor SMTP)
      */
     private function sendViaSMTP(
