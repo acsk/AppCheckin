@@ -6,16 +6,31 @@
 - Descrição: Cria um usuário do tipo Aluno, vincula ao tenant informado e retorna um token JWT pronto para uso no app. A senha inicial é definida como o CPF informado (somente dígitos), armazenada com hash (bcrypt).
 
 ## Requisitos
-- Campos obrigatórios: `nome`, `email`, `cpf`, `data_nascimento`, `recaptcha_token`
+- Campos obrigatórios: `nome`, `email`, `cpf`, `data_nascimento`
+- Campo obrigatório para Web: `recaptcha_token` (não necessário para apps mobile nativos)
 - Campos opcionais: `telefone`, `whatsapp`, `cep`, `logradouro`, `numero`, `complemento`, `bairro`, `cidade`, `estado`
 - Regras:
   - `cpf` deve conter 11 dígitos (os caracteres não numéricos são ignorados)
   - `email` e `cpf` devem ser únicos no sistema
-  - `recaptcha_token` é o token gerado pelo Google reCAPTCHA v3 no frontend
+  - `recaptcha_token` é obrigatório apenas para cadastros via navegador web
   - `telefone` e `whatsapp` são salvos apenas com números (máscaras são removidas)
   - Rate limit: máximo 5 tentativas a cada 15 minutos por IP
 
 ## Exemplo de Request (JSON)
+
+### Mobile App (sem reCAPTCHA)
+```json
+{
+  "nome": "João da Silva",
+  "email": "joao.silva@example.com",
+  "cpf": "123.456.789-09",
+  "data_nascimento": "2001-05-20",
+  "telefone": "(11) 99999-9999",
+  "whatsapp": "(11) 98888-7777"
+}
+```
+
+### Web (com reCAPTCHA)
 ```json
 {
   "nome": "João da Silva",
@@ -36,6 +51,20 @@
 ```
 
 ## Exemplo cURL
+
+### Mobile App
+```bash
+curl -i -X POST https://api.appcheckin.com.br/auth/register-mobile \
+  -H "Content-Type: application/json" \
+  -d '{
+    "nome": "João da Silva",
+    "email": "joao.silva@example.com",
+    "cpf": "123.456.789-09",
+    "data_nascimento": "2001-05-20"
+  }'
+```
+
+### Web (com reCAPTCHA)
 ```bash
 curl -i -X POST https://api.appcheckin.com.br/auth/register-mobile \
   -H "Content-Type: application/json" \
@@ -119,8 +148,14 @@ curl -i -X POST https://api.appcheckin.com.br/auth/register-mobile \
 
 ## Segurança
 
-### Google reCAPTCHA v3
-Este endpoint requer um token válido do Google reCAPTCHA v3. No frontend, implemente:
+### Detecção Automática de App Mobile
+A API detecta automaticamente se a requisição vem de um app mobile nativo através do User-Agent:
+- Apps Flutter, React Native, ou nativos não precisam enviar `recaptcha_token`
+- Requisições via navegador web **devem** incluir `recaptcha_token`
+- User-Agents detectados como mobile: `okhttp`, `dart`, `flutter`, `appcheckin`
+
+### Google reCAPTCHA v3 (apenas Web)
+Para cadastros via navegador web, implemente o reCAPTCHA v3:
 
 ```html
 <script src="https://www.google.com/recaptcha/api.js?render=6Lc4Q18sAAAAAH-aVJ28-3pG93k3wy2Kl7Eh8Xv9"></script>
@@ -130,7 +165,6 @@ Este endpoint requer um token válido do Google reCAPTCHA v3. No frontend, imple
 grecaptcha.ready(function() {
   grecaptcha.execute('6Lc4Q18sAAAAAH-aVJ28-3pG93k3wy2Kl7Eh8Xv9', {action: 'register'})
     .then(function(token) {
-      // Incluir token no body da requisição como 'recaptcha_token'
       fetch('/auth/register-mobile', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
@@ -146,10 +180,17 @@ grecaptcha.ready(function() {
 });
 ```
 
-### Rate Limiting
+### Rate Limiting (aplicado a todos)
 - Máximo de **5 tentativas** por IP
 - Janela de tempo: **15 minutos**
 - Após 5 tentativas falhas, o IP será bloqueado temporariamente
 - O contador é resetado automaticamente após sucesso ou após 15 minutos
 - Headers retornados em erro 429:
   - `Retry-After`: segundos até poder tentar novamente
+
+### Recomendação para App Mobile
+Para aumentar a segurança do app mobile, considere:
+1. ✅ **Rate Limiting** (já implementado)
+2. Adicionar header customizado: `X-App-Version` para validar versão do app
+3. Implementar certificado SSL pinning no app
+4. Usar device fingerprinting (device ID, modelo, SO)

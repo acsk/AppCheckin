@@ -254,24 +254,45 @@ return function ($app) {
                 $data = is_array($decoded) ? $decoded : [];
             }
 
-            // 2. Validação reCAPTCHA v3
+            // 2. Validação reCAPTCHA v3 (apenas para web, opcional para mobile)
             $recaptchaToken = $data['recaptcha_token'] ?? null;
-            $recaptchaService = new \App\Services\ReCaptchaService(
-                $_ENV['RECAPTCHA_SECRET_KEY'] ?? '',
-                (float)($_ENV['RECAPTCHA_MINIMUM_SCORE'] ?? 0.5)
-            );
-
-            $recaptchaResult = $recaptchaService->verify($recaptchaToken, $clientIp);
+            $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+            $isMobileApp = stripos($userAgent, 'okhttp') !== false || 
+                          stripos($userAgent, 'dart') !== false || 
+                          stripos($userAgent, 'flutter') !== false ||
+                          stripos($userAgent, 'appcheckin') !== false;
             
-            if (!$recaptchaResult['success']) {
-                error_log("reCAPTCHA falhou para IP $clientIp: {$recaptchaResult['error']} (Score: {$recaptchaResult['score']})");
+            // Log para debug
+            error_log("[register-mobile] IP: $clientIp, User-Agent: $userAgent, isMobileApp: " . ($isMobileApp ? 'yes' : 'no') . ", recaptcha_token presente: " . ($recaptchaToken ? 'sim' : 'não'));
+            
+            // Apenas exigir reCAPTCHA para requisições web (não mobile app)
+            if (!$isMobileApp && empty($recaptchaToken)) {
                 $response->getBody()->write(json_encode([
                     'type' => 'error',
-                    'code' => 'RECAPTCHA_VALIDATION_FAILED',
-                    'message' => 'Falha na validação de segurança. Por favor, tente novamente',
-                    'details' => $_ENV['APP_ENV'] === 'development' ? $recaptchaResult['error'] : null
+                    'code' => 'RECAPTCHA_REQUIRED',
+                    'message' => 'Token reCAPTCHA é obrigatório para cadastro via web'
                 ], JSON_UNESCAPED_UNICODE));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+            }
+            
+            // Se tem token, validar (independente de ser app ou web)
+            if (!empty($recaptchaToken)) {
+                $recaptchaService = new \App\Services\ReCaptchaService(
+                    $_ENV['RECAPTCHA_SECRET_KEY'] ?? '',
+                    (float)($_ENV['RECAPTCHA_MINIMUM_SCORE'] ?? 0.5)
+                );
+
+                $recaptchaResult = $recaptchaService->verify($recaptchaToken, $clientIp);
+                
+                if (!$recaptchaResult['success']) {
+                    error_log("[register-mobile] reCAPTCHA falhou para IP $clientIp: {$recaptchaResult['error']} | Score: " . ($recaptchaResult['score'] ?? 'null'));
+                    $response->getBody()->write(json_encode([
+                        'type' => 'error',
+                        'code' => 'RECAPTCHA_VALIDATION_FAILED',
+                        'message' => 'Falha na validação de segurança. Por favor, tente novamente'
+                    ], JSON_UNESCAPED_UNICODE));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+                }
             }
 
             $nome = trim($data['nome'] ?? '');
