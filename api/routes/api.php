@@ -1169,6 +1169,7 @@ return function ($app) {
         $group->post('/alunos', [AlunoController::class, 'create']);
         $group->put('/alunos/{id}', [AlunoController::class, 'update']);
         $group->delete('/alunos/{id}', [AlunoController::class, 'delete']);
+        $group->delete('/alunos/{id}/hard', [AlunoController::class, 'hardDelete']);
         
         // Gestão de Planos
         $group->get('/planos/{id}', [PlanoController::class, 'show']);

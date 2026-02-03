@@ -272,6 +272,75 @@ class Aluno
     }
 
     /**
+     * Deletar aluno completamente (hard delete) com limpeza de registros órfãos
+     * Remove: aluno, usuário associado, vínculos com tenant, e todos os dados relacionados
+     */
+    public function hardDelete(int $id): bool
+    {
+        try {
+            $this->db->beginTransaction();
+            
+            // 1. Obter o usuario_id associado
+            $stmt = $this->db->prepare("SELECT usuario_id FROM alunos WHERE id = :id");
+            $stmt->execute(['id' => $id]);
+            $aluno = $stmt->fetch(\PDO::FETCH_ASSOC);
+            
+            if (!$aluno) {
+                $this->db->rollBack();
+                return false;
+            }
+            
+            $usuarioId = $aluno['usuario_id'];
+            
+            // 2. Deletar registros em cascata (ordem importante para respeitar FKs)
+            
+            // Deletar checkins do aluno
+            $this->db->prepare("DELETE FROM checkins WHERE aluno_id = :aluno_id")
+                ->execute(['aluno_id' => $id]);
+            
+            // Deletar matrículas
+            $this->db->prepare("DELETE FROM matriculas WHERE aluno_id = :aluno_id")
+                ->execute(['aluno_id' => $id]);
+            
+            // Deletar pagamentos do aluno
+            $this->db->prepare("DELETE FROM pagamentos_plano WHERE aluno_id = :aluno_id")
+                ->execute(['aluno_id' => $id]);
+            
+            // Deletar WOD resultados do aluno
+            $this->db->prepare("DELETE FROM wod_resultados WHERE aluno_id = :aluno_id")
+                ->execute(['aluno_id' => $id]);
+            
+            // Deletar vínculo com tenant
+            $this->db->prepare("DELETE FROM usuario_tenant WHERE usuario_id = :usuario_id")
+                ->execute(['usuario_id' => $usuarioId]);
+            
+            // Deletar papéis do usuário no tenant
+            $this->db->prepare("DELETE FROM tenant_usuario_papel WHERE usuario_id = :usuario_id")
+                ->execute(['usuario_id' => $usuarioId]);
+            
+            // Deletar logs de email
+            $this->db->prepare("DELETE FROM email_logs WHERE usuario_id = :usuario_id")
+                ->execute(['usuario_id' => $usuarioId]);
+            
+            // Deletar o aluno
+            $this->db->prepare("DELETE FROM alunos WHERE id = :id")
+                ->execute(['id' => $id]);
+            
+            // Deletar o usuário (último, após remover todas as referências)
+            $this->db->prepare("DELETE FROM usuarios WHERE id = :id")
+                ->execute(['id' => $usuarioId]);
+            
+            $this->db->commit();
+            return true;
+            
+        } catch (\PDOException $e) {
+            $this->db->rollBack();
+            error_log("Erro ao fazer hard delete do aluno: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
      * Verificar se aluno pertence ao tenant
      */
     public function pertenceAoTenant(int $alunoId, int $tenantId): bool

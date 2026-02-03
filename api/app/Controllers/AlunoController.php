@@ -373,6 +373,54 @@ class AlunoController
     }
 
     /**
+     * Deletar aluno completamente (hard delete com limpeza de órfãos)
+     * DELETE /admin/alunos/{id}/hard
+     * 
+     * Remove: aluno, usuário, vínculos com tenant e todos os dados relacionados
+     * ⚠️ OPERAÇÃO IRREVERSÍVEL
+     */
+    public function hardDelete(Request $request, Response $response, array $args): Response
+    {
+        $id = (int) $args['id'];
+        $tenantId = $request->getAttribute('tenantId');
+        
+        $aluno = $this->alunoModel->findById($id, $tenantId);
+        
+        if (!$aluno) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Aluno não encontrado'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
+        }
+        
+        try {
+            // Realizar hard delete (remove aluno e usuário em cascata)
+            if ($this->alunoModel->hardDelete($id)) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'success',
+                    'message' => 'Aluno e dados associados deletados permanentemente',
+                    'warning' => 'Esta operação é irreversível'
+                ], JSON_UNESCAPED_UNICODE));
+                
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+            } else {
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'message' => 'Falha ao deletar aluno'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
+            }
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Erro ao deletar aluno: ' . $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
+        }
+    }
+
+    /**
      * Buscar histórico de planos do aluno
      * GET /admin/alunos/{id}/historico-planos
      */
