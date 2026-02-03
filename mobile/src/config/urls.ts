@@ -26,6 +26,13 @@ export const CONFIG = {
     // analyticsUrl: 'https://analytics.appcheckin.com',
   },
 
+  // Configurações do reCAPTCHA
+  recaptcha: {
+    siteKey: "6Lc4QI8sAAAAAH-aVJ28-3pG93k3wy2Kl7Eh8Xv9",
+    // A secret key é usada apenas no backend
+    // secretKey: "6Lc4QI8sAAAAI2zP1WqSTf8WqWFHO7dY6EvQd4-"
+  },
+
   // Configurações de timeout
   timeouts: {
     request: 30000, // 30s
