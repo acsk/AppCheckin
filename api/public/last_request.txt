@@ -157,3 +157,4 @@
 [2026-02-02 21:00:18] OPTIONS /auth/register-mobile
 [2026-02-02 21:00:18] POST /auth/register-mobile
 [2026-02-02 21:23:17] GET /mobile/wods/hoje
+[2026-02-03 11:07:09] POST /auth/register-mobile

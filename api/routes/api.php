@@ -234,6 +234,7 @@ return function ($app) {
             $email = trim($data['email'] ?? '');
             $emailNorm = $email !== '' ? mb_strtolower($email, 'UTF-8') : '';
             $cpf = trim($data['cpf'] ?? '');
+            $dataNascimento = trim($data['data_nascimento'] ?? '');
             $tenantId = isset($data['tenant_id']) ? (int)$data['tenant_id'] : null;
             $telefone = $data['telefone'] ?? null;
             $whatsapp = $data['whatsapp'] ?? null;
@@ -252,11 +253,20 @@ return function ($app) {
             if ($nome === '') $erros[] = 'nome é obrigatório';
             if ($email === '') $erros[] = 'email é obrigatório';
             if ($cpf === '') $erros[] = 'cpf é obrigatório';
+            if ($dataNascimento === '') $erros[] = 'data_nascimento é obrigatória';
             // tenant_id passa a ser opcional
 
             $cpfLimpo = preg_replace('/[^0-9]/', '', $cpf);
             if ($cpfLimpo === null || strlen($cpfLimpo) !== 11) {
                 $erros[] = 'cpf inválido (use 11 dígitos)';
+            }
+
+            if ($dataNascimento !== '') {
+                $dt = \DateTime::createFromFormat('Y-m-d', $dataNascimento);
+                $dtErros = \DateTime::getLastErrors();
+                if (!$dt || $dt->format('Y-m-d') !== $dataNascimento || ($dtErros['warning_count'] ?? 0) > 0 || ($dtErros['error_count'] ?? 0) > 0) {
+                    $erros[] = 'data_nascimento inválida (use YYYY-MM-DD)';
+                }
             }
 
             if (!empty($erros)) {
@@ -299,6 +309,7 @@ return function ($app) {
                 'email_global' => $emailNorm,
                 'senha' => $cpfLimpo,
                 'cpf' => $cpfLimpo,
+                'data_nascimento' => $dataNascimento,
                 'telefone' => $telefone,
                 'whatsapp' => $whatsapp,
                 'ativo' => 1,
@@ -339,6 +350,7 @@ return function ($app) {
                     'telefone' => $telefone,
                     'whatsapp' => $whatsapp,
                     'cpf' => $cpfLimpo,
+                    'data_nascimento' => $dataNascimento,
                 ],
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(201);

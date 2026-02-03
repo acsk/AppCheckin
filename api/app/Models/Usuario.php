@@ -72,8 +72,8 @@ class Usuario
             
             // 3. Criar registro em alunos (perfil separado)
             $stmtAluno = $this->db->prepare(
-                "INSERT INTO alunos (usuario_id, nome, telefone, whatsapp, cpf, cep, logradouro, numero, complemento, bairro, cidade, estado, ativo)
-                 VALUES (:usuario_id, :nome, :telefone, :whatsapp, :cpf, :cep, :logradouro, :numero, :complemento, :bairro, :cidade, :estado, :ativo)"
+                "INSERT INTO alunos (usuario_id, nome, telefone, whatsapp, cpf, data_nascimento, cep, logradouro, numero, complemento, bairro, cidade, estado, ativo)
+                 VALUES (:usuario_id, :nome, :telefone, :whatsapp, :cpf, :data_nascimento, :cep, :logradouro, :numero, :complemento, :bairro, :cidade, :estado, :ativo)"
             );
             
             $stmtAluno->execute([
@@ -82,6 +82,7 @@ class Usuario
                 'telefone' => $data['telefone'] ?? null,
                 'whatsapp' => $data['whatsapp'] ?? null,
                 'cpf' => $cpfLimpo ?: null,
+                'data_nascimento' => $data['data_nascimento'] ?? null,
                 'cep' => $cepLimpo ?: null,
                 'logradouro' => $logradouro,
                 'numero' => $data['numero'] ?? null,

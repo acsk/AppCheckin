@@ -21,6 +21,7 @@ const INITIAL_FORM = {
   nome: "",
   email: "",
   cpf: "",
+  data_nascimento: "",
   telefone: "",
   whatsapp: "",
   cep: "",
@@ -62,6 +63,13 @@ const formatCep = (value) => {
   const digits = value.replace(/\D/g, "").slice(0, 8);
   if (digits.length <= 5) return digits;
   return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+};
+
+const formatDate = (value) => {
+  const digits = value.replace(/\D/g, "").slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
 };
 
 const isValidCpf = (value) => {
@@ -125,6 +133,10 @@ export default function RegisterMobileScreen() {
     handleChange(field, formatPhone(value));
   };
 
+  const handleDateChange = (value) => {
+    handleChange("data_nascimento", formatDate(value));
+  };
+
   const validateFields = () => {
     const errors = {};
 
@@ -150,6 +162,15 @@ export default function RegisterMobileScreen() {
 
     if (!form.whatsapp.trim()) {
       errors.whatsapp = "Informe o WhatsApp";
+    }
+
+    if (!form.data_nascimento.trim()) {
+      errors.data_nascimento = "Informe a data de nascimento";
+    } else {
+      const digits = form.data_nascimento.replace(/\D/g, "");
+      if (digits.length !== 8) {
+        errors.data_nascimento = "Data inválida";
+      }
     }
 
     setFieldErrors(errors);
@@ -218,6 +239,17 @@ export default function RegisterMobileScreen() {
       email: form.email.trim().toLowerCase(),
       cpf: cpfDigits,
     };
+
+    // Converter data_nascimento de DD/MM/YYYY para YYYY-MM-DD
+    if (form.data_nascimento.trim()) {
+      const digits = form.data_nascimento.replace(/\D/g, "");
+      if (digits.length === 8) {
+        const day = digits.slice(0, 2);
+        const month = digits.slice(2, 4);
+        const year = digits.slice(4, 8);
+        payload.data_nascimento = `${year}-${month}-${day}`;
+      }
+    }
 
     const optionalFields = [
       "telefone",
@@ -412,6 +444,34 @@ export default function RegisterMobileScreen() {
               </View>
               {fieldErrors.cpf ? (
                 <Text style={styles.fieldErrorText}>{fieldErrors.cpf}</Text>
+              ) : null}
+
+              <View
+                style={[
+                  styles.inputWrapper,
+                  fieldErrors.data_nascimento && styles.inputWrapperError,
+                ]}
+              >
+                <Feather
+                  name="calendar"
+                  size={20}
+                  color={colors.primary}
+                  style={styles.inputIcon}
+                />
+                <TextInput
+                  style={styles.input}
+                  placeholder="Data de Nascimento (DD/MM/AAAA)"
+                  placeholderTextColor="#999"
+                  keyboardType="numeric"
+                  value={form.data_nascimento}
+                  onChangeText={handleDateChange}
+                  editable={!loading}
+                />
+              </View>
+              {fieldErrors.data_nascimento ? (
+                <Text style={styles.fieldErrorText}>
+                  {fieldErrors.data_nascimento}
+                </Text>
               ) : null}
 
               <View

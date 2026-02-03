@@ -6,7 +6,7 @@
 - Descrição: Cria um usuário do tipo Aluno, vincula ao tenant informado e retorna um token JWT pronto para uso no app. A senha inicial é definida como o CPF informado (somente dígitos), armazenada com hash (bcrypt).
 
 ## Requisitos
-- Campos obrigatórios: `nome`, `email`, `cpf`
+- Campos obrigatórios: `nome`, `email`, `cpf`, `data_nascimento`
 - Campos opcionais: `telefone`, `whatsapp`, `cep`, `logradouro`, `numero`, `complemento`, `bairro`, `cidade`, `estado`
 - Regras:
   - `cpf` deve conter 11 dígitos (os caracteres não numéricos são ignorados)
@@ -18,6 +18,7 @@
   "nome": "João da Silva",
   "email": "joao.silva@example.com",
   "cpf": "123.456.789-09",
+  "data_nascimento": "2001-05-20",
   "telefone": "(11) 99999-9999",
   "whatsapp": "(11) 98888-7777",
   "cep": "01234-567",
@@ -37,7 +38,8 @@ curl -i -X POST https://api.appcheckin.com.br/auth/register-mobile \
   -d '{
     "nome": "João da Silva",
     "email": "joao.silva@example.com",
-    "cpf": "123.456.789-09"
+    "cpf": "123.456.789-09",
+    "data_nascimento": "2001-05-20"
   }'
 ```
 
@@ -53,7 +55,8 @@ curl -i -X POST https://api.appcheckin.com.br/auth/register-mobile \
     "email": "joao.silva@example.com",
     "telefone": "(11) 99999-9999",
     "whatsapp": "(11) 98888-7777",
-    "cpf": "12345678909"
+    "cpf": "12345678909",
+    "data_nascimento": "2001-05-20"
   }
 }
 ```

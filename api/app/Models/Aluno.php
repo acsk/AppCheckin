@@ -176,10 +176,10 @@ class Aluno
         $estado = isset($data['estado']) ? mb_strtoupper(trim($data['estado']), 'UTF-8') : null;
         
         $stmt = $this->db->prepare(
-            "INSERT INTO alunos (usuario_id, nome, telefone, cpf, cep, logradouro, numero, 
-                                 complemento, bairro, cidade, estado, foto_url, foto_base64, ativo) 
-             VALUES (:usuario_id, :nome, :telefone, :cpf, :cep, :logradouro, :numero,
-                     :complemento, :bairro, :cidade, :estado, :foto_url, :foto_base64, :ativo)"
+            "INSERT INTO alunos (usuario_id, nome, telefone, cpf, data_nascimento, cep, logradouro, numero, 
+                     complemento, bairro, cidade, estado, foto_url, foto_base64, ativo) 
+             VALUES (:usuario_id, :nome, :telefone, :cpf, :data_nascimento, :cep, :logradouro, :numero,
+                 :complemento, :bairro, :cidade, :estado, :foto_url, :foto_base64, :ativo)"
         );
         
         $stmt->execute([
@@ -187,6 +187,7 @@ class Aluno
             'nome' => $nome,
             'telefone' => $data['telefone'] ?? null,
             'cpf' => $cpfLimpo ?: null,
+            'data_nascimento' => $data['data_nascimento'] ?? null,
             'cep' => $cepLimpo ?: null,
             'logradouro' => $logradouro,
             'numero' => $data['numero'] ?? null,
@@ -210,8 +211,8 @@ class Aluno
         $updates = [];
         $params = ['id' => $id];
         
-        $allowed = ['nome', 'telefone', 'cpf', 'cep', 'logradouro', 'numero', 
-                    'complemento', 'bairro', 'cidade', 'estado', 'foto_url', 'foto_base64', 'ativo'];
+        $allowed = ['nome', 'telefone', 'cpf', 'data_nascimento', 'cep', 'logradouro', 'numero', 
+                'complemento', 'bairro', 'cidade', 'estado', 'foto_url', 'foto_base64', 'ativo'];
         
         foreach ($allowed as $field) {
             if (array_key_exists($field, $data)) {
