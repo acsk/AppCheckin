@@ -7,7 +7,7 @@ import {
   Pressable,
   Platform,
   useWindowDimensions,
-  Alert,
+  Modal,
   ToastAndroid,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -28,6 +28,7 @@ export default function MatriculaDetalheScreen() {
   const [modalConfirmVisible, setModalConfirmVisible] = useState(false);
   const [pagamentoSelecionado, setPagamentoSelecionado] = useState(null);
   const [ajustePlano, setAjustePlano] = useState(null);
+  const [errorModal, setErrorModal] = useState({ visible: false, title: '', message: '' });
 
   useEffect(() => {
     carregarDados();
@@ -77,14 +78,37 @@ export default function MatriculaDetalheScreen() {
   };
 
   const showAlert = (title, message) => {
-    Alert.alert(title, message);
+    setErrorModal({ visible: true, title, message });
   };
 
   const showToast = (message) => {
     if (Platform.OS === 'android') {
       ToastAndroid.show(message, ToastAndroid.SHORT);
-    } else {
-      Alert.alert('', message);
+    } else if (Platform.OS === 'web') {
+      // Toast customizado para web
+      const toast = document.createElement('div');
+      toast.textContent = message;
+      toast.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background-color: #10b981;
+        color: white;
+        padding: 12px 24px;
+        border-radius: 8px;
+        z-index: 10000;
+        font-size: 14px;
+        max-width: 80%;
+        text-align: center;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      `;
+      document.body.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s';
+        setTimeout(() => document.body.removeChild(toast), 300);
+      }, 3000);
     }
   };
 
@@ -579,6 +603,41 @@ export default function MatriculaDetalheScreen() {
         pagamento={pagamentoSelecionado}
         onSuccess={handleBaixaSuccess}
       />
+
+      {/* Modal de Erro */}
+      <Modal
+        visible={errorModal.visible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setErrorModal({ visible: false, title: '', message: '' })}
+      >
+        <View className="flex-1 items-center justify-center bg-black/50 px-4">
+          <View className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+            <View className="items-center border-b border-slate-200 px-6 py-5">
+              <View className="mb-3 h-14 w-14 items-center justify-center rounded-full bg-rose-100">
+                <Feather name="alert-circle" size={28} color="#ef4444" />
+              </View>
+              <Text className="text-lg font-bold text-slate-800">{errorModal.title}</Text>
+            </View>
+            
+            <View className="px-6 py-5">
+              <Text className="text-center text-sm leading-6 text-slate-600">
+                {errorModal.message}
+              </Text>
+            </View>
+
+            <View className="border-t border-slate-200 px-6 py-4">
+              <Pressable
+                onPress={() => setErrorModal({ visible: false, title: '', message: '' })}
+                className="items-center justify-center rounded-lg bg-slate-800 py-3"
+                style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+              >
+                <Text className="text-sm font-semibold text-white">Fechar</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </LayoutBase>
   );
 }

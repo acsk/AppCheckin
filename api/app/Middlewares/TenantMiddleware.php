@@ -58,6 +58,7 @@ class TenantMiddleware
             // Allowlist de rotas que não exigem tenant
             $allowlistPrefixes = [
                 '/auth',            // login, register, select-tenant-initial, etc.
+                '/superadmin',      // rotas de super admin não precisam de tenant
                 '/swagger',         // documentação
                 '/php-test',        // utilidades públicas
                 '/health',          // health e health/basic

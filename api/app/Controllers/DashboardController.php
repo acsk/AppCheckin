@@ -83,14 +83,25 @@ class DashboardController
     public function cards(Request $request, Response $response): Response
     {
         $tenantId = $request->getAttribute('tenantId');
+        $userId = $request->getAttribute('userId');
 
         try {
-            $dados = [
-                'total_alunos' => $this->getTotalAlunos($tenantId),
-                'receita_mensal' => $this->getReceitaMensal($tenantId),
-                'checkins_hoje' => $this->getCheckinsHoje($tenantId),
-                'planos_vencendo' => $this->getPlanosVencendo($tenantId),
-            ];
+            // Se não tem tenantId (Super Admin sem contexto), retornar dados vazios
+            if (!$tenantId) {
+                $dados = [
+                    'total_alunos' => ['total' => 0, 'ativos' => 0, 'inativos' => 0],
+                    'receita_mensal' => ['valor' => 0, 'valor_formatado' => 'R$ 0,00', 'contas_pendentes' => 0],
+                    'checkins_hoje' => ['hoje' => 0, 'no_mes' => 0],
+                    'planos_vencendo' => ['vencendo' => 0, 'novos_este_mes' => 0],
+                ];
+            } else {
+                $dados = [
+                    'total_alunos' => $this->getTotalAlunos($tenantId),
+                    'receita_mensal' => $this->getReceitaMensal($tenantId),
+                    'checkins_hoje' => $this->getCheckinsHoje($tenantId),
+                    'planos_vencendo' => $this->getPlanosVencendo($tenantId),
+                ];
+            }
 
             $response->getBody()->write(json_encode([
                 'success' => true,
@@ -260,16 +271,30 @@ class DashboardController
         $tenantId = $request->getAttribute('tenantId');
 
         try {
-            $dados = [
-                'alunos' => $this->contarAlunos($tenantId),
-                'turmas' => $this->contarTurmas($tenantId),
-                'professores' => $this->contarProfessores($tenantId),
-                'modalidades' => $this->contarModalidades($tenantId),
-                'checkins_hoje' => $this->contarCheckinsHoje($tenantId),
-                'matrículas_ativas' => $this->contarMatriculasAtivas($tenantId),
-                'receita_mes' => $this->calcularReceitaMes($tenantId),
-                'contratos_ativos' => $this->contarContratosAtivos($tenantId)
-            ];
+            // Se não tem tenantId (Super Admin sem contexto), retornar dados vazios
+            if (!$tenantId) {
+                $dados = [
+                    'alunos' => 0,
+                    'turmas' => 0,
+                    'professores' => 0,
+                    'modalidades' => 0,
+                    'checkins_hoje' => 0,
+                    'matrículas_ativas' => 0,
+                    'receita_mes' => 0.0,
+                    'contratos_ativos' => 0
+                ];
+            } else {
+                $dados = [
+                    'alunos' => $this->contarAlunos($tenantId),
+                    'turmas' => $this->contarTurmas($tenantId),
+                    'professores' => $this->contarProfessores($tenantId),
+                    'modalidades' => $this->contarModalidades($tenantId),
+                    'checkins_hoje' => $this->contarCheckinsHoje($tenantId),
+                    'matrículas_ativas' => $this->contarMatriculasAtivas($tenantId),
+                    'receita_mes' => $this->calcularReceitaMes($tenantId),
+                    'contratos_ativos' => $this->contarContratosAtivos($tenantId)
+                ];
+            }
 
             $response->getBody()->write(json_encode([
                 'type' => 'success',
