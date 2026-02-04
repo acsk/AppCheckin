@@ -892,3 +892,5 @@
 [2026-02-04 14:32:29] GET /mobile/checkins/por-modalidade
 [2026-02-04 14:32:29] OPTIONS /mobile/ranking/mensal?modalidade_id=1
 [2026-02-04 14:32:29] GET /mobile/ranking/mensal?modalidade_id=1
+[2026-02-04 15:23:10] OPTIONS /admin/turmas?apenas_ativas=false&data=2026-02-04
+[2026-02-04 15:23:10] GET /admin/turmas?apenas_ativas=false&data=2026-02-04
