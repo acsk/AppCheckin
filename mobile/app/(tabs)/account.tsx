@@ -57,6 +57,7 @@ export default function AccountScreen() {
   // Removido: carregamento de modalidades a partir de turmas (não utilizado)
   const [updatingPhoto, setUpdatingPhoto] = useState(false);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const [apiUrl, setApiUrl] = useState<string>("");
   // const [assetsUrl, setAssetsUrl] = useState<string>("");
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
@@ -846,14 +847,8 @@ export default function AccountScreen() {
             error?.toString() ||
             "Erro ao processar foto. Tente novamente.";
 
-          if (
-            errorMessage === "Aluno não encontrado para este usuário" ||
-            error?.error === "Aluno não encontrado para este usuário"
-          ) {
-            Alert.alert("Erro", "Aluno não encontrado para este usuário");
-          } else {
-            Alert.alert("Erro", errorMessage);
-          }
+          setPhotoError(errorMessage);
+          setUpdatingPhoto(false);
         } finally {
           setUpdatingPhoto(false);
         }
@@ -874,14 +869,8 @@ export default function AccountScreen() {
         error?.toString() ||
         "Erro ao trocar foto. Tente novamente.";
 
-      if (
-        errorMessage === "Aluno não encontrado para este usuário" ||
-        error?.error === "Aluno não encontrado para este usuário"
-      ) {
-        Alert.alert("Erro", "Aluno não encontrado para este usuário");
-      } else {
-        Alert.alert("Erro", errorMessage);
-      }
+      setPhotoError(errorMessage);
+      setUpdatingPhoto(false);
     } finally {
       setUpdatingPhoto(false);
     }
@@ -921,6 +910,17 @@ export default function AccountScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Mostrar erro de foto se houver */}
+      {photoError ? (
+        <View style={styles.errorBanner}>
+          <Feather name="alert-circle" size={18} color="#dc2626" />
+          <Text style={styles.errorBannerText}>{photoError}</Text>
+          <TouchableOpacity onPress={() => setPhotoError(null)}>
+            <Feather name="x" size={20} color="#dc2626" />
+          </TouchableOpacity>
+        </View>
+      ) : null}
+
       {/* Header com dados do usuário */}
       <View style={styles.headerTop}>
         <View style={styles.headerUserRow}>
@@ -1530,6 +1530,22 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.backgroundSecondary,
+  },
+  errorBanner: {
+    backgroundColor: "#fee2e2",
+    borderBottomWidth: 1,
+    borderBottomColor: "#fecaca",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  errorBannerText: {
+    flex: 1,
+    color: "#dc2626",
+    fontSize: 13,
+    fontWeight: "500",
   },
   headerTop: {
     paddingHorizontal: 20,
