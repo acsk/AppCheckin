@@ -321,16 +321,17 @@ export default function Dashboard() {
     // Usar dados do endpoint /cards com fallback para o default
     const cards = cardsData || DASHBOARD_CARDS_DEFAULT;
     
-    const totalAlunos = cards.total_alunos.total;
-    const alunosAtivos = cards.total_alunos.ativos;
-    const alunosInativos = cards.total_alunos.inativos;
-    const novosAlunosMes = cards.planos_vencendo.novos_este_mes;
-    const checkinsHoje = cards.checkins_hoje.hoje;
-    const checkinsMes = cards.checkins_hoje.no_mes;
-    const planosVencendo = cards.planos_vencendo.vencendo;
-    const receitaMensal = cards.receita_mensal.valor;
-    const receitaMensalFormatada = cards.receita_mensal.valor_formatado;
-    const contasPendentesQtd = cards.receita_mensal.contas_pendentes;
+    // Validações para evitar erros de undefined
+    const totalAlunos = cards?.total_alunos?.total ?? 0;
+    const alunosAtivos = cards?.total_alunos?.ativos ?? 0;
+    const alunosInativos = cards?.total_alunos?.inativos ?? 0;
+    const novosAlunosMes = cards?.planos_vencendo?.novos_este_mes ?? 0;
+    const checkinsHoje = cards?.checkins_hoje?.hoje ?? 0;
+    const checkinsMes = cards?.checkins_hoje?.no_mes ?? 0;
+    const planosVencendo = cards?.planos_vencendo?.vencendo ?? 0;
+    const receitaMensal = cards?.receita_mensal?.valor ?? 0;
+    const receitaMensalFormatada = cards?.receita_mensal?.valor_formatado ?? 'R$ 0,00';
+    const contasPendentesQtd = cards?.receita_mensal?.contas_pendentes ?? 0;
     const contasPendentesValor = dashboardData?.contas_pendentes_valor ?? 0;
     const contasVencidasQtd = dashboardData?.contas_vencidas_qtd ?? 0;
     const contasVencidasValor = dashboardData?.contas_vencidas_valor ?? 0;

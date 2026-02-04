@@ -22,8 +22,13 @@ import styles from './styles';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const [email, setEmail] = useState('superadmin@appcheckin.com');
-  const [senha, setSenha] = useState('SuperAdmin@2025');
+  
+  // Detectar se está em localhost e pré-preencher credenciais de teste
+  const isLocalhost = typeof window !== 'undefined' && 
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  
+  const [email, setEmail] = useState(isLocalhost ? 'sa@appcheckin.com.br' : '');
+  const [senha, setSenha] = useState(isLocalhost ? '123456' : '');
   const [loading, setLoading] = useState(false);
   const [secure, setSecure] = useState(true);
   const [showTenantModal, setShowTenantModal] = useState(false);
