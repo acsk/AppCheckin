@@ -4,6 +4,29 @@ namespace App\Models;
 
 use PDO;
 
+/**
+ * Model UsuarioTenant
+ * 
+ * ARQUITETURA: Sistema de Duas Tabelas (Decisão 2026-02-03)
+ * 
+ * Este model gerencia a tabela `usuario_tenant`, que é responsável por:
+ * - Vínculo básico entre usuário e tenant (relacionamento N:M)
+ * - Status do vínculo (ativo/inativo)
+ * - Plano/assinatura do usuário no tenant (plano_id)
+ * - Datas de início e fim do vínculo
+ * 
+ * IMPORTANTE: Coexiste com a tabela `tenant_usuario_papel`:
+ * - usuario_tenant: Vínculo + Status + Plano + Datas (este model)
+ * - tenant_usuario_papel: Papéis/Permissões (aluno=1, professor=2, admin=3)
+ * 
+ * Um usuário pode ter 1 vínculo por tenant (usuario_tenant) mas múltiplos
+ * papéis no mesmo tenant (tenant_usuario_papel).
+ * 
+ * Exemplo:
+ * - usuario_tenant: user_id=5, tenant_id=2, status='ativo', plano_id=1
+ * - tenant_usuario_papel: user_id=5, tenant_id=2, papel_id=1 (aluno)
+ * - tenant_usuario_papel: user_id=5, tenant_id=2, papel_id=2 (professor)
+ */
 class UsuarioTenant
 {
     private PDO $db;
@@ -20,16 +43,16 @@ class UsuarioTenant
      * 
      * @param int $usuarioId ID do usuário
      * @param int $tenantId ID do tenant
-     * @return array|null Retorna registro de usuario_tenant se válido, null caso contrário
+     * @return array|null Retorna registro de tenant_usuario_papel se válido, null caso contrário
      */
     public function validarAcesso(int $usuarioId, int $tenantId): ?array
     {
         $stmt = $this->db->prepare(
-            "SELECT ut.* 
-             FROM usuario_tenant ut
-             WHERE ut.usuario_id = :usuario_id 
-             AND ut.tenant_id = :tenant_id 
-             AND ut.status = 'ativo'"
+            "SELECT tup.* 
+             FROM tenant_usuario_papel tup
+             WHERE tup.usuario_id = :usuario_id 
+             AND tup.tenant_id = :tenant_id 
+             AND tup.ativo = 1"
         );
         
         $stmt->execute([
@@ -57,10 +80,10 @@ class UsuarioTenant
         $placeholders = implode(',', array_fill(0, count($usuarioIds), '?'));
         
         $stmt = $this->db->prepare(
-            "SELECT usuario_id FROM usuario_tenant 
+            "SELECT usuario_id FROM tenant_usuario_papel 
              WHERE usuario_id IN ($placeholders) 
              AND tenant_id = ? 
-             AND status = 'ativo'"
+             AND ativo = 1"
         );
         
         $params = array_merge($usuarioIds, [$tenantId]);
@@ -85,8 +108,8 @@ class UsuarioTenant
     public function contarTenantsPorUsuario(int $usuarioId): int
     {
         $stmt = $this->db->prepare(
-            "SELECT COUNT(*) FROM usuario_tenant 
-             WHERE usuario_id = :usuario_id AND status = 'ativo'"
+            "SELECT COUNT(DISTINCT tenant_id) FROM tenant_usuario_papel 
+             WHERE usuario_id = :usuario_id AND ativo = 1"
         );
         
         $stmt->execute(['usuario_id' => $usuarioId]);
@@ -102,10 +125,11 @@ class UsuarioTenant
     public function listarTenants(int $usuarioId): array
     {
         $stmt = $this->db->prepare(
-            "SELECT ut.*, t.nome as tenant_nome 
-             FROM usuario_tenant ut
-             INNER JOIN tenants t ON ut.tenant_id = t.id
-             WHERE ut.usuario_id = :usuario_id AND ut.status = 'ativo'"
+            "SELECT tup.*, t.nome as tenant_nome 
+             FROM tenant_usuario_papel tup
+             INNER JOIN tenants t ON tup.tenant_id = t.id
+             WHERE tup.usuario_id = :usuario_id AND tup.ativo = 1
+             GROUP BY tup.tenant_id"
         );
         
         $stmt->execute(['usuario_id' => $usuarioId]);

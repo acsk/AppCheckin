@@ -1,17 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Switch } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { professorService } from '../../services/professorService';
 import { showSuccess, showError } from '../../utils/toast';
 import { mascaraTelefone, mascaraCPF, apenasNumeros } from '../../utils/masks';
 import LayoutBase from '../../components/LayoutBase';
+import BuscarProfessorCpfModal from '../../components/BuscarProfessorCpfModal';
 
-export default function FormProfessorScreen({ professorId }) {
+export default function FormProfessorScreen() {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
+  const { id } = useLocalSearchParams();
+  const professorId = id ? parseInt(id) : null;
+  const isEdit = !!professorId;
+  
+  const [loading, setLoading] = useState(isEdit);
   const [submitting, setSubmitting] = useState(false);
   const [professor, setProfessor] = useState(null);
+  const [showBuscarCpfModal, setShowBuscarCpfModal] = useState(!isEdit);
   const [formData, setFormData] = useState({
     nome: '',
     email: '',
@@ -21,10 +27,31 @@ export default function FormProfessorScreen({ professorId }) {
   });
 
   useEffect(() => {
-    if (professorId) {
+    if (isEdit) {
       carregarProfessor();
     }
-  }, [professorId]);
+  }, []);
+
+  // Callback quando professor é associado pelo modal
+  const handleProfessorAssociado = (professor) => {
+    showSuccess(`Professor ${professor.nome} associado com sucesso!`);
+    router.push('/professores');
+  };
+
+  // Callback quando usuário decide criar novo professor
+  const handleCriarNovoProfessor = (cpf) => {
+    setShowBuscarCpfModal(false);
+    // Preenche o CPF no formulário
+    if (cpf) {
+      setFormData(prev => ({ ...prev, cpf: mascaraCPF(cpf) }));
+    }
+  };
+
+  // Fecha o modal e volta para lista
+  const handleCloseBuscarCpfModal = () => {
+    setShowBuscarCpfModal(false);
+    router.push('/professores');
+  };
 
   const carregarProfessor = async () => {
     try {
@@ -143,6 +170,14 @@ export default function FormProfessorScreen({ professorId }) {
       title={professorId ? 'Editar Professor' : 'Novo Professor'}
       subtitle="Preencha os campos obrigatórios"
     >
+      {/* Modal de Buscar por CPF */}
+      <BuscarProfessorCpfModal
+        visible={showBuscarCpfModal}
+        onClose={handleCloseBuscarCpfModal}
+        onProfessorEncontrado={handleProfessorAssociado}
+        onCriarNovoProfessor={handleCriarNovoProfessor}
+      />
+
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.headerActions}>
           <TouchableOpacity

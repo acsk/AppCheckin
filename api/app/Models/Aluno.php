@@ -174,6 +174,9 @@ class Aluno
         $bairro = isset($data['bairro']) ? mb_strtoupper(trim($data['bairro']), 'UTF-8') : null;
         $cidade = isset($data['cidade']) ? mb_strtoupper(trim($data['cidade']), 'UTF-8') : null;
         $estado = isset($data['estado']) ? mb_strtoupper(trim($data['estado']), 'UTF-8') : null;
+        if ($estado !== null && $estado !== '') {
+            $estado = mb_substr($estado, 0, 2, 'UTF-8');
+        }
         
         $telefoneLimpo = isset($data['telefone']) ? preg_replace('/[^0-9]/', '', $data['telefone']) : null;
         $whatsappLimpo = isset($data['whatsapp']) ? preg_replace('/[^0-9]/', '', $data['whatsapp']) : null;
@@ -228,6 +231,9 @@ class Aluno
                     $value = $data[$field] ? preg_replace('/[^0-9]/', '', $data[$field]) : null;
                 } elseif (in_array($field, ['nome', 'logradouro', 'complemento', 'bairro', 'cidade', 'estado'])) {
                     $value = $data[$field] ? mb_strtoupper(trim($data[$field]), 'UTF-8') : null;
+                    if ($field === 'estado' && $value !== null && $value !== '') {
+                        $value = mb_substr($value, 0, 2, 'UTF-8');
+                    }
                 } else {
                     $value = $data[$field];
                 }
@@ -306,12 +312,8 @@ class Aluno
             $this->db->prepare("DELETE FROM pagamentos_plano WHERE aluno_id = :aluno_id")
                 ->execute(['aluno_id' => $id]);
             
-            // Deletar WOD resultados do aluno
-            $this->db->prepare("DELETE FROM wod_resultados WHERE aluno_id = :aluno_id")
-                ->execute(['aluno_id' => $id]);
-            
-            // Deletar vínculo com tenant
-            $this->db->prepare("DELETE FROM usuario_tenant WHERE usuario_id = :usuario_id")
+            // Deletar WOD resultados do aluno (tabela usa usuario_id)
+            $this->db->prepare("DELETE FROM wod_resultados WHERE usuario_id = :usuario_id")
                 ->execute(['usuario_id' => $usuarioId]);
             
             // Deletar papéis do usuário no tenant
@@ -399,7 +401,7 @@ class Aluno
     }
 
     /**
-     * Buscar alunos com paginação
+     * Listar busca paginado
      */
     public function listarPaginado(int $tenantId, int $pagina = 1, int $porPagina = 20, ?string $busca = null): array
     {
@@ -435,5 +437,174 @@ class Aluno
         $stmt->execute();
         
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    /**
+     * Obter resumo de todos os registros do aluno para análise antes de deletar
+     * Retorna quantidade e detalhes dos dados que serão removidos
+     */
+    public function getDeletePreview(int $alunoId): array
+    {
+        try {
+            $aluno = $this->findById($alunoId);
+            if (!$aluno) {
+                return ['error' => 'Aluno não encontrado'];
+            }
+            
+            $usuarioId = $aluno['usuario_id'];
+            
+            // 1. Dados do aluno
+            $alunoData = [
+                'id' => $aluno['id'],
+                'nome' => $aluno['nome'],
+                'email' => $aluno['email'],
+                'cpf' => $aluno['cpf'],
+                'telefone' => $aluno['telefone'],
+                'data_nascimento' => $aluno['data_nascimento'] ?? null,
+                'ativo' => $aluno['ativo']
+            ];
+            
+            // 2. Checkins
+            $stmt = $this->db->prepare(
+                "SELECT COUNT(*) as total, 
+                        MIN(data_checkin) as primeira_data,
+                        MAX(data_checkin) as ultima_data
+                 FROM checkins WHERE aluno_id = :aluno_id"
+            );
+            $stmt->execute(['aluno_id' => $alunoId]);
+            $checkins = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            // 3. Matrículas
+            $stmt = $this->db->prepare(
+                "SELECT COUNT(*) as total,
+                        SUM(CASE WHEN sm.codigo = 'ativa' THEN 1 ELSE 0 END) as ativas
+                 FROM matriculas m
+                 INNER JOIN status_matricula sm ON sm.id = m.status_id
+                 WHERE m.aluno_id = :aluno_id"
+            );
+            $stmt->execute(['aluno_id' => $alunoId]);
+            $matriculas = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            // Detalhes das matrículas
+            $stmt = $this->db->prepare(
+                "SELECT m.id, m.plano_id, sm.codigo as status, m.data_inicio, m.data_vencimento
+                 FROM matriculas m
+                 INNER JOIN status_matricula sm ON sm.id = m.status_id
+                 WHERE m.aluno_id = :aluno_id
+                 ORDER BY m.data_inicio DESC LIMIT 5"
+            );
+            $stmt->execute(['aluno_id' => $alunoId]);
+            $matriculasDetail = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // 4. Pagamentos do plano
+            $stmt = $this->db->prepare(
+                "SELECT COUNT(*) as total,
+                        SUM(CASE WHEN status_pagamento_id = 2 THEN 1 ELSE 0 END) as pagos,
+                        SUM(CASE WHEN status_pagamento_id = 1 THEN 1 ELSE 0 END) as pendentes,
+                        SUM(valor) as valor_total
+                 FROM pagamentos_plano WHERE aluno_id = :aluno_id"
+            );
+            $stmt->execute(['aluno_id' => $alunoId]);
+            $pagamentos = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            // 5. WOD Resultados
+            $stmt = $this->db->prepare(
+                "SELECT COUNT(*) as total
+                 FROM wod_resultados WHERE usuario_id = :usuario_id"
+            );
+            $stmt->execute(['usuario_id' => $usuarioId]);
+            $wods = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            // 6. Email logs
+            $stmt = $this->db->prepare(
+                "SELECT COUNT(*) as total,
+                        SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) as enviados,
+                        SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) as falhados
+                 FROM email_logs WHERE usuario_id = :usuario_id"
+            );
+            $stmt->execute(['usuario_id' => $usuarioId]);
+            $emails = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            // 7. Dados do usuário
+            $stmt = $this->db->prepare(
+                "SELECT id, email, email_global, cpf, telefone, ativo, created_at
+                 FROM usuarios WHERE id = :id"
+            );
+            $stmt->execute(['id' => $usuarioId]);
+            $usuarioData = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            // 8. Vínculos com tenants
+            $stmt = $this->db->prepare(
+                "SELECT tenant_id, ativo FROM tenant_usuario_papel WHERE usuario_id = :usuario_id"
+            );
+            $stmt->execute(['usuario_id' => $usuarioId]);
+            $tenants = array_map(static function ($row) {
+                return [
+                    'tenant_id' => $row['tenant_id'],
+                    'ativo' => $row['ativo']
+                ];
+            }, $stmt->fetchAll(PDO::FETCH_ASSOC));
+            
+            // 9. Papéis do usuário
+            $stmt = $this->db->prepare(
+                "SELECT tenant_id, papel_id, ativo FROM tenant_usuario_papel WHERE usuario_id = :usuario_id"
+            );
+            $stmt->execute(['usuario_id' => $usuarioId]);
+            $papeis = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Calcular totais
+            $totalRegistros = (int)($checkins['total'] ?? 0) + 
+                            (int)($matriculas['total'] ?? 0) + 
+                            (int)($pagamentos['total'] ?? 0) + 
+                            (int)($wods['total'] ?? 0) + 
+                            (int)($emails['total'] ?? 0);
+            
+            return [
+                'success' => true,
+                'resumo' => [
+                    'aluno_id' => $alunoId,
+                    'usuario_id' => $usuarioId,
+                    'total_registros' => $totalRegistros,
+                    'warning' => $matriculas['ativas'] > 0 ? 'Este aluno tem matrículas ATIVAS' : null,
+                    'pode_deletar' => $matriculas['ativas'] == 0
+                ],
+                'aluno' => $alunoData,
+                'usuario' => $usuarioData,
+                'dados' => [
+                    'checkins' => [
+                        'total' => (int)($checkins['total'] ?? 0),
+                        'primeira_data' => $checkins['primeira_data'],
+                        'ultima_data' => $checkins['ultima_data']
+                    ],
+                    'matriculas' => [
+                        'total' => (int)($matriculas['total'] ?? 0),
+                        'ativas' => (int)($matriculas['ativas'] ?? 0),
+                        'detalhes' => $matriculasDetail
+                    ],
+                    'pagamentos' => [
+                        'total' => (int)($pagamentos['total'] ?? 0),
+                        'pagos' => (int)($pagamentos['pagos'] ?? 0),
+                        'pendentes' => (int)($pagamentos['pendentes'] ?? 0),
+                        'valor_total' => (float)($pagamentos['valor_total'] ?? 0)
+                    ],
+                    'wod_resultados' => [
+                        'total' => (int)($wods['total'] ?? 0)
+                    ],
+                    'email_logs' => [
+                        'total' => (int)($emails['total'] ?? 0),
+                        'enviados' => (int)($emails['enviados'] ?? 0),
+                        'falhados' => (int)($emails['falhados'] ?? 0)
+                    ]
+                ],
+                'vinculos' => [
+                    'tenants' => $tenants,
+                    'papeis' => $papeis
+                ]
+            ];
+            
+        } catch (\Exception $e) {
+            error_log("Erro ao gerar preview de delete: " . $e->getMessage());
+            return ['error' => $e->getMessage()];
+        }
     }
 }

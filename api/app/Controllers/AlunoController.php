@@ -7,6 +7,7 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Models\Aluno;
 use App\Models\Usuario;
 use PDO;
+use OpenApi\Attributes as OA;
 
 /**
  * AlunoController
@@ -39,6 +40,54 @@ class AlunoController
      * Listar todos os alunos do tenant
      * GET /admin/alunos
      */
+    #[OA\Get(
+        path: "/admin/alunos",
+        summary: "Listar alunos",
+        description: "Retorna lista de alunos do tenant. Suporta busca, paginação e filtro de ativos/inativos.",
+        tags: ["Alunos"],
+        parameters: [
+            new OA\Parameter(
+                name: "apenas_ativos",
+                description: "Filtrar apenas alunos ativos (true/false)",
+                in: "query",
+                schema: new OA\Schema(type: "string", enum: ["true", "false"], default: "false")
+            ),
+            new OA\Parameter(
+                name: "busca",
+                description: "Buscar por nome ou email",
+                in: "query",
+                schema: new OA\Schema(type: "string")
+            ),
+            new OA\Parameter(
+                name: "pagina",
+                description: "Número da página",
+                in: "query",
+                schema: new OA\Schema(type: "integer", default: 1)
+            ),
+            new OA\Parameter(
+                name: "por_pagina",
+                description: "Registros por página",
+                in: "query",
+                schema: new OA\Schema(type: "integer", default: 50)
+            )
+        ],
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Lista de alunos",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "alunos", type: "array", items: new OA\Items(type: "object")),
+                        new OA\Property(property: "total", type: "integer"),
+                        new OA\Property(property: "pagina", type: "integer"),
+                        new OA\Property(property: "por_pagina", type: "integer")
+                    ]
+                )
+            ),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
     public function index(Request $request, Response $response): Response
     {
         $tenantId = $request->getAttribute('tenantId');
@@ -77,6 +126,26 @@ class AlunoController
      * Listar alunos (dados básicos) - para selects
      * GET /admin/alunos/basico
      */
+    #[OA\Get(
+        path: "/admin/alunos/basico",
+        summary: "Listar alunos (dados básicos)",
+        description: "Retorna lista simplificada de alunos ativos. Otimizado para selects no frontend.",
+        tags: ["Alunos"],
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Lista de alunos",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "alunos", type: "array", items: new OA\Items(type: "object")),
+                        new OA\Property(property: "total", type: "integer")
+                    ]
+                )
+            ),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
     public function listarBasico(Request $request, Response $response): Response
     {
         $tenantId = $request->getAttribute('tenantId');
@@ -107,6 +176,31 @@ class AlunoController
      * Buscar aluno por ID
      * GET /admin/alunos/{id}
      */
+    #[OA\Get(
+        path: "/admin/alunos/{id}",
+        summary: "Buscar aluno por ID",
+        description: "Retorna dados completos de um aluno específico.",
+        tags: ["Alunos"],
+        parameters: [
+            new OA\Parameter(
+                name: "id",
+                description: "ID do aluno",
+                in: "path",
+                required: true,
+                schema: new OA\Schema(type: "integer", example: 1)
+            )
+        ],
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Dados do aluno",
+                content: new OA\JsonContent(properties: [new OA\Property(property: "aluno", type: "object")])
+            ),
+            new OA\Response(response: 404, description: "Aluno não encontrado"),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
     public function show(Request $request, Response $response, array $args): Response
     {
         $id = (int) $args['id'];
@@ -142,6 +236,34 @@ class AlunoController
      * 3. Cria aluno (perfil) - feito automaticamente pelo Usuario::create()
      * 4. Vincula ao tenant com papel de aluno
      */
+    #[OA\Post(
+        path: "/admin/alunos",
+        summary: "Criar novo aluno",
+        description: "Cria um novo aluno no tenant. Requer: nome, email, CPF e data_nascimento.",
+        tags: ["Alunos"],
+        requestBody: new OA\RequestBody(
+            description: "Dados do novo aluno",
+            required: true,
+            content: new OA\JsonContent(
+                required: ["nome", "email", "cpf", "data_nascimento"],
+                properties: [
+                    new OA\Property(property: "nome", type: "string", example: "João Silva"),
+                    new OA\Property(property: "email", type: "string", format: "email", example: "joao@example.com"),
+                    new OA\Property(property: "cpf", type: "string", example: "12345678900"),
+                    new OA\Property(property: "data_nascimento", type: "string", format: "date", example: "1990-01-15"),
+                    new OA\Property(property: "telefone", type: "string"),
+                    new OA\Property(property: "senha", type: "string")
+                ]
+            )
+        ),
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(response: 201, description: "Aluno criado com sucesso", content: new OA\JsonContent(properties: [new OA\Property(property: "type", type: "string"), new OA\Property(property: "aluno", type: "object")])),
+            new OA\Response(response: 400, description: "Email já cadastrado"),
+            new OA\Response(response: 401, description: "Não autorizado"),
+            new OA\Response(response: 422, description: "Erro de validação")
+        ]
+    )]
     public function create(Request $request, Response $response): Response
     {
         $tenantId = $request->getAttribute('tenantId');
@@ -235,6 +357,42 @@ class AlunoController
      * Atualizar aluno
      * PUT /admin/alunos/{id}
      */
+    #[OA\Put(
+        path: "/admin/alunos/{id}",
+        summary: "Atualizar aluno",
+        description: "Atualiza dados de um aluno existente.",
+        tags: ["Alunos"],
+        parameters: [
+            new OA\Parameter(
+                name: "id",
+                description: "ID do aluno",
+                in: "path",
+                required: true,
+                schema: new OA\Schema(type: "integer", example: 1)
+            )
+        ],
+        requestBody: new OA\RequestBody(
+            description: "Dados a atualizar",
+            required: true,
+            content: new OA\JsonContent(
+                properties: [
+                    new OA\Property(property: "nome", type: "string"),
+                    new OA\Property(property: "email", type: "string"),
+                    new OA\Property(property: "cpf", type: "string"),
+                    new OA\Property(property: "data_nascimento", type: "string", format: "date"),
+                    new OA\Property(property: "telefone", type: "string"),
+                    new OA\Property(property: "senha", type: "string")
+                ]
+            )
+        ),
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(response: 200, description: "Aluno atualizado com sucesso", content: new OA\JsonContent(properties: [new OA\Property(property: "type", type: "string"), new OA\Property(property: "aluno", type: "object")])),
+            new OA\Response(response: 404, description: "Aluno não encontrado"),
+            new OA\Response(response: 401, description: "Não autorizado"),
+            new OA\Response(response: 422, description: "Erro de validação")
+        ]
+    )]
     public function update(Request $request, Response $response, array $args): Response
     {
         $id = (int) $args['id'];
@@ -311,6 +469,27 @@ class AlunoController
      * Desativar aluno (soft delete)
      * DELETE /admin/alunos/{id}
      */
+    #[OA\Delete(
+        path: "/admin/alunos/{id}",
+        summary: "Desativar aluno",
+        description: "Desativa um aluno (soft delete). Use /hard para exclusão permanente.",
+        tags: ["Alunos"],
+        parameters: [
+            new OA\Parameter(
+                name: "id",
+                description: "ID do aluno",
+                in: "path",
+                required: true,
+                schema: new OA\Schema(type: "integer", example: 1)
+            )
+        ],
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(response: 200, description: "Aluno desativado com sucesso", content: new OA\JsonContent(properties: [new OA\Property(property: "type", type: "string"), new OA\Property(property: "message", type: "string")])),
+            new OA\Response(response: 404, description: "Aluno não encontrado"),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
     public function delete(Request $request, Response $response, array $args): Response
     {
         $id = (int) $args['id'];
@@ -342,10 +521,10 @@ class AlunoController
                 'tenant_id' => $tenantId
             ]);
             
-            // Desativar vínculo com tenant
+            // Desativar vínculo com tenant (papel de aluno)
             $stmt = $this->db->prepare(
-                "UPDATE usuario_tenant SET status = 'inativo' 
-                 WHERE usuario_id = :usuario_id AND tenant_id = :tenant_id"
+                "UPDATE tenant_usuario_papel SET ativo = 0, updated_at = NOW() 
+                 WHERE usuario_id = :usuario_id AND tenant_id = :tenant_id AND papel_id = 1"
             );
             $stmt->execute([
                 'usuario_id' => $aluno['usuario_id'],
@@ -373,13 +552,95 @@ class AlunoController
     }
 
     /**
-     * Deletar aluno completamente (hard delete com limpeza de órfãos)
-     * DELETE /admin/alunos/{id}/hard
-     * 
-     * Remove: aluno, usuário, vínculos com tenant e todos os dados relacionados
-     * ⚠️ OPERAÇÃO IRREVERSÍVEL
+     * Obter preview dos dados que serão deletados
+     * GET /admin/alunos/{id}/delete-preview
      */
-    public function hardDelete(Request $request, Response $response, array $args): Response
+    #[OA\Get(
+        path: "/admin/alunos/{id}/delete-preview",
+        summary: "Preview de dados para exclusão",
+        description: "Retorna uma análise completa de todos os registros relacionados ao aluno que serão afetados pela exclusão. Inclui resumo, dados do aluno, dados do usuário, dados relacionados (check-ins, matrículas, pagamentos, etc) e vínculos com tenants e papéis.",
+        tags: ["Alunos"],
+        parameters: [
+            new OA\Parameter(
+                name: "id",
+                description: "ID do aluno",
+                in: "path",
+                required: true,
+                schema: new OA\Schema(type: "integer", example: 1)
+            )
+        ],
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Preview dos dados para exclusão",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(
+                            property: "resumo",
+                            type: "object",
+                            properties: [
+                                new OA\Property(property: "aluno_id", type: "integer", example: 1),
+                                new OA\Property(property: "usuario_id", type: "integer", example: 5),
+                                new OA\Property(property: "total_registros", type: "integer", example: 15),
+                                new OA\Property(property: "warning", type: "string", example: "Aluno possui matrículas ativas"),
+                                new OA\Property(property: "pode_deletar", type: "boolean", example: true)
+                            ]
+                        ),
+                        new OA\Property(
+                            property: "aluno",
+                            type: "object",
+                            properties: [
+                                new OA\Property(property: "id", type: "integer"),
+                                new OA\Property(property: "nome", type: "string"),
+                                new OA\Property(property: "email", type: "string"),
+                                new OA\Property(property: "cpf", type: "string"),
+                                new OA\Property(property: "telefone", type: "string"),
+                                new OA\Property(property: "data_nascimento", type: "string", format: "date"),
+                                new OA\Property(property: "ativo", type: "boolean")
+                            ]
+                        ),
+                        new OA\Property(
+                            property: "usuario",
+                            type: "object",
+                            properties: [
+                                new OA\Property(property: "id", type: "integer"),
+                                new OA\Property(property: "email", type: "string"),
+                                new OA\Property(property: "email_global", type: "string"),
+                                new OA\Property(property: "cpf", type: "string"),
+                                new OA\Property(property: "telefone", type: "string"),
+                                new OA\Property(property: "ativo", type: "boolean"),
+                                new OA\Property(property: "created_at", type: "string", format: "date-time")
+                            ]
+                        ),
+                        new OA\Property(
+                            property: "dados",
+                            type: "object",
+                            properties: [
+                                new OA\Property(property: "checkins", type: "object", description: "Total, primeira_data, ultima_data"),
+                                new OA\Property(property: "matriculas", type: "object", description: "Total, ativas, detalhes de cada matrícula"),
+                                new OA\Property(property: "pagamentos", type: "object", description: "Total, pagos, pendentes, valor_total"),
+                                new OA\Property(property: "wod_resultados", type: "object", description: "Total de resultados de WODs"),
+                                new OA\Property(property: "email_logs", type: "object", description: "Total, enviados, falhados")
+                            ]
+                        ),
+                        new OA\Property(
+                            property: "vinculos",
+                            type: "object",
+                            properties: [
+                                new OA\Property(property: "tenants", type: "array", items: new OA\Items(type: "object")),
+                                new OA\Property(property: "papeis", type: "array", items: new OA\Items(type: "object"))
+                            ]
+                        )
+                    ]
+                )
+            ),
+            new OA\Response(response: 404, description: "Aluno não encontrado"),
+            new OA\Response(response: 401, description: "Não autorizado"),
+            new OA\Response(response: 500, description: "Erro interno do servidor")
+        ]
+    )]
+    public function deletePreview(Request $request, Response $response, array $args): Response
     {
         $id = (int) $args['id'];
         $tenantId = $request->getAttribute('tenantId');
@@ -394,6 +655,72 @@ class AlunoController
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
         }
         
+        $preview = $this->alunoModel->getDeletePreview($id);
+        
+        $response->getBody()->write(json_encode($preview, JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+    }
+
+    /**
+     * Deletar aluno permanentemente com cascata
+     * DELETE /admin/alunos/{id}/hard
+     */
+    #[OA\Delete(
+        path: "/admin/alunos/{id}/hard",
+        summary: "Deletar aluno permanentemente",
+        description: "Executa uma exclusão permanente e irreversível do aluno. Remove o aluno, usuário associado e todos os registros relacionados (check-ins, matrículas, pagamentos, WODs, email logs) usando uma transação de banco de dados para garantir integridade. AÇÃO IRREVERSÍVEL!",
+        tags: ["Alunos"],
+        parameters: [
+            new OA\Parameter(
+                name: "id",
+                description: "ID do aluno",
+                in: "path",
+                required: true,
+                schema: new OA\Schema(type: "integer", example: 1)
+            )
+        ],
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Aluno deletado com sucesso",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "type", type: "string", example: "success"),
+                        new OA\Property(property: "message", type: "string", example: "Aluno deletado com sucesso"),
+                        new OA\Property(
+                            property: "data",
+                            type: "object",
+                            properties: [
+                                new OA\Property(property: "deleted_at", type: "string", format: "date-time"),
+                                new OA\Property(property: "aluno_id", type: "integer"),
+                                new OA\Property(property: "usuario_id", type: "integer"),
+                                new OA\Property(property: "records_deleted", type: "string", example: "Aluno, usuário e 23 registros relacionados")
+                            ]
+                        )
+                    ]
+                )
+            ),
+            new OA\Response(response: 404, description: "Aluno não encontrado"),
+            new OA\Response(response: 401, description: "Não autorizado"),
+            new OA\Response(response: 500, description: "Erro ao deletar aluno")
+        ]
+    )]
+    public function hardDelete(Request $request, Response $response, array $args): Response
+    {
+        $id = (int) $args['id'];
+        $tenantId = $request->getAttribute('tenantId');
+        
+        $aluno = $this->alunoModel->findById($id, $tenantId);
+        
+        if (!$aluno) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Aluno não encontrado'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
+        }
+
         try {
             // Realizar hard delete (remove aluno e usuário em cascata)
             if ($this->alunoModel->hardDelete($id)) {
@@ -525,19 +852,20 @@ class AlunoController
     }
 
     /**
-     * Cria vínculo do usuário com tenant
+     * Cria vínculo do usuário com tenant (como aluno)
      */
     private function criarVinculoTenant(int $usuarioId, int $tenantId): void
     {
         $stmt = $this->db->prepare(
-            "SELECT id FROM usuario_tenant WHERE usuario_id = :usuario_id AND tenant_id = :tenant_id"
+            "SELECT id FROM tenant_usuario_papel 
+             WHERE usuario_id = :usuario_id AND tenant_id = :tenant_id AND papel_id = 1"
         );
         $stmt->execute(['usuario_id' => $usuarioId, 'tenant_id' => $tenantId]);
         
         if (!$stmt->fetch()) {
             $stmt = $this->db->prepare(
-                "INSERT INTO usuario_tenant (usuario_id, tenant_id, status, data_inicio) 
-                 VALUES (:usuario_id, :tenant_id, 'ativo', CURDATE())"
+                "INSERT INTO tenant_usuario_papel (usuario_id, tenant_id, papel_id, ativo, created_at, updated_at) 
+                 VALUES (:usuario_id, :tenant_id, 1, 1, NOW(), NOW())"
             );
             $stmt->execute([
                 'usuario_id' => $usuarioId,
@@ -546,8 +874,8 @@ class AlunoController
         } else {
             // Reativar se existir
             $stmt = $this->db->prepare(
-                "UPDATE usuario_tenant SET status = 'ativo' 
-                 WHERE usuario_id = :usuario_id AND tenant_id = :tenant_id"
+                "UPDATE tenant_usuario_papel SET ativo = 1, updated_at = NOW() 
+                 WHERE usuario_id = :usuario_id AND tenant_id = :tenant_id AND papel_id = 1"
             );
             $stmt->execute([
                 'usuario_id' => $usuarioId,
@@ -796,21 +1124,8 @@ class AlunoController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(409);
         }
         
-        // Verificar se o vínculo usuario_tenant existe, senão criar
-        $stmt = $this->db->prepare(
-            "SELECT id FROM usuario_tenant WHERE usuario_id = :usuario_id AND tenant_id = :tenant_id"
-        );
-        $stmt->execute(['usuario_id' => $usuarioId, 'tenant_id' => $tenantId]);
-        $vinculo = $stmt->fetch(PDO::FETCH_ASSOC);
-        
-        if (!$vinculo) {
-            // Criar vínculo usuario_tenant
-            $stmt = $this->db->prepare(
-                "INSERT INTO usuario_tenant (usuario_id, tenant_id, status, data_inicio) 
-                 VALUES (:usuario_id, :tenant_id, 'ativo', CURDATE())"
-            );
-            $stmt->execute(['usuario_id' => $usuarioId, 'tenant_id' => $tenantId]);
-        }
+        // Verificar se o vínculo tenant_usuario_papel existe para o papel de aluno (papel_id = 1)
+        // Não precisa criar aqui pois será criado junto no próximo INSERT
         
         // Associar como aluno (papel_id=1) no tenant
         $stmt = $this->db->prepare(

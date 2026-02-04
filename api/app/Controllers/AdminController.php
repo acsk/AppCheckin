@@ -31,11 +31,10 @@ class AdminController
 
         // Total de alunos
         $stmtTotalAlunos = $db->prepare("
-            SELECT COUNT(DISTINCT ut.usuario_id) as total 
-            FROM usuario_tenant ut
-            INNER JOIN usuarios u ON u.id = ut.usuario_id
-            INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.tenant_id = ut.tenant_id AND tup.ativo = 1
-            WHERE ut.tenant_id = ? AND tup.papel_id = 1
+            SELECT COUNT(DISTINCT tup.usuario_id) as total 
+            FROM tenant_usuario_papel tup
+            INNER JOIN usuarios u ON u.id = tup.usuario_id
+            WHERE tup.tenant_id = ? AND tup.papel_id = 1 AND tup.ativo = 1
         ");
         $stmtTotalAlunos->execute([$tenantId]);
         $totalAlunos = $stmtTotalAlunos->fetch()['total'];
@@ -43,19 +42,18 @@ class AdminController
         // Alunos com status detalhado
         $stmtStatusAlunos = $db->prepare("
             SELECT 
-                COUNT(DISTINCT ut.usuario_id) as total,
+                COUNT(DISTINCT tup.usuario_id) as total,
                 SUM(CASE 
-                    WHEN ut.status = 'ativo'
+                    WHEN tup.ativo = 1
                     THEN 1 ELSE 0 
                 END) as ativos,
                 SUM(CASE 
-                    WHEN ut.status != 'ativo'
+                    WHEN tup.ativo = 0
                     THEN 1 ELSE 0 
                 END) as inativos
-            FROM usuario_tenant ut
-            INNER JOIN usuarios u ON u.id = ut.usuario_id
-            INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.tenant_id = ut.tenant_id AND tup.ativo = 1
-            WHERE ut.tenant_id = ? AND tup.papel_id = 1
+            FROM tenant_usuario_papel tup
+            INNER JOIN usuarios u ON u.id = tup.usuario_id
+            WHERE tup.tenant_id = ? AND tup.papel_id = 1
         ");
         $stmtStatusAlunos->execute([$tenantId]);
         $statusAlunos = $stmtStatusAlunos->fetch();
@@ -85,8 +83,8 @@ class AdminController
         $stmtPlanosVencendo = $db->prepare("
             SELECT COUNT(DISTINCT cr.usuario_id) as total 
             FROM contas_receber cr
-            INNER JOIN usuario_tenant ut ON ut.usuario_id = cr.usuario_id AND ut.status = 'ativo'
-            WHERE ut.tenant_id = ? 
+            INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = cr.usuario_id AND tup.ativo = 1
+            WHERE tup.tenant_id = ? 
             AND cr.data_vencimento BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 7 DAY)
             AND cr.status IN ('pendente', 'vencido')
         ");
@@ -105,14 +103,13 @@ class AdminController
 
         // Novos alunos no mês
         $stmtNovosAlunos = $db->prepare("
-            SELECT COUNT(DISTINCT ut.usuario_id) as total 
-            FROM usuario_tenant ut
-            INNER JOIN usuarios u ON u.id = ut.usuario_id
-            INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.tenant_id = ut.tenant_id AND tup.ativo = 1
-            WHERE ut.tenant_id = ? 
+            SELECT COUNT(DISTINCT tup.usuario_id) as total 
+            FROM tenant_usuario_papel tup
+            INNER JOIN usuarios u ON u.id = tup.usuario_id
+            WHERE tup.tenant_id = ? 
             AND tup.papel_id = 1
-            AND YEAR(ut.created_at) = YEAR(CURDATE())
-            AND MONTH(ut.created_at) = MONTH(CURDATE())
+            AND YEAR(tup.created_at) = YEAR(CURDATE())
+            AND MONTH(tup.created_at) = MONTH(CURDATE())
         ");
         $stmtNovosAlunos->execute([$tenantId]);
         $novosAlunos = $stmtNovosAlunos->fetch()['total'];
@@ -203,20 +200,19 @@ class AdminController
                 (
                     SELECT cr3.valor FROM contas_receber cr3
                     WHERE cr3.usuario_id = u.id
-                    AND cr3.tenant_id = ut.tenant_id
+                    AND cr3.tenant_id = tup.tenant_id
                     AND cr3.status = 'pendente'
                     ORDER BY cr3.data_vencimento ASC
                     LIMIT 1
                 ) as ultima_conta_pendente_valor
                 
             FROM usuarios u
-            INNER JOIN usuario_tenant ut ON ut.usuario_id = u.id AND ut.status = 'ativo'
-            INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.tenant_id = ut.tenant_id AND tup.ativo = 1
+            INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.ativo = 1
             LEFT JOIN alunos al ON al.usuario_id = u.id
             LEFT JOIN matriculas m ON m.aluno_id = al.id AND m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1)
             LEFT JOIN planos p ON p.id = m.plano_id
             LEFT JOIN checkins c ON al.id = c.aluno_id
-            WHERE ut.tenant_id = ? AND tup.papel_id = 1
+            WHERE tup.tenant_id = ? AND tup.papel_id = 1
             GROUP BY u.id
             ORDER BY u.nome ASC
         ");
@@ -264,11 +260,10 @@ class AdminController
         $stmt = $db->prepare("
             SELECT u.id, u.nome, u.email
             FROM usuarios u
-            INNER JOIN usuario_tenant ut ON ut.usuario_id = u.id AND ut.status = 'ativo'
-            INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.tenant_id = ut.tenant_id AND tup.ativo = 1
+            INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.ativo = 1
             INNER JOIN alunos al ON al.usuario_id = u.id
             LEFT JOIN matriculas m ON m.aluno_id = al.id AND m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1)
-            WHERE ut.tenant_id = ? 
+            WHERE tup.tenant_id = ? 
             AND tup.papel_id = 1
             AND m.id IS NOT NULL
             ORDER BY u.nome ASC
@@ -439,11 +434,11 @@ class AdminController
                 'message' => 'Aluno desativado com sucesso (plano removido)'
             ]));
         } else {
-            // Pode deletar completamente - mas precisa verificar tenant via usuario_tenant
+            // Pode deletar completamente - mas precisa verificar tenant via tenant_usuario_papel
             $stmt = $db->prepare("
                 DELETE u FROM usuarios u
-                INNER JOIN usuario_tenant ut ON ut.usuario_id = u.id
-                WHERE u.id = ? AND ut.tenant_id = ?
+                INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id
+                WHERE u.id = ? AND tup.tenant_id = ?
             ");
             $stmt->execute([$alunoId, $tenantId]);
 

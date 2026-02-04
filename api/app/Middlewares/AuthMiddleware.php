@@ -55,11 +55,10 @@ class AuthMiddleware
                         u.email, 
                         u.email_global, 
                         u.foto_base64,
-                        ut.tenant_id,
-                        ut.status as tenant_status,
+                        tup.tenant_id,
+                        tup.ativo as tenant_status,
                         tup.papel_id
                     FROM usuarios u
-                    LEFT JOIN usuario_tenant ut ON ut.usuario_id = u.id AND ut.status = 'ativo'
                     LEFT JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.ativo = 1
                     WHERE u.id = :user_id
                     ORDER BY tup.papel_id DESC

@@ -4,9 +4,26 @@ namespace App\Models;
 
 use PDO;
 
+/**
+ * Model Usuario
+ * 
+ * ARQUITETURA: Sistema Multi-Tenant com Gestão de Permissões
+ * 
+ * Este model gerencia usuários e seus relacionamentos com tenants através de:
+ * 
+ * TABELA: tenant_usuario_papel (Vínculo + Permissões/Roles)
+ *    - Responsabilidade: Gerenciar o vínculo user↔tenant e papéis
+ *    - Campos: papel_id (1=aluno, 2=professor, 3=admin, 4=superadmin), ativo
+ *    - Cardinalidade: N registros por user/tenant (múltiplos papéis)
+ * 
+ * DECISÃO ARQUITETURAL (2026-02-04):
+ * Consolidar em tenant_usuario_papel para evitar redundância e simplificar a estrutura.
+ * A tabela usuario_tenant foi renomeada para usuario_tenant_backup e não é mais utilizada.
+ */
 class Usuario
 {
     private PDO $db;
+    private ?string $lastError = null;
 
     public function __construct(PDO $db)
     {
@@ -16,6 +33,7 @@ class Usuario
     public function create(array $data, ?int $tenantId = null): ?int
     {
         try {
+            $this->lastError = null;
             // Limpar CPF e CEP (remover formatação)
             $cpfLimpo = isset($data['cpf']) ? preg_replace('/[^0-9]/', '', $data['cpf']) : null;
             $cepLimpo = isset($data['cep']) ? preg_replace('/[^0-9]/', '', $data['cep']) : null;
@@ -35,6 +53,9 @@ class Usuario
             $bairro = isset($data['bairro']) ? mb_strtoupper(trim($data['bairro']), 'UTF-8') : null;
             $cidade = isset($data['cidade']) ? mb_strtoupper(trim($data['cidade']), 'UTF-8') : null;
             $estado = isset($data['estado']) ? mb_strtoupper(trim($data['estado']), 'UTF-8') : null;
+            if ($estado !== null && $estado !== '') {
+                $estado = mb_substr($estado, 0, 2, 'UTF-8');
+            }
             
             // 1. Inserir usuário (dados de autenticação)
             // Nota: mantendo campos de perfil em usuarios por compatibilidade, mas também salvando em alunos
@@ -62,19 +83,7 @@ class Usuario
             
             $usuarioId = (int) $this->db->lastInsertId();
             
-            // 2. Criar vínculo com tenant em usuario_tenant (opcional)
-            if ($tenantId !== null) {
-                $stmtTenant = $this->db->prepare(
-                    "INSERT INTO usuario_tenant (usuario_id, tenant_id, status, data_inicio) 
-                     VALUES (:usuario_id, :tenant_id, 'ativo', CURDATE())"
-                );
-                $stmtTenant->execute([
-                    'usuario_id' => $usuarioId,
-                    'tenant_id' => $tenantId
-                ]);
-            }
-            
-            // 3. Criar registro em alunos (perfil separado)
+            // 2. Criar registro em alunos (perfil separado)
             $stmtAluno = $this->db->prepare(
                 "INSERT INTO alunos (usuario_id, nome, telefone, whatsapp, cpf, data_nascimento, cep, logradouro, numero, complemento, bairro, cidade, estado, ativo)
                  VALUES (:usuario_id, :nome, :telefone, :whatsapp, :cpf, :data_nascimento, :cep, :logradouro, :numero, :complemento, :bairro, :cidade, :estado, :ativo)"
@@ -97,11 +106,11 @@ class Usuario
                 'ativo' => $data['ativo'] ?? 1
             ]);
             
-            // 4. Adicionar papel de aluno no tenant (opcional)
+            // 3. Adicionar papel de aluno no tenant (opcional)
             if ($tenantId !== null) {
                 $stmtPapel = $this->db->prepare(
-                    "INSERT IGNORE INTO tenant_usuario_papel (tenant_id, usuario_id, papel_id, ativo)
-                     VALUES (:tenant_id, :usuario_id, 1, 1)"
+                    "INSERT IGNORE INTO tenant_usuario_papel (tenant_id, usuario_id, papel_id, ativo, created_at, updated_at)
+                     VALUES (:tenant_id, :usuario_id, 1, 1, NOW(), NOW())"
                 );
                 $stmtPapel->execute([
                     'tenant_id' => $tenantId,
@@ -111,9 +120,15 @@ class Usuario
             
             return $usuarioId;
         } catch (\PDOException $e) {
-            error_log("Erro ao criar usuário: " . $e->getMessage());
+            $this->lastError = $e->getMessage();
+            error_log("Erro ao criar usuário: " . $this->lastError);
             return null;
         }
+    }
+
+    public function getLastError(): ?string
+    {
+        return $this->lastError;
     }
 
     public function findByEmail(string $email, ?int $tenantId = null): ?array
@@ -123,10 +138,10 @@ class Usuario
             $sql = "
                 SELECT u.* 
                 FROM usuarios u
-                INNER JOIN usuario_tenant ut ON ut.usuario_id = u.id
+                INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id
                 WHERE u.email = :email 
-                AND ut.tenant_id = :tenant_id
-                AND ut.status = 'ativo'
+                AND tup.tenant_id = :tenant_id
+                AND tup.ativo = 1
             ";
             $params = ['email' => $email, 'tenant_id' => $tenantId];
         } else {
@@ -149,23 +164,22 @@ class Usuario
         $joinType = $tenantId ? "INNER JOIN" : "LEFT JOIN";
         
         $sql = "
-            SELECT u.id, COALESCE(ut.tenant_id, :fallback_tenant) as tenant_id, ut.status, 
+            SELECT u.id, COALESCE(tup.tenant_id, :fallback_tenant) as tenant_id, tup.ativo, 
                    u.nome, u.email, tup.papel_id, 
                    u.foto_base64, u.foto_caminho, u.telefone,
                    u.cpf, u.cep, u.logradouro, u.numero, u.complemento, u.bairro, u.cidade, u.estado,
                    u.created_at, u.updated_at,
                    p.nome as role_nome, p.descricao as role_descricao
             FROM usuarios u
-            LEFT JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.ativo = 1
+            {$joinType} tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.ativo = 1
             LEFT JOIN papeis p ON tup.papel_id = p.id
-            {$joinType} usuario_tenant ut ON ut.usuario_id = u.id
         ";
         
         $conditions = ["u.id = :id"];
         $params = ['id' => $id, 'fallback_tenant' => $tenantId ?? 0];
         
         if ($tenantId) {
-            $conditions[] = "ut.tenant_id = :tenant_id";
+            $conditions[] = "tup.tenant_id = :tenant_id";
             $params['tenant_id'] = $tenantId;
         }
         
@@ -333,10 +347,10 @@ class Usuario
             $sql = "
                 SELECT COUNT(*) 
                 FROM usuarios u
-                INNER JOIN usuario_tenant ut ON ut.usuario_id = u.id
+                INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id
                 WHERE u.email = :email 
-                AND ut.tenant_id = :tenant_id
-                AND ut.status = 'ativo'
+                AND tup.tenant_id = :tenant_id
+                AND tup.ativo = 1
             ";
             $params = ['email' => $email, 'tenant_id' => $tenantId];
             
@@ -403,25 +417,27 @@ class Usuario
     {
         $sql = "
             SELECT 
-                ut.id as vinculo_id,
-                ut.status,
-                ut.data_inicio,
-                ut.data_fim,
+                tup.id as vinculo_id,
+                tup.ativo,
+                tup.created_at as data_inicio,
                 t.id as tenant_id,
                 t.nome as tenant_nome,
                 t.slug as tenant_slug,
                 t.email as tenant_email,
                 t.telefone as tenant_telefone,
-                p.id as plano_id,
+                m.plano_id,
                 p.nome as plano_nome,
                 p.valor as plano_valor,
                 p.duracao_dias as plano_duracao_dias
-            FROM usuario_tenant ut
-            INNER JOIN tenants t ON ut.tenant_id = t.id
-            LEFT JOIN planos p ON ut.plano_id = p.id
-            WHERE ut.usuario_id = :usuario_id
+            FROM tenant_usuario_papel tup
+            INNER JOIN tenants t ON tup.tenant_id = t.id
+            LEFT JOIN alunos a ON a.usuario_id = tup.usuario_id
+            LEFT JOIN matriculas m ON m.aluno_id = a.id AND m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1)
+            LEFT JOIN planos p ON m.plano_id = p.id
+            WHERE tup.usuario_id = :usuario_id
+            AND tup.papel_id = 1
             AND t.ativo = 1
-            ORDER BY ut.status = 'ativo' DESC, t.nome ASC
+            ORDER BY tup.ativo DESC, t.nome ASC
         ";
         
         $stmt = $this->db->prepare($sql);
@@ -432,9 +448,8 @@ class Usuario
         return array_map(function($row) {
             return [
                 'vinculo_id' => $row['vinculo_id'],
-                'status' => $row['status'],
+                'ativo' => $row['ativo'],
                 'data_inicio' => $row['data_inicio'],
-                'data_fim' => $row['data_fim'],
                 'tenant' => [
                     'id' => $row['tenant_id'],
                     'nome' => $row['tenant_nome'],
@@ -453,21 +468,20 @@ class Usuario
     }
 
     /**
-     * Criar vínculo entre usuário e tenant
+     * Criar vínculo entre usuário e tenant (como aluno)
      */
     public function vincularTenant(int $usuarioId, int $tenantId, ?int $planoId = null): bool
     {
         $sql = "
-            INSERT INTO usuario_tenant (usuario_id, tenant_id, plano_id, status, data_inicio)
-            VALUES (:usuario_id, :tenant_id, :plano_id, 'ativo', CURRENT_DATE)
-            ON DUPLICATE KEY UPDATE status = 'ativo', updated_at = CURRENT_TIMESTAMP
+            INSERT INTO tenant_usuario_papel (usuario_id, tenant_id, papel_id, ativo, created_at, updated_at)
+            VALUES (:usuario_id, :tenant_id, 1, 1, NOW(), NOW())
+            ON DUPLICATE KEY UPDATE ativo = 1, updated_at = NOW()
         ";
         
         $stmt = $this->db->prepare($sql);
         return $stmt->execute([
             'usuario_id' => $usuarioId,
-            'tenant_id' => $tenantId,
-            'plano_id' => $planoId
+            'tenant_id' => $tenantId
         ]);
     }
 
@@ -478,10 +492,10 @@ class Usuario
     {
         $sql = "
             SELECT COUNT(*) 
-            FROM usuario_tenant 
+            FROM tenant_usuario_papel 
             WHERE usuario_id = :usuario_id 
             AND tenant_id = :tenant_id 
-            AND status = 'ativo'
+            AND ativo = 1
         ";
         
         $stmt = $this->db->prepare($sql);
@@ -529,6 +543,21 @@ class Usuario
     }
 
     /**
+     * Buscar usuário por CPF global (independente de tenant)
+     * Usado para verificar se CPF já está cadastrado no sistema
+     */
+    public function findByCpfGlobal(string $cpf): ?array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT * FROM usuarios WHERE cpf = :cpf LIMIT 1"
+        );
+        $stmt->execute(['cpf' => $cpf]);
+        $user = $stmt->fetch();
+        
+        return $user ?: null;
+    }
+
+    /**
      * Listar todos os usuários (com ou sem filtro de tenant)
      * 
      * @param bool $isSuperAdmin Se true, lista TODOS os usuários sem filtro
@@ -550,14 +579,9 @@ class Usuario
                 u.created_at,
                 u.updated_at,
                 p_tenant.nome as papel_nome,
-                ut.status,
-                CASE 
-                    WHEN ut.status = 'ativo' THEN 1
-                    ELSE 0
-                END as ativo
+                tup.ativo
             FROM usuarios u
-            INNER JOIN usuario_tenant ut ON u.id = ut.usuario_id
-            LEFT JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.tenant_id = ut.tenant_id AND tup.ativo = 1
+            INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.ativo = 1
             LEFT JOIN papeis p_tenant ON tup.papel_id = p_tenant.id
         ";
         
@@ -566,7 +590,7 @@ class Usuario
         
         // Se NÃO for SuperAdmin, filtrar por tenant
         if (!$isSuperAdmin && $tenantId !== null) {
-            $conditions[] = "ut.tenant_id = :tenant_id";
+            $conditions[] = "tup.tenant_id = :tenant_id";
             $params['tenant_id'] = $tenantId;
         }
         
@@ -637,22 +661,17 @@ class Usuario
                 u.created_at,
                 u.updated_at,
                 p_tenant.nome as papel_nome,
-                ut.status,
-                CASE 
-                    WHEN ut.status = 'ativo' THEN 1
-                    ELSE 0
-                END as ativo
+                tup.ativo
             FROM usuarios u
-            INNER JOIN usuario_tenant ut ON u.id = ut.usuario_id
-            LEFT JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.tenant_id = ut.tenant_id AND tup.ativo = 1
+            INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.ativo = 1
             LEFT JOIN papeis p_tenant ON tup.papel_id = p_tenant.id
-            WHERE ut.tenant_id = :tenant_id
+            WHERE tup.tenant_id = :tenant_id
         ";
 
         $params = ['tenant_id' => $tenantId];
 
         if ($apenasAtivos) {
-            $sql .= " AND ut.status = 'ativo'";
+            $sql .= " AND tup.ativo = 1";
         }
 
         $sql .= " ORDER BY u.nome ASC";
@@ -744,7 +763,7 @@ class Usuario
     {
         // Primeiro verificar o status atual
         $sqlCheck = "
-            SELECT status FROM usuario_tenant 
+            SELECT ativo FROM tenant_usuario_papel 
             WHERE usuario_id = :usuario_id AND tenant_id = :tenant_id
         ";
         
@@ -759,35 +778,33 @@ class Usuario
             return false;
         }
         
-        $novoStatus = $vinculo['status'] === 'ativo' ? 'inativo' : 'ativo';
-        $dataFim = $novoStatus === 'inativo' ? 'CURRENT_DATE' : 'NULL';
+        $novoAtivo = $vinculo['ativo'] == 1 ? 0 : 1;
         
-        // Atualizar status na tabela usuario_tenant
+        // Atualizar status na tabela tenant_usuario_papel
         $sqlVinculo = "
-            UPDATE usuario_tenant 
-            SET status = :status, data_fim = $dataFim, updated_at = CURRENT_TIMESTAMP
+            UPDATE tenant_usuario_papel 
+            SET ativo = :ativo, updated_at = NOW()
             WHERE usuario_id = :usuario_id AND tenant_id = :tenant_id
         ";
         
         $stmt = $this->db->prepare($sqlVinculo);
         $stmt->execute([
-            'status' => $novoStatus,
+            'ativo' => $novoAtivo,
             'usuario_id' => $usuarioId,
             'tenant_id' => $tenantId
         ]);
 
         // Atualizar também na tabela usuarios
-        $ativo = $novoStatus === 'ativo' ? 1 : 0;
         $sqlUsuario = "
             UPDATE usuarios 
-            SET ativo = :ativo, updated_at = CURRENT_TIMESTAMP
+            SET ativo = :ativo, updated_at = NOW()
             WHERE id = :usuario_id
         ";
         
         try {
             $stmt = $this->db->prepare($sqlUsuario);
             $stmt->execute([
-                'ativo' => $ativo,
+                'ativo' => $novoAtivo,
                 'usuario_id' => $usuarioId
             ]);
         } catch (\PDOException $e) {
@@ -803,10 +820,10 @@ class Usuario
      */
     public function desativarUsuarioTenant(int $usuarioId, int $tenantId): bool
     {
-        // Atualizar status na tabela usuario_tenant
+        // Atualizar status na tabela tenant_usuario_papel
         $sqlVinculo = "
-            UPDATE usuario_tenant 
-            SET status = 'inativo', data_fim = CURRENT_DATE, updated_at = CURRENT_TIMESTAMP
+            UPDATE tenant_usuario_papel 
+            SET ativo = 0, updated_at = NOW()
             WHERE usuario_id = :usuario_id AND tenant_id = :tenant_id
         ";
         
@@ -872,7 +889,7 @@ class Usuario
     {
         $sql = "
             SELECT COUNT(*) as count
-            FROM usuario_tenant
+            FROM tenant_usuario_papel
             WHERE usuario_id = :usuario_id
             AND tenant_id = :tenant_id
         ";
@@ -888,25 +905,27 @@ class Usuario
     }
 
     /**
-     * Associar usuário existente a um tenant
+     * Associar usuário existente a um tenant (como aluno)
      */
     public function associateToTenant(int $usuarioId, int $tenantId, string $status = 'ativo'): bool
     {
         try {
+            $ativo = $status === 'ativo' ? 1 : 0;
+            
             // Verificar se já existe associação
             if ($this->isAssociatedWithTenant($usuarioId, $tenantId)) {
                 // Atualizar status se já existir
                 $sql = "
-                    UPDATE usuario_tenant 
-                    SET status = :status, data_inicio = CURDATE()
+                    UPDATE tenant_usuario_papel 
+                    SET ativo = :ativo, updated_at = NOW()
                     WHERE usuario_id = :usuario_id 
                     AND tenant_id = :tenant_id
                 ";
             } else {
-                // Criar nova associação
+                // Criar nova associação (papel_id = 1 para aluno)
                 $sql = "
-                    INSERT INTO usuario_tenant (usuario_id, tenant_id, status, data_inicio)
-                    VALUES (:usuario_id, :tenant_id, :status, CURDATE())
+                    INSERT INTO tenant_usuario_papel (usuario_id, tenant_id, papel_id, ativo, created_at, updated_at)
+                    VALUES (:usuario_id, :tenant_id, 1, :ativo, NOW(), NOW())
                 ";
             }
             
@@ -914,7 +933,7 @@ class Usuario
             return $stmt->execute([
                 'usuario_id' => $usuarioId,
                 'tenant_id' => $tenantId,
-                'status' => $status
+                'ativo' => $ativo
             ]);
         } catch (\PDOException $e) {
             error_log("Erro ao associar usuário ao tenant: " . $e->getMessage());

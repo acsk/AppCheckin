@@ -47,6 +47,19 @@
             margin: 25px 0;
             border-radius: 4px;
         }
+        .link-box {
+            background: #fff;
+            border: 1px solid #ffe2d5;
+            padding: 16px 18px;
+            border-radius: 8px;
+            margin: 20px 0 10px 0;
+        }
+        .link-box a {
+            color: #FF6B35;
+            text-decoration: none;
+            font-weight: 700;
+            word-break: break-all;
+        }
         .credentials-box h3 {
             margin-top: 0;
             color: #FF6B35;
@@ -175,7 +188,7 @@
                 Olá <strong>{{NOME}}</strong>,
             </div>
             
-            <p>Seu cadastro foi realizado com sucesso! Agora você já pode acessar o aplicativo e começar a fazer check-in nas suas aulas.</p>
+            <p>Seu cadastro foi realizado com sucesso! Agora você já pode acessar o AppCheckin e começar a fazer check-in nas suas aulas.</p>
             
             <div class="credentials-box">
                 <h3>📱 Seus Dados de Acesso</h3>
@@ -192,6 +205,13 @@
             <div class="info-box">
                 <p><strong>🔐 Importante:</strong> Sua senha inicial é o seu CPF (apenas números). Recomendamos que você altere sua senha após o primeiro acesso para maior segurança.</p>
             </div>
+
+            <div class="link-box">
+                <strong>🔗 Acesse por aqui:</strong>
+                <div style="margin-top: 6px;">
+                    <a href="https://mobile.appcheckin.com.br/">https://mobile.appcheckin.com.br/</a>
+                </div>
+            </div>
             
             <div class="steps">
                 <h3 style="color: #333; margin-bottom: 20px;">Como acessar o aplicativo:</h3>
@@ -199,8 +219,8 @@
                 <div class="step">
                     <div class="step-number">1</div>
                     <div class="step-content">
-                        <strong>Baixe o aplicativo</strong>
-                        <p>Procure por "AppCheckin" na App Store ou Google Play</p>
+                        <strong>Acesse o AppCheckin</strong>
+                        <p>Abra o link <a href="https://mobile.appcheckin.com.br/" style="color:#FF6B35; text-decoration:none; font-weight:600;">https://mobile.appcheckin.com.br/</a></p>
                     </div>
                 </div>
                 
@@ -230,7 +250,7 @@
             </div>
             
             <div style="text-align: center;">
-                <a href="{{APP_URL}}" class="button">Acessar o Aplicativo</a>
+                <a href="https://mobile.appcheckin.com.br/" class="button">Acessar o AppCheckin</a>
             </div>
         </div>
         

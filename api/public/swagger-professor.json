@@ -1,0 +1,540 @@
+{
+    "openapi": "3.0.0",
+    "paths": {
+        "/admin/professores": {
+            "get": {
+                "tags": [
+                    "Professores"
+                ],
+                "summary": "Listar professores do tenant",
+                "description": "Retorna lista de professores vinculados ao tenant via tenant_usuario_papel (papel_id=2)",
+                "operationId": "86adfcb76d6f2f7b939a3d7d0cba3f3e",
+                "parameters": [
+                    {
+                        "name": "apenas_ativos",
+                        "in": "query",
+                        "description": "Filtrar apenas professores ativos (true/false)",
+                        "schema": {
+                            "type": "string",
+                            "default": "false",
+                            "enum": [
+                                "true",
+                                "false"
+                            ]
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Lista de professores",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "professores": {
+                                            "type": "array",
+                                            "items": {
+                                                "properties": {
+                                                    "id": {
+                                                        "type": "integer",
+                                                        "example": 1
+                                                    },
+                                                    "nome": {
+                                                        "type": "string",
+                                                        "example": "Carlos Mendes"
+                                                    },
+                                                    "cpf": {
+                                                        "type": "string",
+                                                        "example": "12345678901"
+                                                    },
+                                                    "email": {
+                                                        "type": "string",
+                                                        "example": "carlos@teste.com"
+                                                    },
+                                                    "foto_url": {
+                                                        "type": "string",
+                                                        "nullable": true
+                                                    },
+                                                    "ativo": {
+                                                        "type": "integer",
+                                                        "example": 1
+                                                    },
+                                                    "usuario_id": {
+                                                        "type": "integer",
+                                                        "example": 5
+                                                    },
+                                                    "telefone": {
+                                                        "type": "string",
+                                                        "example": "11999999999"
+                                                    },
+                                                    "vinculo_ativo": {
+                                                        "description": "Status do vínculo em tenant_usuario_papel",
+                                                        "type": "integer",
+                                                        "example": 1
+                                                    },
+                                                    "turmas_count": {
+                                                        "type": "integer",
+                                                        "example": 3
+                                                    }
+                                                },
+                                                "type": "object"
+                                            }
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Professores"
+                ],
+                "summary": "Criar e associar professor ao tenant",
+                "description": "Cria novo professor (ou associa existente) e vincula ao tenant via tenant_usuario_papel (papel_id=2). Se o professor já existe globalmente, apenas associa ao tenant. Se não existe, cria usuário + professor + associação.",
+                "operationId": "7a9cdbec9fff03c64e0a0f70045ee535",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "nome",
+                                    "email",
+                                    "cpf"
+                                ],
+                                "properties": {
+                                    "nome": {
+                                        "description": "Nome completo do professor (obrigatório)",
+                                        "type": "string",
+                                        "example": "João Silva"
+                                    },
+                                    "email": {
+                                        "description": "Email do professor (obrigatório)",
+                                        "type": "string",
+                                        "format": "email",
+                                        "example": "joao.silva@exemplo.com"
+                                    },
+                                    "cpf": {
+                                        "description": "CPF com 11 dígitos (obrigatório)",
+                                        "type": "string",
+                                        "example": "12345678901"
+                                    },
+                                    "telefone": {
+                                        "description": "Telefone (opcional)",
+                                        "type": "string",
+                                        "example": "11999998888"
+                                    },
+                                    "foto_url": {
+                                        "description": "URL da foto (opcional)",
+                                        "type": "string",
+                                        "format": "url",
+                                        "example": "https://exemplo.com/foto.jpg"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Professor criado/associado com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "type": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Professor criado com sucesso"
+                                        },
+                                        "professor": {
+                                            "properties": {
+                                                "id": {
+                                                    "type": "integer",
+                                                    "example": 101
+                                                },
+                                                "nome": {
+                                                    "type": "string",
+                                                    "example": "João Silva"
+                                                },
+                                                "cpf": {
+                                                    "type": "string",
+                                                    "example": "12345678901"
+                                                },
+                                                "email": {
+                                                    "type": "string",
+                                                    "example": "joao.silva@exemplo.com"
+                                                },
+                                                "vinculo_ativo": {
+                                                    "description": "1 = vinculado ao tenant",
+                                                    "type": "integer",
+                                                    "example": 1
+                                                }
+                                            },
+                                            "type": "object"
+                                        },
+                                        "usuario": {
+                                            "properties": {
+                                                "id": {
+                                                    "type": "integer",
+                                                    "example": 150
+                                                },
+                                                "criado": {
+                                                    "description": "true se criou novo usuário, false se já existia",
+                                                    "type": "boolean",
+                                                    "example": true
+                                                },
+                                                "vinculado_ao_tenant": {
+                                                    "type": "boolean",
+                                                    "example": true
+                                                },
+                                                "papel": {
+                                                    "description": "papel_id=2",
+                                                    "type": "string",
+                                                    "example": "professor"
+                                                }
+                                            },
+                                            "type": "object"
+                                        },
+                                        "professor_existia": {
+                                            "description": "true se professor já existia globalmente",
+                                            "type": "boolean",
+                                            "example": false
+                                        },
+                                        "credenciais": {
+                                            "description": "Apenas quando cria novo usuário",
+                                            "properties": {
+                                                "email": {
+                                                    "type": "string",
+                                                    "example": "joao.silva@exemplo.com"
+                                                },
+                                                "senha_temporaria": {
+                                                    "type": "string",
+                                                    "example": "Xy89Kp2m"
+                                                },
+                                                "mensagem": {
+                                                    "type": "string",
+                                                    "example": "Informe estas credenciais ao professor. Recomende trocar a senha no primeiro acesso."
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Dados inválidos",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "type": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Email é obrigatório para criar professor"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflito - Professor já cadastrado",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "type": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Professor já está vinculado a este tenant"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    },
+                    "500": {
+                        "description": "Erro interno",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "type": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Erro ao criar professor: ..."
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/admin/professores/{id}": {
+            "get": {
+                "tags": [
+                    "Professores"
+                ],
+                "summary": "Buscar professor por ID",
+                "description": "Retorna dados completos do professor se ele pertencer ao tenant",
+                "operationId": "74c50f1402c8ae4164c53a5310dbae30",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "ID do professor",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Professor encontrado",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "professor": {
+                                            "properties": {
+                                                "id": {
+                                                    "type": "integer",
+                                                    "example": 1
+                                                },
+                                                "nome": {
+                                                    "type": "string",
+                                                    "example": "Carlos Mendes"
+                                                },
+                                                "cpf": {
+                                                    "type": "string",
+                                                    "example": "12345678901"
+                                                },
+                                                "email": {
+                                                    "type": "string",
+                                                    "example": "carlos@teste.com"
+                                                },
+                                                "foto_url": {
+                                                    "type": "string",
+                                                    "nullable": true
+                                                },
+                                                "ativo": {
+                                                    "type": "integer",
+                                                    "example": 1
+                                                },
+                                                "usuario_id": {
+                                                    "type": "integer",
+                                                    "example": 5
+                                                },
+                                                "telefone": {
+                                                    "type": "string",
+                                                    "example": "11999999999"
+                                                },
+                                                "vinculo_ativo": {
+                                                    "type": "integer",
+                                                    "example": 1
+                                                },
+                                                "created_at": {
+                                                    "type": "string",
+                                                    "format": "datetime"
+                                                },
+                                                "updated_at": {
+                                                    "type": "string",
+                                                    "format": "datetime"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Professor não encontrado",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "type": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Professor não encontrado"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/admin/professores/cpf/{cpf}": {
+            "get": {
+                "tags": [
+                    "Professores"
+                ],
+                "summary": "Buscar professor por CPF",
+                "description": "Busca professor pelo CPF dentro do tenant. Aceita CPF com ou sem formatação.",
+                "operationId": "562cd406c61c09cd03b91fd24ac8b66c",
+                "parameters": [
+                    {
+                        "name": "cpf",
+                        "in": "path",
+                        "description": "CPF do professor (11 dígitos, com ou sem formatação)",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "example": "12345678901"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Professor encontrado",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "professor": {
+                                            "properties": {
+                                                "id": {
+                                                    "type": "integer"
+                                                },
+                                                "nome": {
+                                                    "type": "string"
+                                                },
+                                                "cpf": {
+                                                    "type": "string"
+                                                },
+                                                "email": {
+                                                    "type": "string"
+                                                },
+                                                "vinculo_ativo": {
+                                                    "type": "integer"
+                                                },
+                                                "turmas_count": {
+                                                    "type": "integer"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "CPF inválido",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "type": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "CPF inválido. Deve conter 11 dígitos."
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Professor não encontrado",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "type": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Professor não encontrado com este CPF"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        }
+    },
+    "tags": [
+        {
+            "name": "Professores",
+            "description": "Professores"
+        }
+    ]
+}

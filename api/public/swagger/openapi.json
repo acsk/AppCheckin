@@ -20,6 +20,655 @@
         }
     ],
     "paths": {
+        "/admin/alunos": {
+            "get": {
+                "tags": [
+                    "Alunos"
+                ],
+                "summary": "Listar alunos",
+                "description": "Retorna lista de alunos do tenant. Suporta busca, paginação e filtro de ativos/inativos.",
+                "operationId": "68bfde34b8580bb8eb29dd0ed43bfab3",
+                "parameters": [
+                    {
+                        "name": "apenas_ativos",
+                        "in": "query",
+                        "description": "Filtrar apenas alunos ativos (true/false)",
+                        "schema": {
+                            "type": "string",
+                            "default": "false",
+                            "enum": [
+                                "true",
+                                "false"
+                            ]
+                        }
+                    },
+                    {
+                        "name": "busca",
+                        "in": "query",
+                        "description": "Buscar por nome ou email",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "pagina",
+                        "in": "query",
+                        "description": "Número da página",
+                        "schema": {
+                            "type": "integer",
+                            "default": 1
+                        }
+                    },
+                    {
+                        "name": "por_pagina",
+                        "in": "query",
+                        "description": "Registros por página",
+                        "schema": {
+                            "type": "integer",
+                            "default": 50
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Lista de alunos",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "alunos": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object"
+                                            }
+                                        },
+                                        "total": {
+                                            "type": "integer"
+                                        },
+                                        "pagina": {
+                                            "type": "integer"
+                                        },
+                                        "por_pagina": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Alunos"
+                ],
+                "summary": "Criar novo aluno",
+                "description": "Cria um novo aluno no tenant. Requer: nome, email, CPF e data_nascimento.",
+                "operationId": "085e1f4b11d5f1bb95346e72bcb28ea0",
+                "requestBody": {
+                    "description": "Dados do novo aluno",
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "required": [
+                                    "nome",
+                                    "email",
+                                    "cpf",
+                                    "data_nascimento"
+                                ],
+                                "properties": {
+                                    "nome": {
+                                        "type": "string",
+                                        "example": "João Silva"
+                                    },
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email",
+                                        "example": "joao@example.com"
+                                    },
+                                    "cpf": {
+                                        "type": "string",
+                                        "example": "12345678900"
+                                    },
+                                    "data_nascimento": {
+                                        "type": "string",
+                                        "format": "date",
+                                        "example": "1990-01-15"
+                                    },
+                                    "telefone": {
+                                        "type": "string"
+                                    },
+                                    "senha": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Aluno criado com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "type": {
+                                            "type": "string"
+                                        },
+                                        "aluno": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Email já cadastrado"
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    },
+                    "422": {
+                        "description": "Erro de validação"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/admin/alunos/basico": {
+            "get": {
+                "tags": [
+                    "Alunos"
+                ],
+                "summary": "Listar alunos (dados básicos)",
+                "description": "Retorna lista simplificada de alunos ativos. Otimizado para selects no frontend.",
+                "operationId": "75d1015e17b3052f13ecd57a88e175d3",
+                "responses": {
+                    "200": {
+                        "description": "Lista de alunos",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "alunos": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object"
+                                            }
+                                        },
+                                        "total": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/admin/alunos/{id}": {
+            "get": {
+                "tags": [
+                    "Alunos"
+                ],
+                "summary": "Buscar aluno por ID",
+                "description": "Retorna dados completos de um aluno específico.",
+                "operationId": "600dd6fd4ac43544d7308de99eaa9ec3",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "ID do aluno",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "example": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Dados do aluno",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "aluno": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Aluno não encontrado"
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "put": {
+                "tags": [
+                    "Alunos"
+                ],
+                "summary": "Atualizar aluno",
+                "description": "Atualiza dados de um aluno existente.",
+                "operationId": "7938dee6e70602225aebfefeab7b1dc9",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "ID do aluno",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "example": 1
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "description": "Dados a atualizar",
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "properties": {
+                                    "nome": {
+                                        "type": "string"
+                                    },
+                                    "email": {
+                                        "type": "string"
+                                    },
+                                    "cpf": {
+                                        "type": "string"
+                                    },
+                                    "data_nascimento": {
+                                        "type": "string",
+                                        "format": "date"
+                                    },
+                                    "telefone": {
+                                        "type": "string"
+                                    },
+                                    "senha": {
+                                        "type": "string"
+                                    }
+                                },
+                                "type": "object"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Aluno atualizado com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "type": {
+                                            "type": "string"
+                                        },
+                                        "aluno": {
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Aluno não encontrado"
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    },
+                    "422": {
+                        "description": "Erro de validação"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Alunos"
+                ],
+                "summary": "Desativar aluno",
+                "description": "Desativa um aluno (soft delete). Use /hard para exclusão permanente.",
+                "operationId": "ab1f91755baa3cd60dc46a2a838adbca",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "ID do aluno",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "example": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Aluno desativado com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "type": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Aluno não encontrado"
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/admin/alunos/{id}/delete-preview": {
+            "get": {
+                "tags": [
+                    "Alunos"
+                ],
+                "summary": "Preview de dados para exclusão",
+                "description": "Retorna uma análise completa de todos os registros relacionados ao aluno que serão afetados pela exclusão. Inclui resumo, dados do aluno, dados do usuário, dados relacionados (check-ins, matrículas, pagamentos, etc) e vínculos com tenants e papéis.",
+                "operationId": "82b40c4e685863f5887780116e014b72",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "ID do aluno",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "example": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Preview dos dados para exclusão",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "resumo": {
+                                            "properties": {
+                                                "aluno_id": {
+                                                    "type": "integer",
+                                                    "example": 1
+                                                },
+                                                "usuario_id": {
+                                                    "type": "integer",
+                                                    "example": 5
+                                                },
+                                                "total_registros": {
+                                                    "type": "integer",
+                                                    "example": 15
+                                                },
+                                                "warning": {
+                                                    "type": "string",
+                                                    "example": "Aluno possui matrículas ativas"
+                                                },
+                                                "pode_deletar": {
+                                                    "type": "boolean",
+                                                    "example": true
+                                                }
+                                            },
+                                            "type": "object"
+                                        },
+                                        "aluno": {
+                                            "properties": {
+                                                "id": {
+                                                    "type": "integer"
+                                                },
+                                                "nome": {
+                                                    "type": "string"
+                                                },
+                                                "email": {
+                                                    "type": "string"
+                                                },
+                                                "cpf": {
+                                                    "type": "string"
+                                                },
+                                                "telefone": {
+                                                    "type": "string"
+                                                },
+                                                "data_nascimento": {
+                                                    "type": "string",
+                                                    "format": "date"
+                                                },
+                                                "ativo": {
+                                                    "type": "boolean"
+                                                }
+                                            },
+                                            "type": "object"
+                                        },
+                                        "usuario": {
+                                            "properties": {
+                                                "id": {
+                                                    "type": "integer"
+                                                },
+                                                "email": {
+                                                    "type": "string"
+                                                },
+                                                "email_global": {
+                                                    "type": "string"
+                                                },
+                                                "cpf": {
+                                                    "type": "string"
+                                                },
+                                                "telefone": {
+                                                    "type": "string"
+                                                },
+                                                "ativo": {
+                                                    "type": "boolean"
+                                                },
+                                                "created_at": {
+                                                    "type": "string",
+                                                    "format": "date-time"
+                                                }
+                                            },
+                                            "type": "object"
+                                        },
+                                        "dados": {
+                                            "properties": {
+                                                "checkins": {
+                                                    "description": "Total, primeira_data, ultima_data",
+                                                    "type": "object"
+                                                },
+                                                "matriculas": {
+                                                    "description": "Total, ativas, detalhes de cada matrícula",
+                                                    "type": "object"
+                                                },
+                                                "pagamentos": {
+                                                    "description": "Total, pagos, pendentes, valor_total",
+                                                    "type": "object"
+                                                },
+                                                "wod_resultados": {
+                                                    "description": "Total de resultados de WODs",
+                                                    "type": "object"
+                                                },
+                                                "email_logs": {
+                                                    "description": "Total, enviados, falhados",
+                                                    "type": "object"
+                                                }
+                                            },
+                                            "type": "object"
+                                        },
+                                        "vinculos": {
+                                            "properties": {
+                                                "tenants": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object"
+                                                    }
+                                                },
+                                                "papeis": {
+                                                    "type": "array",
+                                                    "items": {
+                                                        "type": "object"
+                                                    }
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Aluno não encontrado"
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/admin/alunos/{id}/hard": {
+            "delete": {
+                "tags": [
+                    "Alunos"
+                ],
+                "summary": "Deletar aluno permanentemente",
+                "description": "Executa uma exclusão permanente e irreversível do aluno. Remove o aluno, usuário associado e todos os registros relacionados (check-ins, matrículas, pagamentos, WODs, email logs) usando uma transação de banco de dados para garantir integridade. AÇÃO IRREVERSÍVEL!",
+                "operationId": "e20bd9936c36fa998ad4ddb4d90b07e5",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "ID do aluno",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "example": 1
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Aluno deletado com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "properties": {
+                                        "type": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Aluno deletado com sucesso"
+                                        },
+                                        "data": {
+                                            "properties": {
+                                                "deleted_at": {
+                                                    "type": "string",
+                                                    "format": "date-time"
+                                                },
+                                                "aluno_id": {
+                                                    "type": "integer"
+                                                },
+                                                "usuario_id": {
+                                                    "type": "integer"
+                                                },
+                                                "records_deleted": {
+                                                    "type": "string",
+                                                    "example": "Aluno, usuário e 23 registros relacionados"
+                                                }
+                                            },
+                                            "type": "object"
+                                        }
+                                    },
+                                    "type": "object"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Aluno não encontrado"
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    },
+                    "500": {
+                        "description": "Erro ao deletar aluno"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
         "/auth/register": {
             "post": {
                 "tags": [
@@ -98,7 +747,7 @@
                     "Autenticação"
                 ],
                 "summary": "Login do usuário",
-                "description": "Autentica o usuário e retorna token JWT. Se o usuário tiver múltiplos tenants, retorna lista para seleção.",
+                "description": "Autentica um usuário com email e senha, retornando um token JWT válido para acessar a API.",
                 "operationId": "363e422b5a8c763fa1ea6fd03a77481d",
                 "requestBody": {
                     "required": true,
@@ -113,7 +762,7 @@
                                     "email": {
                                         "type": "string",
                                         "format": "email",
-                                        "example": "joao@email.com"
+                                        "example": "usuario@example.com"
                                     },
                                     "senha": {
                                         "type": "string",
@@ -137,44 +786,45 @@
                                             "example": "Login realizado com sucesso"
                                         },
                                         "token": {
+                                            "description": "Token JWT para usar na autenticação ou null se múltiplos tenants",
                                             "type": "string",
-                                            "example": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
-                                            "nullable": true
+                                            "example": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9..."
                                         },
                                         "user": {
                                             "properties": {
                                                 "id": {
-                                                    "type": "integer",
-                                                    "example": 1
+                                                    "type": "integer"
                                                 },
                                                 "nome": {
-                                                    "type": "string",
-                                                    "example": "João Silva"
+                                                    "type": "string"
                                                 },
                                                 "email": {
-                                                    "type": "string",
-                                                    "example": "joao@email.com"
+                                                    "type": "string"
+                                                },
+                                                "email_global": {
+                                                    "type": "string"
                                                 },
                                                 "foto_base64": {
                                                     "type": "string",
                                                     "nullable": true
                                                 },
-                                                "role_id": {
-                                                    "type": "integer",
-                                                    "example": 1
+                                                "papel_id": {
+                                                    "description": "1=Aluno, 2=Professor, 3=Tenant Admin, 4=Super Admin",
+                                                    "type": "integer"
                                                 }
                                             },
                                             "type": "object"
                                         },
                                         "tenants": {
+                                            "description": "Listagem de tenants associados ao usuário",
                                             "type": "array",
                                             "items": {
                                                 "type": "object"
                                             }
                                         },
                                         "requires_tenant_selection": {
-                                            "type": "boolean",
-                                            "example": false
+                                            "description": "true se o usuário tem múltiplos tenants",
+                                            "type": "boolean"
                                         }
                                     },
                                     "type": "object"
@@ -186,10 +836,13 @@
                         "description": "Credenciais inválidas"
                     },
                     "403": {
-                        "description": "Sem acesso a tenant ou contrato inativo"
+                        "description": "Usuário sem acesso a nenhum tenant"
                     },
                     "422": {
-                        "description": "Dados incompletos"
+                        "description": "Email e senha obrigatórios"
+                    },
+                    "500": {
+                        "description": "Erro interno do servidor"
                     }
                 }
             }
@@ -1589,6 +2242,10 @@
         {
             "name": "Dashboard",
             "description": "Estatísticas e cards do painel administrativo"
+        },
+        {
+            "name": "Alunos",
+            "description": "Gestão de alunos"
         },
         {
             "name": "Mobile",

@@ -332,32 +332,9 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
           <View className={`flex-row items-center ${isMobile ? 'gap-2' : isTablet ? 'gap-2' : 'gap-2.5'}`}>
             {!isMobile && (
               <>
-                <View className="rounded-md bg-slate-100 px-2 py-1">
-                  <Feather name="bell" size={14} color="#f97316" />
-                </View>
-                <View className="rounded-md bg-slate-100 px-2 py-1">
-                  <Feather name="settings" size={14} color="#f97316" />
-                </View>
-              </>
-            )}
-            {isMobile && (
-              <TouchableOpacity 
-                className="items-center justify-center rounded-xl bg-slate-100 p-2"
-                onPress={() => {}}
-              >
-                <Feather name="bell" size={18} color="#64748b" />
-              </TouchableOpacity>
-            )}
-            {!isMobile && (
-              <Pressable className="rounded-md bg-slate-100 px-2 py-1" onPress={handleLogout}>
-                <Feather name="log-out" size={14} color="#f97316" />
-              </Pressable>
-            )}
-            {!isMobile && (
-              <>
-                <View className="rounded-md bg-slate-100 px-2 py-1">
-                  <Text className="text-xs">🇺🇸</Text>
-                </View>
+                <Pressable className="rounded-md bg-slate-100 px-2 py-1" onPress={handleLogout}>
+                  <Feather name="log-out" size={14} color="#f97316" />
+                </Pressable>
                 <Text className={`text-xs font-semibold text-slate-800 ${isTablet ? 'hidden' : ''}`}>{nome}</Text>
               </>
             )}

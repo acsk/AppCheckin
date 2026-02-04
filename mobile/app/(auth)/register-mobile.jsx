@@ -123,6 +123,9 @@ export default function RegisterMobileScreen() {
     if (fieldErrors[field]) {
       setFieldErrors((prev) => ({ ...prev, [field]: undefined }));
     }
+    if (formError) {
+      setFormError("");
+    }
   };
 
   const handleCpfChange = (value) => {
@@ -291,6 +294,10 @@ export default function RegisterMobileScreen() {
       return;
     }
 
+    if (formError) {
+      setFormError("");
+    }
+
     const validation = validateForm();
     if (validation) {
       return;
@@ -312,6 +319,8 @@ export default function RegisterMobileScreen() {
     } catch (error) {
       const errorMessage = error?.message || "";
       const errorCode = error?.code || "";
+      const errorType = error?.type || "";
+      const retryAfter = error?.retryAfter;
 
       if (
         errorCode === "EMAIL_ALREADY_EXISTS" ||
@@ -334,6 +343,19 @@ export default function RegisterMobileScreen() {
           ...prev,
           cpf: "CPF já cadastrado",
         }));
+        return;
+      }
+
+      if (errorCode === "RATE_LIMIT_EXCEEDED" || errorType === "error") {
+        const message =
+          errorMessage ||
+          (typeof retryAfter === "number"
+            ? `Muitas tentativas. Tente novamente em ${Math.ceil(
+                retryAfter / 60,
+              )} minutos.`
+            : null) ||
+          "Muitas tentativas. Tente novamente mais tarde.";
+        setFormError(message);
         return;
       }
 
@@ -369,6 +391,13 @@ export default function RegisterMobileScreen() {
           <View style={styles.formContainer}>
             <View style={styles.formCard}>
               <Text style={styles.welcomeSubtext}>Informe seus dados</Text>
+
+              {formError ? (
+                <View style={styles.formError}>
+                  <Feather name="alert-circle" size={18} color="#b91c1c" />
+                  <Text style={styles.formErrorText}>{formError}</Text>
+                </View>
+              ) : null}
 
               <View
                 style={[

@@ -326,8 +326,8 @@ class MobileController
     {
         $sql = "SELECT DISTINCT t.id, t.nome, t.slug, t.email, t.telefone 
                 FROM tenants t
-                INNER JOIN usuario_tenant ut ON t.id = ut.tenant_id
-                WHERE ut.usuario_id = :user_id AND t.ativo = 1
+                INNER JOIN tenant_usuario_papel tup ON t.id = tup.tenant_id
+                WHERE tup.usuario_id = :user_id AND tup.ativo = 1 AND t.ativo = 1
                 ORDER BY t.nome ASC";
         $stmt = $this->db->prepare($sql);
         $stmt->execute(['user_id' => $userId]);

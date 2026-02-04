@@ -94,7 +94,7 @@ class MaintenanceController
             
             // Limpar dados (manter apenas super_admin = papel_id 4)
             $db->exec("DELETE FROM usuarios WHERE id NOT IN (SELECT usuario_id FROM tenant_usuario_papel WHERE papel_id = 4 AND ativo = 1)");
-            $db->exec("DELETE FROM usuario_tenant WHERE usuario_id NOT IN (SELECT usuario_id FROM tenant_usuario_papel WHERE papel_id = 4 AND ativo = 1)");
+            // usuario_tenant foi substituído por tenant_usuario_papel, não precisa mais limpar
             $db->exec("DELETE FROM tenant_planos WHERE tenant_id > 1");
             $db->exec("DELETE FROM tenant_formas_pagamento WHERE tenant_id > 1");
             $db->exec("DELETE FROM tenant_planos_sistema WHERE tenant_id > 1");

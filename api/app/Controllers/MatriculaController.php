@@ -79,32 +79,38 @@ class MatriculaController
         }
         
         // Verificar se existe vínculo com o tenant, se não existir criar
-        $stmtVinculo = $db->prepare("SELECT * FROM usuario_tenant WHERE usuario_id = ? AND tenant_id = ?");
+        $stmtVinculo = $db->prepare("
+            SELECT * FROM tenant_usuario_papel 
+            WHERE usuario_id = ? AND tenant_id = ? AND papel_id = 1
+        ");
         $stmtVinculo->execute([$usuarioId, $tenantId]);
         $vinculo = $stmtVinculo->fetch();
         
         if (!$vinculo) {
-            // Criar vínculo automaticamente
+            // Criar vínculo automaticamente como aluno (papel_id = 1)
             $stmtCriarVinculo = $db->prepare("
-                INSERT INTO usuario_tenant (usuario_id, tenant_id, status, data_inicio, created_at)
-                VALUES (?, ?, 'ativo', CURDATE(), NOW())
+                INSERT INTO tenant_usuario_papel (usuario_id, tenant_id, papel_id, ativo, created_at)
+                VALUES (?, ?, 1, 1, NOW())
             ");
             $stmtCriarVinculo->execute([$usuarioId, $tenantId]);
-            error_log("Vínculo usuario_tenant criado automaticamente: usuario_id={$usuarioId}, tenant_id={$tenantId}");
-        } elseif ($vinculo['status'] !== 'ativo') {
+            error_log("Vínculo tenant_usuario_papel criado automaticamente: usuario_id={$usuarioId}, tenant_id={$tenantId}, papel_id=1");
+        } elseif ($vinculo['ativo'] != 1) {
             // Reativar vínculo se estava inativo
-            $stmtReativar = $db->prepare("UPDATE usuario_tenant SET status = 'ativo', updated_at = NOW() WHERE usuario_id = ? AND tenant_id = ?");
+            $stmtReativar = $db->prepare("
+                UPDATE tenant_usuario_papel 
+                SET ativo = 1, updated_at = NOW() 
+                WHERE usuario_id = ? AND tenant_id = ? AND papel_id = 1
+            ");
             $stmtReativar->execute([$usuarioId, $tenantId]);
-            error_log("Vínculo usuario_tenant reativado: usuario_id={$usuarioId}, tenant_id={$tenantId}");
+            error_log("Vínculo tenant_usuario_papel reativado: usuario_id={$usuarioId}, tenant_id={$tenantId}");
         }
         
         // Buscar aluno (agora garantimos que o vínculo existe)
         $stmtUsuario = $db->prepare("
             SELECT u.* 
             FROM usuarios u
-            INNER JOIN usuario_tenant ut ON ut.usuario_id = u.id
-            INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.tenant_id = ut.tenant_id AND tup.ativo = 1
-            WHERE u.id = ? AND ut.tenant_id = ? AND tup.papel_id = 1 AND ut.status = 'ativo'
+            INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.ativo = 1
+            WHERE u.id = ? AND tup.tenant_id = ? AND tup.papel_id = 1
         ");
         $stmtUsuario->execute([$usuarioId, $tenantId]);
         $usuario = $stmtUsuario->fetch();
@@ -392,6 +398,7 @@ class MatriculaController
         $tenantId = $request->getAttribute('tenantId', 1);
         $params = $request->getQueryParams();
         $db = require __DIR__ . '/../../config/database.php';
+        $incluirInativos = isset($params['incluir_inativos']) && $params['incluir_inativos'] === 'true';
         
         // Verificar e atualizar status de matrículas pendentes vencidas
         $this->atualizarStatusMatriculasPendentes($db, $tenantId);
@@ -420,6 +427,10 @@ class MatriculaController
         ";
         
         $executeParams = [$tenantId];
+
+        if (!$incluirInativos) {
+            $sql .= " AND a.ativo = 1";
+        }
         
         if (isset($params['aluno_id'])) {
             $sql .= " AND m.aluno_id = ?";

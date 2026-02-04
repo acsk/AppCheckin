@@ -17,10 +17,10 @@ class TenantService
      */
     public function getTenantIdFromUsuario(int $usuarioId): int
     {
-        $query = "SELECT ut.tenant_id 
-                  FROM usuario_tenant ut 
-                  WHERE ut.usuario_id = :usuario_id 
-                  AND ut.status = 'ativo' 
+        $query = "SELECT tup.tenant_id 
+                  FROM tenant_usuario_papel tup 
+                  WHERE tup.usuario_id = :usuario_id 
+                  AND tup.ativo = 1 
                   LIMIT 1";
 
         $stmt = $this->db->prepare($query);

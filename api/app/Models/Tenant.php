@@ -276,12 +276,10 @@ class Tenant
         $stmt = $this->db->prepare(
             "SELECT COUNT(*) as total 
              FROM usuarios u
-             INNER JOIN usuario_tenant ut ON u.id = ut.usuario_id
-             INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.tenant_id = ut.tenant_id AND tup.ativo = 1
-             WHERE ut.tenant_id = :tenant_id 
+             INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.ativo = 1
+             WHERE tup.tenant_id = :tenant_id 
              AND tup.papel_id IN (2, 3)
-             AND u.ativo = 1
-             AND ut.status = 'ativo'"
+             AND u.ativo = 1"
         );
         $stmt->execute(['tenant_id' => $tenantId]);
         $result = $stmt->fetch(\PDO::FETCH_ASSOC);

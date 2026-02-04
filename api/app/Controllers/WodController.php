@@ -293,15 +293,6 @@ class WodController
                 }
             }
 
-            // Se não houver variações, criar a variação padrão RX
-            if (empty($data['variacoes'])) {
-                $this->wodVariacaoModel->create([
-                    'wod_id' => $wodId,
-                    'nome' => 'RX',
-                    'descricao' => null,
-                ]);
-            }
-
             // Commitar transação
             $this->db->commit();
 
