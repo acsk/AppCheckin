@@ -817,10 +817,17 @@ export default function AccountScreen() {
             await loadUserProfileMemo();
           } else {
             console.error("❌ Erro na resposta:", response);
-            Alert.alert(
-              "Erro",
-              response?.error || response?.message || "Erro ao atualizar foto",
-            );
+            // Tratar erro específico de aluno não encontrado
+            if (response?.error === "Aluno não encontrado para este usuário") {
+              Alert.alert("Erro", "Aluno não encontrado para este usuário");
+            } else {
+              Alert.alert(
+                "Erro",
+                response?.error ||
+                  response?.message ||
+                  "Erro ao atualizar foto",
+              );
+            }
           }
         } catch (error: any) {
           console.error("Erro ao processar foto:", error);
