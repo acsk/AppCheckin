@@ -13,7 +13,6 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import alunoService from '../../services/alunoService';
 import { authService } from '../../services/authService';
 import LayoutBase from '../../components/LayoutBase';
-import ConfirmModal from '../../components/ConfirmModal';
 import { showSuccess, showError } from '../../utils/toast';
 
 export default function DetalheAlunoScreen() {
@@ -27,7 +26,6 @@ export default function DetalheAlunoScreen() {
   const [aluno, setAluno] = useState(null);
   const [historico, setHistorico] = useState([]);
   const [loadingHistorico, setLoadingHistorico] = useState(false);
-  const [confirmModal, setConfirmModal] = useState({ visible: false, acao: '', novoStatus: null });
   const [activeTab, setActiveTab] = useState('dados');
 
   useEffect(() => {
@@ -81,23 +79,6 @@ export default function DetalheAlunoScreen() {
     setActiveTab(tab);
     if (tab === 'historico' && historico.length === 0) {
       loadHistorico();
-    }
-  };
-
-  const handleToggleStatus = () => {
-    const acao = aluno.ativo ? 'desativar' : 'ativar';
-    setConfirmModal({ visible: true, acao, novoStatus: aluno.ativo ? 0 : 1 });
-  };
-
-  const confirmToggleStatus = async () => {
-    try {
-      await alunoService.toggleStatus(alunoId, confirmModal.novoStatus);
-      const acao = confirmModal.acao === 'desativar' ? 'desativado' : 'ativado';
-      showSuccess(`Aluno ${acao} com sucesso`);
-      setConfirmModal({ visible: false, acao: '', novoStatus: null });
-      loadAluno();
-    } catch (error) {
-      showError(error.error || error.message || 'Erro ao alterar status do aluno');
     }
   };
 
@@ -422,17 +403,7 @@ export default function DetalheAlunoScreen() {
               <Feather name="edit-2" size={16} color="#fff" />
               {!isMobile && <Text style={styles.editButtonText}>Editar</Text>}
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.statusButton, aluno.ativo ? styles.statusButtonDesativar : styles.statusButtonAtivar]}
-              onPress={handleToggleStatus}
-            >
-              <Feather name={aluno.ativo ? 'user-x' : 'user-check'} size={16} color="#fff" />
-              {!isMobile && (
-                <Text style={styles.statusButtonText}>
-                  {aluno.ativo ? 'Desativar' : 'Ativar'}
-                </Text>
-              )}
-            </TouchableOpacity>
+
           </View>
         </View>
 
@@ -461,14 +432,6 @@ export default function DetalheAlunoScreen() {
         {/* Conteúdo da Tab */}
         {activeTab === 'dados' ? renderDadosTab() : renderHistoricoTab()}
       </ScrollView>
-
-      <ConfirmModal
-        visible={confirmModal.visible}
-        title={confirmModal.acao === 'desativar' ? 'Confirmar Desativação' : 'Confirmar Ativação'}
-        message={`Deseja realmente ${confirmModal.acao} o aluno "${aluno.nome}"?`}
-        onConfirm={confirmToggleStatus}
-        onCancel={() => setConfirmModal({ visible: false, acao: '', novoStatus: null })}
-      />
     </LayoutBase>
   );
 }
@@ -549,25 +512,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   editButtonText: {
-    fontSize: 14,
-    color: '#fff',
-    fontWeight: '600',
-  },
-  statusButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-  },
-  statusButtonDesativar: {
-    backgroundColor: '#ef4444',
-  },
-  statusButtonAtivar: {
-    backgroundColor: '#16a34a',
-  },
-  statusButtonText: {
     fontSize: 14,
     color: '#fff',
     fontWeight: '600',

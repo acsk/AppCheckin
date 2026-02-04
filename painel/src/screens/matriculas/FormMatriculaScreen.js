@@ -84,12 +84,12 @@ export default function FormMatriculaScreen() {
         ? usuariosData.usuarios 
         : [];
 
-      // Filtrar apenas alunos (papel_id = 1)
+      // Filtrar apenas alunos (papel_id = 1 e que estejam ativos)
       const alunosAtivos = usuarios.filter(
-        (u) => u.papel_id === 1 && u.status === 'ativo'
+        (u) => u.papel_id === 1 && u.ativo === true
       );
       
-      console.log('👥 Alunos ativos:', alunosAtivos);
+      console.log('👥 Alunos carregados:', alunosAtivos);
       setAlunos(alunosAtivos);
 
       // Extrair array de modalidades

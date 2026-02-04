@@ -5,7 +5,6 @@ import { useRouter } from 'expo-router';
 import alunoService from '../../services/alunoService';
 import { authService } from '../../services/authService';
 import LayoutBase from '../../components/LayoutBase';
-import ConfirmModal from '../../components/ConfirmModal';
 import { showSuccess, showError } from '../../utils/toast';
 import { mascaraTelefone } from '../../utils/masks';
 
@@ -16,7 +15,6 @@ export default function AlunosScreen() {
   const [alunos, setAlunos] = useState([]);
   const [alunosFiltrados, setAlunosFiltrados] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [confirmDelete, setConfirmDelete] = useState({ visible: false, id: null, nome: '', status: '', acao: '' });
   const [searchText, setSearchText] = useState('');
   
   // Novos estados para paginação e filtros
@@ -128,29 +126,7 @@ export default function AlunosScreen() {
     }).format(value);
   };
 
-  const handleToggleStatus = (aluno) => {
-    const acao = aluno.ativo ? 'desativar' : 'ativar';
-    setConfirmDelete({
-      visible: true,
-      id: aluno.id,
-      nome: aluno.nome,
-      status: aluno.ativo ? 'ativo' : 'inativo',
-      acao,
-      novoStatus: aluno.ativo ? 0 : 1,
-    });
-  };
 
-  const confirmDeleteAluno = async () => {
-    try {
-      await alunoService.toggleStatus(confirmDelete.id, confirmDelete.novoStatus);
-      const acao = confirmDelete.acao === 'desativar' ? 'desativado' : 'ativado';
-      showSuccess(`Aluno ${acao} com sucesso`);
-      setConfirmDelete({ visible: false, id: null, nome: '', status: '', acao: '', novoStatus: null });
-      loadAlunos();
-    } catch (error) {
-      showError(error.error || error.message || 'Erro ao alterar status do aluno');
-    }
-  };
 
   const renderMobileCard = (aluno) => (
     <View key={aluno.id} style={styles.card}>
@@ -284,17 +260,6 @@ export default function AlunosScreen() {
                 title="Editar"
               >
                 <Feather name="edit-2" size={16} color="#f97316" />
-              </TouchableOpacity>
-              <TouchableOpacity
-                className="h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
-                onPress={() => handleToggleStatus(aluno)}
-                title={aluno.ativo ? 'Desativar' : 'Ativar'}
-              >
-                <Feather
-                  name={aluno.ativo ? 'toggle-right' : 'toggle-left'}
-                  size={18}
-                  color={aluno.ativo ? '#16a34a' : '#ef4444'}
-                />
               </TouchableOpacity>
             </View>
           </View>
@@ -454,14 +419,6 @@ export default function AlunosScreen() {
           </>
         )}
       </View>
-
-      <ConfirmModal
-        visible={confirmDelete.visible}
-        title={confirmDelete.acao === 'desativar' ? 'Confirmar Desativação' : 'Confirmar Ativação'}
-        message={`Deseja realmente ${confirmDelete.acao} o aluno "${confirmDelete.nome}"?`}
-        onConfirm={confirmDeleteAluno}
-        onCancel={() => setConfirmDelete({ visible: false, id: null, nome: '', status: '', acao: '', novoStatus: null })}
-      />
     </LayoutBase>
   );
 }
