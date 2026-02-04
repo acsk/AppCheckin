@@ -831,20 +831,57 @@ export default function AccountScreen() {
           }
         } catch (error: any) {
           console.error("Erro ao processar foto:", error);
-          Alert.alert(
-            "Erro",
-            error.message || "Erro ao processar foto. Tente novamente.",
+          console.error("Erro details - type:", typeof error);
+          console.error("Erro details - error.error:", error?.error);
+          console.error("Erro details - error.message:", error?.message);
+          console.error(
+            "Erro details - full object:",
+            JSON.stringify(error, null, 2),
           );
+
+          // Tratar erro específico de aluno não encontrado
+          const errorMessage =
+            error?.error ||
+            error?.message ||
+            error?.toString() ||
+            "Erro ao processar foto. Tente novamente.";
+
+          if (
+            errorMessage === "Aluno não encontrado para este usuário" ||
+            error?.error === "Aluno não encontrado para este usuário"
+          ) {
+            Alert.alert("Erro", "Aluno não encontrado para este usuário");
+          } else {
+            Alert.alert("Erro", errorMessage);
+          }
         } finally {
           setUpdatingPhoto(false);
         }
       }
     } catch (error: any) {
       console.error("Erro ao trocar foto:", error);
-      Alert.alert(
-        "Erro",
-        error.message || "Erro ao trocar foto. Tente novamente.",
+      console.error("Erro details (outer) - type:", typeof error);
+      console.error("Erro details (outer) - error.error:", error?.error);
+      console.error("Erro details (outer) - error.message:", error?.message);
+      console.error(
+        "Erro details (outer) - full object:",
+        JSON.stringify(error, null, 2),
       );
+
+      const errorMessage =
+        error?.error ||
+        error?.message ||
+        error?.toString() ||
+        "Erro ao trocar foto. Tente novamente.";
+
+      if (
+        errorMessage === "Aluno não encontrado para este usuário" ||
+        error?.error === "Aluno não encontrado para este usuário"
+      ) {
+        Alert.alert("Erro", "Aluno não encontrado para este usuário");
+      } else {
+        Alert.alert("Erro", errorMessage);
+      }
     } finally {
       setUpdatingPhoto(false);
     }
