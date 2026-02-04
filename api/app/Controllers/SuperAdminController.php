@@ -501,7 +501,10 @@ class SuperAdminController
         $adminData = [
             'nome' => $data['nome'],
             'email' => $data['email'],
-            'senha' => $data['senha']
+            'senha' => $data['senha'], // Model já faz o hash automaticamente
+            'telefone' => isset($data['telefone']) ? preg_replace('/[^0-9]/', '', $data['telefone']) : null,
+            'cpf' => isset($data['cpf']) ? preg_replace('/[^0-9]/', '', $data['cpf']) : null,
+            'papel_id' => 3 // Admin - evita criar registro de aluno
         ];
 
         $adminId = $this->usuarioModel->create($adminData, $tenantId);

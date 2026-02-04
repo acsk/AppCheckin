@@ -83,38 +83,45 @@ class Usuario
             
             $usuarioId = (int) $this->db->lastInsertId();
             
-            // 2. Criar registro em alunos (perfil separado)
-            $stmtAluno = $this->db->prepare(
-                "INSERT INTO alunos (usuario_id, nome, telefone, whatsapp, cpf, data_nascimento, cep, logradouro, numero, complemento, bairro, cidade, estado, ativo)
-                 VALUES (:usuario_id, :nome, :telefone, :whatsapp, :cpf, :data_nascimento, :cep, :logradouro, :numero, :complemento, :bairro, :cidade, :estado, :ativo)"
-            );
+            // 2. Criar registro em alunos APENAS se não for admin ou superadmin
+            $papelId = $data['papel_id'] ?? 1;
+            $isAdmin = in_array($papelId, [3, 4]); // 3 = admin, 4 = superadmin
             
-            $stmtAluno->execute([
-                'usuario_id' => $usuarioId,
-                'nome' => $nome,
-                'telefone' => $telefoneLimpo,
-                'whatsapp' => $whatsappLimpo,
-                'cpf' => $cpfLimpo ?: null,
-                'data_nascimento' => $data['data_nascimento'] ?? null,
-                'cep' => $cepLimpo ?: null,
-                'logradouro' => $logradouro,
-                'numero' => $data['numero'] ?? null,
-                'complemento' => $complemento,
-                'bairro' => $bairro,
-                'cidade' => $cidade,
-                'estado' => $estado,
-                'ativo' => $data['ativo'] ?? 1
-            ]);
+            if (!$isAdmin) {
+                // Criar registro em alunos (perfil separado)
+                $stmtAluno = $this->db->prepare(
+                    "INSERT INTO alunos (usuario_id, nome, telefone, whatsapp, cpf, data_nascimento, cep, logradouro, numero, complemento, bairro, cidade, estado, ativo)
+                     VALUES (:usuario_id, :nome, :telefone, :whatsapp, :cpf, :data_nascimento, :cep, :logradouro, :numero, :complemento, :bairro, :cidade, :estado, :ativo)"
+                );
+                
+                $stmtAluno->execute([
+                    'usuario_id' => $usuarioId,
+                    'nome' => $nome,
+                    'telefone' => $telefoneLimpo,
+                    'whatsapp' => $whatsappLimpo,
+                    'cpf' => $cpfLimpo ?: null,
+                    'data_nascimento' => $data['data_nascimento'] ?? null,
+                    'cep' => $cepLimpo ?: null,
+                    'logradouro' => $logradouro,
+                    'numero' => $data['numero'] ?? null,
+                    'complemento' => $complemento,
+                    'bairro' => $bairro,
+                    'cidade' => $cidade,
+                    'estado' => $estado,
+                    'ativo' => $data['ativo'] ?? 1
+                ]);
+            }
             
-            // 3. Adicionar papel de aluno no tenant (opcional)
+            // 3. Adicionar papel correto no tenant (se fornecido)
             if ($tenantId !== null) {
                 $stmtPapel = $this->db->prepare(
                     "INSERT IGNORE INTO tenant_usuario_papel (tenant_id, usuario_id, papel_id, ativo, created_at, updated_at)
-                     VALUES (:tenant_id, :usuario_id, 1, 1, NOW(), NOW())"
+                     VALUES (:tenant_id, :usuario_id, :papel_id, 1, NOW(), NOW())"
                 );
                 $stmtPapel->execute([
                     'tenant_id' => $tenantId,
-                    'usuario_id' => $usuarioId
+                    'usuario_id' => $usuarioId,
+                    'papel_id' => $papelId
                 ]);
             }
             
