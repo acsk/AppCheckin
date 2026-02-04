@@ -178,7 +178,7 @@ class AdminController
                     WHEN EXISTS (
                         SELECT 1 FROM contas_receber cr
                         WHERE cr.usuario_id = u.id
-                        AND cr.tenant_id = ut.tenant_id
+                        AND cr.tenant_id = tup.tenant_id
                         AND cr.status = 'pago'
                         AND cr.data_vencimento <= CURDATE()
                         AND DATE_ADD(cr.data_vencimento, INTERVAL COALESCE(cr.intervalo_dias, 30) DAY) >= CURDATE()
@@ -190,7 +190,7 @@ class AdminController
                 (
                     SELECT cr2.id FROM contas_receber cr2
                     WHERE cr2.usuario_id = u.id
-                    AND cr2.tenant_id = ut.tenant_id
+                    AND cr2.tenant_id = tup.tenant_id
                     AND cr2.status = 'pendente'
                     ORDER BY cr2.data_vencimento ASC
                     LIMIT 1

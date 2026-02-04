@@ -596,7 +596,7 @@ class Usuario
         
         // Filtrar apenas ativos se solicitado
         if ($apenasAtivos) {
-            $conditions[] = "ut.status = 'ativo'";
+            $conditions[] = "tup.ativo = 1";
         }
         
         if (!empty($conditions)) {
@@ -604,7 +604,7 @@ class Usuario
         }
         
         // Ordenar para evitar duplicatas quando usuário está em múltiplos tenants
-        $sql .= " ORDER BY u.id ASC, ut.status DESC";
+        $sql .= " ORDER BY u.id ASC, tup.ativo DESC";
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
