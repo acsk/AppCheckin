@@ -542,6 +542,291 @@ class SuperAdminController
     }
 
     /**
+     * Listar admins de uma academia
+     * GET /superadmin/academias/{tenantId}/admins
+     */
+    public function listarAdminsAcademia(Request $request, Response $response, array $args): Response
+    {
+        $userId = $request->getAttribute('userId');
+        $user = $this->usuarioModel->findById($userId);
+        $tenantId = (int) $args['tenantId'];
+
+        // Verificar se é super admin
+        if (($user['papel_id'] ?? null) != 4) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Acesso negado. Apenas Super Admin pode listar admins'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+
+        // Verificar se tenant existe
+        $tenant = $this->tenantModel->findById($tenantId);
+        if (!$tenant) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Academia não encontrada'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        // Buscar todos os admins (papel_id = 3) da academia
+        $db = require __DIR__ . '/../../config/database.php';
+        $stmt = $db->prepare("
+            SELECT u.id, u.nome, u.email, u.telefone, u.cpf,
+                   tup.ativo, tup.created_at as vinculado_em
+            FROM usuarios u
+            INNER JOIN tenant_usuario_papel tup ON u.id = tup.usuario_id
+            WHERE tup.tenant_id = :tenant_id
+              AND tup.papel_id = 3
+            ORDER BY u.nome ASC
+        ");
+        $stmt->execute(['tenant_id' => $tenantId]);
+        $admins = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        $response->getBody()->write(json_encode([
+            'academia' => $tenant,
+            'admins' => $admins,
+            'total' => count($admins)
+        ], JSON_UNESCAPED_UNICODE));
+
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * Atualizar admin de uma academia
+     * PUT /superadmin/academias/{tenantId}/admins/{adminId}
+     */
+    public function atualizarAdminAcademia(Request $request, Response $response, array $args): Response
+    {
+        $data = $request->getParsedBody();
+        $userId = $request->getAttribute('userId');
+        $user = $this->usuarioModel->findById($userId);
+        $tenantId = (int) $args['tenantId'];
+        $adminId = (int) $args['adminId'];
+
+        // Verificar se é super admin
+        if (($user['papel_id'] ?? null) != 4) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Acesso negado. Apenas Super Admin pode atualizar admins'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+
+        // Verificar se tenant existe
+        $tenant = $this->tenantModel->findById($tenantId);
+        if (!$tenant) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Academia não encontrada'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        // Verificar se admin existe
+        $admin = $this->usuarioModel->findById($adminId);
+        if (!$admin) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Admin não encontrado'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        // Verificar se o usuário é admin da academia
+        $db = require __DIR__ . '/../../config/database.php';
+        $stmt = $db->prepare("
+            SELECT * FROM tenant_usuario_papel
+            WHERE tenant_id = :tenant_id
+              AND usuario_id = :usuario_id
+              AND papel_id = 3
+        ");
+        $stmt->execute(['tenant_id' => $tenantId, 'usuario_id' => $adminId]);
+        $vinculo = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$vinculo) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Usuário não é admin desta academia'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        // Validações
+        $errors = [];
+
+        if (isset($data['nome']) && empty($data['nome'])) {
+            $errors[] = 'Nome não pode ser vazio';
+        }
+
+        if (isset($data['email'])) {
+            if (empty($data['email']) || !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+                $errors[] = 'Email válido é obrigatório';
+            }
+            // Verificar se email já existe em outro usuário
+            $existingUser = $this->usuarioModel->findByEmailGlobal($data['email']);
+            if ($existingUser && $existingUser['id'] != $adminId) {
+                $errors[] = 'Email já cadastrado por outro usuário';
+            }
+        }
+
+        if (!empty($errors)) {
+            $response->getBody()->write(json_encode(['errors' => $errors]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+        }
+
+        // Atualizar dados do usuário
+        $updateData = [];
+        if (isset($data['nome'])) $updateData['nome'] = $data['nome'];
+        if (isset($data['email'])) $updateData['email'] = $data['email'];
+        if (isset($data['telefone'])) $updateData['telefone'] = preg_replace('/[^0-9]/', '', $data['telefone']);
+        if (isset($data['cpf'])) $updateData['cpf'] = preg_replace('/[^0-9]/', '', $data['cpf']);
+
+        // Se forneceu senha nova, atualizar
+        if (!empty($data['senha'])) {
+            if (strlen($data['senha']) < 6) {
+                $response->getBody()->write(json_encode([
+                    'errors' => ['Senha deve ter no mínimo 6 caracteres']
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+            }
+            $updateData['senha'] = password_hash($data['senha'], PASSWORD_DEFAULT);
+        }
+
+        if (!empty($updateData)) {
+            $this->usuarioModel->update($adminId, $updateData);
+        }
+
+        $adminAtualizado = $this->usuarioModel->findById($adminId);
+
+        $response->getBody()->write(json_encode([
+            'message' => 'Admin atualizado com sucesso',
+            'admin' => $adminAtualizado
+        ], JSON_UNESCAPED_UNICODE));
+
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * Desativar admin de uma academia
+     * DELETE /superadmin/academias/{tenantId}/admins/{adminId}
+     */
+    public function desativarAdminAcademia(Request $request, Response $response, array $args): Response
+    {
+        $userId = $request->getAttribute('userId');
+        $user = $this->usuarioModel->findById($userId);
+        $tenantId = (int) $args['tenantId'];
+        $adminId = (int) $args['adminId'];
+
+        // Verificar se é super admin
+        if (($user['papel_id'] ?? null) != 4) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Acesso negado. Apenas Super Admin pode desativar admins'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+
+        // Verificar se tenant existe
+        $tenant = $this->tenantModel->findById($tenantId);
+        if (!$tenant) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Academia não encontrada'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        // Verificar quantos admins ativos a academia tem
+        $db = require __DIR__ . '/../../config/database.php';
+        $stmt = $db->prepare("
+            SELECT COUNT(*) as total
+            FROM tenant_usuario_papel
+            WHERE tenant_id = :tenant_id
+              AND papel_id = 3
+              AND ativo = 1
+        ");
+        $stmt->execute(['tenant_id' => $tenantId]);
+        $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        if ($result['total'] <= 1) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Não é possível desativar o único admin da academia. Crie outro admin primeiro.'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
+
+        // Desativar vínculo do admin com a academia
+        $stmt = $db->prepare("
+            UPDATE tenant_usuario_papel
+            SET ativo = 0
+            WHERE tenant_id = :tenant_id
+              AND usuario_id = :usuario_id
+              AND papel_id = 3
+        ");
+        $success = $stmt->execute(['tenant_id' => $tenantId, 'usuario_id' => $adminId]);
+
+        if (!$success || $stmt->rowCount() === 0) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Erro ao desativar admin ou admin não encontrado'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+
+        $response->getBody()->write(json_encode([
+            'message' => 'Admin desativado com sucesso'
+        ], JSON_UNESCAPED_UNICODE));
+
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * Reativar admin de uma academia
+     * POST /superadmin/academias/{tenantId}/admins/{adminId}/reativar
+     */
+    public function reativarAdminAcademia(Request $request, Response $response, array $args): Response
+    {
+        $userId = $request->getAttribute('userId');
+        $user = $this->usuarioModel->findById($userId);
+        $tenantId = (int) $args['tenantId'];
+        $adminId = (int) $args['adminId'];
+
+        // Verificar se é super admin
+        if (($user['papel_id'] ?? null) != 4) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Acesso negado. Apenas Super Admin pode reativar admins'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+
+        // Verificar se tenant existe
+        $tenant = $this->tenantModel->findById($tenantId);
+        if (!$tenant) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Academia não encontrada'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        // Reativar vínculo do admin com a academia
+        $db = require __DIR__ . '/../../config/database.php';
+        $stmt = $db->prepare("
+            UPDATE tenant_usuario_papel
+            SET ativo = 1
+            WHERE tenant_id = :tenant_id
+              AND usuario_id = :usuario_id
+              AND papel_id = 3
+        ");
+        $success = $stmt->execute(['tenant_id' => $tenantId, 'usuario_id' => $adminId]);
+
+        if (!$success || $stmt->rowCount() === 0) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Erro ao reativar admin ou admin não encontrado'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+
+        $response->getBody()->write(json_encode([
+            'message' => 'Admin reativado com sucesso'
+        ], JSON_UNESCAPED_UNICODE));
+
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
      * Gerar slug a partir de um texto
      */
     private function generateSlug(string $text): string

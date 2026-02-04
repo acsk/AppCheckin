@@ -732,7 +732,13 @@ return function ($app) {
         $group->post('/academias', [SuperAdminController::class, 'criarAcademia']);
         $group->put('/academias/{id}', [SuperAdminController::class, 'atualizarAcademia']);
         $group->delete('/academias/{id}', [SuperAdminController::class, 'excluirAcademia']);
+        
+        // Gerenciar admins de academias
+        $group->get('/academias/{tenantId}/admins', [SuperAdminController::class, 'listarAdminsAcademia']);
         $group->post('/academias/{tenantId}/admin', [SuperAdminController::class, 'criarAdminAcademia']);
+        $group->put('/academias/{tenantId}/admins/{adminId}', [SuperAdminController::class, 'atualizarAdminAcademia']);
+        $group->delete('/academias/{tenantId}/admins/{adminId}', [SuperAdminController::class, 'desativarAdminAcademia']);
+        $group->post('/academias/{tenantId}/admins/{adminId}/reativar', [SuperAdminController::class, 'reativarAdminAcademia']);
         
         // === VARIÁVEIS DE AMBIENTE (Debug) ===
         $group->get('/env', [SuperAdminController::class, 'getEnvironmentVariables']);

@@ -107,6 +107,85 @@ export const superAdminService = {
       console.error('❌ Erro ao listar usuários:', error.response?.data || error.message);
       throw error.response?.data || { error: 'Erro ao listar usuários' };
     }
+  },
+
+  // ========================================
+  // Gestão de Admins da Academia
+  // ========================================
+
+  /**
+   * Listar admins de uma academia
+   */
+  async listarAdmins(tenantId) {
+    try {
+      console.log(`👥 Listando admins da academia ${tenantId}`);
+      const response = await api.get(`/superadmin/academias/${tenantId}/admins`);
+      console.log('✅ Admins carregados:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao listar admins:', error);
+      throw error.response?.data || error;
+    }
+  },
+
+  /**
+   * Criar admin para uma academia
+   */
+  async criarAdmin(tenantId, dados) {
+    try {
+      console.log(`➕ Criando admin para academia ${tenantId}`, dados);
+      const response = await api.post(`/superadmin/academias/${tenantId}/admin`, dados);
+      console.log('✅ Admin criado:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao criar admin:', error);
+      throw error.response?.data || error;
+    }
+  },
+
+  /**
+   * Atualizar admin de uma academia
+   */
+  async atualizarAdmin(tenantId, adminId, dados) {
+    try {
+      console.log(`✏️ Atualizando admin ${adminId} da academia ${tenantId}`, dados);
+      const response = await api.put(`/superadmin/academias/${tenantId}/admins/${adminId}`, dados);
+      console.log('✅ Admin atualizado:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao atualizar admin:', error);
+      throw error.response?.data || error;
+    }
+  },
+
+  /**
+   * Desativar admin de uma academia
+   */
+  async desativarAdmin(tenantId, adminId) {
+    try {
+      console.log(`🚫 Desativando admin ${adminId} da academia ${tenantId}`);
+      const response = await api.delete(`/superadmin/academias/${tenantId}/admins/${adminId}`);
+      console.log('✅ Admin desativado:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao desativar admin:', error);
+      throw error.response?.data || error;
+    }
+  },
+
+  /**
+   * Reativar admin de uma academia
+   */
+  async reativarAdmin(tenantId, adminId) {
+    try {
+      console.log(`✅ Reativando admin ${adminId} da academia ${tenantId}`);
+      const response = await api.post(`/superadmin/academias/${tenantId}/admins/${adminId}/reativar`);
+      console.log('✅ Admin reativado:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao reativar admin:', error);
+      throw error.response?.data || error;
+    }
   }
 };
 

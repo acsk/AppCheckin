@@ -8,6 +8,8 @@ import {
   ScrollView,
   ActivityIndicator,
   Switch,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
@@ -46,6 +48,21 @@ export default function AcademiaFormScreen() {
   const [estados, setEstados] = useState([]);
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
+  
+  // Estados para gestão de admins
+  const [admins, setAdmins] = useState([]);
+  const [loadingAdmins, setLoadingAdmins] = useState(false);
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const [editingAdmin, setEditingAdmin] = useState(null);
+  const [adminForm, setAdminForm] = useState({
+    nome: '',
+    email: '',
+    senha: '',
+    telefone: '',
+    cpf: '',
+  });
+  const [adminErrors, setAdminErrors] = useState({});
+  
   const [formData, setFormData] = useState({
     nome: '',
     email: '',
@@ -120,11 +137,149 @@ export default function AcademiaFormScreen() {
         estado: academia.estado || '',
         ativo: academia.ativo !== false,
       });
+      
+      // Carregar admins da academia
+      loadAdmins();
     } catch (error) {
       showError(error.response?.data?.error || 'Erro ao carregar dados da academia');
       router.push('/academias');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadAdmins = async () => {
+    if (!academiaId) return;
+    
+    try {
+      setLoadingAdmins(true);
+      const response = await superAdminService.listarAdmins(academiaId);
+      setAdmins(response.admins || response || []);
+    } catch (error) {
+      console.error('Erro ao carregar admins:', error);
+      showError('Erro ao carregar lista de administradores');
+    } finally {
+      setLoadingAdmins(false);
+    }
+  };
+
+  const openAdminModal = (admin = null) => {
+    if (admin) {
+      setEditingAdmin(admin);
+      setAdminForm({
+        nome: admin.nome || '',
+        email: admin.email || '',
+        senha: '',
+        telefone: admin.telefone ? mascaraTelefone(admin.telefone) : '',
+        cpf: admin.cpf ? mascaraCPF(admin.cpf) : '',
+      });
+    } else {
+      setEditingAdmin(null);
+      setAdminForm({
+        nome: '',
+        email: '',
+        senha: '',
+        telefone: '',
+        cpf: '',
+      });
+    }
+    setAdminErrors({});
+    setShowAdminModal(true);
+  };
+
+  const closeAdminModal = () => {
+    setShowAdminModal(false);
+    setEditingAdmin(null);
+    setAdminForm({
+      nome: '',
+      email: '',
+      senha: '',
+      telefone: '',
+      cpf: '',
+    });
+    setAdminErrors({});
+  };
+
+  const validateAdminForm = () => {
+    const errors = {};
+    
+    if (!validarObrigatorio(adminForm.nome)) {
+      errors.nome = 'Nome é obrigatório';
+    }
+    
+    if (!validarObrigatorio(adminForm.email)) {
+      errors.email = 'E-mail é obrigatório';
+    } else if (!validarEmail(adminForm.email)) {
+      errors.email = 'E-mail inválido';
+    }
+    
+    if (!editingAdmin && !validarObrigatorio(adminForm.senha)) {
+      errors.senha = 'Senha é obrigatória';
+    } else if (adminForm.senha && !validarSenha(adminForm.senha, 6)) {
+      errors.senha = 'Senha deve ter no mínimo 6 caracteres';
+    }
+    
+    if (adminForm.telefone && apenasNumeros(adminForm.telefone).length < 10) {
+      errors.telefone = 'Telefone inválido';
+    }
+    
+    if (adminForm.cpf && !validarCPF(adminForm.cpf)) {
+      errors.cpf = 'CPF inválido';
+    }
+    
+    setAdminErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  const handleSaveAdmin = async () => {
+    if (!validateAdminForm()) {
+      showError('Corrija os erros antes de salvar');
+      return;
+    }
+    
+    try {
+      setSaving(true);
+      
+      const payload = {
+        nome: adminForm.nome,
+        email: adminForm.email,
+        telefone: apenasNumeros(adminForm.telefone),
+        cpf: apenasNumeros(adminForm.cpf),
+      };
+      
+      if (adminForm.senha) {
+        payload.senha = adminForm.senha;
+      }
+      
+      if (editingAdmin) {
+        await superAdminService.atualizarAdmin(academiaId, editingAdmin.id, payload);
+        showSuccess('Administrador atualizado com sucesso');
+      } else {
+        await superAdminService.criarAdmin(academiaId, payload);
+        showSuccess('Administrador criado com sucesso');
+      }
+      
+      closeAdminModal();
+      loadAdmins();
+    } catch (error) {
+      showError(error.response?.data?.error || 'Erro ao salvar administrador');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleToggleAdminStatus = async (admin) => {
+    try {
+      if (admin.ativo) {
+        await superAdminService.desativarAdmin(academiaId, admin.id);
+        showSuccess('Administrador desativado com sucesso');
+      } else {
+        await superAdminService.reativarAdmin(academiaId, admin.id);
+        showSuccess('Administrador reativado com sucesso');
+      }
+      loadAdmins();
+    } catch (error) {
+      showError(error.response?.data?.error || 'Erro ao alterar status do administrador');
     }
   };
 
@@ -704,6 +859,82 @@ export default function AcademiaFormScreen() {
             </View>
           )}
 
+          {/* Card: Administradores (apenas edição) */}
+          {isEdit && (
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardHeaderIcon}>
+                  <Feather name="users" size={20} color="#f97316" />
+                </View>
+                <Text style={styles.cardTitle}>Administradores</Text>
+                <TouchableOpacity
+                  style={styles.addButton}
+                  onPress={() => openAdminModal()}
+                  disabled={saving}
+                >
+                  <Feather name="plus" size={16} color="#fff" />
+                  <Text style={styles.addButtonText}>Novo</Text>
+                </TouchableOpacity>
+              </View>
+            
+              <View style={styles.cardBody}>
+                {loadingAdmins ? (
+                  <View style={styles.loadingAdmins}>
+                    <ActivityIndicator size="small" color="#f97316" />
+                    <Text style={styles.loadingAdminsText}>Carregando administradores...</Text>
+                  </View>
+                ) : admins.length === 0 ? (
+                  <View style={styles.emptyAdmins}>
+                    <Feather name="users" size={32} color="#d1d5db" />
+                    <Text style={styles.emptyAdminsText}>Nenhum administrador cadastrado</Text>
+                  </View>
+                ) : (
+                  <View style={styles.adminsList}>
+                    {admins.map((admin) => (
+                      <View key={admin.id} style={styles.adminCard}>
+                        <View style={styles.adminInfo}>
+                          <View style={styles.adminAvatar}>
+                            <Feather name="user" size={18} color="#f97316" />
+                          </View>
+                          <View style={styles.adminDetails}>
+                            <Text style={styles.adminName}>{admin.nome}</Text>
+                            <Text style={styles.adminEmail}>{admin.email}</Text>
+                            {admin.telefone && (
+                              <Text style={styles.adminPhone}>{mascaraTelefone(admin.telefone)}</Text>
+                            )}
+                          </View>
+                          <View style={[styles.adminStatus, admin.ativo ? styles.adminStatusActive : styles.adminStatusInactive]}>
+                            <Text style={[styles.adminStatusText, admin.ativo ? styles.adminStatusTextActive : styles.adminStatusTextInactive]}>
+                              {admin.ativo ? 'Ativo' : 'Inativo'}
+                            </Text>
+                          </View>
+                        </View>
+                        <View style={styles.adminActions}>
+                          <TouchableOpacity
+                            style={styles.adminEditButton}
+                            onPress={() => openAdminModal(admin)}
+                          >
+                            <Feather name="edit-2" size={16} color="#6366f1" />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.adminToggleButton, admin.ativo ? styles.adminDeactivateButton : styles.adminActivateButton]}
+                            onPress={() => handleToggleAdminStatus(admin)}
+                          >
+                            <Feather 
+                              name={admin.ativo ? 'user-x' : 'user-check'} 
+                              size={16} 
+                              color="#fff" 
+                            />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
+
           {/* Botões de Ação */}
           <View style={styles.actionButtons}>
             <TouchableOpacity
@@ -727,6 +958,138 @@ export default function AcademiaFormScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* Modal de Administrador */}
+      <Modal
+        visible={showAdminModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={closeAdminModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <View style={styles.modalHeaderIcon}>
+                <Feather name="user-plus" size={24} color="#f97316" />
+              </View>
+              <Text style={styles.modalTitle}>
+                {editingAdmin ? 'Editar Administrador' : 'Novo Administrador'}
+              </Text>
+              <TouchableOpacity style={styles.modalCloseButton} onPress={closeAdminModal}>
+                <Feather name="x" size={20} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody}>
+              {/* Nome */}
+              <View style={styles.modalInputGroup}>
+                <Text style={styles.modalLabel}>Nome *</Text>
+                <TextInput
+                  style={[styles.modalInput, adminErrors.nome && styles.modalInputError]}
+                  value={adminForm.nome}
+                  onChangeText={(text) => setAdminForm({ ...adminForm, nome: text })}
+                  placeholder="Nome completo"
+                  placeholderTextColor="#9ca3af"
+                />
+                {adminErrors.nome && (
+                  <Text style={styles.modalErrorText}>{adminErrors.nome}</Text>
+                )}
+              </View>
+
+              {/* Email */}
+              <View style={styles.modalInputGroup}>
+                <Text style={styles.modalLabel}>E-mail *</Text>
+                <TextInput
+                  style={[styles.modalInput, adminErrors.email && styles.modalInputError]}
+                  value={adminForm.email}
+                  onChangeText={(text) => setAdminForm({ ...adminForm, email: text })}
+                  placeholder="email@exemplo.com"
+                  placeholderTextColor="#9ca3af"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+                {adminErrors.email && (
+                  <Text style={styles.modalErrorText}>{adminErrors.email}</Text>
+                )}
+              </View>
+
+              {/* Senha */}
+              <View style={styles.modalInputGroup}>
+                <Text style={styles.modalLabel}>
+                  Senha {editingAdmin ? '(deixe em branco para manter)' : '*'}
+                </Text>
+                <TextInput
+                  style={[styles.modalInput, adminErrors.senha && styles.modalInputError]}
+                  value={adminForm.senha}
+                  onChangeText={(text) => setAdminForm({ ...adminForm, senha: text })}
+                  placeholder="Mínimo 6 caracteres"
+                  placeholderTextColor="#9ca3af"
+                  secureTextEntry
+                />
+                {adminErrors.senha && (
+                  <Text style={styles.modalErrorText}>{adminErrors.senha}</Text>
+                )}
+              </View>
+
+              {/* Telefone */}
+              <View style={styles.modalInputGroup}>
+                <Text style={styles.modalLabel}>Telefone</Text>
+                <TextInput
+                  style={[styles.modalInput, adminErrors.telefone && styles.modalInputError]}
+                  value={adminForm.telefone}
+                  onChangeText={(text) => setAdminForm({ ...adminForm, telefone: mascaraTelefone(text) })}
+                  placeholder="(00) 00000-0000"
+                  placeholderTextColor="#9ca3af"
+                  keyboardType="phone-pad"
+                />
+                {adminErrors.telefone && (
+                  <Text style={styles.modalErrorText}>{adminErrors.telefone}</Text>
+                )}
+              </View>
+
+              {/* CPF */}
+              <View style={styles.modalInputGroup}>
+                <Text style={styles.modalLabel}>CPF</Text>
+                <TextInput
+                  style={[styles.modalInput, adminErrors.cpf && styles.modalInputError]}
+                  value={adminForm.cpf}
+                  onChangeText={(text) => setAdminForm({ ...adminForm, cpf: mascaraCPF(text) })}
+                  placeholder="000.000.000-00"
+                  placeholderTextColor="#9ca3af"
+                  keyboardType="numeric"
+                />
+                {adminErrors.cpf && (
+                  <Text style={styles.modalErrorText}>{adminErrors.cpf}</Text>
+                )}
+              </View>
+            </ScrollView>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={closeAdminModal}
+                disabled={saving}
+              >
+                <Text style={styles.modalCancelButtonText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSaveButton, saving && styles.modalSaveButtonDisabled]}
+                onPress={handleSaveAdmin}
+                disabled={saving}
+              >
+                {saving ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <Feather name="check" size={18} color="#fff" />
+                    <Text style={styles.modalSaveButtonText}>Salvar</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </LayoutBase>
   );
 }
@@ -965,6 +1328,248 @@ const styles = StyleSheet.create({
   submitButtonText: {
     fontSize: 15,
     fontWeight: '700',
+    color: '#fff',
+  },
+  // Estilos dos Administradores
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    backgroundColor: '#f97316',
+    borderRadius: 8,
+    marginLeft: 'auto',
+  },
+  addButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  loadingAdmins: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 20,
+  },
+  loadingAdminsText: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  emptyAdmins: {
+    alignItems: 'center',
+    padding: 32,
+  },
+  emptyAdminsText: {
+    fontSize: 14,
+    color: '#9ca3af',
+    marginTop: 12,
+  },
+  adminsList: {
+    gap: 12,
+  },
+  adminCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#f9fafb',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  adminInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  adminAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#fff7ed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  adminDetails: {
+    flex: 1,
+  },
+  adminName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  adminEmail: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  adminPhone: {
+    fontSize: 12,
+    color: '#9ca3af',
+    marginTop: 2,
+  },
+  adminStatus: {
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+  },
+  adminStatusActive: {
+    backgroundColor: '#d1fae5',
+  },
+  adminStatusInactive: {
+    backgroundColor: '#fee2e2',
+  },
+  adminStatusText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  adminStatusTextActive: {
+    color: '#065f46',
+  },
+  adminStatusTextInactive: {
+    color: '#991b1b',
+  },
+  adminActions: {
+    flexDirection: 'row',
+    gap: 8,
+    marginLeft: 12,
+  },
+  adminEditButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: '#eef2ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  adminToggleButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  adminDeactivateButton: {
+    backgroundColor: '#ef4444',
+  },
+  adminActivateButton: {
+    backgroundColor: '#22c55e',
+  },
+  // Estilos do Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContainer: {
+    width: '100%',
+    maxWidth: 500,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    maxHeight: '90%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  modalHeaderIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#fff7ed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  modalTitle: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  modalCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBody: {
+    padding: 20,
+    maxHeight: 400,
+  },
+  modalInputGroup: {
+    marginBottom: 16,
+  },
+  modalLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  modalInput: {
+    height: 48,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    fontSize: 15,
+    color: '#111827',
+    backgroundColor: '#fff',
+  },
+  modalInputError: {
+    borderColor: '#ef4444',
+  },
+  modalErrorText: {
+    fontSize: 12,
+    color: '#ef4444',
+    marginTop: 4,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    gap: 12,
+    padding: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  modalCancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  modalCancelButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  modalSaveButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    backgroundColor: '#f97316',
+    borderRadius: 10,
+  },
+  modalSaveButtonDisabled: {
+    backgroundColor: '#fdba74',
+  },
+  modalSaveButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
     color: '#fff',
   },
 });
