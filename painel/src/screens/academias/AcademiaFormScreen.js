@@ -54,12 +54,14 @@ export default function AcademiaFormScreen() {
   const [loadingAdmins, setLoadingAdmins] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [editingAdmin, setEditingAdmin] = useState(null);
+  const [papeisList, setPapeisList] = useState([]);
   const [adminForm, setAdminForm] = useState({
     nome: '',
     email: '',
     senha: '',
     telefone: '',
     cpf: '',
+    papeis: [3], // Admin é obrigatório
   });
   const [adminErrors, setAdminErrors] = useState({});
   
@@ -84,6 +86,10 @@ export default function AcademiaFormScreen() {
   });
 
   useEffect(() => {
+    // Carregar papéis padrão PRIMEIRO
+    loadPapeisPadrao();
+    
+    // Depois verificar acesso
     checkAccess();
   }, []);
 
@@ -148,13 +154,46 @@ export default function AcademiaFormScreen() {
     }
   };
 
+  const loadPapeisPadrao = () => {
+    // Papéis padrão do sistema
+    const papeisPadrao = [
+      {
+        id: 1,
+        nome: 'Aluno',
+        descricao: 'Pode acessar o app mobile e fazer check-in'
+      },
+      {
+        id: 2,
+        nome: 'Professor',
+        descricao: 'Pode marcar presença e gerenciar turmas'
+      },
+      {
+        id: 3,
+        nome: 'Admin',
+        descricao: 'Pode acessar o painel administrativo'
+      }
+    ];
+    setPapeisList(papeisPadrao);
+  };
+
+  const loadPapeis = async () => {
+    // Usar papéis padrão ao abrir modal
+    loadPapeisPadrao();
+  };
+
   const loadAdmins = async () => {
     if (!academiaId) return;
     
     try {
       setLoadingAdmins(true);
       const response = await superAdminService.listarAdmins(academiaId);
-      setAdmins(response.admins || response || []);
+      const adminsList = response.admins || response || [];
+      
+      // Log para debug
+      console.log('👥 Admins carregados:', adminsList);
+      console.log('📋 Papéis disponíveis:', papeisList);
+      
+      setAdmins(adminsList);
     } catch (error) {
       console.error('Erro ao carregar admins:', error);
       showError('Erro ao carregar lista de administradores');
@@ -166,12 +205,19 @@ export default function AcademiaFormScreen() {
   const openAdminModal = (admin = null) => {
     if (admin) {
       setEditingAdmin(admin);
+      
+      // Extrair IDs dos papéis (se vierem como objetos ou como IDs)
+      const papelIds = admin.papeis
+        ? admin.papeis.map(p => typeof p === 'object' ? p.id : p)
+        : [3];
+      
       setAdminForm({
         nome: admin.nome || '',
         email: admin.email || '',
         senha: '',
         telefone: admin.telefone ? mascaraTelefone(admin.telefone) : '',
         cpf: admin.cpf ? mascaraCPF(admin.cpf) : '',
+        papeis: papelIds,
       });
     } else {
       setEditingAdmin(null);
@@ -181,6 +227,7 @@ export default function AcademiaFormScreen() {
         senha: '',
         telefone: '',
         cpf: '',
+        papeis: [3],
       });
     }
     setAdminErrors({});
@@ -196,6 +243,7 @@ export default function AcademiaFormScreen() {
       senha: '',
       telefone: '',
       cpf: '',
+      papeis: [3],
     });
     setAdminErrors({});
   };
@@ -245,6 +293,7 @@ export default function AcademiaFormScreen() {
         email: adminForm.email,
         telefone: apenasNumeros(adminForm.telefone),
         cpf: apenasNumeros(adminForm.cpf),
+        papeis: adminForm.papeis,
       };
       
       if (adminForm.senha) {
@@ -898,6 +947,56 @@ export default function AcademiaFormScreen() {
                           </View>
                           <View style={styles.adminDetails}>
                             <Text style={styles.adminName}>{admin.nome}</Text>
+                            <View style={styles.adminPapeis}>
+                              {admin.papeis && admin.papeis.length > 0 ? (
+                                admin.papeis.map((papel) => {
+                                  // Verificar se papel é um objeto ou um ID
+                                  const papelId = typeof papel === 'object' ? papel.id : papel;
+                                  const papelNome = typeof papel === 'object' ? papel.nome : null;
+                                  
+                                  // Se papel é um objeto, usar o nome direto
+                                  if (papelNome) {
+                                    return (
+                                      <View key={papelId} style={styles.adminPapelBadge}>
+                                        <Text style={styles.adminPapelText}>{papelNome}</Text>
+                                      </View>
+                                    );
+                                  }
+                                  
+                                  // Se papel é um ID, procurar no papeisList
+                                  if (papeisList.length > 0) {
+                                    const papelObj = papeisList.find(p => p.id === papelId);
+                                    if (papelObj) {
+                                      return (
+                                        <View key={papelId} style={styles.adminPapelBadge}>
+                                          <Text style={styles.adminPapelText}>{papelObj.nome}</Text>
+                                        </View>
+                                      );
+                                    }
+                                  } else {
+                                    // Fallback com mapeamento padrão
+                                    const papelMap = {
+                                      1: 'Aluno',
+                                      2: 'Professor',
+                                      3: 'Admin'
+                                    };
+                                    const nomePadrao = papelMap[papelId];
+                                    if (nomePadrao) {
+                                      return (
+                                        <View key={papelId} style={styles.adminPapelBadge}>
+                                          <Text style={styles.adminPapelText}>{nomePadrao}</Text>
+                                        </View>
+                                      );
+                                    }
+                                  }
+                                  return null;
+                                })
+                              ) : (
+                                <View style={styles.adminPapelBadge}>
+                                  <Text style={styles.adminPapelText}>Admin</Text>
+                                </View>
+                              )}
+                            </View>
                             <Text style={styles.adminEmail}>{admin.email}</Text>
                             {admin.telefone && (
                               <Text style={styles.adminPhone}>{mascaraTelefone(admin.telefone)}</Text>
@@ -1061,6 +1160,48 @@ export default function AcademiaFormScreen() {
                 {adminErrors.cpf && (
                   <Text style={styles.modalErrorText}>{adminErrors.cpf}</Text>
                 )}
+              </View>
+
+              {/* Papéis */}
+              <View style={styles.modalInputGroup}>
+                <Text style={styles.modalLabel}>Papéis</Text>
+                <View style={styles.papelCheckboxes}>
+                  {papeisList.map((papel) => (
+                    <Pressable
+                      key={papel.id}
+                      style={styles.papelCheckboxWrapper}
+                      onPress={() => {
+                        if (papel.id === 3) {
+                          // Admin é obrigatório, não permitir desmarcar
+                          return;
+                        }
+                        const newPapeis = adminForm.papeis.includes(papel.id)
+                          ? adminForm.papeis.filter(p => p !== papel.id)
+                          : [...adminForm.papeis, papel.id];
+                        setAdminForm({ ...adminForm, papeis: newPapeis });
+                      }}
+                    >
+                      <View
+                        style={[
+                          styles.papelCheckbox,
+                          adminForm.papeis.includes(papel.id) && styles.papelCheckboxChecked,
+                            papel.id === 3 && styles.papelCheckboxDisabled,
+                          ]}
+                        >
+                          {adminForm.papeis.includes(papel.id) && (
+                            <Feather name="check" size={14} color="#fff" />
+                          )}
+                        </View>
+                        <View style={styles.papelCheckboxLabel}>
+                          <Text style={styles.papelCheckboxLabelText}>{papel.nome}</Text>
+                          <Text style={styles.papelCheckboxLabelDesc}>{papel.descricao}</Text>
+                        </View>
+                        {papel.id === 3 && (
+                          <Text style={styles.papelRequired}>(obrigatório)</Text>
+                        )}
+                      </Pressable>
+                    ))}
+                </View>
               </View>
             </ScrollView>
 
@@ -1571,5 +1712,73 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#fff',
+  },
+  // Estilos para Papéis
+  adminPapeis: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 8,
+  },
+  adminPapelBadge: {
+    backgroundColor: '#dbeafe',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  adminPapelText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#0369a1',
+  },
+  papelCheckboxes: {
+    gap: 12,
+  },
+  papelCheckboxWrapper: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    backgroundColor: '#f9fafb',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  papelCheckbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#d1d5db',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    marginTop: 2,
+  },
+  papelCheckboxChecked: {
+    backgroundColor: '#f97316',
+    borderColor: '#f97316',
+  },
+  papelCheckboxDisabled: {
+    backgroundColor: '#e5e7eb',
+    borderColor: '#d1d5db',
+  },
+  papelCheckboxLabel: {
+    flex: 1,
+  },
+  papelCheckboxLabelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  papelCheckboxLabelDesc: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  papelRequired: {
+    fontSize: 11,
+    color: '#9ca3af',
+    fontStyle: 'italic',
   },
 });

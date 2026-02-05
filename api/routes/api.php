@@ -726,6 +726,9 @@ return function ($app) {
     // Rotas Super Admin (role_id = 3)
     // ========================================
     $app->group('/superadmin', function ($group) {
+        // Listar papéis disponíveis (Admin e Super Admin)
+        $group->get('/papeis', [SuperAdminController::class, 'listarPapeis']);
+        
         // Gerenciar academias
         $group->get('/academias', [SuperAdminController::class, 'listarAcademias']);
         $group->get('/academias/{id}', [SuperAdminController::class, 'buscarAcademia']);

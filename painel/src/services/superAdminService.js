@@ -110,6 +110,55 @@ export const superAdminService = {
   },
 
   // ========================================
+  // Gestão de Papéis
+  // ========================================
+
+  /**
+   * Listar papéis disponíveis
+   */
+  async listarPapeis() {
+    try {
+      console.log('📋 Listando papéis disponíveis');
+      try {
+        const response = await api.get('/superadmin/papeis');
+        console.log('✅ Papéis carregados:', response.data);
+        return response.data;
+      } catch (error1) {
+        try {
+          const response = await api.get('/papeis');
+          console.log('✅ Papéis carregados:', response.data);
+          return response.data;
+        } catch (error2) {
+          // Fallback: retornar papéis padrão hardcoded
+          console.warn('⚠️ Usando papéis padrão (API não disponível)');
+          return {
+            papeis: [
+              {
+                id: 1,
+                nome: 'Aluno',
+                descricao: 'Pode acessar o app mobile e fazer check-in'
+              },
+              {
+                id: 2,
+                nome: 'Professor',
+                descricao: 'Pode marcar presença e gerenciar turmas'
+              },
+              {
+                id: 3,
+                nome: 'Admin',
+                descricao: 'Pode acessar o painel administrativo'
+              }
+            ]
+          };
+        }
+      }
+    } catch (error) {
+      console.error('❌ Erro ao listar papéis:', error);
+      throw error.response?.data || error;
+    }
+  },
+
+  // ========================================
   // Gestão de Admins da Academia
   // ========================================
 

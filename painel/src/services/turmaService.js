@@ -1,9 +1,41 @@
 import api from './api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Função para decodificar JWT e extrair tenant_id
+const getTokenInfo = async () => {
+  try {
+    const token = await AsyncStorage.getItem('@appcheckin:token');
+    if (!token) return { tenantId: null, isSuperAdmin: false };
+    
+    // JWT format: header.payload.signature
+    const parts = token.split('.');
+    if (parts.length !== 3) return { tenantId: null, isSuperAdmin: false };
+    
+    // Decodificar payload (base64url)
+    const payload = JSON.parse(atob(parts[1]));
+    return {
+      tenantId: payload.tenant_id || payload.academy_id || null,
+      isSuperAdmin: payload.is_super_admin === true
+    };
+  } catch (error) {
+    console.error('Erro ao decodificar token:', error);
+    return { tenantId: null, isSuperAdmin: false };
+  }
+};
 
 export const turmaService = {
   // Listar turmas - com suporte a filtro por data
   async listar(data = null, apenasAtivas = false) {
     try {
+      const { tenantId, isSuperAdmin } = await getTokenInfo();
+      
+      console.log(`🔐 [turmaService] Token info: tenantId=${tenantId}, isSuperAdmin=${isSuperAdmin}`);
+      
+      // Se super admin sem tenant selecionado, não pode listar turmas
+      if (isSuperAdmin && !tenantId) {
+        throw new Error('Super admin precisa selecionar uma academia antes de visualizar turmas');
+      }
+      
       const params = {
         apenas_ativas: apenasAtivas
       };
@@ -13,6 +45,13 @@ export const turmaService = {
         params.data = data;
       }
       
+      // Adicionar tenant_id se disponível
+      if (tenantId) {
+        params.tenant_id = tenantId;
+        console.log(`📋 [turmaService] Usando tenant_id: ${tenantId}`);
+      }
+      
+      console.log(`🔍 [turmaService] Requisição GET /admin/turmas com params:`, params);
       const response = await api.get('/admin/turmas', { params });
       // Retorna objeto com dia e turmas
       return {
@@ -20,7 +59,7 @@ export const turmaService = {
         turmas: response.data.turmas || []
       };
     } catch (error) {
-      console.error('Erro ao listar turmas:', error);
+      console.error('❌ Erro ao listar turmas:', error?.response?.data || error?.message || error);
       throw error;
     }
   },

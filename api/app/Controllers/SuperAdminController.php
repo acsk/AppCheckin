@@ -455,12 +455,35 @@ class SuperAdminController
         $user = $this->usuarioModel->findById($userId);
         $tenantId = (int) $args['tenantId'];
 
-        // Verificar se é super admin
-        if (($user['papel_id'] ?? null) != 4) {
+        // Verificar se é super admin (4) ou admin (3)
+        $papelId = $user['papel_id'] ?? null;
+        if (!in_array($papelId, [3, 4])) {
             $response->getBody()->write(json_encode([
-                'error' => 'Acesso negado. Apenas Super Admin pode criar admins'
+                'error' => 'Acesso negado. Apenas Admin ou Super Admin podem criar admins'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+
+        // Se for Admin (3), verificar se pertence a esta academia
+        if ($papelId == 3) {
+            $db = require __DIR__ . '/../../config/database.php';
+            $stmt = $db->prepare("
+                SELECT COUNT(*) as count
+                FROM tenant_usuario_papel
+                WHERE tenant_id = :tenant_id
+                  AND usuario_id = :usuario_id
+                  AND papel_id = 3
+                  AND ativo = 1
+            ");
+            $stmt->execute(['tenant_id' => $tenantId, 'usuario_id' => $userId]);
+            $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+            
+            if ($result['count'] == 0) {
+                $response->getBody()->write(json_encode([
+                    'error' => 'Você não tem permissão para criar admins nesta academia'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+            }
         }
 
         // Verificar se tenant existe
@@ -492,6 +515,18 @@ class SuperAdminController
             $errors[] = 'Email já cadastrado';
         }
 
+        // Validar papéis (deve ter pelo menos Admin)
+        $papeis = isset($data['papeis']) && is_array($data['papeis']) ? $data['papeis'] : [3];
+        if (!in_array(3, $papeis)) {
+            $errors[] = 'Usuário deve ter pelo menos o papel de Admin';
+        }
+        // Validar que os papéis sejam válidos (1=aluno, 2=professor, 3=admin)
+        foreach ($papeis as $papel) {
+            if (!in_array($papel, [1, 2, 3])) {
+                $errors[] = 'Papel inválido: ' . $papel . '. Valores válidos: 1 (aluno), 2 (professor), 3 (admin)';
+            }
+        }
+
         if (!empty($errors)) {
             $response->getBody()->write(json_encode(['errors' => $errors]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
@@ -504,7 +539,7 @@ class SuperAdminController
             'senha' => $data['senha'], // Model já faz o hash automaticamente
             'telefone' => isset($data['telefone']) ? preg_replace('/[^0-9]/', '', $data['telefone']) : null,
             'cpf' => isset($data['cpf']) ? preg_replace('/[^0-9]/', '', $data['cpf']) : null,
-            'papel_id' => 3 // Admin - evita criar registro de aluno
+            'papel_id' => 3 // Admin - evita criar registro de aluno automaticamente
         ];
 
         $adminId = $this->usuarioModel->create($adminData, $tenantId);
@@ -516,14 +551,51 @@ class SuperAdminController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
 
-        // Criar papel do admin em tenant_usuario_papel
+        // Criar múltiplos papéis em tenant_usuario_papel
         $db = require __DIR__ . '/../../config/database.php';
-        $stmtPapel = $db->prepare("
-            INSERT INTO tenant_usuario_papel (tenant_id, usuario_id, papel_id, ativo)
-            VALUES (:tenant_id, :usuario_id, 3, 1)
-            ON DUPLICATE KEY UPDATE papel_id = 3, ativo = 1
-        ");
-        $stmtPapel->execute(['tenant_id' => $tenantId, 'usuario_id' => $adminId]);
+        foreach ($papeis as $papelId) {
+            $stmtPapel = $db->prepare("
+                INSERT INTO tenant_usuario_papel (tenant_id, usuario_id, papel_id, ativo)
+                VALUES (:tenant_id, :usuario_id, :papel_id, 1)
+                ON DUPLICATE KEY UPDATE ativo = 1
+            ");
+            $stmtPapel->execute([
+                'tenant_id' => $tenantId,
+                'usuario_id' => $adminId,
+                'papel_id' => $papelId
+            ]);
+        }
+
+        // Criar registros nas tabelas específicas conforme papéis
+        // Se for professor (papel_id = 2)
+        if (in_array(2, $papeis)) {
+            $stmtProf = $db->prepare("
+                INSERT INTO professores (usuario_id, nome, cpf, email, ativo)
+                VALUES (:usuario_id, :nome, :cpf, :email, 1)
+                ON DUPLICATE KEY UPDATE nome = VALUES(nome), email = VALUES(email)
+            ");
+            $stmtProf->execute([
+                'usuario_id' => $adminId,
+                'nome' => mb_strtoupper($data['nome']),
+                'cpf' => isset($data['cpf']) ? preg_replace('/[^0-9]/', '', $data['cpf']) : null,
+                'email' => $data['email']
+            ]);
+        }
+
+        // Se for aluno (papel_id = 1)
+        if (in_array(1, $papeis)) {
+            $stmtAluno = $db->prepare("
+                INSERT INTO alunos (usuario_id, nome, cpf, telefone, ativo)
+                VALUES (:usuario_id, :nome, :cpf, :telefone, 1)
+                ON DUPLICATE KEY UPDATE nome = VALUES(nome)
+            ");
+            $stmtAluno->execute([
+                'usuario_id' => $adminId,
+                'nome' => mb_strtoupper($data['nome']),
+                'cpf' => isset($data['cpf']) ? preg_replace('/[^0-9]/', '', $data['cpf']) : null,
+                'telefone' => isset($data['telefone']) ? preg_replace('/[^0-9]/', '', $data['telefone']) : null
+            ]);
+        }
 
         // Vincular admin ao tenant
         $this->usuarioModel->vincularTenant($adminId, $tenantId);
@@ -536,12 +608,28 @@ class SuperAdminController
                 'id' => $admin['id'],
                 'nome' => $admin['nome'],
                 'email' => $admin['email'],
-                'papel_id' => $admin['papel_id'] ?? 3,
+                'papeis' => $papeis,
                 'tenant' => $tenant
             ]
-        ]));
+        ], JSON_UNESCAPED_UNICODE));
 
         return $response->withHeader('Content-Type', 'application/json')->withStatus(201);
+    }
+
+    /**
+     * Listar papéis disponíveis
+     * GET /papeis
+     */
+    public function listarPapeis(Request $request, Response $response): Response
+    {
+        $papeis = [
+            ['id' => 1, 'nome' => 'Aluno', 'descricao' => 'Pode acessar o app mobile e fazer check-in'],
+            ['id' => 2, 'nome' => 'Professor', 'descricao' => 'Pode marcar presença e gerenciar turmas'],
+            ['id' => 3, 'nome' => 'Admin', 'descricao' => 'Pode acessar o painel administrativo']
+        ];
+
+        $response->getBody()->write(json_encode(['papeis' => $papeis], JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json');
     }
 
     /**
@@ -554,12 +642,35 @@ class SuperAdminController
         $user = $this->usuarioModel->findById($userId);
         $tenantId = (int) $args['tenantId'];
 
-        // Verificar se é super admin
-        if (($user['papel_id'] ?? null) != 4) {
+        // Verificar se é super admin (4) ou admin (3)
+        $papelId = $user['papel_id'] ?? null;
+        if (!in_array($papelId, [3, 4])) {
             $response->getBody()->write(json_encode([
-                'error' => 'Acesso negado. Apenas Super Admin pode listar admins'
+                'error' => 'Acesso negado. Apenas Admin ou Super Admin podem listar admins'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+
+        // Se for Admin (3), verificar se pertence a esta academia
+        if ($papelId == 3) {
+            $db = require __DIR__ . '/../../config/database.php';
+            $stmt = $db->prepare("
+                SELECT COUNT(*) as count
+                FROM tenant_usuario_papel
+                WHERE tenant_id = :tenant_id
+                  AND usuario_id = :usuario_id
+                  AND papel_id = 3
+                  AND ativo = 1
+            ");
+            $stmt->execute(['tenant_id' => $tenantId, 'usuario_id' => $userId]);
+            $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+            
+            if ($result['count'] == 0) {
+                $response->getBody()->write(json_encode([
+                    'error' => 'Você não tem permissão para acessar esta academia'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+            }
         }
 
         // Verificar se tenant existe
@@ -574,16 +685,46 @@ class SuperAdminController
         // Buscar todos os admins (papel_id = 3) da academia
         $db = require __DIR__ . '/../../config/database.php';
         $stmt = $db->prepare("
-            SELECT u.id, u.nome, u.email, u.telefone, u.cpf,
-                   tup.ativo, tup.created_at as vinculado_em
+            SELECT DISTINCT u.id, u.nome, u.email, u.telefone, u.cpf,
+                   MAX(tup.ativo) as ativo, MIN(tup.created_at) as vinculado_em
             FROM usuarios u
             INNER JOIN tenant_usuario_papel tup ON u.id = tup.usuario_id
             WHERE tup.tenant_id = :tenant_id
               AND tup.papel_id = 3
+            GROUP BY u.id, u.nome, u.email, u.telefone, u.cpf
             ORDER BY u.nome ASC
         ");
         $stmt->execute(['tenant_id' => $tenantId]);
         $admins = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        // Mapeamento de papéis
+        $papeisMapa = [
+            1 => 'Aluno',
+            2 => 'Professor',
+            3 => 'Admin'
+        ];
+
+        // Buscar papéis de cada admin
+        foreach ($admins as &$admin) {
+            $stmtPapeis = $db->prepare("
+                SELECT papel_id
+                FROM tenant_usuario_papel
+                WHERE tenant_id = :tenant_id
+                  AND usuario_id = :usuario_id
+                  AND ativo = 1
+                ORDER BY papel_id DESC
+            ");
+            $stmtPapeis->execute(['tenant_id' => $tenantId, 'usuario_id' => $admin['id']]);
+            $papelIds = array_column($stmtPapeis->fetchAll(\PDO::FETCH_ASSOC), 'papel_id');
+            
+            // Montar array com id e nome dos papéis
+            $admin['papeis'] = array_map(function($papelId) use ($papeisMapa) {
+                return [
+                    'id' => $papelId,
+                    'nome' => $papeisMapa[$papelId] ?? 'Desconhecido'
+                ];
+            }, $papelIds);
+        }
 
         $response->getBody()->write(json_encode([
             'academia' => $tenant,
@@ -606,12 +747,35 @@ class SuperAdminController
         $tenantId = (int) $args['tenantId'];
         $adminId = (int) $args['adminId'];
 
-        // Verificar se é super admin
-        if (($user['papel_id'] ?? null) != 4) {
+        // Verificar se é super admin (4) ou admin (3)
+        $papelId = $user['papel_id'] ?? null;
+        if (!in_array($papelId, [3, 4])) {
             $response->getBody()->write(json_encode([
-                'error' => 'Acesso negado. Apenas Super Admin pode atualizar admins'
+                'error' => 'Acesso negado. Apenas Admin ou Super Admin podem atualizar admins'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+
+        // Se for Admin (3), verificar se pertence a esta academia
+        if ($papelId == 3) {
+            $db = require __DIR__ . '/../../config/database.php';
+            $stmt = $db->prepare("
+                SELECT COUNT(*) as count
+                FROM tenant_usuario_papel
+                WHERE tenant_id = :tenant_id
+                  AND usuario_id = :usuario_id
+                  AND papel_id = 3
+                  AND ativo = 1
+            ");
+            $stmt->execute(['tenant_id' => $tenantId, 'usuario_id' => $userId]);
+            $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+            
+            if ($result['count'] == 0) {
+                $response->getBody()->write(json_encode([
+                    'error' => 'Você não tem permissão para atualizar admins nesta academia'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+            }
         }
 
         // Verificar se tenant existe
@@ -695,7 +859,96 @@ class SuperAdminController
             $this->usuarioModel->update($adminId, $updateData);
         }
 
+        // Atualizar papéis se fornecido
+        if (isset($data['papeis']) && is_array($data['papeis'])) {
+            $papeis = $data['papeis'];
+            
+            // Validar que Admin (3) está presente
+            if (!in_array(3, $papeis)) {
+                $response->getBody()->write(json_encode([
+                    'errors' => ['Usuário deve manter pelo menos o papel de Admin']
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+            }
+
+            // Remover papéis antigos
+            $db = require __DIR__ . '/../../config/database.php';
+            $stmtDelete = $db->prepare("
+                DELETE FROM tenant_usuario_papel
+                WHERE tenant_id = :tenant_id
+                  AND usuario_id = :usuario_id
+            ");
+            $stmtDelete->execute(['tenant_id' => $tenantId, 'usuario_id' => $adminId]);
+
+            // Adicionar novos papéis
+            foreach ($papeis as $papelId) {
+                if (!in_array($papelId, [1, 2, 3])) continue;
+                
+                $stmtPapel = $db->prepare("
+                    INSERT INTO tenant_usuario_papel (tenant_id, usuario_id, papel_id, ativo)
+                    VALUES (:tenant_id, :usuario_id, :papel_id, 1)
+                ");
+                $stmtPapel->execute([
+                    'tenant_id' => $tenantId,
+                    'usuario_id' => $adminId,
+                    'papel_id' => $papelId
+                ]);
+            }
+
+            // Criar/remover registros nas tabelas específicas
+            // Professor
+            if (in_array(2, $papeis)) {
+                $stmtProf = $db->prepare("
+                    INSERT INTO professores (usuario_id, nome, cpf, email, ativo)
+                    VALUES (:usuario_id, :nome, :cpf, :email, 1)
+                    ON DUPLICATE KEY UPDATE nome = VALUES(nome), email = VALUES(email), ativo = VALUES(ativo)
+                ");
+                $stmtProf->execute([
+                    'usuario_id' => $adminId,
+                    'nome' => $updateData['nome'] ?? $admin['nome'],
+                    'cpf' => $updateData['cpf'] ?? $admin['cpf'],
+                    'email' => $updateData['email'] ?? $admin['email']
+                ]);
+            } else {
+                // Desativar professor se papel foi removido
+                $db->prepare("UPDATE professores SET ativo = 0 WHERE usuario_id = :usuario_id")
+                   ->execute(['usuario_id' => $adminId]);
+            }
+
+            // Aluno
+            if (in_array(1, $papeis)) {
+                $stmtAluno = $db->prepare("
+                    INSERT INTO alunos (usuario_id, nome, cpf, telefone, ativo)
+                    VALUES (:usuario_id, :nome, :cpf, :telefone, 1)
+                    ON DUPLICATE KEY UPDATE nome = VALUES(nome), ativo = VALUES(ativo)
+                ");
+                $stmtAluno->execute([
+                    'usuario_id' => $adminId,
+                    'nome' => $updateData['nome'] ?? $admin['nome'],
+                    'cpf' => $updateData['cpf'] ?? $admin['cpf'],
+                    'telefone' => $updateData['telefone'] ?? $admin['telefone']
+                ]);
+            } else {
+                // Desativar aluno se papel foi removido
+                $db->prepare("UPDATE alunos SET ativo = 0 WHERE usuario_id = :usuario_id")
+                   ->execute(['usuario_id' => $adminId]);
+            }
+        }
+
         $adminAtualizado = $this->usuarioModel->findById($adminId);
+        
+        // Buscar papéis atualizados
+        $db = require __DIR__ . '/../../config/database.php';
+        $stmtPapeis = $db->prepare("
+            SELECT papel_id
+            FROM tenant_usuario_papel
+            WHERE tenant_id = :tenant_id
+              AND usuario_id = :usuario_id
+              AND ativo = 1
+            ORDER BY papel_id DESC
+        ");
+        $stmtPapeis->execute(['tenant_id' => $tenantId, 'usuario_id' => $adminId]);
+        $adminAtualizado['papeis'] = array_column($stmtPapeis->fetchAll(\PDO::FETCH_ASSOC), 'papel_id');
 
         $response->getBody()->write(json_encode([
             'message' => 'Admin atualizado com sucesso',
@@ -716,12 +969,35 @@ class SuperAdminController
         $tenantId = (int) $args['tenantId'];
         $adminId = (int) $args['adminId'];
 
-        // Verificar se é super admin
-        if (($user['papel_id'] ?? null) != 4) {
+        // Verificar se é super admin (4) ou admin (3)
+        $papelId = $user['papel_id'] ?? null;
+        if (!in_array($papelId, [3, 4])) {
             $response->getBody()->write(json_encode([
-                'error' => 'Acesso negado. Apenas Super Admin pode desativar admins'
+                'error' => 'Acesso negado. Apenas Admin ou Super Admin podem desativar admins'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+
+        // Se for Admin (3), verificar se pertence a esta academia
+        if ($papelId == 3) {
+            $db = require __DIR__ . '/../../config/database.php';
+            $stmt = $db->prepare("
+                SELECT COUNT(*) as count
+                FROM tenant_usuario_papel
+                WHERE tenant_id = :tenant_id
+                  AND usuario_id = :usuario_id
+                  AND papel_id = 3
+                  AND ativo = 1
+            ");
+            $stmt->execute(['tenant_id' => $tenantId, 'usuario_id' => $userId]);
+            $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+            
+            if ($result['count'] == 0) {
+                $response->getBody()->write(json_encode([
+                    'error' => 'Você não tem permissão para desativar admins nesta academia'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+            }
         }
 
         // Verificar se tenant existe
@@ -787,12 +1063,35 @@ class SuperAdminController
         $tenantId = (int) $args['tenantId'];
         $adminId = (int) $args['adminId'];
 
-        // Verificar se é super admin
-        if (($user['papel_id'] ?? null) != 4) {
+        // Verificar se é super admin (4) ou admin (3)
+        $papelId = $user['papel_id'] ?? null;
+        if (!in_array($papelId, [3, 4])) {
             $response->getBody()->write(json_encode([
-                'error' => 'Acesso negado. Apenas Super Admin pode reativar admins'
+                'error' => 'Acesso negado. Apenas Admin ou Super Admin podem reativar admins'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+
+        // Se for Admin (3), verificar se pertence a esta academia
+        if ($papelId == 3) {
+            $db = require __DIR__ . '/../../config/database.php';
+            $stmt = $db->prepare("
+                SELECT COUNT(*) as count
+                FROM tenant_usuario_papel
+                WHERE tenant_id = :tenant_id
+                  AND usuario_id = :usuario_id
+                  AND papel_id = 3
+                  AND ativo = 1
+            ");
+            $stmt->execute(['tenant_id' => $tenantId, 'usuario_id' => $userId]);
+            $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+            
+            if ($result['count'] == 0) {
+                $response->getBody()->write(json_encode([
+                    'error' => 'Você não tem permissão para reativar admins nesta academia'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+            }
         }
 
         // Verificar se tenant existe

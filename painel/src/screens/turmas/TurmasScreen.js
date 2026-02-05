@@ -154,6 +154,8 @@ export default function TurmasScreen() {
   const carregarDados = async () => {
     try {
       setLoading(true);
+      console.log(`📅 [carregarDados] Iniciando carregamento para data: ${dataSelecionada}`);
+      
       const response = await turmaService.listar(dataSelecionada);
       
       const { dia, turmas: turmasData } = response;
@@ -181,8 +183,42 @@ export default function TurmasScreen() {
       setTurmasFiltradas(turmasData || []);
       setSearchText('');
     } catch (error) {
-      showError('Erro ao carregar turmas');
-      console.error(error);
+      console.error('❌ [carregarDados] Erro completo:', error);
+      
+      // Detectar tipo de erro e mensagem
+      let mensagemErro = 'Erro ao carregar turmas';
+      
+      // Verificar mensagem de erro do serviço (super admin sem tenant)
+      if (error?.message?.includes('Super admin')) {
+        mensagemErro = 'Super admin precisa selecionar uma academia antes de visualizar turmas';
+        console.warn('⚠️ Super admin sem tenant selecionado');
+      } 
+      // Erro do response da API
+      else if (error?.response?.data?.message) {
+        mensagemErro = error.response.data.message;
+      } 
+      else if (error?.response?.data?.error) {
+        mensagemErro = error.response.data.error;
+      } 
+      else if (error?.response?.status === 400) {
+        mensagemErro = 'Requisição inválida - verifique se sua academia foi selecionada corretamente';
+      }
+      else if (error?.response?.status === 401) {
+        mensagemErro = 'Sessão expirada - faça login novamente';
+      }
+      else if (error?.response?.status === 403) {
+        mensagemErro = 'Você não tem permissão para acessar turmas';
+      }
+      else if (error?.message) {
+        mensagemErro = error.message;
+      }
+      
+      console.error(`❌ [carregarDados] Mensagem final: ${mensagemErro}`);
+      showError(mensagemErro);
+      
+      // Limpar dados ao erro
+      setTurmas([]);
+      setTurmasFiltradas([]);
     } finally {
       setLoading(false);
     }

@@ -43,39 +43,69 @@ class Professor
 
     /**
      * Listar todos os professores de um tenant
-     * Usa tenant_usuario_papel com papel_id=2 (professor)
+     * Busca professores de duas fontes:
+     * 1. Tabela professores (cadastro tradicional)
+     * 2. Usuários com papel Professor (papel_id=2) - ex: admins que também são professores
      */
     public function listarPorTenant(int $tenantId, bool $apenasAtivos = false): array
     {
-        $sql = "SELECT p.id, p.nome, p.cpf, p.email, p.foto_url, p.ativo, p.usuario_id,
-                       u.telefone,
-                       tup.ativo as vinculo_ativo,
-                       (SELECT COUNT(*) FROM turmas t WHERE t.professor_id = p.id AND t.ativo = 1) as turmas_count
-                FROM professores p 
-                INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = p.usuario_id
-                    AND tup.tenant_id = :tenant_id
-                    AND tup.papel_id = 2
-                LEFT JOIN usuarios u ON u.id = p.usuario_id";
+        // Buscar todos os usuários com papel_id = 2 (Professor) neste tenant
+        $sql = "SELECT DISTINCT
+                    COALESCE(p.id, 0) as id,
+                    UPPER(COALESCE(p.nome, u.nome)) as nome,
+                    COALESCE(p.cpf, u.cpf) as cpf,
+                    COALESCE(p.email, u.email) as email,
+                    p.foto_url,
+                    COALESCE(p.ativo, 1) as ativo,
+                    u.id as usuario_id,
+                    u.telefone,
+                    tup.ativo as vinculo_ativo,
+                    COALESCE(
+                        (SELECT COUNT(*) FROM turmas t WHERE t.professor_id = p.id AND t.ativo = 1),
+                        0
+                    ) as turmas_count,
+                    CASE 
+                        WHEN p.id IS NOT NULL THEN 'professores'
+                        ELSE 'usuarios'
+                    END as origem
+                FROM tenant_usuario_papel tup
+                INNER JOIN usuarios u ON u.id = tup.usuario_id
+                LEFT JOIN professores p ON p.usuario_id = u.id
+                WHERE tup.tenant_id = :tenant_id
+                  AND tup.papel_id = 2";
         
         if ($apenasAtivos) {
-            $sql .= " WHERE p.ativo = 1 AND tup.ativo = 1";
+            $sql .= " AND tup.ativo = 1 AND (p.ativo IS NULL OR p.ativo = 1)";
         }
         
-        $sql .= " ORDER BY p.nome ASC";
+        $sql .= " ORDER BY nome ASC";
         
         $stmt = $this->db->prepare($sql);
         $stmt->execute(['tenant_id' => $tenantId]);
         
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $professores = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Converter id 0 (usuários sem registro em professores) para null
+        foreach ($professores as &$professor) {
+            if ($professor['id'] === 0 || $professor['id'] === '0') {
+                $professor['id'] = null;
+            }
+            // Remover campo origem antes de retornar (uso interno apenas)
+            unset($professor['origem']);
+        }
+        
+        return $professores;
     }
 
     /**
      * Buscar professor por ID
      * Se tenantId for informado, verifica vínculo via tenant_usuario_papel
+     * Busca tanto na tabela professores quanto em usuários com papel Professor
      */
     public function findById(int $id, ?int $tenantId = null): ?array
     {
         if ($tenantId) {
+            // Buscar na tabela professores primeiro
             $sql = "SELECT p.id, p.nome, p.cpf, p.email, p.foto_url, p.ativo, p.usuario_id, p.created_at, p.updated_at,
                            u.telefone,
                            tup.ativo as vinculo_ativo
@@ -104,10 +134,11 @@ class Professor
 
     /**
      * Buscar professor por email dentro de um tenant
-     * Usa tenant_usuario_papel com papel_id=2
+     * Busca tanto na tabela professores quanto em usuários com papel Professor
      */
     public function findByEmail(string $email, int $tenantId): ?array
     {
+        // Primeiro tenta buscar na tabela professores
         $stmt = $this->db->prepare(
             "SELECT p.id, p.nome, p.cpf, p.email, p.foto_url, p.ativo, p.usuario_id, p.created_at, p.updated_at,
                     u.telefone,
@@ -120,6 +151,28 @@ class Professor
              WHERE p.email = :email"
         );
         $stmt->execute(['email' => $email, 'tenant_id' => $tenantId]);
+        $professor = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($professor) {
+            return $professor;
+        }
+        
+        // Se não encontrou, busca em usuários com papel Professor
+        $stmt = $this->db->prepare(
+            "SELECT NULL as id, u.nome, u.cpf, u.email, NULL as foto_url, 1 as ativo, 
+                    u.id as usuario_id, u.created_at, u.updated_at,
+                    u.telefone,
+                    tup.ativo as vinculo_ativo
+             FROM usuarios u
+             INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id
+                AND tup.tenant_id = :tenant_id
+                AND tup.papel_id = 2
+             WHERE u.email = :email
+               AND NOT EXISTS (
+                   SELECT 1 FROM professores p WHERE p.usuario_id = u.id
+               )"
+        );
+        $stmt->execute(['email' => $email, 'tenant_id' => $tenantId]);
         
         $professor = $stmt->fetch(PDO::FETCH_ASSOC);
         return $professor ?: null;
@@ -127,10 +180,11 @@ class Professor
 
     /**
      * Buscar professor por CPF dentro de um tenant
-     * Usa tenant_usuario_papel com papel_id=2
+     * Busca tanto na tabela professores quanto em usuários com papel Professor
      */
     public function findByCpf(string $cpf, int $tenantId): ?array
     {
+        // Primeiro tenta buscar na tabela professores
         $stmt = $this->db->prepare(
             "SELECT p.id, p.nome, p.cpf, p.email, p.foto_url, p.ativo, p.usuario_id, p.created_at, p.updated_at,
                     u.telefone,
@@ -142,6 +196,29 @@ class Professor
                 AND tup.papel_id = 2
              LEFT JOIN usuarios u ON u.id = p.usuario_id
              WHERE p.cpf = :cpf"
+        );
+        $stmt->execute(['cpf' => $cpf, 'tenant_id' => $tenantId]);
+        $professor = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if ($professor) {
+            return $professor;
+        }
+        
+        // Se não encontrou, busca em usuários com papel Professor
+        $stmt = $this->db->prepare(
+            "SELECT NULL as id, u.nome, u.cpf, u.email, NULL as foto_url, 1 as ativo, 
+                    u.id as usuario_id, u.created_at, u.updated_at,
+                    u.telefone,
+                    tup.ativo as vinculo_ativo,
+                    0 as turmas_count
+             FROM usuarios u
+             INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id
+                AND tup.tenant_id = :tenant_id
+                AND tup.papel_id = 2
+             WHERE u.cpf = :cpf
+               AND NOT EXISTS (
+                   SELECT 1 FROM professores p WHERE p.usuario_id = u.id
+               )"
         );
         $stmt->execute(['cpf' => $cpf, 'tenant_id' => $tenantId]);
         

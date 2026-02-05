@@ -423,55 +423,51 @@ class Usuario
     public function getTenantsByUsuario(int $usuarioId): array
     {
         $sql = "
-            SELECT 
+            SELECT DISTINCT
                 tup.id as vinculo_id,
+                tup.papel_id,
                 tup.ativo,
                 tup.created_at as data_inicio,
                 t.id as tenant_id,
                 t.nome as tenant_nome,
                 t.slug as tenant_slug,
                 t.email as tenant_email,
-                t.telefone as tenant_telefone,
-                m.plano_id,
-                p.nome as plano_nome,
-                p.valor as plano_valor,
-                p.duracao_dias as plano_duracao_dias
+                t.telefone as tenant_telefone
             FROM tenant_usuario_papel tup
             INNER JOIN tenants t ON tup.tenant_id = t.id
-            LEFT JOIN alunos a ON a.usuario_id = tup.usuario_id
-            LEFT JOIN matriculas m ON m.aluno_id = a.id AND m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1)
-            LEFT JOIN planos p ON m.plano_id = p.id
             WHERE tup.usuario_id = :usuario_id
-            AND tup.papel_id = 1
+            AND tup.papel_id IN (1, 2, 3)
+            AND tup.ativo = 1
             AND t.ativo = 1
-            ORDER BY tup.ativo DESC, t.nome ASC
+            ORDER BY tup.papel_id DESC, t.nome ASC
         ";
         
         $stmt = $this->db->prepare($sql);
         $stmt->execute(['usuario_id' => $usuarioId]);
         $tenants = $stmt->fetchAll();
         
-        // Estruturar os dados
-        return array_map(function($row) {
-            return [
-                'vinculo_id' => $row['vinculo_id'],
-                'ativo' => $row['ativo'],
-                'data_inicio' => $row['data_inicio'],
-                'tenant' => [
-                    'id' => $row['tenant_id'],
-                    'nome' => $row['tenant_nome'],
-                    'slug' => $row['tenant_slug'],
-                    'email' => $row['tenant_email'],
-                    'telefone' => $row['tenant_telefone']
-                ],
-                'plano' => $row['plano_id'] ? [
-                    'id' => $row['plano_id'],
-                    'nome' => $row['plano_nome'],
-                    'valor' => $row['plano_valor'],
-                    'duracao_dias' => $row['plano_duracao_dias']
-                ] : null
-            ];
-        }, $tenants);
+        // Agrupar por tenant_id (usuário pode ter múltiplos papéis no mesmo tenant)
+        $tenantsGrouped = [];
+        foreach ($tenants as $row) {
+            $tenantId = $row['tenant_id'];
+            if (!isset($tenantsGrouped[$tenantId])) {
+                $tenantsGrouped[$tenantId] = [
+                    'vinculo_id' => $row['vinculo_id'],
+                    'ativo' => $row['ativo'],
+                    'data_inicio' => $row['data_inicio'],
+                    'tenant' => [
+                        'id' => $row['tenant_id'],
+                        'nome' => $row['tenant_nome'],
+                        'slug' => $row['tenant_slug'],
+                        'email' => $row['tenant_email'],
+                        'telefone' => $row['tenant_telefone']
+                    ],
+                    'plano' => null // Não retornamos mais plano aqui (só para alunos via endpoint específico)
+                ];
+            }
+        }
+        
+        return array_values($tenantsGrouped);
     }
 
     /**
