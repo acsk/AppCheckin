@@ -74,7 +74,9 @@ class TenantMiddleware
                 '/test-simple',
                 '/diagnose',
                 '/diagnostico.php',
-                '/index.php'
+                '/index.php',
+                '/cep',             // consulta de CEP (serviço público)
+                '/formas-pagamento' // formas de pagamento públicas
             ];
 
             $isAllowlisted = false;
