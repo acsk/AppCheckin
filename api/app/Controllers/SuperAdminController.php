@@ -506,15 +506,6 @@ class SuperAdminController
             $errors[] = 'Email válido é obrigatório';
         }
 
-        if (empty($data['senha']) || strlen($data['senha']) < 6) {
-            $errors[] = 'Senha deve ter no mínimo 6 caracteres';
-        }
-
-        // Verificar se email já existe
-        if (!empty($data['email']) && $this->usuarioModel->findByEmailGlobal($data['email'])) {
-            $errors[] = 'Email já cadastrado';
-        }
-
         // Validar papéis (deve ter pelo menos Admin)
         $papeis = isset($data['papeis']) && is_array($data['papeis']) ? $data['papeis'] : [3];
         if (!in_array(3, $papeis)) {
@@ -532,32 +523,71 @@ class SuperAdminController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
         }
 
-        // Criar usuário admin
-        $adminData = [
-            'nome' => $data['nome'],
-            'email' => $data['email'],
-            'senha' => $data['senha'], // Model já faz o hash automaticamente
-            'telefone' => isset($data['telefone']) ? preg_replace('/[^0-9]/', '', $data['telefone']) : null,
-            'cpf' => isset($data['cpf']) ? preg_replace('/[^0-9]/', '', $data['cpf']) : null,
-            'papel_id' => 3 // Admin - evita criar registro de aluno automaticamente
-        ];
+        // Verificar se email já existe
+        $usuarioExistente = null;
+        if (!empty($data['email'])) {
+            $usuarioExistente = $this->usuarioModel->findByEmailGlobal($data['email']);
+        }
 
-        $adminId = $this->usuarioModel->create($adminData, $tenantId);
+        $db = require __DIR__ . '/../../config/database.php';
+        $adminId = null;
 
-        if (!$adminId) {
-            // Log do erro do modelo
-            $erro = $this->usuarioModel->lastError ?? 'Erro desconhecido';
-            error_log("[criarAdminAcademia] Falha ao criar usuário. Erro: $erro");
+        if ($usuarioExistente) {
+            // Usuário já existe - verificar se já tem vínculo com este tenant
+            $adminId = $usuarioExistente['id'];
             
-            $response->getBody()->write(json_encode([
-                'error' => 'Erro ao criar admin',
-                'details' => $erro
-            ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            $stmtVerifica = $db->prepare("
+                SELECT COUNT(*) as count
+                FROM tenant_usuario_papel
+                WHERE tenant_id = :tenant_id
+                  AND usuario_id = :usuario_id
+                  AND papel_id IN (1, 2, 3)
+            ");
+            $stmtVerifica->execute(['tenant_id' => $tenantId, 'usuario_id' => $adminId]);
+            $vinculoExiste = $stmtVerifica->fetch(\PDO::FETCH_ASSOC);
+
+            if ($vinculoExiste['count'] > 0) {
+                $response->getBody()->write(json_encode([
+                    'error' => 'Usuário já está vinculado a esta academia. Use o endpoint de atualização para modificar os papéis.'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+            }
+
+            // Usuário existe mas não tem vínculo com este tenant - apenas criar associação
+        } else {
+            // Usuário não existe - criar novo
+            if (empty($data['senha']) || strlen($data['senha']) < 6) {
+                $response->getBody()->write(json_encode([
+                    'errors' => ['Senha deve ter no mínimo 6 caracteres']
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+            }
+
+            $adminData = [
+                'nome' => $data['nome'],
+                'email' => $data['email'],
+                'senha' => $data['senha'], // Model já faz o hash automaticamente
+                'telefone' => isset($data['telefone']) ? preg_replace('/[^0-9]/', '', $data['telefone']) : null,
+                'cpf' => isset($data['cpf']) ? preg_replace('/[^0-9]/', '', $data['cpf']) : null,
+                'papel_id' => 3 // Admin - evita criar registro de aluno automaticamente
+            ];
+
+            $adminId = $this->usuarioModel->create($adminData, $tenantId);
+
+            if (!$adminId) {
+                // Log do erro do modelo
+                $erro = $this->usuarioModel->lastError ?? 'Erro desconhecido';
+                error_log("[criarAdminAcademia] Falha ao criar usuário. Erro: $erro");
+                
+                $response->getBody()->write(json_encode([
+                    'error' => 'Erro ao criar admin',
+                    'details' => $erro
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            }
         }
 
         // Criar múltiplos papéis em tenant_usuario_papel
-        $db = require __DIR__ . '/../../config/database.php';
         foreach ($papeis as $papelId) {
             $stmtPapel = $db->prepare("
                 INSERT INTO tenant_usuario_papel (tenant_id, usuario_id, papel_id, ativo)
