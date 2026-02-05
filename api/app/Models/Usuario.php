@@ -732,12 +732,9 @@ class Usuario
 
         $usuarioId = (int) $this->db->lastInsertId();
 
-        // Criar vínculo na tabela tenant_usuarios e tenant_usuario_papel
+        // Criar papel do usuário em tenant_usuario_papel
         if ($usuarioId) {
             try {
-                $this->vincularTenant($usuarioId, $tenantId, $data['plano_id'] ?? null);
-                
-                // Criar papel do usuário em tenant_usuario_papel
                 $papelId = $data['papel_id'] ?? 1; // Default: Aluno
                 $sqlPapel = "
                     INSERT INTO tenant_usuario_papel (tenant_id, usuario_id, papel_id, ativo)
@@ -752,7 +749,8 @@ class Usuario
                     'papel_id2' => $papelId
                 ]);
             } catch (\PDOException $e) {
-                // Se falhar, não é crítico (pode ser que a tabela não exista ainda)
+                // Se falhar, não é crítico
+                error_log("Erro ao criar papel do usuário: " . $e->getMessage());
             }
         }
 

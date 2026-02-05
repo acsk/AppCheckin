@@ -545,8 +545,13 @@ class SuperAdminController
         $adminId = $this->usuarioModel->create($adminData, $tenantId);
 
         if (!$adminId) {
+            // Log do erro do modelo
+            $erro = $this->usuarioModel->lastError ?? 'Erro desconhecido';
+            error_log("[criarAdminAcademia] Falha ao criar usuário. Erro: $erro");
+            
             $response->getBody()->write(json_encode([
-                'error' => 'Erro ao criar admin'
+                'error' => 'Erro ao criar admin',
+                'details' => $erro
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
