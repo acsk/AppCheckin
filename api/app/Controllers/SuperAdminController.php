@@ -900,6 +900,7 @@ class SuperAdminController
      */
     public function desativarAdminAcademia(Request $request, Response $response, array $args): Response
     {
+        $data = $request->getParsedBody();
         $userId = $request->getAttribute('userId');
         $user = $this->usuarioModel->findById($userId);
         $tenantId = (int) $args['tenantId'];
@@ -945,44 +946,84 @@ class SuperAdminController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
         }
 
-        // Verificar quantos admins ativos a academia tem
-        $db = require __DIR__ . '/../../config/database.php';
-        $stmt = $db->prepare("
-            SELECT COUNT(*) as total
-            FROM tenant_usuario_papel
-            WHERE tenant_id = :tenant_id
-              AND papel_id = 3
-              AND ativo = 1
-        ");
-        $stmt->execute(['tenant_id' => $tenantId]);
-        $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+        // Obter papéis a serem desativados
+        $papeisDesativar = isset($data['papeis']) && is_array($data['papeis']) ? $data['papeis'] : [3];
+        
+        // Validar papéis
+        $errors = [];
+        foreach ($papeisDesativar as $papel) {
+            if (!in_array($papel, [1, 2, 3])) {
+                $errors[] = 'Papel inválido: ' . $papel;
+            }
+        }
+        
+        if (!empty($errors)) {
+            $response->getBody()->write(json_encode(['errors' => $errors]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+        }
 
-        if ($result['total'] <= 1) {
+        $db = require __DIR__ . '/../../config/database.php';
+
+        // Se está tentando desativar o papel Admin (3), verificar se não é o último
+        if (in_array(3, $papeisDesativar)) {
+            $stmt = $db->prepare("
+                SELECT COUNT(*) as total
+                FROM tenant_usuario_papel
+                WHERE tenant_id = :tenant_id
+                  AND papel_id = 3
+                  AND ativo = 1
+            ");
+            $stmt->execute(['tenant_id' => $tenantId]);
+            $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if ($result['total'] <= 1) {
+                $response->getBody()->write(json_encode([
+                    'error' => 'Não é possível desativar o único admin da academia. Crie outro admin primeiro.'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+        }
+
+        // Desativar os papéis especificados
+        $desativados = [];
+        foreach ($papeisDesativar as $papel) {
+            $stmt = $db->prepare("
+                UPDATE tenant_usuario_papel
+                SET ativo = 0
+                WHERE tenant_id = :tenant_id
+                  AND usuario_id = :usuario_id
+                  AND papel_id = :papel_id
+            ");
+            $stmt->execute([
+                'tenant_id' => $tenantId,
+                'usuario_id' => $adminId,
+                'papel_id' => $papel
+            ]);
+            
+            if ($stmt->rowCount() > 0) {
+                $desativados[] = $papel;
+            }
+        }
+
+        if (empty($desativados)) {
             $response->getBody()->write(json_encode([
-                'error' => 'Não é possível desativar o único admin da academia. Crie outro admin primeiro.'
+                'error' => 'Nenhum papel foi desativado. Verifique se o usuário possui os papéis especificados.'
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
 
-        // Desativar vínculo do admin com a academia
-        $stmt = $db->prepare("
-            UPDATE tenant_usuario_papel
-            SET ativo = 0
-            WHERE tenant_id = :tenant_id
-              AND usuario_id = :usuario_id
-              AND papel_id = 3
-        ");
-        $success = $stmt->execute(['tenant_id' => $tenantId, 'usuario_id' => $adminId]);
-
-        if (!$success || $stmt->rowCount() === 0) {
-            $response->getBody()->write(json_encode([
-                'error' => 'Erro ao desativar admin ou admin não encontrado'
-            ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
-        }
+        // Mapear nomes dos papéis desativados
+        $papeisMapa = [
+            1 => 'Aluno',
+            2 => 'Professor',
+            3 => 'Admin'
+        ];
+        $nomesDesativados = array_map(fn($p) => $papeisMapa[$p] ?? $p, $desativados);
 
         $response->getBody()->write(json_encode([
-            'message' => 'Admin desativado com sucesso'
+            'message' => 'Papéis desativados com sucesso',
+            'papeis_desativados' => $desativados,
+            'nomes' => $nomesDesativados
         ], JSON_UNESCAPED_UNICODE));
 
         return $response->withHeader('Content-Type', 'application/json');
