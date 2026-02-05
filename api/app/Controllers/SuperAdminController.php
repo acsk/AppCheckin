@@ -566,39 +566,7 @@ class SuperAdminController
             ]);
         }
 
-        // Criar registros nas tabelas específicas conforme papéis
-        // Se for professor (papel_id = 2)
-        if (in_array(2, $papeis)) {
-            $stmtProf = $db->prepare("
-                INSERT INTO professores (usuario_id, nome, cpf, email, ativo)
-                VALUES (:usuario_id, :nome, :cpf, :email, 1)
-                ON DUPLICATE KEY UPDATE nome = VALUES(nome), email = VALUES(email)
-            ");
-            $stmtProf->execute([
-                'usuario_id' => $adminId,
-                'nome' => mb_strtoupper($data['nome']),
-                'cpf' => isset($data['cpf']) ? preg_replace('/[^0-9]/', '', $data['cpf']) : null,
-                'email' => $data['email']
-            ]);
-        }
-
-        // Se for aluno (papel_id = 1)
-        if (in_array(1, $papeis)) {
-            $stmtAluno = $db->prepare("
-                INSERT INTO alunos (usuario_id, nome, cpf, telefone, ativo)
-                VALUES (:usuario_id, :nome, :cpf, :telefone, 1)
-                ON DUPLICATE KEY UPDATE nome = VALUES(nome)
-            ");
-            $stmtAluno->execute([
-                'usuario_id' => $adminId,
-                'nome' => mb_strtoupper($data['nome']),
-                'cpf' => isset($data['cpf']) ? preg_replace('/[^0-9]/', '', $data['cpf']) : null,
-                'telefone' => isset($data['telefone']) ? preg_replace('/[^0-9]/', '', $data['telefone']) : null
-            ]);
-        }
-
-        // Vincular admin ao tenant
-        $this->usuarioModel->vincularTenant($adminId, $tenantId);
+        // Papéis gerenciados apenas via tenant_usuario_papel - sem duplicar em professores/alunos
 
         $admin = $this->usuarioModel->findById($adminId);
 
@@ -895,44 +863,7 @@ class SuperAdminController
                 ]);
             }
 
-            // Criar/remover registros nas tabelas específicas
-            // Professor
-            if (in_array(2, $papeis)) {
-                $stmtProf = $db->prepare("
-                    INSERT INTO professores (usuario_id, nome, cpf, email, ativo)
-                    VALUES (:usuario_id, :nome, :cpf, :email, 1)
-                    ON DUPLICATE KEY UPDATE nome = VALUES(nome), email = VALUES(email), ativo = VALUES(ativo)
-                ");
-                $stmtProf->execute([
-                    'usuario_id' => $adminId,
-                    'nome' => $updateData['nome'] ?? $admin['nome'],
-                    'cpf' => $updateData['cpf'] ?? $admin['cpf'],
-                    'email' => $updateData['email'] ?? $admin['email']
-                ]);
-            } else {
-                // Desativar professor se papel foi removido
-                $db->prepare("UPDATE professores SET ativo = 0 WHERE usuario_id = :usuario_id")
-                   ->execute(['usuario_id' => $adminId]);
-            }
-
-            // Aluno
-            if (in_array(1, $papeis)) {
-                $stmtAluno = $db->prepare("
-                    INSERT INTO alunos (usuario_id, nome, cpf, telefone, ativo)
-                    VALUES (:usuario_id, :nome, :cpf, :telefone, 1)
-                    ON DUPLICATE KEY UPDATE nome = VALUES(nome), ativo = VALUES(ativo)
-                ");
-                $stmtAluno->execute([
-                    'usuario_id' => $adminId,
-                    'nome' => $updateData['nome'] ?? $admin['nome'],
-                    'cpf' => $updateData['cpf'] ?? $admin['cpf'],
-                    'telefone' => $updateData['telefone'] ?? $admin['telefone']
-                ]);
-            } else {
-                // Desativar aluno se papel foi removido
-                $db->prepare("UPDATE alunos SET ativo = 0 WHERE usuario_id = :usuario_id")
-                   ->execute(['usuario_id' => $adminId]);
-            }
+            // Papéis gerenciados apenas via tenant_usuario_papel - sem duplicar em professores/alunos
         }
 
         $adminAtualizado = $this->usuarioModel->findById($adminId);
