@@ -670,12 +670,8 @@ class SuperAdminController
         $stmt->execute(['tenant_id' => $tenantId]);
         $admins = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-        // Mapeamento de papéis
-        $papeisMapa = [
-            1 => 'Aluno',
-            2 => 'Professor',
-            3 => 'Admin'
-        ];
+        // Buscar mapeamento de papéis do banco
+        $papeisMapa = $this->getPapeisMapa();
 
         // Buscar papéis de cada admin
         foreach ($admins as &$admin) {
@@ -1012,12 +1008,8 @@ class SuperAdminController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
 
-        // Mapear nomes dos papéis desativados
-        $papeisMapa = [
-            1 => 'Aluno',
-            2 => 'Professor',
-            3 => 'Admin'
-        ];
+        // Mapear nomes dos papéis desativados do banco
+        $papeisMapa = $this->getPapeisMapa();
         $nomesDesativados = array_map(fn($p) => $papeisMapa[$p] ?? $p, $desativados);
 
         $response->getBody()->write(json_encode([
@@ -1103,6 +1095,25 @@ class SuperAdminController
         ], JSON_UNESCAPED_UNICODE));
 
         return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * Buscar mapeamento de papéis do banco de dados
+     * @return array Array associativo [id => nome]
+     */
+    private function getPapeisMapa(): array
+    {
+        $db = require __DIR__ . '/../../config/database.php';
+        $stmt = $db->prepare("SELECT id, nome FROM papeis WHERE ativo = 1 ORDER BY id");
+        $stmt->execute();
+        $papeis = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        
+        $mapa = [];
+        foreach ($papeis as $papel) {
+            $mapa[$papel['id']] = ucfirst($papel['nome']);
+        }
+        
+        return $mapa;
     }
 
     /**

@@ -210,10 +210,12 @@ export const superAdminService = {
   /**
    * Desativar admin de uma academia
    */
-  async desativarAdmin(tenantId, adminId) {
+  async desativarAdmin(tenantId, adminId, dados = undefined) {
     try {
-      console.log(`🚫 Desativando admin ${adminId} da academia ${tenantId}`);
-      const response = await api.delete(`/superadmin/academias/${tenantId}/admins/${adminId}`);
+      console.log(`🚫 Desativando admin ${adminId} da academia ${tenantId}`, dados);
+      const response = await api.delete(`/superadmin/academias/${tenantId}/admins/${adminId}`, {
+        data: dados
+      });
       console.log('✅ Admin desativado:', response.data);
       return response.data;
     } catch (error) {

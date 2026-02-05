@@ -327,9 +327,9 @@ const data = await response.json();
 
 ---
 
-### 5. Desativar Admin
+### 5. Desativar Admin (Papéis Específicos)
 
-Desativa um administrador de uma academia (soft delete).
+Desativa um ou mais papéis de um administrador em uma academia (soft delete).
 
 **Endpoint:** `DELETE /superadmin/academias/{tenantId}/admins/{adminId}`
 
@@ -341,14 +341,29 @@ Desativa um administrador de uma academia (soft delete).
 - `tenantId` (required): ID da academia
 - `adminId` (required): ID do admin a ser desativado
 
+**Body (opcional):**
+```json
+{
+  "papeis": [2, 3]
+}
+```
+
+**Descrição:**
+- Se `papeis` não for fornecido, desativa apenas o papel Admin (3) por padrão
+- Se `papeis` for fornecido, desativa apenas os papéis especificados
+- Papéis válidos: 1 (Aluno), 2 (Professor), 3 (Admin)
+
 **Regras:**
 - Não é possível desativar o último admin ativo da academia
 - A desativação é soft delete (ativo = 0)
+- Apenas os papéis especificados são desativados, os demais permanecem ativos
 
 **Resposta Sucesso (200):**
 ```json
 {
-  "message": "Admin desativado com sucesso"
+  "message": "Papéis desativados com sucesso",
+  "papeis_desativados": [2, 3],
+  "nomes": ["Professor", "Admin"]
 }
 ```
 
@@ -359,11 +374,58 @@ Desativa um administrador de uma academia (soft delete).
 }
 ```
 
+**Resposta Erro (422):**
+```json
+{
+  "errors": ["Papel inválido: 5"]
+}
+```
+
 **Exemplo de Uso (JavaScript):**
+
+**Desativar apenas o papel Professor:**
 ```javascript
 const tenantId = 1;
 const adminId = 20;
 
+const response = await fetch(
+  `/superadmin/academias/${tenantId}/admins/${adminId}`,
+  {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      papeis: [2]  // Remove apenas o papel Professor
+    })
+  }
+);
+const data = await response.json();
+// { "message": "Papéis desativados com sucesso", "papeis_desativados": [2], "nomes": ["Professor"] }
+```
+
+**Desativar múltiplos papéis:**
+```javascript
+const response = await fetch(
+  `/superadmin/academias/${tenantId}/admins/${adminId}`,
+  {
+    method: 'DELETE',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      papeis: [1, 2]  // Remove Aluno e Professor, mantém Admin
+    })
+  }
+);
+const data = await response.json();
+```
+
+**Desativar admin completamente (padrão):**
+```javascript
+// Sem body, desativa apenas o papel Admin (3)
 const response = await fetch(
   `/superadmin/academias/${tenantId}/admins/${adminId}`,
   {

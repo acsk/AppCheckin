@@ -65,6 +65,13 @@ export default function AcademiaFormScreen() {
   });
   const [adminErrors, setAdminErrors] = useState({});
   
+  // Estados para modal de desativação de admin
+  const [showConfirmDeactivate, setShowConfirmDeactivate] = useState(false);
+  const [adminToDeactivate, setAdminToDeactivate] = useState(null);
+  const [papelsToDeactivate, setPapelsToDeactivate] = useState([]);
+  const [papelsDisponiveisParaDesativar, setPapelsDisponiveisParaDesativar] = useState([]);
+  const [deactivatingAdmin, setDeactivatingAdmin] = useState(false);
+  
   const [formData, setFormData] = useState({
     nome: '',
     email: '',
@@ -210,6 +217,10 @@ export default function AcademiaFormScreen() {
       const papelIds = admin.papeis
         ? admin.papeis.map(p => typeof p === 'object' ? p.id : p)
         : [3];
+
+      if (!papelIds.includes(3)) {
+        papelIds.push(3);
+      }
       
       setAdminForm({
         nome: admin.nome || '',
@@ -288,12 +299,16 @@ export default function AcademiaFormScreen() {
     try {
       setSaving(true);
       
+      const papeisComAdmin = adminForm.papeis.includes(3)
+        ? adminForm.papeis
+        : [...adminForm.papeis, 3];
+
       const payload = {
         nome: adminForm.nome,
         email: adminForm.email,
         telefone: apenasNumeros(adminForm.telefone),
         cpf: apenasNumeros(adminForm.cpf),
-        papeis: adminForm.papeis,
+        papeis: papeisComAdmin,
       };
       
       if (adminForm.senha) {
@@ -317,18 +332,90 @@ export default function AcademiaFormScreen() {
     }
   };
 
+  const getPapelNome = (papelId) => {
+    if (papeisList.length > 0) {
+      const papelObj = papeisList.find(p => p.id === papelId);
+      if (papelObj) return papelObj.nome;
+    }
+    const papelMap = {
+      1: 'Aluno',
+      2: 'Professor',
+      3: 'Admin'
+    };
+    return papelMap[papelId] || 'Papel desconhecido';
+  };
+
+  const closeConfirmDeactivateModal = () => {
+    setShowConfirmDeactivate(false);
+    setAdminToDeactivate(null);
+    setPapelsToDeactivate([]);
+    setPapelsDisponiveisParaDesativar([]);
+  };
+
   const handleToggleAdminStatus = async (admin) => {
-    try {
-      if (admin.ativo) {
-        await superAdminService.desativarAdmin(academiaId, admin.id);
-        showSuccess('Administrador desativado com sucesso');
-      } else {
+    if (admin.ativo) {
+      // Mostrar modal de confirmação ao desativar
+      setAdminToDeactivate(admin);
+
+      const papelIds = admin.papeis
+        ? admin.papeis.map(p => typeof p === 'object' ? p.id : p)
+        : [];
+
+      const papelIdsUnicos = Array.from(new Set(papelIds));
+      if (!papelIdsUnicos.includes(3)) {
+        papelIdsUnicos.push(3);
+      }
+
+      const papelIdsFinal = papelIdsUnicos.length > 0 ? papelIdsUnicos : [3];
+
+      setPapelsDisponiveisParaDesativar(papelIdsFinal);
+      setPapelsToDeactivate(papelIdsFinal);
+      setShowConfirmDeactivate(true);
+    } else {
+      // Reativar direto sem confirmação
+      try {
+        setDeactivatingAdmin(true);
         await superAdminService.reativarAdmin(academiaId, admin.id);
         showSuccess('Administrador reativado com sucesso');
+        loadAdmins();
+      } catch (error) {
+        showError(error.response?.data?.error || 'Erro ao reativar administrador');
+      } finally {
+        setDeactivatingAdmin(false);
       }
+    }
+  };
+
+  const togglePapelToDeactivate = (papelId) => {
+    if (papelId === 3) return;
+
+    setPapelsToDeactivate((prev) => {
+      if (prev.includes(papelId)) {
+        return prev.filter((id) => id !== papelId);
+      }
+      return [...prev, papelId];
+    });
+  };
+
+  const handleConfirmDeactivate = async () => {
+    if (!adminToDeactivate) return;
+    
+    try {
+      setDeactivatingAdmin(true);
+      const papeisSelecionados = papelsToDeactivate.includes(3)
+        ? papelsToDeactivate
+        : [...papelsToDeactivate, 3];
+
+      await superAdminService.desativarAdmin(academiaId, adminToDeactivate.id, {
+        papeis: papeisSelecionados
+      });
+      showSuccess('Administrador desativado com sucesso');
       loadAdmins();
+      closeConfirmDeactivateModal();
     } catch (error) {
-      showError(error.response?.data?.error || 'Erro ao alterar status do administrador');
+      showError(error.response?.data?.error || 'Erro ao desativar administrador');
+    } finally {
+      setDeactivatingAdmin(false);
     }
   };
 
@@ -1231,6 +1318,105 @@ export default function AcademiaFormScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Modal de Confirmação de Desativação */}
+      <Modal
+        visible={showConfirmDeactivate}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={closeConfirmDeactivateModal}
+      >
+        <View style={styles.confirmOverlay}>
+          <View style={styles.confirmModal}>
+            <View style={styles.confirmHeader}>
+              <View style={styles.confirmIconContainer}>
+                <Feather name="alert-circle" size={32} color="#dc2626" />
+              </View>
+              <Text style={styles.confirmTitle}>Desativar Administrador?</Text>
+            </View>
+
+            <View style={styles.confirmBody}>
+              <Text style={styles.confirmMessage}>
+                Você está prestes a desativar o administrador
+              </Text>
+              
+              <View style={styles.adminNameBox}>
+                <Text style={styles.adminNameBoxText}>{adminToDeactivate?.nome}</Text>
+              </View>
+
+              <Text style={styles.confirmSubMessage}>
+                Selecione os papéis que serão desativados:
+              </Text>
+
+              <View style={styles.papelsContainer}>
+                {papelsDisponiveisParaDesativar.map((papelId) => {
+                  const isSelected = papelsToDeactivate.includes(papelId);
+                  const papelNome = getPapelNome(papelId);
+                  const isAdminRole = papelId === 3;
+
+                  return (
+                    <Pressable
+                      key={papelId}
+                      style={styles.confirmPapelItem}
+                      onPress={() => togglePapelToDeactivate(papelId)}
+                      disabled={isAdminRole}
+                    >
+                      <View
+                        style={[
+                          styles.papelCheckbox,
+                          isSelected && styles.papelCheckboxChecked,
+                          isAdminRole && styles.papelCheckboxDisabled
+                        ]}
+                      >
+                        {isSelected && <Feather name="check" size={12} color="#fff" />}
+                      </View>
+                      <View style={styles.confirmPapelTextContainer}>
+                        <Text style={styles.papelItemText}>{papelNome}</Text>
+                        {isAdminRole && (
+                          <Text style={styles.confirmAdminRequiredText}>
+                            Admin é obrigatório
+                          </Text>
+                        )}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View style={styles.confirmWarning}>
+                <Feather name="info" size={16} color="#d97706" />
+                <Text style={styles.confirmWarningText}>
+                  O administrador não poderá acessar o sistema até ser reativado.
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.confirmFooter}>
+              <TouchableOpacity
+                style={styles.confirmCancelButton}
+                onPress={closeConfirmDeactivateModal}
+                disabled={deactivatingAdmin}
+              >
+                <Text style={styles.confirmCancelButtonText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.confirmDeactivateButton, deactivatingAdmin && styles.confirmDeactivateButtonDisabled]}
+                onPress={handleConfirmDeactivate}
+                disabled={deactivatingAdmin}
+              >
+                {deactivatingAdmin ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <Feather name="user-x" size={16} color="#fff" />
+                    <Text style={styles.confirmDeactivateButtonText}>Desativar</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </LayoutBase>
   );
 }
@@ -1780,5 +1966,166 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#9ca3af',
     fontStyle: 'italic',
+  },
+  // Estilos da Modal de Confirmação de Desativação
+  confirmOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  confirmModal: {
+    width: '100%',
+    maxWidth: 520,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  confirmHeader: {
+    alignItems: 'center',
+    paddingTop: 32,
+    paddingBottom: 24,
+    paddingHorizontal: 24,
+  },
+  confirmIconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#fee2e2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  confirmTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111827',
+    textAlign: 'center',
+  },
+  confirmBody: {
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  confirmMessage: {
+    fontSize: 15,
+    color: '#6b7280',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  adminNameBox: {
+    backgroundColor: '#fef7f0',
+    borderLeftWidth: 4,
+    borderLeftColor: '#f97316',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginBottom: 20,
+  },
+  adminNameBoxText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  confirmSubMessage: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 12,
+  },
+  papelsContainer: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 8,
+    paddingVertical: 8,
+    marginBottom: 20,
+  },
+  confirmPapelItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  confirmPapelTextContainer: {
+    flex: 1,
+  },
+  papelItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+  },
+  papelItemDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#dc2626',
+    marginRight: 12,
+  },
+  papelItemText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  confirmAdminRequiredText: {
+    fontSize: 12,
+    color: '#9ca3af',
+    marginTop: 2,
+  },
+  confirmWarning: {
+    flexDirection: 'row',
+    gap: 12,
+    backgroundColor: '#fffbeb',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  confirmWarningText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#92400e',
+    lineHeight: 18,
+  },
+  confirmFooter: {
+    flexDirection: 'row',
+    gap: 12,
+    padding: 24,
+  },
+  confirmCancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    backgroundColor: '#f3f4f6',
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  confirmCancelButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  confirmDeactivateButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    backgroundColor: '#dc2626',
+    borderRadius: 10,
+  },
+  confirmDeactivateButtonDisabled: {
+    backgroundColor: '#fecaca',
+  },
+  confirmDeactivateButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#fff',
   },
 });
