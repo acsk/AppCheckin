@@ -59,11 +59,6 @@ interface ApiResponse {
   error?: string;
 }
 
-interface Toast {
-  message: string;
-  type: "info" | "success" | "error" | "warning";
-}
-
 export default function PlanosScreen() {
   const router = useRouter();
 
@@ -167,8 +162,6 @@ export default function PlanosScreen() {
         console.log("📋 Parâmetros recebidos:", params);
 
         const collectionStatus = params.collection_status;
-        const paymentId = params.payment_id;
-        const externalReference = params.external_reference;
 
         // Processar resultado do pagamento
         if (collectionStatus === "approved") {
@@ -587,7 +580,6 @@ export default function PlanosScreen() {
         <TouchableOpacity
           style={[
             styles.contratarButton,
-            plano.is_plano_atual && styles.contratarButtonCurrent,
             comprando && planoComprando === plano.id
               ? styles.contratarButtonLoading
               : null,
@@ -629,7 +621,7 @@ export default function PlanosScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
+      <SafeAreaView style={styles.container}>
         <View style={styles.headerTop}>
           <TouchableOpacity
             style={styles.headerBackButton}
@@ -649,7 +641,7 @@ export default function PlanosScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.headerTop}>
         <TouchableOpacity
           style={styles.headerBackButton}
@@ -658,15 +650,23 @@ export default function PlanosScreen() {
           <Feather name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitleCentered}>Planos</Text>
-        <TouchableOpacity
-          style={styles.headerBackButton}
-          onPress={() => {
-            setLoading(true);
-            fetchPlanos(apiUrl);
-          }}
-        >
-          <Feather name="refresh-cw" size={20} color="#fff" />
-        </TouchableOpacity>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <TouchableOpacity
+            style={styles.headerBackButton}
+            onPress={() => router.push("/minhas-assinaturas")}
+          >
+            <Feather name="list" size={20} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.headerBackButton}
+            onPress={() => {
+              setLoading(true);
+              fetchPlanos(apiUrl);
+            }}
+          >
+            <Feather name="refresh-cw" size={20} color="#fff" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {error ? (

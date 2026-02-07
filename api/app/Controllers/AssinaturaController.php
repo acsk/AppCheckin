@@ -320,14 +320,17 @@ class AssinaturaController
                     asm.data_inicio,
                     asm.proxima_cobranca,
                     asm.ultima_cobranca,
-                    pc.nome as ciclo_nome,
-                    pc.meses as ciclo_meses,
+                    asm.mp_preapproval_id,
+                    COALESCE(tc.nome, 'Mensal') as ciclo_nome,
+                    COALESCE(pc.meses, 1) as ciclo_meses,
                     p.nome as plano_nome,
                     m.nome as modalidade_nome
                 FROM assinaturas_mercadopago asm
                 INNER JOIN alunos a ON a.id = asm.aluno_id
-                INNER JOIN plano_ciclos pc ON pc.id = asm.plano_ciclo_id
-                INNER JOIN planos p ON p.id = pc.plano_id
+                INNER JOIN matriculas mat ON mat.id = asm.matricula_id
+                INNER JOIN planos p ON p.id = mat.plano_id
+                LEFT JOIN plano_ciclos pc ON pc.id = asm.plano_ciclo_id
+                LEFT JOIN tipos_ciclo tc ON tc.id = pc.tipo_ciclo_id
                 LEFT JOIN modalidades m ON m.id = p.modalidade_id
                 WHERE a.usuario_id = ? AND asm.tenant_id = ?
                 ORDER BY asm.created_at DESC

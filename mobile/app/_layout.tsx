@@ -49,6 +49,10 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="planos" options={{ headerShown: false }} />
           <Stack.Screen
+            name="minhas-assinaturas"
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
             name="matricula-detalhes"
             options={{ headerShown: false }}
           />

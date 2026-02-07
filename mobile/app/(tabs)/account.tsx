@@ -1473,6 +1473,19 @@ export default function AccountScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity
+              style={styles.sidebarMenuItem}
+              onPress={() => {
+                closeSidebar();
+                router.push("/minhas-assinaturas");
+              }}
+            >
+              <View style={styles.sidebarMenuItemIcon}>
+                <Feather name="list" size={16} color="#fff" />
+              </View>
+              <Text style={styles.sidebarMenuItemText}>Minhas Assinaturas</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
               style={styles.sidebarLogoutButton}
               onPress={() => {
                 closeSidebar();
