@@ -1153,7 +1153,7 @@ class MatriculaController
                 m.valor,
                 m.dia_vencimento,
                 m.periodo_teste,
-                DATEDIFF(m.proxima_data_vencimento, :hoje) as dias_restantes,
+                DATEDIFF(m.proxima_data_vencimento, CURDATE()) as dias_restantes,
                 a.nome as aluno_nome,
                 u.email as aluno_email,
                 u.telefone as aluno_telefone,
@@ -1167,14 +1167,13 @@ class MatriculaController
             INNER JOIN planos p ON m.plano_id = p.id
             INNER JOIN status_matricula sm ON m.status_id = sm.id
             WHERE m.tenant_id = :tenant_id
-            AND m.proxima_data_vencimento BETWEEN :hoje AND :data_limite
+            AND m.proxima_data_vencimento BETWEEN CURDATE() AND :data_limite
             AND sm.codigo = 'ativa'
             ORDER BY m.proxima_data_vencimento ASC, a.nome ASC
         ");
 
         $stmt->execute([
             'tenant_id' => $tenantId,
-            'hoje' => $hoje,
             'data_limite' => $dataLimite
         ]);
 
