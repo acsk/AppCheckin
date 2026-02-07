@@ -393,15 +393,17 @@ class AssinaturaController
                 LEFT JOIN assinatura_gateways g ON g.id = a.gateway_id
                 LEFT JOIN planos p ON p.id = a.plano_id
                 LEFT JOIN modalidades mo ON mo.id = p.modalidade_id
-                WHERE a.aluno_id = ? AND a.ativo = 1
+                WHERE a.aluno_id = ? AND a.tenant_id = ?
                 ORDER BY a.data_inicio DESC
             ";
             
+            error_log("[AssinaturaController::minhasAssinaturas] Executando query com aluno_id=$alunoId, tenant_id=$tenantId");
+            
             $stmt = $db->prepare($sql);
-            $stmt->execute([$alunoId]);
+            $stmt->execute([$alunoId, $tenantId]);
             $assinaturasRaw = $stmt->fetchAll(\PDO::FETCH_ASSOC);
             
-            error_log("[AssinaturaController::minhasAssinaturas] Assinaturas encontradas: " . count($assinaturasRaw ?? []));
+            error_log("[AssinaturaController::minhasAssinaturas] Assinaturas encontradas: " . count($assinaturasRaw ?? []) . " - Raw data: " . json_encode($assinaturasRaw));
             
             // Formatar resposta
             $assinaturas = [];
