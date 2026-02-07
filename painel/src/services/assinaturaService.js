@@ -1,30 +1,35 @@
 import api from './api';
+import { prepararErro } from '../utils/errorHandler';
 
 const assinaturaService = {
   /**
    * Listar todas as assinaturas ativas da academia
+   * Integrada com matrículas (usa dados da matrícula)
    */
   async listar(filtros = {}) {
     try {
       const params = {
         status: filtros.status || 'ativa',
+        incluir_matriculas: filtros.incluir_matriculas !== false, // Por padrão, inclui dados de matrículas
         ...filtros
       };
       const response = await api.get('/admin/assinaturas', { params });
       return response.data;
     } catch (error) {
       console.error('❌ Erro ao listar assinaturas:', error.response?.data || error.message);
-      throw error.response?.data || { error: 'Erro ao listar assinaturas' };
+      throw prepararErro(error.response?.data || error);
     }
   },
 
   /**
    * Listar todas as assinaturas de todas as academias (SuperAdmin)
+   * Integrada com matrículas
    */
   async listarTodas(tenantId = null, filtros = {}) {
     try {
       const params = {
         status: filtros.status || 'ativa',
+        incluir_matriculas: filtros.incluir_matriculas !== false,
         ...filtros
       };
       if (tenantId) params.tenant_id = tenantId;
@@ -33,7 +38,7 @@ const assinaturaService = {
       return response.data;
     } catch (error) {
       console.error('❌ Erro ao listar assinaturas (SuperAdmin):', error.response?.data || error.message);
-      throw error.response?.data || { error: 'Erro ao listar assinaturas' };
+      throw prepararErro(error.response?.data || error);
     }
   },
 
@@ -50,14 +55,36 @@ const assinaturaService = {
     }
   },
 
-  /**
-   * Criar nova assinatura
+  /* Integrada com matrículas - cria assinatura junto com matrícula
+   * 
+   * @param {Object} dados - {aluno_id, plano_id, data_inicio, forma_pagamento, renovacoes}
+   * @param {boolean} criarMatricula - Se true, cria matrícula junto com assinatura (padrão: true)
    */
-  async criar(dados) {
+  async criar(dados, criarMatricula = true) {
     try {
-      const response = await api.post('/admin/assinaturas', dados);
+      const payload = {
+        ...dados,
+        criar_matricula: criarMatricula
+      };
+      const response = await api.post('/admin/assinaturas', payload);
       return response.data;
     } catch (error) {
+      console.error('❌ Erro ao criar assinatura:', error.response?.data || error.message);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
+  /**
+   * Criar assinatura a partir de uma matrícula existente
+   * Liga uma matrícula já existente a uma assinatura
+   */
+  async criarDasMatricula(matriculaId, dados = {}) {
+    try {
+      const response = await api.post(`/admin/matriculas/${matriculaId}/assinatura`, dados);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao criar assinatura da matrícula:', error.response?.data || error.message);
+      throw prepararErro(error.response?.data || error)
       console.error('❌ Erro ao criar assinatura:', error.response?.data || error.message);
       throw error.response?.data || { error: 'Erro ao criar assinatura' };
     }
@@ -145,7 +172,49 @@ const assinaturaService = {
 
   /**
    * Listar histórico de assinaturas de um aluno
+   */prepararErro(error.response?.data || error);
+    }
+  },
+
+  /**
+   * Sincronizar assinatura com matrícula
+   * Atualiza status da assinatura baseado no status da matrícula
    */
+  async sincronizarComMatricula(assinaturaId) {
+    try {
+      const response = await api.post(`/admin/assinaturas/${assinaturaId}/sincronizar-matricula`);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao sincronizar:', error.response?.data || error.message);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
+  /**
+   * Obter status de sincronização entre assinatura e matrícula
+   */
+  async obterStatusSincronizacao(assinaturaId) {
+    try {
+      const response = await api.get(`/admin/assinaturas/${assinaturaId}/status-sincronizacao`);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao obter status:', error.response?.data || error.message);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
+  /**
+   * Listar assinaturas que não têm matrícula associada
+   */
+  async listarSemMatricula(filtros = {}) {
+    try {
+      const response = await api.get('/admin/assinaturas/sem-matricula', {
+        params: filtros
+      });
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao listar sem matrícula:', error.response?.data || error.message);
+      throw prepararErro(error.response?.data || error)
   async listarHistoricoAluno(alunoId) {
     try {
       const response = await api.get(`/admin/alunos/${alunoId}/assinaturas`);

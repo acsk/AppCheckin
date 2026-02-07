@@ -98,4 +98,107 @@ export const matriculaService = {
     }
   },
 
+  /**
+   * Criar assinatura para matrícula existente
+   * @param {number} matriculaId - ID da matrícula
+   * @param {object} dados - Dados da assinatura (renovacoes, etc)
+   * @returns {Promise} Assinatura criada
+   */
+  async criarAssinatura(matriculaId, dados = {}) {
+    try {
+      const response = await api.post(
+        `/admin/matriculas/${matriculaId}/assinatura`,
+        dados
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao criar assinatura para matrícula:', error);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
+  /**
+   * Obter assinatura associada à matrícula
+   * @param {number} matriculaId - ID da matrícula
+   * @returns {Promise} Dados da assinatura
+   */
+  async obterAssinatura(matriculaId) {
+    try {
+      const response = await api.get(`/admin/matriculas/${matriculaId}/assinatura`);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao obter assinatura:', error);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
+  /**
+   * Suspender matrícula e sua assinatura associada
+   * @param {number} id - ID da matrícula
+   * @param {string} motivo - Motivo da suspensão
+   * @returns {Promise} Resultado da suspensão
+   */
+  async suspender(id, motivo = '') {
+    try {
+      const response = await api.post(`/admin/matriculas/${id}/suspender`, {
+        motivo
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao suspender matrícula:', error);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
+  /**
+   * Reativar matrícula e sua assinatura associada
+   * @param {number} id - ID da matrícula
+   * @returns {Promise} Resultado da reativação
+   */
+  async reativar(id) {
+    try {
+      const response = await api.post(`/admin/matriculas/${id}/reativar`);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao reativar matrícula:', error);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
+  /**
+   * Listar matrículas com suas assinaturas associadas
+   * @param {object} filtros - Filtros opcionais
+   * @returns {Promise} Lista de matrículas com assinaturas
+   */
+  async listarComAssinaturas(filtros = {}) {
+    try {
+      const params = new URLSearchParams({
+        incluir_assinaturas: true,
+        ...filtros
+      });
+      const response = await api.get(`/admin/matriculas?${params}`);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao listar matrículas com assinaturas:', error);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
+  /**
+   * Sincronizar status de matrícula com sua assinatura
+   * @param {number} matriculaId - ID da matrícula
+   * @returns {Promise} Resultado da sincronização
+   */
+  async sincronizarAssinatura(matriculaId) {
+    try {
+      const response = await api.post(
+        `/admin/matriculas/${matriculaId}/sincronizar-assinatura`
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao sincronizar assinatura:', error);
+      throw prepararErro(error.response?.data || error);
+    }
+  }
+
 };
