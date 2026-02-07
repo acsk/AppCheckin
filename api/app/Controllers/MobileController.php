@@ -3734,7 +3734,8 @@ class MobileController
             $preferenceId = null;
 
             try {
-                $mercadoPago = new \App\Services\MercadoPagoService();
+                // Passar tenant_id para carregar credenciais específicas do tenant
+                $mercadoPago = new \App\Services\MercadoPagoService($tenantId);
                 
                 $dadosPagamento = [
                     'tenant_id' => $tenantId,

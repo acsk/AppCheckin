@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Exception;
+use PDO;
 
 /**
  * Serviço de Integração com Mercado Pago
@@ -14,14 +15,19 @@ use Exception;
  * - Geração de links de pagamento
  * - Assinaturas recorrentes (planos)
  * 
+ * Suporta credenciais por tenant (multi-tenant)
+ * 
  * Documentação Mercado Pago: https://www.mercadopago.com.br/developers
  */
 class MercadoPagoService
 {
-    private string $accessToken;
-    private string $publicKey;
+    private string $accessToken = '';
+    private string $publicKey = '';
     private string $baseUrl;
-    private bool $isProduction;
+    private bool $isProduction = false;
+    private ?int $tenantId = null;
+    private ?PDO $db = null;
+    private ?EncryptionService $encryption = null;
     
     /**
      * URLs de Notificação (Webhooks)
@@ -35,10 +41,92 @@ class MercadoPagoService
     private string $failureUrl;
     private string $pendingUrl;
     
-    public function __construct()
+    /**
+     * Construtor
+     * 
+     * @param int|null $tenantId ID do tenant para buscar credenciais específicas
+     */
+    public function __construct(?int $tenantId = null)
     {
-        // Carregar credenciais das variáveis de ambiente
-        // Usar $_ENV pois o Dotenv não popula getenv() por padrão
+        $this->tenantId = $tenantId;
+        $this->baseUrl = 'https://api.mercadopago.com';
+        
+        // Inicializar URLs de callback
+        $apiUrl = $_ENV['API_URL'] ?? $_SERVER['API_URL'] ?? 'https://api.appcheckin.com.br';
+        $this->notificationUrl = $apiUrl . '/api/webhooks/mercadopago';
+        
+        $mobileUrl = $_ENV['MOBILE_URL'] ?? $_SERVER['MOBILE_URL'] ?? 'https://mobile.appcheckin.com.br';
+        $this->successUrl = $mobileUrl . '/pagamento/sucesso';
+        $this->failureUrl = $mobileUrl . '/pagamento/falha';
+        $this->pendingUrl = $mobileUrl . '/pagamento/pendente';
+        
+        // Carregar credenciais
+        $this->carregarCredenciais();
+    }
+    
+    /**
+     * Carregar credenciais do tenant ou fallback para variáveis de ambiente
+     */
+    private function carregarCredenciais(): void
+    {
+        // Tentar carregar do banco se tiver tenant_id
+        if ($this->tenantId) {
+            $credenciaisCarregadas = $this->carregarCredenciaisDoBanco();
+            if ($credenciaisCarregadas) {
+                $this->logInicializacao('BANCO (tenant)');
+                return;
+            }
+        }
+        
+        // Fallback: variáveis de ambiente (credenciais globais/padrão)
+        $this->carregarCredenciaisDoEnv();
+        $this->logInicializacao('ENV (global)');
+    }
+    
+    /**
+     * Carregar credenciais do banco de dados
+     */
+    private function carregarCredenciaisDoBanco(): bool
+    {
+        try {
+            $this->db = require __DIR__ . '/../../config/database.php';
+            
+            $stmt = $this->db->prepare("
+                SELECT * FROM tenant_payment_credentials 
+                WHERE tenant_id = ? AND provider = 'mercadopago' AND is_active = 1
+                LIMIT 1
+            ");
+            $stmt->execute([$this->tenantId]);
+            $credentials = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$credentials) {
+                return false;
+            }
+            
+            $this->encryption = new EncryptionService();
+            $this->isProduction = $credentials['environment'] === 'production';
+            
+            if ($this->isProduction) {
+                $this->accessToken = $this->decryptIfNeeded($credentials['access_token_prod'] ?? '');
+                $this->publicKey = $credentials['public_key_prod'] ?? '';
+            } else {
+                $this->accessToken = $this->decryptIfNeeded($credentials['access_token_test'] ?? '');
+                $this->publicKey = $credentials['public_key_test'] ?? '';
+            }
+            
+            return !empty($this->accessToken);
+            
+        } catch (Exception $e) {
+            error_log("[MercadoPagoService] Erro ao carregar credenciais do banco: " . $e->getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Carregar credenciais das variáveis de ambiente
+     */
+    private function carregarCredenciaisDoEnv(): void
+    {
         $this->isProduction = ($_ENV['MP_ENVIRONMENT'] ?? $_SERVER['MP_ENVIRONMENT'] ?? 'sandbox') === 'production';
         
         if ($this->isProduction) {
@@ -48,27 +136,46 @@ class MercadoPagoService
             $this->accessToken = $_ENV['MP_ACCESS_TOKEN_TEST'] ?? $_SERVER['MP_ACCESS_TOKEN_TEST'] ?? '';
             $this->publicKey = $_ENV['MP_PUBLIC_KEY_TEST'] ?? $_SERVER['MP_PUBLIC_KEY_TEST'] ?? '';
         }
+    }
+    
+    /**
+     * Descriptografar valor se necessário
+     */
+    private function decryptIfNeeded(string $value): string
+    {
+        if (empty($value)) {
+            return '';
+        }
         
-        // LOG de inicialização para debug
+        // Se começa com prefixos conhecidos do MP, não está criptografado
+        if (str_starts_with($value, 'TEST-') || str_starts_with($value, 'APP_USR-')) {
+            return $value;
+        }
+        
+        // Tentar descriptografar
+        try {
+            if (!$this->encryption) {
+                $this->encryption = new EncryptionService();
+            }
+            return $this->encryption->decrypt($value);
+        } catch (Exception $e) {
+            // Se falhar, retornar valor original (pode não estar criptografado)
+            return $value;
+        }
+    }
+    
+    /**
+     * Log de inicialização
+     */
+    private function logInicializacao(string $fonte): void
+    {
         error_log("[MercadoPagoService] ========================================");
         error_log("[MercadoPagoService] 🚀 INICIALIZANDO MERCADO PAGO");
+        error_log("[MercadoPagoService] 📦 Fonte: {$fonte}");
+        error_log("[MercadoPagoService] 🏢 Tenant ID: " . ($this->tenantId ?? 'N/A'));
         error_log("[MercadoPagoService] 🌍 Ambiente: " . ($this->isProduction ? 'PRODUÇÃO' : 'SANDBOX'));
         error_log("[MercadoPagoService] 🔑 Token prefix: " . substr($this->accessToken, 0, 10) . "...");
-        error_log("[MercadoPagoService] ✅ Token começa com TEST-? " . (str_starts_with($this->accessToken, 'TEST-') ? 'SIM' : 'NÃO'));
         error_log("[MercadoPagoService] ========================================");
-        
-        $this->baseUrl = 'https://api.mercadopago.com';
-        
-        // URLs de callback
-        // URL do webhook - usar API diretamente
-        $apiUrl = $_ENV['API_URL'] ?? $_SERVER['API_URL'] ?? 'https://api.appcheckin.com.br';
-        $this->notificationUrl = $apiUrl . '/api/webhooks/mercadopago';
-        
-        // URLs de retorno - redirecionar para o mobile app
-        $mobileUrl = $_ENV['MOBILE_URL'] ?? $_SERVER['MOBILE_URL'] ?? 'https://mobile.appcheckin.com.br';
-        $this->successUrl = $mobileUrl . '/pagamento/sucesso';
-        $this->failureUrl = $mobileUrl . '/pagamento/falha';
-        $this->pendingUrl = $mobileUrl . '/pagamento/pendente';
     }
     
     /**

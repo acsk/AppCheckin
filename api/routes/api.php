@@ -1073,6 +1073,11 @@ return function ($app) {
         $group->get('/turmas/{turmaId}/presencas', [PresencaController::class, 'listarPresencas']);
         $group->patch('/checkins/{checkinId}/presenca', [PresencaController::class, 'marcarPresenca']);
         $group->post('/turmas/{turmaId}/presencas/lote', [PresencaController::class, 'marcarPresencaLote']);
+        
+        // Credenciais de Pagamento (Mercado Pago)
+        $group->get('/payment-credentials', [\App\Controllers\TenantPaymentCredentialsController::class, 'obter']);
+        $group->post('/payment-credentials', [\App\Controllers\TenantPaymentCredentialsController::class, 'salvar']);
+        $group->post('/payment-credentials/test', [\App\Controllers\TenantPaymentCredentialsController::class, 'testar']);
     })->add(AdminMiddleware::class)->add(AuthMiddleware::class);
 
     // ========================================

@@ -30,6 +30,7 @@ const MENU = [
   { label: 'Planos Sistema', path: '/planos-sistema', icon: 'layers', roles: [4] },
   { label: 'Usuários', path: '/usuarios', icon: 'users', roles: [3, 4] },
   { label: 'Formas de Pagamento', path: '/formas-pagamento', icon: 'credit-card', roles: [3, 4] },
+  { label: 'Configurações de Pagamento', path: '/configuracoes-pagamento', icon: 'settings', roles: [3, 4] },
 ];
 
 const BREAKPOINT_MOBILE = 768;

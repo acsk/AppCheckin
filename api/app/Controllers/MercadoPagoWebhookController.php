@@ -12,12 +12,20 @@ use App\Services\MercadoPagoService;
 class MercadoPagoWebhookController
 {
     private $db;
-    private MercadoPagoService $mercadoPagoService;
+    private ?MercadoPagoService $mercadoPagoService = null;
     
     public function __construct()
     {
         $this->db = require __DIR__ . '/../../config/database.php';
-        $this->mercadoPagoService = new MercadoPagoService();
+        // MercadoPagoService será instanciado com tenant_id quando processar a notificação
+    }
+    
+    /**
+     * Obter instância do MercadoPagoService com tenant específico
+     */
+    private function getMercadoPagoService(?int $tenantId = null): MercadoPagoService
+    {
+        return new MercadoPagoService($tenantId);
     }
     
     /**
@@ -42,8 +50,12 @@ class MercadoPagoWebhookController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
             
+            // Buscar tenant_id pela matrícula/pagamento (se disponível nos metadados)
+            // Por enquanto, usar credenciais globais (ENV) para processar webhook
+            $mercadoPagoService = $this->getMercadoPagoService();
+            
             // Processar notificação
-            $pagamento = $this->mercadoPagoService->processarNotificacao($body);
+            $pagamento = $mercadoPagoService->processarNotificacao($body);
             
             // Atualizar status no banco de dados
             $this->atualizarPagamento($pagamento);

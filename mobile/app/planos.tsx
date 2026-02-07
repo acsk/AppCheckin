@@ -66,6 +66,9 @@ export default function PlanosScreen() {
     message: "",
     type: "error",
   });
+  const [redirectModalVisible, setRedirectModalVisible] = useState(false);
+  const [countdown, setCountdown] = useState(3);
+  const [paymentUrlToOpen, setPaymentUrlToOpen] = useState<string | null>(null);
 
   useEffect(() => {
     const initializeAndFetch = async () => {
@@ -83,6 +86,102 @@ export default function PlanosScreen() {
 
     initializeAndFetch();
   }, []);
+
+  // Countdown para modal de redirecionamento
+  useEffect(() => {
+    if (redirectModalVisible && countdown > 0) {
+      const timer = setTimeout(() => {
+        setCountdown(countdown - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+
+    // Quando chegar a 0, abrir o link e fechar modal
+    if (redirectModalVisible && countdown === 0 && paymentUrlToOpen) {
+      (async () => {
+        const supported = await Linking.canOpenURL(paymentUrlToOpen);
+        if (supported) {
+          console.log("🔗 Abrindo URL de pagamento:", paymentUrlToOpen);
+          await Linking.openURL(paymentUrlToOpen);
+        }
+        setRedirectModalVisible(false);
+        setCountdown(3);
+        setPaymentUrlToOpen(null);
+      })();
+    }
+  }, [redirectModalVisible, countdown, paymentUrlToOpen]);
+
+  // Monitorar retorno do Mercado Pago
+  useEffect(() => {
+    const handleDeepLink = async (event: { url: string }) => {
+      console.log("🔗 Deep link recebido:", event.url);
+
+      if (
+        event.url.includes("mobile.appcheckin.com.br/pagamento") ||
+        event.url.includes("pagamento/pendente") ||
+        event.url.includes("pagamento/aprovado")
+      ) {
+        // Extrair parâmetros da URL
+        const url = new URL(event.url);
+        const params = Object.fromEntries(url.searchParams);
+
+        console.log("📋 Parâmetros recebidos:", params);
+
+        const collectionStatus = params.collection_status;
+        const paymentId = params.payment_id;
+        const externalReference = params.external_reference;
+
+        // Processar resultado do pagamento
+        if (collectionStatus === "approved") {
+          console.log("✅ Pagamento APROVADO!");
+          showErrorModal(
+            "✅ Pagamento Realizado",
+            "Seu pagamento foi aprovado com sucesso! Sua matrícula está ativa.",
+            "success",
+          );
+          // Recarregar planos após alguns segundos
+          setTimeout(() => {
+            fetchPlanos(apiUrl);
+          }, 2000);
+        } else if (collectionStatus === "pending") {
+          console.log("⏳ Pagamento PENDENTE");
+          showErrorModal(
+            "⏳ Pagamento em Análise",
+            "Seu pagamento está em análise. Você receberá uma confirmação em breve.",
+            "warning",
+          );
+        } else if (collectionStatus === "rejected") {
+          console.log("❌ Pagamento REJEITADO");
+          showErrorModal(
+            "❌ Pagamento Recusado",
+            "Seu pagamento foi recusado. Tente novamente com outro método de pagamento.",
+            "error",
+          );
+        } else {
+          console.log("❓ Status desconhecido:", collectionStatus);
+          showErrorModal(
+            "ℹ️ Retorno do Pagamento",
+            `Seu pagamento retornou com status: ${collectionStatus}. Entre em contato se tiver dúvidas.`,
+            "warning",
+          );
+        }
+      }
+    };
+
+    // Verificar se abriu com deep link
+    Linking.getInitialURL().then((url) => {
+      if (url != null) {
+        handleDeepLink({ url });
+      }
+    });
+
+    // Ouvir novos deep links
+    const subscription = Linking.addEventListener("url", handleDeepLink);
+
+    return () => {
+      subscription.remove();
+    };
+  }, [apiUrl]);
 
   const showErrorModal = (
     title: string,
@@ -285,29 +384,10 @@ export default function PlanosScreen() {
         setComprando(false);
         setPlanoComprando(null);
 
-        // 5. Abrir link de pagamento
-        const supported = await Linking.canOpenURL(paymentUrl);
-
-        if (supported) {
-          console.log("🔗 Abrindo URL de pagamento:", paymentUrl);
-          await Linking.openURL(paymentUrl);
-
-          // Mostrar mensagem após 500ms
-          setTimeout(() => {
-            showErrorModal(
-              "💳 Pagamento em Processamento",
-              "Você foi redirecionado para o Mercado Pago. Após completar o pagamento, sua matrícula será ativada automaticamente.",
-              "success",
-            );
-          }, 500);
-        } else {
-          console.error("❌ URL não pode ser aberta:", paymentUrl);
-          showErrorModal(
-            "⚠️ Erro",
-            "Não foi possível abrir o link de pagamento. Tente novamente.",
-            "error",
-          );
-        }
+        // 5. Mostrar modal de redirecionamento com countdown
+        setPaymentUrlToOpen(paymentUrl);
+        setCountdown(3);
+        setRedirectModalVisible(true);
       } catch (err) {
         const errorMsg =
           err instanceof Error ? err.message : "Erro ao processar compra";
@@ -516,6 +596,48 @@ export default function PlanosScreen() {
             >
               <Text style={styles.modalButtonText}>OK, Entendi</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Redirect Modal com Countdown */}
+      <Modal
+        visible={redirectModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRedirectModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, styles.modalSuccess]}>
+            {/* Icon Circle */}
+            <View style={[styles.iconCircle, styles.iconCircleSuccess]}>
+              <Feather name="arrow-right" size={40} color="#0a7f3c" />
+            </View>
+
+            {/* Title */}
+            <Text style={styles.modalTitle}>Redirecionando para Pagamento</Text>
+
+            {/* Message */}
+            <Text style={styles.modalMessage}>
+              Você será redirecionado para o Mercado Pago em{" "}
+              <Text
+                style={{
+                  fontWeight: "800",
+                  fontSize: 24,
+                  color: colors.primary,
+                }}
+              >
+                {countdown}
+              </Text>
+              {"\n"}segundos
+            </Text>
+
+            {/* Loading Indicator */}
+            <ActivityIndicator
+              size="large"
+              color={colors.primary}
+              style={{ marginBottom: 24 }}
+            />
           </View>
         </View>
       </Modal>
