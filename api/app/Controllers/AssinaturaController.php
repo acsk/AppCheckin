@@ -351,17 +351,95 @@ class AssinaturaController
     public function minhasAssinaturas(Request $request, Response $response): Response
     {
         try {
-            // TESTE: Retornar resposta de teste para verificar se o código foi atualizado
+            $db = require __DIR__ . '/../../config/database.php';
+            
+            // Extrair JWT
+            $tenantId = $request->getAttribute('tenantId');
+            $usuarioId = $request->getAttribute('usuarioId');
+            $alunoId = $request->getAttribute('alunoId');
+            
+            error_log("[AssinaturaController::minhasAssinaturas] Iniciando busca de assinaturas - tenant_id=$tenantId, usuario_id=$usuarioId, aluno_id=$alunoId");
+            
+            // Se não tem aluno_id no JWT, buscar
+            if (!$alunoId) {
+                $stmtAluno = $db->prepare('SELECT id FROM alunos WHERE usuario_id = ? AND ativo = 1 LIMIT 1');
+                $stmtAluno->execute([$usuarioId]);
+                $aluno = $stmtAluno->fetch(\PDO::FETCH_ASSOC);
+                $alunoId = $aluno['id'] ?? null;
+                
+                if (!$aluno) {
+                    error_log("[AssinaturaController::minhasAssinaturas] Aluno não encontrado para usuario_id=$usuarioId");
+                    $response->getBody()->write(json_encode([
+                        'success' => true,
+                        'assinaturas' => [],
+                        'total' => 0
+                    ], JSON_UNESCAPED_UNICODE));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
+                }
+            }
+            
+            error_log("[AssinaturaController::minhasAssinaturas] Aluno encontrado: " . json_encode($aluno ?? ['id' => $alunoId]));
+            
+            // Query para buscar assinaturas com todas as informações relacionadas
+            $sql = "
+                SELECT a.id, a.status_id, a.valor, a.data_inicio, a.proxima_cobranca, 
+                       a.ultima_cobranca, a.gateway_assinatura_id as mp_preapproval_id,
+                       s.codigo as status_codigo, s.nome as status_nome, s.cor as status_cor,
+                       f.nome as ciclo_nome, f.meses as ciclo_meses, g.nome as gateway_nome,
+                       p.nome as plano_nome, mo.nome as modalidade_nome
+                FROM assinaturas a
+                LEFT JOIN assinatura_status s ON s.id = a.status_id
+                LEFT JOIN assinatura_frequencias f ON f.id = a.frequencia_id
+                LEFT JOIN assinatura_gateways g ON g.id = a.gateway_id
+                LEFT JOIN planos p ON p.id = a.plano_id
+                LEFT JOIN modalidades mo ON mo.id = p.modalidade_id
+                WHERE a.aluno_id = ? AND a.ativo = 1
+                ORDER BY a.data_inicio DESC
+            ";
+            
+            $stmt = $db->prepare($sql);
+            $stmt->execute([$alunoId]);
+            $assinaturasRaw = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            
+            error_log("[AssinaturaController::minhasAssinaturas] Assinaturas encontradas: " . count($assinaturasRaw ?? []));
+            
+            // Formatar resposta
+            $assinaturas = [];
+            foreach ($assinaturasRaw as $row) {
+                $assinaturas[] = [
+                    'id' => (int)$row['id'],
+                    'status' => [
+                        'id' => $row['status_id'],
+                        'codigo' => $row['status_codigo'],
+                        'nome' => $row['status_nome'],
+                        'cor' => $row['status_cor']
+                    ],
+                    'valor' => (float)$row['valor'],
+                    'data_inicio' => $row['data_inicio'],
+                    'proxima_cobranca' => $row['proxima_cobranca'],
+                    'ultima_cobranca' => $row['ultima_cobranca'],
+                    'mp_preapproval_id' => $row['mp_preapproval_id'],
+                    'ciclo' => [
+                        'nome' => $row['ciclo_nome'],
+                        'meses' => (int)($row['ciclo_meses'] ?? 0)
+                    ],
+                    'gateway' => [
+                        'nome' => $row['gateway_nome']
+                    ],
+                    'plano' => [
+                        'nome' => $row['plano_nome'],
+                        'modalidade' => $row['modalidade_nome']
+                    ]
+                ];
+            }
+            
             $response->getBody()->write(json_encode([
                 'success' => true,
-                'message' => 'NOVO CÓDIGO EM EXECUÇÃO - Teste bem-sucedido',
-                'assinaturas' => [],
-                'total' => 0,
-                'timestamp' => date('Y-m-d H:i:s'),
-                'server_version' => '1.0.1-test'
-            ]));
+                'assinaturas' => $assinaturas,
+                'total' => count($assinaturas)
+            ], JSON_UNESCAPED_UNICODE));
             
-            return $response->withHeader('Content-Type', 'application/json');
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
             
         } catch (\Exception $e) {
             error_log("[AssinaturaController::minhasAssinaturas] Erro: " . $e->getMessage());
