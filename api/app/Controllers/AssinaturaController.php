@@ -372,88 +372,35 @@ class AssinaturaController
                 return $response->withHeader('Content-Type', 'application/json');
             }
             
-            // Verificar qual tabela existe (nova ou antiga)
-            $assinaturas = [];
-            
-            // Tentar nova tabela primeiro
-            try {
-                $stmtCheck = $this->db->query("SELECT 1 FROM assinaturas LIMIT 1");
-                $usarNovaTabela = true;
-            } catch (\Exception $e) {
-                $usarNovaTabela = false;
-            }
-            
-            if ($usarNovaTabela) {
-                // Query na nova tabela assinaturas
-                $stmt = $this->db->prepare("
-                    SELECT 
-                        a.id,
-                        COALESCE(s.codigo, 'pendente') as status,
-                        COALESCE(s.nome, 'Pendente') as status_nome,
-                        COALESCE(s.cor, '#FFA500') as status_cor,
-                        a.valor,
-                        a.data_inicio,
-                        a.proxima_cobranca,
-                        a.ultima_cobranca,
-                        a.gateway_assinatura_id as mp_preapproval_id,
-                        COALESCE(f.nome, 'Mensal') as ciclo_nome,
-                        COALESCE(f.meses, 1) as ciclo_meses,
-                        COALESCE(g.nome, 'Mercado Pago') as gateway_nome,
-                        COALESCE(p.nome, 'Plano') as plano_nome,
-                        COALESCE(mo.nome, 'Modalidade') as modalidade_nome
-                    FROM assinaturas a
-                    LEFT JOIN assinatura_status s ON s.id = a.status_id
-                    LEFT JOIN assinatura_frequencias f ON f.id = a.frequencia_id
-                    LEFT JOIN assinatura_gateways g ON g.id = a.gateway_id
-                    LEFT JOIN matriculas m ON m.id = a.matricula_id
-                    LEFT JOIN planos p ON p.id = a.plano_id
-                    LEFT JOIN modalidades mo ON mo.id = p.modalidade_id
-                    WHERE a.aluno_id = ? AND a.tenant_id = ?
-                    ORDER BY a.criado_em DESC
-                ");
-                $stmt->execute([$aluno['id'], $tenantId]);
-                $assinaturas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-                
-            } else {
-                // Fallback: Query na tabela antiga assinaturas_mercadopago
-                $stmt = $this->db->prepare("
-                    SELECT 
-                        asm.id,
-                        asm.status,
-                        CASE asm.status
-                            WHEN 'authorized' THEN 'Ativa'
-                            WHEN 'pending' THEN 'Pendente'
-                            WHEN 'paused' THEN 'Pausada'
-                            WHEN 'cancelled' THEN 'Cancelada'
-                            ELSE asm.status
-                        END as status_nome,
-                        CASE asm.status
-                            WHEN 'authorized' THEN '#28A745'
-                            WHEN 'pending' THEN '#FFA500'
-                            WHEN 'paused' THEN '#6C757D'
-                            WHEN 'cancelled' THEN '#DC3545'
-                            ELSE '#6C757D'
-                        END as status_cor,
-                        asm.valor,
-                        asm.data_inicio,
-                        asm.proxima_cobranca,
-                        asm.ultima_cobranca,
-                        asm.mp_preapproval_id,
-                        'Mensal' as ciclo_nome,
-                        1 as ciclo_meses,
-                        'Mercado Pago' as gateway_nome,
-                        p.nome as plano_nome,
-                        mo.nome as modalidade_nome
-                    FROM assinaturas_mercadopago asm
-                    LEFT JOIN matriculas mat ON mat.id = asm.matricula_id
-                    LEFT JOIN planos p ON p.id = mat.plano_id
-                    LEFT JOIN modalidades mo ON mo.id = p.modalidade_id
-                    WHERE asm.aluno_id = ? AND asm.tenant_id = ?
-                    ORDER BY asm.created_at DESC
-                ");
-                $stmt->execute([$aluno['id'], $tenantId]);
-                $assinaturas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            }
+            // Query na tabela assinaturas
+            $stmt = $this->db->prepare("
+                SELECT 
+                    a.id,
+                    COALESCE(s.codigo, 'pendente') as status,
+                    COALESCE(s.nome, 'Pendente') as status_nome,
+                    COALESCE(s.cor, '#FFA500') as status_cor,
+                    a.valor,
+                    a.data_inicio,
+                    a.proxima_cobranca,
+                    a.ultima_cobranca,
+                    a.gateway_assinatura_id as mp_preapproval_id,
+                    COALESCE(f.nome, 'Mensal') as ciclo_nome,
+                    COALESCE(f.meses, 1) as ciclo_meses,
+                    COALESCE(g.nome, 'Mercado Pago') as gateway_nome,
+                    COALESCE(p.nome, 'Plano') as plano_nome,
+                    COALESCE(mo.nome, 'Modalidade') as modalidade_nome
+                FROM assinaturas a
+                LEFT JOIN assinatura_status s ON s.id = a.status_id
+                LEFT JOIN assinatura_frequencias f ON f.id = a.frequencia_id
+                LEFT JOIN assinatura_gateways g ON g.id = a.gateway_id
+                LEFT JOIN matriculas m ON m.id = a.matricula_id
+                LEFT JOIN planos p ON p.id = a.plano_id
+                LEFT JOIN modalidades mo ON mo.id = p.modalidade_id
+                WHERE a.aluno_id = ? AND a.tenant_id = ?
+                ORDER BY a.criado_em DESC
+            ");
+            $stmt->execute([$aluno['id'], $tenantId]);
+            $assinaturas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
             
             error_log("[AssinaturaController::minhasAssinaturas] assinaturas encontradas: " . count($assinaturas));
             
