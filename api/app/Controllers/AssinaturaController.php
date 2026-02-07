@@ -398,8 +398,7 @@ class AssinaturaController
                 LEFT JOIN assinatura_status s ON s.id = a.status_id
                 LEFT JOIN assinatura_frequencias f ON f.id = a.frequencia_id
                 LEFT JOIN assinatura_gateways g ON g.id = a.gateway_id
-                LEFT JOIN matriculas m ON m.id = a.matricula_id
-                LEFT JOIN planos p ON p.id = m.plano_id
+                LEFT JOIN planos p ON p.id = a.plano_id
                 LEFT JOIN modalidades mo ON mo.id = p.modalidade_id
                 WHERE a.aluno_id = ? AND a.tenant_id = ?
                 ORDER BY a.criado_em DESC
