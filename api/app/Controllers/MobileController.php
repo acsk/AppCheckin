@@ -3675,6 +3675,7 @@ class MobileController
             }
 
             $planoId = (int) $data['plano_id'];
+            $planoCicloId = !empty($data['plano_ciclo_id']) ? (int) $data['plano_ciclo_id'] : null;
             // Dia de vencimento é opcional, padrão = 5
             $diaVencimento = isset($data['dia_vencimento']) ? (int) $data['dia_vencimento'] : 5;
 
@@ -3738,8 +3739,39 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
             }
 
-            // Verificar se plano é pago
-            if ($plano['valor'] <= 0) {
+            // Buscar dados do ciclo se informado
+            $ciclo = null;
+            $valorCompra = (float) $plano['valor'];
+            $duracaoMeses = 1;
+            $cicloNome = 'Mensal';
+            
+            if ($planoCicloId) {
+                $stmtCiclo = $this->db->prepare("
+                    SELECT pc.*, tc.nome as ciclo_nome, tc.codigo as ciclo_codigo
+                    FROM plano_ciclos pc
+                    INNER JOIN tipos_ciclo tc ON tc.id = pc.tipo_ciclo_id
+                    WHERE pc.id = ? AND pc.plano_id = ? AND pc.tenant_id = ? AND pc.ativo = 1
+                ");
+                $stmtCiclo->execute([$planoCicloId, $planoId, $tenantId]);
+                $ciclo = $stmtCiclo->fetch(\PDO::FETCH_ASSOC);
+                
+                if (!$ciclo) {
+                    $response->getBody()->write(json_encode([
+                        'success' => false,
+                        'type' => 'error',
+                        'code' => 'CICLO_NAO_ENCONTRADO',
+                        'message' => 'Ciclo de pagamento não encontrado'
+                    ]));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+                }
+                
+                $valorCompra = (float) $ciclo['valor'];
+                $duracaoMeses = (int) $ciclo['meses'];
+                $cicloNome = $ciclo['ciclo_nome'];
+            }
+
+            // Verificar se valor é maior que zero
+            if ($valorCompra <= 0) {
                 $response->getBody()->write(json_encode([
                     'success' => false,
                     'type' => 'error',
@@ -3776,16 +3808,23 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
 
-            // Calcular datas
+            // Calcular datas baseado no ciclo
             $dataInicio = date('Y-m-d');
             $dataMatricula = $dataInicio;
-            $duracaoDias = (int) $plano['duracao_dias'];
             $dataInicioObj = new \DateTime($dataInicio);
-            $dataVencimento = clone $dataInicioObj;
-            $dataVencimento->modify("+{$duracaoDias} days");
             
-            $proximaDataVencimento = clone $dataInicioObj;
-            $proximaDataVencimento->modify("+{$duracaoDias} days");
+            // Calcular vencimento baseado no ciclo (meses) ou duração do plano (dias)
+            $dataVencimento = clone $dataInicioObj;
+            if ($duracaoMeses > 1) {
+                // Ciclo com mais de 1 mês: usar meses
+                $dataVencimento->modify("+{$duracaoMeses} months");
+            } else {
+                // Ciclo mensal: usar duração em dias do plano
+                $duracaoDias = (int) $plano['duracao_dias'];
+                $dataVencimento->modify("+{$duracaoDias} days");
+            }
+            
+            $proximaDataVencimento = clone $dataVencimento;
 
             // Buscar status "pendente" (matrícula aguardando pagamento)
             $stmtStatus = $this->db->prepare("SELECT id FROM status_matricula WHERE codigo = 'pendente'");
@@ -3802,19 +3841,20 @@ class MobileController
             // Criar matrícula com status PENDENTE
             $stmtInsert = $this->db->prepare("
                 INSERT INTO matriculas 
-                (tenant_id, aluno_id, plano_id, data_matricula, data_inicio, data_vencimento, 
+                (tenant_id, aluno_id, plano_id, plano_ciclo_id, data_matricula, data_inicio, data_vencimento, 
                  valor, status_id, motivo_id, dia_vencimento, periodo_teste, proxima_data_vencimento, criado_por)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
             ");
 
             $stmtInsert->execute([
                 $tenantId,
                 $alunoId,
                 $planoId,
+                $planoCicloId,
                 $dataMatricula,
                 $dataInicio,
                 $dataVencimento->format('Y-m-d'),
-                $plano['valor'],
+                $valorCompra,
                 $statusId,
                 $motivoId,
                 $diaVencimento,
@@ -3824,7 +3864,7 @@ class MobileController
 
             $matriculaId = (int) $this->db->lastInsertId();
 
-            error_log("[MobileController::comprarPlano] Matrícula criada ID: {$matriculaId}, Status: pendente");
+            error_log("[MobileController::comprarPlano] Matrícula criada ID: {$matriculaId}, Ciclo: {$cicloNome}, Valor: {$valorCompra}, Status: pendente");
 
             // Criar registro de pagamento PENDENTE em pagamentos_plano
             try {
@@ -3842,7 +3882,7 @@ class MobileController
                     $alunoId,
                     $matriculaId,
                     $planoId,
-                    $plano['valor'],
+                    $valorCompra,
                     $dataInicio,
                     $userId
                 ]);
@@ -3863,6 +3903,10 @@ class MobileController
                 // Passar tenant_id para carregar credenciais específicas do tenant
                 $mercadoPago = new \App\Services\MercadoPagoService($tenantId);
                 
+                $descricaoCompra = $planoCicloId 
+                    ? "{$plano['nome']} ({$cicloNome}) - {$plano['modalidade_nome']}"
+                    : "{$plano['nome']} - {$plano['modalidade_nome']}";
+                
                 $dadosPagamento = [
                     'tenant_id' => $tenantId,
                     'matricula_id' => $matriculaId,
@@ -3872,8 +3916,8 @@ class MobileController
                     'aluno_email' => $usuario['email'],
                     'aluno_telefone' => $usuario['telefone'] ?? '',
                     'plano_nome' => $plano['nome'],
-                    'descricao' => "Matrícula {$plano['nome']} - {$plano['modalidade_nome']}",
-                    'valor' => (float) $plano['valor'],
+                    'descricao' => $descricaoCompra,
+                    'valor' => $valorCompra,
                     'max_parcelas' => 12
                 ];
 
@@ -3898,10 +3942,13 @@ class MobileController
                 'data' => [
                     'matricula_id' => $matriculaId,
                     'plano_id' => $planoId,
+                    'plano_ciclo_id' => $planoCicloId,
                     'plano_nome' => $plano['nome'],
+                    'ciclo_nome' => $cicloNome,
+                    'duracao_meses' => $duracaoMeses,
                     'modalidade' => $plano['modalidade_nome'],
-                    'valor' => (float) $plano['valor'],
-                    'valor_formatado' => 'R$ ' . number_format($plano['valor'], 2, ',', '.'),
+                    'valor' => $valorCompra,
+                    'valor_formatado' => 'R$ ' . number_format($valorCompra, 2, ',', '.'),
                     'status' => 'pendente',
                     'data_inicio' => $dataInicio,
                     'data_vencimento' => $proximaDataVencimento->format('Y-m-d'),
@@ -3915,6 +3962,7 @@ class MobileController
 
         } catch (\Exception $e) {
             error_log('[MobileController::comprarPlano] Erro: ' . $e->getMessage());
+            error_log('[MobileController::comprarPlano] Stack: ' . $e->getTraceAsString());
             
             $response->getBody()->write(json_encode([
                 'success' => false,
