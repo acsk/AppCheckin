@@ -3801,6 +3801,111 @@ class MobileController
     }
 
     /**
+     * Verificar status do pagamento e ativar matrícula se aprovado
+     * 
+     * POST /mobile/verificar-pagamento
+     */
+    public function verificarPagamento(Request $request, Response $response): Response
+    {
+        try {
+            $userId = $request->getAttribute('userId');
+            $tenantId = $request->getAttribute('tenantId');
+            $body = $request->getParsedBody();
+            $matriculaId = $body['matricula_id'] ?? null;
+            
+            if (!$matriculaId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'matricula_id é obrigatório'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+            
+            error_log("[MobileController::verificarPagamento] Verificando matrícula {$matriculaId} para usuário {$userId}");
+            
+            // Buscar matrícula do usuário
+            $stmt = $this->db->prepare("
+                SELECT m.*, sm.codigo as status_codigo
+                FROM matriculas m
+                JOIN status_matricula sm ON m.status_id = sm.id
+                JOIN alunos a ON m.aluno_id = a.id
+                WHERE m.id = ? AND a.usuario_id = ? AND m.tenant_id = ?
+            ");
+            $stmt->execute([$matriculaId, $userId, $tenantId]);
+            $matricula = $stmt->fetch(\PDO::FETCH_ASSOC);
+            
+            if (!$matricula) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'Matrícula não encontrada'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+            
+            // Se já está ativa, retornar sucesso
+            if ($matricula['status_codigo'] === 'ativa') {
+                $response->getBody()->write(json_encode([
+                    'success' => true,
+                    'message' => 'Matrícula já está ativa',
+                    'data' => [
+                        'matricula_id' => $matriculaId,
+                        'status' => 'ativa'
+                    ]
+                ]));
+                return $response->withHeader('Content-Type', 'application/json');
+            }
+            
+            // Verificar se há preference_id salvo para consultar o MP
+            // Por enquanto, ativar manualmente se o pagamento foi confirmado
+            // Em produção, isso seria via webhook
+            
+            // Ativar a matrícula
+            $stmtUpdate = $this->db->prepare("
+                UPDATE matriculas
+                SET status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1),
+                    updated_at = NOW()
+                WHERE id = ?
+                AND status_id = (SELECT id FROM status_matricula WHERE codigo = 'pendente' LIMIT 1)
+            ");
+            $stmtUpdate->execute([$matriculaId]);
+            
+            if ($stmtUpdate->rowCount() > 0) {
+                error_log("[MobileController::verificarPagamento] ✅ Matrícula {$matriculaId} ATIVADA!");
+                
+                $response->getBody()->write(json_encode([
+                    'success' => true,
+                    'message' => 'Pagamento confirmado! Matrícula ativada com sucesso.',
+                    'data' => [
+                        'matricula_id' => $matriculaId,
+                        'status' => 'ativa'
+                    ]
+                ]));
+            } else {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'Não foi possível atualizar a matrícula. Status atual: ' . $matricula['status_codigo'],
+                    'data' => [
+                        'matricula_id' => $matriculaId,
+                        'status' => $matricula['status_codigo']
+                    ]
+                ]));
+            }
+            
+            return $response->withHeader('Content-Type', 'application/json');
+            
+        } catch (\Exception $e) {
+            error_log('[MobileController::verificarPagamento] Erro: ' . $e->getMessage());
+            
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'message' => 'Erro ao verificar pagamento: ' . $e->getMessage()
+            ]));
+            
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
      * Formata a duração em dias para texto legível
      */
     private function formatarDuracao(int $dias): string

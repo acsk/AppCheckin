@@ -841,6 +841,9 @@ return function ($app) {
         // Comprar plano (cria matrícula + gera link Mercado Pago)
         $group->post('/comprar-plano', [MobileController::class, 'comprarPlano']);
         
+        // Verificar pagamento e ativar matrícula
+        $group->post('/verificar-pagamento', [MobileController::class, 'verificarPagamento']);
+        
         // Detalhes da matrícula e pagamentos
         $group->get('/matriculas/{matriculaId}', [MobileController::class, 'detalheMatricula']);
         
