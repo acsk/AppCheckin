@@ -351,90 +351,14 @@ class AssinaturaController
     public function minhasAssinaturas(Request $request, Response $response): Response
     {
         try {
-            $tenantId = $request->getAttribute('tenantId');
-            $usuarioId = $request->getAttribute('usuarioId');
-            
-            error_log("[AssinaturaController::minhasAssinaturas] tenant_id={$tenantId}, usuario_id={$usuarioId}");
-            
-            // Buscar aluno_id do usuário
-            $stmtAluno = $this->db->prepare("SELECT id FROM alunos WHERE usuario_id = ? AND tenant_id = ?");
-            $stmtAluno->execute([$usuarioId, $tenantId]);
-            $aluno = $stmtAluno->fetch(\PDO::FETCH_ASSOC);
-            
-            error_log("[AssinaturaController::minhasAssinaturas] aluno encontrado: " . json_encode($aluno));
-            
-            if (!$aluno) {
-                $response->getBody()->write(json_encode([
-                    'success' => true,
-                    'assinaturas' => [],
-                    'total' => 0
-                ]));
-                return $response->withHeader('Content-Type', 'application/json');
-            }
-            
-            // Query na tabela assinaturas
-            $stmt = $this->db->prepare("
-                SELECT 
-                    a.id,
-                    a.status_id,
-                    a.valor,
-                    a.data_inicio,
-                    a.proxima_cobranca,
-                    a.ultima_cobranca,
-                    a.gateway_assinatura_id as mp_preapproval_id,
-                    a.frequencia_id,
-                    a.gateway_id,
-                    a.matricula_id,
-                    a.plano_id,
-                    s.codigo as status_codigo,
-                    s.nome as status_nome,
-                    s.cor as status_cor,
-                    f.nome as ciclo_nome,
-                    f.meses as ciclo_meses,
-                    g.nome as gateway_nome,
-                    p.nome as plano_nome,
-                    mo.nome as modalidade_nome
-                FROM assinaturas a
-                LEFT JOIN assinatura_status s ON s.id = a.status_id
-                LEFT JOIN assinatura_frequencias f ON f.id = a.frequencia_id
-                LEFT JOIN assinatura_gateways g ON g.id = a.gateway_id
-                LEFT JOIN planos p ON p.id = a.plano_id
-                LEFT JOIN modalidades mo ON mo.id = p.modalidade_id
-                WHERE a.aluno_id = ? AND a.tenant_id = ?
-                ORDER BY a.criado_em DESC
-            ");
-            $stmt->execute([$aluno['id'], $tenantId]);
-            $assinaturas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            
-            error_log("[AssinaturaController::minhasAssinaturas] assinaturas encontradas: " . count($assinaturas));
-            
-            // Formatar e preencher valores padrão
-            foreach ($assinaturas as &$ass) {
-                $ass['id'] = (int) $ass['id'];
-                $ass['valor'] = (float) $ass['valor'];
-                $ass['valor_formatado'] = 'R$ ' . number_format($ass['valor'], 2, ',', '.');
-                $ass['status'] = $ass['status_codigo'] ?? 'pendente';
-                $ass['status_nome'] = $ass['status_nome'] ?? 'Pendente';
-                $ass['status_cor'] = $ass['status_cor'] ?? '#FFA500';
-                $ass['ciclo_nome'] = $ass['ciclo_nome'] ?? 'Mensal';
-                $ass['ciclo_meses'] = (int) ($ass['ciclo_meses'] ?? 1);
-                $ass['gateway_nome'] = $ass['gateway_nome'] ?? 'Mercado Pago';
-                $ass['plano_nome'] = $ass['plano_nome'] ?? 'Plano';
-                $ass['modalidade_nome'] = $ass['modalidade_nome'] ?? 'Modalidade';
-                
-                // Remover campos de IDs internos
-                unset($ass['status_codigo']);
-                unset($ass['plano_id']);
-                unset($ass['matricula_id']);
-                unset($ass['gateway_id']);
-                unset($ass['frequencia_id']);
-                unset($ass['status_id']);
-            }
-            
+            // TESTE: Retornar resposta de teste para verificar se o código foi atualizado
             $response->getBody()->write(json_encode([
                 'success' => true,
-                'assinaturas' => $assinaturas,
-                'total' => count($assinaturas)
+                'message' => 'NOVO CÓDIGO EM EXECUÇÃO - Teste bem-sucedido',
+                'assinaturas' => [],
+                'total' => 0,
+                'timestamp' => date('Y-m-d H:i:s'),
+                'server_version' => '1.0.1-test'
             ]));
             
             return $response->withHeader('Content-Type', 'application/json');
