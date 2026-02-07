@@ -9,6 +9,7 @@ import {
   FlatList,
   Linking,
   Modal,
+  ScrollView,
   SafeAreaView,
   StyleSheet,
   Text,
@@ -84,6 +85,7 @@ export default function PlanosScreen() {
   const [selectedCicloByPlano, setSelectedCicloByPlano] = useState<
     Record<number, number>
   >({});
+  const [selectedPlanoId, setSelectedPlanoId] = useState<number | null>(null);
 
   useEffect(() => {
     if (planos.length === 0) return;
@@ -103,6 +105,14 @@ export default function PlanosScreen() {
       return hasChange ? next : prev;
     });
   }, [planos]);
+
+  useEffect(() => {
+    if (!selectedPlanoId) return;
+    const exists = planos.some((plano) => plano.id === selectedPlanoId);
+    if (!exists) {
+      setSelectedPlanoId(null);
+    }
+  }, [planos, selectedPlanoId]);
 
   useEffect(() => {
     const initializeAndFetch = async () => {
@@ -619,13 +629,64 @@ export default function PlanosScreen() {
     );
   };
 
+  const renderPlanListItem = ({ item: plano }: { item: Plan }) => {
+    const ciclos = (plano.ciclos || []).sort((a, b) => a.meses - b.meses);
+    const baseCiclo = ciclos[0];
+    const priceLabel = baseCiclo?.valor_formatado || plano.valor_formatado;
+
+    return (
+      <TouchableOpacity
+        style={styles.planListCard}
+        activeOpacity={0.9}
+        onPress={() => setSelectedPlanoId(plano.id)}
+      >
+        <View style={styles.planListTop}>
+          <View style={styles.planListInfo}>
+            <Text style={styles.planListName}>{plano.nome}</Text>
+            <Text style={styles.planListModalidade}>
+              {plano.modalidade.nome}
+            </Text>
+          </View>
+          {plano.is_plano_atual && (
+            <View style={styles.planListBadge}>
+              <Feather name="check" size={12} color="#fff" />
+              <Text style={styles.planListBadgeText}>Atual</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.planListBottom}>
+          <View>
+            <Text style={styles.planListPriceLabel}>A partir de</Text>
+            <Text style={styles.planListPrice}>{priceLabel}</Text>
+            {!!baseCiclo?.valor_mensal_formatado && (
+              <Text style={styles.planListMonthly}>
+                {baseCiclo.valor_mensal_formatado}/mês
+              </Text>
+            )}
+          </View>
+          <View style={styles.planListCta}>
+            <Text style={styles.planListCtaText}>Ver detalhes</Text>
+            <Feather name="arrow-right" size={16} color="#fff" />
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.headerTop}>
           <TouchableOpacity
             style={styles.headerBackButton}
-            onPress={() => router.replace("/(tabs)/checkin")}
+            onPress={() => {
+              if (selectedPlanoId) {
+                setSelectedPlanoId(null);
+                return;
+              }
+              router.replace("/(tabs)/checkin");
+            }}
           >
             <Feather name="arrow-left" size={24} color="#fff" />
           </TouchableOpacity>
@@ -645,7 +706,13 @@ export default function PlanosScreen() {
       <View style={styles.headerTop}>
         <TouchableOpacity
           style={styles.headerBackButton}
-          onPress={() => router.replace("/(tabs)/checkin")}
+          onPress={() => {
+            if (selectedPlanoId) {
+              setSelectedPlanoId(null);
+              return;
+            }
+            router.replace("/(tabs)/checkin");
+          }}
         >
           <Feather name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
@@ -692,15 +759,52 @@ export default function PlanosScreen() {
             Não há planos disponíveis no momento
           </Text>
         </View>
-      ) : (
-        <FlatList
-          data={planos}
-          renderItem={renderPlanCard}
-          keyExtractor={(item) => item.id.toString()}
-          contentContainerStyle={styles.listContent}
-          scrollEnabled={true}
+      ) : selectedPlanoId ? (
+        <ScrollView
+          contentContainerStyle={styles.detailContainer}
           showsVerticalScrollIndicator={false}
-        />
+        >
+          <View style={styles.stepHeader}>
+            <View>
+              <Text style={styles.stepLabel}>Etapa 2 de 2</Text>
+              <Text style={styles.stepTitle}>
+                {planos.find((p) => p.id === selectedPlanoId)?.nome ||
+                  "Detalhes do plano"}
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.stepAction}
+              onPress={() => setSelectedPlanoId(null)}
+            >
+              <Text style={styles.stepActionText}>Ver todos</Text>
+              <Feather name="grid" size={16} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
+          {(() => {
+            const selectedPlano = planos.find(
+              (p) => p.id === selectedPlanoId,
+            );
+            if (!selectedPlano) return null;
+            return renderPlanCard({ item: selectedPlano });
+          })()}
+        </ScrollView>
+      ) : (
+        <View style={styles.listWrapper}>
+          <View style={[styles.stepHeader, styles.stepHeaderPadded]}>
+            <View>
+              <Text style={styles.stepLabel}>Etapa 1 de 2</Text>
+              <Text style={styles.stepTitle}>Escolha um plano</Text>
+            </View>
+          </View>
+          <FlatList
+            data={planos}
+            renderItem={renderPlanListItem}
+            keyExtractor={(item) => item.id.toString()}
+            contentContainerStyle={styles.listContent}
+            scrollEnabled={true}
+            showsVerticalScrollIndicator={false}
+          />
+        </View>
       )}
 
       {/* Error Modal */}
@@ -858,6 +962,143 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingBottom: 32,
     gap: 16,
+  },
+  listWrapper: {
+    flex: 1,
+  },
+  detailContainer: {
+    flexGrow: 1,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 32,
+  },
+  stepHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 12,
+  },
+  stepHeaderPadded: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+  },
+  stepLabel: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.6,
+  },
+  stepTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: colors.text,
+    marginTop: 4,
+  },
+  stepAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e7ecf3",
+  },
+  stepActionText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.primary,
+  },
+  planListCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#eff2f6",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  planListTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+    marginBottom: 12,
+  },
+  planListInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  planListName: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: colors.text,
+  },
+  planListModalidade: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontWeight: "500",
+  },
+  planListBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#111827",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  planListBadgeText: {
+    fontSize: 10,
+    color: "#fff",
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  planListBottom: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+  },
+  planListPriceLabel: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  planListPrice: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: colors.primary,
+  },
+  planListMonthly: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: "600",
+    marginTop: 2,
+  },
+  planListCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: colors.primary,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.18,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  planListCtaText: {
+    fontSize: 12,
+    color: "#fff",
+    fontWeight: "700",
   },
   planCard: {
     backgroundColor: "#fff",
