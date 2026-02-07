@@ -3077,3 +3077,7 @@
 [2026-02-07 02:10:09] GET /mobile/planos-disponiveis
 [2026-02-07 02:10:12] OPTIONS /mobile/comprar-plano
 [2026-02-07 02:10:12] POST /mobile/comprar-plano
+[2026-02-07 02:30:47] OPTIONS /admin/matriculas
+[2026-02-07 02:30:47] GET /admin/matriculas
+[2026-02-07 02:30:48] OPTIONS /admin/matriculas
+[2026-02-07 02:30:48] GET /admin/matriculas

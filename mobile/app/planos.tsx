@@ -223,6 +223,10 @@ export default function PlanosScreen() {
 
         const matriculaData = await matriculaResponse.json();
         console.log("✅ Resposta da API:", matriculaData);
+        console.log(
+          "📋 Estrutura completa de data:",
+          JSON.stringify(matriculaData.data, null, 2),
+        );
 
         // Verificar se a API retornou sucesso
         if (!matriculaData.success) {
@@ -235,8 +239,28 @@ export default function PlanosScreen() {
           return;
         }
 
-        if (!matriculaData.data?.payment_url) {
-          console.error("❌ Link de pagamento não encontrado");
+        // Buscar payment_url em diferentes localizações
+        let paymentUrl = matriculaData.data?.payment_url;
+        let matriculaId =
+          matriculaData.data?.matricula?.id || matriculaData.data?.matricula_id;
+
+        // Se não encontrou em payment_url, procura em outras estruturas
+        if (!paymentUrl && matriculaData.data?.pagamento) {
+          paymentUrl = matriculaData.data.pagamento.url;
+        }
+
+        console.log("🔍 Debug payment_url:", {
+          "data keys": Object.keys(matriculaData.data || {}),
+          payment_url: paymentUrl,
+          matricula_id: matriculaId,
+          data: matriculaData.data,
+        });
+
+        if (!paymentUrl) {
+          console.error(
+            "❌ Link de pagamento não encontrado em nenhuma localização",
+          );
+          console.error("📊 Data recebida:", matriculaData.data);
           setComprando(false);
           setPlanoComprando(null);
           showErrorModal(
@@ -246,9 +270,6 @@ export default function PlanosScreen() {
           );
           return;
         }
-
-        const paymentUrl = matriculaData.data.payment_url;
-        const matriculaId = matriculaData.data.matricula?.id;
 
         console.log("💳 Payment URL:", paymentUrl);
 
