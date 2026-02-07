@@ -228,11 +228,12 @@ class MercadoPagoWebhookController
             $matriculaId = (int)$matches[1];
         }
         
-        // Buscar assinatura na tabela assinaturas_mercadopago pelo preapproval_id
+        // Buscar assinatura na tabela assinaturas pelo gateway_assinatura_id
         $stmtBuscar = $this->db->prepare("
-            SELECT id, matricula_id, status as status_atual 
-            FROM assinaturas_mercadopago 
-            WHERE mp_preapproval_id = ?
+            SELECT a.id, a.matricula_id, s.codigo as status_atual 
+            FROM assinaturas a
+            INNER JOIN assinatura_status s ON s.id = a.status_id
+            WHERE a.gateway_assinatura_id = ?
             LIMIT 1
         ");
         $stmtBuscar->execute([$preapprovalId]);
@@ -243,22 +244,28 @@ class MercadoPagoWebhookController
             
             // Mapear status do MP para status interno
             $statusMap = [
-                'approved' => 'authorized',
-                'authorized' => 'authorized',
-                'pending' => 'pending',
-                'paused' => 'paused',
-                'cancelled' => 'cancelled'
+                'approved' => 'ativa',
+                'authorized' => 'ativa',
+                'pending' => 'pendente',
+                'paused' => 'pausada',
+                'cancelled' => 'cancelada'
             ];
-            $statusInterno = $statusMap[$status] ?? 'pending';
+            $statusInterno = $statusMap[$status] ?? 'pendente';
+            
+            // Buscar ID do status
+            $stmtStatusId = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = ?");
+            $stmtStatusId->execute([$statusInterno]);
+            $statusId = $stmtStatusId->fetchColumn() ?: 1;
             
             // Atualizar status da assinatura
             $stmtUpdate = $this->db->prepare("
-                UPDATE assinaturas_mercadopago
-                SET status = ?,
-                    updated_at = NOW()
+                UPDATE assinaturas
+                SET status_id = ?,
+                    status_gateway = ?,
+                    atualizado_em = NOW()
                 WHERE id = ?
             ");
-            $stmtUpdate->execute([$statusInterno, $assinaturaDb['id']]);
+            $stmtUpdate->execute([$statusId, $status, $assinaturaDb['id']]);
             
             error_log("[Webhook MP] ✅ Assinatura #{$assinaturaDb['id']} atualizada: {$assinaturaDb['status_atual']} -> {$statusInterno}");
         } else {

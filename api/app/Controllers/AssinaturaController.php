@@ -74,8 +74,9 @@ class AssinaturaController
             
             // Verificar se já tem assinatura ativa
             $stmtCheck = $this->db->prepare("
-                SELECT id FROM assinaturas_mercadopago 
-                WHERE aluno_id = ? AND tenant_id = ? AND status IN ('pending', 'authorized')
+                SELECT a.id FROM assinaturas a
+                INNER JOIN assinatura_status s ON s.id = a.status_id
+                WHERE a.aluno_id = ? AND a.tenant_id = ? AND s.codigo IN ('pendente', 'ativa')
             ");
             $stmtCheck->execute([$aluno['aluno_id'], $tenantId]);
             if ($stmtCheck->fetch()) {
@@ -142,30 +143,61 @@ class AssinaturaController
                     throw new \Exception($resultadoMP['message'] ?? 'Erro ao criar assinatura no MercadoPago');
                 }
                 
-                // Salvar assinatura no banco
+                // Salvar assinatura no banco (tabela genérica)
+                // Buscar IDs das tabelas de lookup
+                $stmtGateway = $this->db->prepare("SELECT id FROM assinatura_gateways WHERE codigo = 'mercadopago'");
+                $stmtGateway->execute();
+                $gatewayId = $stmtGateway->fetchColumn() ?: 1;
+                
+                $statusMP = $resultadoMP['status'] ?? 'pending';
+                $statusCodigo = match($statusMP) {
+                    'authorized' => 'ativa',
+                    'paused' => 'pausada',
+                    'cancelled' => 'cancelada',
+                    default => 'pendente'
+                };
+                $stmtStatus = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = ?");
+                $stmtStatus->execute([$statusCodigo]);
+                $statusId = $stmtStatus->fetchColumn() ?: 1;
+                
+                $stmtFreq = $this->db->prepare("SELECT id FROM assinatura_frequencias WHERE codigo = 'mensal'");
+                $stmtFreq->execute();
+                $frequenciaId = $stmtFreq->fetchColumn() ?: 4;
+                
                 $stmtAssinatura = $this->db->prepare("
-                    INSERT INTO assinaturas_mercadopago
-                    (tenant_id, matricula_id, aluno_id, plano_ciclo_id,
-                     mp_preapproval_id, mp_payer_id, status, valor,
-                     dia_cobranca, data_inicio, proxima_cobranca)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO assinaturas
+                    (tenant_id, matricula_id, aluno_id, plano_id,
+                     gateway_id, gateway_assinatura_id, gateway_cliente_id,
+                     status_id, status_gateway, valor,
+                     frequencia_id, dia_cobranca, data_inicio, proxima_cobranca,
+                     metodo_pagamento_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ");
                 
                 $diaCobranca = (int) date('d');
                 $proximaCobranca = date('Y-m-d', strtotime("+{$ciclo['meses']} months"));
                 
+                // Método de pagamento = cartão de crédito
+                $stmtMetodo = $this->db->prepare("SELECT id FROM metodos_pagamento WHERE codigo = 'credit_card'");
+                $stmtMetodo->execute();
+                $metodoPagamentoId = $stmtMetodo->fetchColumn() ?: 1;
+                
                 $stmtAssinatura->execute([
                     $tenantId,
                     $matriculaId,
                     $aluno['aluno_id'],
-                    $ciclo['id'],
+                    $ciclo['plano_id'],
+                    $gatewayId,
                     $resultadoMP['id'] ?? null,
                     $resultadoMP['payer_id'] ?? null,
-                    $resultadoMP['status'] ?? 'pending',
+                    $statusId,
+                    $statusMP,
                     $ciclo['valor'],
+                    $frequenciaId,
                     $diaCobranca,
                     $dataInicio,
-                    $proximaCobranca
+                    $proximaCobranca,
+                    $metodoPagamentoId
                 ]);
                 
                 $assinaturaId = (int) $this->db->lastInsertId();
@@ -235,10 +267,11 @@ class AssinaturaController
             
             // Buscar assinatura
             $stmt = $this->db->prepare("
-                SELECT asm.*, a.usuario_id
-                FROM assinaturas_mercadopago asm
-                INNER JOIN alunos a ON a.id = asm.aluno_id
-                WHERE asm.id = ? AND asm.tenant_id = ?
+                SELECT ass.*, al.usuario_id, s.codigo as status_codigo, ass.gateway_assinatura_id as mp_preapproval_id
+                FROM assinaturas ass
+                INNER JOIN alunos al ON al.id = ass.aluno_id
+                INNER JOIN assinatura_status s ON s.id = ass.status_id
+                WHERE ass.id = ? AND ass.tenant_id = ?
             ");
             $stmt->execute([$assinaturaId, $tenantId]);
             $assinatura = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -255,7 +288,7 @@ class AssinaturaController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
             }
             
-            if ($assinatura['status'] === 'cancelled') {
+            if ($assinatura['status_codigo'] === 'cancelada') {
                 $response->getBody()->write(json_encode(['error' => 'Assinatura já está cancelada']));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
@@ -272,19 +305,28 @@ class AssinaturaController
             }
             
             // Atualizar no banco
+            $stmtStatusCancelada = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'cancelada'");
+            $stmtStatusCancelada->execute();
+            $statusCanceladaId = $stmtStatusCancelada->fetchColumn() ?: 4;
+            
+            $stmtTipoCancelamento = $this->db->prepare("SELECT id FROM assinatura_cancelamento_tipos WHERE codigo = 'usuario'");
+            $stmtTipoCancelamento->execute();
+            $tipoCancelamentoId = $stmtTipoCancelamento->fetchColumn() ?: 1;
+            
             $stmtUpdate = $this->db->prepare("
-                UPDATE assinaturas_mercadopago
-                SET status = 'cancelled',
+                UPDATE assinaturas
+                SET status_id = ?,
+                    status_gateway = 'cancelled',
                     motivo_cancelamento = ?,
-                    cancelado_por = ?,
-                    data_cancelamento = NOW(),
-                    updated_at = NOW()
+                    cancelado_por_id = ?,
+                    atualizado_em = NOW()
                 WHERE id = ?
             ");
             
             $stmtUpdate->execute([
+                $statusCanceladaId,
                 $data['motivo'] ?? 'Cancelado pelo usuário',
-                $usuarioId,
+                $tipoCancelamentoId,
                 $assinaturaId
             ]);
             
@@ -325,33 +367,36 @@ class AssinaturaController
                 $response->getBody()->write(json_encode([
                     'success' => true,
                     'assinaturas' => [],
-                    'total' => 0,
-                    'debug' => 'Aluno não encontrado para este usuário'
+                    'total' => 0
                 ]));
                 return $response->withHeader('Content-Type', 'application/json');
             }
             
+            // Query usando a VIEW vw_assinaturas
             $stmt = $this->db->prepare("
                 SELECT 
-                    asm.id,
-                    asm.status,
-                    asm.valor,
-                    asm.data_inicio,
-                    asm.proxima_cobranca,
-                    asm.ultima_cobranca,
-                    asm.mp_preapproval_id,
-                    COALESCE(tc.nome, 'Mensal') as ciclo_nome,
-                    COALESCE(pc.meses, 1) as ciclo_meses,
+                    a.id,
+                    s.codigo as status,
+                    s.nome as status_nome,
+                    s.cor as status_cor,
+                    a.valor,
+                    a.data_inicio,
+                    a.proxima_cobranca,
+                    a.ultima_cobranca,
+                    a.gateway_assinatura_id as mp_preapproval_id,
+                    f.nome as ciclo_nome,
+                    f.meses as ciclo_meses,
+                    g.nome as gateway_nome,
                     p.nome as plano_nome,
-                    m.nome as modalidade_nome
-                FROM assinaturas_mercadopago asm
-                INNER JOIN matriculas mat ON mat.id = asm.matricula_id
-                INNER JOIN planos p ON p.id = mat.plano_id
-                LEFT JOIN plano_ciclos pc ON pc.id = asm.plano_ciclo_id
-                LEFT JOIN tipos_ciclo tc ON tc.id = pc.tipo_ciclo_id
-                LEFT JOIN modalidades m ON m.id = p.modalidade_id
-                WHERE asm.aluno_id = ? AND asm.tenant_id = ?
-                ORDER BY asm.created_at DESC
+                    mo.nome as modalidade_nome
+                FROM assinaturas a
+                INNER JOIN assinatura_status s ON s.id = a.status_id
+                INNER JOIN assinatura_frequencias f ON f.id = a.frequencia_id
+                INNER JOIN assinatura_gateways g ON g.id = a.gateway_id
+                LEFT JOIN planos p ON p.id = a.plano_id
+                LEFT JOIN modalidades mo ON mo.id = p.modalidade_id
+                WHERE a.aluno_id = ? AND a.tenant_id = ?
+                ORDER BY a.criado_em DESC
             ");
             $stmt->execute([$aluno['id'], $tenantId]);
             $assinaturas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
@@ -363,8 +408,8 @@ class AssinaturaController
                 $ass['id'] = (int) $ass['id'];
                 $ass['valor'] = (float) $ass['valor'];
                 $ass['valor_formatado'] = 'R$ ' . number_format($ass['valor'], 2, ',', '.');
-                $ass['ciclo_meses'] = (int) $ass['ciclo_meses'];
-                $ass['status_label'] = $this->getStatusLabel($ass['status']);
+                $ass['ciclo_meses'] = (int) ($ass['ciclo_meses'] ?? 1);
+                $ass['status_label'] = $ass['status_nome'] ?? $this->getStatusLabel($ass['status']);
             }
             
             $response->getBody()->write(json_encode([
@@ -385,12 +430,12 @@ class AssinaturaController
     private function getStatusLabel(string $status): string
     {
         return match($status) {
-            'pending' => 'Pendente',
-            'authorized' => 'Ativa',
-            'paused' => 'Pausada',
-            'cancelled' => 'Cancelada',
-            'finished' => 'Finalizada',
-            default => $status
+            'pendente', 'pending' => 'Pendente',
+            'ativa', 'authorized' => 'Ativa',
+            'pausada', 'paused' => 'Pausada',
+            'cancelada', 'cancelled' => 'Cancelada',
+            'expirada', 'finished' => 'Expirada',
+            default => ucfirst($status)
         };
     }
 }

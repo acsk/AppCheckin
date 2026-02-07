@@ -3959,30 +3959,57 @@ class MobileController
                     $preferencia = $mercadoPago->criarPreferenciaAssinatura($dadosPagamento);
                     $tipoPagamento = 'assinatura';
                     
-                    // Gravar assinatura na tabela assinaturas_mercadopago
+                    // Gravar assinatura na tabela assinaturas (genérica)
                     if ($preferencia['tipo'] === 'assinatura' && !empty($preferencia['id'])) {
                         try {
+                            // Buscar IDs das tabelas de lookup
+                            $stmtGateway = $this->db->prepare("SELECT id FROM assinatura_gateways WHERE codigo = 'mercadopago'");
+                            $stmtGateway->execute();
+                            $gatewayId = $stmtGateway->fetchColumn() ?: 1;
+                            
+                            $stmtStatus = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'pendente'");
+                            $stmtStatus->execute();
+                            $statusId = $stmtStatus->fetchColumn() ?: 1;
+                            
+                            $stmtFreq = $this->db->prepare("SELECT id FROM assinatura_frequencias WHERE codigo = 'mensal'");
+                            $stmtFreq->execute();
+                            $frequenciaId = $stmtFreq->fetchColumn() ?: 4;
+                            
+                            $stmtMetodo = $this->db->prepare("SELECT id FROM metodos_pagamento WHERE codigo = 'credit_card'");
+                            $stmtMetodo->execute();
+                            $metodoPagamentoId = $stmtMetodo->fetchColumn() ?: 1;
+                            
                             $stmtAssinatura = $this->db->prepare("
-                                INSERT INTO assinaturas_mercadopago
-                                (tenant_id, matricula_id, aluno_id, plano_ciclo_id,
-                                 mp_preapproval_id, status, valor,
-                                 dia_cobranca, data_inicio, proxima_cobranca, created_at)
-                                VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, NOW())
+                                INSERT INTO assinaturas
+                                (tenant_id, matricula_id, aluno_id, plano_id,
+                                 gateway_id, gateway_assinatura_id, status_id, status_gateway,
+                                 valor, frequencia_id, dia_cobranca, data_inicio, proxima_cobranca,
+                                 metodo_pagamento_id, criado_em)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, NOW())
                             ");
                             
                             $diaCobranca = (int) date('d');
                             $proximaCobranca = date('Y-m-d', strtotime('+1 month'));
                             
+                            // Buscar plano_id da matrícula
+                            $stmtPlano = $this->db->prepare("SELECT plano_id FROM matriculas WHERE id = ?");
+                            $stmtPlano->execute([$matriculaId]);
+                            $planoIdMatricula = $stmtPlano->fetchColumn();
+                            
                             $stmtAssinatura->execute([
                                 $tenantId,
                                 $matriculaId,
                                 $alunoId,
-                                $planoCicloId,
-                                $preferencia['id'], // mp_preapproval_id
+                                $planoIdMatricula,
+                                $gatewayId,
+                                $preferencia['id'], // gateway_assinatura_id
+                                $statusId,
                                 $valorCompra,
+                                $frequenciaId,
                                 $diaCobranca,
                                 date('Y-m-d'),
-                                $proximaCobranca
+                                $proximaCobranca,
+                                $metodoPagamentoId
                             ]);
                             
                             $assinaturaDbId = (int) $this->db->lastInsertId();
