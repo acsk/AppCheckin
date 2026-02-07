@@ -84,6 +84,72 @@ const planoService = {
       throw error.response?.data || { error: 'Erro ao desativar plano' };
     }
   },
+
+  /**
+   * Tipos de ciclo
+   */
+  async listarTiposCiclo() {
+    try {
+      const response = await api.get('/admin/tipos-ciclo');
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao listar tipos de ciclo:', error.response?.data || error.message);
+      throw error.response?.data || { error: 'Erro ao listar tipos de ciclo' };
+    }
+  },
+
+  /**
+   * Ciclos do plano
+   */
+  async listarCiclos(planoId) {
+    try {
+      const response = await api.get(`/admin/planos/${planoId}/ciclos`);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao listar ciclos do plano:', error.response?.data || error.message);
+      throw error.response?.data || { error: 'Erro ao listar ciclos do plano' };
+    }
+  },
+
+  async criarCiclo(planoId, dados) {
+    try {
+      const response = await api.post(`/admin/planos/${planoId}/ciclos`, dados);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao criar ciclo:', error.response?.data || error.message);
+      throw error.response?.data || { error: 'Erro ao criar ciclo' };
+    }
+  },
+
+  async atualizarCiclo(planoId, cicloId, dados) {
+    try {
+      const response = await api.put(`/admin/planos/${planoId}/ciclos/${cicloId}`, dados);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao atualizar ciclo:', error.response?.data || error.message);
+      throw error.response?.data || { error: 'Erro ao atualizar ciclo' };
+    }
+  },
+
+  async excluirCiclo(planoId, cicloId) {
+    try {
+      const response = await api.delete(`/admin/planos/${planoId}/ciclos/${cicloId}`);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao excluir ciclo:', error.response?.data || error.message);
+      throw error.response?.data || { error: 'Erro ao excluir ciclo' };
+    }
+  },
+
+  async gerarCiclos(planoId, dados = null) {
+    try {
+      const response = await api.post(`/admin/planos/${planoId}/ciclos/gerar`, dados || {});
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao gerar ciclos:', error.response?.data || error.message);
+      throw error.response?.data || { error: 'Erro ao gerar ciclos' };
+    }
+  },
 };
 
 export default planoService;

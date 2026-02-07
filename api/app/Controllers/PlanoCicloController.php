@@ -4,10 +4,14 @@ namespace App\Controllers;
 
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use OpenApi\Attributes as OA;
 
 /**
  * Controller para gerenciar ciclos de planos
+ * 
+ * @package App\Controllers
  */
+#[OA\Tag(name: "Ciclos de Planos", description: "Gerenciamento de ciclos de pagamento dos planos")]
 class PlanoCicloController
 {
     private $db;
@@ -18,9 +22,100 @@ class PlanoCicloController
     }
     
     /**
+     * Listar tipos de ciclo disponíveis
+     * GET /admin/tipos-ciclo
+     */
+    #[OA\Get(
+        path: "/admin/tipos-ciclo",
+        summary: "Listar tipos de ciclo",
+        description: "Retorna todos os tipos de ciclo disponíveis (mensal, bimestral, trimestral, etc)",
+        tags: ["Ciclos de Planos"],
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Lista de tipos de ciclo",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "success", type: "boolean", example: true),
+                        new OA\Property(
+                            property: "data",
+                            type: "array",
+                            items: new OA\Items(
+                                properties: [
+                                    new OA\Property(property: "id", type: "integer", example: 1),
+                                    new OA\Property(property: "nome", type: "string", example: "Mensal"),
+                                    new OA\Property(property: "codigo", type: "string", example: "mensal"),
+                                    new OA\Property(property: "meses", type: "integer", example: 1),
+                                    new OA\Property(property: "ordem", type: "integer", example: 1)
+                                ]
+                            )
+                        )
+                    ]
+                )
+            )
+        ]
+    )]
+    public function listarTiposCiclo(Request $request, Response $response): Response
+    {
+        try {
+            $stmt = $this->db->query("
+                SELECT id, nome, codigo, meses, ordem 
+                FROM tipos_ciclo 
+                WHERE ativo = 1 
+                ORDER BY ordem ASC
+            ");
+            $tipos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            
+            foreach ($tipos as &$tipo) {
+                $tipo['id'] = (int) $tipo['id'];
+                $tipo['meses'] = (int) $tipo['meses'];
+                $tipo['ordem'] = (int) $tipo['ordem'];
+            }
+            
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'data' => $tipos
+            ]));
+            
+            return $response->withHeader('Content-Type', 'application/json');
+            
+        } catch (\Exception $e) {
+            error_log("Erro ao listar tipos de ciclo: " . $e->getMessage());
+            $response->getBody()->write(json_encode(['error' => 'Erro interno']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+    
+    /**
      * Listar ciclos de um plano
      * GET /admin/planos/{plano_id}/ciclos
      */
+    #[OA\Get(
+        path: "/admin/planos/{plano_id}/ciclos",
+        summary: "Listar ciclos de um plano",
+        description: "Retorna todos os ciclos cadastrados para um plano específico",
+        tags: ["Ciclos de Planos"],
+        security: [["bearerAuth" => []]],
+        parameters: [
+            new OA\Parameter(name: "plano_id", in: "path", required: true, schema: new OA\Schema(type: "integer"))
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Lista de ciclos do plano",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "success", type: "boolean", example: true),
+                        new OA\Property(property: "plano", type: "object"),
+                        new OA\Property(property: "ciclos", type: "array", items: new OA\Items(type: "object")),
+                        new OA\Property(property: "total", type: "integer")
+                    ]
+                )
+            ),
+            new OA\Response(response: 404, description: "Plano não encontrado")
+        ]
+    )]
     public function listar(Request $request, Response $response, array $args): Response
     {
         try {
@@ -84,6 +179,44 @@ class PlanoCicloController
      * Criar ciclo para um plano
      * POST /admin/planos/{plano_id}/ciclos
      */
+    #[OA\Post(
+        path: "/admin/planos/{plano_id}/ciclos",
+        summary: "Criar ciclo para um plano",
+        description: "Cria um novo ciclo de pagamento para o plano especificado",
+        tags: ["Ciclos de Planos"],
+        security: [["bearerAuth" => []]],
+        parameters: [
+            new OA\Parameter(name: "plano_id", in: "path", required: true, schema: new OA\Schema(type: "integer"))
+        ],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ["tipo_ciclo_id", "valor"],
+                properties: [
+                    new OA\Property(property: "tipo_ciclo_id", type: "integer", example: 2, description: "ID do tipo de ciclo"),
+                    new OA\Property(property: "valor", type: "number", format: "float", example: 240.00, description: "Valor total do ciclo"),
+                    new OA\Property(property: "permite_recorrencia", type: "boolean", example: true, description: "Se permite assinatura"),
+                    new OA\Property(property: "ativo", type: "boolean", example: true)
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(
+                response: 201,
+                description: "Ciclo criado com sucesso",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "success", type: "boolean", example: true),
+                        new OA\Property(property: "message", type: "string", example: "Ciclo criado com sucesso"),
+                        new OA\Property(property: "id", type: "integer", example: 5)
+                    ]
+                )
+            ),
+            new OA\Response(response: 400, description: "Ciclo já existe para este plano"),
+            new OA\Response(response: 404, description: "Plano ou tipo de ciclo não encontrado"),
+            new OA\Response(response: 422, description: "Dados inválidos")
+        ]
+    )]
     public function criar(Request $request, Response $response, array $args): Response
     {
         try {
@@ -176,6 +309,30 @@ class PlanoCicloController
      * Atualizar ciclo
      * PUT /admin/planos/{plano_id}/ciclos/{id}
      */
+    #[OA\Put(
+        path: "/admin/planos/{plano_id}/ciclos/{id}",
+        summary: "Atualizar ciclo",
+        description: "Atualiza o valor e configurações de um ciclo existente. Não permite alterar o tipo do ciclo.",
+        tags: ["Ciclos de Planos"],
+        security: [["bearerAuth" => []]],
+        parameters: [
+            new OA\Parameter(name: "plano_id", in: "path", required: true, schema: new OA\Schema(type: "integer")),
+            new OA\Parameter(name: "id", in: "path", required: true, schema: new OA\Schema(type: "integer"))
+        ],
+        requestBody: new OA\RequestBody(
+            content: new OA\JsonContent(
+                properties: [
+                    new OA\Property(property: "valor", type: "number", format: "float", example: 230.00),
+                    new OA\Property(property: "permite_recorrencia", type: "boolean", example: true),
+                    new OA\Property(property: "ativo", type: "boolean", example: true)
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: "Ciclo atualizado com sucesso"),
+            new OA\Response(response: 404, description: "Ciclo não encontrado")
+        ]
+    )]
     public function atualizar(Request $request, Response $response, array $args): Response
     {
         try {
@@ -246,6 +403,22 @@ class PlanoCicloController
      * Excluir ciclo
      * DELETE /admin/planos/{plano_id}/ciclos/{id}
      */
+    #[OA\Delete(
+        path: "/admin/planos/{plano_id}/ciclos/{id}",
+        summary: "Excluir ciclo",
+        description: "Exclui um ciclo do plano. Não permite excluir se houver matrículas vinculadas.",
+        tags: ["Ciclos de Planos"],
+        security: [["bearerAuth" => []]],
+        parameters: [
+            new OA\Parameter(name: "plano_id", in: "path", required: true, schema: new OA\Schema(type: "integer")),
+            new OA\Parameter(name: "id", in: "path", required: true, schema: new OA\Schema(type: "integer"))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: "Ciclo excluído com sucesso"),
+            new OA\Response(response: 400, description: "Existem matrículas vinculadas"),
+            new OA\Response(response: 404, description: "Ciclo não encontrado")
+        ]
+    )]
     public function excluir(Request $request, Response $response, array $args): Response
     {
         try {
@@ -298,12 +471,48 @@ class PlanoCicloController
      * Gerar ciclos automáticos para um plano
      * POST /admin/planos/{plano_id}/ciclos/gerar
      */
+    #[OA\Post(
+        path: "/admin/planos/{plano_id}/ciclos/gerar",
+        summary: "Gerar ciclos automáticos",
+        description: "Gera automaticamente todos os ciclos para um plano, aplicando descontos progressivos configuráveis",
+        tags: ["Ciclos de Planos"],
+        security: [["bearerAuth" => []]],
+        parameters: [
+            new OA\Parameter(name: "plano_id", in: "path", required: true, schema: new OA\Schema(type: "integer"))
+        ],
+        requestBody: new OA\RequestBody(
+            content: new OA\JsonContent(
+                properties: [
+                    new OA\Property(property: "desconto_mensal", type: "integer", example: 0),
+                    new OA\Property(property: "desconto_bimestral", type: "integer", example: 10),
+                    new OA\Property(property: "desconto_trimestral", type: "integer", example: 15),
+                    new OA\Property(property: "desconto_quadrimestral", type: "integer", example: 20),
+                    new OA\Property(property: "desconto_semestral", type: "integer", example: 25),
+                    new OA\Property(property: "desconto_anual", type: "integer", example: 30)
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Ciclos gerados com sucesso",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "success", type: "boolean", example: true),
+                        new OA\Property(property: "message", type: "string"),
+                        new OA\Property(property: "ciclos", type: "array", items: new OA\Items(type: "object"))
+                    ]
+                )
+            ),
+            new OA\Response(response: 404, description: "Plano não encontrado")
+        ]
+    )]
     public function gerarCiclosAutomaticos(Request $request, Response $response, array $args): Response
     {
         try {
             $tenantId = $request->getAttribute('tenantId');
             $planoId = (int) $args['plano_id'];
-            $data = $request->getParsedBody();
+            $data = $request->getParsedBody() ?? [];
             
             // Verificar se plano existe
             $stmtPlano = $this->db->prepare("SELECT id, nome, valor FROM planos WHERE id = ? AND tenant_id = ?");
@@ -323,9 +532,11 @@ class PlanoCicloController
             // Mapear descontos do request
             $descontos = [
                 'mensal' => $data['desconto_mensal'] ?? 0,
-                'trimestral' => $data['desconto_trimestral'] ?? 10,
-                'semestral' => $data['desconto_semestral'] ?? 15,
-                'anual' => $data['desconto_anual'] ?? 20,
+                'bimestral' => $data['desconto_bimestral'] ?? 10,
+                'trimestral' => $data['desconto_trimestral'] ?? 15,
+                'quadrimestral' => $data['desconto_quadrimestral'] ?? 20,
+                'semestral' => $data['desconto_semestral'] ?? 25,
+                'anual' => $data['desconto_anual'] ?? 30,
             ];
             
             $ciclosCriados = [];
