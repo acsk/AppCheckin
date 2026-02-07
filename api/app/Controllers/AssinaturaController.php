@@ -312,6 +312,25 @@ class AssinaturaController
             $tenantId = $request->getAttribute('tenantId');
             $usuarioId = $request->getAttribute('usuarioId');
             
+            error_log("[AssinaturaController::minhasAssinaturas] tenant_id={$tenantId}, usuario_id={$usuarioId}");
+            
+            // Buscar aluno_id do usuário
+            $stmtAluno = $this->db->prepare("SELECT id FROM alunos WHERE usuario_id = ? AND tenant_id = ?");
+            $stmtAluno->execute([$usuarioId, $tenantId]);
+            $aluno = $stmtAluno->fetch(\PDO::FETCH_ASSOC);
+            
+            error_log("[AssinaturaController::minhasAssinaturas] aluno encontrado: " . json_encode($aluno));
+            
+            if (!$aluno) {
+                $response->getBody()->write(json_encode([
+                    'success' => true,
+                    'assinaturas' => [],
+                    'total' => 0,
+                    'debug' => 'Aluno não encontrado para este usuário'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json');
+            }
+            
             $stmt = $this->db->prepare("
                 SELECT 
                     asm.id,
@@ -326,17 +345,18 @@ class AssinaturaController
                     p.nome as plano_nome,
                     m.nome as modalidade_nome
                 FROM assinaturas_mercadopago asm
-                INNER JOIN alunos a ON a.id = asm.aluno_id
                 INNER JOIN matriculas mat ON mat.id = asm.matricula_id
                 INNER JOIN planos p ON p.id = mat.plano_id
                 LEFT JOIN plano_ciclos pc ON pc.id = asm.plano_ciclo_id
                 LEFT JOIN tipos_ciclo tc ON tc.id = pc.tipo_ciclo_id
                 LEFT JOIN modalidades m ON m.id = p.modalidade_id
-                WHERE a.usuario_id = ? AND asm.tenant_id = ?
+                WHERE asm.aluno_id = ? AND asm.tenant_id = ?
                 ORDER BY asm.created_at DESC
             ");
-            $stmt->execute([$usuarioId, $tenantId]);
+            $stmt->execute([$aluno['id'], $tenantId]);
             $assinaturas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            
+            error_log("[AssinaturaController::minhasAssinaturas] assinaturas encontradas: " . count($assinaturas));
             
             // Formatar
             foreach ($assinaturas as &$ass) {
