@@ -3966,77 +3966,78 @@ class MobileController
                 error_log("[MobileController::comprarPlano] Ciclo: {$cicloNome}, Meses: {$duracaoMeses}");
 
                 // SEMPRE criar ASSINATURA RECORRENTE (preapproval) no Mercado Pago
-                // independente da duração do ciclo
-                error_log("[MobileController::comprarPlano] Criando ASSINATURA RECORRENTE (preapproval)...");
-                $preferencia = $mercadoPago->criarPreferenciaAssinatura($dadosPagamento, $duracaoMeses);
-                $tipoPagamento = 'assinatura';
-                    
-                    // Gravar assinatura na tabela assinaturas (genérica)
-                    if ($preferencia['tipo'] === 'assinatura' && !empty($preferencia['id'])) {
-                        try {
-                            // Buscar IDs das tabelas de lookup
-                            $stmtGateway = $this->db->prepare("SELECT id FROM assinatura_gateways WHERE codigo = 'mercadopago'");
-                            $stmtGateway->execute();
-                            $gatewayId = $stmtGateway->fetchColumn() ?: 1;
-                            
-                            $stmtStatus = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'pendente'");
-                            $stmtStatus->execute();
-                            $statusId = $stmtStatus->fetchColumn() ?: 1;
-                            
-                            $stmtFreq = $this->db->prepare("SELECT id FROM assinatura_frequencias WHERE codigo = 'mensal'");
-                            $stmtFreq->execute();
-                            $frequenciaId = $stmtFreq->fetchColumn() ?: 4;
-                            
-                            $stmtMetodo = $this->db->prepare("SELECT id FROM metodos_pagamento WHERE codigo = 'credit_card'");
-                            $stmtMetodo->execute();
-                            $metodoPagamentoId = $stmtMetodo->fetchColumn() ?: 1;
-                            
-                            $stmtAssinatura = $this->db->prepare("
-                                INSERT INTO assinaturas
-                                (tenant_id, matricula_id, aluno_id, plano_id,
-                                 gateway_id, gateway_assinatura_id, status_id, status_gateway,
-                                 valor, frequencia_id, dia_cobranca, data_inicio, proxima_cobranca,
-                                 metodo_pagamento_id, criado_em)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, NOW())
-                            ");
-                            
-                            $diaCobranca = (int) date('d');
-                            $proximaCobranca = date('Y-m-d', strtotime('+1 month'));
-                            
-                            // Buscar plano_id da matrícula
-                            $stmtPlano = $this->db->prepare("SELECT plano_id FROM matriculas WHERE id = ?");
-                            $stmtPlano->execute([$matriculaId]);
-                            $planoIdMatricula = $stmtPlano->fetchColumn();
-                            
-                            $stmtAssinatura->execute([
-                                $tenantId,
-                                $matriculaId,
-                                $alunoId,
-                                $planoIdMatricula,
-                                $gatewayId,
-                                $preferencia['id'], // gateway_assinatura_id
-                                $statusId,
-                                $valorCompra,
-                                $frequenciaId,
-                                $diaCobranca,
-                                date('Y-m-d'),
-                                $proximaCobranca,
-                                $metodoPagamentoId
-                            ]);
-                            
-                            $assinaturaDbId = (int) $this->db->lastInsertId();
-                            error_log("[MobileController::comprarPlano] ✅ Assinatura salva no banco ID: {$assinaturaDbId}");
-                            
-                        } catch (\Exception $e) {
-                            error_log("[MobileController::comprarPlano] ⚠️ Erro ao salvar assinatura: " . $e->getMessage());
-                            // Continua mesmo se falhar (pode salvar depois via webhook)
+                    // independente da duração do ciclo
+                    error_log("[MobileController::comprarPlano] Criando ASSINATURA RECORRENTE (preapproval)...");
+                    $preferencia = $mercadoPago->criarPreferenciaAssinatura($dadosPagamento, $duracaoMeses);
+                    $tipoPagamento = 'assinatura';
+                        
+                        // Gravar assinatura na tabela assinaturas (genérica)
+                        if ($preferencia['tipo'] === 'assinatura' && !empty($preferencia['id'])) {
+                            try {
+                                // Buscar IDs das tabelas de lookup
+                                $stmtGateway = $this->db->prepare("SELECT id FROM assinatura_gateways WHERE codigo = 'mercadopago'");
+                                $stmtGateway->execute();
+                                $gatewayId = $stmtGateway->fetchColumn() ?: 1;
+                                
+                                $stmtStatus = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'pendente'");
+                                $stmtStatus->execute();
+                                $statusId = $stmtStatus->fetchColumn() ?: 1;
+                                
+                                $stmtFreq = $this->db->prepare("SELECT id FROM assinatura_frequencias WHERE codigo = 'mensal'");
+                                $stmtFreq->execute();
+                                $frequenciaId = $stmtFreq->fetchColumn() ?: 4;
+                                
+                                $stmtMetodo = $this->db->prepare("SELECT id FROM metodos_pagamento WHERE codigo = 'credit_card'");
+                                $stmtMetodo->execute();
+                                $metodoPagamentoId = $stmtMetodo->fetchColumn() ?: 1;
+                                
+                                $stmtAssinatura = $this->db->prepare("
+                                    INSERT INTO assinaturas
+                                    (tenant_id, matricula_id, aluno_id, plano_id,
+                                     gateway_id, gateway_assinatura_id, status_id, status_gateway,
+                                     valor, frequencia_id, dia_cobranca, data_inicio, proxima_cobranca,
+                                     metodo_pagamento_id, criado_em)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, NOW())
+                                ");
+                                
+                                $diaCobranca = (int) date('d');
+                                $proximaCobranca = date('Y-m-d', strtotime('+1 month'));
+                                
+                                // Buscar plano_id da matrícula
+                                $stmtPlano = $this->db->prepare("SELECT plano_id FROM matriculas WHERE id = ?");
+                                $stmtPlano->execute([$matriculaId]);
+                                $planoIdMatricula = $stmtPlano->fetchColumn();
+                                
+                                $stmtAssinatura->execute([
+                                    $tenantId,
+                                    $matriculaId,
+                                    $alunoId,
+                                    $planoIdMatricula,
+                                    $gatewayId,
+                                    $preferencia['id'], // gateway_assinatura_id
+                                    $statusId,
+                                    $valorCompra,
+                                    $frequenciaId,
+                                    $diaCobranca,
+                                    date('Y-m-d'),
+                                    $proximaCobranca,
+                                    $metodoPagamentoId
+                                ]);
+                                
+                                $assinaturaDbId = (int) $this->db->lastInsertId();
+                                error_log("[MobileController::comprarPlano] ✅ Assinatura salva no banco ID: {$assinaturaDbId}");
+                                
+                            } catch (\Exception $e) {
+                                error_log("[MobileController::comprarPlano] ⚠️ Erro ao salvar assinatura: " . $e->getMessage());
+                                // Continua mesmo se falhar (pode salvar depois via webhook)
+                            }
                         }
-                
-                $paymentUrl = $preferencia['init_point'];
-                $preferenceId = $preferencia['id'];
-
-                error_log("[MobileController::comprarPlano] ✅ Link gerado ({$tipoPagamento}): {$preferenceId}");
-
+                    
+                    $paymentUrl = $preferencia['init_point'];
+                    $preferenceId = $preferencia['id'];
+    
+                    error_log("[MobileController::comprarPlano] ✅ Link gerado ({$tipoPagamento}): {$preferenceId}");
+    
             } catch (\Exception $e) {
                 error_log("[MobileController::comprarPlano] ❌ ERRO MP: " . $e->getMessage());
                 error_log("[MobileController::comprarPlano] Stack: " . $e->getTraceAsString());
