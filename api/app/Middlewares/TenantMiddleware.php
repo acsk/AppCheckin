@@ -76,7 +76,8 @@ class TenantMiddleware
                 '/diagnostico.php',
                 '/index.php',
                 '/cep',             // consulta de CEP (serviço público)
-                '/formas-pagamento' // formas de pagamento públicas
+                '/formas-pagamento', // formas de pagamento públicas
+                '/api/webhooks'     // webhooks de integrações (Mercado Pago, etc.)
             ];
 
             $isAllowlisted = false;

@@ -61,7 +61,11 @@ class MercadoPagoService
         
         // URLs de callback
         $appUrl = $_ENV['APP_URL'] ?? $_SERVER['APP_URL'] ?? 'http://localhost:8080';
-        $this->notificationUrl = $appUrl . '/api/webhooks/mercadopago';
+        
+        // URL do webhook - usar API diretamente
+        $apiUrl = $_ENV['API_URL'] ?? $_SERVER['API_URL'] ?? 'https://api.appcheckin.com.br';
+        $this->notificationUrl = $apiUrl . '/api/webhooks/mercadopago';
+        
         $this->successUrl = $appUrl . '/pagamento/sucesso';
         $this->failureUrl = $appUrl . '/pagamento/falha';
         $this->pendingUrl = $appUrl . '/pagamento/pendente';
