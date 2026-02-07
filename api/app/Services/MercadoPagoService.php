@@ -241,7 +241,16 @@ class MercadoPagoService
             ],
             'auto_return' => 'approved',
             'payment_methods' => [
-                'excluded_payment_types' => [],
+                // Para assinaturas, aceitar APENAS cartão de crédito
+                'excluded_payment_types' => !empty($data['apenas_cartao']) ? [
+                    ['id' => 'ticket'],        // Boleto
+                    ['id' => 'bank_transfer'], // PIX/Transferência
+                    ['id' => 'atm'],           // Caixa eletrônico
+                    ['id' => 'debit_card'],    // Cartão de débito
+                    ['id' => 'prepaid_card'],  // Cartão pré-pago
+                    ['id' => 'digital_currency'], // Moeda digital
+                    ['id' => 'digital_wallet']    // Carteira digital
+                ] : [],
                 'installments' => (int) ($data['max_parcelas'] ?? 12)
             ],
             'statement_descriptor' => substr($data['academia_nome'] ?? 'ACADEMIA', 0, 22)
@@ -496,21 +505,31 @@ class MercadoPagoService
      * checkout de preferência com informação de recorrência.
      * 
      * @param array $data Dados da assinatura
+     * @param int $duracaoMeses Duração do ciclo em meses (1=mensal, 2=bimestral, etc)
      * @return array Resposta com init_point para assinatura
      */
-    public function criarPreferenciaAssinatura(array $data): array
+    public function criarPreferenciaAssinatura(array $data, int $duracaoMeses = 1): array
     {
         $this->validarCredenciais();
         
         // Tentar criar assinatura via preapproval primeiro
         try {
-            return $this->tentarCriarPreapproval($data);
+            return $this->tentarCriarPreapproval($data, $duracaoMeses);
         } catch (Exception $e) {
             error_log("[MercadoPagoService] ⚠️ Preapproval falhou: " . $e->getMessage());
             error_log("[MercadoPagoService] 🔄 Usando checkout de preferência como fallback");
             
             // Fallback: usar checkout de preferência com informação de recorrência
-            $data['descricao'] = "Assinatura Mensal - {$data['plano_nome']} (será cobrado automaticamente todo mês)";
+            $nomeCiclo = match($duracaoMeses) {
+                1 => 'Mensal',
+                2 => 'Bimestral',
+                3 => 'Trimestral',
+                6 => 'Semestral',
+                12 => 'Anual',
+                default => "{$duracaoMeses}x mêses"
+            };
+            $data['descricao'] = "Assinatura {$nomeCiclo} - {$data['plano_nome']} (será cobrado automaticamente)";
+            $data['apenas_cartao'] = true; // Restringir apenas cartão de crédito para assinaturas
             return $this->criarPreferenciaPagamento($data);
         }
     }
@@ -518,7 +537,7 @@ class MercadoPagoService
     /**
      * Tentar criar assinatura via API de preapproval
      */
-    private function tentarCriarPreapproval(array $data): array
+    private function tentarCriarPreapproval(array $data, int $duracaoMeses = 1): array
     {
         // Em ambiente SANDBOX, usar email de teste
         $payerEmail = $data['aluno_email'] ?? '';
@@ -527,15 +546,24 @@ class MercadoPagoService
         }
         
         // Montar payload de assinatura (preapproval)
+        // frequency = número de ciclos, frequency_type = tipo (months, weeks, days)
+        // Ex: frequency=1, frequency_type=months = cobrança mensal
+        // Ex: frequency=1, frequency_type=weeks = cobrança semanal
         $payload = [
             'reason' => $data['plano_nome'] . ' - ' . ($data['academia_nome'] ?? 'Academia'),
             'external_reference' => "MAT-{$data['matricula_id']}-" . time(),
             'payer_email' => $payerEmail,
             'auto_recurring' => [
-                'frequency' => 1,
+                'frequency' => $duracaoMeses,
                 'frequency_type' => 'months',
                 'transaction_amount' => (float) $data['valor'],
                 'currency_id' => 'BRL'
+            ],
+            // Permitir APENAS cartão de crédito
+            'payment_methods_allowed' => [
+                'payment_types' => [
+                    ['id' => 'credit_card']
+                ]
             ],
             'back_url' => $this->successUrl,
             'status' => 'pending'

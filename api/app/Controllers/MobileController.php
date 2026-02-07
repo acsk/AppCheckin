@@ -3767,6 +3767,18 @@ class MobileController
                     return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
                 }
                 
+                // Validar se o ciclo permite recorrência
+                if (!$ciclo['permite_recorrencia']) {
+                    $response->getBody()->write(json_encode([
+                        'success' => false,
+                        'type' => 'error',
+                        'code' => 'CICLO_NAO_PERMITE_RECORRENCIA',
+                        'message' => 'Este ciclo de pagamento não está disponível para assinatura recorrente',
+                        'detalhe' => 'Apenas ciclos com recorrência habilitada podem ser utilizados para assinaturas'
+                    ]));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                }
+                
                 $valorCompra = (float) $ciclo['valor'];
                 $duracaoMeses = (int) $ciclo['meses'];
                 $cicloNome = $ciclo['ciclo_nome'];
@@ -3947,17 +3959,17 @@ class MobileController
                     'descricao' => $descricaoCompra,
                     'valor' => $valorCompra,
                     'max_parcelas' => 12,
-                    'academia_nome' => $academiaNome
+                    'academia_nome' => $academiaNome,
+                    'apenas_cartao' => true  // Aceitar APENAS cartão de crédito
                 ];
 
                 error_log("[MobileController::comprarPlano] Ciclo: {$cicloNome}, Meses: {$duracaoMeses}");
 
-                // Se ciclo mensal (1 mês), criar ASSINATURA RECORRENTE
-                // Se ciclo maior (trimestral, semestral, anual), criar PAGAMENTO ÚNICO
-                if ($duracaoMeses == 1) {
-                    error_log("[MobileController::comprarPlano] Criando ASSINATURA RECORRENTE...");
-                    $preferencia = $mercadoPago->criarPreferenciaAssinatura($dadosPagamento);
-                    $tipoPagamento = 'assinatura';
+                // SEMPRE criar ASSINATURA RECORRENTE (preapproval) no Mercado Pago
+                // independente da duração do ciclo
+                error_log("[MobileController::comprarPlano] Criando ASSINATURA RECORRENTE (preapproval)...");
+                $preferencia = $mercadoPago->criarPreferenciaAssinatura($dadosPagamento, $duracaoMeses);
+                $tipoPagamento = 'assinatura';
                     
                     // Gravar assinatura na tabela assinaturas (genérica)
                     if ($preferencia['tipo'] === 'assinatura' && !empty($preferencia['id'])) {
@@ -4019,11 +4031,9 @@ class MobileController
                             error_log("[MobileController::comprarPlano] ⚠️ Erro ao salvar assinatura: " . $e->getMessage());
                             // Continua mesmo se falhar (pode salvar depois via webhook)
                         }
-                    }
-                } else {
-                    error_log("[MobileController::comprarPlano] Criando PAGAMENTO ÚNICO...");
-                    $preferencia = $mercadoPago->criarPreferenciaPagamento($dadosPagamento);
-                    $tipoPagamento = 'pagamento_unico';
+} catch (\Exception $e) {
+                    error_log("[MobileController::comprarPlano] ⚠️ Erro ao salvar assinatura: " . $e->getMessage());
+                    // Continua mesmo se falhar (pode salvar depois via webhook)
                 }
                 
                 $paymentUrl = $preferencia['init_point'];
