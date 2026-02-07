@@ -18,6 +18,20 @@ import {
 
 // NOVO ARQUIVO - SEM CÓDIGO ANTIGO
 
+interface Ciclo {
+  id: number;
+  nome: string;
+  codigo: string;
+  meses: number;
+  valor: number;
+  valor_formatado: string;
+  valor_mensal: number;
+  valor_mensal_formatado: string;
+  desconto_percentual: number;
+  permite_recorrencia: boolean;
+  economia?: string | null;
+}
+
 interface Plan {
   id: number;
   nome: string;
@@ -33,6 +47,7 @@ interface Plan {
   };
   is_plano_atual?: boolean;
   label?: string | null;
+  ciclos?: Ciclo[];
 }
 
 interface ApiResponse {
@@ -71,6 +86,9 @@ export default function PlanosScreen() {
   const [redirectModalVisible, setRedirectModalVisible] = useState(false);
   const [countdown, setCountdown] = useState(3);
   const [paymentUrlToOpen, setPaymentUrlToOpen] = useState<string | null>(null);
+  const [selectedCicloByPlano, setSelectedCicloByPlano] = useState<
+    Record<number, number>
+  >({});
 
   useEffect(() => {
     const initializeAndFetch = async () => {
@@ -265,6 +283,30 @@ export default function PlanosScreen() {
 
         console.log("🛒 Iniciando compra do plano:", plano.nome);
 
+        // Obter o ciclo selecionado para este plano
+        const selectedCicloId = selectedCicloByPlano[plano.id];
+        const selectedCiclo = plano.ciclos?.find(
+          (c) => c.id === selectedCicloId,
+        );
+
+        if (!selectedCiclo) {
+          console.error("❌ Ciclo não selecionado");
+          showErrorModal(
+            "⚠️ Ciclo não selecionado",
+            "Por favor, selecione um ciclo antes de contratar.",
+            "warning",
+          );
+          setComprando(false);
+          setPlanoComprando(null);
+          return;
+        }
+
+        console.log(
+          "📅 Ciclo selecionado:",
+          selectedCiclo.nome,
+          selectedCiclo.valor_formatado,
+        );
+
         // 1. Obter token e dados do usuário
         const token = await AsyncStorage.getItem("@appcheckin:token");
         if (!token) {
@@ -282,7 +324,7 @@ export default function PlanosScreen() {
         const user = JSON.parse(userJson);
         console.log("👤 Usuário ID:", user.id);
 
-        // 3. Fazer requisição POST para comprar plano
+        // 3. Fazer requisição POST para comprar plano com ciclo
         const matriculaResponse = await fetch(
           `${apiUrl}/mobile/comprar-plano`,
           {
@@ -293,6 +335,7 @@ export default function PlanosScreen() {
             },
             body: JSON.stringify({
               plano_id: plano.id,
+              plano_ciclo_id: selectedCiclo.id,
             }),
           },
         );
@@ -324,10 +367,6 @@ export default function PlanosScreen() {
 
         const matriculaData = await matriculaResponse.json();
         console.log("✅ Resposta da API:", matriculaData);
-        console.log(
-          "📋 Estrutura completa de data:",
-          JSON.stringify(matriculaData.data, null, 2),
-        );
 
         // Verificar se a API retornou sucesso
         if (!matriculaData.success) {
@@ -343,7 +382,7 @@ export default function PlanosScreen() {
         // Buscar payment_url em diferentes localizações
         let paymentUrl = matriculaData.data?.payment_url;
         let matriculaId =
-          matriculaData.data?.matricula?.id || matriculaData.data?.matricula_id;
+          matriculaData.data?.matricula_id || matriculaData.data?.matricula?.id;
 
         // Se não encontrou em payment_url, procura em outras estruturas
         if (!paymentUrl && matriculaData.data?.pagamento) {
@@ -354,14 +393,12 @@ export default function PlanosScreen() {
           "data keys": Object.keys(matriculaData.data || {}),
           payment_url: paymentUrl,
           matricula_id: matriculaId,
-          data: matriculaData.data,
         });
 
         if (!paymentUrl) {
           console.error(
             "❌ Link de pagamento não encontrado em nenhuma localização",
           );
-          console.error("📊 Data recebida:", matriculaData.data);
           setComprando(false);
           setPlanoComprando(null);
           showErrorModal(
@@ -400,83 +437,148 @@ export default function PlanosScreen() {
         showErrorModal("❌ Algo Deu Errado", errorMsg, "error");
       }
     },
-    [apiUrl, fetchPlanos],
+    [apiUrl, selectedCicloByPlano],
   );
 
-  const renderPlanCard = ({ item: plano }: { item: Plan }) => (
-    <View style={styles.planCard}>
-      {/* Badge de Plano Atual */}
-      {plano.is_plano_atual && (
-        <View style={styles.planCurrentBadge}>
-          <Feather name="check-circle" size={14} color="#fff" />
-          <Text style={styles.planCurrentBadgeText}>
-            {plano.label || "Seu plano atual"}
-          </Text>
-        </View>
-      )}
+  const renderPlanCard = ({ item: plano }: { item: Plan }) => {
+    const ciclos = (plano.ciclos || []).sort((a, b) => a.meses - b.meses);
+    const selectedCicloId = selectedCicloByPlano[plano.id];
+    const selectedCiclo = ciclos.find((c) => c.id === selectedCicloId);
 
-      <View style={styles.planHeader}>
-        <View style={styles.planInfo}>
-          <Text style={styles.planNome}>{plano.nome}</Text>
-          <Text style={styles.planModalidade}>{plano.modalidade.nome}</Text>
-        </View>
-        <View style={styles.planPriceContainer}>
-          <Text style={styles.planPrice}>{plano.valor_formatado}</Text>
-          <Text style={styles.planDuracao}>{plano.duracao_texto}</Text>
-        </View>
-      </View>
-
-      <Text style={styles.planDescricao}>{plano.descricao}</Text>
-
-      <View style={styles.planFeatures}>
-        <View style={styles.featureItem}>
-          <Feather name="check-circle" size={16} color={colors.primary} />
-          <Text style={styles.featureText}>
-            {plano.checkins_semanais === 999
-              ? "Ilimitado"
-              : `${plano.checkins_semanais} check-ins por semana`}
-          </Text>
-        </View>
-        <View style={styles.featureItem}>
-          <Feather name="calendar" size={16} color={colors.primary} />
-          <Text style={styles.featureText}>
-            {plano.duracao_dias} dias de acesso
-          </Text>
-        </View>
-      </View>
-
-      <TouchableOpacity
-        style={[
-          styles.contratarButton,
-          plano.is_plano_atual && styles.contratarButtonCurrent,
-          comprando && planoComprando === plano.id
-            ? styles.contratarButtonLoading
-            : null,
-        ]}
-        onPress={() => handleContratar(plano)}
-        disabled={
-          plano.is_plano_atual || (comprando && planoComprando === plano.id)
-        }
-      >
-        {plano.is_plano_atual ? (
-          <>
-            <Feather name="check" size={18} color="#fff" />
-            <Text style={styles.contratarButtonText}>Plano Ativo</Text>
-          </>
-        ) : comprando && planoComprando === plano.id ? (
-          <>
-            <ActivityIndicator color="#fff" size="small" />
-            <Text style={styles.contratarButtonText}>Processando...</Text>
-          </>
-        ) : (
-          <>
-            <Feather name="shopping-cart" size={18} color="#fff" />
-            <Text style={styles.contratarButtonText}>Contratar Plano</Text>
-          </>
+    return (
+      <View style={styles.planCard}>
+        {/* Badge de Plano Atual */}
+        {plano.is_plano_atual && (
+          <View style={styles.planCurrentBadge}>
+            <Feather name="check-circle" size={14} color="#fff" />
+            <Text style={styles.planCurrentBadgeText}>
+              {plano.label || "Seu plano atual"}
+            </Text>
+          </View>
         )}
-      </TouchableOpacity>
-    </View>
-  );
+
+        <View style={styles.planHeader}>
+          <View style={styles.planInfo}>
+            <Text style={styles.planNome}>{plano.nome}</Text>
+            <Text style={styles.planModalidade}>{plano.modalidade.nome}</Text>
+          </View>
+          {selectedCiclo && (
+            <View style={styles.planPriceContainer}>
+              <Text style={styles.planPrice}>
+                {selectedCiclo.valor_formatado}
+              </Text>
+              <Text style={styles.planDuracao}>{selectedCiclo.nome}</Text>
+            </View>
+          )}
+        </View>
+
+        <Text style={styles.planDescricao}>{plano.descricao}</Text>
+
+        <View style={styles.planFeatures}>
+          <View style={styles.featureItem}>
+            <Feather name="check-circle" size={16} color={colors.primary} />
+            <Text style={styles.featureText}>
+              {plano.checkins_semanais === 999
+                ? "Ilimitado"
+                : `${plano.checkins_semanais} check-ins por semana`}
+            </Text>
+          </View>
+          <View style={styles.featureItem}>
+            <Feather name="calendar" size={16} color={colors.primary} />
+            <Text style={styles.featureText}>
+              {plano.duracao_dias} dias de acesso
+            </Text>
+          </View>
+        </View>
+
+        {/* Seletor de Ciclos */}
+        {ciclos.length > 0 && (
+          <View style={styles.ciclosContainer}>
+            <Text style={styles.ciclosTitle}>Escolha o ciclo:</Text>
+            <View style={styles.ciclosGrid}>
+              {ciclos.map((ciclo) => (
+                <TouchableOpacity
+                  key={ciclo.id}
+                  style={[
+                    styles.cicloButton,
+                    selectedCicloId === ciclo.id && styles.cicloButtonSelected,
+                  ]}
+                  onPress={() =>
+                    setSelectedCicloByPlano({
+                      ...selectedCicloByPlano,
+                      [plano.id]: ciclo.id,
+                    })
+                  }
+                >
+                  <Text
+                    style={[
+                      styles.cicloButtonText,
+                      selectedCicloId === ciclo.id &&
+                        styles.cicloButtonTextSelected,
+                    ]}
+                  >
+                    {ciclo.nome}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.cicloButtonPrice,
+                      selectedCicloId === ciclo.id &&
+                        styles.cicloButtonPriceSelected,
+                    ]}
+                  >
+                    {ciclo.valor_formatado}
+                  </Text>
+                  {ciclo.economia && (
+                    <Text style={styles.cicloButtonEconomia}>
+                      ✨ {ciclo.economia}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+
+        <TouchableOpacity
+          style={[
+            styles.contratarButton,
+            plano.is_plano_atual && styles.contratarButtonCurrent,
+            comprando && planoComprando === plano.id
+              ? styles.contratarButtonLoading
+              : null,
+            !selectedCiclo &&
+              !plano.is_plano_atual &&
+              styles.contratarButtonDisabled,
+          ]}
+          onPress={() => handleContratar(plano)}
+          disabled={
+            !selectedCiclo ||
+            plano.is_plano_atual ||
+            (comprando && planoComprando === plano.id)
+          }
+        >
+          {plano.is_plano_atual ? (
+            <>
+              <Feather name="check" size={18} color="#fff" />
+              <Text style={styles.contratarButtonText}>Plano Ativo</Text>
+            </>
+          ) : comprando && planoComprando === plano.id ? (
+            <>
+              <ActivityIndicator color="#fff" size="small" />
+              <Text style={styles.contratarButtonText}>Processando...</Text>
+            </>
+          ) : (
+            <>
+              <Feather name="shopping-cart" size={18} color="#fff" />
+              <Text style={styles.contratarButtonText}>
+                Contratar por {selectedCiclo?.valor_formatado || "..."}
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+      </View>
+    );
+  };
 
   if (loading) {
     return (
@@ -812,9 +914,65 @@ const styles = StyleSheet.create({
   contratarButtonLoading: {
     opacity: 0.7,
   },
-  contratarButtonCurrent: {
-    backgroundColor: "#10b981",
-    opacity: 0.8,
+  contratarButtonDisabled: {
+    opacity: 0.5,
+    backgroundColor: "#999",
+  },
+  ciclosContainer: {
+    marginVertical: 16,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f1f4",
+  },
+  ciclosTitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.text,
+    marginBottom: 10,
+  },
+  ciclosGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  cicloButton: {
+    flex: 1,
+    minWidth: "47%",
+    backgroundColor: "#f5f5f5",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#f0f1f4",
+  },
+  cicloButtonSelected: {
+    backgroundColor: "#e6f4ec",
+    borderColor: colors.primary,
+  },
+  cicloButtonText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: colors.text,
+  },
+  cicloButtonTextSelected: {
+    color: colors.primary,
+    fontWeight: "700",
+  },
+  cicloButtonPrice: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.primary,
+    marginTop: 4,
+  },
+  cicloButtonPriceSelected: {
+    color: colors.primary,
+  },
+  cicloButtonEconomia: {
+    fontSize: 10,
+    color: "#0a7f3c",
+    fontWeight: "700",
+    marginTop: 2,
   },
   contratarButtonText: {
     fontSize: 14,

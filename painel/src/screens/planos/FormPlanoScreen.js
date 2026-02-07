@@ -16,6 +16,7 @@ import planoService from '../../services/planoService';
 import modalidadeService from '../../services/modalidadeService';
 import LayoutBase from '../../components/LayoutBase';
 import LoadingOverlay from '../../components/LoadingOverlay';
+import ConfirmModal from '../../components/ConfirmModal';
 import { showSuccess, showError } from '../../utils/toast';
 import { colors } from '../../styles/globalStyles';
 
@@ -39,10 +40,48 @@ export default function FormPlanoScreen() {
     ativo: true,
     atual: true,
   });
+  const [tiposCiclo, setTiposCiclo] = useState([]);
+  const [ciclos, setCiclos] = useState([]);
+  const [loadingCiclos, setLoadingCiclos] = useState(false);
+  const [savingCiclo, setSavingCiclo] = useState(false);
+  const [gerandoCiclos, setGerandoCiclos] = useState(false);
+  const [editingCicloId, setEditingCicloId] = useState(null);
+  const [confirmDeleteCiclo, setConfirmDeleteCiclo] = useState({ visible: false, ciclo: null });
+  const [cicloForm, setCicloForm] = useState({
+    tipo_ciclo_id: '',
+    valor: '',
+    permite_recorrencia: true,
+    ativo: true,
+  });
 
   useEffect(() => {
     loadData();
   }, []);
+
+  const loadTiposCiclo = async () => {
+    try {
+      const response = await planoService.listarTiposCiclo();
+      setTiposCiclo(response.data || response.tipos || []);
+    } catch (error) {
+      console.error('❌ Erro ao carregar tipos de ciclo:', error);
+      showError('Não foi possível carregar os tipos de ciclo');
+    }
+  };
+
+  const loadCiclos = async () => {
+    if (!planoId) return;
+    try {
+      setLoadingCiclos(true);
+      const response = await planoService.listarCiclos(planoId);
+      const ciclosOrdenados = (response.ciclos || []).sort((a, b) => a.meses - b.meses);
+      setCiclos(ciclosOrdenados);
+    } catch (error) {
+      console.error('❌ Erro ao carregar ciclos:', error);
+      showError('Não foi possível carregar os ciclos do plano');
+    } finally {
+      setLoadingCiclos(false);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -69,6 +108,10 @@ export default function FormPlanoScreen() {
           ativo: plano.ativo === 1 || plano.ativo === true,
           atual: plano.atual === 1 || plano.atual === true,
         });
+
+        await Promise.all([loadTiposCiclo(), loadCiclos()]);
+      } else {
+        await loadTiposCiclo();
       }
     } catch (error) {
       console.error('❌ Erro ao carregar dados:', error);
@@ -103,6 +146,13 @@ export default function FormPlanoScreen() {
     });
   };
 
+  const formatCurrency = (value) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    }).format(Number(value) || 0);
+  };
+
   const validateForm = () => {
     const newErrors = {};
 
@@ -126,6 +176,12 @@ export default function FormPlanoScreen() {
     return Object.keys(newErrors).length === 0;
   };
 
+  const parseValorMonetario = (valorFormatado) => {
+    // Remove pontos (separadores de milhar) e substitui vírgula por ponto
+    const valorLimpo = valorFormatado.replace(/\./g, '').replace(',', '.');
+    return parseFloat(valorLimpo) || 0;
+  };
+
   const handleSubmit = async () => {
     if (!validateForm()) {
       return;
@@ -138,7 +194,7 @@ export default function FormPlanoScreen() {
         modalidade_id: parseInt(formData.modalidade_id),
         nome: formData.nome,
         descricao: formData.descricao,
-        valor: parseFloat(formData.valor.replace(/\./g, '').replace(',', '.')),
+        valor: parseValorMonetario(formData.valor),
         checkins_semanais: parseInt(formData.checkins_semanais),
         duracao_dias: parseInt(formData.duracao_dias),
         ativo: formData.ativo ? 1 : 0,
@@ -162,6 +218,94 @@ export default function FormPlanoScreen() {
     }
   };
 
+  const resetCicloForm = () => {
+    setCicloForm({
+      tipo_ciclo_id: '',
+      valor: '',
+      permite_recorrencia: true,
+      ativo: true,
+    });
+    setEditingCicloId(null);
+  };
+
+  const handleEditarCiclo = (ciclo) => {
+    setEditingCicloId(ciclo.id);
+    setCicloForm({
+      tipo_ciclo_id: ciclo.tipo_ciclo_id?.toString() || '',
+      valor: ciclo.valor ? ciclo.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '',
+      permite_recorrencia: ciclo.permite_recorrencia === 1 || ciclo.permite_recorrencia === true,
+      ativo: ciclo.ativo === 1 || ciclo.ativo === true,
+    });
+  };
+
+  const handleSalvarCiclo = async () => {
+    if (!planoId) return;
+
+    if (!editingCicloId && !cicloForm.tipo_ciclo_id) {
+      showError('Selecione um tipo de ciclo');
+      return;
+    }
+
+    const valorConvertido = parseValorMonetario(cicloForm.valor);
+    if (!cicloForm.valor || valorConvertido <= 0) {
+      showError('Informe um valor válido para o ciclo');
+      return;
+    }
+
+    try {
+      setSavingCiclo(true);
+      const payload = {
+        valor: valorConvertido,
+        permite_recorrencia: cicloForm.permite_recorrencia ? 1 : 0,
+        ativo: cicloForm.ativo ? 1 : 0,
+      };
+
+      if (editingCicloId) {
+        await planoService.atualizarCiclo(planoId, editingCicloId, payload);
+        showSuccess('Ciclo atualizado com sucesso');
+      } else {
+        await planoService.criarCiclo(planoId, {
+          ...payload,
+          tipo_ciclo_id: parseInt(cicloForm.tipo_ciclo_id),
+        });
+        showSuccess('Ciclo criado com sucesso');
+      }
+
+      resetCicloForm();
+      await loadCiclos();
+    } catch (error) {
+      showError(error.error || 'Não foi possível salvar o ciclo');
+    } finally {
+      setSavingCiclo(false);
+    }
+  };
+
+  const handleGerarCiclos = async () => {
+    if (!planoId) return;
+    try {
+      setGerandoCiclos(true);
+      const response = await planoService.gerarCiclos(planoId);
+      showSuccess(response.message || 'Ciclos gerados com sucesso');
+      await loadCiclos();
+    } catch (error) {
+      showError(error.error || 'Não foi possível gerar os ciclos');
+    } finally {
+      setGerandoCiclos(false);
+    }
+  };
+
+  const handleConfirmDeleteCiclo = async () => {
+    if (!confirmDeleteCiclo.ciclo || !planoId) return;
+    try {
+      await planoService.excluirCiclo(planoId, confirmDeleteCiclo.ciclo.id);
+      showSuccess('Ciclo excluído com sucesso');
+      setConfirmDeleteCiclo({ visible: false, ciclo: null });
+      await loadCiclos();
+    } catch (error) {
+      showError(error.error || 'Não foi possível excluir o ciclo');
+    }
+  };
+
   if (loading) {
     return (
       <LayoutBase title={isEdit ? "Editar Plano" : "Novo Plano"}>
@@ -178,6 +322,15 @@ export default function FormPlanoScreen() {
       title={isEdit ? "Editar Plano" : "Novo Plano"} 
       subtitle="Preencha os campos obrigatórios"
     >
+      <ConfirmModal
+        visible={confirmDeleteCiclo.visible}
+        title="Excluir ciclo"
+        message={`Deseja excluir o ciclo ${confirmDeleteCiclo.ciclo?.nome || ''}?`}
+        onConfirm={handleConfirmDeleteCiclo}
+        onCancel={() => setConfirmDeleteCiclo({ visible: false, ciclo: null })}
+        confirmText="Excluir"
+        type="danger"
+      />
       {saving && <LoadingOverlay message={isEdit ? "Atualizando plano..." : "Criando plano..."} />}
 
       <ScrollView style={styles.scrollView}>
@@ -362,6 +515,197 @@ export default function FormPlanoScreen() {
               </View>
             </View>
           </View>
+
+          {isEdit && (
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <View style={styles.cardHeaderIcon}>
+                  <Feather name="repeat" size={20} color="#f97316" />
+                </View>
+                <Text style={styles.cardTitle}>Ciclos do Plano</Text>
+              </View>
+              <View style={styles.cardBody}>
+                <View style={styles.ciclosHeaderRow}>
+                  <Text style={styles.ciclosSubtitle}>Configure os valores por período</Text>
+                  <TouchableOpacity
+                    style={[styles.ciclosActionButton, (gerandoCiclos || savingCiclo) && styles.ciclosActionButtonDisabled]}
+                    onPress={handleGerarCiclos}
+                    disabled={gerandoCiclos || savingCiclo}
+                  >
+                    {gerandoCiclos ? (
+                      <ActivityIndicator size="small" color="#f97316" />
+                    ) : (
+                      <>
+                        <Feather name="zap" size={14} color="#f97316" />
+                        <Text style={styles.ciclosActionText}>Gerar Automático</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.cicloFormContainer}>
+                  <View style={styles.row}>
+                    <View style={[styles.inputGroup, styles.flex1, styles.marginRight]}>
+                      <Text style={styles.label}>Tipo de Ciclo <Text style={styles.required}>*</Text></Text>
+                      <View style={styles.pickerContainer}>
+                        <Picker
+                          selectedValue={cicloForm.tipo_ciclo_id}
+                          onValueChange={(value) => setCicloForm(prev => ({ ...prev, tipo_ciclo_id: value }))}
+                          enabled={!savingCiclo && !editingCicloId}
+                          style={styles.picker}
+                        >
+                          <Picker.Item label="Selecione" value="" />
+                          {tiposCiclo.map((tipo) => (
+                            <Picker.Item
+                              key={tipo.id}
+                              label={`${tipo.nome} (${tipo.meses} ${tipo.meses > 1 ? 'meses' : 'mês'})`}
+                              value={tipo.id.toString()}
+                            />
+                          ))}
+                        </Picker>
+                      </View>
+                      {editingCicloId && (
+                        <Text style={styles.helperText}>Para mudar o tipo, exclua e crie um novo ciclo.</Text>
+                      )}
+                    </View>
+
+                    <View style={[styles.inputGroup, styles.flex1]}>
+                      <Text style={styles.label}>Valor do Ciclo <Text style={styles.required}>*</Text></Text>
+                      <View style={styles.inputWithPrefix}>
+                        <Text style={styles.prefix}>R$</Text>
+                        <TextInput
+                          style={[styles.input, styles.inputWithPrefixField]}
+                          placeholder="0,00"
+                          placeholderTextColor={colors.placeholder}
+                          value={cicloForm.valor}
+                          onChangeText={(value) => {
+                            const formatted = formatValorMonetario(value);
+                            setCicloForm(prev => ({ ...prev, valor: formatted }));
+                          }}
+                          keyboardType="numeric"
+                          editable={!savingCiclo}
+                        />
+                      </View>
+                    </View>
+                  </View>
+
+                  <View style={styles.row}>
+                    <View style={[styles.switchRow, styles.flex1, styles.marginRight]}>
+                      <View style={styles.switchInfo}>
+                        <Text style={styles.switchLabel}>Recorrência</Text>
+                        <Text style={styles.switchDescription}>
+                          {cicloForm.permite_recorrencia ? 'Permite assinatura' : 'Sem assinatura'}
+                        </Text>
+                      </View>
+                      <Switch
+                        value={cicloForm.permite_recorrencia}
+                        onValueChange={(value) => setCicloForm(prev => ({ ...prev, permite_recorrencia: value }))}
+                        disabled={savingCiclo}
+                        trackColor={{ false: '#d1d5db', true: '#10b981' }}
+                        thumbColor={cicloForm.permite_recorrencia ? '#22c55e' : '#9ca3af'}
+                      />
+                    </View>
+
+                    <View style={[styles.switchRow, styles.flex1]}>
+                      <View style={styles.switchInfo}>
+                        <Text style={styles.switchLabel}>Ativo</Text>
+                        <Text style={styles.switchDescription}>
+                          {cicloForm.ativo ? 'Disponível' : 'Indisponível'}
+                        </Text>
+                      </View>
+                      <Switch
+                        value={cicloForm.ativo}
+                        onValueChange={(value) => setCicloForm(prev => ({ ...prev, ativo: value }))}
+                        disabled={savingCiclo}
+                        trackColor={{ false: '#d1d5db', true: '#3b82f6' }}
+                        thumbColor={cicloForm.ativo ? '#3b82f6' : '#9ca3af'}
+                      />
+                    </View>
+                  </View>
+
+                  <View style={styles.cicloFormActions}>
+                    {editingCicloId && (
+                      <TouchableOpacity
+                        style={styles.cicloCancelButton}
+                        onPress={resetCicloForm}
+                        disabled={savingCiclo}
+                      >
+                        <Text style={styles.cicloCancelText}>Cancelar</Text>
+                      </TouchableOpacity>
+                    )}
+                    <TouchableOpacity
+                      style={[styles.cicloSaveButton, savingCiclo && styles.cicloSaveButtonDisabled]}
+                      onPress={handleSalvarCiclo}
+                      disabled={savingCiclo}
+                    >
+                      {savingCiclo ? (
+                        <ActivityIndicator color="#fff" />
+                      ) : (
+                        <>
+                          <Feather name="check" size={16} color="#fff" />
+                          <Text style={styles.cicloSaveText}>
+                            {editingCicloId ? 'Atualizar Ciclo' : 'Adicionar Ciclo'}
+                          </Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                <View style={styles.ciclosList}>
+                  {loadingCiclos ? (
+                    <View style={styles.loadingInline}>
+                      <ActivityIndicator size="small" color="#f97316" />
+                      <Text style={styles.loadingInlineText}>Carregando ciclos...</Text>
+                    </View>
+                  ) : ciclos.length === 0 ? (
+                    <Text style={styles.emptyText}>Nenhum ciclo cadastrado ainda.</Text>
+                  ) : (
+                    ciclos.map((ciclo) => (
+                      <View key={ciclo.id} style={styles.cicloItem}>
+                        <View style={styles.cicloInfo}>
+                          <Text style={styles.cicloTitle}>{ciclo.nome}</Text>
+                          <Text style={styles.cicloMeta}>
+                            {formatCurrency(ciclo.valor)} • {ciclo.meses} {ciclo.meses > 1 ? 'meses' : 'mês'}
+                          </Text>
+                          <Text style={styles.cicloMetaMuted}>
+                            Mensal equivalente: {ciclo.valor_mensal_formatado || formatCurrency(ciclo.valor_mensal_equivalente)}
+                          </Text>
+                          <View style={styles.cicloTags}>
+                            <View style={[styles.cicloTag, ciclo.permite_recorrencia ? styles.cicloTagActive : styles.cicloTagInactive]}>
+                              <Text style={styles.cicloTagText}>{ciclo.permite_recorrencia ? 'Recorrente' : 'Avulso'}</Text>
+                            </View>
+                            <View style={[styles.cicloTag, ciclo.ativo ? styles.cicloTagActive : styles.cicloTagInactive]}>
+                              <Text style={styles.cicloTagText}>{ciclo.ativo ? 'Ativo' : 'Inativo'}</Text>
+                            </View>
+                            {ciclo.desconto_percentual > 0 && (
+                              <View style={styles.cicloTagDiscount}>
+                                <Text style={styles.cicloTagDiscountText}>-{ciclo.desconto_percentual}%</Text>
+                              </View>
+                            )}
+                          </View>
+                        </View>
+                        <View style={styles.cicloActions}>
+                          <TouchableOpacity
+                            style={styles.cicloActionButton}
+                            onPress={() => handleEditarCiclo(ciclo)}
+                          >
+                            <Feather name="edit-2" size={16} color="#3b82f6" />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            style={styles.cicloActionButton}
+                            onPress={() => setConfirmDeleteCiclo({ visible: true, ciclo })}
+                          >
+                            <Feather name="trash-2" size={16} color="#ef4444" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    ))
+                  )}
+                </View>
+              </View>
+            </View>
+          )}
         </View>
 
         <View style={styles.actionButtons}>
@@ -611,6 +955,167 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6b7280',
     marginTop: 4,
+  },
+  ciclosHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  ciclosSubtitle: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  ciclosActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+  },
+  ciclosActionButtonDisabled: {
+    opacity: 0.6,
+  },
+  ciclosActionText: {
+    fontSize: 12,
+    color: '#f97316',
+    fontWeight: '600',
+  },
+  cicloFormContainer: {
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 10,
+    backgroundColor: '#f9fafb',
+    marginBottom: 16,
+  },
+  cicloFormActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 4,
+  },
+  cicloSaveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: '#f97316',
+    borderRadius: 8,
+  },
+  cicloSaveButtonDisabled: {
+    opacity: 0.7,
+  },
+  cicloSaveText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  cicloCancelButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#e5e7eb',
+  },
+  cicloCancelText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  ciclosList: {
+    gap: 12,
+  },
+  cicloItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    backgroundColor: '#fff',
+  },
+  cicloInfo: {
+    flex: 1,
+  },
+  cicloTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  cicloMeta: {
+    fontSize: 12,
+    color: '#374151',
+  },
+  cicloMetaMuted: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  cicloTags: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 8,
+    flexWrap: 'wrap',
+  },
+  cicloTag: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+  },
+  cicloTagActive: {
+    backgroundColor: '#dcfce7',
+  },
+  cicloTagInactive: {
+    backgroundColor: '#fee2e2',
+  },
+  cicloTagText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#166534',
+  },
+  cicloTagDiscount: {
+    backgroundColor: '#dbeafe',
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+  },
+  cicloTagDiscountText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#1d4ed8',
+  },
+  cicloActions: {
+    justifyContent: 'space-between',
+  },
+  cicloActionButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+  },
+  loadingInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  loadingInlineText: {
+    fontSize: 12,
+    color: '#6b7280',
+  },
+  emptyText: {
+    fontSize: 12,
+    color: '#6b7280',
   },
   actionButtons: {
     flexDirection: 'row',

@@ -123,7 +123,7 @@ class PlanoCicloController
             $planoId = (int) $args['plano_id'];
             
             // Verificar se plano pertence ao tenant
-            $stmtPlano = $this->db->prepare("SELECT id, nome FROM planos WHERE id = ? AND tenant_id = ?");
+            $stmtPlano = $this->db->prepare("SELECT id, nome, valor FROM planos WHERE id = ? AND tenant_id = ?");
             $stmtPlano->execute([$planoId, $tenantId]);
             $plano = $stmtPlano->fetch(\PDO::FETCH_ASSOC);
             
@@ -131,6 +131,8 @@ class PlanoCicloController
                 $response->getBody()->write(json_encode(['error' => 'Plano não encontrado']));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
             }
+            
+            $valorMensalBase = (float) $plano['valor'];
             
             $stmt = $this->db->prepare("
                 SELECT 
@@ -145,18 +147,30 @@ class PlanoCicloController
             $stmt->execute([$planoId, $tenantId]);
             $ciclos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
             
-            // Formatar valores
+            // Formatar valores e calcular economia real
             foreach ($ciclos as &$ciclo) {
                 $ciclo['id'] = (int) $ciclo['id'];
                 $ciclo['tipo_ciclo_id'] = (int) $ciclo['tipo_ciclo_id'];
                 $ciclo['meses'] = (int) $ciclo['meses'];
                 $ciclo['valor'] = (float) $ciclo['valor'];
                 $ciclo['valor_mensal_equivalente'] = (float) $ciclo['valor_mensal_equivalente'];
-                $ciclo['desconto_percentual'] = (float) $ciclo['desconto_percentual'];
                 $ciclo['permite_recorrencia'] = (bool) $ciclo['permite_recorrencia'];
                 $ciclo['ativo'] = (bool) $ciclo['ativo'];
                 $ciclo['valor_formatado'] = 'R$ ' . number_format($ciclo['valor'], 2, ',', '.');
                 $ciclo['valor_mensal_formatado'] = 'R$ ' . number_format($ciclo['valor_mensal_equivalente'], 2, ',', '.');
+                
+                // Calcular economia real: quanto economiza por mês em relação ao mensal
+                $economiaPercentual = 0;
+                $economiaValor = 0;
+                if ($valorMensalBase > 0 && $ciclo['valor_mensal_equivalente'] < $valorMensalBase) {
+                    $economiaPercentual = round((($valorMensalBase - $ciclo['valor_mensal_equivalente']) / $valorMensalBase) * 100, 1);
+                    $economiaValor = round(($valorMensalBase - $ciclo['valor_mensal_equivalente']) * $ciclo['meses'], 2);
+                }
+                $ciclo['desconto_percentual'] = $economiaPercentual;
+                $ciclo['economia_valor'] = $economiaValor;
+                $ciclo['economia_formatada'] = $economiaValor > 0 
+                    ? 'R$ ' . number_format($economiaValor, 2, ',', '.') . ' de economia'
+                    : null;
             }
             
             $response->getBody()->write(json_encode([

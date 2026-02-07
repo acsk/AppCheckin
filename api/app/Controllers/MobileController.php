@@ -3505,11 +3505,29 @@ class MobileController
                 $stmtCiclos->execute($planoIds);
                 $ciclos = $stmtCiclos->fetchAll(\PDO::FETCH_ASSOC);
                 
+                // Indexar valores mensais base dos planos para calcular economia
+                $valorMensalPlano = [];
+                foreach ($planos as $plano) {
+                    $valorMensalPlano[(int)$plano['id']] = (float)$plano['valor'];
+                }
+                
                 foreach ($ciclos as $ciclo) {
                     $planoId = (int)$ciclo['plano_id'];
                     if (!isset($ciclosPorPlano[$planoId])) {
                         $ciclosPorPlano[$planoId] = [];
                     }
+                    
+                    $valorMensalEquivalente = (float)$ciclo['valor_mensal_equivalente'];
+                    $valorMensalBase = $valorMensalPlano[$planoId] ?? 0;
+                    
+                    // Calcular economia real: quanto economiza por mês em relação ao mensal
+                    $economiaPercentual = 0;
+                    $economiaValor = 0;
+                    if ($valorMensalBase > 0 && $valorMensalEquivalente < $valorMensalBase) {
+                        $economiaPercentual = round((($valorMensalBase - $valorMensalEquivalente) / $valorMensalBase) * 100, 0);
+                        $economiaValor = round(($valorMensalBase - $valorMensalEquivalente) * (int)$ciclo['meses'], 2);
+                    }
+                    
                     $ciclosPorPlano[$planoId][] = [
                         'id' => (int)$ciclo['id'],
                         'nome' => $ciclo['nome'],
@@ -3517,12 +3535,15 @@ class MobileController
                         'meses' => (int)$ciclo['meses'],
                         'valor' => (float)$ciclo['valor'],
                         'valor_formatado' => 'R$ ' . number_format($ciclo['valor'], 2, ',', '.'),
-                        'valor_mensal' => (float)$ciclo['valor_mensal_equivalente'],
-                        'valor_mensal_formatado' => 'R$ ' . number_format($ciclo['valor_mensal_equivalente'], 2, ',', '.'),
-                        'desconto_percentual' => (float)$ciclo['desconto_percentual'],
+                        'valor_mensal' => $valorMensalEquivalente,
+                        'valor_mensal_formatado' => 'R$ ' . number_format($valorMensalEquivalente, 2, ',', '.'),
+                        'desconto_percentual' => $economiaPercentual,
                         'permite_recorrencia' => (bool)$ciclo['permite_recorrencia'],
-                        'economia' => $ciclo['desconto_percentual'] > 0 
-                            ? 'Economize ' . number_format($ciclo['desconto_percentual'], 0) . '%'
+                        'economia' => $economiaPercentual > 0 
+                            ? 'Economize ' . $economiaPercentual . '%'
+                            : null,
+                        'economia_valor' => $economiaValor > 0 
+                            ? 'R$ ' . number_format($economiaValor, 2, ',', '.') . ' de economia'
                             : null
                     ];
                 }
