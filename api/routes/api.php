@@ -31,6 +31,7 @@ use App\Controllers\WodResultadoController;
 use App\Controllers\PresencaController;
 use App\Controllers\MaintenanceController;
 use App\Controllers\DashboardController;
+use App\Controllers\MercadoPagoWebhookController;
 use App\Middlewares\AuthMiddleware;
 use App\Middlewares\TenantMiddleware;
 use App\Middlewares\AdminMiddleware;
@@ -219,6 +220,10 @@ return function ($app) {
     
     // Rotas públicas
     $app->post('/auth/register', [AuthController::class, 'register']);
+    
+    // Webhook Mercado Pago (sem autenticação - MP precisa acessar)
+    $app->post('/api/webhooks/mercadopago', [MercadoPagoWebhookController::class, 'processarWebhook']);
+    
     // Cadastro público para Mobile: cria usuário com senha = CPF e vincula ao tenant
     $app->post('/auth/register-mobile', function($request, $response) {
         try {
@@ -830,6 +835,12 @@ return function ($app) {
         // Planos de alunos disponíveis
         $group->get('/planos', [MobileController::class, 'planosDoUsuario']);
         
+        // Planos disponíveis para contratação (pagos)
+        $group->get('/planos-disponiveis', [MobileController::class, 'planosDisponiveis']);
+        
+        // Comprar plano (cria matrícula + gera link Mercado Pago)
+        $group->post('/comprar-plano', [MobileController::class, 'comprarPlano']);
+        
         // Detalhes da matrícula e pagamentos
         $group->get('/matriculas/{matriculaId}', [MobileController::class, 'detalheMatricula']);
         
@@ -962,13 +973,19 @@ return function ($app) {
         $group->post('/contas-receber/{id}/baixa', [ContasReceberController::class, 'darBaixa']);
         $group->post('/contas-receber/{id}/cancelar', [ContasReceberController::class, 'cancelar']);
         
-        // Matrículas
+        // Matrículas - CRUD
         $group->post('/matriculas', [MatriculaController::class, 'criar']);
         $group->get('/matriculas', [MatriculaController::class, 'listar']);
         $group->get('/matriculas/{id}', [MatriculaController::class, 'buscar']);
         $group->get('/matriculas/{id}/pagamentos', [MatriculaController::class, 'buscarPagamentos']);
         $group->post('/matriculas/{id}/cancelar', [MatriculaController::class, 'cancelar']);
         $group->post('/matriculas/contas/{id}/baixa', [MatriculaController::class, 'darBaixaConta']);
+        
+        // Matrículas - Gerenciamento de Vencimentos
+        $group->put('/matriculas/{id}/proxima-data-vencimento', [MatriculaController::class, 'atualizarProximaDataVencimento']);
+        $group->get('/matriculas/vencimentos/hoje', [MatriculaController::class, 'vencimentosHoje']);
+        $group->get('/matriculas/vencimentos/proximos', [MatriculaController::class, 'proximosVencimentos']);
+
         
         // Pagamentos de Planos/Matrículas
         $group->get('/pagamentos-plano', [PagamentoPlanoController::class, 'index']);

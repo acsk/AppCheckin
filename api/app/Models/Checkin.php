@@ -332,11 +332,11 @@ class Checkin
              FROM matriculas m
              INNER JOIN planos p ON m.plano_id = p.id
              INNER JOIN alunos a ON a.id = m.aluno_id
+             INNER JOIN status_matricula sm ON sm.id = m.status_id
              WHERE a.usuario_id = :usuario_id
              AND m.tenant_id = :tenant_id
-             AND m.status_id = (SELECT id FROM status_matricula WHERE nome = 'ativa')
-             AND m.data_inicio <= CURDATE()
-             AND m.data_vencimento >= CURDATE()";
+             AND sm.codigo = 'ativa'
+             AND m.proxima_data_vencimento >= CURDATE()";
         
         $params = [
             'usuario_id' => $usuarioId,
@@ -349,7 +349,7 @@ class Checkin
             $params['modalidade_id'] = $modalidadeId;
         }
         
-        $sql .= " LIMIT 1";
+        $sql .= " ORDER BY m.proxima_data_vencimento DESC LIMIT 1";
         
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);

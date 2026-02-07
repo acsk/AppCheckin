@@ -9,12 +9,17 @@ import {
   useWindowDimensions,
   Modal,
   ToastAndroid,
+  TextInput,
+  Alert,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import LayoutBase from '../../components/LayoutBase';
 import BaixaPagamentoPlanoModal from '../../components/BaixaPagamentoPlanoModal';
 import { matriculaService } from '../../services/matriculaService';
+import { formatarDataParaInput, calcularDiasRestantes } from '../../utils/formatadores';
+import { mascaraData } from '../../utils/masks';
+import { obterMensagemErro } from '../../utils/errorHandler';
 
 export default function MatriculaDetalheScreen() {
   const { id } = useLocalSearchParams();
@@ -28,6 +33,9 @@ export default function MatriculaDetalheScreen() {
   const [modalConfirmVisible, setModalConfirmVisible] = useState(false);
   const [pagamentoSelecionado, setPagamentoSelecionado] = useState(null);
   const [ajustePlano, setAjustePlano] = useState(null);
+  const [modalEditarVencimento, setModalEditarVencimento] = useState(false);
+  const [novaDataVencimento, setNovaDataVencimento] = useState('');
+  const [salvandoData, setSalvandoData] = useState(false);
   const [errorModal, setErrorModal] = useState({ visible: false, title: '', message: '' });
 
   useEffect(() => {
@@ -41,6 +49,11 @@ export default function MatriculaDetalheScreen() {
       // Buscar dados da matrícula
       const responseMatricula = await matriculaService.buscar(id);
       const dadosMatricula = responseMatricula?.matricula || responseMatricula;
+      
+      if (!dadosMatricula) {
+        throw new Error('Dados da matrícula inválidos ou vazios');
+      }
+      
       const pagamentosDaMatricula = responseMatricula?.pagamentos || dadosMatricula?.pagamentos || [];
       console.log('📌 Pagamentos da matrícula:', pagamentosDaMatricula);
       setMatricula(dadosMatricula);
@@ -57,7 +70,8 @@ export default function MatriculaDetalheScreen() {
       }
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
-      showAlert('Erro', 'Não foi possível carregar os dados da matrícula');
+      const mensagem = obterMensagemErro(error, 'Não foi possível carregar os dados da matrícula');
+      showAlert('Erro', mensagem);
     } finally {
       setLoading(false);
     }
@@ -75,6 +89,66 @@ export default function MatriculaDetalheScreen() {
     setPagamentoSelecionado(null);
     showToast('Pagamento confirmado! Próximo pagamento gerado automaticamente.');
     carregarDados();
+  };
+
+  const handleAbrirModalEditarVencimento = () => {
+    if (!matricula) {
+      showAlert('Erro', 'Matrícula não carregada');
+      return;
+    }
+    
+    const dataAtual = matricula.proxima_data_vencimento || matricula.data_vencimento;
+    
+    if (!dataAtual) {
+      showAlert('Erro', 'Data de vencimento não disponível');
+      return;
+    }
+    
+    // Formatar data de YYYY-MM-DD para DD/MM/YYYY
+    const [ano, mes, dia] = dataAtual.split('-');
+    if (!dia || !mes || !ano) {
+      showAlert('Erro', 'Formato de data inválido');
+      return;
+    }
+    
+    const dataFormatada = `${dia}/${mes}/${ano}`;
+    setNovaDataVencimento(dataFormatada);
+    setModalEditarVencimento(true);
+  };
+
+  const handleAtualizarVencimento = async () => {
+    if (!novaDataVencimento) {
+      showAlert('Erro', 'Por favor, selecione uma data');
+      return;
+    }
+
+    try {
+      setSalvandoData(true);
+      
+      // Converter de DD/MM/YYYY para YYYY-MM-DD
+      const numeros = novaDataVencimento.replace(/\D/g, '');
+      if (numeros.length !== 8) {
+        showAlert('Erro', 'Data inválida. Use o formato DD/MM/YYYY');
+        return;
+      }
+      
+      const dia = numeros.substring(0, 2);
+      const mes = numeros.substring(2, 4);
+      const ano = numeros.substring(4, 8);
+      const dataFormatada = `${ano}-${mes}-${dia}`;
+      
+      const response = await matriculaService.atualizarProximaDataVencimento(id, dataFormatada);
+      
+      showToast(response.message || 'Data de vencimento atualizada com sucesso!');
+      setModalEditarVencimento(false);
+      await carregarDados();
+      
+    } catch (error) {
+      const errorMsg = obterMensagemErro(error, 'Erro ao atualizar data');
+      showAlert('Erro', errorMsg);
+    } finally {
+      setSalvandoData(false);
+    }
   };
 
   const showAlert = (title, message) => {
@@ -193,6 +267,17 @@ export default function MatriculaDetalheScreen() {
     const [year, month, day] = dateString.split('-');
     const date = new Date(year, month - 1, day);
     return date.toLocaleDateString('pt-BR');
+  };
+
+  const isProximoVencer = (dateString) => {
+    if (!dateString) return false;
+    const [year, month, day] = dateString.split('-');
+    const vencimento = new Date(year, month - 1, day);
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    vencimento.setHours(0, 0, 0, 0);
+    const diffDias = Math.ceil((vencimento.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+    return diffDias >= 0 && diffDias <= 3;
   };
 
   const formatDateTime = (dateTimeString) => {
@@ -373,8 +458,15 @@ export default function MatriculaDetalheScreen() {
 
               <View className="flex-1 items-center gap-1">
                 <Feather name="clock" size={16} color="#f59e0b" />
-                <Text className="text-[10px] font-semibold uppercase text-slate-400">Vencimento</Text>
-                <Text className="text-[13px] font-semibold text-slate-700">{formatDate(matricula.data_vencimento)}</Text>
+                <Text className="text-[10px] font-semibold uppercase text-slate-400">Acesso até</Text>
+                <Text className="text-[13px] font-semibold text-slate-700">
+                  {formatDate(matricula.proxima_data_vencimento || matricula.data_vencimento)}
+                </Text>
+                {isProximoVencer(matricula.proxima_data_vencimento || matricula.data_vencimento) && (
+                  <View className="rounded-full bg-amber-100 px-2 py-0.5">
+                    <Text className="text-[10px] font-bold text-amber-700">Vence em breve</Text>
+                  </View>
+                )}
               </View>
 
               <View className="h-8 w-px bg-slate-200" />
@@ -398,6 +490,18 @@ export default function MatriculaDetalheScreen() {
             <View className="flex-row items-center justify-between bg-emerald-100 px-5 py-4">
               <Text className="text-xs font-semibold text-emerald-800">Valor Mensal</Text>
               <Text className="text-lg font-extrabold text-emerald-800">{formatCurrency(matricula.valor)}</Text>
+            </View>
+
+            {/* Botão Editar Data de Vencimento */}
+            <View className="border-t border-slate-100 px-5 py-3">
+              <Pressable
+                onPress={handleAbrirModalEditarVencimento}
+                className="flex-row items-center justify-center gap-2 rounded-lg bg-orange-500 py-3"
+                style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+              >
+                <Feather name="calendar" size={16} color="#fff" />
+                <Text className="text-sm font-semibold text-white">Alterar Data de Vencimento</Text>
+              </Pressable>
             </View>
           </View>
 
@@ -603,6 +707,93 @@ export default function MatriculaDetalheScreen() {
         pagamento={pagamentoSelecionado}
         onSuccess={handleBaixaSuccess}
       />
+
+      {/* Modal de Editar Data de Vencimento */}
+      <Modal
+        visible={modalEditarVencimento}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setModalEditarVencimento(false)}
+      >
+        <View className="flex-1 items-center justify-center bg-black/50 px-4">
+          <View className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+            {/* Header */}
+            <View className="border-b border-slate-200 px-6 py-5">
+              <View className="flex-row items-center gap-3">
+                <View className="h-12 w-12 items-center justify-center rounded-full bg-orange-100">
+                  <Feather name="calendar" size={24} color="#f97316" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-lg font-bold text-slate-800">Alterar Data de Vencimento</Text>
+                  <Text className="text-sm text-slate-500">Atualize quando o acesso expira</Text>
+                </View>
+              </View>
+            </View>
+            
+            {/* Body */}
+            <View className="px-6 py-5">
+              <View className="mb-4">
+                <Text className="mb-2 text-sm font-semibold text-slate-700">Data Atual</Text>
+                <View className="rounded-lg bg-slate-50 px-4 py-3">
+                  <Text className="text-sm text-slate-600">
+                    {formatDate(matricula?.proxima_data_vencimento || matricula?.data_vencimento)}
+                    {matricula?.proxima_data_vencimento && (
+                      <Text className="text-slate-500">
+                        {' '}• {calcularDiasRestantes(matricula.proxima_data_vencimento) >= 0 
+                          ? `${calcularDiasRestantes(matricula.proxima_data_vencimento)} dias restantes`
+                          : 'Vencido'}
+                      </Text>
+                    )}
+                  </Text>
+                </View>
+              </View>
+
+              <View className="mb-2">
+                <Text className="mb-2 text-sm font-semibold text-slate-700">Nova Data de Vencimento</Text>
+                <TextInput
+                  className="rounded-lg border-2 border-slate-300 bg-white px-4 py-3 text-sm text-slate-800"
+                  value={novaDataVencimento}
+                  onChangeText={(text) => {
+                    // Apenas aplicar máscara enquanto digita, sem tentar converter
+                    setNovaDataVencimento(mascaraData(text));
+                  }}
+                  placeholder="DD/MM/YYYY"
+                  placeholderTextColor="#94a3b8"
+                  keyboardType="numeric"
+                  maxLength={10}
+                />
+              </View>
+              <Text className="text-xs text-slate-500">
+                Formato: DD/MM/YYYY (ex: 15/02/2026)
+              </Text>
+            </View>
+
+            {/* Footer */}
+            <View className="flex-row gap-3 border-t border-slate-200 px-6 py-4">
+              <Pressable
+                onPress={() => setModalEditarVencimento(false)}
+                disabled={salvandoData}
+                className="flex-1 items-center justify-center rounded-lg bg-slate-200 py-3"
+                style={({ pressed }) => [pressed && { opacity: 0.7 }]}
+              >
+                <Text className="text-sm font-semibold text-slate-700">Cancelar</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleAtualizarVencimento}
+                disabled={salvandoData}
+                className="flex-1 items-center justify-center rounded-lg bg-orange-500 py-3"
+                style={({ pressed }) => [pressed && { opacity: 0.8 }, salvandoData && { opacity: 0.5 }]}
+              >
+                {salvandoData ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text className="text-sm font-semibold text-white">Salvar</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Modal de Erro */}
       <Modal

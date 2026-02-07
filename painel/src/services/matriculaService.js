@@ -64,4 +64,38 @@ export const matriculaService = {
       throw prepararErro(error.response?.data || error);
     }
   },
+
+  async atualizarProximaDataVencimento(matriculaId, proximaDataVencimento) {
+    try {
+      const response = await api.put(
+        `/admin/matriculas/${matriculaId}/proxima-data-vencimento`,
+        { proxima_data_vencimento: proximaDataVencimento }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao atualizar data de vencimento:', error);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
+  async listarVencimentosHoje() {
+    try {
+      const response = await api.get('/admin/matriculas/vencimentos/hoje');
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao listar vencimentos de hoje:', error);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
+  async listarProximosVencimentos(dias = 7) {
+    try {
+      const response = await api.get(`/admin/matriculas/vencimentos/proximos?dias=${dias}`);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao listar próximos vencimentos:', error);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
 };

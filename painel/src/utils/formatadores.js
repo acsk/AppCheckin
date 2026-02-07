@@ -96,3 +96,66 @@ export function formatarCEP(cep) {
   
   return numeros.replace(/(\d{5})(\d{3})/, '$1-$2');
 }
+
+/**
+ * Calcular dias restantes até vencimento
+ * @param {string} dataVencimento - Data de vencimento no formato YYYY-MM-DD
+ * @returns {number} Dias restantes (negativo se vencido)
+ */
+export function calcularDiasRestantes(dataVencimento) {
+  if (!dataVencimento) return 0;
+  
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  
+  const vencimento = new Date(dataVencimento + 'T00:00:00');
+  vencimento.setHours(0, 0, 0, 0);
+  
+  const diffTime = vencimento - hoje;
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  
+  return diffDays;
+}
+
+/**
+ * Verificar se está vencido
+ * @param {string} dataVencimento - Data de vencimento no formato YYYY-MM-DD
+ * @returns {boolean} True se vencido
+ */
+export function verificarSeVencido(dataVencimento) {
+  return calcularDiasRestantes(dataVencimento) < 0;
+}
+
+/**
+ * Obter cor baseado em dias restantes
+ * @param {number} diasRestantes - Dias restantes até vencimento
+ * @returns {string} Cor do badge
+ */
+export function getCorVencimento(diasRestantes) {
+  if (diasRestantes < 0) return 'danger';
+  if (diasRestantes === 0) return 'danger';
+  if (diasRestantes <= 3) return 'warning';
+  if (diasRestantes <= 7) return 'info';
+  return 'success';
+}
+
+/**
+ * Formatar data para input (YYYY-MM-DD)
+ * @param {Date|string} data - Data a ser formatada
+ * @returns {string} Data formatada para input
+ */
+export function formatarDataParaInput(data) {
+  if (!data) return '';
+  
+  try {
+    const date = data instanceof Date ? data : new Date(data);
+    const ano = date.getFullYear();
+    const mes = String(date.getMonth() + 1).padStart(2, '0');
+    const dia = String(date.getDate()).padStart(2, '0');
+    
+    return `${ano}-${mes}-${dia}`;
+  } catch (error) {
+    return '';
+  }
+}
+

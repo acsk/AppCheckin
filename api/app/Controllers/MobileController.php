@@ -1308,6 +1308,48 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
             }
 
+            // ✅ VALIDAR SE MATRÍCULA ESTÁ ATIVA E DENTRO DO PRAZO (proxima_data_vencimento)
+            $stmtMatricula = $this->db->prepare("
+                SELECT m.id, m.proxima_data_vencimento, m.periodo_teste,
+                       sm.codigo as status_codigo, sm.nome as status_nome
+                FROM matriculas m
+                INNER JOIN alunos a ON a.id = m.aluno_id
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
+                WHERE a.usuario_id = :usuario_id
+                AND m.tenant_id = :tenant_id
+                AND sm.codigo = 'ativa'
+                ORDER BY m.created_at DESC
+                LIMIT 1
+            ");
+            
+            $stmtMatricula->execute([
+                'usuario_id' => $userId,
+                'tenant_id' => $tenantId
+            ]);
+            $matricula = $stmtMatricula->fetch(\PDO::FETCH_ASSOC);
+            
+            if (!$matricula) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Você não possui matrícula ativa',
+                    'code' => 'SEM_MATRICULA'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+            }
+            
+            // Verificar se o acesso ainda está válido (proxima_data_vencimento)
+            $hoje = date('Y-m-d');
+            if ($matricula['proxima_data_vencimento'] && $matricula['proxima_data_vencimento'] < $hoje) {
+                $dataVencimento = date('d/m/Y', strtotime($matricula['proxima_data_vencimento']));
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => "Seu acesso expirou em {$dataVencimento}. Por favor, renove sua matrícula.",
+                    'code' => 'MATRICULA_VENCIDA',
+                    'data_vencimento' => $matricula['proxima_data_vencimento']
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+            }
+
             // Validar turma_id
             $turmaId = $body['turma_id'] ?? null;
             
@@ -3313,5 +3355,465 @@ class MobileController
             error_log("Erro ao obter foto de perfil: " . $e->getMessage());
             return $response->withStatus(500);
         }
+    }
+
+    /**
+     * Lista os planos pagos disponíveis para contratação
+     * Endpoint para exibir planos no mobile para compra
+     */
+    #[OA\Get(
+        path: "/mobile/planos-disponiveis",
+        summary: "Listar planos pagos disponíveis",
+        description: "Retorna os planos ativos do tenant que estão disponíveis para contratação (exclui planos gratuitos/teste).",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        parameters: [
+            new OA\Parameter(
+                name: "modalidade_id",
+                in: "query",
+                description: "ID da modalidade para filtrar planos (opcional)",
+                required: false,
+                schema: new OA\Schema(type: "integer")
+            )
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Planos disponíveis retornados com sucesso",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "success", type: "boolean", example: true),
+                        new OA\Property(
+                            property: "data",
+                            type: "object",
+                            properties: [
+                                new OA\Property(
+                                    property: "planos",
+                                    type: "array",
+                                    items: new OA\Items(
+                                        properties: [
+                                            new OA\Property(property: "id", type: "integer", example: 1),
+                                            new OA\Property(property: "nome", type: "string", example: "Mensal Ilimitado"),
+                                            new OA\Property(property: "descricao", type: "string", example: "Plano mensal com checkins ilimitados"),
+                                            new OA\Property(property: "valor", type: "number", example: 149.90),
+                                            new OA\Property(property: "duracao_dias", type: "integer", example: 30),
+                                            new OA\Property(property: "checkins_semanais", type: "integer", example: 12),
+                                            new OA\Property(property: "modalidade", type: "object", properties: [
+                                                new OA\Property(property: "id", type: "integer"),
+                                                new OA\Property(property: "nome", type: "string")
+                                            ])
+                                        ]
+                                    )
+                                ),
+                                new OA\Property(property: "total", type: "integer", example: 4)
+                            ]
+                        )
+                    ]
+                )
+            ),
+            new OA\Response(response: 400, description: "Tenant não selecionado"),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
+    public function planosDisponiveis(Request $request, Response $response): Response
+    {
+        try {
+            $tenantId = $request->getAttribute('tenantId');
+            
+            if (!$tenantId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'TENANT_NAO_SELECIONADO',
+                    'message' => 'Nenhum tenant selecionado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Filtro opcional por modalidade
+            $queryParams = $request->getQueryParams();
+            $modalidadeId = isset($queryParams['modalidade_id']) ? (int)$queryParams['modalidade_id'] : null;
+
+            // Buscar planos ativos do tenant com valor > 0 (planos pagos)
+            $sql = "SELECT p.id, p.nome, p.descricao, p.valor, p.duracao_dias, p.checkins_semanais,
+                           m.id as modalidade_id, m.nome as modalidade_nome
+                    FROM planos p
+                    LEFT JOIN modalidades m ON p.modalidade_id = m.id
+                    WHERE p.tenant_id = :tenant_id 
+                    AND p.ativo = 1 
+                    AND p.valor > 0";
+            
+            if ($modalidadeId) {
+                $sql .= " AND p.modalidade_id = :modalidade_id";
+            }
+            
+            $sql .= " ORDER BY p.valor ASC";
+            
+            $stmt = $this->db->prepare($sql);
+            $params = ['tenant_id' => $tenantId];
+            
+            if ($modalidadeId) {
+                $params['modalidade_id'] = $modalidadeId;
+            }
+            
+            $stmt->execute($params);
+            $planos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Formatar resposta
+            $planosFormatados = array_map(function($plano) {
+                return [
+                    'id' => (int)$plano['id'],
+                    'nome' => $plano['nome'],
+                    'descricao' => $plano['descricao'],
+                    'valor' => (float)$plano['valor'],
+                    'valor_formatado' => 'R$ ' . number_format($plano['valor'], 2, ',', '.'),
+                    'duracao_dias' => (int)$plano['duracao_dias'],
+                    'duracao_texto' => $this->formatarDuracao((int)$plano['duracao_dias']),
+                    'checkins_semanais' => (int)$plano['checkins_semanais'],
+                    'modalidade' => [
+                        'id' => (int)$plano['modalidade_id'],
+                        'nome' => $plano['modalidade_nome']
+                    ]
+                ];
+            }, $planos);
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'data' => [
+                    'planos' => $planosFormatados,
+                    'total' => count($planosFormatados)
+                ]
+            ], JSON_UNESCAPED_UNICODE));
+            
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+
+        } catch (\Exception $e) {
+            error_log('[MobileController::planosDisponiveis] Erro: ' . $e->getMessage());
+            
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'type' => 'error',
+                'code' => 'ERRO_INTERNO',
+                'message' => 'Erro ao buscar planos disponíveis'
+            ]));
+            
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * Comprar plano e gerar link de pagamento Mercado Pago
+     * Endpoint simplificado para compra de plano pelo mobile
+     */
+    #[OA\Post(
+        path: "/mobile/comprar-plano",
+        summary: "Comprar plano",
+        description: "Cria matrícula e retorna link de pagamento do Mercado Pago para o plano escolhido.",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                properties: [
+                    new OA\Property(property: "plano_id", type: "integer", example: 1, description: "ID do plano escolhido"),
+                    new OA\Property(property: "dia_vencimento", type: "integer", example: 5, description: "Dia do mês para vencimento (1-31)")
+                ],
+                required: ["plano_id", "dia_vencimento"]
+            )
+        ),
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Matrícula criada e link de pagamento gerado",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "success", type: "boolean", example: true),
+                        new OA\Property(property: "message", type: "string", example: "Matrícula criada com sucesso"),
+                        new OA\Property(
+                            property: "data",
+                            type: "object",
+                            properties: [
+                                new OA\Property(property: "matricula_id", type: "integer", example: 456),
+                                new OA\Property(property: "plano_nome", type: "string", example: "Mensal Básico"),
+                                new OA\Property(property: "valor", type: "number", example: 99.90),
+                                new OA\Property(property: "status", type: "string", example: "pendente"),
+                                new OA\Property(property: "payment_url", type: "string", example: "https://www.mercadopago.com.br/checkout/..."),
+                                new OA\Property(property: "preference_id", type: "string", example: "123456789-abc-def")
+                            ]
+                        )
+                    ]
+                )
+            ),
+            new OA\Response(response: 400, description: "Dados inválidos ou matrícula ativa já existe"),
+            new OA\Response(response: 401, description: "Não autorizado"),
+            new OA\Response(response: 404, description: "Plano não encontrado")
+        ]
+    )]
+    public function comprarPlano(Request $request, Response $response): Response
+    {
+        try {
+            $userId = $request->getAttribute('userId');
+            $tenantId = $request->getAttribute('tenantId');
+            $data = $request->getParsedBody();
+
+            // Validações
+            if (!$tenantId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'TENANT_NAO_SELECIONADO',
+                    'message' => 'Nenhum tenant selecionado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            if (empty($data['plano_id'])) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'PLANO_OBRIGATORIO',
+                    'message' => 'Plano é obrigatório'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            $planoId = (int) $data['plano_id'];
+            // Dia de vencimento é opcional, padrão = 5
+            $diaVencimento = isset($data['dia_vencimento']) ? (int) $data['dia_vencimento'] : 5;
+
+            // Validar dia de vencimento se foi fornecido
+            if ($diaVencimento < 1 || $diaVencimento > 31) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'DIA_VENCIMENTO_INVALIDO',
+                    'message' => 'Dia de vencimento deve estar entre 1 e 31'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Buscar aluno_id do usuário logado
+            $stmtAluno = $this->db->prepare("SELECT id FROM alunos WHERE usuario_id = ?");
+            $stmtAluno->execute([$userId]);
+            $aluno = $stmtAluno->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$aluno) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'ALUNO_NAO_ENCONTRADO',
+                    'message' => 'Perfil de aluno não encontrado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            $alunoId = $aluno['id'];
+
+            // Buscar dados do usuário
+            $usuario = $this->usuarioModel->findById($userId, $tenantId);
+            if (!$usuario) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'USUARIO_NAO_ENCONTRADO',
+                    'message' => 'Usuário não encontrado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            // Buscar plano
+            $stmtPlano = $this->db->prepare("
+                SELECT p.*, m.nome as modalidade_nome 
+                FROM planos p 
+                LEFT JOIN modalidades m ON p.modalidade_id = m.id
+                WHERE p.id = ? AND p.tenant_id = ? AND p.ativo = 1
+            ");
+            $stmtPlano->execute([$planoId, $tenantId]);
+            $plano = $stmtPlano->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$plano) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'PLANO_NAO_ENCONTRADO',
+                    'message' => 'Plano não encontrado ou inativo'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            // Verificar se plano é pago
+            if ($plano['valor'] <= 0) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'PLANO_INVALIDO',
+                    'message' => 'Este plano não está disponível para compra'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Verificar se já existe matrícula ativa na mesma modalidade
+            $stmtAtiva = $this->db->prepare("
+                SELECT m.id, m.status_id, m.proxima_data_vencimento, p.modalidade_id, sm.codigo
+                FROM matriculas m
+                INNER JOIN planos p ON p.id = m.plano_id
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
+                WHERE m.aluno_id = ? 
+                AND m.tenant_id = ? 
+                AND p.modalidade_id = ?
+                AND sm.codigo = 'ativa' 
+                AND m.proxima_data_vencimento >= CURDATE()
+                ORDER BY m.created_at DESC
+                LIMIT 1
+            ");
+            $stmtAtiva->execute([$alunoId, $tenantId, $plano['modalidade_id']]);
+            $matriculaAtiva = $stmtAtiva->fetch(\PDO::FETCH_ASSOC);
+
+            if ($matriculaAtiva) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'MATRICULA_ATIVA_EXISTENTE',
+                    'message' => 'Você já possui uma matrícula ativa nesta modalidade'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Calcular datas
+            $dataInicio = date('Y-m-d');
+            $dataMatricula = $dataInicio;
+            $duracaoDias = (int) $plano['duracao_dias'];
+            $dataInicioObj = new \DateTime($dataInicio);
+            $dataVencimento = clone $dataInicioObj;
+            $dataVencimento->modify("+{$duracaoDias} days");
+            
+            $proximaDataVencimento = clone $dataInicioObj;
+            $proximaDataVencimento->modify("+{$duracaoDias} days");
+
+            // Buscar status "pendente" (matrícula aguardando pagamento)
+            $stmtStatus = $this->db->prepare("SELECT id FROM status_matricula WHERE codigo = 'pendente'");
+            $stmtStatus->execute();
+            $statusRow = $stmtStatus->fetch(\PDO::FETCH_ASSOC);
+            $statusId = $statusRow['id'] ?? 5;
+
+            // Buscar motivo "nova"
+            $stmtMotivo = $this->db->prepare("SELECT id FROM motivo_matricula WHERE codigo = 'nova'");
+            $stmtMotivo->execute();
+            $motivoRow = $stmtMotivo->fetch(\PDO::FETCH_ASSOC);
+            $motivoId = $motivoRow['id'] ?? 1;
+
+            // Criar matrícula com status PENDENTE
+            $stmtInsert = $this->db->prepare("
+                INSERT INTO matriculas 
+                (tenant_id, aluno_id, plano_id, data_matricula, data_inicio, data_vencimento, 
+                 valor, status_id, motivo_id, dia_vencimento, periodo_teste, proxima_data_vencimento, criado_por)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+            ");
+
+            $stmtInsert->execute([
+                $tenantId,
+                $alunoId,
+                $planoId,
+                $dataMatricula,
+                $dataInicio,
+                $dataVencimento->format('Y-m-d'),
+                $plano['valor'],
+                $statusId,
+                $motivoId,
+                $diaVencimento,
+                $proximaDataVencimento->format('Y-m-d'),
+                $userId
+            ]);
+
+            $matriculaId = (int) $this->db->lastInsertId();
+
+            error_log("[MobileController::comprarPlano] Matrícula criada ID: {$matriculaId}, Status: pendente");
+
+            // Gerar link de pagamento com Mercado Pago
+            $paymentUrl = null;
+            $preferenceId = null;
+
+            try {
+                $mercadoPago = new \App\Services\MercadoPagoService();
+                
+                $dadosPagamento = [
+                    'tenant_id' => $tenantId,
+                    'matricula_id' => $matriculaId,
+                    'aluno_id' => $alunoId,
+                    'usuario_id' => $userId,
+                    'aluno_nome' => $usuario['nome'],
+                    'aluno_email' => $usuario['email'],
+                    'aluno_telefone' => $usuario['telefone'] ?? '',
+                    'plano_nome' => $plano['nome'],
+                    'descricao' => "Matrícula {$plano['nome']} - {$plano['modalidade_nome']}",
+                    'valor' => (float) $plano['valor'],
+                    'max_parcelas' => 12
+                ];
+
+                error_log("[MobileController::comprarPlano] Tentando gerar preferência MP...");
+                error_log("[MobileController::comprarPlano] Dados: " . json_encode($dadosPagamento));
+
+                $preferencia = $mercadoPago->criarPreferenciaPagamento($dadosPagamento);
+                $paymentUrl = $preferencia['init_point'];
+                $preferenceId = $preferencia['id'];
+
+                error_log("[MobileController::comprarPlano] ✅ Link gerado: {$preferenceId}");
+
+            } catch (\Exception $e) {
+                error_log("[MobileController::comprarPlano] ❌ ERRO MP: " . $e->getMessage());
+                error_log("[MobileController::comprarPlano] Stack: " . $e->getTraceAsString());
+                // Continua mesmo se falhar, usuário pode tentar depois
+            }
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'message' => 'Matrícula criada com sucesso. Complete o pagamento para ativar.',
+                'data' => [
+                    'matricula_id' => $matriculaId,
+                    'plano_id' => $planoId,
+                    'plano_nome' => $plano['nome'],
+                    'modalidade' => $plano['modalidade_nome'],
+                    'valor' => (float) $plano['valor'],
+                    'valor_formatado' => 'R$ ' . number_format($plano['valor'], 2, ',', '.'),
+                    'status' => 'pendente',
+                    'data_inicio' => $dataInicio,
+                    'data_vencimento' => $proximaDataVencimento->format('Y-m-d'),
+                    'dia_vencimento' => $diaVencimento,
+                    'payment_url' => $paymentUrl,
+                    'preference_id' => $preferenceId
+                ]
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+
+        } catch (\Exception $e) {
+            error_log('[MobileController::comprarPlano] Erro: ' . $e->getMessage());
+            
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'type' => 'error',
+                'code' => 'ERRO_INTERNO',
+                'message' => 'Erro ao processar compra: ' . $e->getMessage()
+            ]));
+            
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * Formata a duração em dias para texto legível
+     */
+    private function formatarDuracao(int $dias): string
+    {
+        if ($dias == 30) return '1 mês';
+        if ($dias == 60) return '2 meses';
+        if ($dias == 90) return '3 meses';
+        if ($dias == 180) return '6 meses';
+        if ($dias == 365) return '1 ano';
+        
+        if ($dias < 30) return $dias . ' dias';
+        
+        $meses = round($dias / 30);
+        return $meses . ' meses';
     }
 }

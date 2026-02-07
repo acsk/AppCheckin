@@ -1,91 +1,114 @@
+import { getApiUrlRuntime } from "@/src/config/urls";
 import { colors } from "@/src/theme/colors";
-import { getApiUrlRuntime } from "@/src/utils/apiConfig";
-import { handleAuthError } from "@/src/utils/authHelpers";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useRoute } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
-  ScrollView,
+  FlatList,
+  Linking,
+  Modal,
+  SafeAreaView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 
-interface Modalidade {
-  id: number;
-  nome: string;
-  cor: string;
-}
+// NOVO ARQUIVO - SEM CÓDIGO ANTIGO
 
-interface Plano {
+interface Plan {
   id: number;
-  tenant_id: number;
   nome: string;
   descricao: string;
   valor: number;
+  valor_formatado: string;
   duracao_dias: number;
+  duracao_texto: string;
   checkins_semanais: number;
-  ativo: boolean;
-  modalidade: Modalidade;
-}
-
-interface Matricula {
-  matricula_id: number;
-  plano: Plano;
-  datas: {
-    matricula: string;
-    inicio: string;
-    vencimento: string;
+  modalidade: {
+    id: number;
+    nome: string;
   };
-  valor: number;
-  status: string;
-  motivo: string;
-  created_at: string;
-  updated_at: string;
 }
 
-interface RouteParams {
-  tenantId?: string;
+interface ApiResponse {
+  success: boolean;
+  data?: {
+    planos: Plan[];
+    total: number;
+  };
+  error?: string;
+}
+
+interface Toast {
+  message: string;
+  type: "info" | "success" | "error" | "warning";
 }
 
 export default function PlanosScreen() {
   const router = useRouter();
-  const route = useRoute();
-  const tenantId = (route.params as RouteParams)?.tenantId;
-  const [matriculas, setMatriculas] = useState<Matricula[]>([]);
-  const [selectedMatricula, setSelectedMatricula] = useState<Matricula | null>(
-    null,
-  );
+
+  const [planos, setPlanos] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
-  const [apenasAtivos, setApenasAtivos] = useState(false);
-  const [pagamentos, setPagamentos] = useState([]);
-  const [resumoFinanceiro, setResumoFinanceiro] = useState(null);
+  const [error, setError] = useState<string | null>(null);
+  const [apiUrl, setApiUrl] = useState("");
+  const [comprando, setComprando] = useState(false);
+  const [planoComprando, setPlanoComprando] = useState<number | null>(null);
+  const [errorModalVisible, setErrorModalVisible] = useState(false);
+  const [errorModalData, setErrorModalData] = useState<{
+    title: string;
+    message: string;
+    type: "error" | "success" | "warning";
+  }>({
+    title: "",
+    message: "",
+    type: "error",
+  });
 
   useEffect(() => {
-    loadPlanos();
+    const initializeAndFetch = async () => {
+      try {
+        console.log("🚀 Inicializando página de planos...");
+        const url = getApiUrlRuntime();
+        console.log("🌐 URL da API:", url);
+        setApiUrl(url);
+        await fetchPlanos(url);
+      } catch (err) {
+        console.error("❌ Erro na inicialização:", err);
+        setError("Erro ao inicializar página");
+      }
+    };
+
+    initializeAndFetch();
   }, []);
 
-  const loadPlanos = async (todas = false) => {
+  const showErrorModal = (
+    title: string,
+    message: string,
+    type: "error" | "success" | "warning" = "error",
+  ) => {
+    setErrorModalData({ title, message, type });
+    setErrorModalVisible(true);
+  };
+
+  const fetchPlanos = async (baseUrl: string) => {
     try {
-      console.log("\n🔄 INICIANDO CARREGAMENTO DE PLANOS");
+      setLoading(true);
+      setError(null);
 
       const token = await AsyncStorage.getItem("@appcheckin:token");
       if (!token) {
-        console.error("❌ Token não encontrado");
-        Alert.alert("Erro", "Token não encontrado");
-        return;
+        console.warn("❌ Token não encontrado no AsyncStorage");
+        throw new Error("Token não encontrado");
       }
-      console.log("✅ Token encontrado");
 
-      const baseUrl = getApiUrlRuntime();
-      const url = `${baseUrl}/mobile/planos${todas ? "?todas=true" : ""}`;
-      console.log("📍 URL:", url);
+      // Usar modalidade padrão (1) ou deixar sem filtro
+      const url = `${baseUrl}/mobile/planos-disponiveis`;
+
+      console.log("📍 URL da requisição:", url);
+      console.log("🔑 Token encontrado:", token.substring(0, 20) + "...");
 
       const response = await fetch(url, {
         method: "GET",
@@ -95,508 +118,389 @@ export default function PlanosScreen() {
         },
       });
 
-      console.log("📡 RESPOSTA DO SERVIDOR");
-      console.log("   Status:", response.status);
-      console.log("   Status Text:", response.statusText);
-
-      const responseText = await response.text();
-      console.log(
-        "   Body (primeiros 500 chars):",
-        responseText.substring(0, 500),
-      );
+      console.log("📡 Status da resposta:", response.status);
 
       if (!response.ok) {
-        // Tratar erro 401
+        const responseText = await response.text();
+        console.error("❌ Erro na resposta:", responseText);
+
         if (response.status === 401) {
-          console.log("🔑 Token inválido/expirado ao carregar planos");
-          await handleAuthError();
+          console.warn("🔑 Token inválido ou expirado");
+          await AsyncStorage.removeItem("@appcheckin:token");
+          await AsyncStorage.removeItem("@appcheckin:user");
           router.replace("/(auth)/login");
           return;
         }
-
-        console.error("❌ ERRO NA REQUISIÇÃO");
-        console.error("   Status:", response.status);
-        console.error("   Body completo:", responseText);
         throw new Error(`HTTP ${response.status}: ${responseText}`);
       }
 
-      let data;
-      try {
-        data = JSON.parse(responseText);
-        console.log("✅ JSON parseado com sucesso");
-      } catch (parseError) {
-        console.error("❌ ERRO AO FAZER PARSE DO JSON");
-        console.error("   Erro:", (parseError as Error).message);
-        console.error("   Body:", responseText);
-        throw parseError;
+      const data: ApiResponse = await response.json();
+
+      console.log("✅ Resposta da API:", JSON.stringify(data, null, 2));
+
+      if (data.success && data.data?.planos) {
+        console.log("✅ Planos carregados:", data.data.planos.length);
+        setPlanos(data.data.planos);
+      } else {
+        console.warn("⚠️ Resposta sem planos:", data);
+        throw new Error(data.error || "Falha ao carregar planos");
       }
-
-      console.log("   Dados completos:", JSON.stringify(data, null, 2));
-
-      if (data.success && data.data?.matriculas) {
-        console.log("✅ Matrículas carregadas com sucesso");
-        console.log("   Quantidade:", data.data.matriculas.length);
-        setMatriculas(data.data.matriculas);
-      } else if (!data.success) {
-        console.error("⚠️ success = false");
-        console.error("   Error:", data.error);
-        throw new Error(data.error || "Erro ao carregar matrículas");
-      }
-    } catch (error) {
-      console.error("❌ EXCEÇÃO CAPTURADA EM loadPlanos");
-      console.error("   Nome:", (error as Error).name);
-      console.error("   Mensagem:", (error as Error).message);
-      console.error("   Stack:", (error as Error).stack);
-      console.log("📦 Usando dados mockados como fallback...");
-
-      // Dados mockados para exemplo (matrículas, não planos)
-      const mockMatriculas = [
-        {
-          matricula_id: 23,
-          plano: {
-            id: 5,
-            tenant_id: 4,
-            nome: "Plano 3x por semana",
-            descricao: "Acesso 3 vezes na semana à modalidade",
-            valor: 150.0,
-            duracao_dias: 30,
-            checkins_semanais: 3,
-            ativo: true,
-            modalidade: {
-              id: 4,
-              nome: "Natação",
-              cor: "#3b82f6",
-            },
-          },
-          datas: {
-            matricula: "2026-01-09",
-            inicio: "2026-01-09",
-            vencimento: "2026-02-08",
-          },
-          valor: 150.0,
-          status: "ativa",
-          motivo: "nova",
-          created_at: "2026-01-09T10:30:00",
-          updated_at: "2026-01-09T10:30:00",
-        },
-        {
-          matricula_id: 24,
-          plano: {
-            id: 6,
-            tenant_id: 5,
-            nome: "Plano 1x por semana",
-            descricao: "Acesso 1 vez na semana à modalidade",
-            valor: 110.0,
-            duracao_dias: 30,
-            checkins_semanais: 1,
-            ativo: true,
-            modalidade: {
-              id: 5,
-              nome: "CrossFit",
-              cor: "#10b981",
-            },
-          },
-          datas: {
-            matricula: "2026-01-07",
-            inicio: "2026-01-07",
-            vencimento: "2026-02-06",
-          },
-          valor: 110.0,
-          status: "ativa",
-          motivo: "nova",
-          created_at: "2026-01-07T08:00:00",
-          updated_at: "2026-01-07T08:00:00",
-        },
-      ];
-      setMatriculas(mockMatriculas);
+    } catch (err) {
+      const errorMsg =
+        err instanceof Error ? err.message : "Erro ao carregar planos";
+      console.error("❌ Erro completo:", err);
+      console.error("📝 Mensagem:", errorMsg);
+      setError(errorMsg);
     } finally {
       setLoading(false);
     }
   };
 
-  const loadPagamentos = async (matriculaId) => {
-    try {
-      console.log("\n🔄 INICIANDO CARREGAMENTO DE PAGAMENTOS");
-      console.log("   matriculaId:", matriculaId);
+  const handleContratar = React.useCallback(
+    async (plano: Plan) => {
+      try {
+        setComprando(true);
+        setPlanoComprando(plano.id);
 
-      const token = await AsyncStorage.getItem("@appcheckin:token");
-      if (!token) {
-        console.warn("❌ Token não encontrado");
-        return;
-      }
-      console.log("✅ Token encontrado:", token.substring(0, 20) + "...");
+        console.log("🛒 Iniciando compra do plano:", plano.nome);
 
-      const baseUrl = getApiUrlRuntime();
-      const url = `${baseUrl}/mobile/matriculas/${matriculaId}`;
-      console.log("📍 URL:", url);
+        // 1. Obter token e dados do usuário
+        const token = await AsyncStorage.getItem("@appcheckin:token");
+        if (!token) {
+          console.error("❌ Token não encontrado");
+          throw new Error("Token não encontrado");
+        }
 
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
+        // 2. Obter dados do usuário (para aluno_id)
+        const userJson = await AsyncStorage.getItem("@appcheckin:user");
+        if (!userJson) {
+          console.error("❌ Dados do usuário não encontrados");
+          throw new Error("Dados do usuário não encontrados");
+        }
 
-      console.log("📡 RESPOSTA DO SERVIDOR");
-      console.log("   Status:", response.status);
-      console.log("   Status Text:", response.statusText);
+        const user = JSON.parse(userJson);
+        console.log("👤 Usuário ID:", user.id);
 
-      // Tentar ler a resposta como texto primeiro
-      const responseText = await response.text();
-      console.log(
-        "   Body (primeiros 500 chars):",
-        responseText.substring(0, 500),
-      );
+        // 3. Fazer requisição POST para comprar plano
+        const matriculaResponse = await fetch(
+          `${apiUrl}/mobile/comprar-plano`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              plano_id: plano.id,
+            }),
+          },
+        );
 
-      if (!response.ok) {
-        // Tratar erro 401
-        if (response.status === 401) {
-          console.log(
-            "🔑 Token inválido/expirado ao carregar detalhes da matrícula",
-          );
-          await handleAuthError();
-          router.replace("/(auth)/login");
+        console.log("📡 Status criação matrícula:", matriculaResponse.status);
+
+        if (!matriculaResponse.ok) {
+          const errorText = await matriculaResponse.text();
+          console.error("❌ Erro ao criar matrícula:", errorText);
+          setComprando(false);
+          setPlanoComprando(null);
+
+          try {
+            const errorData = JSON.parse(errorText);
+            showErrorModal(
+              "⚠️ Problema na Compra",
+              errorData.message || "Não foi possível processar sua compra",
+              "error",
+            );
+          } catch {
+            showErrorModal(
+              "⚠️ Problema na Compra",
+              "Não foi possível processar sua compra. Tente novamente.",
+              "error",
+            );
+          }
           return;
         }
 
-        console.error("❌ ERRO NA REQUISIÇÃO");
-        console.error("   Status:", response.status);
-        console.error("   Body completo:", responseText);
+        const matriculaData = await matriculaResponse.json();
+        console.log("✅ Resposta da API:", matriculaData);
 
-        try {
-          const errorData = JSON.parse(responseText);
-          console.error("   Erro parseado:", errorData);
-        } catch (e) {
-          console.error("   Não foi possível fazer parse do erro como JSON");
+        // Verificar se a API retornou sucesso
+        if (!matriculaData.success) {
+          const errorMessage =
+            matriculaData.message || "Erro desconhecido ao processar compra";
+          console.error("❌ Erro da API:", errorMessage);
+          setComprando(false);
+          setPlanoComprando(null);
+          showErrorModal("❌ Não foi Possível Comprar", errorMessage, "error");
+          return;
         }
-        return;
+
+        if (!matriculaData.data?.payment_url) {
+          console.error("❌ Link de pagamento não encontrado");
+          setComprando(false);
+          setPlanoComprando(null);
+          showErrorModal(
+            "⚠️ Erro",
+            "Link de pagamento não foi gerado. Tente novamente.",
+            "error",
+          );
+          return;
+        }
+
+        const paymentUrl = matriculaData.data.payment_url;
+        const matriculaId = matriculaData.data.matricula?.id;
+
+        console.log("💳 Payment URL:", paymentUrl);
+
+        // 4. Salvar ID da matrícula para consultar depois
+        if (matriculaId) {
+          await AsyncStorage.setItem(
+            "matricula_pendente_id",
+            matriculaId.toString(),
+          );
+          console.log("💾 Matrícula ID salvo:", matriculaId);
+        }
+
+        setComprando(false);
+        setPlanoComprando(null);
+
+        // 5. Abrir link de pagamento
+        const supported = await Linking.canOpenURL(paymentUrl);
+
+        if (supported) {
+          console.log("🔗 Abrindo URL de pagamento:", paymentUrl);
+          await Linking.openURL(paymentUrl);
+
+          // Mostrar mensagem após 500ms
+          setTimeout(() => {
+            showErrorModal(
+              "💳 Pagamento em Processamento",
+              "Você foi redirecionado para o Mercado Pago. Após completar o pagamento, sua matrícula será ativada automaticamente.",
+              "success",
+            );
+          }, 500);
+        } else {
+          console.error("❌ URL não pode ser aberta:", paymentUrl);
+          showErrorModal(
+            "⚠️ Erro",
+            "Não foi possível abrir o link de pagamento. Tente novamente.",
+            "error",
+          );
+        }
+      } catch (err) {
+        const errorMsg =
+          err instanceof Error ? err.message : "Erro ao processar compra";
+        console.error("❌ Erro na compra:", err);
+        setComprando(false);
+        setPlanoComprando(null);
+
+        showErrorModal("❌ Algo Deu Errado", errorMsg, "error");
       }
+    },
+    [apiUrl, fetchPlanos],
+  );
 
-      // Se chegou aqui, status é OK, fazer parse como JSON
-      let data;
-      try {
-        data = JSON.parse(responseText);
-        console.log("✅ JSON parseado com sucesso");
-        console.log("   Dados completos:", JSON.stringify(data, null, 2));
-      } catch (parseError) {
-        console.error("❌ ERRO AO FAZER PARSE DO JSON");
-        console.error("   Erro:", (parseError as Error).message);
-        console.error("   Body:", responseText);
-        return;
-      }
+  const renderPlanCard = ({ item: plano }: { item: Plan }) => (
+    <View style={styles.planCard}>
+      <View style={styles.planHeader}>
+        <View style={styles.planInfo}>
+          <Text style={styles.planNome}>{plano.nome}</Text>
+          <Text style={styles.planModalidade}>{plano.modalidade.nome}</Text>
+        </View>
+        <View style={styles.planPriceContainer}>
+          <Text style={styles.planPrice}>{plano.valor_formatado}</Text>
+          <Text style={styles.planDuracao}>{plano.duracao_texto}</Text>
+        </View>
+      </View>
 
-      if (data.success && data.data) {
-        console.log("✅ SUCCESS = true");
-        console.log(
-          "   Pagamentos:",
-          data.data.pagamentos?.length || 0,
-          "itens",
-        );
-        console.log("   Resumo Financeiro:", data.data.resumo_financeiro);
+      <Text style={styles.planDescricao}>{plano.descricao}</Text>
 
-        setPagamentos(data.data.pagamentos || []);
-        setResumoFinanceiro(data.data.resumo_financeiro);
-      } else {
-        console.warn("⚠️ success é false ou data.data está vazio");
-        console.log("   Success:", data.success);
-        console.log("   Data:", data.data);
-      }
-    } catch (error) {
-      console.error("❌ EXCEÇÃO CAPTURADA");
-      console.error("   Nome do erro:", (error as Error).name);
-      console.error("   Mensagem:", (error as Error).message);
-      console.error("   Stack:", (error as Error).stack);
-    }
-  };
+      <View style={styles.planFeatures}>
+        <View style={styles.featureItem}>
+          <Feather name="check-circle" size={16} color={colors.primary} />
+          <Text style={styles.featureText}>
+            {plano.checkins_semanais === 999
+              ? "Ilimitado"
+              : `${plano.checkins_semanais} check-ins por semana`}
+          </Text>
+        </View>
+        <View style={styles.featureItem}>
+          <Feather name="calendar" size={16} color={colors.primary} />
+          <Text style={styles.featureText}>
+            {plano.duracao_dias} dias de acesso
+          </Text>
+        </View>
+      </View>
 
-  const handleSelectPlano = async (matricula) => {
-    console.log(
-      "🎯 Matrícula selecionada:",
-      matricula.matricula_id,
-      "Plano:",
-      matricula.plano.nome,
-    );
-    setSelectedMatricula(matricula);
-
-    if (matricula.matricula_id) {
-      await loadPagamentos(matricula.matricula_id);
-    }
-  };
-
-  const formatarValor = (valor) => {
-    return `R$ ${parseFloat(valor).toFixed(2).replace(".", ",")}`;
-  };
-
-  // Sempre mostrar apenas as ativas (case-insensitive)
-  const matriculasFiltradas = matriculas
-    .filter((m) => m.status?.toLowerCase() === "ativa")
-    .filter((m) =>
-      tenantId ? m.plano.tenant_id === parseInt(tenantId) : true,
-    );
+      <TouchableOpacity
+        style={[
+          styles.contratarButton,
+          comprando && planoComprando === plano.id
+            ? styles.contratarButtonLoading
+            : null,
+        ]}
+        onPress={() => handleContratar(plano)}
+        disabled={comprando && planoComprando === plano.id}
+      >
+        {comprando && planoComprando === plano.id ? (
+          <>
+            <ActivityIndicator color="#fff" size="small" />
+            <Text style={styles.contratarButtonText}>Processando...</Text>
+          </>
+        ) : (
+          <>
+            <Feather name="shopping-cart" size={18} color="#fff" />
+            <Text style={styles.contratarButtonText}>Contratar Plano</Text>
+          </>
+        )}
+      </TouchableOpacity>
+    </View>
+  );
 
   if (loading) {
     return (
       <SafeAreaView style={styles.container} edges={["top"]}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // Tela de Detalhes da Matrícula
-  if (selectedMatricula) {
-    return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        {/* Header */}
         <View style={styles.headerTop}>
           <TouchableOpacity
             style={styles.headerBackButton}
-            onPress={() => setSelectedMatricula(null)}
+            onPress={() => router.replace("/(tabs)/checkin")}
           >
             <Feather name="arrow-left" size={24} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.headerTitleCentered}>Detalhes do Plano</Text>
+          <Text style={styles.headerTitleCentered}>Planos</Text>
           <View style={{ width: 40 }} />
         </View>
-
-        <ScrollView
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          {/* Header do Plano */}
-          <View style={styles.planoHeader}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.planoNome}>
-                {selectedMatricula.plano.nome}
-              </Text>
-              <View style={styles.planoHeaderSubrow}>
-                {selectedMatricula.plano.modalidade && (
-                  <View
-                    style={[
-                      styles.modalidadeBadge,
-                      {
-                        backgroundColor:
-                          selectedMatricula.plano.modalidade.cor + "20",
-                      },
-                    ]}
-                  >
-                    <View
-                      style={[
-                        styles.modalidadeDot,
-                        {
-                          backgroundColor:
-                            selectedMatricula.plano.modalidade.cor,
-                        },
-                      ]}
-                    />
-                    <Text
-                      style={[
-                        styles.modalidadeText,
-                        { color: selectedMatricula.plano.modalidade.cor },
-                      ]}
-                    >
-                      {selectedMatricula.plano.modalidade.nome}
-                    </Text>
-                  </View>
-                )}
-                {selectedMatricula.plano.duracao_dias && (
-                  <View style={styles.durationContainer}>
-                    <Feather name="clock" size={14} color={colors.primary} />
-                    <Text style={styles.durationText}>
-                      {selectedMatricula.plano.duracao_dias} dias
-                    </Text>
-                  </View>
-                )}
-              </View>
-            </View>
-          </View>
-
-          {/* Descrição */}
-          {selectedMatricula.plano.descricao && (
-            <View style={styles.descricaoCard}>
-              <Text style={styles.descricaoText}>
-                {selectedMatricula.plano.descricao}
-              </Text>
-            </View>
-          )}
-
-          {/* Pagamentos */}
-          {pagamentos.length > 0 && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Histórico de Pagamentos</Text>
-              <View style={styles.card}>
-                {pagamentos.map((pagamento, idx) => (
-                  <View key={idx}>
-                    <View style={styles.pagamentoRow}>
-                      <View style={styles.pagamentoContent}>
-                        <Text style={styles.label}>
-                          {new Date(
-                            pagamento.data_vencimento,
-                          ).toLocaleDateString("pt-BR")}
-                        </Text>
-                        <Text style={styles.value}>
-                          R${" "}
-                          {typeof pagamento.valor === "number"
-                            ? pagamento.valor.toFixed(2).replace(".", ",")
-                            : pagamento.valor}
-                        </Text>
-                      </View>
-                      <View
-                        style={[
-                          styles.statusBadge,
-                          {
-                            backgroundColor:
-                              pagamento.status === "Pago"
-                                ? "#4CAF5020"
-                                : "#FF980020",
-                            paddingHorizontal: 12,
-                            paddingVertical: 6,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.statusText,
-                            {
-                              color:
-                                pagamento.status === "Pago"
-                                  ? "#4CAF50"
-                                  : "#FF9800",
-                            },
-                          ]}
-                        >
-                          {pagamento.status}
-                        </Text>
-                      </View>
-                    </View>
-                    {idx < pagamentos.length - 1 && (
-                      <View style={styles.divider} />
-                    )}
-                  </View>
-                ))}
-              </View>
-            </View>
-          )}
-        </ScrollView>
+        <View style={styles.centerContent}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Carregando planos...</Text>
+        </View>
       </SafeAreaView>
     );
   }
 
-  // Tela de Lista de Planos
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
-      {/* Header com Botão Voltar e Recarregar */}
       <View style={styles.headerTop}>
         <TouchableOpacity
           style={styles.headerBackButton}
-          onPress={() => router.back()}
+          onPress={() => router.replace("/(tabs)/checkin")}
         >
           <Feather name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitleCentered}>Planos</Text>
         <TouchableOpacity
-          style={styles.refreshButton}
-          onPress={() => loadPlanos()}
+          style={styles.headerBackButton}
+          onPress={() => {
+            setLoading(true);
+            fetchPlanos(apiUrl);
+          }}
         >
           <Feather name="refresh-cw" size={20} color="#fff" />
         </TouchableOpacity>
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
+      {error ? (
+        <View style={styles.errorContainer}>
+          <Feather name="alert-circle" size={48} color="#dc2626" />
+          <Text style={styles.errorTitle}>Erro ao carregar planos</Text>
+          <Text style={styles.errorMessage}>{error}</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => {
+              setLoading(true);
+              fetchPlanos(apiUrl);
+            }}
+          >
+            <Text style={styles.retryButtonText}>Tentar novamente</Text>
+          </TouchableOpacity>
+        </View>
+      ) : planos.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Feather name="inbox" size={48} color="#d1d5db" />
+          <Text style={styles.emptyText}>Nenhum plano disponível</Text>
+          <Text style={styles.emptySubtext}>
+            Não há planos disponíveis no momento
+          </Text>
+        </View>
+      ) : (
+        <FlatList
+          data={planos}
+          renderItem={renderPlanCard}
+          keyExtractor={(item) => item.id.toString()}
+          contentContainerStyle={styles.listContent}
+          scrollEnabled={true}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
+
+      {/* Error Modal */}
+      <Modal
+        visible={errorModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setErrorModalVisible(false)}
       >
-        {/* Lista de Matrículas */}
-        {matriculas.length > 0 ? (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              Minhas Matrículas ({matriculasFiltradas.length})
-            </Text>
-            {matriculasFiltradas.map((matricula) => (
-              <TouchableOpacity
-                key={matricula.matricula_id}
-                style={styles.planoCardCompact}
-                onPress={() => handleSelectPlano(matricula)}
-                activeOpacity={0.7}
-              >
-                {/* Header: Modalidade + Status */}
-                <View style={styles.planoCardHeaderCompact}>
-                  {matricula.plano.modalidade && (
-                    <Text style={styles.modalidadeTextCompact}>
-                      {matricula.plano.modalidade.nome}
-                    </Text>
-                  )}
-                  <View
-                    style={[
-                      styles.statusBadgeCompact,
-                      matricula.status?.toLowerCase() === "ativa"
-                        ? styles.statusBadgeAtiva
-                        : styles.statusBadgeInativa,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.statusTextCompact,
-                        matricula.status?.toLowerCase() === "ativa"
-                          ? styles.statusTextAtiva
-                          : styles.statusTextInativa,
-                      ]}
-                    >
-                      {matricula.status}
-                    </Text>
-                  </View>
-                </View>
+        <View style={styles.modalOverlay}>
+          <View
+            style={[
+              styles.modalContent,
+              errorModalData.type === "error" && styles.modalError,
+              errorModalData.type === "success" && styles.modalSuccess,
+              errorModalData.type === "warning" && styles.modalWarning,
+            ]}
+          >
+            {/* Icon Circle */}
+            <View
+              style={[
+                styles.iconCircle,
+                errorModalData.type === "error" && styles.iconCircleError,
+                errorModalData.type === "success" && styles.iconCircleSuccess,
+                errorModalData.type === "warning" && styles.iconCircleWarning,
+              ]}
+            >
+              <Feather
+                name={
+                  errorModalData.type === "success"
+                    ? "check"
+                    : errorModalData.type === "warning"
+                      ? "alert-triangle"
+                      : "x"
+                }
+                size={40}
+                color={
+                  errorModalData.type === "success"
+                    ? "#0a7f3c"
+                    : errorModalData.type === "warning"
+                      ? "#b26a00"
+                      : "#b3261e"
+                }
+              />
+            </View>
 
-                {/* Nome do Plano + Valor */}
-                <View style={styles.planoCardBodyCompact}>
-                  <Text style={styles.planoNomeCompact}>
-                    {matricula.plano.nome}
-                  </Text>
-                  <Text style={styles.planoValorCompact}>
-                    {formatarValor(matricula.plano.valor)}
-                    <Text style={styles.planoValorSubCompact}>/mês</Text>
-                  </Text>
-                </View>
+            {/* Title */}
+            <Text style={styles.modalTitle}>{errorModalData.title}</Text>
 
-                {/* Info Row Compacta */}
-                <View style={styles.planoCardInfoCompact}>
-                  <View style={styles.infoItemCompact}>
-                    <Feather name="calendar" size={14} color="#666" />
-                    <Text style={styles.infoTextCompact}>
-                      {matricula.plano.duracao_dias} dias
-                    </Text>
-                  </View>
-                  <View style={styles.infoItemCompact}>
-                    <Feather name="repeat" size={14} color="#666" />
-                    <Text style={styles.infoTextCompact}>
-                      {matricula.plano.checkins_semanais === 999
-                        ? "Ilimitado"
-                        : `${matricula.plano.checkins_semanais}x/sem`}
-                    </Text>
-                  </View>
-                  <Feather name="chevron-right" size={18} color="#CBD5E1" />
-                </View>
-              </TouchableOpacity>
-            ))}
+            {/* Message */}
+            <Text style={styles.modalMessage}>{errorModalData.message}</Text>
+
+            {/* Button */}
+            <TouchableOpacity
+              style={[
+                styles.modalButton,
+                errorModalData.type === "error" && styles.buttonError,
+                errorModalData.type === "success" && styles.buttonSuccess,
+                errorModalData.type === "warning" && styles.buttonWarning,
+              ]}
+              onPress={() => setErrorModalVisible(false)}
+            >
+              <Text style={styles.modalButtonText}>OK, Entendi</Text>
+            </TouchableOpacity>
           </View>
-        ) : (
-          <View style={styles.emptyContainer}>
-            <Feather name="inbox" size={48} color="#ddd" />
-            <Text style={styles.emptyText}>
-              Nenhuma matrícula ativa encontrada
-            </Text>
-            <Text style={styles.emptySubtext}>
-              Você não possui matrículas ativas no momento
-            </Text>
-          </View>
-        )}
-      </ScrollView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -609,17 +513,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 16,
     backgroundColor: colors.primary,
-    borderBottomWidth: 0,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
     shadowRadius: 6,
     elevation: 8,
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: "#fff",
   },
   headerTitleCentered: {
     fontSize: 22,
@@ -630,484 +528,237 @@ const styles = StyleSheet.create({
   },
   headerBackButton: {
     padding: 8,
-    marginRight: 8,
   },
-  refreshButton: {
-    padding: 8,
-  },
-  backButton: {
-    padding: 8,
-    marginBottom: 12,
-    alignSelf: "flex-start",
-  },
-  minimalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-    paddingHorizontal: 0,
-  },
-  headerActionsMini: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  filterButtonMini: {
-    padding: 6,
-  },
-  filterButtonActiveMini: {
-    backgroundColor: colors.primary + "15",
-    borderRadius: 6,
-  },
-  refreshButtonMini: {
-    padding: 6,
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 16,
-  },
-  loadingContainer: {
+  centerContent: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     paddingVertical: 50,
   },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
+  loadingText: {
+    marginTop: 12,
     fontSize: 16,
-    fontWeight: "600",
-    color: "#000",
-    marginBottom: 12,
-  },
-  card: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 16,
-    boxShadow: "0px 2px 4px rgba(0, 0, 0, 0.1)",
-    elevation: 3,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: "#f0f0f0",
-    marginVertical: 12,
-  },
-
-  /* Tenant Info */
-  tenantInfoCard: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 20,
-    boxShadow: "0px 2px 4px rgba(0, 0, 0, 0.1)",
-    elevation: 3,
-  },
-  tenantInfoContent: {
-    flex: 1,
-  },
-  tenantInfoName: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#000",
-    marginBottom: 2,
-  },
-  tenantInfoSlug: {
-    fontSize: 12,
-    color: "#999",
-  },
-
-  /* Plano Cards - Compact */
-  planoCardCompact: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    marginBottom: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#E6E8EB",
-    shadowColor: "#0F172A",
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 4,
-  },
-  planoCardHeaderCompact: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  modalidadeTextCompact: {
-    fontSize: 12,
-    color: "#667085",
-    fontWeight: "600",
-  },
-  statusBadgeCompact: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
-    borderWidth: 1,
-  },
-  statusBadgeAtiva: {
-    backgroundColor: "#DCFCE7",
-    borderColor: "#22C55E",
-  },
-  statusBadgeInativa: {
-    backgroundColor: "#FEE2E2",
-    borderColor: "#EF4444",
-  },
-  statusTextCompact: {
-    fontSize: 11,
-    fontWeight: "700",
-    textTransform: "capitalize",
-  },
-  statusTextAtiva: {
-    color: "#15803D",
-  },
-  statusTextInativa: {
-    color: "#B91C1C",
-  },
-  planoCardBodyCompact: {
-    marginBottom: 12,
-  },
-  planoNomeCompact: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#0F172A",
-    marginBottom: 4,
-  },
-  planoValorCompact: {
-    fontSize: 20,
-    fontWeight: "800",
-    color: "#111827",
-  },
-  planoValorSubCompact: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: "#94A3B8",
-  },
-  planoCardInfoCompact: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: "#EEF1F4",
-  },
-  infoItemCompact: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 5,
-  },
-  infoTextCompact: {
-    fontSize: 13,
-    color: "#475569",
+    color: colors.text,
     fontWeight: "500",
   },
-
-  /* Plano Cards - Legacy (mantido para compatibilidade) */
-  planoCard: {
+  listContent: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    paddingBottom: 32,
+    gap: 16,
+  },
+  planCard: {
     backgroundColor: "#fff",
     borderRadius: 16,
-    marginBottom: 16,
-    overflow: "hidden",
-    borderLeftWidth: 6,
-    borderLeftColor: colors.primary,
-    borderWidth: 1,
-    borderColor: "#e8e8e8",
-    boxShadow: "0px 4px 8px rgba(0, 0, 0, 0.08)",
-    elevation: 4,
-  },
-  planoCardAtual: {
-    borderColor: colors.primary,
-    borderWidth: 2,
-    backgroundColor: colors.primary + "05",
-  },
-  planoCardModalidadeBar: {
-    height: 4,
-  },
-  planoCardContent: {
     padding: 16,
+    borderWidth: 1,
+    borderColor: "#f0f1f4",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
   },
-  planoCardHeader: {
+  planHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
     marginBottom: 12,
-    gap: 12,
   },
-  modalidadeBadgeCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  modalidadeBadgeDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  modalidadeBadgeText: {
-    fontSize: 12,
-    fontWeight: "600",
-    textTransform: "capitalize",
-  },
-  platoAtualBadge: {
-    flexDirection: "row",
-    alignItems: "center",
+  planInfo: {
+    flex: 1,
     gap: 4,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: colors.primary + "15",
-    borderRadius: 6,
   },
-  platoAtualText: {
-    fontSize: 11,
-    color: colors.primary,
-    fontWeight: "600",
-  },
-  planoCardNome: {
+  planNome: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#000",
-    marginBottom: 12,
+    color: colors.text,
   },
-  planoCardValorContainer: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    gap: 4,
-    marginBottom: 14,
-  },
-  planoCardValor: {
-    fontSize: 24,
-    fontWeight: "800",
-    color: colors.primary,
-  },
-  planoCardValorSubtext: {
-    fontSize: 13,
-    color: "#999",
-    fontWeight: "500",
-  },
-  planoCardInfoRow: {
-    flexDirection: "row",
-    gap: 12,
-    marginBottom: 12,
-  },
-  infoItemCard: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    backgroundColor: "#f8f8f8",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 10,
-  },
-  infoItemContent: {
-    flex: 1,
-  },
-  infoItemLabel: {
-    fontSize: 11,
-    color: "#999",
-    fontWeight: "500",
-    marginBottom: 2,
-  },
-  infoItemValue: {
-    fontSize: 13,
-    color: "#000",
-    fontWeight: "600",
-  },
-  planoCardStatusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#F4433615",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  planoCardStatusText: {
+  planModalidade: {
     fontSize: 12,
-    color: "#F44336",
-    fontWeight: "600",
+    color: colors.textMuted,
+    fontWeight: "500",
   },
-
-  /* Plano Details */
-  planoHeader: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  planoHeaderSubrow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    marginTop: 12,
-  },
-  planoNome: {
-    fontSize: 22,
-    fontWeight: "700",
-    color: "#000",
-  },
-  modalidadeBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 8,
-    alignSelf: "flex-start",
-  },
-  modalidadeDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  modalidadeText: {
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  planoValorContainer: {
+  planPriceContainer: {
     alignItems: "flex-end",
   },
-  planoValor: {
-    fontSize: 24,
+  planPrice: {
+    fontSize: 20,
     fontWeight: "700",
     color: colors.primary,
   },
-  planoValorMes: {
-    fontSize: 13,
+  planDuracao: {
+    fontSize: 12,
+    color: colors.textMuted,
     fontWeight: "500",
-    color: "#999",
-    marginTop: 2,
   },
-  tenantBadgeDetail: {
+  planDescricao: {
+    fontSize: 13,
+    color: colors.textMuted,
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  planFeatures: {
+    gap: 8,
+    marginBottom: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "#f0f1f4",
+  },
+  featureItem: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    backgroundColor: colors.primary + "10",
-    borderRadius: 8,
-    marginBottom: 16,
-    alignSelf: "flex-start",
   },
-  tenantBadgeText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: colors.primary,
+  featureText: {
+    fontSize: 13,
+    color: colors.text,
+    fontWeight: "500",
   },
-  descricaoCard: {
-    backgroundColor: "#fff",
+  contratarButton: {
+    backgroundColor: colors.primary,
     borderRadius: 12,
-    padding: 14,
-    marginBottom: 20,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.primary,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    paddingVertical: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    shadowColor: colors.primary,
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
     elevation: 3,
   },
-  descricaoText: {
-    fontSize: 13,
-    color: "#666",
-    lineHeight: 20,
+  contratarButtonLoading: {
+    opacity: 0.7,
   },
-
-  /* Info */
-  infoRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
+  contratarButtonText: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#fff",
   },
-  infoContent: {
+  errorContainer: {
     flex: 1,
-  },
-  label: {
-    fontSize: 12,
-    color: "#999",
-    marginBottom: 4,
-  },
-  value: {
-    fontSize: 13,
-    color: "#000",
-    fontWeight: "600",
-  },
-
-  /* Status */
-  statusInfo: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  statusItem: {
-    flex: 1,
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 6,
+    justifyContent: "center",
     alignItems: "center",
+    paddingHorizontal: 24,
   },
-  statusText: {
-    fontSize: 12,
-    fontWeight: "600",
+  errorTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: colors.text,
+    marginTop: 16,
   },
-  durationContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: colors.primary + "10",
-    paddingHorizontal: 12,
-    paddingVertical: 7,
+  errorMessage: {
+    fontSize: 14,
+    color: colors.textMuted,
+    textAlign: "center",
+    marginTop: 8,
+  },
+  retryButton: {
+    marginTop: 20,
+    backgroundColor: colors.primary,
+    paddingHorizontal: 32,
+    paddingVertical: 12,
     borderRadius: 8,
   },
-  durationText: {
-    fontSize: 13,
-    color: colors.primary,
+  retryButtonText: {
+    color: "#fff",
     fontWeight: "600",
+    fontSize: 14,
   },
-
-  /* Empty State */
   emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 60,
+    paddingHorizontal: 24,
   },
   emptyText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#999",
-    marginTop: 12,
+    fontSize: 18,
+    fontWeight: "700",
+    color: colors.text,
+    marginTop: 16,
   },
   emptySubtext: {
-    fontSize: 13,
-    color: "#ccc",
-    marginTop: 6,
+    fontSize: 14,
+    color: colors.textMuted,
+    marginTop: 8,
     textAlign: "center",
   },
-  pagamentoRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 12,
-  },
-  pagamentoContent: {
+  modalOverlay: {
     flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 24,
+  },
+  modalContent: {
+    borderRadius: 24,
+    padding: 32,
+    alignItems: "center",
+    minWidth: "80%",
+    maxWidth: "90%",
+  },
+  modalError: {
+    backgroundColor: "#fff",
+  },
+  modalSuccess: {
+    backgroundColor: "#fff",
+  },
+  modalWarning: {
+    backgroundColor: "#fff",
+  },
+  iconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: 24,
+  },
+  iconCircleError: {
+    backgroundColor: "#ffebee",
+  },
+  iconCircleSuccess: {
+    backgroundColor: "#e6f4ec",
+  },
+  iconCircleWarning: {
+    backgroundColor: "#fff3e0",
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: colors.text,
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  modalMessage: {
+    fontSize: 16,
+    color: colors.textMuted,
+    textAlign: "center",
+    marginBottom: 28,
+    lineHeight: 24,
+  },
+  modalButton: {
+    width: "100%",
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  buttonError: {
+    backgroundColor: "#b3261e",
+  },
+  buttonSuccess: {
+    backgroundColor: "#0a7f3c",
+  },
+  buttonWarning: {
+    backgroundColor: "#b26a00",
+  },
+  modalButtonText: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#fff",
   },
 });

@@ -21,6 +21,7 @@ const MENU = [
   { label: 'Contratos', path: '/contratos', icon: 'file-text', roles: [4] },
   { label: 'Alunos', path: '/alunos', icon: 'users', roles: [3, 4] },
   { label: 'Matrículas', path: '/matriculas', icon: 'user-check', roles: [3, 4] },
+  { label: 'Vencimentos', path: '/matriculas/vencimentos', icon: 'clock', roles: [3, 4] },
   { label: 'Planos', path: '/planos', icon: 'package', roles: [3, 4] },
   { label: 'Modalidades', path: '/modalidades', icon: 'activity', roles: [3, 4] },
   { label: 'Professores', path: '/professores', icon: 'user', roles: [3, 4] },
@@ -156,49 +157,117 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
         contentContainerStyle={{ paddingVertical: 8, paddingHorizontal: isMobileDrawer ? 12 : 10 }}
       >
         <View className="gap-0">
-          {MENU.filter(item => {
+          {(() => {
             const userRole = usuarioInfo?.papel_id || 1;
-            return item.roles.includes(userRole);
-          }).map((item) => {
-            const selected = pathname === item.path || 
-              (item.path !== '/' && pathname.startsWith(item.path + '/'));
+            const menuItems = MENU.map((item) => {
+              if (item.children) {
+                const children = item.children.filter((child) => child.roles.includes(userRole));
+                if (children.length === 0) return null;
+                return { ...item, children };
+              }
+              if (!item.roles.includes(userRole)) return null;
+              return item;
+            }).filter(Boolean);
 
-            return (
-              <Pressable
-                key={item.label}
-                onPress={() => {
-                  router.push(item.path);
-                  if (isMobile) closeDrawer();
-                }}
-                style={({ pressed }) => [
-                  { opacity: pressed ? 0.7 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }
-                ]}
-                className={`flex-row items-center gap-3 rounded-xl px-3.5 py-2 ${
-                  selected 
-                    ? 'bg-orange-500' 
-                    : 'bg-transparent'
-                }`}
-              >
-                <View className={`h-8 w-8 items-center justify-center rounded-lg ${
-                  selected ? 'bg-white/20' : 'bg-slate-100'
-                }`}>
-                  <Feather 
-                    name={item.icon} 
-                    size={16} 
-                    color={selected ? '#ffffff' : '#64748b'} 
-                  />
-                </View>
-                <Text className={`flex-1 text-[13px] font-medium ${
-                  selected ? 'text-white' : 'text-slate-600'
-                }`}>
-                  {item.label}
-                </Text>
-                {selected && (
-                  <View className="h-2 w-2 rounded-full bg-white" />
-                )}
-              </Pressable>
-            );
-          })}
+            return menuItems.map((item) => {
+              if (item.children) {
+                return (
+                  <View key={item.label} className="mt-2">
+                    <View className="flex-row items-center gap-3 px-3.5 py-2">
+                      <View className="h-8 w-8 items-center justify-center rounded-lg bg-slate-100">
+                        <Feather name={item.icon} size={16} color="#64748b" />
+                      </View>
+                      <Text className="flex-1 text-[12px] font-semibold text-slate-400">
+                        {item.label}
+                      </Text>
+                    </View>
+
+                    <View className="gap-0">
+                      {item.children.map((child) => {
+                        const selected = pathname === child.path ||
+                          (child.path !== '/' && pathname.startsWith(child.path + '/'));
+
+                        return (
+                          <Pressable
+                            key={child.label}
+                            onPress={() => {
+                              router.push(child.path);
+                              if (isMobile) closeDrawer();
+                            }}
+                            style={({ pressed }) => [
+                              { opacity: pressed ? 0.7 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }
+                            ]}
+                            className={`flex-row items-center gap-3 rounded-xl py-2 pl-11 pr-3.5 ${
+                              selected 
+                                ? 'bg-orange-500' 
+                                : 'bg-transparent'
+                            }`}
+                          >
+                            <View className={`h-8 w-8 items-center justify-center rounded-lg ${
+                              selected ? 'bg-white/20' : 'bg-slate-100'
+                            }`}>
+                              <Feather 
+                                name={child.icon} 
+                                size={16} 
+                                color={selected ? '#ffffff' : '#64748b'} 
+                              />
+                            </View>
+                            <Text className={`flex-1 text-[13px] font-medium ${
+                              selected ? 'text-white' : 'text-slate-600'
+                            }`}>
+                              {child.label}
+                            </Text>
+                            {selected && (
+                              <View className="h-2 w-2 rounded-full bg-white" />
+                            )}
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+                  </View>
+                );
+              }
+
+              const selected = pathname === item.path || 
+                (item.path !== '/' && pathname.startsWith(item.path + '/'));
+
+              return (
+                <Pressable
+                  key={item.label}
+                  onPress={() => {
+                    router.push(item.path);
+                    if (isMobile) closeDrawer();
+                  }}
+                  style={({ pressed }) => [
+                    { opacity: pressed ? 0.7 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }
+                  ]}
+                  className={`flex-row items-center gap-3 rounded-xl px-3.5 py-2 ${
+                    selected 
+                      ? 'bg-orange-500' 
+                      : 'bg-transparent'
+                  }`}
+                >
+                  <View className={`h-8 w-8 items-center justify-center rounded-lg ${
+                    selected ? 'bg-white/20' : 'bg-slate-100'
+                  }`}>
+                    <Feather 
+                      name={item.icon} 
+                      size={16} 
+                      color={selected ? '#ffffff' : '#64748b'} 
+                    />
+                  </View>
+                  <Text className={`flex-1 text-[13px] font-medium ${
+                    selected ? 'text-white' : 'text-slate-600'
+                  }`}>
+                    {item.label}
+                  </Text>
+                  {selected && (
+                    <View className="h-2 w-2 rounded-full bg-white" />
+                  )}
+                </Pressable>
+              );
+            });
+          })()}
         </View>
       </ScrollView>
 

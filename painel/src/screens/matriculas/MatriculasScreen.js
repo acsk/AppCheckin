@@ -151,6 +151,17 @@ export default function MatriculasScreen() {
     return date.toLocaleDateString('pt-BR');
   };
 
+  const isProximoVencer = (dateString) => {
+    if (!dateString) return false;
+    const [year, month, day] = dateString.split('-');
+    const vencimento = new Date(year, month - 1, day);
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    vencimento.setHours(0, 0, 0, 0);
+    const diffDias = Math.ceil((vencimento.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+    return diffDias >= 0 && diffDias <= 3;
+  };
+
   const formatCurrency = (value) => {
     return new Intl.NumberFormat('pt-BR', {
       style: 'currency',
@@ -205,8 +216,17 @@ export default function MatriculasScreen() {
           <Text style={styles.infoValue}>{formatDate(matricula.data_inicio)}</Text>
         </View>
         <View style={styles.infoRow}>
-          <Text style={styles.infoLabel}>Vencimento:</Text>
-          <Text style={styles.infoValue}>{formatDate(matricula.data_vencimento)}</Text>
+          <Text style={styles.infoLabel}>Acesso até:</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            <Text style={styles.infoValue}>
+              {formatDate(matricula.proxima_data_vencimento || matricula.data_vencimento)}
+            </Text>
+            {isProximoVencer(matricula.proxima_data_vencimento || matricula.data_vencimento) && (
+              <View className="rounded-full bg-amber-100 px-2 py-0.5">
+                <Text className="text-[10px] font-bold text-amber-700">Vence em breve</Text>
+              </View>
+            )}
+          </View>
         </View>
       </View>
 
@@ -248,7 +268,7 @@ export default function MatriculasScreen() {
         <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colModalidade}>Modalidade</Text>
         <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colValor}>Valor</Text>
         <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colDatas}>Início</Text>
-        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colDatas}>Vencimento</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colDatas}>Acesso até</Text>
         <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colStatus}>Status</Text>
         <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-right" style={styles.colAcoes}>Ações</Text>
       </View>
@@ -287,9 +307,16 @@ export default function MatriculasScreen() {
           <Text className="text-[13px] text-slate-600" style={styles.colDatas}>
             {formatDate(matricula.data_inicio)}
           </Text>
-          <Text className="text-[13px] text-slate-600" style={styles.colDatas}>
-            {formatDate(matricula.data_vencimento)}
-          </Text>
+          <View style={styles.colDatas}>
+            <Text className="text-[13px] text-slate-600">
+              {formatDate(matricula.proxima_data_vencimento || matricula.data_vencimento)}
+            </Text>
+            {isProximoVencer(matricula.proxima_data_vencimento || matricula.data_vencimento) && (
+              <View className="mt-1 self-start rounded-full bg-amber-100 px-2 py-0.5">
+                <Text className="text-[10px] font-bold text-amber-700">Vence em breve</Text>
+              </View>
+            )}
+          </View>
           <View style={styles.colStatus}>
             <View
               className="self-start rounded-full px-2.5 py-1"

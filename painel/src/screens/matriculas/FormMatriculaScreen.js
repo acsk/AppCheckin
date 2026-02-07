@@ -167,7 +167,6 @@ export default function FormMatriculaScreen() {
     if (!formData.modalidade_id) {
       newErrors.modalidade_id = 'Selecione uma modalidade';
     }
-
     if (!formData.plano_id) {
       newErrors.plano_id = 'Selecione um plano';
     }

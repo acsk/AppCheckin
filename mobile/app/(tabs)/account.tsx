@@ -1461,6 +1461,19 @@ export default function AccountScreen() {
             )}
 
             <TouchableOpacity
+              style={styles.sidebarMenuItem}
+              onPress={() => {
+                closeSidebar();
+                router.push("/planos");
+              }}
+            >
+              <View style={styles.sidebarMenuItemIcon}>
+                <Feather name="shopping-cart" size={16} color="#fff" />
+              </View>
+              <Text style={styles.sidebarMenuItemText}>Planos</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
               style={styles.sidebarLogoutButton}
               onPress={() => {
                 closeSidebar();
@@ -1792,6 +1805,29 @@ const styles = StyleSheet.create({
   sidebarLogoutText: {
     fontSize: 13,
     fontWeight: "700",
+    color: "#fff",
+  },
+  sidebarMenuItem: {
+    marginVertical: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.12)",
+  },
+  sidebarMenuItemIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  sidebarMenuItemText: {
+    fontSize: 14,
+    fontWeight: "600",
     color: "#fff",
   },
   scrollContent: {

@@ -60,4 +60,15 @@ export const CONFIG = {
   },
 };
 
+// Função para obter a URL da API em tempo de execução
+export function getApiUrlRuntime(): string {
+  // Determina o ambiente baseado na URL atual
+  const isProduction =
+    typeof window !== "undefined" &&
+    window.location?.hostname &&
+    !window.location.hostname.includes("localhost");
+
+  return isProduction ? CONFIG.api.production : CONFIG.api.development;
+}
+
 export default CONFIG;

@@ -46,6 +46,48 @@ class CheckinController
 
         $turmaId = (int) $data['turma_id'];
 
+        // ✅ VALIDAR SE MATRÍCULA ESTÁ ATIVA E DENTRO DO PRAZO (proxima_data_vencimento)
+        $db = require __DIR__ . '/../../config/database.php';
+        $stmtMatricula = $db->prepare("
+            SELECT m.id, m.proxima_data_vencimento, m.periodo_teste,
+                   sm.codigo as status_codigo, sm.nome as status_nome
+            FROM matriculas m
+            INNER JOIN alunos a ON a.id = m.aluno_id
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            WHERE a.usuario_id = :usuario_id
+            AND m.tenant_id = :tenant_id
+            AND sm.codigo = 'ativa'
+            ORDER BY m.created_at DESC
+            LIMIT 1
+        ");
+        
+        $tenantId = $request->getAttribute('tenantId', 1);
+        $stmtMatricula->execute([
+            'usuario_id' => $userId,
+            'tenant_id' => $tenantId
+        ]);
+        $matricula = $stmtMatricula->fetch(\PDO::FETCH_ASSOC);
+        
+        if (!$matricula) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Você não possui matrícula ativa',
+                'codigo' => 'SEM_MATRICULA'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+        
+        // Verificar se o acesso ainda está válido (proxima_data_vencimento)
+        $hoje = date('Y-m-d');
+        if ($matricula['proxima_data_vencimento'] && $matricula['proxima_data_vencimento'] < $hoje) {
+            $dataVencimento = date('d/m/Y', strtotime($matricula['proxima_data_vencimento']));
+            $response->getBody()->write(json_encode([
+                'error' => "Seu acesso expirou em {$dataVencimento}. Por favor, renove sua matrícula.",
+                'codigo' => 'MATRICULA_VENCIDA',
+                'data_vencimento' => $matricula['proxima_data_vencimento']
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+
         // Verificar se usuário já tem check-in nesta turma
         if ($this->checkinModel->usuarioTemCheckin($userId, $turmaId)) {
             $response->getBody()->write(json_encode([
@@ -257,6 +299,49 @@ class CheckinController
                 'error' => 'Aluno não encontrado'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        // ✅ VALIDAR SE MATRÍCULA ESTÁ ATIVA E DENTRO DO PRAZO (proxima_data_vencimento)
+        $db = require __DIR__ . '/../../config/database.php';
+        $tenantId = $request->getAttribute('tenantId', 1);
+        
+        $stmtMatricula = $db->prepare("
+            SELECT m.id, m.proxima_data_vencimento, m.periodo_teste,
+                   sm.codigo as status_codigo, sm.nome as status_nome
+            FROM matriculas m
+            INNER JOIN alunos a ON a.id = m.aluno_id
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            WHERE a.usuario_id = :usuario_id
+            AND m.tenant_id = :tenant_id
+            AND sm.codigo = 'ativa'
+            ORDER BY m.created_at DESC
+            LIMIT 1
+        ");
+        
+        $stmtMatricula->execute([
+            'usuario_id' => $usuarioId,
+            'tenant_id' => $tenantId
+        ]);
+        $matricula = $stmtMatricula->fetch(\PDO::FETCH_ASSOC);
+        
+        if (!$matricula) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Aluno não possui matrícula ativa',
+                'codigo' => 'SEM_MATRICULA'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+        }
+        
+        // Verificar se o acesso ainda está válido (proxima_data_vencimento)
+        $hoje = date('Y-m-d');
+        if ($matricula['proxima_data_vencimento'] && $matricula['proxima_data_vencimento'] < $hoje) {
+            $dataVencimento = date('d/m/Y', strtotime($matricula['proxima_data_vencimento']));
+            $response->getBody()->write(json_encode([
+                'error' => "Acesso do aluno expirou em {$dataVencimento}",
+                'codigo' => 'MATRICULA_VENCIDA',
+                'data_vencimento' => $matricula['proxima_data_vencimento']
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
         }
 
         if (($aluno['papel_id'] ?? null) != 1) {

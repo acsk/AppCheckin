@@ -32,6 +32,16 @@ class MatriculaController
         if (empty($data['plano_id'])) {
             $errors[] = 'Plano é obrigatório';
         }
+
+        // Validar dia_vencimento (obrigatório)
+        if (empty($data['dia_vencimento'])) {
+            $errors[] = 'Dia de vencimento é obrigatório';
+        } else {
+            $diaVencimento = (int) $data['dia_vencimento'];
+            if ($diaVencimento < 1 || $diaVencimento > 31) {
+                $errors[] = 'Dia de vencimento deve estar entre 1 e 31';
+            }
+        }
         
         if (!empty($errors)) {
             $response->getBody()->write(json_encode(['errors' => $errors]));
@@ -130,13 +140,39 @@ class MatriculaController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
         }
 
+        // Verificar se o plano tem valor 0 (teste) e configurar automaticamente
+        $periodoTeste = 0;
+        $dataInicioCobranca = null;
+        $valorMatricula = $data['valor'] ?? $plano['valor'];
+        
+        // Calcular próxima data de vencimento (data_inicio + duracao_dias)
+        $dataInicio = !empty($data['data_inicio']) ? $data['data_inicio'] : date('Y-m-d');
+        $dataInicioObj = new \DateTime($dataInicio);
+        $duracaoDias = (int) $plano['duracao_dias'];
+        $proximaDataVencimento = clone $dataInicioObj;
+        $proximaDataVencimento->modify("+{$duracaoDias} days");
+        
+        if ($plano['valor'] == 0) {
+            // Plano teste: marcar como período teste e definir data de início de cobrança
+            $periodoTeste = 1;
+            
+            // Se não informou data_inicio_cobranca, usar 1º dia do próximo mês
+            if (!empty($data['data_inicio_cobranca'])) {
+                $dataInicioCobranca = $data['data_inicio_cobranca'];
+            } else {
+                $proximoMes = new \DateTime('first day of next month');
+                $dataInicioCobranca = $proximoMes->format('Y-m-d');
+            }
+        }
+
         // Verificar se já existe matrícula ativa NA MESMA MODALIDADE
+        // Nota: Apenas status 'ativa' bloqueia nova matrícula. Status 'vencida' permite renovação.
         $stmtAtiva = $db->prepare("
             SELECT m.*, p.modalidade_id 
             FROM matriculas m
             INNER JOIN planos p ON p.id = m.plano_id
             INNER JOIN status_matricula sm ON sm.id = m.status_id
-            WHERE m.aluno_id = ? AND m.tenant_id = ? AND sm.codigo = 'ativa'
+            WHERE m.aluno_id = ? AND m.tenant_id = ? AND sm.codigo = 'ativa' AND m.proxima_data_vencimento >= CURDATE()
             ORDER BY m.created_at DESC
         ");
         $stmtAtiva->execute([$alunoId, $tenantId]);
@@ -254,22 +290,27 @@ class MatriculaController
         }
 
         // Buscar IDs de status e motivo
-        $stmtStatusPendente = $db->prepare("SELECT id FROM status_matricula WHERE codigo = 'pendente'");
-        $stmtStatusPendente->execute();
-        $statusPendente = $stmtStatusPendente->fetch();
-        $statusPendenteId = $statusPendente ? $statusPendente['id'] : 5; // 5 = pendente
+        // Se for período teste, criar como ATIVA. Caso contrário, PENDENTE
+        $codigoStatus = $periodoTeste == 1 ? 'ativa' : 'pendente';
+        $stmtStatus = $db->prepare("SELECT id FROM status_matricula WHERE codigo = ?");
+        $stmtStatus->execute([$codigoStatus]);
+        $statusRow = $stmtStatus->fetch();
+        $statusId = $statusRow ? $statusRow['id'] : ($periodoTeste == 1 ? 1 : 5);
 
         $stmtMotivo = $db->prepare("SELECT id FROM motivo_matricula WHERE codigo = ?");
         $stmtMotivo->execute([$motivo]);
         $motivoRow = $stmtMotivo->fetch();
         $motivoId = $motivoRow ? $motivoRow['id'] : 1; // 1 = nova
 
-        // Criar matrícula como PENDENTE (primeira parcela precisa ser paga)
+        // Criar matrícula:
+        // - ATIVA se for período teste (permite check-in imediato)
+        // - PENDENTE se for paga (primeira parcela precisa ser paga)
         $stmtInsert = $db->prepare("
             INSERT INTO matriculas 
             (tenant_id, aluno_id, plano_id, data_matricula, data_inicio, data_vencimento, 
-             valor, status_id, motivo_id, matricula_anterior_id, plano_anterior_id, observacoes, criado_por)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             valor, status_id, motivo_id, matricula_anterior_id, plano_anterior_id, observacoes, criado_por,
+             dia_vencimento, periodo_teste, data_inicio_cobranca, proxima_data_vencimento)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         
         $stmtInsert->execute([
@@ -279,13 +320,17 @@ class MatriculaController
             $dataMatricula,
             $dataInicio,
             $dataVencimento,
-            $valor,
-            $statusPendenteId,
+            $valorMatricula,
+            $statusId,
             $motivoId,
             $matriculaAnteriorId,
             $planoAnteriorId,
             $data['observacoes'] ?? null,
-            $adminId
+            $adminId,
+            $data['dia_vencimento'],
+            $periodoTeste,
+            $dataInicioCobranca,
+            $proximaDataVencimento->format('Y-m-d')
         ]);
         
         $matriculaId = (int) $db->lastInsertId();
@@ -296,8 +341,12 @@ class MatriculaController
         error_log("Tenant ID: " . $tenantId);
         error_log("Usuário ID: " . $usuarioId);
         error_log("Plano ID: " . $planoId);
-        error_log("Valor: " . $valor);
+        error_log("Valor: " . $valorMatricula);
         error_log("Data Início: " . $dataInicio);
+        error_log("Dia Vencimento: " . $data['dia_vencimento']);
+        error_log("Período Teste: " . $periodoTeste);
+        error_log("Data Início Cobrança: " . ($dataInicioCobranca ?? 'null'));
+        error_log("Próxima Data Vencimento: " . $proximaDataVencimento->format('Y-m-d'));
 
         // Registrar no histórico de planos
         $stmtHistorico = $db->prepare("
@@ -321,25 +370,30 @@ class MatriculaController
         
         $historicoId = (int) $db->lastInsertId();
 
-        // Criar primeiro pagamento do plano
-        $stmtPagamento = $db->prepare("
-            INSERT INTO pagamentos_plano
-            (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento, 
-             status_pagamento_id, observacoes, criado_por)
-            VALUES (?, ?, ?, ?, ?, ?, 1, 'Primeiro pagamento da matrícula', ?)
-        ");
-        
-        $stmtPagamento->execute([
-            $tenantId,
-            $alunoId,
-            $matriculaId,
-            $planoId,
-            $valor,
-            $dataInicio, // primeiro pagamento vence na data de início
-            $adminId
-        ]);
-        
-        $pagamentoId = (int) $db->lastInsertId();
+        // Criar primeiro pagamento do plano APENAS se NÃO for período teste
+        if ($periodoTeste != 1) {
+            $stmtPagamento = $db->prepare("
+                INSERT INTO pagamentos_plano
+                (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento, 
+                 status_pagamento_id, observacoes, criado_por)
+                VALUES (?, ?, ?, ?, ?, ?, 1, 'Primeiro pagamento da matrícula', ?)
+            ");
+            
+            $stmtPagamento->execute([
+                $tenantId,
+                $alunoId,
+                $matriculaId,
+                $planoId,
+                $valor,
+                $dataInicio, // primeiro pagamento vence na data de início
+                $adminId
+            ]);
+            
+            $pagamentoId = (int) $db->lastInsertId();
+            error_log("Pagamento criado ID: " . $pagamentoId);
+        } else {
+            error_log("Período teste: pagamento NÃO criado (ativado automaticamente)");
+        }
 
         // Buscar matrícula criada
         $stmtMatricula = $db->prepare("
@@ -383,10 +437,12 @@ class MatriculaController
         $response->getBody()->write(json_encode([
             'message' => 'Matrícula realizada com sucesso',
             'matricula' => $matricula,
-            'pagamentos' => $pagamentos ?? [],
-            'total' => (float) $totalPagamentos,
-            'pagamento_criado' => $pagamentoId > 0
-        ]));
+            'pagamentos' => $pagamentos,
+            'total_pagamentos' => $totalPagamentos,
+            'info' => $periodoTeste == 1 
+                ? "Período teste - Cobrança iniciará em {$dataInicioCobranca}. Acesso garantido até " . $proximaDataVencimento->format('d/m/Y')
+                : "Acesso garantido até " . $proximaDataVencimento->format('d/m/Y')
+        ], JSON_UNESCAPED_UNICODE));
         return $response->withHeader('Content-Type', 'application/json')->withStatus(201);
     }
 
@@ -416,11 +472,14 @@ class MatriculaController
                 modalidade.nome as modalidade_nome,
                 modalidade.icone as modalidade_icone,
                 modalidade.cor as modalidade_cor,
+                sm.codigo as status_codigo,
+                sm.nome as status_nome,
                 admin_criou.nome as criado_por_nome
             FROM matriculas m
             INNER JOIN alunos a ON m.aluno_id = a.id
             INNER JOIN usuarios u ON a.usuario_id = u.id
             INNER JOIN planos p ON m.plano_id = p.id
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
             LEFT JOIN modalidades modalidade ON p.modalidade_id = modalidade.id
             LEFT JOIN usuarios admin_criou ON m.criado_por = admin_criou.id
             WHERE m.tenant_id = ?
@@ -500,11 +559,14 @@ class MatriculaController
                 modalidade.nome as modalidade_nome,
                 modalidade.icone as modalidade_icone,
                 modalidade.cor as modalidade_cor,
+                sm.codigo as status_codigo,
+                sm.nome as status_nome,
                 admin_criou.nome as criado_por_nome
             FROM matriculas m
             INNER JOIN alunos a ON m.aluno_id = a.id
             INNER JOIN usuarios u ON a.usuario_id = u.id
             INNER JOIN planos p ON m.plano_id = p.id
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
             LEFT JOIN modalidades modalidade ON p.modalidade_id = modalidade.id
             LEFT JOIN usuarios admin_criou ON m.criado_por = admin_criou.id
             WHERE m.id = ? AND m.tenant_id = ?
@@ -892,4 +954,241 @@ class MatriculaController
         ]));
         return $response->withHeader('Content-Type', 'application/json');
     }
+
+    /**
+     * Atualizar próxima data de vencimento de uma matrícula
+     */
+    public function atualizarProximaDataVencimento(Request $request, Response $response, array $args): Response
+    {
+        $db = require __DIR__ . '/../../config/database.php';
+        $tenantId = $request->getAttribute('tenantId');
+        $matriculaId = $args['id'];
+        $data = $request->getParsedBody();
+
+        // Validar se a data foi enviada
+        if (empty($data['proxima_data_vencimento'])) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Data de vencimento é obrigatória'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+        }
+
+        // Validar formato da data
+        $dataVencimento = $data['proxima_data_vencimento'];
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataVencimento)) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Formato de data inválido. Use YYYY-MM-DD'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+        }
+
+        // Verificar se a matrícula existe e pertence ao tenant
+        $stmt = $db->prepare("
+            SELECT m.id, m.aluno_id, m.plano_id, m.proxima_data_vencimento, m.status_id,
+                   sm.codigo as status_codigo
+            FROM matriculas m
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            WHERE m.id = :id AND m.tenant_id = :tenant_id
+        ");
+        $stmt->execute([
+            'id' => $matriculaId,
+            'tenant_id' => $tenantId
+        ]);
+        $matricula = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$matricula) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Matrícula não encontrada'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        // Determinar o novo status baseado na data
+        $hoje = date('Y-m-d');
+        $novoStatusCodigo = null;
+        
+        if ($dataVencimento < $hoje) {
+            // Data vencida → status "vencida"
+            $novoStatusCodigo = 'vencida';
+        } elseif ($dataVencimento >= $hoje && $matricula['status_codigo'] === 'vencida') {
+            // Data válida e status era vencida → mudar para "ativa"
+            $novoStatusCodigo = 'ativa';
+        }
+
+        // Atualizar a data e o status (se necessário)
+        if ($novoStatusCodigo) {
+            $stmtUpdate = $db->prepare("
+                UPDATE matriculas
+                SET proxima_data_vencimento = :proxima_data_vencimento,
+                    status_id = (SELECT id FROM status_matricula WHERE codigo = :status_codigo LIMIT 1),
+                    updated_at = NOW()
+                WHERE id = :id AND tenant_id = :tenant_id
+            ");
+            
+            $resultado = $stmtUpdate->execute([
+                'proxima_data_vencimento' => $dataVencimento,
+                'status_codigo' => $novoStatusCodigo,
+                'id' => $matriculaId,
+                'tenant_id' => $tenantId
+            ]);
+        } else {
+            // Atualizar apenas a data
+            $stmtUpdate = $db->prepare("
+                UPDATE matriculas
+                SET proxima_data_vencimento = :proxima_data_vencimento,
+                    updated_at = NOW()
+                WHERE id = :id AND tenant_id = :tenant_id
+            ");
+            
+            $resultado = $stmtUpdate->execute([
+                'proxima_data_vencimento' => $dataVencimento,
+                'id' => $matriculaId,
+                'tenant_id' => $tenantId
+            ]);
+        }
+
+        if ($resultado) {
+            // Buscar o novo status atualizado
+            $stmtStatus = $db->prepare("
+                SELECT sm.codigo as status_codigo, sm.nome as status_nome
+                FROM matriculas m
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
+                WHERE m.id = :id
+            ");
+            $stmtStatus->execute(['id' => $matriculaId]);
+            $statusAtualizado = $stmtStatus->fetch(\PDO::FETCH_ASSOC);
+            
+            $response->getBody()->write(json_encode([
+                'message' => 'Data de vencimento atualizada com sucesso',
+                'matricula_id' => $matriculaId,
+                'proxima_data_vencimento_anterior' => $matricula['proxima_data_vencimento'],
+                'proxima_data_vencimento_nova' => $dataVencimento,
+                'status_anterior' => $matricula['status_codigo'],
+                'status_atual' => $statusAtualizado['status_codigo'] ?? $matricula['status_codigo'],
+                'status_nome' => $statusAtualizado['status_nome'] ?? null
+            ]));
+            return $response->withHeader('Content-Type', 'application/json');
+        }
+
+        $response->getBody()->write(json_encode([
+            'error' => 'Erro ao atualizar data de vencimento'
+        ]));
+        return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+    }
+
+    /**
+     * Listar matrículas com vencimento hoje (para notificações)
+     */
+    public function vencimentosHoje(Request $request, Response $response): Response
+    {
+        $db = require __DIR__ . '/../../config/database.php';
+        $tenantId = $request->getAttribute('tenantId');
+        $hoje = date('Y-m-d');
+
+        $stmt = $db->prepare("
+            SELECT 
+                m.id,
+                m.aluno_id,
+                m.plano_id,
+                m.proxima_data_vencimento,
+                m.valor,
+                m.dia_vencimento,
+                m.periodo_teste,
+                a.nome as aluno_nome,
+                u.email as aluno_email,
+                u.telefone as aluno_telefone,
+                p.nome as plano_nome,
+                p.valor as plano_valor,
+                sm.nome as status_nome,
+                sm.codigo as status_codigo
+            FROM matriculas m
+            INNER JOIN alunos a ON m.aluno_id = a.id
+            INNER JOIN usuarios u ON a.usuario_id = u.id
+            INNER JOIN planos p ON m.plano_id = p.id
+            INNER JOIN status_matricula sm ON m.status_id = sm.id
+            WHERE m.tenant_id = :tenant_id
+            AND m.proxima_data_vencimento = :hoje
+            AND sm.codigo = 'ativa'
+            ORDER BY a.nome ASC
+        ");
+
+        $stmt->execute([
+            'tenant_id' => $tenantId,
+            'hoje' => $hoje
+        ]);
+
+        $vencimentos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        $response->getBody()->write(json_encode([
+            'vencimentos' => $vencimentos,
+            'total' => count($vencimentos),
+            'data' => $hoje
+        ]));
+
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * Listar próximos vencimentos (próximos N dias)
+     */
+    public function proximosVencimentos(Request $request, Response $response): Response
+    {
+        $db = require __DIR__ . '/../../config/database.php';
+        $tenantId = $request->getAttribute('tenantId');
+        
+        $params = $request->getQueryParams();
+        $dias = (int) ($params['dias'] ?? 7);
+        
+        $hoje = date('Y-m-d');
+        $dataLimite = date('Y-m-d', strtotime("+{$dias} days"));
+
+        $stmt = $db->prepare("
+            SELECT 
+                m.id,
+                m.aluno_id,
+                m.plano_id,
+                m.proxima_data_vencimento,
+                m.valor,
+                m.dia_vencimento,
+                m.periodo_teste,
+                DATEDIFF(m.proxima_data_vencimento, :hoje) as dias_restantes,
+                a.nome as aluno_nome,
+                u.email as aluno_email,
+                u.telefone as aluno_telefone,
+                p.nome as plano_nome,
+                p.valor as plano_valor,
+                sm.nome as status_nome,
+                sm.codigo as status_codigo
+            FROM matriculas m
+            INNER JOIN alunos a ON m.aluno_id = a.id
+            INNER JOIN usuarios u ON a.usuario_id = u.id
+            INNER JOIN planos p ON m.plano_id = p.id
+            INNER JOIN status_matricula sm ON m.status_id = sm.id
+            WHERE m.tenant_id = :tenant_id
+            AND m.proxima_data_vencimento BETWEEN :hoje AND :data_limite
+            AND sm.codigo = 'ativa'
+            ORDER BY m.proxima_data_vencimento ASC, a.nome ASC
+        ");
+
+        $stmt->execute([
+            'tenant_id' => $tenantId,
+            'hoje' => $hoje,
+            'data_limite' => $dataLimite
+        ]);
+
+        $vencimentos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        $response->getBody()->write(json_encode([
+            'vencimentos' => $vencimentos,
+            'total' => count($vencimentos),
+            'periodo' => [
+                'inicio' => $hoje,
+                'fim' => $dataLimite,
+                'dias' => $dias
+            ]
+        ]));
+
+        return $response->withHeader('Content-Type', 'application/json');
+    }
 }
+

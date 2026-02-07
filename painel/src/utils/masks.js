@@ -217,3 +217,35 @@ export const mascaraHora = (value) => {
     return numeros.substring(0, 4).replace(/(\d{2})(\d{0,2})/, '$1:$2');
   }
 };
+
+/**
+ * Aplica máscara de data (DD/MM/YYYY)
+ * Aceita entrada em formato YYYYMMDD ou DDMMYYYY e retorna formatado
+ * @param {string} value - Valor a ser formatado
+ * @returns {string} - Data formatada (DD/MM/YYYY)
+ */
+export const mascaraData = (value) => {
+  if (!value) return '';
+  
+  // Se vier no formato YYYY-MM-DD (input type date), converter para DD/MM/YYYY
+  if (value.includes('-')) {
+    const [ano, mes, dia] = value.split('-');
+    if (ano && mes && dia) {
+      return `${dia}/${mes}/${ano}`;
+    }
+  }
+  
+  // Se vier apenas números, formatar como DD/MM/YYYY
+  const numeros = apenasNumeros(value);
+  
+  if (numeros.length <= 2) {
+    return numeros;
+  } else if (numeros.length <= 4) {
+    return numeros.replace(/(\d{2})(\d{0,2})/, '$1/$2');
+  } else if (numeros.length <= 8) {
+    return numeros.replace(/(\d{2})(\d{2})(\d{0,4})/, '$1/$2/$3');
+  } else {
+    // Limita a 8 dígitos
+    return numeros.substring(0, 8).replace(/(\d{2})(\d{2})(\d{0,4})/, '$1/$2/$3');
+  }
+};
