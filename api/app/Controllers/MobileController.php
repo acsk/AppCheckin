@@ -3958,6 +3958,41 @@ class MobileController
                     error_log("[MobileController::comprarPlano] Criando ASSINATURA RECORRENTE...");
                     $preferencia = $mercadoPago->criarPreferenciaAssinatura($dadosPagamento);
                     $tipoPagamento = 'assinatura';
+                    
+                    // Gravar assinatura na tabela assinaturas_mercadopago
+                    if ($preferencia['tipo'] === 'assinatura' && !empty($preferencia['id'])) {
+                        try {
+                            $stmtAssinatura = $this->db->prepare("
+                                INSERT INTO assinaturas_mercadopago
+                                (tenant_id, matricula_id, aluno_id, plano_ciclo_id,
+                                 mp_preapproval_id, status, valor,
+                                 dia_cobranca, data_inicio, proxima_cobranca, created_at)
+                                VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, NOW())
+                            ");
+                            
+                            $diaCobranca = (int) date('d');
+                            $proximaCobranca = date('Y-m-d', strtotime('+1 month'));
+                            
+                            $stmtAssinatura->execute([
+                                $tenantId,
+                                $matriculaId,
+                                $alunoId,
+                                $planoCicloId,
+                                $preferencia['id'], // mp_preapproval_id
+                                $valorCompra,
+                                $diaCobranca,
+                                date('Y-m-d'),
+                                $proximaCobranca
+                            ]);
+                            
+                            $assinaturaDbId = (int) $this->db->lastInsertId();
+                            error_log("[MobileController::comprarPlano] ✅ Assinatura salva no banco ID: {$assinaturaDbId}");
+                            
+                        } catch (\Exception $e) {
+                            error_log("[MobileController::comprarPlano] ⚠️ Erro ao salvar assinatura: " . $e->getMessage());
+                            // Continua mesmo se falhar (pode salvar depois via webhook)
+                        }
+                    }
                 } else {
                     error_log("[MobileController::comprarPlano] Criando PAGAMENTO ÚNICO...");
                     $preferencia = $mercadoPago->criarPreferenciaPagamento($dadosPagamento);
@@ -3998,7 +4033,9 @@ class MobileController
                     'payment_url' => $paymentUrl,
                     'preference_id' => $preferenceId,
                     'tipo_pagamento' => $tipoPagamento,
-                    'recorrente' => $tipoPagamento === 'assinatura'
+                    'recorrente' => $tipoPagamento === 'assinatura',
+                    'assinatura_id' => $assinaturaDbId ?? null,
+                    'mp_preapproval_id' => ($tipoPagamento === 'assinatura') ? ($preferencia['id'] ?? null) : null
                 ]
             ];
             

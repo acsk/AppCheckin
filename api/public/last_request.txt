@@ -3646,3 +3646,7 @@
 [2026-02-07 18:25:09] POST /mobile/comprar-plano
 [2026-02-07 18:27:20] OPTIONS /mobile/comprar-plano
 [2026-02-07 18:27:20] POST /mobile/comprar-plano
+[2026-02-07 19:07:53] OPTIONS /admin/matriculas
+[2026-02-07 19:07:53] GET /admin/matriculas
+[2026-02-07 19:07:55] OPTIONS /admin/matriculas
+[2026-02-07 19:07:55] GET /admin/matriculas
