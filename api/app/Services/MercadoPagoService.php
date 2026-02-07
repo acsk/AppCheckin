@@ -49,6 +49,14 @@ class MercadoPagoService
             $this->publicKey = $_ENV['MP_PUBLIC_KEY_TEST'] ?? $_SERVER['MP_PUBLIC_KEY_TEST'] ?? '';
         }
         
+        // LOG de inicialização para debug
+        error_log("[MercadoPagoService] ========================================");
+        error_log("[MercadoPagoService] 🚀 INICIALIZANDO MERCADO PAGO");
+        error_log("[MercadoPagoService] 🌍 Ambiente: " . ($this->isProduction ? 'PRODUÇÃO' : 'SANDBOX'));
+        error_log("[MercadoPagoService] 🔑 Token prefix: " . substr($this->accessToken, 0, 10) . "...");
+        error_log("[MercadoPagoService] ✅ Token começa com TEST-? " . (str_starts_with($this->accessToken, 'TEST-') ? 'SIM' : 'NÃO'));
+        error_log("[MercadoPagoService] ========================================");
+        
         $this->baseUrl = 'https://api.mercadopago.com';
         
         // URLs de callback
@@ -137,10 +145,13 @@ class MercadoPagoService
             ? $response['init_point'] 
             : ($response['sandbox_init_point'] ?? $response['init_point']);
         
+        error_log("[MercadoPagoService] ========== RESPOSTA PREFERÊNCIA ==========");
         error_log("[MercadoPagoService] 🌍 Ambiente: " . ($this->isProduction ? 'PRODUÇÃO' : 'SANDBOX'));
         error_log("[MercadoPagoService] 🔗 init_point: " . ($response['init_point'] ?? 'N/A'));
         error_log("[MercadoPagoService] 🔗 sandbox_init_point: " . ($response['sandbox_init_point'] ?? 'N/A'));
-        error_log("[MercadoPagoService] ✅ URL FINAL (payment_url): " . $paymentUrl);
+        error_log("[MercadoPagoService] ✅ URL RETORNADA: " . $paymentUrl);
+        error_log("[MercadoPagoService] ✅ URL contém 'sandbox'? " . (str_contains($paymentUrl, 'sandbox') ? 'SIM ✓' : 'NÃO ✗'));
+        error_log("[MercadoPagoService] ===========================================");
         
         return [
             'id' => $response['id'],
