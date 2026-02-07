@@ -30,9 +30,11 @@ COMMENT='Tipos de ciclo de pagamento (mensal, trimestral, etc)';
 -- Inserir tipos padrão
 INSERT INTO tipos_ciclo (nome, codigo, meses, ordem) VALUES 
     ('Mensal', 'mensal', 1, 1),
-    ('Trimestral', 'trimestral', 3, 2),
-    ('Semestral', 'semestral', 6, 3),
-    ('Anual', 'anual', 12, 4);
+    ('Bimestral', 'bimestral', 2, 2),
+    ('Trimestral', 'trimestral', 3, 3),
+    ('Quadrimestral', 'quadrimestral', 4, 4),
+    ('Semestral', 'semestral', 6, 5),
+    ('Anual', 'anual', 12, 6);
 
 -- =====================================================================
 -- 2. TABELA plano_ciclos
