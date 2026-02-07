@@ -33,10 +33,8 @@ class MatriculaController
             $errors[] = 'Plano é obrigatório';
         }
 
-        // Validar dia_vencimento (obrigatório)
-        if (empty($data['dia_vencimento'])) {
-            $errors[] = 'Dia de vencimento é obrigatório';
-        } else {
+        // Validar dia_vencimento (opcional, mas se informado deve ser entre 1 e 31)
+        if (!empty($data['dia_vencimento'])) {
             $diaVencimento = (int) $data['dia_vencimento'];
             if ($diaVencimento < 1 || $diaVencimento > 31) {
                 $errors[] = 'Dia de vencimento deve estar entre 1 e 31';
