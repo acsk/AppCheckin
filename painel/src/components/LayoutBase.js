@@ -170,6 +170,14 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
               return item;
             }).filter(Boolean);
 
+            const flatPaths = menuItems.flatMap((item) => (
+              item.children ? item.children.map((child) => child.path) : [item.path]
+            ));
+            const matchingPaths = flatPaths.filter((path) => (
+              pathname === path || (path !== '/' && pathname.startsWith(path + '/'))
+            ));
+            const bestMatchPath = matchingPaths.sort((a, b) => b.length - a.length)[0];
+
             return menuItems.map((item) => {
               if (item.children) {
                 return (
@@ -185,8 +193,7 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
 
                     <View className="gap-0">
                       {item.children.map((child) => {
-                        const selected = pathname === child.path ||
-                          (child.path !== '/' && pathname.startsWith(child.path + '/'));
+                        const selected = child.path === bestMatchPath;
 
                         return (
                           <Pressable
@@ -229,8 +236,7 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
                 );
               }
 
-              const selected = pathname === item.path || 
-                (item.path !== '/' && pathname.startsWith(item.path + '/'));
+              const selected = item.path === bestMatchPath;
 
               return (
                 <Pressable
