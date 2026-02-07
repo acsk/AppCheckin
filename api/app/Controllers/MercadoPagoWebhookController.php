@@ -192,6 +192,23 @@ class MercadoPagoWebhookController
     private function baixarPagamentoPlano(int $matriculaId, array $pagamento): void
     {
         try {
+            error_log("[Webhook MP] Iniciando baixa de pagamento para matrícula #{$matriculaId}");
+            
+            // Buscar dados da matrícula para obter tenant_id, aluno_id, plano_id
+            $stmtMatricula = $this->db->prepare("
+                SELECT m.id, m.tenant_id, m.aluno_id, m.plano_id, p.valor as valor_plano
+                FROM matriculas m
+                INNER JOIN planos p ON p.id = m.plano_id
+                WHERE m.id = ?
+            ");
+            $stmtMatricula->execute([$matriculaId]);
+            $matricula = $stmtMatricula->fetch(\PDO::FETCH_ASSOC);
+            
+            if (!$matricula) {
+                error_log("[Webhook MP] ❌ Matrícula #{$matriculaId} não encontrada");
+                return;
+            }
+            
             // Buscar o pagamento pendente mais antigo da matrícula
             $stmtBuscar = $this->db->prepare("
                 SELECT pp.id, pp.valor
@@ -204,38 +221,69 @@ class MercadoPagoWebhookController
             $stmtBuscar->execute([$matriculaId]);
             $pagamentoPendente = $stmtBuscar->fetch(\PDO::FETCH_ASSOC);
             
-            if (!$pagamentoPendente) {
-                error_log("[Webhook MP] Nenhum pagamento pendente encontrado para matrícula #{$matriculaId}");
-                return;
-            }
-            
             // Buscar forma de pagamento (PIX, cartão, etc)
-            $formaPagamentoId = $this->obterFormaPagamentoId($pagamento['payment_method_id']);
+            $formaPagamentoId = $this->obterFormaPagamentoId($pagamento['payment_method_id'] ?? 'pix');
             
-            // Atualizar o pagamento para "pago"
-            $stmtUpdate = $this->db->prepare("
-                UPDATE pagamentos_plano
-                SET status_pagamento_id = (SELECT id FROM status_pagamento WHERE codigo = 'pago' LIMIT 1),
-                    data_pagamento = NOW(),
-                    forma_pagamento_id = ?,
-                    valor_pago = ?,
-                    observacoes = CONCAT(IFNULL(observacoes, ''), ' | Pago via Mercado Pago - ID: " . $pagamento['id'] . "'),
-                    updated_at = NOW()
-                WHERE id = ?
-            ");
-            
-            $stmtUpdate->execute([
-                $formaPagamentoId,
-                $pagamento['transaction_amount'],
-                $pagamentoPendente['id']
-            ]);
-            
-            if ($stmtUpdate->rowCount() > 0) {
-                error_log("[Webhook MP] ✅ Pagamento #{$pagamentoPendente['id']} baixado para matrícula #{$matriculaId}");
+            if ($pagamentoPendente) {
+                // Atualizar o pagamento existente para "pago"
+                error_log("[Webhook MP] Atualizando pagamento existente #{$pagamentoPendente['id']}");
+                
+                $stmtUpdate = $this->db->prepare("
+                    UPDATE pagamentos_plano
+                    SET status_pagamento_id = (SELECT id FROM status_pagamento WHERE codigo = 'pago' LIMIT 1),
+                        data_pagamento = NOW(),
+                        forma_pagamento_id = ?,
+                        valor_pago = ?,
+                        observacoes = CONCAT(IFNULL(observacoes, ''), ' | Pago via Mercado Pago - ID: " . $pagamento['id'] . "'),
+                        updated_at = NOW()
+                    WHERE id = ?
+                ");
+                
+                $stmtUpdate->execute([
+                    $formaPagamentoId,
+                    $pagamento['transaction_amount'],
+                    $pagamentoPendente['id']
+                ]);
+                
+                if ($stmtUpdate->rowCount() > 0) {
+                    error_log("[Webhook MP] ✅ Pagamento #{$pagamentoPendente['id']} atualizado para PAGO");
+                }
+            } else {
+                // Criar novo registro de pagamento já como PAGO
+                error_log("[Webhook MP] Nenhum pagamento pendente, criando novo registro...");
+                
+                $stmtInsert = $this->db->prepare("
+                    INSERT INTO pagamentos_plano (
+                        tenant_id, aluno_id, matricula_id, plano_id,
+                        valor, valor_pago, data_vencimento, data_pagamento,
+                        status_pagamento_id, forma_pagamento_id,
+                        observacoes, created_at, updated_at
+                    ) VALUES (
+                        ?, ?, ?, ?,
+                        ?, ?, CURDATE(), NOW(),
+                        (SELECT id FROM status_pagamento WHERE codigo = 'pago' LIMIT 1), ?,
+                        ?, NOW(), NOW()
+                    )
+                ");
+                
+                $stmtInsert->execute([
+                    $matricula['tenant_id'],
+                    $matricula['aluno_id'],
+                    $matriculaId,
+                    $matricula['plano_id'],
+                    $pagamento['transaction_amount'],
+                    $pagamento['transaction_amount'],
+                    $formaPagamentoId,
+                    'Pago via Mercado Pago - ID: ' . $pagamento['id']
+                ]);
+                
+                $novoPagamentoId = $this->db->lastInsertId();
+                error_log("[Webhook MP] ✅ Novo pagamento #{$novoPagamentoId} criado como PAGO");
             }
             
         } catch (\Exception $e) {
-            error_log("[Webhook MP] Erro ao baixar pagamento_plano: " . $e->getMessage());
+            error_log("[Webhook MP] ❌ Erro ao baixar pagamento_plano: " . $e->getMessage());
+            error_log("[Webhook MP] Stack: " . $e->getTraceAsString());
         }
     }
     

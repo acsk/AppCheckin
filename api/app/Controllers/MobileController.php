@@ -3732,6 +3732,35 @@ class MobileController
 
             error_log("[MobileController::comprarPlano] Matrícula criada ID: {$matriculaId}, Status: pendente");
 
+            // Criar registro de pagamento PENDENTE em pagamentos_plano
+            try {
+                $stmtPagamento = $this->db->prepare("
+                    INSERT INTO pagamentos_plano 
+                    (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento, 
+                     status_pagamento_id, observacoes, criado_por, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, 
+                            (SELECT id FROM status_pagamento WHERE codigo = 'pendente' LIMIT 1), 
+                            'Aguardando pagamento via Mercado Pago', ?, NOW(), NOW())
+                ");
+                
+                $stmtPagamento->execute([
+                    $tenantId,
+                    $alunoId,
+                    $matriculaId,
+                    $planoId,
+                    $plano['valor'],
+                    $dataInicio,
+                    $userId
+                ]);
+                
+                $pagamentoId = (int) $this->db->lastInsertId();
+                error_log("[MobileController::comprarPlano] Pagamento pendente criado ID: {$pagamentoId}");
+                
+            } catch (\Exception $e) {
+                error_log("[MobileController::comprarPlano] Erro ao criar pagamento_plano: " . $e->getMessage());
+                // Continua mesmo se falhar (webhook pode criar depois)
+            }
+
             // Gerar link de pagamento com Mercado Pago
             $paymentUrl = null;
             $preferenceId = null;
