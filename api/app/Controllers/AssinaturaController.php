@@ -376,25 +376,30 @@ class AssinaturaController
             $stmt = $this->db->prepare("
                 SELECT 
                     a.id,
-                    COALESCE(s.codigo, 'pendente') as status,
-                    COALESCE(s.nome, 'Pendente') as status_nome,
-                    COALESCE(s.cor, '#FFA500') as status_cor,
+                    a.status_id,
                     a.valor,
                     a.data_inicio,
                     a.proxima_cobranca,
                     a.ultima_cobranca,
                     a.gateway_assinatura_id as mp_preapproval_id,
-                    COALESCE(f.nome, 'Mensal') as ciclo_nome,
-                    COALESCE(f.meses, 1) as ciclo_meses,
-                    COALESCE(g.nome, 'Mercado Pago') as gateway_nome,
-                    COALESCE(p.nome, 'Plano') as plano_nome,
-                    COALESCE(mo.nome, 'Modalidade') as modalidade_nome
+                    a.frequencia_id,
+                    a.gateway_id,
+                    a.matricula_id,
+                    a.plano_id,
+                    s.codigo as status_codigo,
+                    s.nome as status_nome,
+                    s.cor as status_cor,
+                    f.nome as ciclo_nome,
+                    f.meses as ciclo_meses,
+                    g.nome as gateway_nome,
+                    p.nome as plano_nome,
+                    mo.nome as modalidade_nome
                 FROM assinaturas a
                 LEFT JOIN assinatura_status s ON s.id = a.status_id
                 LEFT JOIN assinatura_frequencias f ON f.id = a.frequencia_id
                 LEFT JOIN assinatura_gateways g ON g.id = a.gateway_id
                 LEFT JOIN matriculas m ON m.id = a.matricula_id
-                LEFT JOIN planos p ON p.id = a.plano_id
+                LEFT JOIN planos p ON p.id = m.plano_id
                 LEFT JOIN modalidades mo ON mo.id = p.modalidade_id
                 WHERE a.aluno_id = ? AND a.tenant_id = ?
                 ORDER BY a.criado_em DESC
@@ -404,13 +409,27 @@ class AssinaturaController
             
             error_log("[AssinaturaController::minhasAssinaturas] assinaturas encontradas: " . count($assinaturas));
             
-            // Formatar
+            // Formatar e preencher valores padrão
             foreach ($assinaturas as &$ass) {
                 $ass['id'] = (int) $ass['id'];
                 $ass['valor'] = (float) $ass['valor'];
                 $ass['valor_formatado'] = 'R$ ' . number_format($ass['valor'], 2, ',', '.');
+                $ass['status'] = $ass['status_codigo'] ?? 'pendente';
+                $ass['status_nome'] = $ass['status_nome'] ?? 'Pendente';
+                $ass['status_cor'] = $ass['status_cor'] ?? '#FFA500';
+                $ass['ciclo_nome'] = $ass['ciclo_nome'] ?? 'Mensal';
                 $ass['ciclo_meses'] = (int) ($ass['ciclo_meses'] ?? 1);
-                $ass['status_label'] = $ass['status_nome'] ?? $this->getStatusLabel($ass['status']);
+                $ass['gateway_nome'] = $ass['gateway_nome'] ?? 'Mercado Pago';
+                $ass['plano_nome'] = $ass['plano_nome'] ?? 'Plano';
+                $ass['modalidade_nome'] = $ass['modalidade_nome'] ?? 'Modalidade';
+                
+                // Remover campos de IDs internos
+                unset($ass['status_codigo']);
+                unset($ass['plano_id']);
+                unset($ass['matricula_id']);
+                unset($ass['gateway_id']);
+                unset($ass['frequencia_id']);
+                unset($ass['status_id']);
             }
             
             $response->getBody()->write(json_encode([
