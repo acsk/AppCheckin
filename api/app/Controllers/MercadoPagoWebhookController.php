@@ -159,9 +159,10 @@ class MercadoPagoWebhookController
             ]);
         }
         
-        // Se pagamento foi aprovado, ativar matrícula
+        // Se pagamento foi aprovado, ativar matrícula e baixar pagamento_plano
         if ($pagamento['status'] === 'approved') {
             $this->ativarMatricula($matriculaId);
+            $this->baixarPagamentoPlano($matriculaId, $pagamento);
         }
     }
     
@@ -183,5 +184,89 @@ class MercadoPagoWebhookController
         if ($stmtUpdate->rowCount() > 0) {
             error_log("Matrícula #{$matriculaId} ativada após pagamento aprovado");
         }
+    }
+    
+    /**
+     * Baixar pagamento na tabela pagamentos_plano
+     */
+    private function baixarPagamentoPlano(int $matriculaId, array $pagamento): void
+    {
+        try {
+            // Buscar o pagamento pendente mais antigo da matrícula
+            $stmtBuscar = $this->db->prepare("
+                SELECT pp.id, pp.valor
+                FROM pagamentos_plano pp
+                WHERE pp.matricula_id = ?
+                AND pp.status_pagamento_id = (SELECT id FROM status_pagamento WHERE codigo = 'pendente' LIMIT 1)
+                ORDER BY pp.data_vencimento ASC
+                LIMIT 1
+            ");
+            $stmtBuscar->execute([$matriculaId]);
+            $pagamentoPendente = $stmtBuscar->fetch(\PDO::FETCH_ASSOC);
+            
+            if (!$pagamentoPendente) {
+                error_log("[Webhook MP] Nenhum pagamento pendente encontrado para matrícula #{$matriculaId}");
+                return;
+            }
+            
+            // Buscar forma de pagamento (PIX, cartão, etc)
+            $formaPagamentoId = $this->obterFormaPagamentoId($pagamento['payment_method_id']);
+            
+            // Atualizar o pagamento para "pago"
+            $stmtUpdate = $this->db->prepare("
+                UPDATE pagamentos_plano
+                SET status_pagamento_id = (SELECT id FROM status_pagamento WHERE codigo = 'pago' LIMIT 1),
+                    data_pagamento = NOW(),
+                    forma_pagamento_id = ?,
+                    valor_pago = ?,
+                    observacoes = CONCAT(IFNULL(observacoes, ''), ' | Pago via Mercado Pago - ID: " . $pagamento['id'] . "'),
+                    updated_at = NOW()
+                WHERE id = ?
+            ");
+            
+            $stmtUpdate->execute([
+                $formaPagamentoId,
+                $pagamento['transaction_amount'],
+                $pagamentoPendente['id']
+            ]);
+            
+            if ($stmtUpdate->rowCount() > 0) {
+                error_log("[Webhook MP] ✅ Pagamento #{$pagamentoPendente['id']} baixado para matrícula #{$matriculaId}");
+            }
+            
+        } catch (\Exception $e) {
+            error_log("[Webhook MP] Erro ao baixar pagamento_plano: " . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Obter ID da forma de pagamento baseado no método do MP
+     */
+    private function obterFormaPagamentoId(string $paymentMethodId): ?int
+    {
+        // Mapear métodos do MP para formas de pagamento do sistema
+        $mapeamento = [
+            'pix' => 'pix',
+            'account_money' => 'pix', // Saldo MP = considerar como PIX
+            'credit_card' => 'cartao_credito',
+            'debit_card' => 'cartao_debito',
+            'visa' => 'cartao_credito',
+            'master' => 'cartao_credito',
+            'elo' => 'cartao_credito',
+            'amex' => 'cartao_credito',
+            'hipercard' => 'cartao_credito',
+            'bolbradesco' => 'boleto',
+            'pec' => 'boleto', // Pagamento em lotérica
+        ];
+        
+        $codigo = $mapeamento[$paymentMethodId] ?? 'outros';
+        
+        $stmt = $this->db->prepare("
+            SELECT id FROM formas_pagamento WHERE codigo = ? LIMIT 1
+        ");
+        $stmt->execute([$codigo]);
+        $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+        
+        return $result ? (int)$result['id'] : null;
     }
 }

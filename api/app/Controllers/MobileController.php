@@ -1309,6 +1309,9 @@ class MobileController
             }
 
             // ✅ VALIDAR SE MATRÍCULA ESTÁ ATIVA E DENTRO DO PRAZO (proxima_data_vencimento)
+            // Primeiro, verificar e atualizar status de matrículas vencidas do usuário
+            $this->atualizarStatusMatriculasVencidas($userId, $tenantId);
+            
             $stmtMatricula = $this->db->prepare("
                 SELECT m.id, m.proxima_data_vencimento, m.periodo_teste,
                        sm.codigo as status_codigo, sm.nome as status_nome
@@ -3921,5 +3924,72 @@ class MobileController
         
         $meses = round($dias / 30);
         return $meses . ' meses';
+    }
+    
+    /**
+     * Atualiza automaticamente o status das matrículas vencidas do usuário
+     * 
+     * Lógica:
+     * - Vencida há 1-4 dias → status = 'vencida'
+     * - Vencida há 5+ dias → status = 'cancelada'
+     */
+    private function atualizarStatusMatriculasVencidas(int $userId, int $tenantId): void
+    {
+        try {
+            $hoje = date('Y-m-d');
+            
+            // Buscar matrículas ativas do usuário que estão vencidas
+            $stmt = $this->db->prepare("
+                SELECT m.id, m.proxima_data_vencimento,
+                       DATEDIFF(:hoje, m.proxima_data_vencimento) as dias_vencido
+                FROM matriculas m
+                INNER JOIN alunos a ON a.id = m.aluno_id
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
+                WHERE a.usuario_id = :usuario_id
+                AND m.tenant_id = :tenant_id
+                AND sm.codigo = 'ativa'
+                AND m.proxima_data_vencimento < :hoje2
+            ");
+            
+            $stmt->execute([
+                'hoje' => $hoje,
+                'hoje2' => $hoje,
+                'usuario_id' => $userId,
+                'tenant_id' => $tenantId
+            ]);
+            
+            $matriculasVencidas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            
+            foreach ($matriculasVencidas as $matricula) {
+                $diasVencido = (int) $matricula['dias_vencido'];
+                $matriculaId = $matricula['id'];
+                
+                if ($diasVencido >= 5) {
+                    // 5+ dias vencido → Cancelar
+                    $novoStatus = 'cancelada';
+                } else {
+                    // 1-4 dias vencido → Marcar como vencida
+                    $novoStatus = 'vencida';
+                }
+                
+                $stmtUpdate = $this->db->prepare("
+                    UPDATE matriculas
+                    SET status_id = (SELECT id FROM status_matricula WHERE codigo = :novo_status LIMIT 1),
+                        updated_at = NOW()
+                    WHERE id = :matricula_id
+                ");
+                
+                $stmtUpdate->execute([
+                    'novo_status' => $novoStatus,
+                    'matricula_id' => $matriculaId
+                ]);
+                
+                error_log("[MobileController] Matrícula #{$matriculaId} atualizada para '{$novoStatus}' ({$diasVencido} dias vencida)");
+            }
+            
+        } catch (\Exception $e) {
+            error_log("[MobileController] Erro ao atualizar status matrículas: " . $e->getMessage());
+            // Não lançar exceção para não bloquear o fluxo
+        }
     }
 }

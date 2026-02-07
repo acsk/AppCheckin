@@ -155,7 +155,7 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
       <ScrollView 
         className="flex-1" 
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingVertical: 8, paddingHorizontal: isMobileDrawer ? 12 : 10 }}
+        contentContainerStyle={{ paddingVertical: 6, paddingHorizontal: isMobileDrawer ? 10 : 8 }}
       >
         <View className="gap-0">
           {(() => {
@@ -173,12 +173,12 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
             return menuItems.map((item) => {
               if (item.children) {
                 return (
-                  <View key={item.label} className="mt-2">
-                    <View className="flex-row items-center gap-3 px-3.5 py-2">
-                      <View className="h-8 w-8 items-center justify-center rounded-lg bg-slate-100">
-                        <Feather name={item.icon} size={16} color="#64748b" />
+                  <View key={item.label} className="mt-1.5">
+                    <View className="flex-row items-center gap-2.5 px-3 py-1.5">
+                      <View className="h-7 w-7 items-center justify-center rounded-md bg-slate-100">
+                        <Feather name={item.icon} size={14} color="#64748b" />
                       </View>
-                      <Text className="flex-1 text-[12px] font-semibold text-slate-400">
+                      <Text className="flex-1 text-[11px] font-semibold text-slate-400">
                         {item.label}
                       </Text>
                     </View>
@@ -196,30 +196,30 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
                               if (isMobile) closeDrawer();
                             }}
                             style={({ pressed }) => [
-                              { opacity: pressed ? 0.7 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }
+                              { opacity: pressed ? 0.7 : 1 }
                             ]}
-                            className={`flex-row items-center gap-3 rounded-xl py-2 pl-11 pr-3.5 ${
+                            className={`flex-row items-center gap-2.5 rounded-lg py-1.5 pl-10 pr-3 ${
                               selected 
                                 ? 'bg-orange-500' 
                                 : 'bg-transparent'
                             }`}
                           >
-                            <View className={`h-8 w-8 items-center justify-center rounded-lg ${
+                            <View className={`h-7 w-7 items-center justify-center rounded-md ${
                               selected ? 'bg-white/20' : 'bg-slate-100'
                             }`}>
                               <Feather 
                                 name={child.icon} 
-                                size={16} 
+                                size={14} 
                                 color={selected ? '#ffffff' : '#64748b'} 
                               />
                             </View>
-                            <Text className={`flex-1 text-[13px] font-medium ${
+                            <Text className={`flex-1 text-[12px] font-medium ${
                               selected ? 'text-white' : 'text-slate-600'
                             }`}>
                               {child.label}
                             </Text>
                             {selected && (
-                              <View className="h-2 w-2 rounded-full bg-white" />
+                              <View className="h-1.5 w-1.5 rounded-full bg-white" />
                             )}
                           </Pressable>
                         );
@@ -240,30 +240,30 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
                     if (isMobile) closeDrawer();
                   }}
                   style={({ pressed }) => [
-                    { opacity: pressed ? 0.7 : 1, transform: [{ scale: pressed ? 0.98 : 1 }] }
+                    { opacity: pressed ? 0.7 : 1 }
                   ]}
-                  className={`flex-row items-center gap-3 rounded-xl px-3.5 py-2 ${
+                  className={`flex-row items-center gap-2.5 rounded-lg px-3 py-1.5 ${
                     selected 
                       ? 'bg-orange-500' 
                       : 'bg-transparent'
                   }`}
                 >
-                  <View className={`h-8 w-8 items-center justify-center rounded-lg ${
+                  <View className={`h-7 w-7 items-center justify-center rounded-md ${
                     selected ? 'bg-white/20' : 'bg-slate-100'
                   }`}>
                     <Feather 
                       name={item.icon} 
-                      size={16} 
+                      size={14} 
                       color={selected ? '#ffffff' : '#64748b'} 
                     />
                   </View>
-                  <Text className={`flex-1 text-[13px] font-medium ${
+                  <Text className={`flex-1 text-[12px] font-medium ${
                     selected ? 'text-white' : 'text-slate-600'
                   }`}>
                     {item.label}
                   </Text>
                   {selected && (
-                    <View className="h-2 w-2 rounded-full bg-white" />
+                    <View className="h-1.5 w-1.5 rounded-full bg-white" />
                   )}
                 </Pressable>
               );
