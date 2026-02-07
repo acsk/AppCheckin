@@ -355,6 +355,9 @@ class PlanoCicloController
             $cicloId = (int) $args['id'];
             $data = $request->getParsedBody();
             
+            error_log("[PlanoCicloController::atualizar] tenantId={$tenantId}, planoId={$planoId}, cicloId={$cicloId}");
+            error_log("[PlanoCicloController::atualizar] data=" . json_encode($data));
+            
             // Verificar se ciclo existe e pertence ao tenant
             $stmt = $this->db->prepare("
                 SELECT pc.*, p.valor as plano_valor, tc.meses as tipo_meses
@@ -366,6 +369,8 @@ class PlanoCicloController
             $stmt->execute([$cicloId, $planoId, $tenantId]);
             $ciclo = $stmt->fetch(\PDO::FETCH_ASSOC);
             
+            error_log("[PlanoCicloController::atualizar] ciclo encontrado=" . ($ciclo ? 'SIM' : 'NAO'));
+            
             if (!$ciclo) {
                 $response->getBody()->write(json_encode(['error' => 'Ciclo não encontrado']));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
@@ -373,8 +378,8 @@ class PlanoCicloController
             
             // Calcular desconto se valor foi alterado
             $valor = isset($data['valor']) ? (float) $data['valor'] : (float) $ciclo['valor'];
-            $meses = (int) $ciclo['tipo_meses']; // Meses vem do tipo_ciclo
-            $valorMensalBase = $ciclo['plano_valor'];
+            $meses = (int) ($ciclo['tipo_meses'] ?? 1); // Meses vem do tipo_ciclo, default 1
+            $valorMensalBase = (float) ($ciclo['plano_valor'] ?? 0);
             $valorTotalSemDesconto = $valorMensalBase * $meses;
             $descontoPercentual = $valorTotalSemDesconto > 0 
                 ? round((($valorTotalSemDesconto - $valor) / $valorTotalSemDesconto) * 100, 2)

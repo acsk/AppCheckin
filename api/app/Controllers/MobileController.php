@@ -3649,9 +3649,11 @@ class MobileController
     public function comprarPlano(Request $request, Response $response): Response
     {
         try {
+            error_log("[comprarPlano] ========== INÍCIO ==========");
             $userId = $request->getAttribute('userId');
             $tenantId = $request->getAttribute('tenantId');
             $data = $request->getParsedBody();
+            error_log("[comprarPlano] userId={$userId}, tenantId={$tenantId}, data=" . json_encode($data));
 
             // Validações
             if (!$tenantId) {
@@ -3780,6 +3782,19 @@ class MobileController
                 ]));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
+            
+            // Verificar valor mínimo do Mercado Pago (R$ 0,50)
+            if ($valorCompra < 0.50) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'VALOR_MINIMO',
+                    'message' => 'O valor mínimo para pagamento é R$ 0,50',
+                    'valor_atual' => $valorCompra,
+                    'valor_minimo' => 0.50
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
 
             // Verificar se já existe matrícula ativa na mesma modalidade
             $stmtAtiva = $this->db->prepare("
@@ -3839,6 +3854,8 @@ class MobileController
             $motivoId = $motivoRow['id'] ?? 1;
 
             // Criar matrícula com status PENDENTE
+            error_log("[MobileController::comprarPlano] Preparando INSERT - tenantId={$tenantId}, alunoId={$alunoId}, planoId={$planoId}, planoCicloId=" . ($planoCicloId ?? 'null') . ", valorCompra={$valorCompra}, statusId={$statusId}, motivoId={$motivoId}");
+            
             $stmtInsert = $this->db->prepare("
                 INSERT INTO matriculas 
                 (tenant_id, aluno_id, plano_id, plano_ciclo_id, data_matricula, data_inicio, data_vencimento, 
@@ -3846,7 +3863,7 @@ class MobileController
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
             ");
 
-            $stmtInsert->execute([
+            $insertParams = [
                 $tenantId,
                 $alunoId,
                 $planoId,
@@ -3860,7 +3877,11 @@ class MobileController
                 $diaVencimento,
                 $proximaDataVencimento->format('Y-m-d'),
                 $userId
-            ]);
+            ];
+            
+            error_log("[MobileController::comprarPlano] INSERT params: " . json_encode($insertParams));
+            
+            $stmtInsert->execute($insertParams);
 
             $matriculaId = (int) $this->db->lastInsertId();
 
@@ -3898,6 +3919,7 @@ class MobileController
             // Gerar link de pagamento com Mercado Pago
             $paymentUrl = null;
             $preferenceId = null;
+            $tipoPagamento = 'pagamento_unico';
 
             try {
                 // Passar tenant_id para carregar credenciais específicas do tenant
@@ -3906,6 +3928,12 @@ class MobileController
                 $descricaoCompra = $planoCicloId 
                     ? "{$plano['nome']} ({$cicloNome}) - {$plano['modalidade_nome']}"
                     : "{$plano['nome']} - {$plano['modalidade_nome']}";
+                
+                // Buscar nome da academia
+                $stmtTenant = $this->db->prepare("SELECT nome FROM tenants WHERE id = ?");
+                $stmtTenant->execute([$tenantId]);
+                $tenantData = $stmtTenant->fetch(\PDO::FETCH_ASSOC);
+                $academiaNome = $tenantData['nome'] ?? 'Academia';
                 
                 $dadosPagamento = [
                     'tenant_id' => $tenantId,
@@ -3918,27 +3946,41 @@ class MobileController
                     'plano_nome' => $plano['nome'],
                     'descricao' => $descricaoCompra,
                     'valor' => $valorCompra,
-                    'max_parcelas' => 12
+                    'max_parcelas' => 12,
+                    'academia_nome' => $academiaNome
                 ];
 
-                error_log("[MobileController::comprarPlano] Tentando gerar preferência MP...");
-                error_log("[MobileController::comprarPlano] Dados: " . json_encode($dadosPagamento));
+                error_log("[MobileController::comprarPlano] Ciclo: {$cicloNome}, Meses: {$duracaoMeses}");
 
-                $preferencia = $mercadoPago->criarPreferenciaPagamento($dadosPagamento);
+                // Se ciclo mensal (1 mês), criar ASSINATURA RECORRENTE
+                // Se ciclo maior (trimestral, semestral, anual), criar PAGAMENTO ÚNICO
+                if ($duracaoMeses == 1) {
+                    error_log("[MobileController::comprarPlano] Criando ASSINATURA RECORRENTE...");
+                    $preferencia = $mercadoPago->criarPreferenciaAssinatura($dadosPagamento);
+                    $tipoPagamento = 'assinatura';
+                } else {
+                    error_log("[MobileController::comprarPlano] Criando PAGAMENTO ÚNICO...");
+                    $preferencia = $mercadoPago->criarPreferenciaPagamento($dadosPagamento);
+                    $tipoPagamento = 'pagamento_unico';
+                }
+                
                 $paymentUrl = $preferencia['init_point'];
                 $preferenceId = $preferencia['id'];
 
-                error_log("[MobileController::comprarPlano] ✅ Link gerado: {$preferenceId}");
+                error_log("[MobileController::comprarPlano] ✅ Link gerado ({$tipoPagamento}): {$preferenceId}");
 
             } catch (\Exception $e) {
                 error_log("[MobileController::comprarPlano] ❌ ERRO MP: " . $e->getMessage());
                 error_log("[MobileController::comprarPlano] Stack: " . $e->getTraceAsString());
-                // Continua mesmo se falhar, usuário pode tentar depois
+                // Guardar erro para mostrar na resposta (debug)
+                $mpError = $e->getMessage();
             }
 
-            $response->getBody()->write(json_encode([
+            $responseData = [
                 'success' => true,
-                'message' => 'Matrícula criada com sucesso. Complete o pagamento para ativar.',
+                'message' => $tipoPagamento === 'assinatura' 
+                    ? 'Matrícula criada. Complete a assinatura mensal para ativar.'
+                    : 'Matrícula criada com sucesso. Complete o pagamento para ativar.',
                 'data' => [
                     'matricula_id' => $matriculaId,
                     'plano_id' => $planoId,
@@ -3954,21 +3996,36 @@ class MobileController
                     'data_vencimento' => $proximaDataVencimento->format('Y-m-d'),
                     'dia_vencimento' => $diaVencimento,
                     'payment_url' => $paymentUrl,
-                    'preference_id' => $preferenceId
+                    'preference_id' => $preferenceId,
+                    'tipo_pagamento' => $tipoPagamento,
+                    'recorrente' => $tipoPagamento === 'assinatura'
                 ]
-            ], JSON_UNESCAPED_UNICODE));
+            ];
+            
+            // Adicionar erro MP se houver (debug)
+            if (isset($mpError)) {
+                $responseData['mp_error'] = $mpError;
+            }
+            
+            $response->getBody()->write(json_encode($responseData, JSON_UNESCAPED_UNICODE));
 
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
 
         } catch (\Exception $e) {
-            error_log('[MobileController::comprarPlano] Erro: ' . $e->getMessage());
+            error_log('[MobileController::comprarPlano] ERRO FATAL: ' . $e->getMessage());
+            error_log('[MobileController::comprarPlano] File: ' . $e->getFile() . ' Line: ' . $e->getLine());
             error_log('[MobileController::comprarPlano] Stack: ' . $e->getTraceAsString());
             
             $response->getBody()->write(json_encode([
                 'success' => false,
                 'type' => 'error',
                 'code' => 'ERRO_INTERNO',
-                'message' => 'Erro ao processar compra: ' . $e->getMessage()
+                'message' => 'Não foi possível processar sua compra. Tente novamente.',
+                'debug' => [
+                    'error' => $e->getMessage(),
+                    'file' => basename($e->getFile()),
+                    'line' => $e->getLine()
+                ]
             ]));
             
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);

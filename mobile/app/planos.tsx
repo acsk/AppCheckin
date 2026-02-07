@@ -91,6 +91,25 @@ export default function PlanosScreen() {
   >({});
 
   useEffect(() => {
+    if (planos.length === 0) return;
+    setSelectedCicloByPlano((prev) => {
+      const next = { ...prev };
+      let hasChange = false;
+      planos.forEach((plano) => {
+        if (next[plano.id]) return;
+        const ciclosOrdenados = (plano.ciclos || []).sort(
+          (a, b) => a.meses - b.meses,
+        );
+        if (ciclosOrdenados[0]) {
+          next[plano.id] = ciclosOrdenados[0].id;
+          hasChange = true;
+        }
+      });
+      return hasChange ? next : prev;
+    });
+  }, [planos]);
+
+  useEffect(() => {
     const initializeAndFetch = async () => {
       try {
         console.log("🚀 Inicializando página de planos...");
@@ -444,64 +463,83 @@ export default function PlanosScreen() {
     const ciclos = (plano.ciclos || []).sort((a, b) => a.meses - b.meses);
     const selectedCicloId = selectedCicloByPlano[plano.id];
     const selectedCiclo = ciclos.find((c) => c.id === selectedCicloId);
+    const economiaText = selectedCiclo?.economia || null;
 
     return (
       <View style={styles.planCard}>
-        {/* Badge de Plano Atual */}
-        {plano.is_plano_atual && (
-          <View style={styles.planCurrentBadge}>
-            <Feather name="check-circle" size={14} color="#fff" />
-            <Text style={styles.planCurrentBadgeText}>
-              {plano.label || "Seu plano atual"}
-            </Text>
+        <View style={styles.planHero}>
+          <View style={styles.planHeroTop}>
+            <View style={styles.planHeroInfo}>
+              <Text style={styles.planNome}>{plano.nome}</Text>
+              <Text style={styles.planModalidade}>{plano.modalidade.nome}</Text>
+            </View>
+            {selectedCiclo ? (
+              <View style={styles.planPricePill}>
+                <Text style={styles.planPricePillValue}>
+                  {selectedCiclo.valor_formatado}
+                </Text>
+                <Text style={styles.planPricePillLabel}>
+                  {selectedCiclo.nome}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.planPricePillMuted}>
+                <Text style={styles.planPriceHint}>Selecione um ciclo</Text>
+              </View>
+            )}
           </View>
-        )}
 
-        <View style={styles.planHeader}>
-          <View style={styles.planInfo}>
-            <Text style={styles.planNome}>{plano.nome}</Text>
-            <Text style={styles.planModalidade}>{plano.modalidade.nome}</Text>
-          </View>
-          {selectedCiclo && (
-            <View style={styles.planPriceContainer}>
-              <Text style={styles.planPrice}>
-                {selectedCiclo.valor_formatado}
+          {!!selectedCiclo?.valor_mensal_formatado && (
+            <Text style={styles.planMonthly}>
+              {selectedCiclo.valor_mensal_formatado}/mês
+            </Text>
+          )}
+
+          {plano.is_plano_atual && (
+            <View style={styles.planCurrentBadge}>
+              <Feather name="check-circle" size={14} color="#fff" />
+              <Text style={styles.planCurrentBadgeText}>
+                {plano.label || "Seu plano atual"}
               </Text>
-              <Text style={styles.planDuracao}>{selectedCiclo.nome}</Text>
             </View>
           )}
         </View>
 
-        <Text style={styles.planDescricao}>{plano.descricao}</Text>
+        {!!plano.descricao && (
+          <Text style={styles.planDescricao}>{plano.descricao}</Text>
+        )}
 
-        <View style={styles.planFeatures}>
-          <View style={styles.featureItem}>
-            <Feather name="check-circle" size={16} color={colors.primary} />
+        <View style={styles.planFeaturesGrid}>
+          <View style={styles.featurePill}>
+            <Feather name="check-circle" size={14} color={colors.primary} />
             <Text style={styles.featureText}>
               {plano.checkins_semanais === 999
-                ? "Ilimitado"
-                : `${plano.checkins_semanais} check-ins por semana`}
+                ? "Check-ins ilimitados"
+                : `${plano.checkins_semanais} check-ins/semana`}
             </Text>
           </View>
-          <View style={styles.featureItem}>
-            <Feather name="calendar" size={16} color={colors.primary} />
+          <View style={styles.featurePill}>
+            <Feather name="calendar" size={14} color={colors.primary} />
             <Text style={styles.featureText}>
               {plano.duracao_dias} dias de acesso
             </Text>
           </View>
         </View>
 
-        {/* Seletor de Ciclos */}
+        {economiaText && (
+          <Text style={styles.economiaText}>{economiaText}</Text>
+        )}
+
         {ciclos.length > 0 && (
           <View style={styles.ciclosContainer}>
-            <Text style={styles.ciclosTitle}>Escolha o ciclo:</Text>
+            <Text style={styles.ciclosTitle}>Ciclo</Text>
             <View style={styles.ciclosGrid}>
               {ciclos.map((ciclo) => (
                 <TouchableOpacity
                   key={ciclo.id}
                   style={[
-                    styles.cicloButton,
-                    selectedCicloId === ciclo.id && styles.cicloButtonSelected,
+                    styles.cicloChip,
+                    selectedCicloId === ciclo.id && styles.cicloChipSelected,
                   ]}
                   onPress={() =>
                     setSelectedCicloByPlano({
@@ -512,26 +550,33 @@ export default function PlanosScreen() {
                 >
                   <Text
                     style={[
-                      styles.cicloButtonText,
+                      styles.cicloChipTitle,
                       selectedCicloId === ciclo.id &&
-                        styles.cicloButtonTextSelected,
+                        styles.cicloChipTitleSelected,
                     ]}
                   >
                     {ciclo.nome}
                   </Text>
                   <Text
                     style={[
-                      styles.cicloButtonPrice,
+                      styles.cicloChipPrice,
                       selectedCicloId === ciclo.id &&
-                        styles.cicloButtonPriceSelected,
+                        styles.cicloChipPriceSelected,
                     ]}
                   >
                     {ciclo.valor_formatado}
                   </Text>
-                  {ciclo.economia && (
-                    <Text style={styles.cicloButtonEconomia}>
-                      ✨ {ciclo.economia}
+                  {!!ciclo.valor_mensal_formatado && (
+                    <Text style={styles.cicloChipMonthly}>
+                      {ciclo.valor_mensal_formatado}/mês
                     </Text>
+                  )}
+                  {ciclo.economia && (
+                    <View style={styles.cicloChipEconomia}>
+                      <Text style={styles.cicloChipEconomiaText}>
+                        {ciclo.economia}
+                      </Text>
+                    </View>
                   )}
                 </TouchableOpacity>
               ))}
@@ -571,7 +616,9 @@ export default function PlanosScreen() {
             <>
               <Feather name="shopping-cart" size={18} color="#fff" />
               <Text style={styles.contratarButtonText}>
-                Contratar por {selectedCiclo?.valor_formatado || "..."}
+                {selectedCiclo
+                  ? `Contratar por ${selectedCiclo.valor_formatado}`
+                  : "Escolha um ciclo para continuar"}
               </Text>
             </>
           )}
@@ -815,24 +862,38 @@ const styles = StyleSheet.create({
   planCard: {
     backgroundColor: "#fff",
     borderRadius: 16,
-    padding: 16,
+    padding: 18,
     borderWidth: 1,
-    borderColor: "#f0f1f4",
+    borderColor: "#eff2f6",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  planHero: {
+    backgroundColor: "#f8fafc",
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "#eef2f7",
+  },
+  planHeroTop: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: 12,
   },
   planCurrentBadge: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "#0a7f3c",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginBottom: 12,
+    backgroundColor: "#111827",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    marginTop: 10,
     alignSelf: "flex-start",
   },
   planCurrentBadgeText: {
@@ -840,19 +901,13 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
   },
-  planHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 12,
-  },
-  planInfo: {
+  planHeroInfo: {
     flex: 1,
     gap: 4,
   },
   planNome: {
-    fontSize: 16,
-    fontWeight: "700",
+    fontSize: 18,
+    fontWeight: "800",
     color: colors.text,
   },
   planModalidade: {
@@ -860,32 +915,74 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontWeight: "500",
   },
-  planPriceContainer: {
+  planPricePill: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     alignItems: "flex-end",
+    borderWidth: 1,
+    borderColor: "#e7ecf3",
   },
-  planPrice: {
-    fontSize: 20,
-    fontWeight: "700",
+  planPricePillMuted: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#e7ecf3",
+  },
+  planPricePillValue: {
+    fontSize: 18,
+    fontWeight: "800",
     color: colors.primary,
   },
-  planDuracao: {
+  planPricePillLabel: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: "600",
+  },
+  planMonthly: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: "600",
+    marginTop: 8,
+  },
+  planPriceHint: {
     fontSize: 12,
     color: colors.textMuted,
-    fontWeight: "500",
+    fontWeight: "600",
   },
   planDescricao: {
     fontSize: 13,
     color: colors.textMuted,
-    marginBottom: 12,
     lineHeight: 18,
+    fontWeight: "500",
+    marginBottom: 12,
   },
-  planFeatures: {
+  planFeaturesGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
     gap: 8,
-    marginBottom: 16,
-    paddingVertical: 12,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: "#f0f1f4",
+    marginBottom: 14,
+  },
+  featurePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#f8fafc",
+    borderRadius: 10,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: "#eef2f7",
+  },
+  economiaText: {
+    fontSize: 12,
+    color: colors.textMuted,
+    fontWeight: "700",
+    marginBottom: 12,
   },
   featureItem: {
     flexDirection: "row",
@@ -919,60 +1016,76 @@ const styles = StyleSheet.create({
     backgroundColor: "#999",
   },
   ciclosContainer: {
-    marginVertical: 16,
-    paddingBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f0f1f4",
+    marginVertical: 12,
   },
   ciclosTitle: {
-    fontSize: 13,
-    fontWeight: "600",
+    fontSize: 12,
+    fontWeight: "700",
     color: colors.text,
-    marginBottom: 10,
+    marginBottom: 8,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   ciclosGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 10,
   },
-  cicloButton: {
+  cicloChip: {
     flex: 1,
     minWidth: "47%",
-    backgroundColor: "#f5f5f5",
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
-    alignItems: "center",
-    borderWidth: 2,
-    borderColor: "#f0f1f4",
+    backgroundColor: "#f8fafc",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    alignItems: "flex-start",
+    borderWidth: 1,
+    borderColor: "#e7ecf3",
   },
-  cicloButtonSelected: {
-    backgroundColor: "#e6f4ec",
-    borderColor: colors.primary,
+  cicloChipSelected: {
+    backgroundColor: "#ecfdf3",
+    borderColor: "#16a34a",
+    shadowColor: "#16a34a",
+    shadowOpacity: 0.18,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 3,
   },
-  cicloButtonText: {
+  cicloChipTitle: {
     fontSize: 12,
-    fontWeight: "600",
+    fontWeight: "700",
     color: colors.text,
   },
-  cicloButtonTextSelected: {
-    color: colors.primary,
+  cicloChipTitleSelected: {
+    color: "#166534",
+  },
+  cicloChipPrice: {
+    fontSize: 15,
     fontWeight: "700",
-  },
-  cicloButtonPrice: {
-    fontSize: 14,
-    fontWeight: "700",
     color: colors.primary,
-    marginTop: 4,
+    marginTop: 6,
   },
-  cicloButtonPriceSelected: {
-    color: colors.primary,
+  cicloChipPriceSelected: {
+    color: "#16a34a",
   },
-  cicloButtonEconomia: {
+  cicloChipMonthly: {
     fontSize: 10,
-    color: "#0a7f3c",
-    fontWeight: "700",
+    color: colors.textMuted,
+    fontWeight: "600",
     marginTop: 2,
+  },
+  cicloChipEconomia: {
+    marginTop: 6,
+    backgroundColor: "#14532d",
+    paddingVertical: 3,
+    paddingHorizontal: 6,
+    borderRadius: 999,
+    alignSelf: "flex-start",
+  },
+  cicloChipEconomiaText: {
+    fontSize: 10,
+    color: "#fff",
+    fontWeight: "700",
   },
   contratarButtonText: {
     fontSize: 14,
