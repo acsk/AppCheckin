@@ -171,13 +171,12 @@ class MercadoPagoWebhookController
         $stmtInsert = $this->db->prepare("
             INSERT INTO pagamentos_plano (
                 tenant_id, aluno_id, matricula_id, plano_id,
-                valor, valor_pago, data_vencimento, data_pagamento,
-                status_pagamento_id, observacoes, created_at, updated_at
+                valor, data_vencimento, data_pagamento,
+                status_pagamento_id, observacoes, tipo_baixa_id, created_at, updated_at
             ) VALUES (
                 ?, ?, ?, ?,
-                ?, ?, CURDATE(), NOW(),
-                (SELECT id FROM status_pagamento WHERE codigo = 'pago' LIMIT 1),
-                'Criado manualmente via debug', NOW(), NOW()
+                ?, CURDATE(), NOW(),
+                2, 'Criado manualmente via debug', 2, NOW(), NOW()
             )
         ");
         
@@ -186,7 +185,6 @@ class MercadoPagoWebhookController
             $matricula['aluno_id'],
             $matriculaId,
             $matricula['plano_id'],
-            $matricula['valor_plano'],
             $matricula['valor_plano']
         ]);
     }
@@ -285,10 +283,10 @@ class MercadoPagoWebhookController
     {
         $stmtUpdate = $this->db->prepare("
             UPDATE matriculas
-            SET status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1),
+            SET status_id = 1,
                 updated_at = NOW()
             WHERE id = ?
-            AND status_id = (SELECT id FROM status_matricula WHERE codigo = 'pendente' LIMIT 1)
+            AND status_id IN (5, 2)
         ");
         
         $stmtUpdate->execute([$matriculaId]);
@@ -321,12 +319,12 @@ class MercadoPagoWebhookController
                 return;
             }
             
-            // Buscar o pagamento pendente mais antigo da matrícula
+            // Buscar o pagamento pendente mais antigo da matrícula (status 1 = Aguardando)
             $stmtBuscar = $this->db->prepare("
                 SELECT pp.id, pp.valor
                 FROM pagamentos_plano pp
                 WHERE pp.matricula_id = ?
-                AND pp.status_pagamento_id = (SELECT id FROM status_pagamento WHERE codigo = 'pendente' LIMIT 1)
+                AND pp.status_pagamento_id = 1
                 ORDER BY pp.data_vencimento ASC
                 LIMIT 1
             ");
@@ -342,10 +340,10 @@ class MercadoPagoWebhookController
                 
                 $stmtUpdate = $this->db->prepare("
                     UPDATE pagamentos_plano
-                    SET status_pagamento_id = (SELECT id FROM status_pagamento WHERE codigo = 'pago' LIMIT 1),
+                    SET status_pagamento_id = 2,
                         data_pagamento = NOW(),
                         forma_pagamento_id = ?,
-                        valor_pago = ?,
+                        tipo_baixa_id = 2,
                         observacoes = CONCAT(IFNULL(observacoes, ''), ' | Pago via Mercado Pago - ID: " . $pagamento['id'] . "'),
                         updated_at = NOW()
                     WHERE id = ?
@@ -353,7 +351,6 @@ class MercadoPagoWebhookController
                 
                 $stmtUpdate->execute([
                     $formaPagamentoId,
-                    $pagamento['transaction_amount'],
                     $pagamentoPendente['id']
                 ]);
                 
@@ -367,14 +364,14 @@ class MercadoPagoWebhookController
                 $stmtInsert = $this->db->prepare("
                     INSERT INTO pagamentos_plano (
                         tenant_id, aluno_id, matricula_id, plano_id,
-                        valor, valor_pago, data_vencimento, data_pagamento,
+                        valor, data_vencimento, data_pagamento,
                         status_pagamento_id, forma_pagamento_id,
-                        observacoes, created_at, updated_at
+                        observacoes, tipo_baixa_id, created_at, updated_at
                     ) VALUES (
                         ?, ?, ?, ?,
-                        ?, ?, CURDATE(), NOW(),
-                        (SELECT id FROM status_pagamento WHERE codigo = 'pago' LIMIT 1), ?,
-                        ?, NOW(), NOW()
+                        ?, CURDATE(), NOW(),
+                        2, ?,
+                        ?, 2, NOW(), NOW()
                     )
                 ");
                 
@@ -383,7 +380,6 @@ class MercadoPagoWebhookController
                     $matricula['aluno_id'],
                     $matriculaId,
                     $matricula['plano_id'],
-                    $pagamento['transaction_amount'],
                     $pagamento['transaction_amount'],
                     $formaPagamentoId,
                     'Pago via Mercado Pago - ID: ' . $pagamento['id']
@@ -404,29 +400,23 @@ class MercadoPagoWebhookController
      */
     private function obterFormaPagamentoId(string $paymentMethodId): ?int
     {
-        // Mapear métodos do MP para formas de pagamento do sistema
+        // Mapear métodos do MP para IDs de formas de pagamento do sistema
+        // IDs baseados na tabela formas_pagamento:
+        // 1=Dinheiro, 2=Pix, 3=Débito, 4=Crédito à vista, 8=Boleto, 9=Cartão
         $mapeamento = [
-            'pix' => 'pix',
-            'account_money' => 'pix', // Saldo MP = considerar como PIX
-            'credit_card' => 'cartao_credito',
-            'debit_card' => 'cartao_debito',
-            'visa' => 'cartao_credito',
-            'master' => 'cartao_credito',
-            'elo' => 'cartao_credito',
-            'amex' => 'cartao_credito',
-            'hipercard' => 'cartao_credito',
-            'bolbradesco' => 'boleto',
-            'pec' => 'boleto', // Pagamento em lotérica
+            'pix' => 2,
+            'account_money' => 2, // Saldo MP = considerar como PIX
+            'credit_card' => 9,
+            'debit_card' => 3,
+            'visa' => 9,
+            'master' => 9,
+            'elo' => 9,
+            'amex' => 9,
+            'hipercard' => 9,
+            'bolbradesco' => 8,
+            'pec' => 8, // Pagamento em lotérica
         ];
         
-        $codigo = $mapeamento[$paymentMethodId] ?? 'outros';
-        
-        $stmt = $this->db->prepare("
-            SELECT id FROM formas_pagamento WHERE codigo = ? LIMIT 1
-        ");
-        $stmt->execute([$codigo]);
-        $result = $stmt->fetch(\PDO::FETCH_ASSOC);
-        
-        return $result ? (int)$result['id'] : null;
+        return $mapeamento[$paymentMethodId] ?? 2; // Default: PIX
     }
 }
