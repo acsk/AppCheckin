@@ -358,7 +358,14 @@ class AssinaturaController
             $usuarioId = $request->getAttribute('usuarioId');
             $alunoId = $request->getAttribute('alunoId');
             
+            // DEBUG: Retornar todos os atributos do request
+            $allAttributes = [];
+            foreach (['tenantId', 'usuarioId', 'alunoId', 'isAdmin', 'papel_id'] as $attr) {
+                $allAttributes[$attr] = $request->getAttribute($attr);
+            }
+            
             error_log("[AssinaturaController::minhasAssinaturas] Iniciando busca de assinaturas - tenant_id=$tenantId, usuario_id=$usuarioId, aluno_id=$alunoId");
+            error_log("[AssinaturaController::minhasAssinaturas] Atributos do request: " . json_encode($allAttributes));
             
             // Se não tem aluno_id no JWT, buscar
             if (!$alunoId) {
@@ -438,7 +445,14 @@ class AssinaturaController
             $response->getBody()->write(json_encode([
                 'success' => true,
                 'assinaturas' => $assinaturas,
-                'total' => count($assinaturas)
+                'total' => count($assinaturas),
+                '_debug' => [
+                    'request_attributes' => $allAttributes,
+                    'aluno_id_usado' => $alunoId,
+                    'tenant_id_usado' => $tenantId,
+                    'sql_query' => str_replace('?', '%s', $sql),
+                    'sql_params' => [$alunoId, $tenantId]
+                ]
             ], JSON_UNESCAPED_UNICODE));
             
             return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
