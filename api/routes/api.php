@@ -32,6 +32,8 @@ use App\Controllers\PresencaController;
 use App\Controllers\MaintenanceController;
 use App\Controllers\DashboardController;
 use App\Controllers\MercadoPagoWebhookController;
+use App\Controllers\PlanoCicloController;
+use App\Controllers\AssinaturaController;
 use App\Middlewares\AuthMiddleware;
 use App\Middlewares\TenantMiddleware;
 use App\Middlewares\AdminMiddleware;
@@ -841,6 +843,11 @@ return function ($app) {
         // Comprar plano (cria matrícula + gera link Mercado Pago)
         $group->post('/comprar-plano', [MobileController::class, 'comprarPlano']);
         
+        // Assinaturas recorrentes
+        $group->get('/assinaturas', [AssinaturaController::class, 'minhasAssinaturas']);
+        $group->post('/assinatura/criar', [AssinaturaController::class, 'criar']);
+        $group->post('/assinatura/{id}/cancelar', [AssinaturaController::class, 'cancelar']);
+        
         // Verificar pagamento e ativar matrícula
         $group->post('/verificar-pagamento', [MobileController::class, 'verificarPagamento']);
         
@@ -962,6 +969,13 @@ return function ($app) {
         $group->post('/planos', [PlanoController::class, 'create']);
         $group->put('/planos/{id}', [PlanoController::class, 'update']);
         $group->delete('/planos/{id}', [PlanoController::class, 'delete']);
+        
+        // Ciclos de Planos (mensal, trimestral, semestral, anual)
+        $group->get('/planos/{plano_id}/ciclos', [PlanoCicloController::class, 'listar']);
+        $group->post('/planos/{plano_id}/ciclos', [PlanoCicloController::class, 'criar']);
+        $group->post('/planos/{plano_id}/ciclos/gerar', [PlanoCicloController::class, 'gerarCiclosAutomaticos']);
+        $group->put('/planos/{plano_id}/ciclos/{id}', [PlanoCicloController::class, 'atualizar']);
+        $group->delete('/planos/{plano_id}/ciclos/{id}', [PlanoCicloController::class, 'excluir']);
         
         // Dias e Horários (Admin)
         $group->delete('/dias/{id}/horarios', [DiaController::class, 'deletarHorariosDoDia']);

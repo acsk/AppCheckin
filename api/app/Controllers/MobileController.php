@@ -3487,11 +3487,51 @@ class MobileController
             $stmt->execute($params);
             $planos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
+            // Buscar ciclos de cada plano
+            $planoIds = array_column($planos, 'id');
+            $ciclosPorPlano = [];
+            
+            if (!empty($planoIds)) {
+                $placeholders = implode(',', array_fill(0, count($planoIds), '?'));
+                $stmtCiclos = $this->db->prepare("
+                    SELECT id, plano_id, nome, codigo, meses, valor, valor_mensal_equivalente,
+                           desconto_percentual, permite_recorrencia
+                    FROM plano_ciclos
+                    WHERE plano_id IN ({$placeholders}) AND ativo = 1
+                    ORDER BY ordem ASC
+                ");
+                $stmtCiclos->execute($planoIds);
+                $ciclos = $stmtCiclos->fetchAll(\PDO::FETCH_ASSOC);
+                
+                foreach ($ciclos as $ciclo) {
+                    $planoId = (int)$ciclo['plano_id'];
+                    if (!isset($ciclosPorPlano[$planoId])) {
+                        $ciclosPorPlano[$planoId] = [];
+                    }
+                    $ciclosPorPlano[$planoId][] = [
+                        'id' => (int)$ciclo['id'],
+                        'nome' => $ciclo['nome'],
+                        'codigo' => $ciclo['codigo'],
+                        'meses' => (int)$ciclo['meses'],
+                        'valor' => (float)$ciclo['valor'],
+                        'valor_formatado' => 'R$ ' . number_format($ciclo['valor'], 2, ',', '.'),
+                        'valor_mensal' => (float)$ciclo['valor_mensal_equivalente'],
+                        'valor_mensal_formatado' => 'R$ ' . number_format($ciclo['valor_mensal_equivalente'], 2, ',', '.'),
+                        'desconto_percentual' => (float)$ciclo['desconto_percentual'],
+                        'permite_recorrencia' => (bool)$ciclo['permite_recorrencia'],
+                        'economia' => $ciclo['desconto_percentual'] > 0 
+                            ? 'Economize ' . number_format($ciclo['desconto_percentual'], 0) . '%'
+                            : null
+                    ];
+                }
+            }
+
             // Formatar resposta
-            $planosFormatados = array_map(function($plano) use ($planoAtualId) {
+            $planosFormatados = array_map(function($plano) use ($planoAtualId, $ciclosPorPlano) {
                 $isPlanoAtual = $planoAtualId && (int)$plano['id'] === $planoAtualId;
+                $planoId = (int)$plano['id'];
                 return [
-                    'id' => (int)$plano['id'],
+                    'id' => $planoId,
                     'nome' => $plano['nome'],
                     'descricao' => $plano['descricao'],
                     'valor' => (float)$plano['valor'],
@@ -3504,9 +3544,11 @@ class MobileController
                         'nome' => $plano['modalidade_nome']
                     ],
                     'is_plano_atual' => $isPlanoAtual,
-                    'label' => $isPlanoAtual ? 'Seu plano atual' : null
+                    'label' => $isPlanoAtual ? 'Seu plano atual' : null,
+                    'ciclos' => $ciclosPorPlano[$planoId] ?? []
                 ];
             }, $planos);
+
 
             $response->getBody()->write(json_encode([
                 'success' => true,

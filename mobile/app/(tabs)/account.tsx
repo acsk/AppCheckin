@@ -906,8 +906,6 @@ export default function AccountScreen() {
     );
   }
 
-  const tenantImageUrl = getTenantImageUrl();
-
   return (
     <SafeAreaView style={styles.container}>
       {/* Mostrar erro de foto se houver */}
@@ -927,37 +925,38 @@ export default function AccountScreen() {
           <View style={styles.headerUserLeft}>
             <View style={styles.headerPhotoWrapper}>
               <View style={styles.headerPhotoContainer}>
-                {tenantImageUrl ? (
+                {photoUrl ? (
                   <Image
-                    source={{ uri: tenantImageUrl }}
+                    source={{ uri: photoUrl }}
                     style={styles.headerPhotoImage}
                     onError={(error) => {
                       console.error(
-                        "❌ Erro ao carregar logo do tenant:",
+                        "❌ Erro ao carregar foto do usuário:",
                         error,
                       );
                     }}
                   />
                 ) : (
                   <Text style={styles.headerPhotoInitials}>
-                    {getInitials(getTenantDisplayName())}
+                    {getInitials(userProfile?.nome || "User")}
                   </Text>
                 )}
               </View>
             </View>
             <View style={styles.headerUserInfo}>
-              {((currentTenant &&
-                (currentTenant.nome || currentTenant?.tenant?.nome)) ||
-                tenants.length > 1) && (
+              <Text style={styles.headerUserName}>
+                {userProfile?.nome || "Usuário"}
+              </Text>
+              {getTenantDisplayName() && (
                 <TouchableOpacity
                   style={styles.tenantSwitchButton}
                   onPress={() => setShowTenantModal(true)}
                   accessibilityLabel="Trocar de academia"
                   activeOpacity={0.8}
                 >
-                  <Feather name="shuffle" size={12} color="#fff" />
-                  <Text style={styles.tenantSwitchText}>
-                    {getTenantDisplayName() || "Trocar de academia"}
+                  <Feather name="building" size={12} color={colors.primary} />
+                  <Text style={styles.tenantSwitchButtonText}>
+                    {getTenantDisplayName()}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -2592,15 +2591,20 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   tenantSwitchButton: {
-    marginTop: 2,
+    marginTop: 8,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
-    backgroundColor: "rgba(255,255,255,0.18)",
-    paddingHorizontal: 10,
+    backgroundColor: "transparent",
+    paddingHorizontal: 0,
     paddingVertical: 6,
-    borderRadius: 999,
+    borderRadius: 8,
     alignSelf: "flex-start",
+  },
+  tenantSwitchButtonText: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: "600",
   },
   tenantSwitchText: {
     color: "#fff",

@@ -31,6 +31,8 @@ interface Plan {
     id: number;
     nome: string;
   };
+  is_plano_atual?: boolean;
+  label?: string | null;
 }
 
 interface ApiResponse {
@@ -403,6 +405,16 @@ export default function PlanosScreen() {
 
   const renderPlanCard = ({ item: plano }: { item: Plan }) => (
     <View style={styles.planCard}>
+      {/* Badge de Plano Atual */}
+      {plano.is_plano_atual && (
+        <View style={styles.planCurrentBadge}>
+          <Feather name="check-circle" size={14} color="#fff" />
+          <Text style={styles.planCurrentBadgeText}>
+            {plano.label || "Seu plano atual"}
+          </Text>
+        </View>
+      )}
+
       <View style={styles.planHeader}>
         <View style={styles.planInfo}>
           <Text style={styles.planNome}>{plano.nome}</Text>
@@ -436,14 +448,22 @@ export default function PlanosScreen() {
       <TouchableOpacity
         style={[
           styles.contratarButton,
+          plano.is_plano_atual && styles.contratarButtonCurrent,
           comprando && planoComprando === plano.id
             ? styles.contratarButtonLoading
             : null,
         ]}
         onPress={() => handleContratar(plano)}
-        disabled={comprando && planoComprando === plano.id}
+        disabled={
+          plano.is_plano_atual || (comprando && planoComprando === plano.id)
+        }
       >
-        {comprando && planoComprando === plano.id ? (
+        {plano.is_plano_atual ? (
+          <>
+            <Feather name="check" size={18} color="#fff" />
+            <Text style={styles.contratarButtonText}>Plano Ativo</Text>
+          </>
+        ) : comprando && planoComprando === plano.id ? (
           <>
             <ActivityIndicator color="#fff" size="small" />
             <Text style={styles.contratarButtonText}>Processando...</Text>
@@ -702,6 +722,22 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
+  planCurrentBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#0a7f3c",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 12,
+    alignSelf: "flex-start",
+  },
+  planCurrentBadgeText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
+  },
   planHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -775,6 +811,10 @@ const styles = StyleSheet.create({
   },
   contratarButtonLoading: {
     opacity: 0.7,
+  },
+  contratarButtonCurrent: {
+    backgroundColor: "#10b981",
+    opacity: 0.8,
   },
   contratarButtonText: {
     fontSize: 14,
