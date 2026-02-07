@@ -40,35 +40,45 @@ class MercadoPagoWebhookController
             
             // Log da notificação
             error_log("=== WEBHOOK MERCADO PAGO ===");
-            error_log(json_encode($body));
+            error_log("Body recebido: " . json_encode($body));
             
             // Validar se é notificação válida
             if (!isset($body['type']) || !isset($body['data']['id'])) {
+                error_log("[Webhook MP] ❌ Notificação inválida - falta type ou data.id");
                 $response->getBody()->write(json_encode([
                     'error' => 'Notificação inválida'
                 ]));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
             
+            error_log("[Webhook MP] ✅ Tipo: {$body['type']}, Payment ID: {$body['data']['id']}");
+            
             // Buscar tenant_id pela matrícula/pagamento (se disponível nos metadados)
             // Por enquanto, usar credenciais globais (ENV) para processar webhook
             $mercadoPagoService = $this->getMercadoPagoService();
             
             // Processar notificação
+            error_log("[Webhook MP] Processando notificação...");
             $pagamento = $mercadoPagoService->processarNotificacao($body);
+            error_log("[Webhook MP] Pagamento processado: status=" . ($pagamento['status'] ?? 'N/A'));
             
             // Atualizar status no banco de dados
+            error_log("[Webhook MP] Atualizando banco de dados...");
             $this->atualizarPagamento($pagamento);
+            error_log("[Webhook MP] ✅ Banco atualizado com sucesso");
             
             // Retornar 200 OK para o Mercado Pago
             $response->getBody()->write(json_encode([
                 'success' => true,
-                'message' => 'Notificação processada'
+                'message' => 'Notificação processada',
+                'payment_status' => $pagamento['status'] ?? null,
+                'matricula_id' => $pagamento['metadata']['matricula_id'] ?? null
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
             
         } catch (\Exception $e) {
-            error_log("Erro webhook MP: " . $e->getMessage());
+            error_log("[Webhook MP] ❌ ERRO: " . $e->getMessage());
+            error_log("[Webhook MP] Stack: " . $e->getTraceAsString());
             
             // Retornar 200 mesmo com erro para evitar reenvios
             $response->getBody()->write(json_encode([
@@ -77,6 +87,108 @@ class MercadoPagoWebhookController
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
         }
+    }
+    
+    /**
+     * Debug: Forçar processamento de um pagamento
+     * 
+     * POST /api/webhooks/mercadopago/debug
+     */
+    public function debugProcessarPagamento(Request $request, Response $response): Response
+    {
+        try {
+            $body = $request->getParsedBody();
+            $paymentId = $body['payment_id'] ?? null;
+            $matriculaId = $body['matricula_id'] ?? null;
+            
+            if (!$paymentId && !$matriculaId) {
+                $response->getBody()->write(json_encode([
+                    'error' => 'Informe payment_id ou matricula_id'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+            
+            $result = [];
+            
+            // Se tem payment_id, buscar no MP
+            if ($paymentId) {
+                $mercadoPagoService = $this->getMercadoPagoService();
+                $pagamento = $mercadoPagoService->buscarPagamento($paymentId);
+                $result['pagamento_mp'] = $pagamento;
+                
+                // Atualizar no banco
+                $this->atualizarPagamento($pagamento);
+                $result['banco_atualizado'] = true;
+            }
+            
+            // Se tem matricula_id, criar pagamento manualmente
+            if ($matriculaId && !$paymentId) {
+                $this->criarPagamentoManual($matriculaId);
+                $result['pagamento_manual_criado'] = true;
+            }
+            
+            // Buscar dados atuais
+            $stmt = $this->db->prepare("SELECT * FROM pagamentos_plano WHERE matricula_id = ?");
+            $stmt->execute([$matriculaId ?? $pagamento['metadata']['matricula_id'] ?? 0]);
+            $result['pagamentos_plano'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'data' => $result
+            ], JSON_PRETTY_PRINT));
+            return $response->withHeader('Content-Type', 'application/json');
+            
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+    
+    /**
+     * Criar pagamento manual para uma matrícula
+     */
+    private function criarPagamentoManual(int $matriculaId): void
+    {
+        // Buscar dados da matrícula
+        $stmt = $this->db->prepare("
+            SELECT m.*, p.valor as valor_plano 
+            FROM matriculas m 
+            INNER JOIN planos p ON p.id = m.plano_id 
+            WHERE m.id = ?
+        ");
+        $stmt->execute([$matriculaId]);
+        $matricula = $stmt->fetch(\PDO::FETCH_ASSOC);
+        
+        if (!$matricula) {
+            throw new \Exception("Matrícula não encontrada");
+        }
+        
+        // Inserir pagamento
+        $stmtInsert = $this->db->prepare("
+            INSERT INTO pagamentos_plano (
+                tenant_id, aluno_id, matricula_id, plano_id,
+                valor, valor_pago, data_vencimento, data_pagamento,
+                status_pagamento_id, observacoes, created_at, updated_at
+            ) VALUES (
+                ?, ?, ?, ?,
+                ?, ?, CURDATE(), NOW(),
+                (SELECT id FROM status_pagamento WHERE codigo = 'pago' LIMIT 1),
+                'Criado manualmente via debug', NOW(), NOW()
+            )
+        ");
+        
+        $stmtInsert->execute([
+            $matricula['tenant_id'],
+            $matricula['aluno_id'],
+            $matriculaId,
+            $matricula['plano_id'],
+            $matricula['valor_plano'],
+            $matricula['valor_plano']
+        ]);
     }
     
     /**
