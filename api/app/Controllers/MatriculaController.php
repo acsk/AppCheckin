@@ -368,33 +368,33 @@ class MatriculaController
         
         $historicoId = (int) $db->lastInsertId();
 
-        // Criar primeiro pagamento do plano APENAS se NÃO for período teste
-        if ($periodoTeste != 1) {
-            try {
-                $stmtPagamento = $db->prepare("
-                    INSERT INTO pagamentos_plano
-                    (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento, 
-                     status_pagamento_id, observacoes, criado_por, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, 1, 'Primeiro pagamento da matrícula', ?, NOW(), NOW())
-                ");
-                
-                $stmtPagamento->execute([
-                    $tenantId,
-                    $alunoId,
-                    $matriculaId,
-                    $planoId,
-                    $valor,
-                    $dataInicio, // primeiro pagamento vence na data de início
-                    $adminId
-                ]);
-                
-                $pagamentoId = (int) $db->lastInsertId();
-                error_log("Pagamento criado ID: " . $pagamentoId);
-            } catch (\Exception $e) {
-                error_log("ERRO ao criar pagamento_plano: " . $e->getMessage());
-            }
-        } else {
-            error_log("Período teste: pagamento NÃO criado (ativado automaticamente)");
+        // Criar primeiro pagamento do plano (mesmo se valor for 0)
+        try {
+            $stmtPagamento = $db->prepare("
+                INSERT INTO pagamentos_plano
+                (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento, 
+                 status_pagamento_id, observacoes, criado_por, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'Primeiro pagamento da matrícula', ?, NOW(), NOW())
+            ");
+            
+            // Se valor for 0, já marca como pago (status 2), senão aguardando (status 1)
+            $statusPagamentoId = ($valor == 0) ? 2 : 1;
+            
+            $stmtPagamento->execute([
+                $tenantId,
+                $alunoId,
+                $matriculaId,
+                $planoId,
+                $valor,
+                $dataInicio, // primeiro pagamento vence na data de início
+                $statusPagamentoId,
+                $adminId
+            ]);
+            
+            $pagamentoId = (int) $db->lastInsertId();
+            error_log("Pagamento criado ID: " . $pagamentoId . " (status: " . ($statusPagamentoId == 2 ? 'pago' : 'aguardando') . ")");
+        } catch (\Exception $e) {
+            error_log("ERRO ao criar pagamento_plano: " . $e->getMessage());
         }
 
         // Buscar matrícula criada
