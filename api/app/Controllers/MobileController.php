@@ -4031,10 +4031,6 @@ class MobileController
                             error_log("[MobileController::comprarPlano] ⚠️ Erro ao salvar assinatura: " . $e->getMessage());
                             // Continua mesmo se falhar (pode salvar depois via webhook)
                         }
-} catch (\Exception $e) {
-                    error_log("[MobileController::comprarPlano] ⚠️ Erro ao salvar assinatura: " . $e->getMessage());
-                    // Continua mesmo se falhar (pode salvar depois via webhook)
-                }
                 
                 $paymentUrl = $preferencia['init_point'];
                 $preferenceId = $preferencia['id'];
