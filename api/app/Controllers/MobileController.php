@@ -3983,8 +3983,11 @@ class MobileController
                                 $stmtStatus->execute();
                                 $statusId = $stmtStatus->fetchColumn() ?: 1;
                                 
-                                $stmtFreq = $this->db->prepare("SELECT id FROM assinatura_frequencias WHERE codigo = 'mensal'");
-                                $stmtFreq->execute();
+                                // Mapear ciclo_nome para código de frequência
+                                // Mensal -> mensal, Bimestral -> bimestral, etc
+                                $codigoFrequencia = strtolower($cicloNome);
+                                $stmtFreq = $this->db->prepare("SELECT id FROM assinatura_frequencias WHERE codigo = ?");
+                                $stmtFreq->execute([$codigoFrequencia]);
                                 $frequenciaId = $stmtFreq->fetchColumn() ?: 4;
                                 
                                 $stmtMetodo = $this->db->prepare("SELECT id FROM metodos_pagamento WHERE codigo = 'credit_card'");
@@ -4048,8 +4051,8 @@ class MobileController
             $responseData = [
                 'success' => true,
                 'message' => $tipoPagamento === 'assinatura' 
-                    ? 'Matrícula criada. Complete a assinatura mensal para ativar.'
-                    : 'Matrícula criada com sucesso. Complete o pagamento para ativar.',
+                    ? "Matrícula criada. Complete a assinatura {$cicloNome} para ativar."
+                    : 'Matrícula criada com sucesso. Complete o pagamento para ativar',
                 'data' => [
                     'matricula_id' => $matriculaId,
                     'plano_id' => $planoId,
