@@ -3422,6 +3422,7 @@ class MobileController
     {
         try {
             $tenantId = $request->getAttribute('tenantId');
+            $usuarioId = $request->getAttribute('usuarioId');
             
             if (!$tenantId) {
                 $response->getBody()->write(json_encode([
@@ -3436,6 +3437,30 @@ class MobileController
             // Filtro opcional por modalidade
             $queryParams = $request->getQueryParams();
             $modalidadeId = isset($queryParams['modalidade_id']) ? (int)$queryParams['modalidade_id'] : null;
+
+            // Buscar plano atual do usuário (matrícula ativa)
+            $planoAtualId = null;
+            if ($usuarioId) {
+                $stmtPlanoAtual = $this->db->prepare("
+                    SELECT m.plano_id 
+                    FROM matriculas m
+                    INNER JOIN alunos a ON a.id = m.aluno_id
+                    INNER JOIN status_matricula sm ON sm.id = m.status_id
+                    WHERE a.usuario_id = :usuario_id 
+                    AND m.tenant_id = :tenant_id
+                    AND sm.codigo = 'ativa'
+                    ORDER BY m.created_at DESC
+                    LIMIT 1
+                ");
+                $stmtPlanoAtual->execute([
+                    'usuario_id' => $usuarioId,
+                    'tenant_id' => $tenantId
+                ]);
+                $planoAtual = $stmtPlanoAtual->fetch(\PDO::FETCH_ASSOC);
+                if ($planoAtual) {
+                    $planoAtualId = (int)$planoAtual['plano_id'];
+                }
+            }
 
             // Buscar planos ativos do tenant com valor > 0 (planos pagos)
             $sql = "SELECT p.id, p.nome, p.descricao, p.valor, p.duracao_dias, p.checkins_semanais,
@@ -3463,7 +3488,8 @@ class MobileController
             $planos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
             // Formatar resposta
-            $planosFormatados = array_map(function($plano) {
+            $planosFormatados = array_map(function($plano) use ($planoAtualId) {
+                $isPlanoAtual = $planoAtualId && (int)$plano['id'] === $planoAtualId;
                 return [
                     'id' => (int)$plano['id'],
                     'nome' => $plano['nome'],
@@ -3476,7 +3502,9 @@ class MobileController
                     'modalidade' => [
                         'id' => (int)$plano['modalidade_id'],
                         'nome' => $plano['modalidade_nome']
-                    ]
+                    ],
+                    'is_plano_atual' => $isPlanoAtual,
+                    'label' => $isPlanoAtual ? 'Seu plano atual' : null
                 ];
             }, $planos);
 
@@ -3484,7 +3512,8 @@ class MobileController
                 'success' => true,
                 'data' => [
                     'planos' => $planosFormatados,
-                    'total' => count($planosFormatados)
+                    'total' => count($planosFormatados),
+                    'plano_atual_id' => $planoAtualId
                 ]
             ], JSON_UNESCAPED_UNICODE));
             
