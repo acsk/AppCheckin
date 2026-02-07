@@ -51,29 +51,49 @@ class MercadoPagoWebhookController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
             
-            error_log("[Webhook MP] ✅ Tipo: {$body['type']}, Payment ID: {$body['data']['id']}");
+            $type = $body['type'];
+            $dataId = $body['data']['id'];
+            
+            error_log("[Webhook MP] ✅ Tipo: {$type}, ID: {$dataId}");
             
             // Buscar tenant_id pela matrícula/pagamento (se disponível nos metadados)
             // Por enquanto, usar credenciais globais (ENV) para processar webhook
             $mercadoPagoService = $this->getMercadoPagoService();
             
-            // Processar notificação
-            error_log("[Webhook MP] Processando notificação...");
-            $pagamento = $mercadoPagoService->processarNotificacao($body);
-            error_log("[Webhook MP] Pagamento processado: status=" . ($pagamento['status'] ?? 'N/A'));
+            // Processar notificação baseado no tipo
+            error_log("[Webhook MP] Processando notificação tipo: {$type}...");
             
-            // Atualizar status no banco de dados
-            error_log("[Webhook MP] Atualizando banco de dados...");
-            $this->atualizarPagamento($pagamento);
-            error_log("[Webhook MP] ✅ Banco atualizado com sucesso");
+            if ($type === 'subscription_preapproval' || $type === 'subscription' || $type === 'preapproval') {
+                // Notificação de assinatura (preapproval)
+                $assinatura = $mercadoPagoService->buscarAssinatura($dataId);
+                error_log("[Webhook MP] Assinatura processada: status=" . ($assinatura['status'] ?? 'N/A'));
+                
+                // Atualizar status da assinatura
+                $this->atualizarAssinatura($assinatura);
+                
+                $response->getBody()->write(json_encode([
+                    'success' => true,
+                    'message' => 'Assinatura processada',
+                    'subscription_status' => $assinatura['status'] ?? null,
+                    'preapproval_id' => $assinatura['preapproval_id'] ?? $dataId
+                ]));
+            } else {
+                // Notificação de pagamento normal
+                $pagamento = $mercadoPagoService->processarNotificacao($body);
+                error_log("[Webhook MP] Pagamento processado: status=" . ($pagamento['status'] ?? 'N/A'));
+                
+                // Atualizar status no banco de dados
+                $this->atualizarPagamento($pagamento);
+                
+                $response->getBody()->write(json_encode([
+                    'success' => true,
+                    'message' => 'Notificação processada',
+                    'payment_status' => $pagamento['status'] ?? null,
+                    'matricula_id' => $pagamento['metadata']['matricula_id'] ?? null
+                ]));
+            }
             
-            // Retornar 200 OK para o Mercado Pago
-            $response->getBody()->write(json_encode([
-                'success' => true,
-                'message' => 'Notificação processada',
-                'payment_status' => $pagamento['status'] ?? null,
-                'matricula_id' => $pagamento['metadata']['matricula_id'] ?? null
-            ]));
+            error_log("[Webhook MP] ✅ Processamento concluído com sucesso");
             return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
             
         } catch (\Exception $e) {
@@ -187,6 +207,172 @@ class MercadoPagoWebhookController
             $matricula['plano_id'],
             $matricula['valor_plano']
         ]);
+    }
+    
+    /**
+     * Atualizar status da assinatura no banco
+     * Processa notificações de preapproval (assinaturas recorrentes)
+     */
+    private function atualizarAssinatura(array $assinatura): void
+    {
+        $preapprovalId = $assinatura['preapproval_id'] ?? $assinatura['id'] ?? null;
+        $externalReference = $assinatura['external_reference'] ?? '';
+        $status = $assinatura['status'] ?? 'pending';
+        $statusDetail = $assinatura['status_detail'] ?? $status;
+        
+        error_log("[Webhook MP] 📋 Atualizando assinatura: preapproval_id={$preapprovalId}, status={$status}");
+        
+        // Extrair matrícula do external_reference (formato: MAT-123-timestamp)
+        $matriculaId = null;
+        if (preg_match('/MAT-(\d+)/', $externalReference, $matches)) {
+            $matriculaId = (int)$matches[1];
+        }
+        
+        // Buscar assinatura na tabela assinaturas_mercadopago pelo preapproval_id
+        $stmtBuscar = $this->db->prepare("
+            SELECT id, matricula_id, status as status_atual 
+            FROM assinaturas_mercadopago 
+            WHERE mp_preapproval_id = ?
+            LIMIT 1
+        ");
+        $stmtBuscar->execute([$preapprovalId]);
+        $assinaturaDb = $stmtBuscar->fetch(\PDO::FETCH_ASSOC);
+        
+        if ($assinaturaDb) {
+            $matriculaId = $matriculaId ?? $assinaturaDb['matricula_id'];
+            
+            // Mapear status do MP para status interno
+            $statusMap = [
+                'approved' => 'authorized',
+                'authorized' => 'authorized',
+                'pending' => 'pending',
+                'paused' => 'paused',
+                'cancelled' => 'cancelled'
+            ];
+            $statusInterno = $statusMap[$status] ?? 'pending';
+            
+            // Atualizar status da assinatura
+            $stmtUpdate = $this->db->prepare("
+                UPDATE assinaturas_mercadopago
+                SET status = ?,
+                    updated_at = NOW()
+                WHERE id = ?
+            ");
+            $stmtUpdate->execute([$statusInterno, $assinaturaDb['id']]);
+            
+            error_log("[Webhook MP] ✅ Assinatura #{$assinaturaDb['id']} atualizada: {$assinaturaDb['status_atual']} -> {$statusInterno}");
+        } else {
+            error_log("[Webhook MP] ⚠️ Assinatura não encontrada no banco: preapproval_id={$preapprovalId}");
+        }
+        
+        // Se assinatura foi autorizada, ativar matrícula e registrar pagamento
+        if ($status === 'approved' || $status === 'authorized') {
+            if ($matriculaId) {
+                $this->ativarMatricula($matriculaId);
+                $this->baixarPagamentoPlanoAssinatura($matriculaId, $assinatura);
+            }
+        }
+    }
+    
+    /**
+     * Baixar pagamento na tabela pagamentos_plano para assinatura
+     */
+    private function baixarPagamentoPlanoAssinatura(int $matriculaId, array $assinatura): void
+    {
+        try {
+            error_log("[Webhook MP] Iniciando baixa de pagamento de ASSINATURA para matrícula #{$matriculaId}");
+            
+            // Buscar dados da matrícula
+            $stmtMatricula = $this->db->prepare("
+                SELECT m.id, m.tenant_id, m.aluno_id, m.plano_id, m.plano_ciclo_id, p.valor as valor_plano,
+                       pc.valor as valor_ciclo
+                FROM matriculas m
+                INNER JOIN planos p ON p.id = m.plano_id
+                LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+                WHERE m.id = ?
+            ");
+            $stmtMatricula->execute([$matriculaId]);
+            $matricula = $stmtMatricula->fetch(\PDO::FETCH_ASSOC);
+            
+            if (!$matricula) {
+                error_log("[Webhook MP] ❌ Matrícula #{$matriculaId} não encontrada");
+                return;
+            }
+            
+            // Usar valor da assinatura ou valor do ciclo ou valor do plano
+            $valor = $assinatura['transaction_amount'] ?? $matricula['valor_ciclo'] ?? $matricula['valor_plano'];
+            
+            // Buscar o pagamento pendente mais antigo da matrícula (status 1 = Aguardando)
+            $stmtBuscar = $this->db->prepare("
+                SELECT pp.id, pp.valor
+                FROM pagamentos_plano pp
+                WHERE pp.matricula_id = ?
+                AND pp.status_pagamento_id = 1
+                ORDER BY pp.data_vencimento ASC
+                LIMIT 1
+            ");
+            $stmtBuscar->execute([$matriculaId]);
+            $pagamentoPendente = $stmtBuscar->fetch(\PDO::FETCH_ASSOC);
+            
+            // Para assinaturas, forma de pagamento é sempre cartão de crédito (ID 9)
+            $formaPagamentoId = 9;
+            
+            if ($pagamentoPendente) {
+                // Atualizar o pagamento existente para "pago"
+                error_log("[Webhook MP] Atualizando pagamento existente #{$pagamentoPendente['id']}");
+                
+                $stmtUpdate = $this->db->prepare("
+                    UPDATE pagamentos_plano
+                    SET status_pagamento_id = 2,
+                        data_pagamento = NOW(),
+                        forma_pagamento_id = ?,
+                        tipo_baixa_id = 2,
+                        observacoes = CONCAT(IFNULL(observacoes, ''), ' | Pago via Assinatura MP - ID: " . ($assinatura['preapproval_id'] ?? 'N/A') . "'),
+                        updated_at = NOW()
+                    WHERE id = ?
+                ");
+                
+                $stmtUpdate->execute([$formaPagamentoId, $pagamentoPendente['id']]);
+                
+                if ($stmtUpdate->rowCount() > 0) {
+                    error_log("[Webhook MP] ✅ Pagamento #{$pagamentoPendente['id']} atualizado para PAGO (Assinatura)");
+                }
+            } else {
+                // Criar novo registro de pagamento já como PAGO
+                error_log("[Webhook MP] Nenhum pagamento pendente, criando novo registro...");
+                
+                $stmtInsert = $this->db->prepare("
+                    INSERT INTO pagamentos_plano (
+                        tenant_id, aluno_id, matricula_id, plano_id,
+                        valor, data_vencimento, data_pagamento,
+                        status_pagamento_id, forma_pagamento_id,
+                        observacoes, tipo_baixa_id, created_at, updated_at
+                    ) VALUES (
+                        ?, ?, ?, ?,
+                        ?, CURDATE(), NOW(),
+                        2, ?,
+                        ?, 2, NOW(), NOW()
+                    )
+                ");
+                
+                $stmtInsert->execute([
+                    $matricula['tenant_id'],
+                    $matricula['aluno_id'],
+                    $matriculaId,
+                    $matricula['plano_id'],
+                    $valor,
+                    $formaPagamentoId,
+                    'Pago via Assinatura MP - ID: ' . ($assinatura['preapproval_id'] ?? 'N/A')
+                ]);
+                
+                $novoPagamentoId = $this->db->lastInsertId();
+                error_log("[Webhook MP] ✅ Novo pagamento #{$novoPagamentoId} criado como PAGO (Assinatura)");
+            }
+            
+        } catch (\Exception $e) {
+            error_log("[Webhook MP] ❌ Erro ao baixar pagamento_plano (assinatura): " . $e->getMessage());
+            error_log("[Webhook MP] Stack: " . $e->getTraceAsString());
+        }
     }
     
     /**

@@ -694,7 +694,7 @@ class MercadoPagoService
      * Buscar detalhes de uma assinatura
      * 
      * @param string $preapprovalId ID da assinatura no MP
-     * @return array Dados da assinatura
+     * @return array Dados da assinatura formatados para o webhook
      */
     public function buscarAssinatura(string $preapprovalId): array
     {
@@ -715,7 +715,40 @@ class MercadoPagoService
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
         
-        return json_decode($response, true) ?? [];
+        $data = json_decode($response, true) ?? [];
+        
+        error_log("[MercadoPagoService] Assinatura buscada: " . json_encode($data));
+        
+        // Mapear status da assinatura para status de pagamento
+        // Status de assinatura: pending, authorized, paused, cancelled
+        $statusMap = [
+            'authorized' => 'approved',
+            'pending' => 'pending',
+            'paused' => 'pending',
+            'cancelled' => 'cancelled'
+        ];
+        
+        // Retornar formato compatível com buscarPagamento()
+        return [
+            'id' => $data['id'] ?? $preapprovalId,
+            'type' => 'subscription',
+            'status' => $statusMap[$data['status'] ?? 'pending'] ?? 'pending',
+            'status_detail' => $data['status'] ?? 'pending',
+            'external_reference' => $data['external_reference'] ?? null,
+            'metadata' => $data['metadata'] ?? [],
+            'transaction_amount' => $data['auto_recurring']['transaction_amount'] ?? 0,
+            'date_approved' => $data['date_created'] ?? null,
+            'date_created' => $data['date_created'] ?? null,
+            'payer' => [
+                'email' => $data['payer_email'] ?? null,
+                'id' => $data['payer_id'] ?? null
+            ],
+            'payment_method_id' => 'credit_card', // Assinaturas são sempre cartão
+            'payment_type_id' => 'credit_card',
+            'installments' => 1,
+            'preapproval_id' => $data['id'] ?? $preapprovalId,
+            'raw' => $data
+        ];
     }
     
     /**
