@@ -93,7 +93,7 @@ try {
         INNER JOIN usuarios u ON u.id = a.usuario_id
         WHERE m.status_id = 1 -- ativa
         AND m.proxima_data_vencimento IS NOT NULL
-        AND m.proxima_data_vencimento < :hoje
+        AND m.proxima_data_vencimento <= :hoje
     ";
     
     if ($tenantId) {
