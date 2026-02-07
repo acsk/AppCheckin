@@ -2226,6 +2226,381 @@
                     }
                 ]
             }
+        },
+        "/admin/tipos-ciclo": {
+            "get": {
+                "tags": [
+                    "Ciclos de Planos"
+                ],
+                "summary": "Listar tipos de ciclo disponíveis",
+                "description": "Retorna todos os tipos de ciclo cadastrados (mensal, bimestral, trimestral, quadrimestral, semestral, anual)",
+                "operationId": "listarTiposCiclo",
+                "responses": {
+                    "200": {
+                        "description": "Lista de tipos de ciclo",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/TipoCiclo"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/admin/planos/{plano_id}/ciclos": {
+            "get": {
+                "tags": [
+                    "Ciclos de Planos"
+                ],
+                "summary": "Listar ciclos de um plano",
+                "description": "Retorna todos os ciclos de pagamento configurados para um plano específico",
+                "operationId": "listarCiclosPlano",
+                "parameters": [
+                    {
+                        "name": "plano_id",
+                        "in": "path",
+                        "description": "ID do plano",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Lista de ciclos do plano",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/PlanoCiclo"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    },
+                    "404": {
+                        "description": "Plano não encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "post": {
+                "tags": [
+                    "Ciclos de Planos"
+                ],
+                "summary": "Criar ciclo de plano",
+                "description": "Adiciona um novo ciclo de pagamento a um plano existente",
+                "operationId": "criarCicloPlano",
+                "parameters": [
+                    {
+                        "name": "plano_id",
+                        "in": "path",
+                        "description": "ID do plano",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PlanoCicloInput"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Ciclo criado com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/PlanoCiclo"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Ciclo criado com sucesso"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Dados inválidos"
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    },
+                    "404": {
+                        "description": "Plano não encontrado"
+                    },
+                    "409": {
+                        "description": "Ciclo já existe para este plano"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/admin/planos/{plano_id}/ciclos/gerar": {
+            "post": {
+                "tags": [
+                    "Ciclos de Planos"
+                ],
+                "summary": "Gerar ciclos automáticos",
+                "description": "Gera automaticamente todos os ciclos (mensal, bimestral, trimestral, quadrimestral, semestral, anual) para um plano baseado no preço mensal configurado",
+                "operationId": "gerarCiclosAutomaticos",
+                "parameters": [
+                    {
+                        "name": "plano_id",
+                        "in": "path",
+                        "description": "ID do plano",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Ciclos gerados com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "$ref": "#/components/schemas/PlanoCiclo"
+                                            }
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "6 ciclos gerados com sucesso"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Plano não possui preço mensal configurado"
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    },
+                    "404": {
+                        "description": "Plano não encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
+        },
+        "/admin/planos/{plano_id}/ciclos/{id}": {
+            "put": {
+                "tags": [
+                    "Ciclos de Planos"
+                ],
+                "summary": "Atualizar ciclo de plano",
+                "description": "Atualiza os dados de um ciclo de pagamento existente",
+                "operationId": "atualizarCicloPlano",
+                "parameters": [
+                    {
+                        "name": "plano_id",
+                        "in": "path",
+                        "description": "ID do plano",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "ID do ciclo",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PlanoCicloUpdateInput"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Ciclo atualizado com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/PlanoCiclo"
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Ciclo atualizado com sucesso"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Dados inválidos"
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    },
+                    "404": {
+                        "description": "Ciclo não encontrado"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            },
+            "delete": {
+                "tags": [
+                    "Ciclos de Planos"
+                ],
+                "summary": "Remover ciclo de plano",
+                "description": "Remove um ciclo de pagamento de um plano. Não permite remover se houver assinaturas ativas usando este ciclo.",
+                "operationId": "removerCicloPlano",
+                "parameters": [
+                    {
+                        "name": "plano_id",
+                        "in": "path",
+                        "description": "ID do plano",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "description": "ID do ciclo",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Ciclo removido com sucesso",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "success": {
+                                            "type": "boolean",
+                                            "example": true
+                                        },
+                                        "message": {
+                                            "type": "string",
+                                            "example": "Ciclo removido com sucesso"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Não autorizado"
+                    },
+                    "404": {
+                        "description": "Ciclo não encontrado"
+                    },
+                    "409": {
+                        "description": "Ciclo possui assinaturas ativas"
+                    }
+                },
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ]
+            }
         }
     },
     "components": {
@@ -2235,6 +2610,146 @@
                 "description": "Token JWT obtido no login",
                 "bearerFormat": "JWT",
                 "scheme": "bearer"
+            }
+        },
+        "schemas": {
+            "TipoCiclo": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "description": "ID do tipo de ciclo",
+                        "example": 1
+                    },
+                    "codigo": {
+                        "type": "string",
+                        "description": "Código único do ciclo",
+                        "example": "mensal"
+                    },
+                    "nome": {
+                        "type": "string",
+                        "description": "Nome do ciclo para exibição",
+                        "example": "Mensal"
+                    },
+                    "meses": {
+                        "type": "integer",
+                        "description": "Quantidade de meses do ciclo",
+                        "example": 1
+                    }
+                }
+            },
+            "PlanoCiclo": {
+                "type": "object",
+                "properties": {
+                    "id": {
+                        "type": "integer",
+                        "description": "ID do ciclo do plano",
+                        "example": 1
+                    },
+                    "plano_id": {
+                        "type": "integer",
+                        "description": "ID do plano vinculado",
+                        "example": 5
+                    },
+                    "tipo_ciclo_id": {
+                        "type": "integer",
+                        "description": "ID do tipo de ciclo",
+                        "example": 2
+                    },
+                    "ciclo_codigo": {
+                        "type": "string",
+                        "description": "Código do ciclo (da tabela tipos_ciclo)",
+                        "example": "bimestral"
+                    },
+                    "ciclo_nome": {
+                        "type": "string",
+                        "description": "Nome do ciclo para exibição",
+                        "example": "Bimestral"
+                    },
+                    "ciclo_meses": {
+                        "type": "integer",
+                        "description": "Duração em meses do ciclo",
+                        "example": 2
+                    },
+                    "valor": {
+                        "type": "number",
+                        "format": "decimal",
+                        "description": "Valor total do ciclo",
+                        "example": 240.00
+                    },
+                    "desconto_percentual": {
+                        "type": "number",
+                        "format": "decimal",
+                        "description": "Percentual de desconto aplicado",
+                        "example": 20.00
+                    },
+                    "ativo": {
+                        "type": "boolean",
+                        "description": "Se o ciclo está ativo para venda",
+                        "example": true
+                    },
+                    "created_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "Data de criação"
+                    },
+                    "updated_at": {
+                        "type": "string",
+                        "format": "date-time",
+                        "description": "Data de última atualização"
+                    }
+                }
+            },
+            "PlanoCicloInput": {
+                "type": "object",
+                "required": ["tipo_ciclo_id", "valor"],
+                "properties": {
+                    "tipo_ciclo_id": {
+                        "type": "integer",
+                        "description": "ID do tipo de ciclo (1=mensal, 2=bimestral, etc)",
+                        "example": 2
+                    },
+                    "valor": {
+                        "type": "number",
+                        "format": "decimal",
+                        "description": "Valor total do ciclo",
+                        "example": 240.00
+                    },
+                    "desconto_percentual": {
+                        "type": "number",
+                        "format": "decimal",
+                        "description": "Percentual de desconto (calculado automaticamente se não informado)",
+                        "example": 20.00
+                    },
+                    "ativo": {
+                        "type": "boolean",
+                        "description": "Se o ciclo está ativo para venda",
+                        "default": true,
+                        "example": true
+                    }
+                }
+            },
+            "PlanoCicloUpdateInput": {
+                "type": "object",
+                "properties": {
+                    "valor": {
+                        "type": "number",
+                        "format": "decimal",
+                        "description": "Valor total do ciclo",
+                        "example": 250.00
+                    },
+                    "desconto_percentual": {
+                        "type": "number",
+                        "format": "decimal",
+                        "description": "Percentual de desconto",
+                        "example": 15.00
+                    },
+                    "ativo": {
+                        "type": "boolean",
+                        "description": "Se o ciclo está ativo para venda",
+                        "example": true
+                    }
+                }
             }
         }
     },
@@ -2254,6 +2769,10 @@
         {
             "name": "Autenticação",
             "description": "Autenticação"
+        },
+        {
+            "name": "Ciclos de Planos",
+            "description": "Gestão de ciclos de pagamento dos planos (mensal, bimestral, trimestral, quadrimestral, semestral, anual)"
         }
     ]
 }
