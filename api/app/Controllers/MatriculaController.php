@@ -370,25 +370,29 @@ class MatriculaController
 
         // Criar primeiro pagamento do plano APENAS se NÃO for período teste
         if ($periodoTeste != 1) {
-            $stmtPagamento = $db->prepare("
-                INSERT INTO pagamentos_plano
-                (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento, 
-                 status_pagamento_id, observacoes, criado_por)
-                VALUES (?, ?, ?, ?, ?, ?, 1, 'Primeiro pagamento da matrícula', ?)
-            ");
-            
-            $stmtPagamento->execute([
-                $tenantId,
-                $alunoId,
-                $matriculaId,
-                $planoId,
-                $valor,
-                $dataInicio, // primeiro pagamento vence na data de início
-                $adminId
-            ]);
-            
-            $pagamentoId = (int) $db->lastInsertId();
-            error_log("Pagamento criado ID: " . $pagamentoId);
+            try {
+                $stmtPagamento = $db->prepare("
+                    INSERT INTO pagamentos_plano
+                    (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento, 
+                     status_pagamento_id, observacoes, criado_por, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, 1, 'Primeiro pagamento da matrícula', ?, NOW(), NOW())
+                ");
+                
+                $stmtPagamento->execute([
+                    $tenantId,
+                    $alunoId,
+                    $matriculaId,
+                    $planoId,
+                    $valor,
+                    $dataInicio, // primeiro pagamento vence na data de início
+                    $adminId
+                ]);
+                
+                $pagamentoId = (int) $db->lastInsertId();
+                error_log("Pagamento criado ID: " . $pagamentoId);
+            } catch (\Exception $e) {
+                error_log("ERRO ao criar pagamento_plano: " . $e->getMessage());
+            }
         } else {
             error_log("Período teste: pagamento NÃO criado (ativado automaticamente)");
         }
