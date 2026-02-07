@@ -14,6 +14,21 @@ require_once __DIR__ . '/../../config/database.php';
 try {
     echo "=== Criando ciclos padrão para planos ===\n\n";
     
+    // Buscar tipos de ciclo disponíveis
+    $stmtTipos = $pdo->query("SELECT id, nome, codigo, meses, ordem FROM tipos_ciclo WHERE ativo = 1 ORDER BY ordem ASC");
+    $tiposCiclo = $stmtTipos->fetchAll(PDO::FETCH_ASSOC);
+    
+    if (empty($tiposCiclo)) {
+        echo "❌ Nenhum tipo de ciclo encontrado. Execute a migration primeiro.\n";
+        exit(1);
+    }
+    
+    echo "Tipos de ciclo disponíveis: " . count($tiposCiclo) . "\n";
+    foreach ($tiposCiclo as $tipo) {
+        echo "   - {$tipo['nome']} ({$tipo['meses']} meses)\n";
+    }
+    echo "\n";
+    
     // Buscar planos ativos que não têm ciclos
     $stmt = $pdo->query("
         SELECT p.id, p.tenant_id, p.nome, p.valor, p.duracao_dias
@@ -35,42 +50,18 @@ try {
     
     echo "Encontrados " . count($planos) . " plano(s) sem ciclos.\n\n";
     
-    // Ciclos padrão com descontos
-    $ciclosPadrao = [
-        [
-            'codigo' => 'mensal',
-            'nome' => 'Mensal',
-            'meses' => 1,
-            'desconto' => 0,
-            'ordem' => 1
-        ],
-        [
-            'codigo' => 'trimestral',
-            'nome' => 'Trimestral',
-            'meses' => 3,
-            'desconto' => 10, // 10% de desconto
-            'ordem' => 2
-        ],
-        [
-            'codigo' => 'semestral',
-            'nome' => 'Semestral',
-            'meses' => 6,
-            'desconto' => 15, // 15% de desconto
-            'ordem' => 3
-        ],
-        [
-            'codigo' => 'anual',
-            'nome' => 'Anual',
-            'meses' => 12,
-            'desconto' => 20, // 20% de desconto
-            'ordem' => 4
-        ]
+    // Descontos padrão por código de ciclo
+    $descontosPadrao = [
+        'mensal' => 0,
+        'trimestral' => 10,  // 10% de desconto
+        'semestral' => 15,   // 15% de desconto
+        'anual' => 20        // 20% de desconto
     ];
     
     $stmtInsert = $pdo->prepare("
         INSERT INTO plano_ciclos 
-        (tenant_id, plano_id, nome, codigo, meses, valor, desconto_percentual, permite_recorrencia, ativo, ordem)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, ?)
+        (tenant_id, plano_id, tipo_ciclo_id, meses, valor, desconto_percentual, permite_recorrencia, ativo)
+        VALUES (?, ?, ?, ?, ?, ?, 1, 1)
     ");
     
     $totalCiclos = 0;
@@ -78,25 +69,24 @@ try {
     foreach ($planos as $plano) {
         echo "📋 Plano: {$plano['nome']} (ID: {$plano['id']}) - Valor base: R$ " . number_format($plano['valor'], 2, ',', '.') . "\n";
         
-        foreach ($ciclosPadrao as $ciclo) {
+        foreach ($tiposCiclo as $tipo) {
             // Calcular valor do ciclo com desconto
+            $desconto = $descontosPadrao[$tipo['codigo']] ?? 0;
             $valorMensalBase = $plano['valor'];
-            $valorTotal = $valorMensalBase * $ciclo['meses'];
-            $valorComDesconto = $valorTotal * (1 - ($ciclo['desconto'] / 100));
+            $valorTotal = $valorMensalBase * $tipo['meses'];
+            $valorComDesconto = $valorTotal * (1 - ($desconto / 100));
             
             $stmtInsert->execute([
                 $plano['tenant_id'],
                 $plano['id'],
-                $ciclo['nome'],
-                $ciclo['codigo'],
-                $ciclo['meses'],
+                $tipo['id'],
+                $tipo['meses'],
                 round($valorComDesconto, 2),
-                $ciclo['desconto'],
-                $ciclo['ordem']
+                $desconto
             ]);
             
             $economia = $valorTotal - $valorComDesconto;
-            echo "   ✅ {$ciclo['nome']}: R$ " . number_format($valorComDesconto, 2, ',', '.');
+            echo "   ✅ {$tipo['nome']}: R$ " . number_format($valorComDesconto, 2, ',', '.');
             if ($economia > 0) {
                 echo " (economia de R$ " . number_format($economia, 2, ',', '.') . ")";
             }

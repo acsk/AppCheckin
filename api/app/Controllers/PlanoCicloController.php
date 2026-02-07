@@ -39,11 +39,13 @@ class PlanoCicloController
             
             $stmt = $this->db->prepare("
                 SELECT 
-                    id, nome, codigo, meses, valor, valor_mensal_equivalente,
-                    desconto_percentual, permite_recorrencia, ativo, ordem
-                FROM plano_ciclos
-                WHERE plano_id = ? AND tenant_id = ?
-                ORDER BY ordem ASC
+                    pc.id, tc.nome, tc.codigo, pc.meses, pc.valor, pc.valor_mensal_equivalente,
+                    pc.desconto_percentual, pc.permite_recorrencia, pc.ativo, tc.ordem,
+                    pc.tipo_ciclo_id
+                FROM plano_ciclos pc
+                INNER JOIN tipos_ciclo tc ON tc.id = pc.tipo_ciclo_id
+                WHERE pc.plano_id = ? AND pc.tenant_id = ?
+                ORDER BY tc.ordem ASC
             ");
             $stmt->execute([$planoId, $tenantId]);
             $ciclos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
@@ -51,6 +53,7 @@ class PlanoCicloController
             // Formatar valores
             foreach ($ciclos as &$ciclo) {
                 $ciclo['id'] = (int) $ciclo['id'];
+                $ciclo['tipo_ciclo_id'] = (int) $ciclo['tipo_ciclo_id'];
                 $ciclo['meses'] = (int) $ciclo['meses'];
                 $ciclo['valor'] = (float) $ciclo['valor'];
                 $ciclo['valor_mensal_equivalente'] = (float) $ciclo['valor_mensal_equivalente'];
@@ -90,14 +93,22 @@ class PlanoCicloController
             
             // Validações
             $errors = [];
-            if (empty($data['nome'])) $errors[] = 'Nome é obrigatório';
-            if (empty($data['codigo'])) $errors[] = 'Código é obrigatório';
-            if (empty($data['meses']) || $data['meses'] < 1) $errors[] = 'Meses deve ser maior que 0';
+            if (empty($data['tipo_ciclo_id'])) $errors[] = 'Tipo de ciclo é obrigatório';
             if (!isset($data['valor']) || $data['valor'] < 0) $errors[] = 'Valor é obrigatório';
             
             if (!empty($errors)) {
                 $response->getBody()->write(json_encode(['errors' => $errors]));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+            }
+            
+            // Verificar se tipo_ciclo existe e buscar meses
+            $stmtTipo = $this->db->prepare("SELECT id, meses, nome FROM tipos_ciclo WHERE id = ? AND ativo = 1");
+            $stmtTipo->execute([$data['tipo_ciclo_id']]);
+            $tipoCiclo = $stmtTipo->fetch(\PDO::FETCH_ASSOC);
+            
+            if (!$tipoCiclo) {
+                $response->getBody()->write(json_encode(['error' => 'Tipo de ciclo não encontrado']));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
             }
             
             // Verificar se plano pertence ao tenant
@@ -110,17 +121,18 @@ class PlanoCicloController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
             }
             
-            // Verificar se código já existe para este plano
-            $stmtCheck = $this->db->prepare("SELECT id FROM plano_ciclos WHERE plano_id = ? AND codigo = ?");
-            $stmtCheck->execute([$planoId, $data['codigo']]);
+            // Verificar se tipo_ciclo já existe para este plano
+            $stmtCheck = $this->db->prepare("SELECT id FROM plano_ciclos WHERE plano_id = ? AND tipo_ciclo_id = ?");
+            $stmtCheck->execute([$planoId, $data['tipo_ciclo_id']]);
             if ($stmtCheck->fetch()) {
-                $response->getBody()->write(json_encode(['error' => 'Já existe um ciclo com este código para este plano']));
+                $response->getBody()->write(json_encode(['error' => 'Já existe um ciclo deste tipo para este plano']));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
             
             // Calcular desconto em relação ao valor mensal do plano
+            $meses = (int) $tipoCiclo['meses'];
             $valorMensalBase = $plano['valor'];
-            $valorTotalSemDesconto = $valorMensalBase * $data['meses'];
+            $valorTotalSemDesconto = $valorMensalBase * $meses;
             $descontoPercentual = $valorTotalSemDesconto > 0 
                 ? round((($valorTotalSemDesconto - $data['valor']) / $valorTotalSemDesconto) * 100, 2)
                 : 0;
@@ -128,21 +140,19 @@ class PlanoCicloController
             // Inserir
             $stmt = $this->db->prepare("
                 INSERT INTO plano_ciclos 
-                (tenant_id, plano_id, nome, codigo, meses, valor, desconto_percentual, permite_recorrencia, ativo, ordem)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (tenant_id, plano_id, tipo_ciclo_id, meses, valor, desconto_percentual, permite_recorrencia, ativo)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ");
             
             $stmt->execute([
                 $tenantId,
                 $planoId,
-                $data['nome'],
-                $data['codigo'],
-                (int) $data['meses'],
+                (int) $data['tipo_ciclo_id'],
+                $meses,
                 (float) $data['valor'],
                 $descontoPercentual,
                 isset($data['permite_recorrencia']) ? (int) $data['permite_recorrencia'] : 1,
-                isset($data['ativo']) ? (int) $data['ativo'] : 1,
-                isset($data['ordem']) ? (int) $data['ordem'] : 99
+                isset($data['ativo']) ? (int) $data['ativo'] : 1
             ]);
             
             $cicloId = (int) $this->db->lastInsertId();
@@ -176,9 +186,10 @@ class PlanoCicloController
             
             // Verificar se ciclo existe e pertence ao tenant
             $stmt = $this->db->prepare("
-                SELECT pc.*, p.valor as plano_valor
+                SELECT pc.*, p.valor as plano_valor, tc.meses as tipo_meses
                 FROM plano_ciclos pc
                 INNER JOIN planos p ON p.id = pc.plano_id
+                INNER JOIN tipos_ciclo tc ON tc.id = pc.tipo_ciclo_id
                 WHERE pc.id = ? AND pc.plano_id = ? AND pc.tenant_id = ?
             ");
             $stmt->execute([$cicloId, $planoId, $tenantId]);
@@ -191,35 +202,29 @@ class PlanoCicloController
             
             // Calcular desconto se valor foi alterado
             $valor = isset($data['valor']) ? (float) $data['valor'] : (float) $ciclo['valor'];
-            $meses = isset($data['meses']) ? (int) $data['meses'] : (int) $ciclo['meses'];
+            $meses = (int) $ciclo['tipo_meses']; // Meses vem do tipo_ciclo
             $valorMensalBase = $ciclo['plano_valor'];
             $valorTotalSemDesconto = $valorMensalBase * $meses;
             $descontoPercentual = $valorTotalSemDesconto > 0 
                 ? round((($valorTotalSemDesconto - $valor) / $valorTotalSemDesconto) * 100, 2)
                 : 0;
             
-            // Atualizar
+            // Atualizar (não permite mudar tipo_ciclo, apenas valor e flags)
             $stmt = $this->db->prepare("
                 UPDATE plano_ciclos
-                SET nome = COALESCE(?, nome),
-                    meses = COALESCE(?, meses),
-                    valor = COALESCE(?, valor),
+                SET valor = COALESCE(?, valor),
                     desconto_percentual = ?,
                     permite_recorrencia = COALESCE(?, permite_recorrencia),
                     ativo = COALESCE(?, ativo),
-                    ordem = COALESCE(?, ordem),
                     updated_at = NOW()
                 WHERE id = ?
             ");
             
             $stmt->execute([
-                $data['nome'] ?? null,
-                isset($data['meses']) ? (int) $data['meses'] : null,
                 isset($data['valor']) ? (float) $data['valor'] : null,
                 $descontoPercentual,
                 isset($data['permite_recorrencia']) ? (int) $data['permite_recorrencia'] : null,
                 isset($data['ativo']) ? (int) $data['ativo'] : null,
-                isset($data['ordem']) ? (int) $data['ordem'] : null,
                 $cicloId
             ]);
             
@@ -310,46 +315,52 @@ class PlanoCicloController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
             }
             
-            // Ciclos padrão
-            $ciclosPadrao = [
-                ['codigo' => 'mensal', 'nome' => 'Mensal', 'meses' => 1, 'desconto' => $data['desconto_mensal'] ?? 0, 'ordem' => 1],
-                ['codigo' => 'trimestral', 'nome' => 'Trimestral', 'meses' => 3, 'desconto' => $data['desconto_trimestral'] ?? 10, 'ordem' => 2],
-                ['codigo' => 'semestral', 'nome' => 'Semestral', 'meses' => 6, 'desconto' => $data['desconto_semestral'] ?? 15, 'ordem' => 3],
-                ['codigo' => 'anual', 'nome' => 'Anual', 'meses' => 12, 'desconto' => $data['desconto_anual'] ?? 20, 'ordem' => 4],
+            // Buscar tipos de ciclo disponíveis
+            $stmtTipos = $this->db->prepare("SELECT id, nome, codigo, meses, ordem FROM tipos_ciclo WHERE ativo = 1 ORDER BY ordem ASC");
+            $stmtTipos->execute();
+            $tiposCiclo = $stmtTipos->fetchAll(\PDO::FETCH_ASSOC);
+            
+            // Mapear descontos do request
+            $descontos = [
+                'mensal' => $data['desconto_mensal'] ?? 0,
+                'trimestral' => $data['desconto_trimestral'] ?? 10,
+                'semestral' => $data['desconto_semestral'] ?? 15,
+                'anual' => $data['desconto_anual'] ?? 20,
             ];
             
             $ciclosCriados = [];
             
             $stmtInsert = $this->db->prepare("
                 INSERT INTO plano_ciclos 
-                (tenant_id, plano_id, nome, codigo, meses, valor, desconto_percentual, permite_recorrencia, ativo, ordem)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 1, 1, ?)
+                (tenant_id, plano_id, tipo_ciclo_id, meses, valor, desconto_percentual, permite_recorrencia, ativo)
+                VALUES (?, ?, ?, ?, ?, ?, 1, 1)
                 ON DUPLICATE KEY UPDATE
                 valor = VALUES(valor),
                 desconto_percentual = VALUES(desconto_percentual),
+                meses = VALUES(meses),
                 updated_at = NOW()
             ");
             
-            foreach ($ciclosPadrao as $ciclo) {
-                $valorBase = $plano['valor'] * $ciclo['meses'];
-                $valorComDesconto = round($valorBase * (1 - ($ciclo['desconto'] / 100)), 2);
+            foreach ($tiposCiclo as $tipo) {
+                $desconto = $descontos[$tipo['codigo']] ?? 0;
+                $valorBase = $plano['valor'] * $tipo['meses'];
+                $valorComDesconto = round($valorBase * (1 - ($desconto / 100)), 2);
                 
                 $stmtInsert->execute([
                     $tenantId,
                     $planoId,
-                    $ciclo['nome'],
-                    $ciclo['codigo'],
-                    $ciclo['meses'],
+                    $tipo['id'],
+                    $tipo['meses'],
                     $valorComDesconto,
-                    $ciclo['desconto'],
-                    $ciclo['ordem']
+                    $desconto
                 ]);
                 
                 $ciclosCriados[] = [
-                    'nome' => $ciclo['nome'],
-                    'meses' => $ciclo['meses'],
+                    'tipo_ciclo_id' => (int) $tipo['id'],
+                    'nome' => $tipo['nome'],
+                    'meses' => (int) $tipo['meses'],
                     'valor' => $valorComDesconto,
-                    'desconto' => $ciclo['desconto'],
+                    'desconto' => $desconto,
                     'economia' => $valorBase - $valorComDesconto
                 ];
             }

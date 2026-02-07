@@ -3494,11 +3494,13 @@ class MobileController
             if (!empty($planoIds)) {
                 $placeholders = implode(',', array_fill(0, count($planoIds), '?'));
                 $stmtCiclos = $this->db->prepare("
-                    SELECT id, plano_id, nome, codigo, meses, valor, valor_mensal_equivalente,
-                           desconto_percentual, permite_recorrencia
-                    FROM plano_ciclos
-                    WHERE plano_id IN ({$placeholders}) AND ativo = 1
-                    ORDER BY ordem ASC
+                    SELECT pc.id, pc.plano_id, tc.nome, tc.codigo, pc.meses, pc.valor, 
+                           pc.valor_mensal_equivalente, pc.desconto_percentual, pc.permite_recorrencia,
+                           tc.ordem
+                    FROM plano_ciclos pc
+                    INNER JOIN tipos_ciclo tc ON tc.id = pc.tipo_ciclo_id
+                    WHERE pc.plano_id IN ({$placeholders}) AND pc.ativo = 1
+                    ORDER BY tc.ordem ASC
                 ");
                 $stmtCiclos->execute($planoIds);
                 $ciclos = $stmtCiclos->fetchAll(\PDO::FETCH_ASSOC);

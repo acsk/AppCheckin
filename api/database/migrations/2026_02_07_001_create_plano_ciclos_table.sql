@@ -1,44 +1,69 @@
 -- Migration: Criar tabelas para ciclos de planos e assinaturas recorrentes
 -- 
 -- Esta migration cria:
--- 1. plano_ciclos - Diferentes ciclos de pagamento (mensal, trimestral, semestral, anual)
--- 2. assinaturas_mercadopago - Assinaturas recorrentes do MercadoPago
--- 3. Colunas extras em matriculas para vincular ciclo e tipo de cobrança
+-- 1. tipos_ciclo - Tipos de ciclo (mensal, trimestral, semestral, anual)
+-- 2. plano_ciclos - Diferentes ciclos de pagamento para cada plano
+-- 3. assinaturas_mercadopago - Assinaturas recorrentes do MercadoPago
+-- 4. Colunas extras em matriculas para vincular ciclo e tipo de cobrança
 --
 -- Execução:
 -- mysql -u user -p database < 2026_02_07_001_create_plano_ciclos_table.sql
 
 -- =====================================================================
--- 1. TABELA plano_ciclos
+-- 1. TABELA tipos_ciclo (tabela de referência)
+-- =====================================================================
+
+CREATE TABLE IF NOT EXISTS tipos_ciclo (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    nome VARCHAR(50) NOT NULL COMMENT 'Mensal, Trimestral, Semestral, Anual',
+    codigo VARCHAR(20) NOT NULL UNIQUE COMMENT 'mensal, trimestral, semestral, anual',
+    meses INT NOT NULL DEFAULT 1 COMMENT 'Quantidade de meses do ciclo',
+    ordem INT DEFAULT 1 COMMENT 'Ordem de exibição',
+    ativo TINYINT(1) DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    INDEX idx_tipos_ciclo_codigo (codigo),
+    INDEX idx_tipos_ciclo_ativo (ativo)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+COMMENT='Tipos de ciclo de pagamento (mensal, trimestral, etc)';
+
+-- Inserir tipos padrão
+INSERT INTO tipos_ciclo (nome, codigo, meses, ordem) VALUES 
+    ('Mensal', 'mensal', 1, 1),
+    ('Trimestral', 'trimestral', 3, 2),
+    ('Semestral', 'semestral', 6, 3),
+    ('Anual', 'anual', 12, 4);
+
+-- =====================================================================
+-- 2. TABELA plano_ciclos
 -- =====================================================================
 
 CREATE TABLE IF NOT EXISTS plano_ciclos (
     id INT AUTO_INCREMENT PRIMARY KEY,
     tenant_id INT NOT NULL,
     plano_id INT NOT NULL,
-    nome VARCHAR(50) NOT NULL COMMENT 'Mensal, Trimestral, Semestral, Anual',
-    codigo VARCHAR(20) NOT NULL COMMENT 'mensal, trimestral, semestral, anual',
-    meses INT NOT NULL DEFAULT 1 COMMENT 'Quantidade de meses do ciclo',
+    tipo_ciclo_id INT NOT NULL COMMENT 'FK para tipos_ciclo',
+    meses INT NOT NULL DEFAULT 1 COMMENT 'Copiado de tipos_ciclo para cálculo',
     valor DECIMAL(10,2) NOT NULL COMMENT 'Valor total do ciclo',
     valor_mensal_equivalente DECIMAL(10,2) GENERATED ALWAYS AS (valor / meses) STORED COMMENT 'Valor mensal equivalente calculado',
     desconto_percentual DECIMAL(5,2) DEFAULT 0 COMMENT 'Percentual de desconto em relação ao mensal',
     permite_recorrencia TINYINT(1) DEFAULT 1 COMMENT 'Se permite cobrança recorrente (assinatura)',
     ativo TINYINT(1) DEFAULT 1,
-    ordem INT DEFAULT 1 COMMENT 'Ordem de exibição',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     
     INDEX idx_plano_ciclos_tenant (tenant_id),
     INDEX idx_plano_ciclos_plano (plano_id),
-    INDEX idx_plano_ciclos_codigo (codigo),
+    INDEX idx_plano_ciclos_tipo (tipo_ciclo_id),
     INDEX idx_plano_ciclos_ativo (ativo),
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (plano_id) REFERENCES planos(id) ON DELETE CASCADE,
+    FOREIGN KEY (tipo_ciclo_id) REFERENCES tipos_ciclo(id) ON DELETE RESTRICT,
     
-    UNIQUE KEY uk_plano_ciclo (plano_id, codigo)
+    UNIQUE KEY uk_plano_tipo_ciclo (plano_id, tipo_ciclo_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-COMMENT='Ciclos de pagamento dos planos (mensal, trimestral, etc)';
+COMMENT='Ciclos de pagamento dos planos';
 
 -- =====================================================================
 -- 2. TABELA assinaturas_mercadopago
