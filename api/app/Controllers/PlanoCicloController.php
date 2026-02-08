@@ -565,6 +565,24 @@ class PlanoCicloController
             $stmtTipos->execute();
             $tiposCiclo = $stmtTipos->fetchAll(\PDO::FETCH_ASSOC);
             
+            // Mapeamento de fallback: código -> meses (caso a coluna meses esteja nula)
+            $mesesPorCodigo = [
+                'mensal' => 1,
+                'bimestral' => 2,
+                'trimestral' => 3,
+                'quadrimestral' => 4,
+                'semestral' => 6,
+                'anual' => 12,
+            ];
+            
+            // Garantir que todos os tipos tenham meses preenchido
+            foreach ($tiposCiclo as &$tipo) {
+                if (empty($tipo['meses']) && isset($mesesPorCodigo[$tipo['codigo']])) {
+                    $tipo['meses'] = $mesesPorCodigo[$tipo['codigo']];
+                }
+            }
+            unset($tipo); // Limpar referência
+            
             // Mapear descontos do request
             $descontos = [
                 'mensal' => $data['desconto_mensal'] ?? 0,
@@ -590,14 +608,17 @@ class PlanoCicloController
             
             foreach ($tiposCiclo as $tipo) {
                 $desconto = $descontos[$tipo['codigo']] ?? 0;
-                $valorBase = $plano['valor'] * $tipo['meses'];
+                $meses = (int) ($tipo['meses'] ?? 1); // Fallback para 1 se ainda for null
+                if ($meses < 1) $meses = 1; // Garantir mínimo de 1
+                
+                $valorBase = $plano['valor'] * $meses;
                 $valorComDesconto = round($valorBase * (1 - ($desconto / 100)), 2);
                 
                 $stmtInsert->execute([
                     $tenantId,
                     $planoId,
                     $tipo['id'],
-                    $tipo['meses'],
+                    $meses,
                     $valorComDesconto,
                     $desconto
                 ]);
@@ -605,7 +626,7 @@ class PlanoCicloController
                 $ciclosCriados[] = [
                     'assinatura_frequencia_id' => (int) $tipo['id'],
                     'nome' => $tipo['nome'],
-                    'meses' => (int) $tipo['meses'],
+                    'meses' => $meses,
                     'valor' => $valorComDesconto,
                     'desconto' => $desconto,
                     'economia' => $valorBase - $valorComDesconto
