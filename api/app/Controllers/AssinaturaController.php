@@ -26,7 +26,7 @@ class AssinaturaController
     {
         try {
             $tenantId = $request->getAttribute('tenantId');
-            $usuarioId = $request->getAttribute('usuarioId');
+            $usuarioId = $request->getAttribute('userId');
             $data = $request->getParsedBody();
             
             // Validações
@@ -261,7 +261,7 @@ class AssinaturaController
     {
         try {
             $tenantId = $request->getAttribute('tenantId');
-            $usuarioId = $request->getAttribute('usuarioId');
+            $usuarioId = $request->getAttribute('userId');
             $assinaturaId = (int) $args['id'];
             $data = $request->getParsedBody();
             
@@ -352,8 +352,8 @@ class AssinaturaController
     {
         try {
             $tenantId = $request->getAttribute('tenantId');
-            $usuarioId = $request->getAttribute('usuarioId');
-            $alunoId = $request->getAttribute('alunoId');
+            $usuarioId = $request->getAttribute('userId');
+            $alunoId = $request->getAttribute('aluno_id');
             
             error_log("[minhasAssinaturas] tenant=$tenantId, usuario=$usuarioId, alunoJWT=$alunoId");
             
