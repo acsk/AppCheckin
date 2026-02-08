@@ -175,12 +175,6 @@ export default function MinhasAssinaturasScreen() {
 
   const confirmarCancelamento = useCallback(
     async (assinatura: Assinatura) => {
-      console.log("🚀 INICIANDO confirmarCancelamento:", {
-        id: assinatura.id,
-        plano: assinatura.plano.nome,
-        apiUrl,
-      });
-
       try {
         setCancelando(assinatura.id);
 
@@ -191,12 +185,7 @@ export default function MinhasAssinaturasScreen() {
 
         const url = `${apiUrl}/mobile/assinatura/${assinatura.id}/cancelar`;
 
-        console.log("🗑️ Cancelando assinatura:", {
-          id: assinatura.id,
-          plano: assinatura.plano.nome,
-          mp_preapproval_id: assinatura.mp_preapproval_id,
-        });
-        console.log("📍 URL:", url);
+        console.log("🗑️ Cancelando assinatura ID:", assinatura.id);
 
         const response = await fetch(url, {
           method: "POST",
@@ -270,11 +259,6 @@ export default function MinhasAssinaturasScreen() {
 
   const handleCancelarAssinatura = useCallback(
     (assinatura: Assinatura) => {
-      console.log("🎬 handleCancelarAssinatura chamado:", {
-        id: assinatura.id,
-        plano: assinatura.plano.nome,
-      });
-
       Alert.alert(
         "⚠️ Cancelar Assinatura",
         `Tem certeza que deseja cancelar a assinatura de ${assinatura.plano.nome}?\n\n` +
@@ -286,15 +270,11 @@ export default function MinhasAssinaturasScreen() {
         [
           {
             text: "Não, Manter Assinatura",
-            onPress: () => console.log("✋ Cancelamento abortado pelo usuário"),
             style: "cancel",
           },
           {
             text: "Sim, Cancelar",
-            onPress: () => {
-              console.log("✅ Usuário confirmou cancelamento");
-              confirmarCancelamento(assinatura);
-            },
+            onPress: () => confirmarCancelamento(assinatura),
             style: "destructive",
           },
         ],
@@ -310,25 +290,10 @@ export default function MinhasAssinaturasScreen() {
       ? new Date(item.ultima_cobranca)
       : null;
 
-    // Debug do status
-    console.log("🔍 Verificando status da assinatura:", {
-      id: item.id,
-      statusCodigo: item.status.codigo,
-      statusNome: item.status.nome,
-      plano: item.plano.nome,
-    });
-
     const isAtiva = item.status.codigo === "ativa";
     const isCancelada =
       item.status.codigo === "cancelada" || item.status.codigo === "cancelled";
     const isPendente = item.status.codigo === "pendente";
-
-    console.log("🎯 Estados da assinatura:", {
-      id: item.id,
-      isAtiva,
-      isCancelada,
-      isPendente,
-    });
 
     // Formatar valor
     const valorFormatado = new Intl.NumberFormat("pt-BR", {
@@ -412,14 +377,7 @@ export default function MinhasAssinaturasScreen() {
         {(isAtiva || isPendente) && (
           <TouchableOpacity
             style={styles.botaoCancelar}
-            onPress={() => {
-              console.log("🖱️ Botão cancelar clicado para assinatura:", {
-                id: item.id,
-                plano: item.plano.nome,
-                status: item.status.codigo,
-              });
-              handleCancelarAssinatura(item);
-            }}
+            onPress={() => handleCancelarAssinatura(item)}
             disabled={cancelando === item.id}
             activeOpacity={0.7}
           >
@@ -434,15 +392,6 @@ export default function MinhasAssinaturasScreen() {
               </>
             )}
           </TouchableOpacity>
-        )}
-
-        {/* Debug - Mostrar sempre para teste */}
-        {!isAtiva && !isPendente && (
-          <View style={[styles.botaoCancelar, { opacity: 0.5 }]}>
-            <Text style={styles.botaoCancelarTexto}>
-              Status: {item.status.codigo}
-            </Text>
-          </View>
         )}
       </View>
     );
