@@ -351,49 +351,38 @@ class AssinaturaController
     public function minhasAssinaturas(Request $request, Response $response): Response
     {
         try {
-            $db = require __DIR__ . '/../../config/database.php';
-            
-            // Extrair JWT
             $tenantId = $request->getAttribute('tenantId');
             $usuarioId = $request->getAttribute('usuarioId');
             $alunoId = $request->getAttribute('alunoId');
             
-            // DEBUG: Retornar todos os atributos do request
-            $allAttributes = [];
-            foreach (['tenantId', 'usuarioId', 'alunoId', 'isAdmin', 'papel_id'] as $attr) {
-                $allAttributes[$attr] = $request->getAttribute($attr);
-            }
+            error_log("[minhasAssinaturas] tenant=$tenantId, usuario=$usuarioId, alunoJWT=$alunoId");
             
-            error_log("[AssinaturaController::minhasAssinaturas] Iniciando busca de assinaturas - tenant_id=$tenantId, usuario_id=$usuarioId, aluno_id=$alunoId");
-            error_log("[AssinaturaController::minhasAssinaturas] Atributos do request: " . json_encode($allAttributes));
-            
-            // Se não tem aluno_id no JWT, buscar
+            // Se não tem aluno_id no JWT, buscar pelo usuario_id
             if (!$alunoId) {
-                $stmtAluno = $db->prepare('SELECT id FROM alunos WHERE usuario_id = ? AND ativo = 1 LIMIT 1');
-                $stmtAluno->execute([$usuarioId]);
-                $aluno = $stmtAluno->fetch(\PDO::FETCH_ASSOC);
-                $alunoId = $aluno['id'] ?? null;
-                
-                if (!$aluno) {
-                    error_log("[AssinaturaController::minhasAssinaturas] Aluno não encontrado para usuario_id=$usuarioId");
-                    $response->getBody()->write(json_encode([
-                        'success' => true,
-                        'assinaturas' => [],
-                        'total' => 0
-                    ], JSON_UNESCAPED_UNICODE));
-                    return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
-                }
+                $stmt = $this->db->prepare('SELECT id FROM alunos WHERE usuario_id = ? LIMIT 1');
+                $stmt->execute([$usuarioId]);
+                $alunoId = $stmt->fetchColumn();
+                error_log("[minhasAssinaturas] alunoId buscado do banco: $alunoId");
             }
             
-            error_log("[AssinaturaController::minhasAssinaturas] Aluno encontrado: " . json_encode($aluno ?? ['id' => $alunoId]));
+            if (!$alunoId) {
+                $response->getBody()->write(json_encode([
+                    'success' => true,
+                    'assinaturas' => [],
+                    'total' => 0
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json');
+            }
             
-            // Query para buscar assinaturas com todas as informações relacionadas
-            $sql = "
-                SELECT a.id, a.status_id, a.valor, a.data_inicio, a.proxima_cobranca, 
+            $stmt = $this->db->prepare("
+                SELECT a.id, a.status_id, a.valor, a.data_inicio, a.proxima_cobranca,
                        a.ultima_cobranca, a.gateway_assinatura_id as mp_preapproval_id,
+                       a.status_gateway,
                        s.codigo as status_codigo, s.nome as status_nome, s.cor as status_cor,
-                       f.nome as ciclo_nome, f.meses as ciclo_meses, g.nome as gateway_nome,
-                       p.nome as plano_nome, mo.nome as modalidade_nome
+                       f.nome as ciclo_nome, f.meses as ciclo_meses,
+                       g.nome as gateway_nome,
+                       p.nome as plano_nome,
+                       mo.nome as modalidade_nome
                 FROM assinaturas a
                 LEFT JOIN assinatura_status s ON s.id = a.status_id
                 LEFT JOIN assinatura_frequencias f ON f.id = a.frequencia_id
@@ -402,26 +391,21 @@ class AssinaturaController
                 LEFT JOIN modalidades mo ON mo.id = p.modalidade_id
                 WHERE a.aluno_id = ? AND a.tenant_id = ?
                 ORDER BY a.data_inicio DESC
-            ";
-            
-            error_log("[AssinaturaController::minhasAssinaturas] Executando query com aluno_id=$alunoId, tenant_id=$tenantId");
-            
-            $stmt = $db->prepare($sql);
+            ");
             $stmt->execute([$alunoId, $tenantId]);
-            $assinaturasRaw = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
             
-            error_log("[AssinaturaController::minhasAssinaturas] Assinaturas encontradas: " . count($assinaturasRaw ?? []) . " - Raw data: " . json_encode($assinaturasRaw));
+            error_log("[minhasAssinaturas] aluno=$alunoId, tenant=$tenantId, encontradas=" . count($rows));
             
-            // Formatar resposta
             $assinaturas = [];
-            foreach ($assinaturasRaw as $row) {
+            foreach ($rows as $row) {
                 $assinaturas[] = [
                     'id' => (int)$row['id'],
                     'status' => [
-                        'id' => $row['status_id'],
-                        'codigo' => $row['status_codigo'],
-                        'nome' => $row['status_nome'],
-                        'cor' => $row['status_cor']
+                        'id' => (int)$row['status_id'],
+                        'codigo' => $row['status_codigo'] ?? $row['status_gateway'] ?? 'pendente',
+                        'nome' => $row['status_nome'] ?? $this->getStatusLabel($row['status_gateway'] ?? 'pendente'),
+                        'cor' => $row['status_cor'] ?? '#FFA500'
                     ],
                     'valor' => (float)$row['valor'],
                     'data_inicio' => $row['data_inicio'],
@@ -429,15 +413,15 @@ class AssinaturaController
                     'ultima_cobranca' => $row['ultima_cobranca'],
                     'mp_preapproval_id' => $row['mp_preapproval_id'],
                     'ciclo' => [
-                        'nome' => $row['ciclo_nome'],
-                        'meses' => (int)($row['ciclo_meses'] ?? 0)
+                        'nome' => $row['ciclo_nome'] ?? 'Mensal',
+                        'meses' => (int)($row['ciclo_meses'] ?? 1)
                     ],
                     'gateway' => [
-                        'nome' => $row['gateway_nome']
+                        'nome' => $row['gateway_nome'] ?? 'Mercado Pago'
                     ],
                     'plano' => [
-                        'nome' => $row['plano_nome'],
-                        'modalidade' => $row['modalidade_nome']
+                        'nome' => $row['plano_nome'] ?? '',
+                        'modalidade' => $row['modalidade_nome'] ?? ''
                     ]
                 ];
             }
@@ -445,21 +429,17 @@ class AssinaturaController
             $response->getBody()->write(json_encode([
                 'success' => true,
                 'assinaturas' => $assinaturas,
-                'total' => count($assinaturas),
-                '_debug' => [
-                    'request_attributes' => $allAttributes,
-                    'aluno_id_usado' => $alunoId,
-                    'tenant_id_usado' => $tenantId,
-                    'sql_query' => str_replace('?', '%s', $sql),
-                    'sql_params' => [$alunoId, $tenantId]
-                ]
+                'total' => count($assinaturas)
             ], JSON_UNESCAPED_UNICODE));
             
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
+            return $response->withHeader('Content-Type', 'application/json');
             
         } catch (\Exception $e) {
-            error_log("[AssinaturaController::minhasAssinaturas] Erro: " . $e->getMessage());
-            $response->getBody()->write(json_encode(['error' => 'Erro ao listar assinaturas']));
+            error_log("[minhasAssinaturas] ERRO: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'error' => 'Erro ao listar assinaturas',
+                'detail' => $e->getMessage()
+            ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
     }
