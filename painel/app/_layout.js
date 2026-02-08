@@ -76,9 +76,9 @@ export default function RootLayout() {
           headerShown: false,
         }}
       >
-        <Stack.Screen name="login" />
-        <Stack.Screen name="dashboard" />
         <Stack.Screen name="index" />
+        <Stack.Screen name="login" />
+        <Stack.Screen name="dashboard/index" />
       </Stack>
     </>
   );

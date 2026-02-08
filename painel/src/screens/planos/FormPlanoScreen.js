@@ -233,8 +233,14 @@ export default function FormPlanoScreen() {
 
   const handleEditarCiclo = (ciclo) => {
     setEditingCicloId(ciclo.id);
+    // Encontrar o tipo de ciclo correspondente pelo código ou pelo id
+    const tipoEncontrado = tiposCiclo.find(t => 
+      t.codigo === ciclo.codigo || 
+      t.id === ciclo.tipo_ciclo_id || 
+      t.id === ciclo.frequencia_id
+    );
     setCicloForm({
-      tipo_ciclo_id: ciclo.tipo_ciclo_id?.toString() || '',
+      tipo_ciclo_id: tipoEncontrado?.id?.toString() || ciclo.tipo_ciclo_id?.toString() || ciclo.frequencia_id?.toString() || '',
       valor: ciclo.valor ? parseFloat(ciclo.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '',
       permite_recorrencia: ciclo.permite_recorrencia === 1 || ciclo.permite_recorrencia === true,
       ativo: ciclo.ativo === 1 || ciclo.ativo === true,
@@ -552,6 +558,7 @@ export default function FormPlanoScreen() {
                       <Text style={styles.label}>Tipo de Ciclo <Text style={styles.required}>*</Text></Text>
                       <View style={styles.pickerContainer}>
                         <Picker
+                          key={`picker-ciclo-${tiposCiclo.length}`}
                           selectedValue={cicloForm.tipo_ciclo_id}
                           onValueChange={(value) => setCicloForm(prev => ({ ...prev, tipo_ciclo_id: value }))}
                           enabled={!savingCiclo && !editingCicloId}
