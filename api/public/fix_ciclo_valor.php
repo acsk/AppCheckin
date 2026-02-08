@@ -9,7 +9,7 @@ try {
     $stmt->execute();
     
     // Verificar
-    $stmt = $pdo->prepare("SELECT id, plano_id, tipo_ciclo_id, valor, ativo FROM plano_ciclos WHERE id = 11");
+    $stmt = $pdo->prepare("SELECT id, plano_id, assinatura_frequencia_id, valor, ativo FROM plano_ciclos WHERE id = 11");
     $stmt->execute();
     $ciclo = $stmt->fetch(PDO::FETCH_ASSOC);
     

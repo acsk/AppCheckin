@@ -3494,13 +3494,13 @@ class MobileController
             if (!empty($planoIds)) {
                 $placeholders = implode(',', array_fill(0, count($planoIds), '?'));
                 $stmtCiclos = $this->db->prepare("
-                    SELECT pc.id, pc.plano_id, tc.nome, tc.codigo, pc.meses, pc.valor, 
+                    SELECT pc.id, pc.plano_id, af.nome, af.codigo, pc.meses, pc.valor, 
                            pc.valor_mensal_equivalente, pc.desconto_percentual, pc.permite_recorrencia,
-                           tc.ordem
+                           af.ordem
                     FROM plano_ciclos pc
-                    INNER JOIN tipos_ciclo tc ON tc.id = pc.tipo_ciclo_id
+                    INNER JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
                     WHERE pc.plano_id IN ({$placeholders}) AND pc.ativo = 1
-                    ORDER BY tc.ordem ASC
+                    ORDER BY af.ordem ASC
                 ");
                 $stmtCiclos->execute($planoIds);
                 $ciclos = $stmtCiclos->fetchAll(\PDO::FETCH_ASSOC);
@@ -3762,9 +3762,9 @@ class MobileController
             
             if ($planoCicloId) {
                 $stmtCiclo = $this->db->prepare("
-                    SELECT pc.*, tc.nome as ciclo_nome, tc.codigo as ciclo_codigo
+                    SELECT pc.*, af.nome as ciclo_nome, af.codigo as ciclo_codigo
                     FROM plano_ciclos pc
-                    INNER JOIN tipos_ciclo tc ON tc.id = pc.tipo_ciclo_id
+                    INNER JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
                     WHERE pc.id = ? AND pc.plano_id = ? AND pc.tenant_id = ? AND pc.ativo = 1
                 ");
                 $stmtCiclo->execute([$planoCicloId, $planoId, $tenantId]);

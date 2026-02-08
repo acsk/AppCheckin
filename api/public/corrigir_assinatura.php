@@ -29,12 +29,12 @@ try {
     $stmt = $db->prepare("
         SELECT m.*, 
                p.nome as plano_nome, p.valor as plano_valor,
-               pc.valor as ciclo_valor, tc.nome as ciclo_nome, tc.meses,
+               pc.valor as ciclo_valor, af.nome as ciclo_nome, af.meses,
                a.nome as aluno_nome, a.email as aluno_email
         FROM matriculas m
         INNER JOIN planos p ON p.id = m.plano_id
         LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
-        LEFT JOIN tipos_ciclo tc ON tc.id = pc.tipo_ciclo_id
+        LEFT JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
         INNER JOIN alunos a ON a.id = m.aluno_id
         WHERE m.id = ?
     ");

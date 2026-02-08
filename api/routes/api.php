@@ -970,8 +970,8 @@ return function ($app) {
         $group->put('/planos/{id}', [PlanoController::class, 'update']);
         $group->delete('/planos/{id}', [PlanoController::class, 'delete']);
         
-        // Ciclos de Planos (mensal, trimestral, semestral, anual)
-        $group->get('/tipos-ciclo', [PlanoCicloController::class, 'listarTiposCiclo']);
+        // Frequências de Assinatura e Ciclos de Planos
+        $group->get('/assinatura-frequencias', [PlanoCicloController::class, 'listarFrequencias']);
         $group->get('/planos/{plano_id}/ciclos', [PlanoCicloController::class, 'listar']);
         $group->post('/planos/{plano_id}/ciclos', [PlanoCicloController::class, 'criar']);
         $group->post('/planos/{plano_id}/ciclos/gerar', [PlanoCicloController::class, 'gerarCiclosAutomaticos']);

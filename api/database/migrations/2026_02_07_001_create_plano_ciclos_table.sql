@@ -1,7 +1,7 @@
 -- Migration: Criar tabelas para ciclos de planos e assinaturas recorrentes
 -- 
 -- Esta migration cria:
--- 1. tipos_ciclo - Tipos de ciclo (mensal, trimestral, semestral, anual)
+-- 1. assinatura_frequencias - Frequências de assinatura (mensal, trimestral, semestral, anual)
 -- 2. plano_ciclos - Diferentes ciclos de pagamento para cada plano
 -- 3. assinaturas_mercadopago - Assinaturas recorrentes do MercadoPago
 -- 4. Colunas extras em matriculas para vincular ciclo e tipo de cobrança
@@ -10,10 +10,10 @@
 -- mysql -u user -p database < 2026_02_07_001_create_plano_ciclos_table.sql
 
 -- =====================================================================
--- 1. TABELA tipos_ciclo (tabela de referência)
+-- 1. TABELA assinatura_frequencias (tabela de referência)
 -- =====================================================================
 
-CREATE TABLE IF NOT EXISTS tipos_ciclo (
+CREATE TABLE IF NOT EXISTS assinatura_frequencias (
     id INT AUTO_INCREMENT PRIMARY KEY,
     nome VARCHAR(50) NOT NULL COMMENT 'Mensal, Trimestral, Semestral, Anual',
     codigo VARCHAR(20) NOT NULL UNIQUE COMMENT 'mensal, trimestral, semestral, anual',
@@ -22,13 +22,13 @@ CREATE TABLE IF NOT EXISTS tipos_ciclo (
     ativo TINYINT(1) DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
-    INDEX idx_tipos_ciclo_codigo (codigo),
-    INDEX idx_tipos_ciclo_ativo (ativo)
+    INDEX idx_assinatura_frequencias_codigo (codigo),
+    INDEX idx_assinatura_frequencias_ativo (ativo)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-COMMENT='Tipos de ciclo de pagamento (mensal, trimestral, etc)';
+COMMENT='Frequências de assinatura (mensal, trimestral, semestral, anual)';
 
--- Inserir tipos padrão
-INSERT INTO tipos_ciclo (nome, codigo, meses, ordem) VALUES 
+-- Inserir frequências padrão
+INSERT INTO assinatura_frequencias (nome, codigo, meses, ordem) VALUES 
     ('Mensal', 'mensal', 1, 1),
     ('Bimestral', 'bimestral', 2, 2),
     ('Trimestral', 'trimestral', 3, 3),
@@ -44,8 +44,8 @@ CREATE TABLE IF NOT EXISTS plano_ciclos (
     id INT AUTO_INCREMENT PRIMARY KEY,
     tenant_id INT NOT NULL,
     plano_id INT NOT NULL,
-    tipo_ciclo_id INT NOT NULL COMMENT 'FK para tipos_ciclo',
-    meses INT NOT NULL DEFAULT 1 COMMENT 'Copiado de tipos_ciclo para cálculo',
+    assinatura_frequencia_id INT NOT NULL COMMENT 'FK para assinatura_frequencias',
+    meses INT NOT NULL DEFAULT 1 COMMENT 'Copiado de assinatura_frequencias para cálculo',
     valor DECIMAL(10,2) NOT NULL COMMENT 'Valor total do ciclo',
     valor_mensal_equivalente DECIMAL(10,2) GENERATED ALWAYS AS (valor / meses) STORED COMMENT 'Valor mensal equivalente calculado',
     desconto_percentual DECIMAL(5,2) DEFAULT 0 COMMENT 'Percentual de desconto em relação ao mensal',
@@ -56,14 +56,14 @@ CREATE TABLE IF NOT EXISTS plano_ciclos (
     
     INDEX idx_plano_ciclos_tenant (tenant_id),
     INDEX idx_plano_ciclos_plano (plano_id),
-    INDEX idx_plano_ciclos_tipo (tipo_ciclo_id),
+    INDEX idx_plano_ciclos_frequencia (assinatura_frequencia_id),
     INDEX idx_plano_ciclos_ativo (ativo),
     
     FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
     FOREIGN KEY (plano_id) REFERENCES planos(id) ON DELETE CASCADE,
-    FOREIGN KEY (tipo_ciclo_id) REFERENCES tipos_ciclo(id) ON DELETE RESTRICT,
+    FOREIGN KEY (assinatura_frequencia_id) REFERENCES assinatura_frequencias(id) ON DELETE RESTRICT,
     
-    UNIQUE KEY uk_plano_tipo_ciclo (plano_id, tipo_ciclo_id)
+    UNIQUE KEY uk_plano_frequencia (plano_id, assinatura_frequencia_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 COMMENT='Ciclos de pagamento dos planos';
 

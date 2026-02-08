@@ -19,7 +19,7 @@ Documentação dos endpoints para gerenciamento de ciclos de planos (mensal, bim
 ### Estrutura de Dados
 
 ```
-tipos_ciclo (tabela de referência - fixa)
+assinatura_frequencias (tabela de referência - fixa)
 ├── Mensal (1 mês)
 ├── Bimestral (2 meses)
 ├── Trimestral (3 meses)
@@ -29,7 +29,7 @@ tipos_ciclo (tabela de referência - fixa)
 
 plano_ciclos (por tenant/plano)
 ├── plano_id → FK para planos
-├── tipo_ciclo_id → FK para tipos_ciclo
+├── assinatura_frequencia_id → FK para assinatura_frequencias
 ├── valor → Valor total do ciclo
 ├── valor_mensal_equivalente → Calculado automaticamente (valor/meses)
 ├── desconto_percentual → Desconto em relação ao mensal
@@ -40,13 +40,13 @@ plano_ciclos (por tenant/plano)
 
 ## Endpoints Admin (Painel)
 
-### 1. Listar Tipos de Ciclo Disponíveis
+### 1. Listar Frequências de Assinatura Disponíveis
 
 ```
-GET /admin/tipos-ciclo
+GET /admin/assinatura-frequencias
 ```
 
-**Descrição:** Retorna todos os tipos de ciclo disponíveis no sistema.
+**Descrição:** Retorna todas as frequências de assinatura disponíveis no sistema.
 
 **Response 200:**
 ```json
@@ -84,7 +84,7 @@ GET /admin/planos/{plano_id}/ciclos
   "ciclos": [
     {
       "id": 1,
-      "tipo_ciclo_id": 1,
+      "assinatura_frequencia_id": 1,
       "nome": "Mensal",
       "codigo": "mensal",
       "meses": 1,
@@ -98,7 +98,7 @@ GET /admin/planos/{plano_id}/ciclos
     },
     {
       "id": 2,
-      "tipo_ciclo_id": 2,
+      "assinatura_frequencia_id": 2,
       "nome": "Bimestral",
       "codigo": "bimestral",
       "meses": 2,
@@ -126,7 +126,7 @@ POST /admin/planos/{plano_id}/ciclos
 **Request Body:**
 ```json
 {
-  "tipo_ciclo_id": 2,
+  "assinatura_frequencia_id": 2,
   "valor": 240.00,
   "permite_recorrencia": true,
   "ativo": true
@@ -135,7 +135,7 @@ POST /admin/planos/{plano_id}/ciclos
 
 | Campo | Tipo | Obrigatório | Descrição |
 |-------|------|-------------|-----------|
-| tipo_ciclo_id | int | ✅ | ID do tipo de ciclo (ver GET /admin/tipos-ciclo) |
+| assinatura_frequencia_id | int | ✅ | ID da frequência de assinatura (ver GET /admin/assinatura-frequencias) |
 | valor | decimal | ✅ | Valor total do ciclo |
 | permite_recorrencia | bool | ❌ | Se aceita assinatura (default: true) |
 | ativo | bool | ❌ | Se está ativo (default: true) |
@@ -173,7 +173,7 @@ PUT /admin/planos/{plano_id}/ciclos/{ciclo_id}
 }
 ```
 
-> ⚠️ **Nota:** Não é possível alterar o `tipo_ciclo_id`. Para mudar o tipo, exclua e crie um novo.
+> ⚠️ **Nota:** Não é possível alterar o `assinatura_frequencia_id`. Para mudar a frequência, exclua e crie um novo.
 
 **Response 200:**
 ```json
@@ -235,7 +235,7 @@ POST /admin/planos/{plano_id}/ciclos/gerar
   "message": "Ciclos gerados com sucesso",
   "ciclos": [
     {
-      "tipo_ciclo_id": 1,
+      "assinatura_frequencia_id": 1,
       "nome": "Mensal",
       "meses": 1,
       "valor": 150.00,
@@ -243,7 +243,7 @@ POST /admin/planos/{plano_id}/ciclos/gerar
       "economia": 0
     },
     {
-      "tipo_ciclo_id": 2,
+      "assinatura_frequencia_id": 2,
       "nome": "Bimestral",
       "meses": 2,
       "valor": 270.00,
@@ -451,9 +451,9 @@ POST /mobile/assinatura/{assinatura_id}/cancelar
 
 ## Objetos de Retorno
 
-### TipoCiclo
+### AssinaturaFrequencia
 ```typescript
-interface TipoCiclo {
+interface AssinaturaFrequencia {
   id: number;
   nome: string;        // "Mensal", "Bimestral", etc
   codigo: string;      // "mensal", "bimestral", etc
@@ -467,9 +467,9 @@ interface TipoCiclo {
 ```typescript
 interface PlanoCiclo {
   id: number;
-  tipo_ciclo_id: number;
-  nome: string;                    // Vem de tipos_ciclo
-  codigo: string;                  // Vem de tipos_ciclo
+  assinatura_frequencia_id: number;
+  nome: string;                    // Vem de assinatura_frequencias
+  codigo: string;                  // Vem de assinatura_frequencias
   meses: number;
   valor: number;                   // Valor total do ciclo
   valor_formatado: string;         // "R$ 240,00"
@@ -505,8 +505,8 @@ interface Assinatura {
 ### Caso 1: Admin cadastra ciclos para um plano
 
 ```
-1. GET /admin/tipos-ciclo
-   → Obter lista de tipos disponíveis
+1. GET /admin/assinatura-frequencias
+   → Obter lista de frequências disponíveis
 
 2. POST /admin/planos/{id}/ciclos
    → Criar ciclo mensal com valor R$ 150

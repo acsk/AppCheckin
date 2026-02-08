@@ -17,7 +17,7 @@ try {
     $planos = $stmtPlanos->fetchAll(PDO::FETCH_ASSOC);
     
     // Buscar tipos de ciclo
-    $stmtTipos = $pdo->query("SELECT id, codigo, meses FROM tipos_ciclo WHERE ativo = 1 ORDER BY ordem");
+    $stmtTipos = $pdo->query("SELECT id, codigo, meses FROM assinatura_frequencias WHERE ativo = 1 ORDER BY ordem");
     $tiposCiclo = $stmtTipos->fetchAll(PDO::FETCH_ASSOC);
     
     $ciclosCriados = 0;
@@ -31,7 +31,7 @@ try {
             // Verificar se já existe este ciclo para este plano
             $stmtCheck = $pdo->prepare("
                 SELECT id FROM plano_ciclos 
-                WHERE plano_id = ? AND tipo_ciclo_id = ?
+                WHERE plano_id = ? AND assinatura_frequencia_id = ?
             ");
             $stmtCheck->execute([$plano['id'], $tipo['id']]);
             
@@ -64,7 +64,7 @@ try {
             try {
                 $stmtInsert = $pdo->prepare("
                     INSERT INTO plano_ciclos 
-                    (tenant_id, plano_id, tipo_ciclo_id, meses, valor, desconto_percentual, permite_recorrencia, ativo)
+                    (tenant_id, plano_id, assinatura_frequencia_id, meses, valor, desconto_percentual, permite_recorrencia, ativo)
                     VALUES (?, ?, ?, ?, ?, ?, ?, 1)
                 ");
                 $stmtInsert->execute([
@@ -90,7 +90,7 @@ try {
         'success' => true,
         'message' => "Ciclos gerados com sucesso",
         'total_planos' => count($planos),
-        'tipos_ciclo' => count($tiposCiclo),
+        'assinatura_frequencias' => count($tiposCiclo),
         'ciclos_criados' => $ciclosCriados,
         'detalhes' => $detalhes,
         'erros' => $erros

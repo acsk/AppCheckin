@@ -58,9 +58,9 @@ try {
     
     // Buscar ciclo
     $stmtCiclo = $pdo->prepare("
-        SELECT pc.*, tc.nome as ciclo_nome, tc.codigo as ciclo_codigo
+        SELECT pc.*, af.nome as ciclo_nome, af.codigo as ciclo_codigo
         FROM plano_ciclos pc
-        INNER JOIN tipos_ciclo tc ON tc.id = pc.tipo_ciclo_id
+        INNER JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
         WHERE pc.id = ? AND pc.plano_id = ? AND pc.tenant_id = ? AND pc.ativo = 1
     ");
     $stmtCiclo->execute([$planoCicloId, $planoId, $tenantId]);

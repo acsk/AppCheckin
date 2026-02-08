@@ -22,13 +22,13 @@ class PlanoCicloController
     }
     
     /**
-     * Listar tipos de ciclo disponíveis
-     * GET /admin/tipos-ciclo
+     * Listar frequências de assinatura disponíveis
+     * GET /admin/assinatura-frequencias
      */
     #[OA\Get(
-        path: "/admin/tipos-ciclo",
-        summary: "Listar tipos de ciclo",
-        description: "Retorna todos os tipos de ciclo disponíveis (mensal, bimestral, trimestral, etc)",
+        path: "/admin/assinatura-frequencias",
+        summary: "Listar frequências de assinatura",
+        description: "Retorna todas as frequências de assinatura disponíveis (mensal, bimestral, trimestral, etc)",
         tags: ["Ciclos de Planos"],
         security: [["bearerAuth" => []]],
         responses: [
@@ -56,12 +56,12 @@ class PlanoCicloController
             )
         ]
     )]
-    public function listarTiposCiclo(Request $request, Response $response): Response
+    public function listarFrequencias(Request $request, Response $response): Response
     {
         try {
             $stmt = $this->db->query("
                 SELECT id, nome, codigo, meses, ordem 
-                FROM tipos_ciclo 
+                FROM assinatura_frequencias 
                 WHERE ativo = 1 
                 ORDER BY ordem ASC
             ");
@@ -81,7 +81,7 @@ class PlanoCicloController
             return $response->withHeader('Content-Type', 'application/json');
             
         } catch (\Exception $e) {
-            error_log("Erro ao listar tipos de ciclo: " . $e->getMessage());
+            error_log("Erro ao listar frequências de assinatura: " . $e->getMessage());
             $response->getBody()->write(json_encode(['error' => 'Erro interno']));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
@@ -134,13 +134,13 @@ class PlanoCicloController
             
             $stmt = $this->db->prepare("
                 SELECT 
-                    pc.id, tc.nome, tc.codigo, pc.meses, pc.valor, pc.valor_mensal_equivalente,
-                    pc.desconto_percentual, pc.permite_recorrencia, pc.ativo, tc.ordem,
-                    pc.tipo_ciclo_id
+                    pc.id, af.nome, af.codigo, pc.meses, pc.valor, pc.valor_mensal_equivalente,
+                    pc.desconto_percentual, pc.permite_recorrencia, pc.ativo, af.ordem,
+                    pc.assinatura_frequencia_id
                 FROM plano_ciclos pc
-                INNER JOIN tipos_ciclo tc ON tc.id = pc.tipo_ciclo_id
+                INNER JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
                 WHERE pc.plano_id = ? AND pc.tenant_id = ?
-                ORDER BY tc.ordem ASC
+                ORDER BY af.ordem ASC
             ");
             $stmt->execute([$planoId, $tenantId]);
             $ciclos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
@@ -167,7 +167,7 @@ class PlanoCicloController
             // Formatar valores e calcular economia real
             foreach ($ciclos as &$ciclo) {
                 $ciclo['id'] = (int) $ciclo['id'];
-                $ciclo['tipo_ciclo_id'] = (int) $ciclo['tipo_ciclo_id'];
+                $ciclo['assinatura_frequencia_id'] = (int) $ciclo['assinatura_frequencia_id'];
                 $ciclo['meses'] = (int) $ciclo['meses'];
                 $ciclo['valor'] = (float) $ciclo['valor'];
                 $ciclo['valor_mensal_equivalente'] = (float) $ciclo['valor_mensal_equivalente'];
@@ -222,9 +222,9 @@ class PlanoCicloController
         requestBody: new OA\RequestBody(
             required: true,
             content: new OA\JsonContent(
-                required: ["tipo_ciclo_id", "valor"],
+                required: ["assinatura_frequencia_id", "valor"],
                 properties: [
-                    new OA\Property(property: "tipo_ciclo_id", type: "integer", example: 2, description: "ID do tipo de ciclo"),
+                    new OA\Property(property: "assinatura_frequencia_id", type: "integer", example: 2, description: "ID da frequência de assinatura"),
                     new OA\Property(property: "valor", type: "number", format: "float", example: 240.00, description: "Valor total do ciclo"),
                     new OA\Property(property: "permite_recorrencia", type: "boolean", example: true, description: "Se permite assinatura"),
                     new OA\Property(property: "ativo", type: "boolean", example: true)
@@ -257,7 +257,7 @@ class PlanoCicloController
             
             // Validações
             $errors = [];
-            if (empty($data['tipo_ciclo_id'])) $errors[] = 'Tipo de ciclo é obrigatório';
+            if (empty($data['assinatura_frequencia_id'])) $errors[] = 'Frequência de assinatura é obrigatória';
             if (!isset($data['valor']) || $data['valor'] < 0) $errors[] = 'Valor é obrigatório';
             
             if (!empty($errors)) {
@@ -265,13 +265,13 @@ class PlanoCicloController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
             }
             
-            // Verificar se tipo_ciclo existe e buscar meses
-            $stmtTipo = $this->db->prepare("SELECT id, meses, nome FROM tipos_ciclo WHERE id = ? AND ativo = 1");
-            $stmtTipo->execute([$data['tipo_ciclo_id']]);
+            // Verificar se assinatura_frequencia existe e buscar meses
+            $stmtTipo = $this->db->prepare("SELECT id, meses, nome FROM assinatura_frequencias WHERE id = ? AND ativo = 1");
+            $stmtTipo->execute([$data['assinatura_frequencia_id']]);
             $tipoCiclo = $stmtTipo->fetch(\PDO::FETCH_ASSOC);
             
             if (!$tipoCiclo) {
-                $response->getBody()->write(json_encode(['error' => 'Tipo de ciclo não encontrado']));
+                $response->getBody()->write(json_encode(['error' => 'Frequência de assinatura não encontrada']));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
             }
             
@@ -285,9 +285,9 @@ class PlanoCicloController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
             }
             
-            // Verificar se tipo_ciclo já existe para este plano
-            $stmtCheck = $this->db->prepare("SELECT id FROM plano_ciclos WHERE plano_id = ? AND tipo_ciclo_id = ?");
-            $stmtCheck->execute([$planoId, $data['tipo_ciclo_id']]);
+            // Verificar se frequência já existe para este plano
+            $stmtCheck = $this->db->prepare("SELECT id FROM plano_ciclos WHERE plano_id = ? AND assinatura_frequencia_id = ?");
+            $stmtCheck->execute([$planoId, $data['assinatura_frequencia_id']]);
             if ($stmtCheck->fetch()) {
                 $response->getBody()->write(json_encode(['error' => 'Já existe um ciclo deste tipo para este plano']));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
@@ -304,14 +304,14 @@ class PlanoCicloController
             // Inserir
             $stmt = $this->db->prepare("
                 INSERT INTO plano_ciclos 
-                (tenant_id, plano_id, tipo_ciclo_id, meses, valor, desconto_percentual, permite_recorrencia, ativo)
+                (tenant_id, plano_id, assinatura_frequencia_id, meses, valor, desconto_percentual, permite_recorrencia, ativo)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ");
             
             $stmt->execute([
                 $tenantId,
                 $planoId,
-                (int) $data['tipo_ciclo_id'],
+                (int) $data['assinatura_frequencia_id'],
                 $meses,
                 (float) $data['valor'],
                 $descontoPercentual,
@@ -377,10 +377,10 @@ class PlanoCicloController
             
             // Verificar se ciclo existe e pertence ao tenant
             $stmt = $this->db->prepare("
-                SELECT pc.*, p.valor as plano_valor, tc.meses as tipo_meses
+                SELECT pc.*, p.valor as plano_valor, af.meses as tipo_meses
                 FROM plano_ciclos pc
                 INNER JOIN planos p ON p.id = pc.plano_id
-                INNER JOIN tipos_ciclo tc ON tc.id = pc.tipo_ciclo_id
+                INNER JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
                 WHERE pc.id = ? AND pc.plano_id = ? AND pc.tenant_id = ?
             ");
             $stmt->execute([$cicloId, $planoId, $tenantId]);
@@ -395,14 +395,14 @@ class PlanoCicloController
             
             // Calcular desconto se valor foi alterado
             $valor = isset($data['valor']) ? (float) $data['valor'] : (float) $ciclo['valor'];
-            $meses = (int) ($ciclo['tipo_meses'] ?? 1); // Meses vem do tipo_ciclo, default 1
+            $meses = (int) ($ciclo['tipo_meses'] ?? 1); // Meses vem da assinatura_frequencia, default 1
             $valorMensalBase = (float) ($ciclo['plano_valor'] ?? 0);
             $valorTotalSemDesconto = $valorMensalBase * $meses;
             $descontoPercentual = $valorTotalSemDesconto > 0 
                 ? round((($valorTotalSemDesconto - $valor) / $valorTotalSemDesconto) * 100, 2)
                 : 0;
             
-            // Atualizar (não permite mudar tipo_ciclo, apenas valor e flags)
+            // Atualizar (não permite mudar assinatura_frequencia, apenas valor e flags)
             $stmt = $this->db->prepare("
                 UPDATE plano_ciclos
                 SET valor = COALESCE(?, valor),
@@ -561,7 +561,7 @@ class PlanoCicloController
             }
             
             // Buscar tipos de ciclo disponíveis
-            $stmtTipos = $this->db->prepare("SELECT id, nome, codigo, meses, ordem FROM tipos_ciclo WHERE ativo = 1 ORDER BY ordem ASC");
+            $stmtTipos = $this->db->prepare("SELECT id, nome, codigo, meses, ordem FROM assinatura_frequencias WHERE ativo = 1 ORDER BY ordem ASC");
             $stmtTipos->execute();
             $tiposCiclo = $stmtTipos->fetchAll(\PDO::FETCH_ASSOC);
             
@@ -579,7 +579,7 @@ class PlanoCicloController
             
             $stmtInsert = $this->db->prepare("
                 INSERT INTO plano_ciclos 
-                (tenant_id, plano_id, tipo_ciclo_id, meses, valor, desconto_percentual, permite_recorrencia, ativo)
+                (tenant_id, plano_id, assinatura_frequencia_id, meses, valor, desconto_percentual, permite_recorrencia, ativo)
                 VALUES (?, ?, ?, ?, ?, ?, 1, 1)
                 ON DUPLICATE KEY UPDATE
                 valor = VALUES(valor),
@@ -603,7 +603,7 @@ class PlanoCicloController
                 ]);
                 
                 $ciclosCriados[] = [
-                    'tipo_ciclo_id' => (int) $tipo['id'],
+                    'assinatura_frequencia_id' => (int) $tipo['id'],
                     'nome' => $tipo['nome'],
                     'meses' => (int) $tipo['meses'],
                     'valor' => $valorComDesconto,

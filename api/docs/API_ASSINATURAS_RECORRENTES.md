@@ -97,7 +97,7 @@ Authorization: Bearer {token}
       "ciclos": [
         {
           "id": 1,
-          "tipo_ciclo_id": 1,
+          "assinatura_frequencia_id": 1,
           "nome": "Mensal",
           "meses": 1,
           "valor": 0.50,
@@ -109,7 +109,7 @@ Authorization: Bearer {token}
         },
         {
           "id": 2,
-          "tipo_ciclo_id": 3,
+          "assinatura_frequencia_id": 3,
           "nome": "Trimestral",
           "meses": 3,
           "valor": 1.43,
@@ -121,7 +121,7 @@ Authorization: Bearer {token}
         },
         {
           "id": 3,
-          "tipo_ciclo_id": 5,
+          "assinatura_frequencia_id": 5,
           "nome": "Semestral",
           "meses": 6,
           "valor": 2.70,
@@ -133,7 +133,7 @@ Authorization: Bearer {token}
         },
         {
           "id": 4,
-          "tipo_ciclo_id": 6,
+          "assinatura_frequencia_id": 6,
           "nome": "Anual",
           "meses": 12,
           "valor": 5.10,

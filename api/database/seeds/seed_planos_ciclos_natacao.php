@@ -76,7 +76,7 @@ try {
     echo "📍 Tenant: {$tenant['nome']} (ID: {$tenant['id']})\n\n";
     
     // Buscar tipos de ciclo
-    $stmtTipos = $pdo->query("SELECT id, nome, codigo, meses FROM tipos_ciclo WHERE ativo = 1 ORDER BY ordem");
+    $stmtTipos = $pdo->query("SELECT id, nome, codigo, meses FROM assinatura_frequencias WHERE ativo = 1 ORDER BY ordem");
     $tiposCiclo = [];
     foreach ($stmtTipos->fetchAll(PDO::FETCH_ASSOC) as $tipo) {
         $tiposCiclo[$tipo['codigo']] = $tipo;
@@ -108,7 +108,7 @@ try {
         VALUES (?, ?, ?, ?, ?, 30, ?, 1)
     ");
     $stmtInsertCiclo = $pdo->prepare("
-        INSERT INTO plano_ciclos (tenant_id, plano_id, tipo_ciclo_id, meses, valor, desconto_percentual, permite_recorrencia, ativo)
+        INSERT INTO plano_ciclos (tenant_id, plano_id, assinatura_frequencia_id, meses, valor, desconto_percentual, permite_recorrencia, ativo)
         VALUES (?, ?, ?, ?, ?, ?, 1, 1)
         ON DUPLICATE KEY UPDATE valor = VALUES(valor), desconto_percentual = VALUES(desconto_percentual)
     ");

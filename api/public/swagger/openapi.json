@@ -2227,17 +2227,17 @@
                 ]
             }
         },
-        "/admin/tipos-ciclo": {
+        "/admin/assinatura-frequencias": {
             "get": {
                 "tags": [
                     "Ciclos de Planos"
                 ],
-                "summary": "Listar tipos de ciclo disponíveis",
-                "description": "Retorna todos os tipos de ciclo cadastrados (mensal, bimestral, trimestral, quadrimestral, semestral, anual)",
-                "operationId": "listarTiposCiclo",
+                "summary": "Listar frequências de assinatura disponíveis",
+                "description": "Retorna todas as frequências de assinatura cadastradas (mensal, bimestral, trimestral, quadrimestral, semestral, anual)",
+                "operationId": "listarFrequencias",
                 "responses": {
                     "200": {
-                        "description": "Lista de tipos de ciclo",
+                        "description": "Lista de frequências de assinatura",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -2250,7 +2250,7 @@
                                         "data": {
                                             "type": "array",
                                             "items": {
-                                                "$ref": "#/components/schemas/TipoCiclo"
+                                                "$ref": "#/components/schemas/AssinaturaFrequencia"
                                             }
                                         }
                                     }
@@ -2613,12 +2613,12 @@
             }
         },
         "schemas": {
-            "TipoCiclo": {
+            "AssinaturaFrequencia": {
                 "type": "object",
                 "properties": {
                     "id": {
                         "type": "integer",
-                        "description": "ID do tipo de ciclo",
+                        "description": "ID da frequência de assinatura",
                         "example": 1
                     },
                     "codigo": {
@@ -2651,14 +2651,14 @@
                         "description": "ID do plano vinculado",
                         "example": 5
                     },
-                    "tipo_ciclo_id": {
+                    "assinatura_frequencia_id": {
                         "type": "integer",
-                        "description": "ID do tipo de ciclo",
+                        "description": "ID da frequência de assinatura",
                         "example": 2
                     },
                     "ciclo_codigo": {
                         "type": "string",
-                        "description": "Código do ciclo (da tabela tipos_ciclo)",
+                        "description": "Código da frequência (da tabela assinatura_frequencias)",
                         "example": "bimestral"
                     },
                     "ciclo_nome": {
@@ -2702,11 +2702,11 @@
             },
             "PlanoCicloInput": {
                 "type": "object",
-                "required": ["tipo_ciclo_id", "valor"],
+                "required": ["assinatura_frequencia_id", "valor"],
                 "properties": {
-                    "tipo_ciclo_id": {
+                    "assinatura_frequencia_id": {
                         "type": "integer",
-                        "description": "ID do tipo de ciclo (1=mensal, 2=bimestral, etc)",
+                        "description": "ID da frequência de assinatura (1=mensal, 2=bimestral, etc)",
                         "example": 2
                     },
                     "valor": {

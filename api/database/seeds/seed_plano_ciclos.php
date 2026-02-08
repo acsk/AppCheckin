@@ -15,7 +15,7 @@ try {
     echo "=== Criando ciclos padrão para planos ===\n\n";
     
     // Buscar tipos de ciclo disponíveis
-    $stmtTipos = $pdo->query("SELECT id, nome, codigo, meses, ordem FROM tipos_ciclo WHERE ativo = 1 ORDER BY ordem ASC");
+    $stmtTipos = $pdo->query("SELECT id, nome, codigo, meses, ordem FROM assinatura_frequencias WHERE ativo = 1 ORDER BY ordem ASC");
     $tiposCiclo = $stmtTipos->fetchAll(PDO::FETCH_ASSOC);
     
     if (empty($tiposCiclo)) {
@@ -60,7 +60,7 @@ try {
     
     $stmtInsert = $pdo->prepare("
         INSERT INTO plano_ciclos 
-        (tenant_id, plano_id, tipo_ciclo_id, meses, valor, desconto_percentual, permite_recorrencia, ativo)
+        (tenant_id, plano_id, assinatura_frequencia_id, meses, valor, desconto_percentual, permite_recorrencia, ativo)
         VALUES (?, ?, ?, ?, ?, ?, 1, 1)
     ");
     
