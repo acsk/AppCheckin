@@ -175,6 +175,12 @@ export default function MinhasAssinaturasScreen() {
 
   const confirmarCancelamento = useCallback(
     async (assinatura: Assinatura) => {
+      console.log("🚀 INICIANDO confirmarCancelamento:", {
+        id: assinatura.id,
+        plano: assinatura.plano.nome,
+        apiUrl,
+      });
+
       try {
         setCancelando(assinatura.id);
 
@@ -264,6 +270,11 @@ export default function MinhasAssinaturasScreen() {
 
   const handleCancelarAssinatura = useCallback(
     (assinatura: Assinatura) => {
+      console.log("🎬 handleCancelarAssinatura chamado:", {
+        id: assinatura.id,
+        plano: assinatura.plano.nome,
+      });
+
       Alert.alert(
         "⚠️ Cancelar Assinatura",
         `Tem certeza que deseja cancelar a assinatura de ${assinatura.plano.nome}?\n\n` +
@@ -280,7 +291,10 @@ export default function MinhasAssinaturasScreen() {
           },
           {
             text: "Sim, Cancelar",
-            onPress: () => confirmarCancelamento(assinatura),
+            onPress: () => {
+              console.log("✅ Usuário confirmou cancelamento");
+              confirmarCancelamento(assinatura);
+            },
             style: "destructive",
           },
         ],
@@ -296,8 +310,25 @@ export default function MinhasAssinaturasScreen() {
       ? new Date(item.ultima_cobranca)
       : null;
 
+    // Debug do status
+    console.log("🔍 Verificando status da assinatura:", {
+      id: item.id,
+      statusCodigo: item.status.codigo,
+      statusNome: item.status.nome,
+      plano: item.plano.nome,
+    });
+
     const isAtiva = item.status.codigo === "ativa";
-    const isCancelada = item.status.codigo === "cancelada";
+    const isCancelada =
+      item.status.codigo === "cancelada" || item.status.codigo === "cancelled";
+    const isPendente = item.status.codigo === "pendente";
+
+    console.log("🎯 Estados da assinatura:", {
+      id: item.id,
+      isAtiva,
+      isCancelada,
+      isPendente,
+    });
 
     // Formatar valor
     const valorFormatado = new Intl.NumberFormat("pt-BR", {
@@ -378,21 +409,40 @@ export default function MinhasAssinaturasScreen() {
         </View>
 
         {/* Botão Cancelar */}
-        {isAtiva && (
+        {(isAtiva || isPendente) && (
           <TouchableOpacity
             style={styles.botaoCancelar}
-            onPress={() => handleCancelarAssinatura(item)}
+            onPress={() => {
+              console.log("🖱️ Botão cancelar clicado para assinatura:", {
+                id: item.id,
+                plano: item.plano.nome,
+                status: item.status.codigo,
+              });
+              handleCancelarAssinatura(item);
+            }}
             disabled={cancelando === item.id}
+            activeOpacity={0.7}
           >
             {cancelando === item.id ? (
               <ActivityIndicator color="#DC3545" size="small" />
             ) : (
               <>
                 <Feather name="trash-2" size={16} color="#DC3545" />
-                <Text style={styles.botaoCancelarTexto}>Cancelar</Text>
+                <Text style={styles.botaoCancelarTexto}>
+                  Cancelar Assinatura
+                </Text>
               </>
             )}
           </TouchableOpacity>
+        )}
+
+        {/* Debug - Mostrar sempre para teste */}
+        {!isAtiva && !isPendente && (
+          <View style={[styles.botaoCancelar, { opacity: 0.5 }]}>
+            <Text style={styles.botaoCancelarTexto}>
+              Status: {item.status.codigo}
+            </Text>
+          </View>
         )}
       </View>
     );
