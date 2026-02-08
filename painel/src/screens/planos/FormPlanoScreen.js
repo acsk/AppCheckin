@@ -8,6 +8,8 @@ import {
   ActivityIndicator,
   Switch,
   ScrollView,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
@@ -47,6 +49,7 @@ export default function FormPlanoScreen() {
   const [gerandoCiclos, setGerandoCiclos] = useState(false);
   const [editingCicloId, setEditingCicloId] = useState(null);
   const [confirmDeleteCiclo, setConfirmDeleteCiclo] = useState({ visible: false, ciclo: null });
+  const [modalCicloVisible, setModalCicloVisible] = useState(false);
   const [cicloForm, setCicloForm] = useState({
     tipo_ciclo_id: '',
     valor: '',
@@ -229,22 +232,32 @@ export default function FormPlanoScreen() {
       ativo: true,
     });
     setEditingCicloId(null);
+    setModalCicloVisible(false);
+  };
+
+  const handleNovoCiclo = () => {
+    resetCicloForm();
+    setModalCicloVisible(true);
   };
 
   const handleEditarCiclo = (ciclo) => {
-    setEditingCicloId(ciclo.id);
     // Encontrar o tipo de ciclo correspondente pelo código ou pelo id
     const tipoEncontrado = tiposCiclo.find(t => 
       t.codigo === ciclo.codigo || 
       t.id === ciclo.tipo_ciclo_id || 
       t.id === ciclo.frequencia_id
     );
+    
+    const tipoCicloId = tipoEncontrado?.id?.toString() || ciclo.tipo_ciclo_id?.toString() || ciclo.frequencia_id?.toString() || '';
+    
     setCicloForm({
-      tipo_ciclo_id: tipoEncontrado?.id?.toString() || ciclo.tipo_ciclo_id?.toString() || ciclo.frequencia_id?.toString() || '',
+      tipo_ciclo_id: tipoCicloId,
       valor: ciclo.valor ? parseFloat(ciclo.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '',
       permite_recorrencia: ciclo.permite_recorrencia === 1 || ciclo.permite_recorrencia === true,
       ativo: ciclo.ativo === 1 || ciclo.ativo === true,
     });
+    setEditingCicloId(ciclo.id);
+    setModalCicloVisible(true);
   };
 
   const handleSalvarCiclo = async () => {
@@ -275,7 +288,7 @@ export default function FormPlanoScreen() {
       } else {
         await planoService.criarCiclo(planoId, {
           ...payload,
-          tipo_ciclo_id: parseInt(cicloForm.tipo_ciclo_id),
+          assinatura_frequencia_id: parseInt(cicloForm.tipo_ciclo_id),
         });
         showSuccess('Ciclo criado com sucesso');
       }
@@ -287,6 +300,10 @@ export default function FormPlanoScreen() {
     } finally {
       setSavingCiclo(false);
     }
+  };
+
+  const getTipoCicloSelecionado = () => {
+    return tiposCiclo.find(t => t.id.toString() === cicloForm.tipo_ciclo_id);
   };
 
   const handleGerarCiclos = async () => {
@@ -340,6 +357,156 @@ export default function FormPlanoScreen() {
         confirmText="Excluir"
         type="danger"
       />
+
+      {/* Modal de Ciclo */}
+      <Modal
+        visible={modalCicloVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={resetCicloForm}
+      >
+        <Pressable style={styles.modalOverlay} onPress={resetCicloForm}>
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>
+                {editingCicloId ? 'Editar Ciclo' : 'Novo Ciclo'}
+              </Text>
+              <TouchableOpacity onPress={resetCicloForm} style={styles.modalCloseButton}>
+                <Feather name="x" size={24} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              {/* Seleção de Tipo de Ciclo */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Tipo de Ciclo <Text style={styles.required}>*</Text></Text>
+                {editingCicloId ? (
+                  <View style={styles.tipoCicloSelected}>
+                    <Feather name="clock" size={18} color="#f97316" />
+                    <Text style={styles.tipoCicloSelectedText}>{getTipoCicloSelecionado()?.nome || 'Tipo selecionado'}</Text>
+                    <Text style={styles.tipoCicloSelectedMeta}>
+                      ({getTipoCicloSelecionado()?.meses || 0} {getTipoCicloSelecionado()?.meses > 1 ? 'meses' : 'mês'})
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={styles.tipoCicloGrid}>
+                    {tiposCiclo.map((tipo) => (
+                      <TouchableOpacity
+                        key={tipo.id}
+                        style={[
+                          styles.tipoCicloCard,
+                          cicloForm.tipo_ciclo_id === tipo.id.toString() && styles.tipoCicloCardSelected
+                        ]}
+                        onPress={() => setCicloForm(prev => ({ ...prev, tipo_ciclo_id: tipo.id.toString() }))}
+                        disabled={savingCiclo}
+                      >
+                        <Text style={[
+                          styles.tipoCicloCardTitle,
+                          cicloForm.tipo_ciclo_id === tipo.id.toString() && styles.tipoCicloCardTitleSelected
+                        ]}>
+                          {tipo.nome}
+                        </Text>
+                        <Text style={[
+                          styles.tipoCicloCardMeta,
+                          cicloForm.tipo_ciclo_id === tipo.id.toString() && styles.tipoCicloCardMetaSelected
+                        ]}>
+                          {tipo.meses} {tipo.meses > 1 ? 'meses' : 'mês'}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+                {editingCicloId && (
+                  <Text style={styles.helperTextBlock}>Para mudar o tipo, exclua e crie um novo ciclo.</Text>
+                )}
+              </View>
+
+              {/* Valor do Ciclo */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Valor do Ciclo <Text style={styles.required}>*</Text></Text>
+                <View style={styles.inputWithPrefix}>
+                  <Text style={styles.prefix}>R$</Text>
+                  <TextInput
+                    style={[styles.input, styles.inputWithPrefixField]}
+                    placeholder="0,00"
+                    placeholderTextColor={colors.placeholder}
+                    value={cicloForm.valor}
+                    onChangeText={(value) => {
+                      const formatted = formatValorMonetario(value);
+                      setCicloForm(prev => ({ ...prev, valor: formatted }));
+                    }}
+                    keyboardType="numeric"
+                    editable={!savingCiclo}
+                  />
+                </View>
+              </View>
+
+              {/* Switches */}
+              <View style={styles.modalSwitchesRow}>
+                <View style={[styles.switchRow, styles.flex1]}>
+                  <View style={styles.switchInfo}>
+                    <Text style={styles.switchLabel}>Recorrência</Text>
+                    <Text style={styles.switchDescription}>
+                      {cicloForm.permite_recorrencia ? 'Permite assinatura' : 'Sem assinatura'}
+                    </Text>
+                  </View>
+                  <Switch
+                    value={cicloForm.permite_recorrencia}
+                    onValueChange={(value) => setCicloForm(prev => ({ ...prev, permite_recorrencia: value }))}
+                    disabled={savingCiclo}
+                    trackColor={{ false: '#d1d5db', true: '#10b981' }}
+                    thumbColor={cicloForm.permite_recorrencia ? '#22c55e' : '#9ca3af'}
+                  />
+                </View>
+
+                <View style={[styles.switchRow, styles.flex1]}>
+                  <View style={styles.switchInfo}>
+                    <Text style={styles.switchLabel}>Ativo</Text>
+                    <Text style={styles.switchDescription}>
+                      {cicloForm.ativo ? 'Disponível' : 'Indisponível'}
+                    </Text>
+                  </View>
+                  <Switch
+                    value={cicloForm.ativo}
+                    onValueChange={(value) => setCicloForm(prev => ({ ...prev, ativo: value }))}
+                    disabled={savingCiclo}
+                    trackColor={{ false: '#d1d5db', true: '#3b82f6' }}
+                    thumbColor={cicloForm.ativo ? '#3b82f6' : '#9ca3af'}
+                  />
+                </View>
+              </View>
+            </ScrollView>
+
+            {/* Ações do Modal */}
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={resetCicloForm}
+                disabled={savingCiclo}
+              >
+                <Text style={styles.modalCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalSaveButton, savingCiclo && styles.modalSaveButtonDisabled]}
+                onPress={handleSalvarCiclo}
+                disabled={savingCiclo}
+              >
+                {savingCiclo ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <>
+                    <Feather name="check" size={16} color="#fff" />
+                    <Text style={styles.modalSaveText}>
+                      {editingCicloId ? 'Atualizar' : 'Adicionar'}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {saving && <LoadingOverlay message={isEdit ? "Atualizando plano..." : "Criando plano..."} />}
 
       <ScrollView style={styles.scrollView}>
@@ -536,128 +703,28 @@ export default function FormPlanoScreen() {
               <View style={styles.cardBody}>
                 <View style={styles.ciclosHeaderRow}>
                   <Text style={styles.ciclosSubtitle}>Configure os valores por período</Text>
-                  <TouchableOpacity
-                    style={[styles.ciclosActionButton, (gerandoCiclos || savingCiclo) && styles.ciclosActionButtonDisabled]}
-                    onPress={handleGerarCiclos}
-                    disabled={gerandoCiclos || savingCiclo}
-                  >
-                    {gerandoCiclos ? (
-                      <ActivityIndicator size="small" color="#f97316" />
-                    ) : (
-                      <>
-                        <Feather name="zap" size={14} color="#f97316" />
-                        <Text style={styles.ciclosActionText}>Gerar Automático</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                </View>
-
-                <View style={styles.cicloFormContainer}>
-                  <View style={styles.row}>
-                    <View style={[styles.inputGroup, styles.flex1, styles.marginRight]}>
-                      <Text style={styles.label}>Tipo de Ciclo <Text style={styles.required}>*</Text></Text>
-                      <View style={styles.pickerContainer}>
-                        <Picker
-                          key={`picker-ciclo-${tiposCiclo.length}`}
-                          selectedValue={cicloForm.tipo_ciclo_id}
-                          onValueChange={(value) => setCicloForm(prev => ({ ...prev, tipo_ciclo_id: value }))}
-                          enabled={!savingCiclo && !editingCicloId}
-                          style={styles.picker}
-                        >
-                          <Picker.Item label="Selecione" value="" />
-                          {tiposCiclo.map((tipo) => (
-                            <Picker.Item
-                              key={tipo.id}
-                              label={`${tipo.nome} (${tipo.meses} ${tipo.meses > 1 ? 'meses' : 'mês'})`}
-                              value={tipo.id.toString()}
-                            />
-                          ))}
-                        </Picker>
-                      </View>
-                      {editingCicloId && (
-                        <Text style={styles.helperText}>Para mudar o tipo, exclua e crie um novo ciclo.</Text>
-                      )}
-                    </View>
-
-                    <View style={[styles.inputGroup, styles.flex1]}>
-                      <Text style={styles.label}>Valor do Ciclo <Text style={styles.required}>*</Text></Text>
-                      <View style={styles.inputWithPrefix}>
-                        <Text style={styles.prefix}>R$</Text>
-                        <TextInput
-                          style={[styles.input, styles.inputWithPrefixField]}
-                          placeholder="0,00"
-                          placeholderTextColor={colors.placeholder}
-                          value={cicloForm.valor}
-                          onChangeText={(value) => {
-                            const formatted = formatValorMonetario(value);
-                            setCicloForm(prev => ({ ...prev, valor: formatted }));
-                          }}
-                          keyboardType="numeric"
-                          editable={!savingCiclo}
-                        />
-                      </View>
-                    </View>
-                  </View>
-
-                  <View style={styles.row}>
-                    <View style={[styles.switchRow, styles.flex1, styles.marginRight]}>
-                      <View style={styles.switchInfo}>
-                        <Text style={styles.switchLabel}>Recorrência</Text>
-                        <Text style={styles.switchDescription}>
-                          {cicloForm.permite_recorrencia ? 'Permite assinatura' : 'Sem assinatura'}
-                        </Text>
-                      </View>
-                      <Switch
-                        value={cicloForm.permite_recorrencia}
-                        onValueChange={(value) => setCicloForm(prev => ({ ...prev, permite_recorrencia: value }))}
-                        disabled={savingCiclo}
-                        trackColor={{ false: '#d1d5db', true: '#10b981' }}
-                        thumbColor={cicloForm.permite_recorrencia ? '#22c55e' : '#9ca3af'}
-                      />
-                    </View>
-
-                    <View style={[styles.switchRow, styles.flex1]}>
-                      <View style={styles.switchInfo}>
-                        <Text style={styles.switchLabel}>Ativo</Text>
-                        <Text style={styles.switchDescription}>
-                          {cicloForm.ativo ? 'Disponível' : 'Indisponível'}
-                        </Text>
-                      </View>
-                      <Switch
-                        value={cicloForm.ativo}
-                        onValueChange={(value) => setCicloForm(prev => ({ ...prev, ativo: value }))}
-                        disabled={savingCiclo}
-                        trackColor={{ false: '#d1d5db', true: '#3b82f6' }}
-                        thumbColor={cicloForm.ativo ? '#3b82f6' : '#9ca3af'}
-                      />
-                    </View>
-                  </View>
-
-                  <View style={styles.cicloFormActions}>
-                    {editingCicloId && (
-                      <TouchableOpacity
-                        style={styles.cicloCancelButton}
-                        onPress={resetCicloForm}
-                        disabled={savingCiclo}
-                      >
-                        <Text style={styles.cicloCancelText}>Cancelar</Text>
-                      </TouchableOpacity>
-                    )}
+                  <View style={styles.ciclosActionsRow}>
                     <TouchableOpacity
-                      style={[styles.cicloSaveButton, savingCiclo && styles.cicloSaveButtonDisabled]}
-                      onPress={handleSalvarCiclo}
-                      disabled={savingCiclo}
+                      style={[styles.ciclosActionButton, (gerandoCiclos || savingCiclo) && styles.ciclosActionButtonDisabled]}
+                      onPress={handleGerarCiclos}
+                      disabled={gerandoCiclos || savingCiclo}
                     >
-                      {savingCiclo ? (
-                        <ActivityIndicator color="#fff" />
+                      {gerandoCiclos ? (
+                        <ActivityIndicator size="small" color="#f97316" />
                       ) : (
                         <>
-                          <Feather name="check" size={16} color="#fff" />
-                          <Text style={styles.cicloSaveText}>
-                            {editingCicloId ? 'Atualizar Ciclo' : 'Adicionar Ciclo'}
-                          </Text>
+                          <Feather name="zap" size={14} color="#f97316" />
+                          <Text style={styles.ciclosActionText}>Gerar Automático</Text>
                         </>
                       )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.addCicloButton}
+                      onPress={handleNovoCiclo}
+                      disabled={savingCiclo}
+                    >
+                      <Feather name="plus" size={16} color="#fff" />
+                      <Text style={styles.addCicloText}>Adicionar Ciclo</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -926,6 +993,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     marginLeft: 4,
   },
+  helperTextBlock: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 8,
+    marginBottom: 0,
+    marginLeft: 4,
+  },
   inputWithPrefix: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1161,5 +1235,170 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 500,
+    maxHeight: '90%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 8,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  modalCloseButton: {
+    padding: 4,
+  },
+  modalBody: {
+    padding: 20,
+    maxHeight: 400,
+  },
+  modalSwitchesRow: {
+    flexDirection: 'row',
+    gap: 16,
+    marginTop: 8,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  modalCancelButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#f3f4f6',
+  },
+  modalCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  modalSaveButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: '#f97316',
+  },
+  modalSaveButtonDisabled: {
+    opacity: 0.6,
+  },
+  modalSaveText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+
+  // Tipo Ciclo Grid (substituindo Picker)
+  tipoCicloGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 8,
+  },
+  tipoCicloCard: {
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    backgroundColor: '#fff',
+    minWidth: 100,
+    alignItems: 'center',
+  },
+  tipoCicloCardSelected: {
+    borderColor: '#f97316',
+    backgroundColor: '#fff7ed',
+  },
+  tipoCicloCardTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  tipoCicloCardTitleSelected: {
+    color: '#f97316',
+  },
+  tipoCicloCardMeta: {
+    fontSize: 11,
+    color: '#9ca3af',
+    marginTop: 2,
+  },
+  tipoCicloCardMetaSelected: {
+    color: '#ea580c',
+  },
+  tipoCicloSelected: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+  },
+  tipoCicloSelectedText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#f97316',
+  },
+  tipoCicloSelectedMeta: {
+    fontSize: 12,
+    color: '#ea580c',
+  },
+
+  // Botão Adicionar Ciclo
+  ciclosActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  addCicloButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: '#f97316',
+  },
+  addCicloText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#fff',
   },
 });

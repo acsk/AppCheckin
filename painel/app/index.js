@@ -2,5 +2,6 @@ import React from 'react';
 import { Redirect } from 'expo-router';
 
 export default function IndexRoute() {
-  return <Redirect href="/dashboard" />;
+  // Redireciona para o dashboard (pasta dashboard/index.js)
+  return <Redirect href="/dashboard/" />;
 }

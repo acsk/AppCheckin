@@ -213,7 +213,7 @@ class PlanoCicloController
     #[OA\Post(
         path: "/admin/planos/{plano_id}/ciclos",
         summary: "Criar ciclo para um plano",
-        description: "Cria um novo ciclo de pagamento para o plano especificado",
+        description: "Cria um novo ciclo de pagamento para o plano. Permite até 2 ciclos por frequência: um com recorrência (assinatura) e outro sem (pagamento avulso). Aceita assinatura_frequencia_id ou tipo_ciclo_id (legado).",
         tags: ["Ciclos de Planos"],
         security: [["bearerAuth" => []]],
         parameters: [
@@ -222,11 +222,12 @@ class PlanoCicloController
         requestBody: new OA\RequestBody(
             required: true,
             content: new OA\JsonContent(
-                required: ["assinatura_frequencia_id", "valor"],
+                required: ["valor"],
                 properties: [
                     new OA\Property(property: "assinatura_frequencia_id", type: "integer", example: 2, description: "ID da frequência de assinatura"),
+                    new OA\Property(property: "tipo_ciclo_id", type: "integer", example: 2, description: "ID da frequência (legado, use assinatura_frequencia_id)"),
                     new OA\Property(property: "valor", type: "number", format: "float", example: 240.00, description: "Valor total do ciclo"),
-                    new OA\Property(property: "permite_recorrencia", type: "boolean", example: true, description: "Se permite assinatura"),
+                    new OA\Property(property: "permite_recorrencia", type: "boolean", example: true, description: "true = assinatura recorrente, false = pagamento avulso. Permite 1 de cada por frequência."),
                     new OA\Property(property: "ativo", type: "boolean", example: true)
                 ]
             )
@@ -239,11 +240,12 @@ class PlanoCicloController
                     properties: [
                         new OA\Property(property: "success", type: "boolean", example: true),
                         new OA\Property(property: "message", type: "string", example: "Ciclo criado com sucesso"),
-                        new OA\Property(property: "id", type: "integer", example: 5)
+                        new OA\Property(property: "id", type: "integer", example: 5),
+                        new OA\Property(property: "permite_recorrencia", type: "boolean", example: true)
                     ]
                 )
             ),
-            new OA\Response(response: 400, description: "Ciclo já existe para este plano"),
+            new OA\Response(response: 400, description: "Ciclo já existe para este plano com mesmo tipo de recorrência"),
             new OA\Response(response: 404, description: "Plano ou tipo de ciclo não encontrado"),
             new OA\Response(response: 422, description: "Dados inválidos")
         ]
@@ -255,9 +257,12 @@ class PlanoCicloController
             $planoId = (int) $args['plano_id'];
             $data = $request->getParsedBody();
             
+            // Compatibilidade: aceitar tanto assinatura_frequencia_id quanto tipo_ciclo_id (legado)
+            $frequenciaId = $data['assinatura_frequencia_id'] ?? $data['tipo_ciclo_id'] ?? null;
+            
             // Validações
             $errors = [];
-            if (empty($data['assinatura_frequencia_id'])) $errors[] = 'Frequência de assinatura é obrigatória';
+            if (empty($frequenciaId)) $errors[] = 'Frequência de assinatura é obrigatória';
             if (!isset($data['valor']) || $data['valor'] < 0) $errors[] = 'Valor é obrigatório';
             
             if (!empty($errors)) {
@@ -267,7 +272,7 @@ class PlanoCicloController
             
             // Verificar se assinatura_frequencia existe e buscar meses
             $stmtTipo = $this->db->prepare("SELECT id, meses, nome FROM assinatura_frequencias WHERE id = ? AND ativo = 1");
-            $stmtTipo->execute([$data['assinatura_frequencia_id']]);
+            $stmtTipo->execute([$frequenciaId]);
             $tipoCiclo = $stmtTipo->fetch(\PDO::FETCH_ASSOC);
             
             if (!$tipoCiclo) {
@@ -285,11 +290,19 @@ class PlanoCicloController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
             }
             
-            // Verificar se frequência já existe para este plano
-            $stmtCheck = $this->db->prepare("SELECT id FROM plano_ciclos WHERE plano_id = ? AND assinatura_frequencia_id = ?");
-            $stmtCheck->execute([$planoId, $data['assinatura_frequencia_id']]);
+            // Verificar se já existe ciclo com mesma frequência E mesmo tipo de recorrência
+            // Permite: 1 ciclo com recorrência + 1 ciclo sem recorrência para mesma frequência
+            $permiteRecorrencia = isset($data['permite_recorrencia']) ? (int) $data['permite_recorrencia'] : 1;
+            $stmtCheck = $this->db->prepare("
+                SELECT id FROM plano_ciclos 
+                WHERE plano_id = ? AND assinatura_frequencia_id = ? AND permite_recorrencia = ?
+            ");
+            $stmtCheck->execute([$planoId, $frequenciaId, $permiteRecorrencia]);
             if ($stmtCheck->fetch()) {
-                $response->getBody()->write(json_encode(['error' => 'Já existe um ciclo deste tipo para este plano']));
+                $tipoCobranca = $permiteRecorrencia ? 'com recorrência' : 'sem recorrência (avulso)';
+                $response->getBody()->write(json_encode([
+                    'error' => "Já existe um ciclo {$tipoCiclo['nome']} {$tipoCobranca} para este plano"
+                ]));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
             
@@ -311,11 +324,11 @@ class PlanoCicloController
             $stmt->execute([
                 $tenantId,
                 $planoId,
-                (int) $data['assinatura_frequencia_id'],
+                (int) $frequenciaId,
                 $meses,
                 (float) $data['valor'],
                 $descontoPercentual,
-                isset($data['permite_recorrencia']) ? (int) $data['permite_recorrencia'] : 1,
+                $permiteRecorrencia,
                 isset($data['ativo']) ? (int) $data['ativo'] : 1
             ]);
             
@@ -324,7 +337,8 @@ class PlanoCicloController
             $response->getBody()->write(json_encode([
                 'success' => true,
                 'message' => 'Ciclo criado com sucesso',
-                'id' => $cicloId
+                'id' => $cicloId,
+                'permite_recorrencia' => (bool) $permiteRecorrencia
             ]));
             
             return $response->withHeader('Content-Type', 'application/json')->withStatus(201);
@@ -564,6 +578,26 @@ class PlanoCicloController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
             }
             
+            // Buscar ciclos existentes do plano com contagem de matrículas
+            $stmtCiclosExistentes = $this->db->prepare("
+                SELECT pc.id, pc.assinatura_frequencia_id, pc.valor,
+                       (SELECT COUNT(*) FROM matriculas m WHERE m.plano_ciclo_id = pc.id) as total_matriculas
+                FROM plano_ciclos pc
+                WHERE pc.plano_id = ? AND pc.tenant_id = ?
+            ");
+            $stmtCiclosExistentes->execute([$planoId, $tenantId]);
+            $ciclosExistentes = $stmtCiclosExistentes->fetchAll(\PDO::FETCH_ASSOC);
+            
+            // Mapear ciclos existentes por frequencia_id e identificar os que têm matrículas
+            $ciclosPorFrequencia = [];
+            $ciclosComMatriculas = [];
+            foreach ($ciclosExistentes as $ciclo) {
+                $ciclosPorFrequencia[$ciclo['assinatura_frequencia_id']] = $ciclo;
+                if ((int) $ciclo['total_matriculas'] > 0) {
+                    $ciclosComMatriculas[$ciclo['assinatura_frequencia_id']] = (int) $ciclo['total_matriculas'];
+                }
+            }
+            
             // Buscar tipos de ciclo disponíveis (usar dados da tabela, não hardcoded)
             $stmtTipos = $this->db->prepare("SELECT id, nome, codigo, meses, ordem FROM assinatura_frequencias WHERE ativo = 1 ORDER BY ordem ASC");
             $stmtTipos->execute();
@@ -601,53 +635,101 @@ class PlanoCicloController
             }
             
             $ciclosCriados = [];
+            $ciclosIgnorados = [];
             
+            // Statement para INSERT (novos ciclos)
             $stmtInsert = $this->db->prepare("
                 INSERT INTO plano_ciclos 
                 (tenant_id, plano_id, assinatura_frequencia_id, meses, valor, desconto_percentual, permite_recorrencia, ativo)
                 VALUES (?, ?, ?, ?, ?, ?, 1, 1)
-                ON DUPLICATE KEY UPDATE
-                valor = VALUES(valor),
-                desconto_percentual = VALUES(desconto_percentual),
-                meses = VALUES(meses),
-                updated_at = NOW()
+            ");
+            
+            // Statement para UPDATE (ciclos existentes sem matrículas)
+            $stmtUpdate = $this->db->prepare("
+                UPDATE plano_ciclos 
+                SET valor = ?, desconto_percentual = ?, meses = ?, updated_at = NOW()
+                WHERE id = ?
             ");
             
             foreach ($tiposCiclo as $tipo) {
                 $meses = (int) $tipo['meses'];
                 if ($meses < 1) {
                     error_log("Frequência {$tipo['codigo']} com meses inválido ({$tipo['meses']}), ignorando");
-                    continue; // Pular frequências com meses inválido
+                    continue;
                 }
                 
+                $frequenciaId = (int) $tipo['id'];
                 $desconto = $descontos[$tipo['codigo']] ?? 0;
                 $valorBase = $plano['valor'] * $meses;
                 $valorComDesconto = round($valorBase * (1 - ($desconto / 100)), 2);
                 
-                $stmtInsert->execute([
-                    $tenantId,
-                    $planoId,
-                    $tipo['id'],
-                    $meses,
-                    $valorComDesconto,
-                    $desconto
-                ]);
-                
-                $ciclosCriados[] = [
-                    'assinatura_frequencia_id' => (int) $tipo['id'],
-                    'nome' => $tipo['nome'],
-                    'meses' => $meses,
-                    'valor' => $valorComDesconto,
-                    'desconto' => $desconto,
-                    'economia' => round($valorBase - $valorComDesconto, 2)
-                ];
+                // Verificar se ciclo já existe
+                if (isset($ciclosPorFrequencia[$frequenciaId])) {
+                    $cicloExistente = $ciclosPorFrequencia[$frequenciaId];
+                    
+                    // Se tem matrículas vinculadas, NÃO atualizar
+                    if (isset($ciclosComMatriculas[$frequenciaId])) {
+                        $ciclosIgnorados[] = [
+                            'assinatura_frequencia_id' => $frequenciaId,
+                            'nome' => $tipo['nome'],
+                            'motivo' => "Possui {$ciclosComMatriculas[$frequenciaId]} matrícula(s) vinculada(s)",
+                            'valor_atual' => (float) $cicloExistente['valor']
+                        ];
+                        continue;
+                    }
+                    
+                    // Sem matrículas, pode atualizar
+                    $stmtUpdate->execute([
+                        $valorComDesconto,
+                        $desconto,
+                        $meses,
+                        $cicloExistente['id']
+                    ]);
+                    
+                    $ciclosCriados[] = [
+                        'assinatura_frequencia_id' => $frequenciaId,
+                        'nome' => $tipo['nome'],
+                        'meses' => $meses,
+                        'valor' => $valorComDesconto,
+                        'desconto' => $desconto,
+                        'economia' => round($valorBase - $valorComDesconto, 2),
+                        'acao' => 'atualizado'
+                    ];
+                } else {
+                    // Ciclo não existe, inserir novo
+                    $stmtInsert->execute([
+                        $tenantId,
+                        $planoId,
+                        $frequenciaId,
+                        $meses,
+                        $valorComDesconto,
+                        $desconto
+                    ]);
+                    
+                    $ciclosCriados[] = [
+                        'assinatura_frequencia_id' => $frequenciaId,
+                        'nome' => $tipo['nome'],
+                        'meses' => $meses,
+                        'valor' => $valorComDesconto,
+                        'desconto' => $desconto,
+                        'economia' => round($valorBase - $valorComDesconto, 2),
+                        'acao' => 'criado'
+                    ];
+                }
             }
             
-            $response->getBody()->write(json_encode([
+            $responseData = [
                 'success' => true,
                 'message' => 'Ciclos gerados com sucesso',
                 'ciclos' => $ciclosCriados
-            ]));
+            ];
+            
+            if (!empty($ciclosIgnorados)) {
+                $responseData['ciclos_ignorados'] = $ciclosIgnorados;
+                $responseData['aviso'] = 'Alguns ciclos não foram atualizados pois possuem matrículas vinculadas';
+            }
+            
+            $response->getBody()->write(json_encode($responseData));
             
             return $response->withHeader('Content-Type', 'application/json');
             
