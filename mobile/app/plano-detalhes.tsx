@@ -526,12 +526,12 @@ export default function PlanoDetalhesScreen() {
                     ) : (
                       <View style={styles.cicloAvulsaBadge}>
                         <Feather
-                          name="slash"
+                          name="dollar-sign"
                           size={12}
                           color={styles.cicloAvulsaText.color}
                         />
                         <Text style={styles.cicloAvulsaText}>
-                          Cobrança avulsa (não automática)
+                          Pagamento único
                         </Text>
                       </View>
                     )}
@@ -1025,16 +1025,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: `${colors.primary}14`,
     borderWidth: 1,
-    borderColor: "#D1D5DB",
+    borderColor: colors.primary,
     alignSelf: "flex-start",
     marginBottom: 6,
   },
   cicloAvulsaText: {
     fontSize: 10,
     fontWeight: "700",
-    color: "#6B7280",
+    color: colors.primaryDark,
   },
   economiaBadge: {
     backgroundColor: "#dcfce7",
