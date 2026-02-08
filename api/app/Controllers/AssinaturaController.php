@@ -330,9 +330,40 @@ class AssinaturaController
                 $assinaturaId
             ]);
             
+            // Cancelar matrícula associada à assinatura
+            $stmtStatusMatriculaCancelada = $this->db->prepare("
+                SELECT id FROM status_matricula WHERE codigo = 'cancelada' LIMIT 1
+            ");
+            $stmtStatusMatriculaCancelada->execute();
+            $statusMatriculaCanceladaId = $stmtStatusMatriculaCancelada->fetchColumn() ?: 3;
+            
+            $stmtCancelarMatricula = $this->db->prepare("
+                UPDATE matriculas 
+                SET status_id = ?,
+                    updated_at = NOW()
+                WHERE tenant_id = ?
+                AND aluno_id = ?
+                AND status_id IN (
+                    SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'vencida')
+                )
+                AND id IN (
+                    SELECT matricula_id FROM assinaturas WHERE id = ? AND matricula_id IS NOT NULL
+                )
+            ");
+            $stmtCancelarMatricula->execute([
+                $statusMatriculaCanceladaId,
+                $tenantId,
+                $assinatura['aluno_id'],
+                $assinaturaId
+            ]);
+            $matriculasCanceladas = $stmtCancelarMatricula->rowCount();
+            
+            error_log("[AssinaturaController::cancelar] Assinatura #{$assinaturaId} cancelada. Matrículas canceladas: {$matriculasCanceladas}");
+            
             $response->getBody()->write(json_encode([
                 'success' => true,
-                'message' => 'Assinatura cancelada com sucesso'
+                'message' => 'Assinatura cancelada com sucesso',
+                'matriculas_canceladas' => $matriculasCanceladas
             ]));
             
             return $response->withHeader('Content-Type', 'application/json');

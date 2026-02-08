@@ -183,7 +183,61 @@ try {
             $canceladasAtualizadas = $stmt->rowCount();
             logMessage("  ✓ Matrículas Canceladas: {$canceladasAtualizadas}\n", $quiet);
             
-            // 4. Reativar matrículas que foram regularizadas
+            // 4. Sincronizar matrículas com assinaturas canceladas
+            // Se a assinatura foi cancelada, a matrícula também deve ser cancelada
+            $sqlSincAssCanceladas = "
+                UPDATE matriculas m
+                INNER JOIN assinaturas a ON a.matricula_id = m.id AND a.tenant_id = m.tenant_id
+                INNER JOIN assinatura_status ast ON ast.id = a.status_id
+                SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'cancelada' LIMIT 1),
+                    m.updated_at = NOW()
+                WHERE m.tenant_id = :tenant_id
+                AND ast.codigo = 'cancelada'
+                AND m.status_id IN (SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'vencida'))
+                LIMIT 500
+            ";
+            $stmt = $db->prepare($sqlSincAssCanceladas);
+            $stmt->execute(['tenant_id' => $tenant['id']]);
+            $sincCanceladas = $stmt->rowCount();
+            logMessage("  ✓ Matrículas sincronizadas (assinatura cancelada): {$sincCanceladas}\n", $quiet);
+            
+            // 5. Sincronizar matrículas com assinaturas pausadas
+            // Se a assinatura foi pausada, a matrícula deve ficar suspensa
+            $sqlSincAssPausadas = "
+                UPDATE matriculas m
+                INNER JOIN assinaturas a ON a.matricula_id = m.id AND a.tenant_id = m.tenant_id
+                INNER JOIN assinatura_status ast ON ast.id = a.status_id
+                SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'suspensa' LIMIT 1),
+                    m.updated_at = NOW()
+                WHERE m.tenant_id = :tenant_id
+                AND ast.codigo = 'pausada'
+                AND m.status_id IN (SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'vencida'))
+                LIMIT 500
+            ";
+            $stmt = $db->prepare($sqlSincAssPausadas);
+            $stmt->execute(['tenant_id' => $tenant['id']]);
+            $sincPausadas = $stmt->rowCount();
+            logMessage("  ✓ Matrículas sincronizadas (assinatura pausada): {$sincPausadas}\n", $quiet);
+            
+            // 6. Sincronizar matrículas com assinaturas expiradas
+            $sqlSincAssExpiradas = "
+                UPDATE matriculas m
+                INNER JOIN assinaturas a ON a.matricula_id = m.id AND a.tenant_id = m.tenant_id
+                INNER JOIN assinatura_status ast ON ast.id = a.status_id
+                SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'vencida' LIMIT 1),
+                    m.updated_at = NOW()
+                WHERE m.tenant_id = :tenant_id
+                AND ast.codigo = 'expirada'
+                AND m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1)
+                LIMIT 500
+            ";
+            $stmt = $db->prepare($sqlSincAssExpiradas);
+            $stmt->execute(['tenant_id' => $tenant['id']]);
+            $sincExpiradas = $stmt->rowCount();
+            logMessage("  ✓ Matrículas sincronizadas (assinatura expirada): {$sincExpiradas}\n", $quiet);
+            
+            // 7. Reativar matrículas que foram regularizadas
+            // Só reativa se NÃO houver assinatura cancelada/pausada associada
             $sqlReativar = "
                 UPDATE matriculas m
                 SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1),
@@ -196,6 +250,13 @@ try {
                     AND pp.status_pagamento_id IN (1, 3)
                     AND pp.data_vencimento < CURDATE()
                 )
+                AND NOT EXISTS (
+                    SELECT 1 FROM assinaturas a
+                    INNER JOIN assinatura_status ast ON ast.id = a.status_id
+                    WHERE a.matricula_id = m.id
+                    AND a.tenant_id = m.tenant_id
+                    AND ast.codigo IN ('cancelada', 'pausada', 'expirada')
+                )
                 LIMIT 500
             ";
             $stmt = $db->prepare($sqlReativar);
@@ -206,7 +267,7 @@ try {
             // Commit da transação
             $db->commit();
             
-            $totalTenant = $vencidasAtualizadas + $canceladasAtualizadas + $reativadas;
+            $totalTenant = $vencidasAtualizadas + $canceladasAtualizadas + $sincCanceladas + $sincPausadas + $sincExpiradas + $reativadas;
             $totalAtualizado += $totalTenant;
             
             if ($totalTenant > 0) {
