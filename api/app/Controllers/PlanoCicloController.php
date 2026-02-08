@@ -132,8 +132,6 @@ class PlanoCicloController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
             }
             
-            $valorMensalBase = (float) $plano['valor'];
-            
             $stmt = $this->db->prepare("
                 SELECT 
                     pc.id, tc.nome, tc.codigo, pc.meses, pc.valor, pc.valor_mensal_equivalente,
@@ -147,6 +145,25 @@ class PlanoCicloController
             $stmt->execute([$planoId, $tenantId]);
             $ciclos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
             
+            // Encontrar o valor mensal equivalente do ciclo mensal (meses=1) como referência
+            $valorMensalReferencia = 0;
+            foreach ($ciclos as $c) {
+                if ((int) $c['meses'] === 1) {
+                    $valorMensalReferencia = (float) $c['valor_mensal_equivalente'];
+                    break;
+                }
+            }
+            // Se não houver ciclo mensal, usar o ciclo com menor qtd de meses
+            if ($valorMensalReferencia <= 0 && !empty($ciclos)) {
+                $menorMeses = PHP_INT_MAX;
+                foreach ($ciclos as $c) {
+                    if ((int) $c['meses'] < $menorMeses) {
+                        $menorMeses = (int) $c['meses'];
+                        $valorMensalReferencia = (float) $c['valor_mensal_equivalente'];
+                    }
+                }
+            }
+            
             // Formatar valores e calcular economia real
             foreach ($ciclos as &$ciclo) {
                 $ciclo['id'] = (int) $ciclo['id'];
@@ -159,12 +176,12 @@ class PlanoCicloController
                 $ciclo['valor_formatado'] = 'R$ ' . number_format($ciclo['valor'], 2, ',', '.');
                 $ciclo['valor_mensal_formatado'] = 'R$ ' . number_format($ciclo['valor_mensal_equivalente'], 2, ',', '.');
                 
-                // Calcular economia real: quanto economiza por mês em relação ao mensal
+                // Calcular economia real: quanto economiza por mês em relação ao ciclo mensal
                 $economiaPercentual = 0;
                 $economiaValor = 0;
-                if ($valorMensalBase > 0 && $ciclo['valor_mensal_equivalente'] < $valorMensalBase) {
-                    $economiaPercentual = round((($valorMensalBase - $ciclo['valor_mensal_equivalente']) / $valorMensalBase) * 100, 1);
-                    $economiaValor = round(($valorMensalBase - $ciclo['valor_mensal_equivalente']) * $ciclo['meses'], 2);
+                if ($valorMensalReferencia > 0 && $ciclo['valor_mensal_equivalente'] < $valorMensalReferencia) {
+                    $economiaPercentual = round((($valorMensalReferencia - $ciclo['valor_mensal_equivalente']) / $valorMensalReferencia) * 100, 1);
+                    $economiaValor = round(($valorMensalReferencia - $ciclo['valor_mensal_equivalente']) * $ciclo['meses'], 2);
                 }
                 $ciclo['desconto_percentual'] = $economiaPercentual;
                 $ciclo['economia_valor'] = $economiaValor;

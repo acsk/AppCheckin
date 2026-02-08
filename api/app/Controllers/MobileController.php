@@ -3505,10 +3505,23 @@ class MobileController
                 $stmtCiclos->execute($planoIds);
                 $ciclos = $stmtCiclos->fetchAll(\PDO::FETCH_ASSOC);
                 
-                // Indexar valores mensais base dos planos para calcular economia
-                $valorMensalPlano = [];
-                foreach ($planos as $plano) {
-                    $valorMensalPlano[(int)$plano['id']] = (float)$plano['valor'];
+                // Indexar o valor mensal do ciclo mensal (meses=1) de cada plano como referência
+                $valorMensalRefPlano = [];
+                foreach ($ciclos as $ciclo) {
+                    $pid = (int)$ciclo['plano_id'];
+                    $meses = (int)$ciclo['meses'];
+                    $vme = (float)$ciclo['valor_mensal_equivalente'];
+                    // Pegar o valor do ciclo mensal (1 mês) como referência
+                    if ($meses === 1) {
+                        $valorMensalRefPlano[$pid] = $vme;
+                    }
+                    // Se não tiver mensal, pegar o de menor período
+                    if (!isset($valorMensalRefPlano[$pid]) || $meses < ($valorMensalRefPlano[$pid . '_meses'] ?? PHP_INT_MAX)) {
+                        if (!isset($valorMensalRefPlano[$pid])) {
+                            $valorMensalRefPlano[$pid] = $vme;
+                        }
+                        $valorMensalRefPlano[$pid . '_meses'] = $meses;
+                    }
                 }
                 
                 foreach ($ciclos as $ciclo) {
@@ -3518,9 +3531,9 @@ class MobileController
                     }
                     
                     $valorMensalEquivalente = (float)$ciclo['valor_mensal_equivalente'];
-                    $valorMensalBase = $valorMensalPlano[$planoId] ?? 0;
+                    $valorMensalBase = $valorMensalRefPlano[$planoId] ?? 0;
                     
-                    // Calcular economia real: quanto economiza por mês em relação ao mensal
+                    // Calcular economia real: quanto economiza por mês em relação ao ciclo mensal
                     $economiaPercentual = 0;
                     $economiaValor = 0;
                     if ($valorMensalBase > 0 && $valorMensalEquivalente < $valorMensalBase) {
