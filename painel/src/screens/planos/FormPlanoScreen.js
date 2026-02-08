@@ -61,7 +61,7 @@ export default function FormPlanoScreen() {
   const loadTiposCiclo = async () => {
     try {
       const response = await planoService.listarTiposCiclo();
-      setTiposCiclo(response.data || response.tipos || []);
+      setTiposCiclo(response.data || []);
     } catch (error) {
       console.error('❌ Erro ao carregar tipos de ciclo:', error);
       showError('Não foi possível carregar os tipos de ciclo');

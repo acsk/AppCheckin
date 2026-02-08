@@ -86,11 +86,11 @@ const planoService = {
   },
 
   /**
-   * Tipos de ciclo
+   * Tipos de ciclo (frequências de assinatura)
    */
   async listarTiposCiclo() {
     try {
-      const response = await api.get('/admin/tipos-ciclo');
+      const response = await api.get('/admin/assinatura-frequencias');
       return response.data;
     } catch (error) {
       console.error('❌ Erro ao listar tipos de ciclo:', error.response?.data || error.message);
