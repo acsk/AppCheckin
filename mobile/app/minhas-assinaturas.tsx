@@ -6,30 +6,49 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    Modal,
-    SafeAreaView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Modal,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
+
+interface StatusAssinatura {
+  id: number;
+  codigo: string;
+  nome: string;
+  cor: string;
+}
+
+interface CicloAssinatura {
+  nome: string;
+  meses: number;
+}
+
+interface GatewayAssinatura {
+  nome: string;
+}
+
+interface PlanoAssinatura {
+  nome: string;
+  modalidade: string;
+}
 
 interface Assinatura {
   id: number;
-  status: string;
-  status_label: string;
+  status: StatusAssinatura;
   valor: number;
-  valor_formatado: string;
-  plano_nome: string;
-  ciclo_nome: string;
-  ciclo_meses: number;
-  modalidade_nome: string;
   data_inicio: string;
   proxima_cobranca: string;
-  ultima_cobranca: string;
+  ultima_cobranca: string | null;
+  mp_preapproval_id: string;
+  ciclo: CicloAssinatura;
+  gateway: GatewayAssinatura;
+  plano: PlanoAssinatura;
 }
 
 interface ApiResponse {
@@ -43,22 +62,6 @@ interface ErrorModalData {
   message: string;
   type: "error" | "success" | "warning";
 }
-
-const STATUS_COLORS: Record<string, string> = {
-  authorized: "#28A745",
-  pending: "#FFC107",
-  paused: "#17A2B8",
-  cancelled: "#DC3545",
-  finished: "#6C757D",
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  authorized: "Ativa",
-  pending: "Pendente",
-  paused: "Pausada",
-  cancelled: "Cancelada",
-  finished: "Finalizada",
-};
 
 export default function MinhasAssinaturasScreen() {
   const router = useRouter();
@@ -211,7 +214,7 @@ export default function MinhasAssinaturasScreen() {
         if (data.success) {
           showErrorModal(
             "✅ Cancelada com Sucesso",
-            `Sua assinatura de ${assinatura.plano_nome} foi cancelada. Você poderá usar o serviço até o fim do período.`,
+            `Sua assinatura de ${assinatura.plano.nome} foi cancelada. Você poderá usar o serviço até o fim do período.`,
             "success",
           );
 
@@ -238,7 +241,7 @@ export default function MinhasAssinaturasScreen() {
     (assinatura: Assinatura) => {
       Alert.alert(
         "❓ Cancelar Assinatura",
-        `Deseja cancelar a assinatura de ${assinatura.plano_nome}?\n\nA cobrança automática será interrompida, mas você poderá usar o plano até o fim do período atual (${new Date(assinatura.proxima_cobranca).toLocaleDateString("pt-BR")}).`,
+        `Deseja cancelar a assinatura de ${assinatura.plano.nome}?\n\nA cobrança automática será interrompida, mas você poderá usar o plano até o fim do período atual (${new Date(assinatura.proxima_cobranca).toLocaleDateString("pt-BR")}).`,
         [
           {
             text: "Não, Manter",
@@ -256,21 +259,21 @@ export default function MinhasAssinaturasScreen() {
     [confirmarCancelamento],
   );
 
-  const getStatusColor = (status: string): string => {
-    return STATUS_COLORS[status] || "#6C757D";
-  };
-
-  const getStatusLabel = (status: string): string => {
-    return STATUS_LABELS[status] || status;
-  };
-
   const renderAssinatura = ({ item }: { item: Assinatura }) => {
     const dataInicio = new Date(item.data_inicio);
     const proximaCobranca = new Date(item.proxima_cobranca);
-    const ultimaCobranca = new Date(item.ultima_cobranca);
+    const ultimaCobranca = item.ultima_cobranca
+      ? new Date(item.ultima_cobranca)
+      : null;
 
-    const isAtiva = item.status === "authorized";
-    const isCancelada = item.status === "cancelled";
+    const isAtiva = item.status.codigo === "ativa";
+    const isCancelada = item.status.codigo === "cancelada";
+
+    // Formatar valor
+    const valorFormatado = new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(item.valor);
 
     return (
       <View style={styles.card}>
@@ -278,18 +281,13 @@ export default function MinhasAssinaturasScreen() {
           {/* Header com nome do plano e status */}
           <View style={styles.cardHeader}>
             <View style={styles.planoInfo}>
-              <Text style={styles.planoNome}>{item.plano_nome}</Text>
-              <Text style={styles.modalidadeNome}>{item.modalidade_nome}</Text>
+              <Text style={styles.planoNome}>{item.plano.nome}</Text>
+              <Text style={styles.modalidadeNome}>{item.plano.modalidade}</Text>
             </View>
             <View
-              style={[
-                styles.statusBadge,
-                { backgroundColor: getStatusColor(item.status) },
-              ]}
+              style={[styles.statusBadge, { backgroundColor: item.status.cor }]}
             >
-              <Text style={styles.statusText}>
-                {getStatusLabel(item.status)}
-              </Text>
+              <Text style={styles.statusText}>{item.status.nome}</Text>
             </View>
           </View>
 
@@ -300,14 +298,14 @@ export default function MinhasAssinaturasScreen() {
             <View>
               <Text style={styles.cicloLabel}>Período</Text>
               <Text style={styles.cicloValor_text}>
-                {item.ciclo_nome} ({item.ciclo_meses}{" "}
-                {item.ciclo_meses === 1 ? "mês" : "meses"})
+                {item.ciclo.nome} ({item.ciclo.meses}{" "}
+                {item.ciclo.meses === 1 ? "mês" : "meses"})
               </Text>
             </View>
             <View style={styles.divider} />
             <View>
               <Text style={styles.valorLabel}>Valor</Text>
-              <Text style={styles.valorText}>{item.valor_formatado}</Text>
+              <Text style={styles.valorText}>{valorFormatado}</Text>
             </View>
           </View>
         </View>
@@ -336,15 +334,17 @@ export default function MinhasAssinaturasScreen() {
             </View>
           )}
 
-          <View style={styles.dataItem}>
-            <Feather name="check-circle" size={16} color={colors.primary} />
-            <View style={styles.dataContent}>
-              <Text style={styles.dataLabel}>Última Cobrança</Text>
-              <Text style={styles.dataValor}>
-                {ultimaCobranca.toLocaleDateString("pt-BR")}
-              </Text>
+          {ultimaCobranca && (
+            <View style={styles.dataItem}>
+              <Feather name="check-circle" size={16} color={colors.primary} />
+              <View style={styles.dataContent}>
+                <Text style={styles.dataLabel}>Última Cobrança</Text>
+                <Text style={styles.dataValor}>
+                  {ultimaCobranca.toLocaleDateString("pt-BR")}
+                </Text>
+              </View>
             </View>
-          </View>
+          )}
         </View>
 
         {/* Botão Cancelar */}
