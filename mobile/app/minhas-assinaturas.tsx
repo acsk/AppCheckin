@@ -185,7 +185,11 @@ export default function MinhasAssinaturasScreen() {
 
         const url = `${apiUrl}/mobile/assinatura/${assinatura.id}/cancelar`;
 
-        console.log("🗑️ Cancelando assinatura:", assinatura.id);
+        console.log("🗑️ Cancelando assinatura:", {
+          id: assinatura.id,
+          plano: assinatura.plano.nome,
+          mp_preapproval_id: assinatura.mp_preapproval_id,
+        });
         console.log("📍 URL:", url);
 
         const response = await fetch(url, {
@@ -204,17 +208,36 @@ export default function MinhasAssinaturasScreen() {
         if (!response.ok) {
           const responseText = await response.text();
           console.error("❌ Erro na resposta:", responseText);
-          throw new Error(`HTTP ${response.status}: ${responseText}`);
+
+          // Tratamento específico para erros comuns
+          if (response.status === 401) {
+            await AsyncStorage.removeItem("@appcheckin:token");
+            await AsyncStorage.removeItem("@appcheckin:user");
+            router.replace("/(auth)/login");
+            return;
+          }
+
+          if (response.status === 404) {
+            throw new Error("Assinatura não encontrada");
+          }
+
+          if (response.status === 403) {
+            throw new Error(
+              "Você não tem permissão para cancelar esta assinatura",
+            );
+          }
+
+          throw new Error(`Erro ${response.status}: ${responseText}`);
         }
 
         const data = await response.json();
 
-        console.log("✅ Resposta:", data);
+        console.log("✅ Resposta do cancelamento:", data);
 
         if (data.success) {
           showErrorModal(
             "✅ Cancelada com Sucesso",
-            `Sua assinatura de ${assinatura.plano.nome} foi cancelada. Você poderá usar o serviço até o fim do período.`,
+            `Sua assinatura de ${assinatura.plano.nome} foi cancelada.\n\nA cobrança automática foi interrompida e você poderá usar o serviço até ${new Date(assinatura.proxima_cobranca).toLocaleDateString("pt-BR")}.`,
             "success",
           );
 
@@ -223,29 +246,36 @@ export default function MinhasAssinaturasScreen() {
             fetchAssinaturasCallback(apiUrl);
           }, 1500);
         } else {
-          throw new Error(data.error || "Erro ao cancelar assinatura");
+          throw new Error(
+            data.error || data.message || "Erro ao cancelar assinatura",
+          );
         }
       } catch (err) {
         const errorMsg =
           err instanceof Error ? err.message : "Erro ao cancelar assinatura";
-        console.error("❌ Erro:", errorMsg);
+        console.error("❌ Erro ao cancelar:", errorMsg);
         showErrorModal("❌ Erro ao Cancelar", errorMsg, "error");
       } finally {
         setCancelando(null);
       }
     },
-    [apiUrl, fetchAssinaturasCallback],
+    [apiUrl, fetchAssinaturasCallback, router],
   );
 
   const handleCancelarAssinatura = useCallback(
     (assinatura: Assinatura) => {
       Alert.alert(
-        "❓ Cancelar Assinatura",
-        `Deseja cancelar a assinatura de ${assinatura.plano.nome}?\n\nA cobrança automática será interrompida, mas você poderá usar o plano até o fim do período atual (${new Date(assinatura.proxima_cobranca).toLocaleDateString("pt-BR")}).`,
+        "⚠️ Cancelar Assinatura",
+        `Tem certeza que deseja cancelar a assinatura de ${assinatura.plano.nome}?\n\n` +
+          `📍 O que acontecerá:\n` +
+          `• A cobrança automática será interrompida\n` +
+          `• Você poderá usar o plano até ${new Date(assinatura.proxima_cobranca).toLocaleDateString("pt-BR")}\n` +
+          `• Após essa data, o acesso será encerrado\n\n` +
+          `Esta ação não pode ser desfeita.`,
         [
           {
-            text: "Não, Manter",
-            onPress: () => console.log("Cancelamento abortado"),
+            text: "Não, Manter Assinatura",
+            onPress: () => console.log("✋ Cancelamento abortado pelo usuário"),
             style: "cancel",
           },
           {
