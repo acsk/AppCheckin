@@ -3612,6 +3612,296 @@ class MobileController
     }
 
     /**
+     * Retorna os detalhes completos de um plano específico
+     * Inclui ciclos de pagamento, turmas disponíveis e matrícula do usuário
+     */
+    #[OA\Get(
+        path: "/mobile/planos/{planoId}",
+        summary: "Detalhes do plano",
+        description: "Retorna informações completas de um plano: dados gerais, ciclos de pagamento com economia, turmas/horários disponíveis e se o usuário já possui matrícula neste plano.",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        parameters: [
+            new OA\Parameter(
+                name: "planoId",
+                in: "path",
+                description: "ID do plano",
+                required: true,
+                schema: new OA\Schema(type: "integer")
+            )
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Detalhes do plano retornados com sucesso",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "success", type: "boolean", example: true),
+                        new OA\Property(
+                            property: "data",
+                            type: "object",
+                            properties: [
+                                new OA\Property(property: "id", type: "integer"),
+                                new OA\Property(property: "nome", type: "string"),
+                                new OA\Property(property: "descricao", type: "string"),
+                                new OA\Property(property: "valor", type: "number"),
+                                new OA\Property(property: "duracao_dias", type: "integer"),
+                                new OA\Property(property: "checkins_semanais", type: "integer"),
+                                new OA\Property(property: "modalidade", type: "object"),
+                                new OA\Property(property: "ciclos", type: "array", items: new OA\Items(type: "object")),
+                                new OA\Property(property: "turmas", type: "array", items: new OA\Items(type: "object")),
+                                new OA\Property(property: "matricula_ativa", type: "object", nullable: true)
+                            ]
+                        )
+                    ]
+                )
+            ),
+            new OA\Response(response: 400, description: "Tenant não selecionado"),
+            new OA\Response(response: 404, description: "Plano não encontrado")
+        ]
+    )]
+    public function detalhePlano(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $tenantId = $request->getAttribute('tenantId');
+            $userId = $request->getAttribute('userId');
+            $planoId = (int)($args['planoId'] ?? 0);
+
+            if (!$tenantId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'TENANT_NAO_SELECIONADO',
+                    'message' => 'Nenhum tenant selecionado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            if (!$planoId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'PLANO_ID_OBRIGATORIO',
+                    'message' => 'ID do plano é obrigatório'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // 1. Buscar dados do plano
+            $stmtPlano = $this->db->prepare("
+                SELECT p.id, p.nome, p.descricao, p.valor, p.duracao_dias, p.checkins_semanais, p.ativo,
+                       m.id as modalidade_id, m.nome as modalidade_nome, m.cor as modalidade_cor
+                FROM planos p
+                LEFT JOIN modalidades m ON p.modalidade_id = m.id
+                WHERE p.id = :plano_id AND p.tenant_id = :tenant_id
+            ");
+            $stmtPlano->execute(['plano_id' => $planoId, 'tenant_id' => $tenantId]);
+            $plano = $stmtPlano->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$plano) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'PLANO_NAO_ENCONTRADO',
+                    'message' => 'Plano não encontrado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            // 2. Buscar ciclos de pagamento do plano
+            $stmtCiclos = $this->db->prepare("
+                SELECT pc.id, af.nome, af.codigo, pc.meses, pc.valor,
+                       pc.valor_mensal_equivalente, pc.desconto_percentual, pc.permite_recorrencia,
+                       af.ordem
+                FROM plano_ciclos pc
+                INNER JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
+                WHERE pc.plano_id = :plano_id AND pc.ativo = 1
+                ORDER BY af.ordem ASC
+            ");
+            $stmtCiclos->execute(['plano_id' => $planoId]);
+            $ciclosRaw = $stmtCiclos->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Calcular economia relativa ao ciclo mensal
+            $valorMensalBase = 0;
+            foreach ($ciclosRaw as $c) {
+                if ((int)$c['meses'] === 1) {
+                    $valorMensalBase = (float)$c['valor_mensal_equivalente'];
+                    break;
+                }
+            }
+            // Se não tem mensal, usar o de menor período
+            if ($valorMensalBase === 0.0 && !empty($ciclosRaw)) {
+                $valorMensalBase = (float)$ciclosRaw[0]['valor_mensal_equivalente'];
+            }
+
+            $ciclos = array_map(function($c) use ($valorMensalBase) {
+                $vme = (float)$c['valor_mensal_equivalente'];
+                $economiaPercentual = 0;
+                $economiaValor = 0;
+                if ($valorMensalBase > 0 && $vme < $valorMensalBase) {
+                    $economiaPercentual = round((($valorMensalBase - $vme) / $valorMensalBase) * 100, 0);
+                    $economiaValor = round(($valorMensalBase - $vme) * (int)$c['meses'], 2);
+                }
+                return [
+                    'id' => (int)$c['id'],
+                    'nome' => $c['nome'],
+                    'codigo' => $c['codigo'],
+                    'meses' => (int)$c['meses'],
+                    'valor' => (float)$c['valor'],
+                    'valor_formatado' => 'R$ ' . number_format($c['valor'], 2, ',', '.'),
+                    'valor_mensal' => $vme,
+                    'valor_mensal_formatado' => 'R$ ' . number_format($vme, 2, ',', '.'),
+                    'desconto_percentual' => $economiaPercentual,
+                    'permite_recorrencia' => (bool)$c['permite_recorrencia'],
+                    'economia' => $economiaPercentual > 0
+                        ? 'Economize ' . $economiaPercentual . '%'
+                        : null,
+                    'economia_valor' => $economiaValor > 0
+                        ? 'R$ ' . number_format($economiaValor, 2, ',', '.') . ' de economia'
+                        : null,
+                ];
+            }, $ciclosRaw);
+
+            // 3. Buscar turmas disponíveis na modalidade do plano
+            $turmas = [];
+            if ($plano['modalidade_id']) {
+                $stmtTurmas = $this->db->prepare("
+                    SELECT t.id, t.nome, t.descricao, t.vagas, t.ativo,
+                           (SELECT COUNT(*) FROM matriculas mt 
+                            INNER JOIN status_matricula sm ON sm.id = mt.status_id
+                            WHERE mt.turma_id = t.id AND sm.codigo = 'ativa') as alunos_ativos
+                    FROM turmas t
+                    WHERE t.tenant_id = :tenant_id 
+                    AND t.modalidade_id = :modalidade_id
+                    AND t.ativo = 1
+                    ORDER BY t.nome ASC
+                ");
+                $stmtTurmas->execute([
+                    'tenant_id' => $tenantId,
+                    'modalidade_id' => $plano['modalidade_id']
+                ]);
+                $turmasRaw = $stmtTurmas->fetchAll(\PDO::FETCH_ASSOC);
+
+                // Buscar horários de cada turma
+                $turmaIds = array_column($turmasRaw, 'id');
+                $horariosPorTurma = [];
+
+                if (!empty($turmaIds)) {
+                    $ph = implode(',', array_fill(0, count($turmaIds), '?'));
+                    $stmtHorarios = $this->db->prepare("
+                        SELECT turma_id, dia_semana, horario_inicio, horario_fim
+                        FROM turma_horarios
+                        WHERE turma_id IN ({$ph}) AND ativo = 1
+                        ORDER BY FIELD(dia_semana, 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo'), horario_inicio ASC
+                    ");
+                    $stmtHorarios->execute($turmaIds);
+                    foreach ($stmtHorarios->fetchAll(\PDO::FETCH_ASSOC) as $h) {
+                        $tid = (int)$h['turma_id'];
+                        if (!isset($horariosPorTurma[$tid])) {
+                            $horariosPorTurma[$tid] = [];
+                        }
+                        $horariosPorTurma[$tid][] = [
+                            'dia_semana' => $h['dia_semana'],
+                            'horario_inicio' => substr($h['horario_inicio'], 0, 5),
+                            'horario_fim' => substr($h['horario_fim'], 0, 5),
+                        ];
+                    }
+                }
+
+                $turmas = array_map(function($t) use ($horariosPorTurma) {
+                    $tid = (int)$t['id'];
+                    $vagas = $t['vagas'] ? (int)$t['vagas'] : null;
+                    $alunosAtivos = (int)$t['alunos_ativos'];
+                    return [
+                        'id' => $tid,
+                        'nome' => $t['nome'],
+                        'descricao' => $t['descricao'],
+                        'vagas' => $vagas,
+                        'alunos_ativos' => $alunosAtivos,
+                        'vagas_disponiveis' => $vagas ? max(0, $vagas - $alunosAtivos) : null,
+                        'horarios' => $horariosPorTurma[$tid] ?? [],
+                    ];
+                }, $turmasRaw);
+            }
+
+            // 4. Verificar se o usuário já tem matrícula ativa neste plano
+            $matriculaAtiva = null;
+            if ($userId) {
+                $stmtMat = $this->db->prepare("
+                    SELECT m.id, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento, 
+                           m.valor, sm.nome as status, sm.codigo as status_codigo
+                    FROM matriculas m
+                    INNER JOIN alunos a ON a.id = m.aluno_id
+                    INNER JOIN status_matricula sm ON sm.id = m.status_id
+                    WHERE a.usuario_id = :user_id
+                    AND m.plano_id = :plano_id
+                    AND m.tenant_id = :tenant_id
+                    AND sm.codigo IN ('ativa', 'pendente')
+                    ORDER BY m.created_at DESC
+                    LIMIT 1
+                ");
+                $stmtMat->execute([
+                    'user_id' => $userId,
+                    'plano_id' => $planoId,
+                    'tenant_id' => $tenantId,
+                ]);
+                $mat = $stmtMat->fetch(\PDO::FETCH_ASSOC);
+                if ($mat) {
+                    $matriculaAtiva = [
+                        'id' => (int)$mat['id'],
+                        'status' => $mat['status'],
+                        'status_codigo' => $mat['status_codigo'],
+                        'data_inicio' => $mat['data_inicio'],
+                        'data_vencimento' => $mat['data_vencimento'] ?? $mat['proxima_data_vencimento'],
+                        'valor' => (float)$mat['valor'],
+                    ];
+                }
+            }
+
+            // Montar resposta
+            $data = [
+                'id' => (int)$plano['id'],
+                'nome' => $plano['nome'],
+                'descricao' => $plano['descricao'],
+                'valor' => (float)$plano['valor'],
+                'valor_formatado' => 'R$ ' . number_format($plano['valor'], 2, ',', '.'),
+                'duracao_dias' => (int)$plano['duracao_dias'],
+                'duracao_texto' => $this->formatarDuracao((int)$plano['duracao_dias']),
+                'checkins_semanais' => (int)$plano['checkins_semanais'],
+                'ativo' => (bool)$plano['ativo'],
+                'modalidade' => [
+                    'id' => $plano['modalidade_id'] ? (int)$plano['modalidade_id'] : null,
+                    'nome' => $plano['modalidade_nome'],
+                    'cor' => $plano['modalidade_cor'],
+                ],
+                'ciclos' => $ciclos,
+                'turmas' => $turmas,
+                'matricula_ativa' => $matriculaAtiva,
+                'is_plano_atual' => $matriculaAtiva !== null,
+            ];
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'data' => $data,
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+
+        } catch (\Exception $e) {
+            error_log('[MobileController::detalhePlano] Erro: ' . $e->getMessage());
+
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'type' => 'error',
+                'code' => 'ERRO_INTERNO',
+                'message' => 'Erro ao buscar detalhes do plano'
+            ]));
+
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
      * Comprar plano e gerar link de pagamento Mercado Pago
      * Endpoint simplificado para compra de plano pelo mobile
      */

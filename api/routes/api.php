@@ -839,6 +839,8 @@ return function ($app) {
         
         // Planos disponíveis para contratação (pagos)
         $group->get('/planos-disponiveis', [MobileController::class, 'planosDisponiveis']);
+        // Detalhes de um plano específico
+        $group->get('/planos/{planoId}', [MobileController::class, 'detalhePlano']);
         
         // Comprar plano (cria matrícula + gera link Mercado Pago)
         $group->post('/comprar-plano', [MobileController::class, 'comprarPlano']);

@@ -9,8 +9,8 @@ import {
   FlatList,
   Linking,
   Modal,
-  ScrollView,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -638,7 +638,12 @@ export default function PlanosScreen() {
       <TouchableOpacity
         style={styles.planListCard}
         activeOpacity={0.9}
-        onPress={() => setSelectedPlanoId(plano.id)}
+        onPress={() =>
+          router.push({
+            pathname: "/plano-detalhes",
+            params: { id: plano.id },
+          })
+        }
       >
         <View style={styles.planListTop}>
           <View style={styles.planListInfo}>
@@ -781,9 +786,7 @@ export default function PlanosScreen() {
             </TouchableOpacity>
           </View>
           {(() => {
-            const selectedPlano = planos.find(
-              (p) => p.id === selectedPlanoId,
-            );
+            const selectedPlano = planos.find((p) => p.id === selectedPlanoId);
             if (!selectedPlano) return null;
             return renderPlanCard({ item: selectedPlano });
           })()}
