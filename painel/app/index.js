@@ -1,12 +1,6 @@
-import React, { useEffect } from 'react';
-import { useRouter } from 'expo-router';
+import React from 'react';
+import { Redirect } from 'expo-router';
 
 export default function IndexRoute() {
-  const router = useRouter();
-
-  useEffect(() => {
-    router.replace('/dashboard');
-  }, [router]);
-
-  return null;
+  return <Redirect href="/dashboard" />;
 }
