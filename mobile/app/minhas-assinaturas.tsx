@@ -7,9 +7,9 @@ import { useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Modal,
+  Platform,
   SafeAreaView,
   StyleSheet,
   Text,
@@ -71,6 +71,9 @@ export default function MinhasAssinaturasScreen() {
   const [error, setError] = useState<string | null>(null);
   const [apiUrl, setApiUrl] = useState("");
   const [cancelando, setCancelando] = useState<number | null>(null);
+  const [confirmModalVisible, setConfirmModalVisible] = useState(false);
+  const [assinaturaParaCancelar, setAssinaturaParaCancelar] =
+    useState<Assinatura | null>(null);
   const [errorModalVisible, setErrorModalVisible] = useState(false);
   const [errorModalData, setErrorModalData] = useState<ErrorModalData>({
     title: "",
@@ -259,26 +262,33 @@ export default function MinhasAssinaturasScreen() {
 
   const handleCancelarAssinatura = useCallback(
     (assinatura: Assinatura) => {
-      Alert.alert(
-        "⚠️ Cancelar Assinatura",
-        `Tem certeza que deseja cancelar a assinatura de ${assinatura.plano.nome}?\n\n` +
-          `📍 O que acontecerá:\n` +
-          `• A cobrança automática será interrompida\n` +
-          `• Você poderá usar o plano até ${new Date(assinatura.proxima_cobranca).toLocaleDateString("pt-BR")}\n` +
-          `• Após essa data, o acesso será encerrado\n\n` +
-          `Esta ação não pode ser desfeita.`,
-        [
-          {
-            text: "Não, Manter Assinatura",
-            style: "cancel",
-          },
-          {
-            text: "Sim, Cancelar",
-            onPress: () => confirmarCancelamento(assinatura),
-            style: "destructive",
-          },
-        ],
-      );
+      if (Platform.OS === "web") {
+        setAssinaturaParaCancelar(assinatura);
+        setConfirmModalVisible(true);
+      } else {
+        import("react-native").then(({ Alert }) => {
+          Alert.alert(
+            "⚠️ Cancelar Assinatura",
+            `Tem certeza que deseja cancelar a assinatura de ${assinatura.plano.nome}?\n\n` +
+              `📍 O que acontecerá:\n` +
+              `• A cobrança automática será interrompida\n` +
+              `• Você poderá usar o plano até ${new Date(assinatura.proxima_cobranca).toLocaleDateString("pt-BR")}\n` +
+              `• Após essa data, o acesso será encerrado\n\n` +
+              `Esta ação não pode ser desfeita.`,
+            [
+              {
+                text: "Não, Manter Assinatura",
+                style: "cancel",
+              },
+              {
+                text: "Sim, Cancelar",
+                onPress: () => confirmarCancelamento(assinatura),
+                style: "destructive",
+              },
+            ],
+          );
+        });
+      }
     },
     [confirmarCancelamento],
   );
@@ -469,6 +479,56 @@ export default function MinhasAssinaturasScreen() {
           showsVerticalScrollIndicator={false}
         />
       )}
+
+      {/* Confirm Cancel Modal */}
+      <Modal visible={confirmModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View
+              style={[
+                styles.modalIcon,
+                { backgroundColor: "rgba(255, 193, 7, 0.1)" },
+              ]}
+            >
+              <Feather name="alert-triangle" size={40} color="#FFC107" />
+            </View>
+
+            <Text style={styles.modalTitle}>Cancelar Assinatura</Text>
+
+            {assinaturaParaCancelar && (
+              <Text style={styles.modalMessage}>
+                {`Tem certeza que deseja cancelar a assinatura de ${assinaturaParaCancelar.plano.nome}?\n\nA cobrança automática será interrompida e você poderá usar o plano até ${new Date(assinaturaParaCancelar.proxima_cobranca).toLocaleDateString("pt-BR")}.\n\nEsta ação não pode ser desfeita.`}
+              </Text>
+            )}
+
+            <View style={styles.confirmButtons}>
+              <TouchableOpacity
+                style={styles.confirmButtonManter}
+                onPress={() => {
+                  setConfirmModalVisible(false);
+                  setAssinaturaParaCancelar(null);
+                }}
+              >
+                <Text style={styles.confirmButtonManterText}>Não, Manter</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmButtonCancelar}
+                onPress={() => {
+                  setConfirmModalVisible(false);
+                  if (assinaturaParaCancelar) {
+                    confirmarCancelamento(assinaturaParaCancelar);
+                  }
+                  setAssinaturaParaCancelar(null);
+                }}
+              >
+                <Text style={styles.confirmButtonCancelarText}>
+                  Sim, Cancelar
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Error Modal */}
       <Modal visible={errorModalVisible} transparent animationType="fade">
@@ -881,6 +941,43 @@ const styles = StyleSheet.create({
   },
 
   modalButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+
+  /* Confirm Modal Buttons */
+  confirmButtons: {
+    flexDirection: "row",
+    gap: 12,
+    width: "100%",
+  },
+
+  confirmButtonManter: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: "center",
+    backgroundColor: "#f3f4f6",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+
+  confirmButtonManterText: {
+    color: "#374151",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+
+  confirmButtonCancelar: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: "center",
+    backgroundColor: "#DC3545",
+  },
+
+  confirmButtonCancelarText: {
     color: "#fff",
     fontSize: 14,
     fontWeight: "600",
