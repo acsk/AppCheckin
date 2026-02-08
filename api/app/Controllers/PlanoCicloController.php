@@ -510,21 +510,25 @@ class PlanoCicloController
     #[OA\Post(
         path: "/admin/planos/{plano_id}/ciclos/gerar",
         summary: "Gerar ciclos automáticos",
-        description: "Gera automaticamente todos os ciclos para um plano, aplicando descontos progressivos configuráveis",
+        description: "Gera automaticamente todos os ciclos para um plano baseado nas frequências cadastradas em assinatura_frequencias. Descontos são aplicados via parâmetro desconto_{codigo}, ex: desconto_mensal, desconto_trimestral. Descontos default são calculados automaticamente baseado na quantidade de meses.",
         tags: ["Ciclos de Planos"],
         security: [["bearerAuth" => []]],
         parameters: [
             new OA\Parameter(name: "plano_id", in: "path", required: true, schema: new OA\Schema(type: "integer"))
         ],
         requestBody: new OA\RequestBody(
+            description: "Descontos opcionais por código de frequência (ex: desconto_diario, desconto_semanal, desconto_quinzenal, desconto_mensal, desconto_bimestral, desconto_trimestral, desconto_semestral, desconto_anual). Os códigos disponíveis dependem da tabela assinatura_frequencias.",
             content: new OA\JsonContent(
                 properties: [
-                    new OA\Property(property: "desconto_mensal", type: "integer", example: 0),
-                    new OA\Property(property: "desconto_bimestral", type: "integer", example: 10),
-                    new OA\Property(property: "desconto_trimestral", type: "integer", example: 15),
-                    new OA\Property(property: "desconto_quadrimestral", type: "integer", example: 20),
-                    new OA\Property(property: "desconto_semestral", type: "integer", example: 25),
-                    new OA\Property(property: "desconto_anual", type: "integer", example: 30)
+                    new OA\Property(property: "desconto_diario", type: "number", example: 0, description: "Desconto % para ciclo diário"),
+                    new OA\Property(property: "desconto_semanal", type: "number", example: 0, description: "Desconto % para ciclo semanal"),
+                    new OA\Property(property: "desconto_quinzenal", type: "number", example: 0, description: "Desconto % para ciclo quinzenal"),
+                    new OA\Property(property: "desconto_mensal", type: "number", example: 0, description: "Desconto % para ciclo mensal"),
+                    new OA\Property(property: "desconto_bimestral", type: "number", example: 10, description: "Desconto % para ciclo bimestral"),
+                    new OA\Property(property: "desconto_trimestral", type: "number", example: 15, description: "Desconto % para ciclo trimestral"),
+                    new OA\Property(property: "desconto_quadrimestral", type: "number", example: 20, description: "Desconto % para ciclo quadrimestral"),
+                    new OA\Property(property: "desconto_semestral", type: "number", example: 25, description: "Desconto % para ciclo semestral"),
+                    new OA\Property(property: "desconto_anual", type: "number", example: 30, description: "Desconto % para ciclo anual")
                 ]
             )
         ),
@@ -560,38 +564,41 @@ class PlanoCicloController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
             }
             
-            // Buscar tipos de ciclo disponíveis
+            // Buscar tipos de ciclo disponíveis (usar dados da tabela, não hardcoded)
             $stmtTipos = $this->db->prepare("SELECT id, nome, codigo, meses, ordem FROM assinatura_frequencias WHERE ativo = 1 ORDER BY ordem ASC");
             $stmtTipos->execute();
             $tiposCiclo = $stmtTipos->fetchAll(\PDO::FETCH_ASSOC);
             
-            // Mapeamento de fallback: código -> meses (caso a coluna meses esteja nula)
-            $mesesPorCodigo = [
-                'mensal' => 1,
-                'bimestral' => 2,
-                'trimestral' => 3,
-                'quadrimestral' => 4,
-                'semestral' => 6,
-                'anual' => 12,
-            ];
+            if (empty($tiposCiclo)) {
+                $response->getBody()->write(json_encode(['error' => 'Nenhuma frequência de assinatura cadastrada']));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
             
-            // Garantir que todos os tipos tenham meses preenchido
-            foreach ($tiposCiclo as &$tipo) {
-                if (empty($tipo['meses']) && isset($mesesPorCodigo[$tipo['codigo']])) {
-                    $tipo['meses'] = $mesesPorCodigo[$tipo['codigo']];
+            // Mapear descontos do request (usa código da tabela como chave)
+            // Descontos default progressivos baseados em meses
+            $descontosDefault = [];
+            foreach ($tiposCiclo as $tipo) {
+                $meses = (int) $tipo['meses'];
+                // Desconto progressivo: 0% para 1 mês, aumentando conforme meses
+                $descontosDefault[$tipo['codigo']] = match(true) {
+                    $meses <= 1 => 0,
+                    $meses == 2 => 10,
+                    $meses == 3 => 15,
+                    $meses == 4 => 20,
+                    $meses >= 6 && $meses < 12 => 25,
+                    $meses >= 12 => 30,
+                    default => 0
+                };
+            }
+            
+            // Sobrescrever com valores enviados na request
+            $descontos = $descontosDefault;
+            foreach ($tiposCiclo as $tipo) {
+                $chaveRequest = 'desconto_' . $tipo['codigo'];
+                if (isset($data[$chaveRequest])) {
+                    $descontos[$tipo['codigo']] = (float) $data[$chaveRequest];
                 }
             }
-            unset($tipo); // Limpar referência
-            
-            // Mapear descontos do request
-            $descontos = [
-                'mensal' => $data['desconto_mensal'] ?? 0,
-                'bimestral' => $data['desconto_bimestral'] ?? 10,
-                'trimestral' => $data['desconto_trimestral'] ?? 15,
-                'quadrimestral' => $data['desconto_quadrimestral'] ?? 20,
-                'semestral' => $data['desconto_semestral'] ?? 25,
-                'anual' => $data['desconto_anual'] ?? 30,
-            ];
             
             $ciclosCriados = [];
             
@@ -607,10 +614,13 @@ class PlanoCicloController
             ");
             
             foreach ($tiposCiclo as $tipo) {
-                $desconto = $descontos[$tipo['codigo']] ?? 0;
-                $meses = (int) ($tipo['meses'] ?? 1); // Fallback para 1 se ainda for null
-                if ($meses < 1) $meses = 1; // Garantir mínimo de 1
+                $meses = (int) $tipo['meses'];
+                if ($meses < 1) {
+                    error_log("Frequência {$tipo['codigo']} com meses inválido ({$tipo['meses']}), ignorando");
+                    continue; // Pular frequências com meses inválido
+                }
                 
+                $desconto = $descontos[$tipo['codigo']] ?? 0;
                 $valorBase = $plano['valor'] * $meses;
                 $valorComDesconto = round($valorBase * (1 - ($desconto / 100)), 2);
                 
@@ -629,7 +639,7 @@ class PlanoCicloController
                     'meses' => $meses,
                     'valor' => $valorComDesconto,
                     'desconto' => $desconto,
-                    'economia' => $valorBase - $valorComDesconto
+                    'economia' => round($valorBase - $valorComDesconto, 2)
                 ];
             }
             
