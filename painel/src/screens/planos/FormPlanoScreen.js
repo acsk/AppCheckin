@@ -102,7 +102,7 @@ export default function FormPlanoScreen() {
           modalidade_id: plano.modalidade_id?.toString() || '',
           nome: plano.nome || '',
           descricao: plano.descricao || '',
-          valor: plano.valor ? plano.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '',
+          valor: plano.valor ? parseFloat(plano.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '',
           checkins_semanais: plano.checkins_semanais?.toString() || '',
           duracao_dias: plano.duracao_dias ? plano.duracao_dias.toString() : '30',
           ativo: plano.ativo === 1 || plano.ativo === true,
@@ -177,8 +177,11 @@ export default function FormPlanoScreen() {
   };
 
   const parseValorMonetario = (valorFormatado) => {
-    // Remove pontos (separadores de milhar) e substitui vírgula por ponto
-    const valorLimpo = valorFormatado.replace(/\./g, '').replace(',', '.');
+    if (!valorFormatado) return 0;
+    // Se já for número, retorna direto
+    if (typeof valorFormatado === 'number') return valorFormatado;
+    // Formato brasileiro: 1.234,56 → remove pontos de milhar, troca vírgula por ponto
+    const valorLimpo = valorFormatado.toString().replace(/\./g, '').replace(',', '.');
     return parseFloat(valorLimpo) || 0;
   };
 
@@ -232,7 +235,7 @@ export default function FormPlanoScreen() {
     setEditingCicloId(ciclo.id);
     setCicloForm({
       tipo_ciclo_id: ciclo.tipo_ciclo_id?.toString() || '',
-      valor: ciclo.valor ? ciclo.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '',
+      valor: ciclo.valor ? parseFloat(ciclo.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '',
       permite_recorrencia: ciclo.permite_recorrencia === 1 || ciclo.permite_recorrencia === true,
       ativo: ciclo.ativo === 1 || ciclo.ativo === true,
     });
