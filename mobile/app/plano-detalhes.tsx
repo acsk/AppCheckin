@@ -510,7 +510,7 @@ export default function PlanoDetalhesScreen() {
                       </View>
                     )}
 
-                    {ciclo.permite_recorrencia && (
+                    {ciclo.permite_recorrencia ? (
                       <View style={styles.cicloRecorrenciaBadge}>
                         <Feather
                           name="zap"
@@ -521,6 +521,17 @@ export default function PlanoDetalhesScreen() {
                           {`Cobrança automática a cada ${ciclo.meses} ${
                             ciclo.meses === 1 ? "mês" : "meses"
                           }`}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={styles.cicloAvulsaBadge}>
+                        <Feather
+                          name="slash"
+                          size={12}
+                          color={styles.cicloAvulsaText.color}
+                        />
+                        <Text style={styles.cicloAvulsaText}>
+                          Cobrança avulsa (não automática)
                         </Text>
                       </View>
                     )}
@@ -1006,6 +1017,24 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "700",
     color: "#B45309",
+  },
+  cicloAvulsaBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: "#F3F4F6",
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    alignSelf: "flex-start",
+    marginBottom: 6,
+  },
+  cicloAvulsaText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#6B7280",
   },
   economiaBadge: {
     backgroundColor: "#dcfce7",

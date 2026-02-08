@@ -4231,7 +4231,9 @@ class MobileController
                     'valor' => $valorCompra,
                     'max_parcelas' => 12,
                     'academia_nome' => $academiaNome,
-                    'apenas_cartao' => true  // Aceitar APENAS cartão de crédito
+                    // Assinatura recorrente aceita APENAS cartão (preapproval)
+                    // Pagamento avulso aceita PIX, boleto, cartão, etc. (preference)
+                    'apenas_cartao' => $isRecorrente
                 ];
 
                 error_log("[MobileController::comprarPlano] Ciclo: {$cicloNome}, Meses: {$duracaoMeses}, Recorrente: " . ($isRecorrente ? 'SIM' : 'NÃO'));
