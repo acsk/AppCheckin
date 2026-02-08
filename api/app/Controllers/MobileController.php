@@ -3421,8 +3421,10 @@ class MobileController
     public function planosDisponiveis(Request $request, Response $response): Response
     {
         try {
-            $tenantId = $request->getAttribute('tenantId');
-            $usuarioId = $request->getAttribute('usuarioId');
+            $tenantId = $request->getAttribute('tenantId') ?? $request->getAttribute('tenant_id');
+            $usuarioId = $request->getAttribute('userId')
+                ?? $request->getAttribute('user_id')
+                ?? $request->getAttribute('usuarioId');
             
             if (!$tenantId) {
                 $response->getBody()->write(json_encode([
@@ -3663,8 +3665,10 @@ class MobileController
     public function detalhePlano(Request $request, Response $response, array $args): Response
     {
         try {
-            $tenantId = $request->getAttribute('tenantId');
-            $userId = $request->getAttribute('userId');
+            $tenantId = $request->getAttribute('tenantId') ?? $request->getAttribute('tenant_id');
+            $userId = $request->getAttribute('userId')
+                ?? $request->getAttribute('user_id')
+                ?? $request->getAttribute('usuarioId');
             $planoId = (int)($args['planoId'] ?? 0);
 
             if (!$tenantId) {
@@ -3762,67 +3766,40 @@ class MobileController
                 ];
             }, $ciclosRaw);
 
-            // 3. Buscar turmas disponíveis na modalidade do plano
-            $turmas = [];
-            if ($plano['modalidade_id']) {
-                $stmtTurmas = $this->db->prepare("
-                    SELECT t.id, t.nome, t.descricao, t.vagas, t.ativo,
-                           (SELECT COUNT(*) FROM matriculas mt 
-                            INNER JOIN status_matricula sm ON sm.id = mt.status_id
-                            WHERE mt.turma_id = t.id AND sm.codigo = 'ativa') as alunos_ativos
-                    FROM turmas t
-                    WHERE t.tenant_id = :tenant_id 
-                    AND t.modalidade_id = :modalidade_id
-                    AND t.ativo = 1
-                    ORDER BY t.nome ASC
-                ");
-                $stmtTurmas->execute([
-                    'tenant_id' => $tenantId,
-                    'modalidade_id' => $plano['modalidade_id']
-                ]);
-                $turmasRaw = $stmtTurmas->fetchAll(\PDO::FETCH_ASSOC);
-
-                // Buscar horários de cada turma
-                $turmaIds = array_column($turmasRaw, 'id');
-                $horariosPorTurma = [];
-
-                if (!empty($turmaIds)) {
-                    $ph = implode(',', array_fill(0, count($turmaIds), '?'));
-                    $stmtHorarios = $this->db->prepare("
-                        SELECT turma_id, dia_semana, horario_inicio, horario_fim
-                        FROM turma_horarios
-                        WHERE turma_id IN ({$ph}) AND ativo = 1
-                        ORDER BY FIELD(dia_semana, 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado', 'domingo'), horario_inicio ASC
-                    ");
-                    $stmtHorarios->execute($turmaIds);
-                    foreach ($stmtHorarios->fetchAll(\PDO::FETCH_ASSOC) as $h) {
-                        $tid = (int)$h['turma_id'];
-                        if (!isset($horariosPorTurma[$tid])) {
-                            $horariosPorTurma[$tid] = [];
-                        }
-                        $horariosPorTurma[$tid][] = [
-                            'dia_semana' => $h['dia_semana'],
-                            'horario_inicio' => substr($h['horario_inicio'], 0, 5),
-                            'horario_fim' => substr($h['horario_fim'], 0, 5),
-                        ];
-                    }
-                }
-
-                $turmas = array_map(function($t) use ($horariosPorTurma) {
-                    $tid = (int)$t['id'];
-                    $vagas = $t['vagas'] ? (int)$t['vagas'] : null;
-                    $alunosAtivos = (int)$t['alunos_ativos'];
-                    return [
-                        'id' => $tid,
-                        'nome' => $t['nome'],
-                        'descricao' => $t['descricao'],
-                        'vagas' => $vagas,
-                        'alunos_ativos' => $alunosAtivos,
-                        'vagas_disponiveis' => $vagas ? max(0, $vagas - $alunosAtivos) : null,
-                        'horarios' => $horariosPorTurma[$tid] ?? [],
-                    ];
-                }, $turmasRaw);
-            }
+            // 3. Buscar resumo de disponibilidade de turmas
+            $disponibilidade = null;
+            // if ($plano['modalidade_id']) {
+            //     $stmtDisp = $this->db->prepare("
+            //         SELECT 
+            //             COUNT(DISTINCT t.id) as total_turmas,
+            //             COUNT(DISTINCT CONCAT(t.horario_inicio, '-', t.horario_fim)) as horarios_distintos,
+            //             SUM(t.limite_alunos) as total_vagas,
+            //             SUM((SELECT COUNT(*) FROM inscricoes_turmas it
+            //                  WHERE it.turma_id = t.id AND it.ativo = 1 AND it.status = 'ativa')) as vagas_ocupadas
+            //         FROM turmas t
+            //         WHERE t.tenant_id = :tenant_id
+            //         AND t.modalidade_id = :modalidade_id
+            //         AND t.ativo = 1
+            //     ");
+            //     $stmtDisp->execute([
+            //         'tenant_id' => $tenantId,
+            //         'modalidade_id' => $plano['modalidade_id']
+            //     ]);
+            //     $disp = $stmtDisp->fetch(\PDO::FETCH_ASSOC);
+                
+            //     if ($disp && $disp['total_turmas'] > 0) {
+            //         $totalVagas = (int)$disp['total_vagas'];
+            //         $vagasOcupadas = (int)$disp['vagas_ocupadas'];
+            //         $vagasDisponiveis = max(0, $totalVagas - $vagasOcupadas);
+                    
+            //         $disponibilidade = [
+            //             'total_turmas' => (int)$disp['total_turmas'],
+            //             'horarios_disponiveis' => (int)$disp['horarios_distintos'],
+            //             'vagas_disponiveis' => $vagasDisponiveis,
+            //             'total_vagas' => $totalVagas,
+            //         ];
+            //     }
+            // }
 
             // 4. Verificar se o usuário já tem matrícula ativa neste plano
             $matriculaAtiva = null;
@@ -3875,7 +3852,7 @@ class MobileController
                     'cor' => $plano['modalidade_cor'],
                 ],
                 'ciclos' => $ciclos,
-                'turmas' => $turmas,
+               // 'disponibilidade' => $disponibilidade,
                 'matricula_ativa' => $matriculaAtiva,
                 'is_plano_atual' => $matriculaAtiva !== null,
             ];
@@ -3894,7 +3871,7 @@ class MobileController
                 'success' => false,
                 'type' => 'error',
                 'code' => 'ERRO_INTERNO',
-                'message' => 'Erro ao buscar detalhes do plano'
+                'message' => 'Erro ao buscar detalhes do plano' . $e->getMessage()
             ]));
 
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);

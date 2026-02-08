@@ -45,6 +45,19 @@ interface PlanoDetalhes {
     nome: string;
   };
   is_plano_atual?: boolean;
+  status_codigo?: string | null;
+  status?: {
+    codigo?: string;
+    nome?: string;
+    cor?: string;
+  };
+  matricula_ativa?: {
+    status?: string;
+    status_codigo?: string;
+    data_inicio?: string;
+    data_vencimento?: string;
+    valor?: number;
+  };
   label?: string | null;
   ciclos?: Ciclo[];
 }
@@ -74,6 +87,17 @@ export default function PlanoDetalhesScreen() {
   const [redirectModalVisible, setRedirectModalVisible] = useState(false);
   const [countdown, setCountdown] = useState(3);
   const [paymentUrlToOpen, setPaymentUrlToOpen] = useState<string | null>(null);
+
+  const handleBack = () => {
+    if ("canGoBack" in router && typeof router.canGoBack === "function") {
+      if (router.canGoBack()) {
+        router.back();
+        return;
+      }
+    }
+
+    router.replace("/planos");
+  };
 
   const showErrorModal = (
     title: string,
@@ -127,11 +151,47 @@ export default function PlanoDetalhesScreen() {
       console.log("✅ Detalhes do plano:", JSON.stringify(data, null, 2));
 
       if (data.success && data.data) {
-        const planoData = data.data.plano || data.data;
-        setPlano(planoData);
+        const payload = data.data;
+        const planoData = payload.plano || payload;
+        const statusCodigoRaw =
+          planoData?.status_codigo ??
+          planoData?.status?.codigo ??
+          planoData?.matricula?.status_codigo ??
+          planoData?.matricula?.status?.codigo ??
+          planoData?.matricula_ativa?.status_codigo ??
+          payload?.status_codigo ??
+          payload?.status?.codigo ??
+          payload?.matricula?.status_codigo ??
+          payload?.matricula?.status?.codigo ??
+          payload?.matricula_ativa?.status_codigo ??
+          payload?.assinatura?.status_codigo ??
+          payload?.assinatura?.status?.codigo;
+        const statusCodigo =
+          typeof statusCodigoRaw === "string"
+            ? statusCodigoRaw.toLowerCase()
+            : null;
+        const statusObj =
+          planoData?.status ||
+          planoData?.matricula?.status ||
+          payload?.status ||
+          payload?.matricula?.status ||
+          payload?.assinatura?.status ||
+          null;
+
+        const matriculaAtiva =
+          planoData?.matricula_ativa ?? payload?.matricula_ativa ?? null;
+
+        const mergedPlano = {
+          ...planoData,
+          status_codigo: statusCodigo || planoData?.status_codigo,
+          status: statusObj || planoData?.status,
+          matricula_ativa: matriculaAtiva || planoData?.matricula_ativa,
+        };
+
+        setPlano(mergedPlano);
 
         // Selecionar primeiro ciclo por padrão
-        const ciclos = (planoData.ciclos || []).sort(
+        const ciclos = (mergedPlano.ciclos || []).sort(
           (a: Ciclo, b: Ciclo) => a.meses - b.meses,
         );
         if (ciclos.length > 0) {
@@ -270,13 +330,6 @@ export default function PlanoDetalhesScreen() {
         return;
       }
 
-      if (matriculaId) {
-        await AsyncStorage.setItem(
-          "matricula_pendente_id",
-          matriculaId.toString(),
-        );
-      }
-
       setPaymentUrlToOpen(paymentUrl);
       setCountdown(3);
       setRedirectModalVisible(true);
@@ -295,7 +348,7 @@ export default function PlanoDetalhesScreen() {
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => router.back()}
+            onPress={handleBack}
           >
             <Feather name="arrow-left" size={24} color="#fff" />
           </TouchableOpacity>
@@ -316,7 +369,7 @@ export default function PlanoDetalhesScreen() {
         <View style={styles.header}>
           <TouchableOpacity
             style={styles.backButton}
-            onPress={() => router.back()}
+            onPress={handleBack}
           >
             <Feather name="arrow-left" size={24} color="#fff" />
           </TouchableOpacity>
@@ -343,6 +396,32 @@ export default function PlanoDetalhesScreen() {
 
   const ciclos = (plano.ciclos || []).sort((a, b) => a.meses - b.meses);
   const selectedCiclo = ciclos.find((c) => c.id === selectedCicloId);
+  const statusCodigoRaw =
+    plano.status_codigo ||
+    (typeof plano.status === "string" ? plano.status : plano.status?.codigo) ||
+    plano.matricula_ativa?.status_codigo ||
+    (plano as { status_codigo_plano?: string }).status_codigo_plano ||
+    (plano as { status_plano?: string }).status_plano ||
+    (plano as { matricula_status_codigo?: string }).matricula_status_codigo ||
+    (plano as { matricula?: { status_codigo?: string; status?: { codigo?: string } } })
+      .matricula?.status_codigo ||
+    (plano as { matricula?: { status?: { codigo?: string } } }).matricula?.status
+      ?.codigo ||
+    null;
+  const statusNomeRaw =
+    (typeof plano.status === "string" ? plano.status : plano.status?.nome) ||
+    plano.matricula_ativa?.status ||
+    (plano as { status_nome?: string }).status_nome ||
+    plano.label ||
+    "";
+  const statusCodigo =
+    typeof statusCodigoRaw === "string"
+      ? statusCodigoRaw.toLowerCase()
+      : null;
+  const statusNome =
+    typeof statusNomeRaw === "string" ? statusNomeRaw.toLowerCase() : "";
+  const isPendente = statusCodigo === "pendente" || statusNome.includes("pendente");
+  const isPlanoAtivo = !!plano.is_plano_atual && !isPendente;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -350,7 +429,7 @@ export default function PlanoDetalhesScreen() {
       <View style={styles.header}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => router.back()}
+          onPress={handleBack}
         >
           <Feather name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
@@ -374,7 +453,7 @@ export default function PlanoDetalhesScreen() {
                 </Text>
               </View>
             </View>
-            {plano.is_plano_atual && (
+            {isPlanoAtivo && (
               <View style={styles.ativoBadge}>
                 <Feather name="check-circle" size={14} color="#fff" />
                 <Text style={styles.ativoBadgeText}>
@@ -408,52 +487,6 @@ export default function PlanoDetalhesScreen() {
           </View>
         )}
 
-        {/* Detalhes / Features */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>O que está incluso</Text>
-          <View style={styles.featuresList}>
-            <View style={styles.featureItem}>
-              <View style={styles.featureIconCircle}>
-                <Feather name="check-circle" size={18} color={colors.primary} />
-              </View>
-              <View style={styles.featureContent}>
-                <Text style={styles.featureLabel}>Check-ins por semana</Text>
-                <Text style={styles.featureValue}>
-                  {plano.checkins_semanais === 999
-                    ? "Ilimitados"
-                    : `${plano.checkins_semanais}x por semana`}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.featureDivider} />
-
-            <View style={styles.featureItem}>
-              <View style={styles.featureIconCircle}>
-                <Feather name="calendar" size={18} color={colors.primary} />
-              </View>
-              <View style={styles.featureContent}>
-                <Text style={styles.featureLabel}>Duração do acesso</Text>
-                <Text style={styles.featureValue}>
-                  {plano.duracao_texto || `${plano.duracao_dias} dias`}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.featureDivider} />
-
-            <View style={styles.featureItem}>
-              <View style={styles.featureIconCircle}>
-                <Feather name="tag" size={18} color={colors.primary} />
-              </View>
-              <View style={styles.featureContent}>
-                <Text style={styles.featureLabel}>Modalidade</Text>
-                <Text style={styles.featureValue}>{plano.modalidade.nome}</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
         {/* Seleção de Ciclo */}
         {ciclos.length > 0 && (
           <View style={styles.section}>
@@ -477,34 +510,46 @@ export default function PlanoDetalhesScreen() {
                       </View>
                     )}
 
-                    <Text
-                      style={[
-                        styles.cicloNome,
-                        isSelected && styles.cicloNomeSelected,
-                      ]}
-                    >
-                      {ciclo.nome}
-                    </Text>
-                    <Text style={styles.cicloMeses}>
-                      {ciclo.meses} {ciclo.meses === 1 ? "mês" : "meses"}
-                    </Text>
-
-                    <View style={styles.cicloPriceRow}>
+                    {ciclo.permite_recorrencia && (
+                      <View style={styles.cicloRecorrenciaBadge}>
+                        <Feather
+                          name="zap"
+                          size={12}
+                          color={styles.cicloRecorrenciaText.color}
+                        />
+                        <Text style={styles.cicloRecorrenciaText}>
+                          {`Cobrança automática a cada ${ciclo.meses} ${
+                            ciclo.meses === 1 ? "mês" : "meses"
+                          }`}
+                        </Text>
+                      </View>
+                    )}
+                    <View style={styles.cicloRow}>
+                      <Text
+                        style={[
+                          styles.cicloNome,
+                          isSelected && styles.cicloNomeSelected,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {ciclo.nome}
+                      </Text>
                       <Text
                         style={[
                           styles.cicloValor,
                           isSelected && styles.cicloValorSelected,
                         ]}
+                        numberOfLines={1}
                       >
                         {ciclo.valor_formatado}
                       </Text>
                     </View>
-
-                    {!!ciclo.valor_mensal_formatado && ciclo.meses > 1 && (
-                      <Text style={styles.cicloMensal}>
-                        {ciclo.valor_mensal_formatado}/mês
-                      </Text>
-                    )}
+                    <Text style={styles.cicloMeses} numberOfLines={1}>
+                      {ciclo.meses} {ciclo.meses === 1 ? "mês" : "meses"}
+                      {!!ciclo.valor_mensal_formatado && ciclo.meses > 1
+                        ? ` • ${ciclo.valor_mensal_formatado}/mês`
+                        : ""}
+                    </Text>
 
                     {ciclo.economia && (
                       <View style={styles.economiaBadge}>
@@ -512,12 +557,6 @@ export default function PlanoDetalhesScreen() {
                           {ciclo.economia}
                         </Text>
                       </View>
-                    )}
-
-                    {ciclo.economia_valor && (
-                      <Text style={styles.economiaValorText}>
-                        {ciclo.economia_valor}
-                      </Text>
                     )}
                   </TouchableOpacity>
                 );
@@ -529,7 +568,7 @@ export default function PlanoDetalhesScreen() {
 
       {/* Footer fixo com botão */}
       <View style={styles.footer}>
-        {plano.is_plano_atual ? (
+        {isPlanoAtivo ? (
           <View style={styles.footerButtonAtivo}>
             <Feather name="check" size={18} color="#fff" />
             <Text style={styles.footerButtonText}>Plano Ativo</Text>
@@ -740,16 +779,16 @@ const styles = StyleSheet.create({
   /* Content */
   content: {
     paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 120,
+    paddingTop: 12,
+    paddingBottom: 96,
   },
 
   /* Hero Card */
   heroCard: {
     backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: "#eef2f7",
     shadowColor: "#000",
@@ -765,10 +804,10 @@ const styles = StyleSheet.create({
   },
   heroInfo: {
     flex: 1,
-    gap: 8,
+    gap: 6,
   },
   heroNome: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: "800",
     color: colors.text,
   },
@@ -777,13 +816,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
     backgroundColor: `${colors.primary}15`,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 20,
     alignSelf: "flex-start",
   },
   modalidadeText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "600",
     color: colors.primary,
   },
@@ -792,12 +831,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
     backgroundColor: "#28A745",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 999,
   },
   ativoBadgeText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "700",
     color: "#fff",
     textTransform: "uppercase",
@@ -805,22 +844,22 @@ const styles = StyleSheet.create({
   priceSection: {
     flexDirection: "row",
     alignItems: "baseline",
-    marginTop: 16,
+    marginTop: 12,
     gap: 4,
     flexWrap: "wrap",
   },
   priceValue: {
-    fontSize: 28,
+    fontSize: 48,
     fontWeight: "800",
     color: colors.primary,
   },
   priceCiclo: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "500",
     color: colors.textMuted,
   },
   priceMonthly: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: "500",
     color: colors.textSecondary,
   },
@@ -828,9 +867,9 @@ const styles = StyleSheet.create({
   /* Sections */
   section: {
     backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 18,
-    marginBottom: 16,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: "#eef2f7",
     shadowColor: "#000",
@@ -840,15 +879,15 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   sectionTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "700",
     color: colors.text,
-    marginBottom: 14,
+    marginBottom: 10,
   },
   descricaoText: {
-    fontSize: 14,
+    fontSize: 13,
     color: colors.textSecondary,
-    lineHeight: 22,
+    lineHeight: 20,
   },
 
   /* Features */
@@ -858,13 +897,13 @@ const styles = StyleSheet.create({
   featureItem: {
     flexDirection: "row",
     alignItems: "center",
-    paddingVertical: 12,
-    gap: 14,
+    paddingVertical: 8,
+    gap: 10,
   },
   featureIconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     backgroundColor: `${colors.primary}10`,
     justifyContent: "center",
     alignItems: "center",
@@ -873,13 +912,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   featureLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: colors.textMuted,
     fontWeight: "600",
-    marginBottom: 2,
+    marginBottom: 1,
   },
   featureValue: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: "600",
     color: colors.text,
   },
@@ -890,82 +929,95 @@ const styles = StyleSheet.create({
 
   /* Ciclos */
   ciclosGrid: {
-    gap: 10,
+    gap: 8,
   },
   cicloCard: {
     borderWidth: 1.5,
     borderColor: "#e5e7eb",
-    borderRadius: 14,
-    padding: 16,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
     backgroundColor: "#fafafa",
     position: "relative",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
   },
   cicloCardSelected: {
+    borderWidth: 2.5,
     borderColor: colors.primary,
     backgroundColor: `${colors.primary}08`,
   },
   cicloCheck: {
     position: "absolute",
-    top: 10,
-    right: 10,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    top: 6,
+    right: 6,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     backgroundColor: colors.primary,
     justifyContent: "center",
     alignItems: "center",
   },
+  cicloRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 6,
+    marginBottom: 6,
+  },
   cicloNome: {
-    fontSize: 16,
+    flex: 1,
+    fontSize: 13,
     fontWeight: "700",
     color: colors.text,
-    marginBottom: 2,
   },
   cicloNomeSelected: {
     color: colors.primary,
   },
   cicloMeses: {
-    fontSize: 12,
+    fontSize: 10,
     color: colors.textMuted,
-    marginBottom: 8,
-  },
-  cicloPriceRow: {
-    flexDirection: "row",
-    alignItems: "baseline",
-    gap: 6,
   },
   cicloValor: {
-    fontSize: 20,
+    fontSize: 26,
     fontWeight: "800",
     color: colors.text,
   },
   cicloValorSelected: {
     color: colors.primary,
   },
-  cicloMensal: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: colors.textMuted,
-    marginTop: 2,
+  cicloRecorrenciaBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: "#FFFBEB",
+    borderWidth: 1,
+    borderColor: "#F59E0B",
+    alignSelf: "flex-start",
+    marginBottom: 6,
+  },
+  cicloRecorrenciaText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#B45309",
   },
   economiaBadge: {
     backgroundColor: "#dcfce7",
     paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
+    paddingVertical: 4,
+    borderRadius: 8,
     alignSelf: "flex-start",
-    marginTop: 8,
   },
   economiaText: {
-    fontSize: 11,
+    fontSize: 12,
     fontWeight: "700",
     color: "#15803d",
-  },
-  economiaValorText: {
-    fontSize: 11,
-    fontWeight: "500",
-    color: "#15803d",
-    marginTop: 4,
   },
 
   /* Footer */
@@ -976,8 +1028,8 @@ const styles = StyleSheet.create({
     right: 0,
     backgroundColor: "#fff",
     paddingHorizontal: 16,
-    paddingVertical: 14,
-    paddingBottom: 30,
+    paddingVertical: 10,
+    paddingBottom: 22,
     borderTopWidth: 1,
     borderTopColor: "#eef2f7",
     shadowColor: "#000",
@@ -991,8 +1043,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.primary,
-    paddingVertical: 16,
-    borderRadius: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
     gap: 10,
   },
   footerButtonDisabled: {
@@ -1003,13 +1055,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#28A745",
-    paddingVertical: 16,
-    borderRadius: 14,
+    paddingVertical: 12,
+    borderRadius: 12,
     gap: 10,
   },
   footerButtonText: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "700",
   },
 

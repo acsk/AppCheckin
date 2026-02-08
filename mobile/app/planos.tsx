@@ -433,19 +433,10 @@ export default function PlanosScreen() {
 
         console.log("💳 Payment URL:", paymentUrl);
 
-        // 4. Salvar ID da matrícula para consultar depois
-        if (matriculaId) {
-          await AsyncStorage.setItem(
-            "matricula_pendente_id",
-            matriculaId.toString(),
-          );
-          console.log("💾 Matrícula ID salvo:", matriculaId);
-        }
-
         setComprando(false);
         setPlanoComprando(null);
 
-        // 5. Mostrar modal de redirecionamento com countdown
+        // 4. Mostrar modal de redirecionamento com countdown
         setPaymentUrlToOpen(paymentUrl);
         setCountdown(3);
         setRedirectModalVisible(true);
