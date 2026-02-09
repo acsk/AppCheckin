@@ -34,6 +34,7 @@ use App\Controllers\DashboardController;
 use App\Controllers\MercadoPagoWebhookController;
 use App\Controllers\PlanoCicloController;
 use App\Controllers\AssinaturaController;
+use App\Controllers\RelatorioController;
 use App\Middlewares\AuthMiddleware;
 use App\Middlewares\TenantMiddleware;
 use App\Middlewares\AdminMiddleware;
@@ -985,6 +986,9 @@ return function ($app) {
         
         // Registrar check-in para aluno
         $group->post('/checkins/registrar', [CheckinController::class, 'registrarPorAdmin']);
+        
+        // Relatórios
+        $group->get('/relatorios/planos-ciclos', [RelatorioController::class, 'planosCiclos']);
         
         // Contas a Receber
         $group->get('/contas-receber', [ContasReceberController::class, 'index']);

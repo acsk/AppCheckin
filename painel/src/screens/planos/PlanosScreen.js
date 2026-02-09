@@ -21,6 +21,7 @@ export default function PlanosScreen() {
   const [selectedTenant, setSelectedTenant] = useState(null);
   const [searchText, setSearchText] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
+  const [gerandoRelatorio, setGerandoRelatorio] = useState(false);
 
   useEffect(() => {
     checkUserAndLoadData();
@@ -128,6 +129,178 @@ export default function PlanosScreen() {
       style: 'currency',
       currency: 'BRL'
     }).format(value);
+  };
+
+  const handleGerarRelatorio = async () => {
+    try {
+      setGerandoRelatorio(true);
+      const response = await planoService.relatorioPlanosECiclos();
+      
+      // Gerar HTML do relatório
+      const html = gerarHtmlRelatorio(response);
+      
+      // Abrir em nova aba
+      const novaJanela = window.open('', '_blank');
+      novaJanela.document.write(html);
+      novaJanela.document.close();
+      
+      showSuccess('Relatório gerado com sucesso');
+    } catch (error) {
+      showError(error.error || 'Erro ao gerar relatório');
+    } finally {
+      setGerandoRelatorio(false);
+    }
+  };
+
+  const gerarHtmlRelatorio = (data) => {
+    const { tenant, planos: planosRelatorio, resumo } = data;
+    const dataAtual = new Date().toLocaleDateString('pt-BR', { 
+      day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' 
+    });
+
+    return `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <title>Relatório de Planos e Ciclos - ${tenant?.nome || 'Academia'}</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background: #f5f5f5; }
+    .container { max-width: 1000px; margin: 0 auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #f97316; padding-bottom: 20px; margin-bottom: 20px; }
+    .header h1 { color: #1f2937; font-size: 24px; }
+    .header .info { text-align: right; color: #6b7280; font-size: 12px; }
+    .resumo { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin-bottom: 30px; }
+    .resumo-item { background: linear-gradient(135deg, #f97316, #fb923c); color: #fff; padding: 15px; border-radius: 8px; text-align: center; }
+    .resumo-item.active { background: linear-gradient(135deg, #22c55e, #4ade80); }
+    .resumo-item.inactive { background: linear-gradient(135deg, #6b7280, #9ca3af); }
+    .resumo-item h3 { font-size: 28px; margin-bottom: 5px; }
+    .resumo-item span { font-size: 12px; opacity: 0.9; }
+    .plano { border: 1px solid #e5e7eb; border-radius: 8px; margin-bottom: 20px; overflow: hidden; }
+    .plano-header { background: #f9fafb; padding: 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e5e7eb; }
+    .plano-header h2 { font-size: 16px; color: #1f2937; display: flex; align-items: center; gap: 10px; }
+    .plano-header .badges { display: flex; gap: 8px; }
+    .badge { padding: 4px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+    .badge-active { background: #dcfce7; color: #16a34a; }
+    .badge-inactive { background: #fee2e2; color: #dc2626; }
+    .badge-modalidade { background: #fff7ed; color: #ea580c; }
+    .plano-info { padding: 15px; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; background: #fafafa; }
+    .plano-info-item { text-align: center; }
+    .plano-info-item label { display: block; font-size: 11px; color: #6b7280; margin-bottom: 4px; text-transform: uppercase; }
+    .plano-info-item strong { font-size: 14px; color: #1f2937; }
+    .ciclos-header { padding: 10px 15px; background: #f3f4f6; font-size: 13px; font-weight: 600; color: #374151; border-top: 1px solid #e5e7eb; }
+    .ciclos-table { width: 100%; border-collapse: collapse; }
+    .ciclos-table th { background: #f9fafb; padding: 10px 15px; text-align: left; font-size: 11px; color: #6b7280; text-transform: uppercase; border-bottom: 1px solid #e5e7eb; }
+    .ciclos-table td { padding: 12px 15px; border-bottom: 1px solid #f3f4f6; font-size: 13px; color: #374151; }
+    .ciclos-table tr:last-child td { border-bottom: none; }
+    .ciclos-table .valor { font-weight: 600; color: #16a34a; }
+    .ciclos-table .tag { padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 600; }
+    .tag-recorrente { background: #dbeafe; color: #2563eb; }
+    .tag-avulso { background: #fef3c7; color: #d97706; }
+    .tag-ativo { background: #dcfce7; color: #16a34a; }
+    .tag-inativo { background: #fee2e2; color: #dc2626; }
+    .no-ciclos { padding: 20px; text-align: center; color: #9ca3af; font-style: italic; }
+    .footer { margin-top: 30px; padding-top: 20px; border-top: 1px solid #e5e7eb; text-align: center; color: #9ca3af; font-size: 11px; }
+    @media print { body { background: #fff; padding: 0; } .container { box-shadow: none; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📊 Relatório de Planos e Ciclos</h1>
+      <div class="info">
+        <strong>${tenant?.nome || 'Academia'}</strong><br>
+        Gerado em: ${dataAtual}
+      </div>
+    </div>
+
+    <div class="resumo">
+      <div class="resumo-item">
+        <h3>${resumo?.total_planos || 0}</h3>
+        <span>Total de Planos</span>
+      </div>
+      <div class="resumo-item active">
+        <h3>${resumo?.planos_ativos || 0}</h3>
+        <span>Planos Ativos</span>
+      </div>
+      <div class="resumo-item inactive">
+        <h3>${resumo?.planos_inativos || 0}</h3>
+        <span>Planos Inativos</span>
+      </div>
+      <div class="resumo-item">
+        <h3>${resumo?.total_ciclos || 0}</h3>
+        <span>Total de Ciclos</span>
+      </div>
+    </div>
+
+    ${(planosRelatorio || []).map(plano => `
+      <div class="plano">
+        <div class="plano-header">
+          <h2>
+            <span style="color: #f97316;">#${plano.id}</span>
+            ${plano.nome}
+          </h2>
+          <div class="badges">
+            <span class="badge badge-modalidade">${plano.modalidade_nome || 'Sem modalidade'}</span>
+            <span class="badge ${plano.ativo ? 'badge-active' : 'badge-inactive'}">
+              ${plano.ativo ? 'Ativo' : 'Inativo'}
+            </span>
+          </div>
+        </div>
+        <div class="plano-info">
+          <div class="plano-info-item">
+            <label>Valor Base</label>
+            <strong>${formatCurrency(plano.valor)}</strong>
+          </div>
+          <div class="plano-info-item">
+            <label>Checkins/Semana</label>
+            <strong>${plano.checkins_semanais >= 999 ? 'Ilimitado' : plano.checkins_semanais + 'x'}</strong>
+          </div>
+          <div class="plano-info-item">
+            <label>Duração</label>
+            <strong>${plano.duracao_dias || 30} dias</strong>
+          </div>
+          <div class="plano-info-item">
+            <label>Novos Contratos</label>
+            <strong>${plano.atual ? '✅ Disponível' : '🔒 Bloqueado'}</strong>
+          </div>
+        </div>
+        <div class="ciclos-header">Ciclos de Pagamento (${plano.ciclos?.length || 0})</div>
+        ${plano.ciclos && plano.ciclos.length > 0 ? `
+          <table class="ciclos-table">
+            <thead>
+              <tr>
+                <th>Frequência</th>
+                <th>Período</th>
+                <th>Valor</th>
+                <th>Tipo</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${plano.ciclos.map(ciclo => `
+                <tr>
+                  <td><strong>${ciclo.frequencia_nome || ciclo.nome || 'N/A'}</strong></td>
+                  <td>${ciclo.meses || ciclo.periodo_meses || 1} ${(ciclo.meses || ciclo.periodo_meses || 1) > 1 ? 'meses' : 'mês'}</td>
+                  <td class="valor">${formatCurrency(ciclo.valor)}</td>
+                  <td><span class="tag ${ciclo.permite_recorrencia ? 'tag-recorrente' : 'tag-avulso'}">${ciclo.permite_recorrencia ? 'Recorrente' : 'Avulso'}</span></td>
+                  <td><span class="tag ${ciclo.ativo ? 'tag-ativo' : 'tag-inativo'}">${ciclo.ativo ? 'Ativo' : 'Inativo'}</span></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        ` : '<div class="no-ciclos">Nenhum ciclo cadastrado para este plano</div>'}
+      </div>
+    `).join('')}
+
+    <div class="footer">
+      Relatório gerado pelo sistema App Checkin - Painel Administrativo
+    </div>
+  </div>
+</body>
+</html>
+    `;
   };
 
   const renderMobileCard = (plano) => (
@@ -446,14 +619,29 @@ export default function PlanosScreen() {
               <Text style={[styles.headerTitle, isMobile && styles.headerTitleMobile]}>Lista de Planos</Text>
               <Text style={styles.headerSubtitle}>{planos.length} plano(s) cadastrado(s)</Text>
             </View>
-            <TouchableOpacity
-              style={[styles.addButton, isMobile && styles.addButtonMobile]}
-              onPress={() => router.push('/planos/novo')}
-              activeOpacity={0.8}
-            >
-              <Feather name="plus" size={18} color="#fff" />
-              {!isMobile && <Text style={styles.addButtonText}>Novo Plano</Text>}
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                style={[styles.reportButton, isMobile && styles.addButtonMobile, gerandoRelatorio && { opacity: 0.6 }]}
+                onPress={handleGerarRelatorio}
+                activeOpacity={0.8}
+                disabled={gerandoRelatorio}
+              >
+                {gerandoRelatorio ? (
+                  <ActivityIndicator size={16} color="#fff" />
+                ) : (
+                  <Feather name="file-text" size={18} color="#fff" />
+                )}
+                {!isMobile && <Text style={styles.addButtonText}>{gerandoRelatorio ? 'Gerando...' : 'Relatório'}</Text>}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.addButton, isMobile && styles.addButtonMobile]}
+                onPress={() => router.push('/planos/novo')}
+                activeOpacity={0.8}
+              >
+                <Feather name="plus" size={18} color="#fff" />
+                {!isMobile && <Text style={styles.addButtonText}>Novo Plano</Text>}
+              </TouchableOpacity>
+            </View>
           </View>
         )}
 
@@ -598,6 +786,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f97316',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    gap: 8,
+  },
+  reportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#3b82f6',
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 8,

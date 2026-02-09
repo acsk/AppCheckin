@@ -150,6 +150,25 @@ const planoService = {
       throw error.response?.data || { error: 'Erro ao gerar ciclos' };
     }
   },
+
+  /**
+   * Relatório de planos e ciclos
+   * @param {string} ativo - Filtrar por status: '1'=ativos, '0'=inativos, null=todos
+   * @param {number} modalidadeId - Filtrar por modalidade específica
+   */
+  async relatorioPlanosECiclos(ativo = null, modalidadeId = null) {
+    try {
+      const params = {};
+      if (ativo !== null) params.ativo = ativo;
+      if (modalidadeId) params.modalidade_id = modalidadeId;
+      
+      const response = await api.get('/admin/relatorios/planos-ciclos', { params });
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao gerar relatório de planos e ciclos:', error.response?.data || error.message);
+      throw error.response?.data || { error: 'Erro ao gerar relatório' };
+    }
+  },
 };
 
 export default planoService;
