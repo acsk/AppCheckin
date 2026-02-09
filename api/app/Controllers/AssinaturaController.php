@@ -406,8 +406,9 @@ class AssinaturaController
             }
             
             $stmt = $this->db->prepare("
-                SELECT a.id, a.status_id, a.valor, a.data_inicio, a.proxima_cobranca,
+                SELECT a.id, a.status_id, a.valor, a.data_inicio, a.data_fim, a.proxima_cobranca,
                        a.ultima_cobranca, a.gateway_assinatura_id as mp_preapproval_id,
+                       a.gateway_preference_id, a.payment_url, a.tipo_cobranca,
                        a.status_gateway,
                        s.codigo as status_codigo, s.nome as status_nome, s.cor as status_cor,
                        f.nome as ciclo_nome, f.meses as ciclo_meses,
@@ -430,19 +431,27 @@ class AssinaturaController
             
             $assinaturas = [];
             foreach ($rows as $row) {
-                $assinaturas[] = [
+                $statusCodigo = $row['status_codigo'] ?? $row['status_gateway'] ?? 'pendente';
+                $isPendente = in_array($statusCodigo, ['pendente', 'pending']);
+                $tipoCobranca = $row['tipo_cobranca'] ?? 'recorrente';
+                
+                $assinaturaData = [
                     'id' => (int)$row['id'],
                     'status' => [
                         'id' => (int)$row['status_id'],
-                        'codigo' => $row['status_codigo'] ?? $row['status_gateway'] ?? 'pendente',
+                        'codigo' => $statusCodigo,
                         'nome' => $row['status_nome'] ?? $this->getStatusLabel($row['status_gateway'] ?? 'pendente'),
                         'cor' => $row['status_cor'] ?? '#FFA500'
                     ],
                     'valor' => (float)$row['valor'],
+                    'tipo_cobranca' => $tipoCobranca,
+                    'recorrente' => $tipoCobranca === 'recorrente',
                     'data_inicio' => $row['data_inicio'],
+                    'data_fim' => $row['data_fim'],
                     'proxima_cobranca' => $row['proxima_cobranca'],
                     'ultima_cobranca' => $row['ultima_cobranca'],
                     'mp_preapproval_id' => $row['mp_preapproval_id'],
+                    'preference_id' => $row['gateway_preference_id'],
                     'ciclo' => [
                         'nome' => $row['ciclo_nome'] ?? 'Mensal',
                         'meses' => (int)($row['ciclo_meses'] ?? 1)
@@ -455,6 +464,16 @@ class AssinaturaController
                         'modalidade' => $row['modalidade_nome'] ?? ''
                     ]
                 ];
+                
+                // Se está pendente, incluir payment_url para recuperação do pagamento
+                if ($isPendente && !empty($row['payment_url'])) {
+                    $assinaturaData['payment_url'] = $row['payment_url'];
+                    $assinaturaData['pode_pagar'] = true;
+                } else {
+                    $assinaturaData['pode_pagar'] = false;
+                }
+                
+                $assinaturas[] = $assinaturaData;
             }
             
             $response->getBody()->write(json_encode([

@@ -8,6 +8,7 @@ import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Linking,
   Modal,
   Platform,
   SafeAreaView,
@@ -42,13 +43,19 @@ interface Assinatura {
   id: number;
   status: StatusAssinatura;
   valor: number;
+  tipo_cobranca?: string | null;
+  recorrente?: boolean;
   data_inicio: string;
-  proxima_cobranca: string;
+  data_fim?: string | null;
+  proxima_cobranca: string | null;
   ultima_cobranca: string | null;
-  mp_preapproval_id: string;
+  mp_preapproval_id: string | null;
+  preference_id?: string | null;
   ciclo: CicloAssinatura;
   gateway: GatewayAssinatura;
   plano: PlanoAssinatura;
+  payment_url?: string | null;
+  pode_pagar?: boolean;
 }
 
 interface ApiResponse {
@@ -88,6 +95,37 @@ export default function MinhasAssinaturasScreen() {
   ) => {
     setErrorModalData({ title, message, type });
     setErrorModalVisible(true);
+  };
+
+  const formatDate = (value?: string | null) => {
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime())
+      ? null
+      : date.toLocaleDateString("pt-BR");
+  };
+
+  const handlePagarAssinatura = async (assinatura: Assinatura) => {
+    if (!assinatura.payment_url) {
+      showErrorModal(
+        "⚠️ Pagamento indisponível",
+        "Link de pagamento não encontrado.",
+        "warning",
+      );
+      return;
+    }
+
+    const supported = await Linking.canOpenURL(assinatura.payment_url);
+    if (!supported) {
+      showErrorModal(
+        "⚠️ Não foi possível abrir o link",
+        "Tente novamente em instantes.",
+        "error",
+      );
+      return;
+    }
+
+    await Linking.openURL(assinatura.payment_url);
   };
 
   const fetchAssinaturasCallback = useCallback(
@@ -262,6 +300,8 @@ export default function MinhasAssinaturasScreen() {
 
   const handleCancelarAssinatura = useCallback(
     (assinatura: Assinatura) => {
+      const dataFimCancelamento =
+        formatDate(assinatura.proxima_cobranca) || "o fim do período atual";
       if (Platform.OS === "web") {
         setAssinaturaParaCancelar(assinatura);
         setConfirmModalVisible(true);
@@ -272,7 +312,7 @@ export default function MinhasAssinaturasScreen() {
             `Tem certeza que deseja cancelar a assinatura de ${assinatura.plano.nome}?\n\n` +
               `📍 O que acontecerá:\n` +
               `• A cobrança automática será interrompida\n` +
-              `• Você poderá usar o plano até ${new Date(assinatura.proxima_cobranca).toLocaleDateString("pt-BR")}\n` +
+              `• Você poderá usar o plano até ${dataFimCancelamento}\n` +
               `• Após essa data, o acesso será encerrado\n\n` +
               `Esta ação não pode ser desfeita.`,
             [
@@ -294,16 +334,17 @@ export default function MinhasAssinaturasScreen() {
   );
 
   const renderAssinatura = ({ item }: { item: Assinatura }) => {
-    const dataInicio = new Date(item.data_inicio);
-    const proximaCobranca = new Date(item.proxima_cobranca);
-    const ultimaCobranca = item.ultima_cobranca
-      ? new Date(item.ultima_cobranca)
-      : null;
-
+    const dataInicioText = formatDate(item.data_inicio) || "-";
     const isAtiva = item.status.codigo === "ativa";
     const isCancelada =
       item.status.codigo === "cancelada" || item.status.codigo === "cancelled";
     const isPendente = item.status.codigo === "pendente";
+    const isAvulso = item.tipo_cobranca === "avulso" || item.recorrente === false;
+    const proximaCobrancaRaw = isAvulso ? item.data_fim : item.proxima_cobranca;
+    const proximaCobrancaText = formatDate(proximaCobrancaRaw);
+    const ultimaCobrancaText = formatDate(item.ultima_cobranca);
+    const podePagar =
+      isPendente && !!item.payment_url && item.pode_pagar !== false;
 
     // Formatar valor
     const valorFormatado = new Intl.NumberFormat("pt-BR", {
@@ -353,38 +394,49 @@ export default function MinhasAssinaturasScreen() {
             <View style={styles.dataContent}>
               <Text style={styles.dataLabel}>Início</Text>
               <Text style={styles.dataValor}>
-                {dataInicio.toLocaleDateString("pt-BR")}
+                {dataInicioText}
               </Text>
             </View>
           </View>
 
-          {!isCancelada && (
+          {!isCancelada && proximaCobrancaText && (
             <View style={styles.dataItem}>
               <Feather name="clock" size={16} color={colors.primary} />
               <View style={styles.dataContent}>
                 <Text style={styles.dataLabel}>Próxima Cobrança</Text>
                 <Text style={styles.dataValor}>
-                  {proximaCobranca.toLocaleDateString("pt-BR")}
+                  {proximaCobrancaText}
                 </Text>
               </View>
             </View>
           )}
 
-          {ultimaCobranca && (
+          {ultimaCobrancaText && (
             <View style={styles.dataItem}>
               <Feather name="check-circle" size={16} color={colors.primary} />
               <View style={styles.dataContent}>
                 <Text style={styles.dataLabel}>Última Cobrança</Text>
                 <Text style={styles.dataValor}>
-                  {ultimaCobranca.toLocaleDateString("pt-BR")}
+                  {ultimaCobrancaText}
                 </Text>
               </View>
             </View>
           )}
         </View>
 
+        {podePagar && (
+          <TouchableOpacity
+            style={styles.botaoPagar}
+            onPress={() => handlePagarAssinatura(item)}
+            activeOpacity={0.8}
+          >
+            <Feather name="credit-card" size={16} color="#fff" />
+            <Text style={styles.botaoPagarTexto}>Pagar agora</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Botão Cancelar */}
-        {(isAtiva || isPendente) && (
+        {!isAvulso && (isAtiva || isPendente) && (
           <TouchableOpacity
             style={styles.botaoCancelar}
             onPress={() => handleCancelarAssinatura(item)}
@@ -785,6 +837,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     color: "#111827",
+  },
+
+  /* Botão Pagar */
+  botaoPagar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    gap: 8,
+    marginBottom: 10,
+  },
+  botaoPagarTexto: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
   },
 
   /* Botão Cancelar */
