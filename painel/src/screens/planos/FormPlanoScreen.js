@@ -269,8 +269,17 @@ export default function FormPlanoScreen() {
     }
 
     const valorConvertido = parseValorMonetario(cicloForm.valor);
-    if (!cicloForm.valor || valorConvertido <= 0) {
-      showError('Informe um valor válido para o ciclo');
+    // Permite valor 0 para ciclos não recorrentes (cortesia)
+    if (cicloForm.valor === '' || cicloForm.valor === undefined || cicloForm.valor === null) {
+      showError('Informe um valor para o ciclo');
+      return;
+    }
+    if (valorConvertido < 0) {
+      showError('O valor não pode ser negativo');
+      return;
+    }
+    if (valorConvertido === 0 && cicloForm.permite_recorrencia) {
+      showError('Para ciclos recorrentes, o valor deve ser maior que zero');
       return;
     }
 
