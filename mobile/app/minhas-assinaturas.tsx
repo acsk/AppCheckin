@@ -51,6 +51,7 @@ interface Assinatura {
   ultima_cobranca: string | null;
   mp_preapproval_id: string | null;
   preference_id?: string | null;
+  external_reference?: string | null;
   ciclo: CicloAssinatura;
   gateway: GatewayAssinatura;
   plano: PlanoAssinatura;
@@ -367,6 +368,14 @@ export default function MinhasAssinaturasScreen() {
               <Text style={styles.statusText}>{item.status.nome}</Text>
             </View>
           </View>
+          {item.external_reference && (
+            <View style={styles.externalRefBadge}>
+              <Feather name="hash" size={12} color="#fff" />
+              <Text style={styles.externalRefText}>
+                {`Ref: ${item.external_reference}`}
+              </Text>
+            </View>
+          )}
 
           <View style={styles.heroDivider} />
 
@@ -759,6 +768,23 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     textTransform: "uppercase",
+  },
+
+  externalRefBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: colors.primary,
+    alignSelf: "flex-start",
+    marginTop: 10,
+  },
+  externalRefText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
   },
 
   heroDivider: {

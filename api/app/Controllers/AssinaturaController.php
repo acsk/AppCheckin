@@ -408,7 +408,7 @@ class AssinaturaController
             $stmt = $this->db->prepare("
                 SELECT a.id, a.status_id, a.valor, a.data_inicio, a.data_fim, a.proxima_cobranca,
                        a.ultima_cobranca, a.gateway_assinatura_id as mp_preapproval_id,
-                       a.gateway_preference_id, a.payment_url, a.tipo_cobranca,
+                       a.gateway_preference_id, a.external_reference, a.payment_url, a.tipo_cobranca,
                        a.status_gateway,
                        s.codigo as status_codigo, s.nome as status_nome, s.cor as status_cor,
                        f.nome as ciclo_nome, f.meses as ciclo_meses,
@@ -452,6 +452,7 @@ class AssinaturaController
                     'ultima_cobranca' => $row['ultima_cobranca'],
                     'mp_preapproval_id' => $row['mp_preapproval_id'],
                     'preference_id' => $row['gateway_preference_id'],
+                    'external_reference' => $row['external_reference'],
                     'ciclo' => [
                         'nome' => $row['ciclo_nome'] ?? 'Mensal',
                         'meses' => (int)($row['ciclo_meses'] ?? 1)
