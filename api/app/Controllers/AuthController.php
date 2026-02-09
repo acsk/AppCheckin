@@ -222,15 +222,28 @@ class AuthController
             // Inicializar token
             $token = null;
 
-            // Buscar papel_id do usuário via tenant_usuario_papel
-            $stmtPapel = $db->prepare("
-                SELECT papel_id FROM tenant_usuario_papel 
-                WHERE usuario_id = :usuario_id AND ativo = 1 
-                ORDER BY papel_id DESC LIMIT 1
+            // Buscar todos os papéis do usuário via tenant_usuario_papel
+            $stmtPapeis = $db->prepare("
+                SELECT DISTINCT tup.papel_id, p.nome as papel_nome
+                FROM tenant_usuario_papel tup
+                LEFT JOIN papeis p ON p.id = tup.papel_id
+                WHERE tup.usuario_id = :usuario_id AND tup.ativo = 1 
+                ORDER BY tup.papel_id DESC
             ");
-            $stmtPapel->execute(['usuario_id' => $usuario['id']]);
-            $papelResult = $stmtPapel->fetch(\PDO::FETCH_ASSOC);
-            $papelId = $papelResult ? (int)$papelResult['papel_id'] : null;
+            $stmtPapeis->execute(['usuario_id' => $usuario['id']]);
+            $papeisResult = $stmtPapeis->fetchAll(\PDO::FETCH_ASSOC);
+            
+            // Array com todos os papéis
+            $papeis = [];
+            foreach ($papeisResult as $p) {
+                $papeis[] = [
+                    'id' => (int) $p['papel_id'],
+                    'nome' => $p['papel_nome']
+                ];
+            }
+            
+            // papel_id principal (o maior, para compatibilidade)
+            $papelId = !empty($papeis) ? $papeis[0]['id'] : null;
 
             // Super admin (papel_id = 4) não precisa de vínculo com tenant
             if ($papelId === 4) {
@@ -291,7 +304,8 @@ class AuthController
                     'email' => $usuario['email'],
                     'email_global' => $usuario['email_global'] ?? $usuario['email'],
                     'foto_base64' => $usuario['foto_base64'] ?? null,
-                    'papel_id' => $papelId
+                    'papel_id' => $papelId,
+                    'papeis' => $papeis
                 ],
                 'tenants' => $tenants,
                 'requires_tenant_selection' => count($tenants) > 1

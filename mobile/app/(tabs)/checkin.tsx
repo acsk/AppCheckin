@@ -58,6 +58,7 @@ export default function CheckinScreen() {
   const [currentUserPapelId, setCurrentUserPapelId] = useState<number | null>(
     null,
   );
+  const [currentUserPapeis, setCurrentUserPapeis] = useState<any[]>([]);
   const [userCheckinId, setUserCheckinId] = useState<number | null>(null);
   const [presencas, setPresencas] = useState<Record<number, boolean | null>>(
     {},
@@ -76,19 +77,24 @@ export default function CheckinScreen() {
   // - Aluno: pode fazer/desfazer check-in
   // - Em ambiente multi-tenant, se o usuário possui aluno_id no tenant atual
   //   ele deve ver o fluxo de aluno.
+  const currentRoleIds = Array.isArray(currentUserPapeis)
+    ? currentUserPapeis
+        .map((papel) => Number(papel?.id ?? papel?.papel_id))
+        .filter((id) => Number.isFinite(id))
+    : [];
+  const hasRole = (roleId: number) =>
+    currentRoleIds.includes(roleId) || currentUserPapelId === roleId;
   const isProfessorOuAdmin =
-    currentUserPapelId === 2 ||
-    currentUserPapelId === 3 ||
-    currentUserPapelId === 4;
+    hasRole(2) || hasRole(3) || hasRole(4);
   const isAluno =
-    currentUserPapelId === 1 ||
-    currentAlunoId !== null ||
-    currentUserPapelId === null;
+    hasRole(1) || currentAlunoId !== null || currentUserPapelId === null;
 
   // Debug: Mostrar valores de papel no console
   console.log(
     "🎭 PAPEL DEBUG - papel:",
     currentUserPapelId,
+    "papeis:",
+    currentRoleIds,
     "aluno_id:",
     currentAlunoId,
     "| isAluno:",
@@ -304,9 +310,11 @@ export default function CheckinScreen() {
           "tipo:",
           typeof user.papel_id,
         );
+        console.log("👤 papeis do usuário:", user.papeis);
         setCurrentUserId(user.id);
         setCurrentAlunoId(user.aluno_id || null);
         setCurrentUserEmail(user.email || null);
+        setCurrentUserPapeis(Array.isArray(user.papeis) ? user.papeis : []);
         // Garantir que papel_id seja número
         const papelIdNumero = user.papel_id ? Number(user.papel_id) : null;
         console.log("👤 papel_id convertido:", papelIdNumero);

@@ -37,6 +37,13 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
+const ROLE_NAME_FALLBACK: Record<number, string> = {
+  1: "Aluno",
+  2: "Professor",
+  3: "Admin",
+  4: "Super Admin",
+};
+
 export default function AccountScreen() {
   const router = useRouter();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -62,6 +69,7 @@ export default function AccountScreen() {
   // const [assetsUrl, setAssetsUrl] = useState<string>("");
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [userRoles, setUserRoles] = useState<any[]>([]);
   const sidebarTranslateX = useRef(
     new Animated.Value(-Dimensions.get("window").width),
   ).current;
@@ -158,6 +166,40 @@ export default function AccountScreen() {
   };
 
   const getTenantDisplayName = () => getTenantName();
+
+  const userRoleLabels = React.useMemo(() => {
+    if (!Array.isArray(userRoles) || userRoles.length === 0) {
+      return [];
+    }
+    const labels = userRoles
+      .map((role) => {
+        const roleId = Number(role?.id ?? role?.papel_id);
+        return role?.nome || ROLE_NAME_FALLBACK[roleId] || null;
+      })
+      .filter(Boolean) as string[];
+    return Array.from(new Set(labels));
+  }, [userRoles]);
+
+  const loadUserRoles = useCallback(async () => {
+    try {
+      const user = await AuthService.getCurrentUser();
+      if (user?.papeis && Array.isArray(user.papeis) && user.papeis.length > 0) {
+        setUserRoles(user.papeis);
+        return;
+      }
+      if (user?.papel_id) {
+        const roleId = Number(user.papel_id);
+        if (Number.isFinite(roleId)) {
+          setUserRoles([{ id: roleId, nome: ROLE_NAME_FALLBACK[roleId] }]);
+          return;
+        }
+      }
+      setUserRoles([]);
+    } catch (error) {
+      console.warn("⚠️ Falha ao carregar papéis do usuário:", error);
+      setUserRoles([]);
+    }
+  }, []);
 
   const getTenantImageUrl = () => {
     const raw =
@@ -377,6 +419,10 @@ export default function AccountScreen() {
     },
     [currentTenant, userProfile],
   );
+
+  useEffect(() => {
+    loadUserRoles();
+  }, [loadUserRoles]);
 
   // Inicializa API URL e carrega tenants no mount
 
@@ -947,6 +993,11 @@ export default function AccountScreen() {
               <Text style={styles.headerUserName}>
                 {userProfile?.nome || "Usuário"}
               </Text>
+              {userRoleLabels.length > 0 ? (
+                <Text style={styles.headerUserRoles}>
+                  {userRoleLabels.join(" • ")}
+                </Text>
+              ) : null}
               {getTenantDisplayName() && (
                 <TouchableOpacity
                   style={styles.tenantSwitchButton}
@@ -1607,6 +1658,11 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#fff",
     flexShrink: 1,
+  },
+  headerUserRoles: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.9)",
   },
   headerMenuButton: {
     marginLeft: 6,

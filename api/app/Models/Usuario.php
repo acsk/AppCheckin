@@ -432,9 +432,11 @@ class Usuario
                 t.nome as tenant_nome,
                 t.slug as tenant_slug,
                 t.email as tenant_email,
-                t.telefone as tenant_telefone
+                t.telefone as tenant_telefone,
+                p.nome as papel_nome
             FROM tenant_usuario_papel tup
             INNER JOIN tenants t ON tup.tenant_id = t.id
+            LEFT JOIN papeis p ON p.id = tup.papel_id
             WHERE tup.usuario_id = :usuario_id
             AND tup.papel_id IN (1, 2, 3)
             AND tup.ativo = 1
@@ -462,9 +464,15 @@ class Usuario
                         'email' => $row['tenant_email'],
                         'telefone' => $row['tenant_telefone']
                     ],
+                    'papeis' => [],
                     'plano' => null // Não retornamos mais plano aqui (só para alunos via endpoint específico)
                 ];
             }
+            // Adicionar papel ao array de papéis
+            $tenantsGrouped[$tenantId]['papeis'][] = [
+                'id' => (int) $row['papel_id'],
+                'nome' => $row['papel_nome']
+            ];
         }
         
         return array_values($tenantsGrouped);
