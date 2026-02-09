@@ -4256,8 +4256,9 @@ class MobileController
                     
                 $paymentUrl = $preferencia['init_point'];
                 $preferenceId = $preferencia['id'];
+                $externalReference = $preferencia['external_reference'] ?? null;
 
-                error_log("[MobileController::comprarPlano] ✅ Link gerado ({$tipoPagamento}): {$preferenceId}");
+                error_log("[MobileController::comprarPlano] ✅ Link gerado ({$tipoPagamento}): {$preferenceId}, external_ref: {$externalReference}");
 
                 // Gravar na tabela assinaturas (tanto recorrente quanto avulso)
                 try {
@@ -4304,11 +4305,11 @@ class MobileController
                     $stmtAssinatura = $this->db->prepare("
                         INSERT INTO assinaturas
                         (tenant_id, matricula_id, aluno_id, plano_id,
-                         gateway_id, gateway_assinatura_id, gateway_preference_id, payment_url,
+                         gateway_id, gateway_assinatura_id, gateway_preference_id, external_reference, payment_url,
                          status_id, status_gateway,
                          valor, frequencia_id, dia_cobranca, data_inicio, data_fim, proxima_cobranca,
                          metodo_pagamento_id, tipo_cobranca, criado_em)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, NOW())
                     ");
                     
                     $stmtAssinatura->execute([
@@ -4319,6 +4320,7 @@ class MobileController
                         $gatewayId,
                         $gatewayAssinaturaId,
                         $gatewayPreferenceId,
+                        $externalReference,
                         $paymentUrl,
                         $statusId,
                         $valorCompra,

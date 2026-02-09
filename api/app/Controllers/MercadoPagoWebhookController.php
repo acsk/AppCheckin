@@ -120,10 +120,11 @@ class MercadoPagoWebhookController
             $body = $request->getParsedBody();
             $paymentId = $body['payment_id'] ?? null;
             $matriculaId = $body['matricula_id'] ?? null;
+            $assinaturaId = $body['assinatura_id'] ?? null;
             
-            if (!$paymentId && !$matriculaId) {
+            if (!$paymentId && !$matriculaId && !$assinaturaId) {
                 $response->getBody()->write(json_encode([
-                    'error' => 'Informe payment_id ou matricula_id'
+                    'error' => 'Informe payment_id, matricula_id ou assinatura_id'
                 ]));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
@@ -139,18 +140,40 @@ class MercadoPagoWebhookController
                 // Atualizar no banco
                 $this->atualizarPagamento($pagamento);
                 $result['banco_atualizado'] = true;
+                $result['matricula_id_extraido'] = $pagamento['metadata']['matricula_id'] ?? null;
             }
             
-            // Se tem matricula_id, criar pagamento manualmente
+            // Se tem assinatura_id, forçar atualização direta
+            if ($assinaturaId) {
+                $this->forcarAtualizacaoAssinatura((int)$assinaturaId);
+                $result['assinatura_forcada'] = true;
+            }
+            
+            // Se tem matricula_id, criar pagamento manualmente ou forçar atualização da assinatura
             if ($matriculaId && !$paymentId) {
-                $this->criarPagamentoManual($matriculaId);
+                $this->criarPagamentoManual((int)$matriculaId);
                 $result['pagamento_manual_criado'] = true;
+                
+                // Também forçar atualização da assinatura
+                $this->forcarAtualizacaoAssinaturaPorMatricula((int)$matriculaId);
+                $result['assinatura_atualizada_por_matricula'] = true;
             }
             
             // Buscar dados atuais
+            $matId = $matriculaId ?? $pagamento['metadata']['matricula_id'] ?? 0;
+            
             $stmt = $this->db->prepare("SELECT * FROM pagamentos_plano WHERE matricula_id = ?");
-            $stmt->execute([$matriculaId ?? $pagamento['metadata']['matricula_id'] ?? 0]);
+            $stmt->execute([$matId]);
             $result['pagamentos_plano'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            
+            $stmtAss = $this->db->prepare("
+                SELECT a.*, s.codigo as status_codigo, s.nome as status_nome 
+                FROM assinaturas a 
+                LEFT JOIN assinatura_status s ON s.id = a.status_id
+                WHERE a.matricula_id = ? OR a.id = ?
+            ");
+            $stmtAss->execute([$matId, $assinaturaId ?? 0]);
+            $result['assinaturas'] = $stmtAss->fetchAll(\PDO::FETCH_ASSOC);
             
             $response->getBody()->write(json_encode([
                 'success' => true,
@@ -165,6 +188,68 @@ class MercadoPagoWebhookController
                 'trace' => $e->getTraceAsString()
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+    
+    /**
+     * Forçar atualização de assinatura pelo ID
+     */
+    private function forcarAtualizacaoAssinatura(int $assinaturaId): void
+    {
+        error_log("[Webhook MP DEBUG] Forçando atualização da assinatura #{$assinaturaId}");
+        
+        // Buscar assinatura
+        $stmtBuscar = $this->db->prepare("
+            SELECT a.id, a.tipo_cobranca 
+            FROM assinaturas a
+            WHERE a.id = ?
+        ");
+        $stmtBuscar->execute([$assinaturaId]);
+        $assinatura = $stmtBuscar->fetch(\PDO::FETCH_ASSOC);
+        
+        if (!$assinatura) {
+            error_log("[Webhook MP DEBUG] Assinatura #{$assinaturaId} não encontrada");
+            return;
+        }
+        
+        // Buscar status correto
+        $statusCodigo = $assinatura['tipo_cobranca'] === 'avulso' ? 'paga' : 'ativa';
+        $stmtStatus = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = ?");
+        $stmtStatus->execute([$statusCodigo]);
+        $statusId = $stmtStatus->fetchColumn();
+        
+        if (!$statusId) {
+            $stmtStatus->execute(['ativa']);
+            $statusId = $stmtStatus->fetchColumn() ?: 2;
+        }
+        
+        // Atualizar
+        $stmtUpdate = $this->db->prepare("
+            UPDATE assinaturas 
+            SET status_id = ?, status_gateway = 'approved', ultima_cobranca = CURDATE(), atualizado_em = NOW()
+            WHERE id = ?
+        ");
+        $stmtUpdate->execute([$statusId, $assinaturaId]);
+        
+        error_log("[Webhook MP DEBUG] Assinatura #{$assinaturaId} atualizada para status_id={$statusId}");
+    }
+    
+    /**
+     * Forçar atualização de assinatura pela matrícula
+     */
+    private function forcarAtualizacaoAssinaturaPorMatricula(int $matriculaId): void
+    {
+        error_log("[Webhook MP DEBUG] Forçando atualização da assinatura pela matrícula #{$matriculaId}");
+        
+        // Buscar assinatura
+        $stmtBuscar = $this->db->prepare("SELECT id FROM assinaturas WHERE matricula_id = ? LIMIT 1");
+        $stmtBuscar->execute([$matriculaId]);
+        $assinaturaId = $stmtBuscar->fetchColumn();
+        
+        if ($assinaturaId) {
+            $this->forcarAtualizacaoAssinatura((int)$assinaturaId);
+        } else {
+            error_log("[Webhook MP DEBUG] Nenhuma assinatura encontrada para matrícula #{$matriculaId}");
         }
     }
     
