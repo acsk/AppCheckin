@@ -43,39 +43,32 @@ class Professor
 
     /**
      * Listar todos os professores de um tenant
-     * Busca professores de duas fontes:
-     * 1. Tabela professores (cadastro tradicional)
-     * 2. Usuários com papel Professor (papel_id=2) - ex: admins que também são professores
+     * Busca apenas professores cadastrados na tabela professores
+     * que possuem vínculo ativo com o tenant (papel_id=2)
      */
     public function listarPorTenant(int $tenantId, bool $apenasAtivos = false): array
     {
-        // Buscar todos os usuários com papel_id = 2 (Professor) neste tenant
+        // Buscar professores que estão na tabela professores E têm papel de professor no tenant
         $sql = "SELECT DISTINCT
-                    COALESCE(p.id, 0) as id,
-                    UPPER(COALESCE(p.nome, u.nome)) as nome,
-                    COALESCE(p.cpf, u.cpf) as cpf,
-                    COALESCE(p.email, u.email) as email,
+                    p.id,
+                    UPPER(p.nome) as nome,
+                    p.cpf,
+                    p.email,
                     p.foto_url,
-                    COALESCE(p.ativo, 1) as ativo,
+                    p.ativo,
                     u.id as usuario_id,
                     u.telefone,
                     tup.ativo as vinculo_ativo,
-                    COALESCE(
-                        (SELECT COUNT(*) FROM turmas t WHERE t.professor_id = p.id AND t.ativo = 1),
-                        0
-                    ) as turmas_count,
-                    CASE 
-                        WHEN p.id IS NOT NULL THEN 'professores'
-                        ELSE 'usuarios'
-                    END as origem
-                FROM tenant_usuario_papel tup
-                INNER JOIN usuarios u ON u.id = tup.usuario_id
-                LEFT JOIN professores p ON p.usuario_id = u.id
-                WHERE tup.tenant_id = :tenant_id
-                  AND tup.papel_id = 2";
+                    (SELECT COUNT(*) FROM turmas t WHERE t.professor_id = p.id AND t.ativo = 1) as turmas_count
+                FROM professores p
+                INNER JOIN usuarios u ON u.id = p.usuario_id
+                INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id
+                    AND tup.tenant_id = :tenant_id
+                    AND tup.papel_id = 2
+                WHERE 1=1";
         
         if ($apenasAtivos) {
-            $sql .= " AND tup.ativo = 1 AND (p.ativo IS NULL OR p.ativo = 1)";
+            $sql .= " AND tup.ativo = 1 AND p.ativo = 1";
         }
         
         $sql .= " ORDER BY nome ASC";
@@ -83,18 +76,7 @@ class Professor
         $stmt = $this->db->prepare($sql);
         $stmt->execute(['tenant_id' => $tenantId]);
         
-        $professores = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        
-        // Converter id 0 (usuários sem registro em professores) para null
-        foreach ($professores as &$professor) {
-            if ($professor['id'] === 0 || $professor['id'] === '0') {
-                $professor['id'] = null;
-            }
-            // Remover campo origem antes de retornar (uso interno apenas)
-            unset($professor['origem']);
-        }
-        
-        return $professores;
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
     /**

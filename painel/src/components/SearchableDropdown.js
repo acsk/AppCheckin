@@ -8,6 +8,7 @@ import {
   ScrollView,
   Modal,
   Pressable,
+  Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 
@@ -160,10 +161,11 @@ export default function SearchableDropdown({
               )}
             </View>
 
-            <ScrollView 
-              style={styles.listContainer} 
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled={true}
+            <View 
+              style={[
+                styles.listContainer,
+                Platform.OS === 'web' && { overflowY: 'auto' }
+              ]}
             >
               {filteredData.length === 0 ? (
                 <View style={styles.emptyContainer}>
@@ -175,14 +177,14 @@ export default function SearchableDropdown({
                   const isSelected = selectedItem && selectedItem[valueKey] === item[valueKey];
                   
                   return (
-                    <Pressable
+                    <TouchableOpacity
                       key={`${item[valueKey]}-${index}`}
-                      style={({ pressed }) => [
+                      style={[
                         styles.listItem,
                         isSelected && styles.listItemSelected,
-                        pressed && styles.listItemPressed,
                       ]}
                       onPress={() => handleSelect(item)}
+                      activeOpacity={0.7}
                     >
                       {renderItem ? (
                         renderItem(item, isSelected)
@@ -199,11 +201,11 @@ export default function SearchableDropdown({
                       {isSelected && (
                         <Feather name="check" size={20} color="#f97316" />
                       )}
-                    </Pressable>
+                    </TouchableOpacity>
                   );
                 })
               )}
-            </ScrollView>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
