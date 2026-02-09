@@ -160,25 +160,29 @@ export default function SearchableDropdown({
               )}
             </View>
 
-            <ScrollView style={styles.listContainer} showsVerticalScrollIndicator={false}>
+            <ScrollView 
+              style={styles.listContainer} 
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled={true}
+            >
               {filteredData.length === 0 ? (
                 <View style={styles.emptyContainer}>
                   <Feather name="inbox" size={48} color="#d1d5db" />
                   <Text style={styles.emptyText}>Nenhum item encontrado</Text>
                 </View>
               ) : (
-                filteredData.map((item) => {
+                filteredData.map((item, index) => {
                   const isSelected = selectedItem && selectedItem[valueKey] === item[valueKey];
                   
                   return (
-                    <TouchableOpacity
-                      key={item[valueKey]}
-                      style={[
+                    <Pressable
+                      key={`${item[valueKey]}-${index}`}
+                      style={({ pressed }) => [
                         styles.listItem,
                         isSelected && styles.listItemSelected,
+                        pressed && styles.listItemPressed,
                       ]}
                       onPress={() => handleSelect(item)}
-                      activeOpacity={0.7}
                     >
                       {renderItem ? (
                         renderItem(item, isSelected)
@@ -195,7 +199,7 @@ export default function SearchableDropdown({
                       {isSelected && (
                         <Feather name="check" size={20} color="#f97316" />
                       )}
-                    </TouchableOpacity>
+                    </Pressable>
                   );
                 })
               )}
@@ -316,9 +320,13 @@ const styles = StyleSheet.create({
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#f3f4f6',
+    cursor: 'pointer',
   },
   listItemSelected: {
     backgroundColor: 'rgba(249, 115, 22, 0.1)',
+  },
+  listItemPressed: {
+    backgroundColor: 'rgba(0, 0, 0, 0.05)',
   },
   listItemContent: {
     flex: 1,
