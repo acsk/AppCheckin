@@ -82,7 +82,7 @@ export default function CheckinScreen() {
     currentUserPapelId === 4;
   const isAluno =
     currentUserPapelId === 1 ||
-    (currentAlunoId !== null && !isProfessorOuAdmin) ||
+    currentAlunoId !== null ||
     currentUserPapelId === null;
 
   // Debug: Mostrar valores de papel no console
@@ -98,13 +98,6 @@ export default function CheckinScreen() {
   );
 
   const participantsToShow = participants;
-  const participantsCount = participantsTurma
-    ? participantsToShow.length ||
-      alunosTotal ||
-      participantsTurma.alunos_inscritos ||
-      0
-    : 0;
-
   // Removido: função não utilizada
 
   const getUserPhotoUrl = (fotoCaminho?: string | null) => {
@@ -1301,67 +1294,59 @@ export default function CheckinScreen() {
           <View style={styles.schedulesSection}>
             {participantsTurma ? (
               <>
-                <View style={styles.participantsWrapper}>
-                  <View style={styles.participantsHeaderRow}>
-                    <TouchableOpacity
-                      onPress={() => {
-                        setParticipantsTurma(null);
-                        setParticipants([]);
-                      }}
-                      style={[
-                        styles.backButtonInline,
-                        {
-                          backgroundColor: `${participantsTurma?.modalidade?.cor || colors.primary}15`,
-                        },
-                      ]}
-                    >
-                      <Feather
-                        name="arrow-left"
-                        size={20}
+                <View style={styles.participantsTopRow}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setParticipantsTurma(null);
+                      setParticipants([]);
+                    }}
+                    style={[
+                      styles.backButtonInline,
+                      {
+                        backgroundColor: `${participantsTurma?.modalidade?.cor || colors.primary}15`,
+                      },
+                    ]}
+                  >
+                    <Feather
+                      name="arrow-left"
+                      size={20}
+                      color={
+                        participantsTurma?.modalidade?.cor || colors.primary
+                      }
+                    />
+                  </TouchableOpacity>
+                  <View
+                    style={[
+                      styles.turmaIconCircle,
+                      {
+                        backgroundColor: `${participantsTurma?.modalidade?.cor || colors.primary}20`,
+                      },
+                    ]}
+                  >
+                    {participantsTurma?.modalidade?.icone ? (
+                      <MaterialCommunityIcons
+                        name={participantsTurma.modalidade.icone as any}
+                        size={18}
                         color={
                           participantsTurma?.modalidade?.cor || colors.primary
                         }
                       />
-                    </TouchableOpacity>
-                    <View
-                      style={[
-                        styles.turmaIconCircle,
-                        {
-                          backgroundColor: `${participantsTurma?.modalidade?.cor || colors.primary}20`,
-                        },
-                      ]}
-                    >
-                      {participantsTurma?.modalidade?.icone ? (
-                        <MaterialCommunityIcons
-                          name={participantsTurma.modalidade.icone as any}
-                          size={18}
-                          color={
-                            participantsTurma?.modalidade?.cor || colors.primary
-                          }
-                        />
-                      ) : (
-                        <Feather
-                          name="activity"
-                          size={18}
-                          color={
-                            participantsTurma?.modalidade?.cor || colors.primary
-                          }
-                        />
-                      )}
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.participantsTitle}>
-                        {normalizeUtf8(participantsTurma.nome || "Turma")}
-                      </Text>
-                      <Text style={styles.participantsSubtitle}>
-                        {participantsTurma.professor?.nome
-                          ? `Professor: ${normalizeUtf8(participantsTurma.professor.nome)}`
-                          : participantsTurma.professor
-                            ? `Professor: ${normalizeUtf8(String(participantsTurma.professor))}`
-                            : ""}
-                      </Text>
-                    </View>
+                    ) : (
+                      <Feather
+                        name="activity"
+                        size={18}
+                        color={
+                          participantsTurma?.modalidade?.cor || colors.primary
+                        }
+                      />
+                    )}
                   </View>
+                </View>
+
+                <View style={styles.participantsWrapper}>
+                  <Text style={styles.participantsTitle}>
+                    {normalizeUtf8(participantsTurma.nome || "Turma")}
+                  </Text>
 
                   <View style={styles.participantsMetaRow}>
                     <View style={styles.metaChip}>
@@ -1391,19 +1376,6 @@ export default function CheckinScreen() {
                         </Text>
                       </View>
                     ) : null}
-                    <View style={styles.metaChip}>
-                      <Feather
-                        name="users"
-                        size={14}
-                        color={
-                          participantsTurma?.modalidade?.cor || colors.primary
-                        }
-                      />
-                      <Text style={styles.metaChipText}>
-                        {participantsCount}/
-                        {participantsTurma.limite_alunos || "--"} inscritos
-                      </Text>
-                    </View>
                   </View>
 
                   <View style={styles.participantsContent}>
@@ -2185,10 +2157,11 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 2,
   },
-  participantsHeaderRow: {
+  participantsTopRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    marginBottom: 10,
   },
   turmaIconCircle: {
     width: 36,
@@ -2206,11 +2179,6 @@ const styles = StyleSheet.create({
     fontSize: 19,
     fontWeight: "800",
     color: colors.text,
-  },
-  participantsSubtitle: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    marginTop: 2,
   },
   participantsListContainer: {
     borderTopWidth: 1,
