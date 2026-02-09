@@ -398,13 +398,27 @@ class MercadoPagoWebhookController
             $stmtBuscar = $this->db->prepare("
                 SELECT pp.id, pp.valor
                 FROM pagamentos_plano pp
+                INNER JOIN status_pagamento sp ON sp.id = pp.status_pagamento_id
                 WHERE pp.matricula_id = ?
-                AND pp.status_pagamento_id = 1
+                AND sp.codigo IN ('pendente', 'aguardando')
                 ORDER BY pp.data_vencimento ASC
                 LIMIT 1
             ");
             $stmtBuscar->execute([$matriculaId]);
             $pagamentoPendente = $stmtBuscar->fetch(\PDO::FETCH_ASSOC);
+            
+            // Verificar se já existe pagamento pago hoje para evitar duplicatas (webhook duplicado)
+            $stmtDuplicata = $this->db->prepare("
+                SELECT pp.id FROM pagamentos_plano pp
+                INNER JOIN status_pagamento sp ON sp.id = pp.status_pagamento_id
+                WHERE pp.matricula_id = ? AND sp.codigo = 'pago' AND DATE(pp.data_pagamento) = CURDATE()
+                LIMIT 1
+            ");
+            $stmtDuplicata->execute([$matriculaId]);
+            if ($stmtDuplicata->fetch()) {
+                error_log("[Webhook MP] ⚠️ Pagamento assinatura já processado hoje para matrícula #{$matriculaId}, ignorando duplicata");
+                return;
+            }
             
             // Para assinaturas, forma de pagamento é sempre cartão de crédito (ID 9)
             $formaPagamentoId = 9;
@@ -692,17 +706,31 @@ class MercadoPagoWebhookController
                 return;
             }
             
-            // Buscar o pagamento pendente mais antigo da matrícula (status 1 = Aguardando)
+            // Buscar o pagamento pendente mais antigo da matrícula
             $stmtBuscar = $this->db->prepare("
                 SELECT pp.id, pp.valor
                 FROM pagamentos_plano pp
+                INNER JOIN status_pagamento sp ON sp.id = pp.status_pagamento_id
                 WHERE pp.matricula_id = ?
-                AND pp.status_pagamento_id = 1
+                AND sp.codigo IN ('pendente', 'aguardando')
                 ORDER BY pp.data_vencimento ASC
                 LIMIT 1
             ");
             $stmtBuscar->execute([$matriculaId]);
             $pagamentoPendente = $stmtBuscar->fetch(\PDO::FETCH_ASSOC);
+            
+            // Verificar se já existe pagamento pago hoje para evitar duplicatas (webhook duplicado)
+            $stmtDuplicata = $this->db->prepare("
+                SELECT pp.id FROM pagamentos_plano pp
+                INNER JOIN status_pagamento sp ON sp.id = pp.status_pagamento_id
+                WHERE pp.matricula_id = ? AND sp.codigo = 'pago' AND DATE(pp.data_pagamento) = CURDATE()
+                LIMIT 1
+            ");
+            $stmtDuplicata->execute([$matriculaId]);
+            if ($stmtDuplicata->fetch()) {
+                error_log("[Webhook MP] ⚠️ Pagamento já processado hoje para matrícula #{$matriculaId}, ignorando duplicata");
+                return;
+            }
             
             // Buscar forma de pagamento (PIX, cartão, etc)
             $formaPagamentoId = $this->obterFormaPagamentoId($pagamento['payment_method_id'] ?? 'pix');
