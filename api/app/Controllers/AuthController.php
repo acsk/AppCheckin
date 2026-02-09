@@ -222,16 +222,19 @@ class AuthController
             // Inicializar token
             $token = null;
 
-            // Buscar todos os papéis do usuário via tenant_usuario_papel
+            // Buscar todos os papéis do usuário via tenant_usuario_papel (sem filtrar por tenant)
             $stmtPapeis = $db->prepare("
-                SELECT DISTINCT tup.papel_id, p.nome as papel_nome
+                SELECT tup.papel_id, p.nome as papel_nome
                 FROM tenant_usuario_papel tup
                 LEFT JOIN papeis p ON p.id = tup.papel_id
                 WHERE tup.usuario_id = :usuario_id AND tup.ativo = 1 
+                GROUP BY tup.papel_id, p.nome
                 ORDER BY tup.papel_id DESC
             ");
             $stmtPapeis->execute(['usuario_id' => $usuario['id']]);
             $papeisResult = $stmtPapeis->fetchAll(\PDO::FETCH_ASSOC);
+            
+            error_log("[AuthController::login] Papéis encontrados para usuário {$usuario['id']}: " . json_encode($papeisResult));
             
             // Array com todos os papéis
             $papeis = [];
