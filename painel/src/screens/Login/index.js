@@ -85,11 +85,11 @@ export default function LoginScreen() {
         setTenants(response.tenants);
         setShowTenantModal(true);
       } else if (response.token) {
-        // Login único, ir para home
-        console.log('🚀 Redirecionando para home...');
+        // Login único, ir para dashboard
+        console.log('🚀 Redirecionando para dashboard...');
         setTimeout(() => {
-          console.log('⏱️ Executando router.replace("/")');
-          router.replace('/');
+          console.log('⏱️ Executando router.replace("/dashboard/")');
+          router.replace('/dashboard/');
         }, 100);
       }
     } catch (error) {
@@ -124,10 +124,10 @@ export default function LoginScreen() {
       
       if (response.token) {
         setShowTenantModal(false);
-        console.log('🚀 Redirecionando para home...');
+        console.log('🚀 Redirecionando para dashboard...');
         setTimeout(() => {
-          console.log('⏱️ Executando router.replace("/")');
-          router.replace('/');
+          console.log('⏱️ Executando router.replace("/dashboard/")');
+          router.replace('/dashboard/');
         }, 100);
       }
     } catch (error) {
