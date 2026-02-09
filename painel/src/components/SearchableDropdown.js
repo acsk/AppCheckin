@@ -32,7 +32,11 @@ export default function SearchableDropdown({
 
   useEffect(() => {
     if (value && data.length > 0) {
-      const item = data.find(item => item[valueKey] === value || item[valueKey].toString() === value.toString());
+      const item = data.find(item => {
+        const itemValue = item[valueKey];
+        if (itemValue === null || itemValue === undefined) return false;
+        return itemValue === value || String(itemValue) === String(value);
+      });
       setSelectedItem(item);
     } else {
       setSelectedItem(null);

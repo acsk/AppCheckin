@@ -4322,3 +4322,5 @@
 [2026-02-09 15:27:14] GET /planos?ativos=false
 [2026-02-09 15:27:17] OPTIONS /admin/relatorios/planos-ciclos
 [2026-02-09 15:27:17] GET /admin/relatorios/planos-ciclos
+[2026-02-09 15:34:01] OPTIONS /admin/turmas?apenas_ativas=false&data=2026-02-09&tenant_id=2
+[2026-02-09 15:34:01] GET /admin/turmas?apenas_ativas=false&data=2026-02-09&tenant_id=2
