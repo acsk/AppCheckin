@@ -17,8 +17,13 @@ class PlanoController
         $tenantId = $request->getAttribute('tenantId') ?? 1;
         $planoModel = new Plano($db, $tenantId);
         
-        $apenasAtivos = $request->getQueryParams()['ativos'] ?? false;
-        $planos = $planoModel->getAll((bool) $apenasAtivos);
+        $queryParams = $request->getQueryParams();
+        $apenasAtivos = false;
+        if (isset($queryParams['ativos'])) {
+            // Tratar "true", "1", true como true; "false", "0", false como false
+            $apenasAtivos = filter_var($queryParams['ativos'], FILTER_VALIDATE_BOOLEAN);
+        }
+        $planos = $planoModel->getAll($apenasAtivos);
 
         $response->getBody()->write(json_encode([
             'planos' => $planos,
