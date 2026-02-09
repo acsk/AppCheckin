@@ -94,11 +94,12 @@ class PlanoCicloController
     #[OA\Get(
         path: "/admin/planos/{plano_id}/ciclos",
         summary: "Listar ciclos de um plano",
-        description: "Retorna todos os ciclos cadastrados para um plano específico",
+        description: "Retorna os ciclos cadastrados para um plano específico. Use ?ativo=1 para somente ativos, ?ativo=0 para somente inativos, ou sem parâmetro para listar todos.",
         tags: ["Ciclos de Planos"],
         security: [["bearerAuth" => []]],
         parameters: [
-            new OA\Parameter(name: "plano_id", in: "path", required: true, schema: new OA\Schema(type: "integer"))
+            new OA\Parameter(name: "plano_id", in: "path", required: true, schema: new OA\Schema(type: "integer")),
+            new OA\Parameter(name: "ativo", in: "query", required: false, description: "Filtrar por status: 1=ativos, 0=inativos, vazio=todos", schema: new OA\Schema(type: "string", enum: ["0", "1"]))
         ],
         responses: [
             new OA\Response(
@@ -121,6 +122,13 @@ class PlanoCicloController
         try {
             $tenantId = $request->getAttribute('tenantId');
             $planoId = (int) $args['plano_id'];
+            $queryParams = $request->getQueryParams();
+            
+            // Filtro de ativo (null = todos, 1 = ativos, 0 = inativos)
+            $filtroAtivo = null;
+            if (isset($queryParams['ativo']) && $queryParams['ativo'] !== '') {
+                $filtroAtivo = (int) $queryParams['ativo'];
+            }
             
             // Verificar se plano pertence ao tenant
             $stmtPlano = $this->db->prepare("SELECT id, nome, valor FROM planos WHERE id = ? AND tenant_id = ?");
@@ -132,7 +140,8 @@ class PlanoCicloController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
             }
             
-            $stmt = $this->db->prepare("
+            // Montar query com filtro opcional de ativo
+            $sql = "
                 SELECT 
                     pc.id, af.nome, af.codigo, pc.meses, pc.valor, pc.valor_mensal_equivalente,
                     pc.desconto_percentual, pc.permite_recorrencia, pc.ativo, af.ordem,
@@ -140,9 +149,18 @@ class PlanoCicloController
                 FROM plano_ciclos pc
                 INNER JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
                 WHERE pc.plano_id = ? AND pc.tenant_id = ?
-                ORDER BY af.ordem ASC
-            ");
-            $stmt->execute([$planoId, $tenantId]);
+            ";
+            $params = [$planoId, $tenantId];
+            
+            if ($filtroAtivo !== null) {
+                $sql .= " AND pc.ativo = ?";
+                $params[] = $filtroAtivo;
+            }
+            
+            $sql .= " ORDER BY af.ordem ASC";
+            
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($params);
             $ciclos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
             
             // Encontrar o valor mensal equivalente do ciclo mensal (meses=1) como referência

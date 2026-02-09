@@ -73,7 +73,7 @@ export default function PlanosScreen() {
         }
         response = await planoService.listarTodos(selectedTenant.id);
       } else {
-        response = await planoService.listar();
+        response = await planoService.listar(true);
       }
       
       console.log('✅ Resposta da API:', response);
