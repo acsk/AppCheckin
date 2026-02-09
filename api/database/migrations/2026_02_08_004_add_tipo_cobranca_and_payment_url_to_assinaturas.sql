@@ -49,6 +49,10 @@ DEALLOCATE PREPARE stmt;
 -- 5. Atualizar registros existentes
 UPDATE assinaturas SET tipo_cobranca = 'recorrente' WHERE tipo_cobranca IS NULL;
 
+-- 6. Adicionar status 'paga' para pagamentos avulsos (se não existir)
+INSERT IGNORE INTO assinatura_status (codigo, nome, descricao, cor) 
+VALUES ('paga', 'Paga', 'Pagamento avulso confirmado', '#28A745');
+
 -- ============================================
 -- Verificação
 -- ============================================

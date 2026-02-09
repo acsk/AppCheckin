@@ -333,6 +333,7 @@ class MercadoPagoService
             'status' => $response['status'], // approved, pending, rejected, cancelled, refunded
             'status_detail' => $response['status_detail'],
             'external_reference' => $response['external_reference'] ?? null,
+            'preference_id' => $response['preference_id'] ?? null, // ID da preferência (para pagamentos avulsos)
             'metadata' => $response['metadata'] ?? [],
             'transaction_amount' => $response['transaction_amount'],
             'date_approved' => $response['date_approved'] ?? null,

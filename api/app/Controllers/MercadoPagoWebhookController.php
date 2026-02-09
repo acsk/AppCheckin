@@ -462,10 +462,105 @@ class MercadoPagoWebhookController
             ]);
         }
         
-        // Se pagamento foi aprovado, ativar matrícula e baixar pagamento_plano
+        // Se pagamento foi aprovado, ativar matrícula, baixar pagamento_plano e atualizar assinatura
         if ($pagamento['status'] === 'approved') {
-            $this->ativarMatricula($matriculaId);
-            $this->baixarPagamentoPlano($matriculaId, $pagamento);
+            $matriculaIdInt = (int) $matriculaId;
+            error_log("[Webhook MP] ✅ Pagamento APROVADO - matriculaId: {$matriculaIdInt}");
+            $this->ativarMatricula($matriculaIdInt);
+            $this->baixarPagamentoPlano($matriculaIdInt, $pagamento);
+            $this->atualizarAssinaturaAvulsa($matriculaIdInt, $pagamento);
+        }
+    }
+    
+    /**
+     * Atualizar assinatura avulsa após pagamento aprovado
+     */
+    private function atualizarAssinaturaAvulsa(int $matriculaId, array $pagamento): void
+    {
+        try {
+            error_log("[Webhook MP] 🔍 Buscando assinatura para matrícula #{$matriculaId}...");
+            
+            // Extrair preference_id do pagamento (para pagamentos avulsos)
+            $preferenceId = $pagamento['preference_id'] ?? null;
+            error_log("[Webhook MP] 📋 preference_id do pagamento: " . ($preferenceId ?? 'NULL'));
+            
+            // Buscar assinatura pela matrícula OU pelo preference_id
+            $stmtBuscar = $this->db->prepare("
+                SELECT a.id, a.tipo_cobranca, a.gateway_preference_id, a.status_id,
+                       a.matricula_id,
+                       s.codigo as status_atual
+                FROM assinaturas a
+                LEFT JOIN assinatura_status s ON s.id = a.status_id
+                WHERE a.matricula_id = ? 
+                   OR (a.gateway_preference_id = ? AND ? IS NOT NULL)
+                LIMIT 1
+            ");
+            $stmtBuscar->execute([$matriculaId, $preferenceId, $preferenceId]);
+            $assinatura = $stmtBuscar->fetch(\PDO::FETCH_ASSOC);
+            
+            if (!$assinatura) {
+                error_log("[Webhook MP] ⚠️ Nenhuma assinatura encontrada para matrícula #{$matriculaId} ou preference_id={$preferenceId}");
+                
+                // Debug: listar todas as assinaturas para ver o que existe
+                $stmtDebug = $this->db->prepare("SELECT id, matricula_id, gateway_preference_id, tipo_cobranca FROM assinaturas ORDER BY id DESC LIMIT 5");
+                $stmtDebug->execute();
+                $assinaturasDebug = $stmtDebug->fetchAll(\PDO::FETCH_ASSOC);
+                error_log("[Webhook MP] 📋 Últimas assinaturas no banco: " . json_encode($assinaturasDebug));
+                return;
+            }
+            
+            error_log("[Webhook MP] 📋 Assinatura encontrada: ID={$assinatura['id']}, matricula_id={$assinatura['matricula_id']}, tipo={$assinatura['tipo_cobranca']}, status_atual={$assinatura['status_atual']}");
+            
+            // Se já está ativa/paga, não atualizar
+            if (in_array($assinatura['status_atual'], ['ativa', 'paga'])) {
+                error_log("[Webhook MP] ℹ️ Assinatura #{$assinatura['id']} já está {$assinatura['status_atual']}, ignorando");
+                return;
+            }
+            
+            // Buscar ID do status 'ativa' ou 'paga'
+            // Para avulso, usar 'paga'. Para recorrente, usar 'ativa'
+            $statusCodigo = $assinatura['tipo_cobranca'] === 'avulso' ? 'paga' : 'ativa';
+            $stmtStatus = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = ?");
+            $stmtStatus->execute([$statusCodigo]);
+            $statusId = $stmtStatus->fetchColumn();
+            
+            // Se não existe status 'paga', usar 'ativa'
+            if (!$statusId) {
+                $stmtStatus->execute(['ativa']);
+                $statusId = $stmtStatus->fetchColumn() ?: 2; // fallback para ID 2
+            }
+            
+            // Buscar método de pagamento
+            $metodoPagamento = $pagamento['payment_method_id'] ?? 'unknown';
+            $stmtMetodo = $this->db->prepare("SELECT id FROM metodos_pagamento WHERE codigo = ?");
+            $stmtMetodo->execute([$metodoPagamento]);
+            $metodoPagamentoId = $stmtMetodo->fetchColumn();
+            
+            // Atualizar assinatura
+            $stmtUpdate = $this->db->prepare("
+                UPDATE assinaturas
+                SET status_id = ?,
+                    status_gateway = 'approved',
+                    metodo_pagamento_id = COALESCE(?, metodo_pagamento_id),
+                    ultima_cobranca = ?,
+                    atualizado_em = NOW()
+                WHERE id = ?
+            ");
+            
+            $stmtUpdate->execute([
+                $statusId,
+                $metodoPagamentoId,
+                $pagamento['date_approved'] ?? date('Y-m-d'),
+                $assinatura['id']
+            ]);
+            
+            if ($stmtUpdate->rowCount() > 0) {
+                error_log("[Webhook MP] ✅ Assinatura #{$assinatura['id']} atualizada para status '{$statusCodigo}'");
+            }
+            
+        } catch (\Exception $e) {
+            error_log("[Webhook MP] ⚠️ Erro ao atualizar assinatura avulsa: " . $e->getMessage());
+            // Não lança exceção para não interromper o fluxo do webhook
         }
     }
     
