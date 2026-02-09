@@ -21,6 +21,33 @@ $dbname = env_or_server('DB_NAME', ['MYSQL_DATABASE', 'DBNAME']);
 $user = env_or_server('DB_USER', ['MYSQL_USER', 'DBUSER', 'DB_USERNAME']);
 $pass = env_or_server('DB_PASS', ['MYSQL_PASSWORD', 'DBPASS', 'DB_PASSWORD']);
 
+// Em jobs/CLI o ambiente pode não carregar .env automaticamente
+if (!$host || !$dbname || !$user) {
+    $rootPath = realpath(__DIR__ . '/..');
+    $envFile = $rootPath ? $rootPath . '/.env' : null;
+    if ($envFile && file_exists($envFile)) {
+        $autoload = $rootPath . '/vendor/autoload.php';
+        if (file_exists($autoload)) {
+            require_once $autoload;
+        }
+
+        if (class_exists('Dotenv\\Dotenv')) {
+            try {
+                $dotenv = Dotenv\Dotenv::createImmutable($rootPath);
+                $dotenv->safeLoad();
+            } catch (Throwable $e) {
+                error_log("[database.php] Falha ao carregar .env: " . $e->getMessage());
+            }
+        }
+
+        // Recarregar variáveis após tentar carregar .env
+        $host = env_or_server('DB_HOST', ['MYSQL_HOST', 'DBHOST']);
+        $dbname = env_or_server('DB_NAME', ['MYSQL_DATABASE', 'DBNAME']);
+        $user = env_or_server('DB_USER', ['MYSQL_USER', 'DBUSER', 'DB_USERNAME']);
+        $pass = env_or_server('DB_PASS', ['MYSQL_PASSWORD', 'DBPASS', 'DB_PASSWORD']);
+    }
+}
+
 if (!$host || !$dbname || !$user) {
     error_log("[database.php] Variáveis de ambiente de DB ausentes: host=" . ($host ?? 'null') . ", dbname=" . ($dbname ?? 'null') . ", user=" . ($user ?? 'null'));
 }
