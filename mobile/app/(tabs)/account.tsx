@@ -183,7 +183,11 @@ export default function AccountScreen() {
   const loadUserRoles = useCallback(async () => {
     try {
       const user = await AuthService.getCurrentUser();
-      if (user?.papeis && Array.isArray(user.papeis) && user.papeis.length > 0) {
+      if (
+        user?.papeis &&
+        Array.isArray(user.papeis) &&
+        user.papeis.length > 0
+      ) {
         setUserRoles(user.papeis);
         return;
       }
@@ -1651,18 +1655,24 @@ const styles = StyleSheet.create({
   },
   headerUserInfo: {
     flex: 1,
-    gap: 6,
+    gap: 4,
+    justifyContent: "center",
   },
   headerUserName: {
     fontSize: 17,
     fontWeight: "800",
     color: "#fff",
     flexShrink: 1,
+    lineHeight: 22,
+    includeFontPadding: false,
   },
   headerUserRoles: {
     fontSize: 12,
     fontWeight: "700",
     color: "rgba(255,255,255,0.9)",
+    lineHeight: 16,
+    includeFontPadding: false,
+    marginTop: 0,
   },
   headerMenuButton: {
     marginLeft: 6,
@@ -1699,6 +1709,9 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: "800",
     color: "#fff",
+    lineHeight: 20,
+    includeFontPadding: false,
+    textAlignVertical: "center",
   },
   headerPhotoLoading: {
     position: "absolute",

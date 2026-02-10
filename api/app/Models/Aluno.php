@@ -411,30 +411,25 @@ class Aluno
                        u.email
                 FROM alunos a
                 INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = a.usuario_id 
-                    AND tup.tenant_id = :tenant_id 
+                    AND tup.tenant_id = ?
                     AND tup.papel_id = 1
                 LEFT JOIN usuarios u ON u.id = a.usuario_id
                 WHERE a.ativo = 1 AND tup.ativo = 1";
         
-        $params = ['tenant_id' => $tenantId];
+        $params = [$tenantId];
         
         if ($busca) {
-            $sql .= " AND (a.nome LIKE :busca OR u.email LIKE :busca OR a.cpf LIKE :busca_cpf)";
-            $params['busca'] = "%{$busca}%";
-            $params['busca_cpf'] = "%{$busca}%";
+            $buscaLike = "%{$busca}%";
+            $sql .= " AND (a.nome LIKE ? OR u.email LIKE ? OR a.cpf LIKE ?)";
+            $params[] = $buscaLike;
+            $params[] = $buscaLike;
+            $params[] = $buscaLike;
         }
         
-        $sql .= " ORDER BY a.nome ASC LIMIT :limit OFFSET :offset";
+        $sql .= " ORDER BY a.nome ASC LIMIT " . (int)$porPagina . " OFFSET " . (int)$offset;
         
         $stmt = $this->db->prepare($sql);
-        
-        foreach ($params as $key => $value) {
-            $stmt->bindValue($key, $value);
-        }
-        $stmt->bindValue('limit', $porPagina, PDO::PARAM_INT);
-        $stmt->bindValue('offset', $offset, PDO::PARAM_INT);
-        
-        $stmt->execute();
+        $stmt->execute($params);
         
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }

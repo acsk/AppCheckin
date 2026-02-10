@@ -1,0 +1,6 @@
+nome,email,cpf,telefone,plano_nome,ciclo_meses,data_inicio
+Maria Silva Santos,maria.santos@email.com,123.456.789-01,82999887766,2x por Semana,2,2026-02-10
+João Pedro Oliveira,joao.pedro@email.com,109.876.543-21,82988776655,3x por Semana,4,2026-02-10
+Ana Carolina Costa,ana.costa@email.com,111.222.333-44,82977665544,1x por Semana,1,2026-02-10
+Carlos Eduardo Lima,carlos.lima@email.com,555.666.777-88,82966554433,1x Temp,1,2026-02-10
+Juliana Ferreira,juliana.ferreira@email.com,999.888.777-66,82955443322,,1,2026-02-10

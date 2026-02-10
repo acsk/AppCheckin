@@ -1,27 +1,38 @@
-# Habilitar reescrita de URL
+# Habilitar reescrita de URL (compatível com dist na raiz OU dist em /dist)
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
 
-  # Deixar /dist/ intacto - não processar nada dentro de /dist/
-  RewriteCond %{REQUEST_URI} ^/dist/ [NC]
-  RewriteRule ^ - [L]
-  
   # Deixar arquivos reais no servidor passarem (não reescrever)
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
 
-  # Mapear /_expo/ para /dist/_expo/ (assets do Expo)
+  # Se os assets estiverem em /dist (deploy com pasta dist), mapear /_expo e /assets
+  RewriteCond %{DOCUMENT_ROOT}/dist/_expo -d
+  RewriteCond %{DOCUMENT_ROOT}/_expo !-d
   RewriteRule ^_expo/(.*)$ /dist/_expo/$1 [L,NC]
-  
-  # Mapear /assets/ para /dist/assets/ (CORRETO: os fonts estão dentro de assets/)
+
+  RewriteCond %{DOCUMENT_ROOT}/dist/assets -d
+  RewriteCond %{DOCUMENT_ROOT}/assets !-d
   RewriteRule ^assets/(.*)$ /dist/assets/$1 [L,NC]
-  
-  # Mapear raiz / para /dist/index.html (SPA entry point)
+
+  RewriteCond %{DOCUMENT_ROOT}/dist/favicon.ico -f
+  RewriteCond %{DOCUMENT_ROOT}/favicon.ico !-f
+  RewriteRule ^favicon.ico$ /dist/favicon.ico [L,NC]
+
+  # SPA fallback quando dist está na raiz (assets em /_expo)
+  RewriteCond %{DOCUMENT_ROOT}/index.html -f
+  RewriteCond %{DOCUMENT_ROOT}/_expo -d
+  RewriteRule ^$ /index.html [L,NC]
+  RewriteCond %{DOCUMENT_ROOT}/index.html -f
+  RewriteCond %{DOCUMENT_ROOT}/_expo -d
+  RewriteRule ^.*$ /index.html [L]
+
+  # SPA fallback quando dist fica dentro de /dist
+  RewriteCond %{DOCUMENT_ROOT}/dist/index.html -f
   RewriteRule ^$ /dist/index.html [L,NC]
-  
-  # Qualquer outra coisa (rotas), servir /dist/index.html (SPA routing)
+  RewriteCond %{DOCUMENT_ROOT}/dist/index.html -f
   RewriteRule ^.*$ /dist/index.html [L]
 </IfModule>
 

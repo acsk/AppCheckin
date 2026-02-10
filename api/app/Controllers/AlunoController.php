@@ -90,36 +90,50 @@ class AlunoController
     )]
     public function index(Request $request, Response $response): Response
     {
-        $tenantId = $request->getAttribute('tenantId');
-        $queryParams = $request->getQueryParams();
-        
-        $apenasAtivos = isset($queryParams['apenas_ativos']) && $queryParams['apenas_ativos'] === 'true';
-        $busca = $queryParams['busca'] ?? null;
-        $pagina = (int) ($queryParams['pagina'] ?? 1);
-        $porPagina = (int) ($queryParams['por_pagina'] ?? 50);
-        
-        // Se tiver busca ou paginação específica, usar método paginado
-        if ($busca || isset($queryParams['pagina'])) {
-            $alunos = $this->alunoModel->listarPaginado($tenantId, $pagina, $porPagina, $busca);
-            $total = $this->alunoModel->contarPorTenant($tenantId, true);
+        try {
+            $tenantId = $request->getAttribute('tenantId');
+            $queryParams = $request->getQueryParams();
             
-            $response->getBody()->write(json_encode([
-                'alunos' => $this->enriquecerAlunos($alunos, $tenantId),
-                'total' => $total,
-                'pagina' => $pagina,
-                'por_pagina' => $porPagina,
-                'total_paginas' => ceil($total / $porPagina)
-            ], JSON_UNESCAPED_UNICODE));
-        } else {
-            $alunos = $this->alunoModel->listarPorTenant($tenantId, $apenasAtivos);
+            $apenasAtivos = isset($queryParams['apenas_ativos']) && $queryParams['apenas_ativos'] === 'true';
+            $busca = $queryParams['busca'] ?? null;
+            $pagina = (int) ($queryParams['pagina'] ?? 1);
+            $porPagina = (int) ($queryParams['por_pagina'] ?? 50);
             
+            // Se tiver busca ou paginação específica, usar método paginado
+            if ($busca || isset($queryParams['pagina'])) {
+                $alunos = $this->alunoModel->listarPaginado($tenantId, $pagina, $porPagina, $busca);
+                $total = $this->alunoModel->contarPorTenant($tenantId, true);
+                
+                $response->getBody()->write(json_encode([
+                    'alunos' => $this->enriquecerAlunos($alunos, $tenantId),
+                    'total' => $total,
+                    'pagina' => $pagina,
+                    'por_pagina' => $porPagina,
+                    'total_paginas' => ceil($total / $porPagina)
+                ], JSON_UNESCAPED_UNICODE));
+            } else {
+                $alunos = $this->alunoModel->listarPorTenant($tenantId, $apenasAtivos);
+                
+                $response->getBody()->write(json_encode([
+                    'alunos' => $this->enriquecerAlunos($alunos, $tenantId),
+                    'total' => count($alunos)
+                ], JSON_UNESCAPED_UNICODE));
+            }
+            
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+        } catch (\Exception $e) {
             $response->getBody()->write(json_encode([
-                'alunos' => $this->enriquecerAlunos($alunos, $tenantId),
-                'total' => count($alunos)
+                'status' => 'error',
+                'message' => 'Erro ao listar alunos',
+                'details' => [
+                    'type' => get_class($e),
+                    'error' => $e->getMessage(),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine()
+                ]
             ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
         }
-        
-        return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
     }
 
     /**

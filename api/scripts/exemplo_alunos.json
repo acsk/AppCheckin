@@ -1,0 +1,47 @@
+[
+  {
+    "nome": "Maria Silva Santos",
+    "email": "maria.santos@email.com",
+    "cpf": "12345678901",
+    "telefone": "82999887766",
+    "plano_nome": "2x por Semana",
+    "ciclo_meses": 2,
+    "data_inicio": "2026-02-10"
+  },
+  {
+    "nome": "João Pedro Oliveira",
+    "email": "joao.pedro@email.com",
+    "cpf": "10987654321",
+    "telefone": "82988776655",
+    "plano_nome": "3x por Semana",
+    "ciclo_meses": 4,
+    "data_inicio": "2026-02-10"
+  },
+  {
+    "nome": "Ana Carolina Costa",
+    "email": "ana.costa@email.com",
+    "cpf": "11122233344",
+    "telefone": "82977665544",
+    "plano_nome": "1x por Semana",
+    "ciclo_meses": 1,
+    "data_inicio": "2026-02-10"
+  },
+  {
+    "nome": "Carlos Eduardo Lima",
+    "email": "carlos.lima@email.com",
+    "cpf": "55566677788",
+    "telefone": "82966554433",
+    "plano_nome": "1x Temp",
+    "ciclo_meses": 1,
+    "data_inicio": "2026-02-10"
+  },
+  {
+    "nome": "Juliana Ferreira",
+    "email": "juliana.ferreira@email.com",
+    "cpf": "99988877766",
+    "telefone": "82955443322",
+    "plano_nome": "",
+    "ciclo_meses": 1,
+    "data_inicio": "2026-02-10"
+  }
+]
