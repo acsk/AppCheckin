@@ -27,7 +27,7 @@
 
 | Nome | Tipo | Comandos |
 |------|------|----------|
-| **test-integracao-assinaturas-matriculas.sh** | Bash Script | 12 testes automatizados |
+| **scripts/test-integracao-assinaturas-matriculas.sh** | Bash Script | 12 testes automatizados |
 | **ASSINATURAS_ENDPOINTS.md** | API Reference | Documentação de endpoints |
 
 ### 4. 🎯 Quick Links por Perfil
@@ -41,7 +41,7 @@
 1. Ler: `IMPLEMENTACAO_BACKEND_ASSINATURAS_MATRICULAS.md`
 2. Copiar código de MatriculaController
 3. Executar: `MIGRACAO_ASSINATURAS_MATRICULAS.sql`
-4. Testar com: `test-integracao-assinaturas-matriculas.sh`
+4. Testar com: `scripts/test-integracao-assinaturas-matriculas.sh`
 
 #### Para o Frontend Developer
 1. Ler: `EXEMPLOS_INTEGRACAO_ASSINATURAS_MATRICULAS.js`
@@ -52,7 +52,7 @@
 #### Para o QA/Tester
 1. Ler: `ASSINATURAS_ENDPOINTS.md`
 2. Usar Postman com exemplos
-3. Executar: `test-integracao-assinaturas-matriculas.sh`
+3. Executar: `scripts/test-integracao-assinaturas-matriculas.sh`
 4. Consultar: `INTEGRACAO_ASSINATURAS_MATRICULAS.md` (casos de uso)
 
 ---
@@ -87,7 +87,7 @@ App Checkin / Painel /
 │       └── assinaturas/
 │           └── AssinaturasScreen.js   (✅ Pronto)
 │
-├── 📄 test-integracao-assinaturas-matriculas.sh (✅ 12 testes)
+├── 📄 scripts/test-integracao-assinaturas-matriculas.sh (✅ 12 testes)
 │
 └── 📄 INDICE_COMPLETO.md (este arquivo)
 ```
@@ -111,7 +111,7 @@ App Checkin / Painel /
 📍 Consultar:
 ├─ EXEMPLOS_INTEGRACAO_ASSINATURAS_MATRICULAS.js → Exemplo 3
 ├─ assinaturaService.sincronizarComMatricula()
-└─ test-integracao-assinaturas-matriculas.sh → Teste 10
+└─ scripts/test-integracao-assinaturas-matriculas.sh → Teste 10
 ```
 
 ### Preciso implementar o backend
@@ -130,14 +130,14 @@ App Checkin / Painel /
 📍 Consultar:
 ├─ EXEMPLOS_INTEGRACAO_ASSINATURAS_MATRICULAS.js (8 exemplos)
 ├─ INTEGRACAO_ASSINATURAS_MATRICULAS.md → Seção "Frontend"
-└─ test-integracao-assinaturas-matriculas.sh (exemplos cURL)
+└─ scripts/test-integracao-assinaturas-matriculas.sh (exemplos cURL)
 ```
 
 ### Preciso testar tudo
 
 ```
 📍 Executar:
-├─ test-integracao-assinaturas-matriculas.sh
+├─ scripts/test-integracao-assinaturas-matriculas.sh
 └─ Postman/Insomnia com exemplos em ASSINATURAS_ENDPOINTS.md
 ```
 
@@ -273,7 +273,7 @@ App Checkin / Painel /
 
 ---
 
-### test-integracao-assinaturas-matriculas.sh
+### scripts/test-integracao-assinaturas-matriculas.sh
 **Tamanho**: ~15KB  
 **Tempo de Leitura**: 5 minutos  
 **Público**: QA, Testers
@@ -336,7 +336,7 @@ App Checkin / Painel /
 09:15 - Copiar código MatriculaController (30 min)
 09:45 - Registrar rotas em api.php (15 min)
 10:00 - Testar com Postman (30 min)
-10:30 - Executar test-integracao-assinaturas-matriculas.sh (30 min)
+10:30 - Executar scripts/test-integracao-assinaturas-matriculas.sh (30 min)
 11:00 - Debug e ajustes (30 min)
 ```
 
@@ -366,7 +366,7 @@ App Checkin / Painel /
 **R**: Leia `ENTREGA_INTEGRACAO_COMPLETA.md` primeiro. Depois escolha seu caminho:
 - **Backend Dev**: IMPLEMENTACAO_BACKEND_ASSINATURAS_MATRICULAS.md
 - **Frontend Dev**: EXEMPLOS_INTEGRACAO_ASSINATURAS_MATRICULAS.js
-- **QA**: test-integracao-assinaturas-matriculas.sh
+- **QA**: scripts/test-integracao-assinaturas-matriculas.sh
 
 ---
 
@@ -376,7 +376,7 @@ App Checkin / Painel /
 1. `EXEMPLOS_INTEGRACAO_ASSINATURAS_MATRICULAS.js` (8 exemplos JavaScript)
 2. `IMPLEMENTACAO_BACKEND_ASSINATURAS_MATRICULAS.md` (Código PHP)
 3. `ASSINATURAS_ENDPOINTS.md` (Exemplos cURL)
-4. `test-integracao-assinaturas-matriculas.sh` (Exemplos cURL com testes)
+4. `scripts/test-integracao-assinaturas-matriculas.sh` (Exemplos cURL com testes)
 
 ---
 
@@ -387,7 +387,7 @@ App Checkin / Painel /
 2. Copie código do MatriculaController
 3. Registre rotas em `routes/api.php`
 4. Execute `MIGRACAO_ASSINATURAS_MATRICULAS.sql`
-5. Teste com `test-integracao-assinaturas-matriculas.sh`
+5. Teste com `scripts/test-integracao-assinaturas-matriculas.sh`
 
 ---
 
@@ -404,7 +404,7 @@ App Checkin / Painel /
 
 **R**: 
 ```bash
-bash test-integracao-assinaturas-matriculas.sh
+bash scripts/test-integracao-assinaturas-matriculas.sh
 ```
 
 Antes, configure:
@@ -419,7 +419,7 @@ Antes, configure:
 - **Obrigatório**: ENTREGA_INTEGRACAO_COMPLETA.md + RESUMO_EXECUTIVO_INTEGRACAO.md
 - **Para Implementar**: IMPLEMENTACAO_BACKEND_ASSINATURAS_MATRICULAS.md + MIGRACAO_ASSINATURAS_MATRICULAS.sql
 - **Para Usar no Frontend**: EXEMPLOS_INTEGRACAO_ASSINATURAS_MATRICULAS.js
-- **Para Testar**: test-integracao-assinaturas-matriculas.sh
+- **Para Testar**: scripts/test-integracao-assinaturas-matriculas.sh
 
 ---
 
@@ -436,7 +436,7 @@ Segundo seu perfil:
 - [ ] IMPLEMENTACAO_BACKEND_ASSINATURAS_MATRICULAS.md
 - [ ] MIGRACAO_ASSINATURAS_MATRICULAS.sql
 - [ ] INTEGRACAO_ASSINATURAS_MATRICULAS.md (Sincronização)
-- [ ] test-integracao-assinaturas-matriculas.sh
+- [ ] scripts/test-integracao-assinaturas-matriculas.sh
 
 ### ✅ Para Frontend Developer
 - [ ] EXEMPLOS_INTEGRACAO_ASSINATURAS_MATRICULAS.js
@@ -445,7 +445,7 @@ Segundo seu perfil:
 
 ### ✅ Para QA/Tester
 - [ ] ASSINATURAS_ENDPOINTS.md
-- [ ] test-integracao-assinaturas-matriculas.sh
+- [ ] scripts/test-integracao-assinaturas-matriculas.sh
 - [ ] INTEGRACAO_ASSINATURAS_MATRICULAS.md (Casos de uso)
 
 ---

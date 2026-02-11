@@ -28,21 +28,21 @@
    ├─ RESUMO_EXECUTIVO_INTEGRACAO.md (12KB)
    │  └─ Executive summary com checklist
    │
-   └─ ENTREGA_INTEGRACAO_COMPLETA.md (15KB)
+   └─ docs/ENTREGA_INTEGRACAO_COMPLETA.md (15KB)
       └─ Visão geral completa
 
 ✅ 3 ARQUIVOS DE ENTREGA E NAVEGAÇÃO (39KB)
-   ├─ ENTREGA_INTEGRACAO_COMPLETA.md (15KB)
+   ├─ docs/ENTREGA_INTEGRACAO_COMPLETA.md (15KB)
    │  └─ Tudo o que foi entregue
    │
-   ├─ INDICE_COMPLETO.md (14KB)
+   ├─ docs/INDICE_COMPLETO.md (14KB)
    │  └─ Mapa completo de documentação
    │
-   └─ README_INTEGRACAO.md (10KB)
+   └─ docs/README_INTEGRACAO.md (10KB)
       └─ Guia rápido de início
 
 ✅ 1 SUITE DE TESTES COMPLETA (14KB)
-   └─ test-integracao-assinaturas-matriculas.sh
+   └─ scripts/test-integracao-assinaturas-matriculas.sh
       └─ 12 testes automatizados com relatório
 
 ✅ 2 SERVICES ATUALIZADOS
@@ -117,8 +117,8 @@
 
 PASSO 1: Ler Documentação (5 minutos)
 ┌────────────────────────────────────────────────────────────────────────┐
-│ Abra: ENTREGA_INTEGRACAO_COMPLETA.md                                  │
-│ Ou: README_INTEGRACAO.md                                              │
+│ Abra: docs/ENTREGA_INTEGRACAO_COMPLETA.md                                  │
+│ Ou: docs/README_INTEGRACAO.md                                              │
 └────────────────────────────────────────────────────────────────────────┘
 
 PASSO 2: Executar Migrations (5 minutos)
@@ -136,7 +136,7 @@ PASSO 3: Implementar Backend (30 minutos)
 
 PASSO 4: Testar Tudo (5 minutos)
 ┌────────────────────────────────────────────────────────────────────────┐
-│ $ bash test-integracao-assinaturas-matriculas.sh                      │
+│ $ bash scripts/test-integracao-assinaturas-matriculas.sh                      │
 │                                                                        │
 │ Resultado:                                                            │
 │ ✅ Testes Passados: 12                                                │
@@ -150,20 +150,20 @@ PASSO 4: Testar Tudo (5 minutos)
 ═════════════════════════════════════════════════════════════════════════════
 
 Para Gerente/PM
-├─ ENTREGA_INTEGRACAO_COMPLETA.md (5 min)
+├─ docs/ENTREGA_INTEGRACAO_COMPLETA.md (5 min)
 └─ RESUMO_EXECUTIVO_INTEGRACAO.md (10 min)
 
 Para Backend Developer
 ├─ IMPLEMENTACAO_BACKEND_ASSINATURAS_MATRICULAS.md (30 min)
 ├─ MIGRACAO_ASSINATURAS_MATRICULAS.sql (10 min)
-└─ test-integracao-assinaturas-matriculas.sh (5 min)
+└─ scripts/test-integracao-assinaturas-matriculas.sh (5 min)
 
 Para Frontend Developer
 ├─ EXEMPLOS_INTEGRACAO_ASSINATURAS_MATRICULAS.js (8 exemplos)
 └─ src/services/matriculaService.js + assinaturaService.js
 
 Para QA/Tester
-├─ test-integracao-assinaturas-matriculas.sh (12 testes)
+├─ scripts/test-integracao-assinaturas-matriculas.sh (12 testes)
 ├─ ASSINATURAS_ENDPOINTS.md (referência)
 └─ INTEGRACAO_ASSINATURAS_MATRICULAS.md (casos de uso)
 
@@ -261,7 +261,7 @@ Cobertura: 100% dos fluxos principais
 ═════════════════════════════════════════════════════════════════════════════
 
 P: Por onde começo?
-R: Leia README_INTEGRACAO.md (5 min) ➜ ENTREGA_INTEGRACAO_COMPLETA.md (5 min)
+R: Leia docs/README_INTEGRACAO.md (5 min) ➜ docs/ENTREGA_INTEGRACAO_COMPLETA.md (5 min)
 
 P: Qual documento tem exemplos?
 R: EXEMPLOS_INTEGRACAO_ASSINATURAS_MATRICULAS.js (8 exemplos prontos)
@@ -270,7 +270,7 @@ P: Como implementar no backend?
 R: IMPLEMENTACAO_BACKEND_ASSINATURAS_MATRICULAS.md (código PHP completo)
 
 P: Como testar tudo?
-R: bash test-integracao-assinaturas-matriculas.sh
+R: bash scripts/test-integracao-assinaturas-matriculas.sh
 
 P: Frontend já está pronto?
 R: Sim! Apenas integre com suas rotas de navegação
@@ -317,12 +317,12 @@ V2.3: Relatórios Avançados
 ✅ CHECKLIST FINAL
 ═════════════════════════════════════════════════════════════════════════════
 
-□ Ler ENTREGA_INTEGRACAO_COMPLETA.md
+□ Ler docs/ENTREGA_INTEGRACAO_COMPLETA.md
 □ Ler RESUMO_EXECUTIVO_INTEGRACAO.md
 □ Executar MIGRACAO_ASSINATURAS_MATRICULAS.sql
 □ Implementar MatriculaController
 □ Registrar rotas em api.php
-□ Executar test-integracao-assinaturas-matriculas.sh
+□ Executar scripts/test-integracao-assinaturas-matriculas.sh
 □ Integrar rota de navegação no frontend
 □ Testar em browser/mobile
 □ Deploy para staging
@@ -352,9 +352,9 @@ Qualidade: Produção-Ready
 
 📖 COMECE POR:
 
-1. README_INTEGRACAO.md (este arquivo)
-2. ENTREGA_INTEGRACAO_COMPLETA.md
-3. INDICE_COMPLETO.md (para encontrar qualquer coisa)
+1. docs/README_INTEGRACAO.md (este arquivo)
+2. docs/ENTREGA_INTEGRACAO_COMPLETA.md
+3. docs/INDICE_COMPLETO.md (para encontrar qualquer coisa)
 
 ═════════════════════════════════════════════════════════════════════════════
 

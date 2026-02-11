@@ -89,16 +89,16 @@ EXPO_PUBLIC_API_URL=https://api.appcheckin.com.br npm run web
 
 ### Script Automatizado
 
-Use o script `deploy.sh` (Unix/Mac/Linux):
+Use o script `scripts/deploy.sh` (Unix/Mac/Linux):
 ```bash
-chmod +x deploy.sh
-./deploy.sh
+chmod +x scripts/deploy.sh
+./scripts/deploy.sh
 ```
 
 Por padrão, ele prepara paths para a Opção B (dist na raiz).  
 Para preparar para a Opção A, use:
 ```bash
-DEPLOY_BASE_PATH=/dist ./deploy.sh
+DEPLOY_BASE_PATH=/dist ./scripts/deploy.sh
 ```
 
 ---

@@ -203,7 +203,7 @@ ls /var/www/seu-app/dist/_expo/Fonts/
 # ✅ Solução
 ssh seu-servidor
 cd /var/www/seu-app
-./copy-fonts-only.sh  # ou ./deploy.sh
+./scripts/copy-fonts-only.sh  # ou ./scripts/deploy.sh
 ```
 
 ---
@@ -217,7 +217,7 @@ grep fonts.css /var/www/seu-app/dist/index.html
 
 # ✅ Solução - Regenerar
 cd /Users/andrecabral/Projetos/AppCheckin/painel
-./deploy.sh
+./scripts/deploy.sh
 
 # Upload de novo
 scp dist/index.html usuario@seu-servidor:/var/www/seu-app/dist/
@@ -252,7 +252,7 @@ Execute no seu computador:
 
 ```bash
 # Testar se site está respondendo
-./diagnostico.sh https://painel.appcheckin.com.br
+./scripts/diagnostico.sh https://painel.appcheckin.com.br
 ```
 
 ---

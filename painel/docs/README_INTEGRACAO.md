@@ -40,7 +40,7 @@ mysql -u root -p seu_banco < docs/MIGRACAO_ASSINATURAS_MATRICULAS.sql
 # 4. Registrar rotas em routes/api.php
 
 # 5. Testar
-bash test-integracao-assinaturas-matriculas.sh
+bash scripts/test-integracao-assinaturas-matriculas.sh
 ```
 
 ### 3️⃣ Frontend Developer
@@ -63,7 +63,7 @@ const resultado = await matriculaService.criar({
 
 Teste em **5 minutos**:
 ```bash
-bash test-integracao-assinaturas-matriculas.sh
+bash scripts/test-integracao-assinaturas-matriculas.sh
 ```
 
 ---
@@ -95,7 +95,7 @@ bash test-integracao-assinaturas-matriculas.sh
 ### Testes (1 arquivo)
 
 ```
-✅ test-integracao-assinaturas-matriculas.sh
+✅ scripts/test-integracao-assinaturas-matriculas.sh
    └─ 12 testes automatizados
 ```
 
@@ -197,7 +197,7 @@ POST   /admin/assinaturas/{id}/cancelar                 Cancelar (original)
 ## 🧪 Testes (12 casos)
 
 ```bash
-./test-integracao-assinaturas-matriculas.sh
+./scripts/test-integracao-assinaturas-matriculas.sh
 
 Output:
 ✅ PASSOU: Criar Matrícula COM Assinatura
@@ -290,7 +290,7 @@ CREATE TABLE assinatura_sincronizacoes (
 - **[docs/ASSINATURAS_ENDPOINTS.md](docs/ASSINATURAS_ENDPOINTS.md)** - API docs (20 min)
 
 ### Para Testar
-- **[test-integracao-assinaturas-matriculas.sh](test-integracao-assinaturas-matriculas.sh)** - 12 testes (5 min)
+- **[scripts/test-integracao-assinaturas-matriculas.sh](../scripts/test-integracao-assinaturas-matriculas.sh)** - 12 testes (5 min)
 
 ---
 
@@ -414,7 +414,7 @@ Desenvolvido para **App Checkin - Painel de Academias**
 - 👤 **Gerente**: Leia [ENTREGA_INTEGRACAO_COMPLETA.md](ENTREGA_INTEGRACAO_COMPLETA.md)
 - 💻 **Backend**: Leia [docs/IMPLEMENTACAO_BACKEND_ASSINATURAS_MATRICULAS.md](docs/IMPLEMENTACAO_BACKEND_ASSINATURAS_MATRICULAS.md)
 - 📱 **Frontend**: Veja [docs/EXEMPLOS_INTEGRACAO_ASSINATURAS_MATRICULAS.js](docs/EXEMPLOS_INTEGRACAO_ASSINATURAS_MATRICULAS.js)
-- 🧪 **QA**: Execute `bash test-integracao-assinaturas-matriculas.sh`
+- 🧪 **QA**: Execute `bash scripts/test-integracao-assinaturas-matriculas.sh`
 
 **3. Implementar** (~1 hora total)
 

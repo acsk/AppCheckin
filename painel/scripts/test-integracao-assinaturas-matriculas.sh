@@ -3,7 +3,7 @@
 # ============================================
 # TESTES: Integração Assinaturas + Matrículas
 # ============================================
-# Executar com: bash test-integracao-assinaturas-matriculas.sh
+# Executar com: bash scripts/test-integracao-assinaturas-matriculas.sh
 
 API_URL="http://localhost:8080"
 ADMIN_TOKEN="seu_token_aqui"

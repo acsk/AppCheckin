@@ -48,7 +48,7 @@ Implementação completa do sistema de **Assinaturas** integrado com o sistema d
 
 | Arquivo | Status | Descrição |
 |---------|--------|-----------|
-| `test-integracao-assinaturas-matriculas.sh` | ✅ Novo | 12 testes automatizados em bash |
+| `scripts/test-integracao-assinaturas-matriculas.sh` | ✅ Novo | 12 testes automatizados em bash |
 
 ---
 
@@ -109,7 +109,7 @@ const resultado = await matriculaService.criar({
 
 ```bash
 # Executar teste automatizado
-bash test-integracao-assinaturas-matriculas.sh
+bash scripts/test-integracao-assinaturas-matriculas.sh
 
 # Verificar relatório de sucesso/falhas
 ```
@@ -288,7 +288,7 @@ await matriculaService.criarAssinatura(resultado.data.matricula.id, {
 ## 🧪 Testes Inclusos
 
 ```bash
-bash test-integracao-assinaturas-matriculas.sh
+bash scripts/test-integracao-assinaturas-matriculas.sh
 ```
 
 Executa:
@@ -441,7 +441,7 @@ const orfas = await assinaturaService.listarSemMatricula();
 
 Para dúvidas ou problemas:
 1. Consultar documentação em `docs/`
-2. Executar testes em `test-integracao-assinaturas-matriculas.sh`
+2. Executar testes em `scripts/test-integracao-assinaturas-matriculas.sh`
 3. Verificar logs do banco de dados
 4. Verificar histórico de sincronizações
 

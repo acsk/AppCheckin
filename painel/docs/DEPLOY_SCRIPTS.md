@@ -2,7 +2,7 @@
 
 ## 📝 Disponíveis
 
-### 1. **deploy.sh** - Deploy Completo (Recomendado)
+### 1. **scripts/deploy.sh** - Deploy Completo (Recomendado)
 
 Faz tudo de uma vez:
 - ✅ Export do Expo Web
@@ -13,7 +13,7 @@ Faz tudo de uma vez:
 
 **Uso:**
 ```bash
-./deploy.sh
+./scripts/deploy.sh
 ```
 
 **Resultado:**
@@ -23,7 +23,7 @@ Faz tudo de uma vez:
 
 ---
 
-### 2. **copy-fonts-only.sh** - Apenas Copiar Fonts
+### 2. **scripts/copy-fonts-only.sh** - Apenas Copiar Fonts
 
 Use este se você já fez o export manualmente:
 
@@ -33,7 +33,7 @@ Use este se você já fez o export manualmente:
 npx expo export --platform web
 
 # Depois execute o script
-./copy-fonts-only.sh
+./scripts/copy-fonts-only.sh
 ```
 
 **O que faz:**
@@ -54,11 +54,11 @@ npm run web
 ### Preparar para Deploy
 ```bash
 # Opção 1: Deploy automático (recomendado)
-./deploy.sh
+./scripts/deploy.sh
 
 # Opção 2: Manual
 npx expo export --platform web
-./copy-fonts-only.sh
+./scripts/copy-fonts-only.sh
 ```
 
 ### Upload para Servidor
@@ -134,7 +134,7 @@ Verificar se `.htaccess` existe em `dist/.htaccess`:
 
 ## 📋 Checklist de Deploy
 
-- [ ] Executou `./deploy.sh` ou `npx expo export --platform web` + `./copy-fonts-only.sh`
+- [ ] Executou `./scripts/deploy.sh` ou `npx expo export --platform web` + `./scripts/copy-fonts-only.sh`
 - [ ] Pasta `dist/` foi criada
 - [ ] `dist/_expo/Fonts/` tem 19+ arquivos .ttf
 - [ ] `dist/fonts.css` existe
@@ -210,8 +210,8 @@ dist/
 
 ## 💡 Dicas
 
-1. **Rápido**: Use `./deploy.sh` - faz tudo em um comando
-2. **Incremental**: Use `./copy-fonts-only.sh` se já tem dist gerado
+1. **Rápido**: Use `./scripts/deploy.sh` - faz tudo em um comando
+2. **Incremental**: Use `./scripts/copy-fonts-only.sh` se já tem dist gerado
 3. **Testar localmente**: `cd dist && python3 -m http.server 3000`
 4. **Cache**: Os fonts usam cache de 1 ano em produção
 5. **Tamanho**: Fonts ocupam ~3-5MB, não é problema para a maioria dos servidores

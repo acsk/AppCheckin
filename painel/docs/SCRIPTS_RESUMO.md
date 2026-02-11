@@ -6,9 +6,9 @@ Automatizar o deploy completo do Expo Web com cópia de fonts dos ícones.
 
 ## 📝 Scripts Criados
 
-### 1. **deploy.sh** (Script Completo - Recomendado)
+### 1. **scripts/deploy.sh** (Script Completo - Recomendado)
 ```bash
-./deploy.sh
+./scripts/deploy.sh
 ```
 
 **O que faz:**
@@ -22,10 +22,10 @@ Automatizar o deploy completo do Expo Web com cópia de fonts dos ícones.
 
 ---
 
-### 2. **copy-fonts-only.sh** (Script Auxiliar)
+### 2. **scripts/copy-fonts-only.sh** (Script Auxiliar)
 ```bash
 npx expo export --platform web
-./copy-fonts-only.sh
+./scripts/copy-fonts-only.sh
 ```
 
 **O que faz:**
@@ -51,14 +51,14 @@ Guia completo com:
 ### Opção 1: Automático (Recomendado)
 ```bash
 cd /Users/andrecabral/Projetos/AppCheckin/painel
-./deploy.sh
+./scripts/deploy.sh
 ```
 
 ### Opção 2: Manual
 ```bash
 cd /Users/andrecabral/Projetos/AppCheckin/painel
 npx expo export --platform web
-./copy-fonts-only.sh
+./scripts/copy-fonts-only.sh
 ```
 
 ---
@@ -108,8 +108,8 @@ grep "fonts.css" /Users/andrecabral/Projetos/AppCheckin/painel/dist/index.html
 
 | Arquivo | Conteúdo |
 |---------|----------|
-| `deploy.sh` | Script bash executável |
-| `copy-fonts-only.sh` | Script bash auxiliar |
+| `scripts/deploy.sh` | Script bash executável |
+| `scripts/copy-fonts-only.sh` | Script bash auxiliar |
 | `DEPLOY_SCRIPTS.md` | Documentação completa |
 | `dist/fonts.css` | CSS gerado com @font-face |
 | `dist/_expo/Fonts/*.ttf` | Fonts copiados |
@@ -120,7 +120,7 @@ grep "fonts.css" /Users/andrecabral/Projetos/AppCheckin/painel/dist/index.html
 ## 💻 Exemplo de Execução
 
 ```
-$ ./deploy.sh
+$ ./scripts/deploy.sh
 
 🚀 Iniciando deploy do Expo Web...
 
@@ -170,7 +170,7 @@ Para GitLab CI, GitHub Actions, etc:
 
 ```bash
 # Executar antes do deploy
-./deploy.sh
+./scripts/deploy.sh
 
 # Depois fazer upload de dist/
 ```
@@ -179,8 +179,8 @@ Para GitLab CI, GitHub Actions, etc:
 
 ## ✅ Checklist Final
 
-- [x] Script `deploy.sh` criado
-- [x] Script `copy-fonts-only.sh` criado
+- [x] Script `scripts/deploy.sh` criado
+- [x] Script `scripts/copy-fonts-only.sh` criado
 - [x] Documentação `DEPLOY_SCRIPTS.md` criada
 - [x] Ambos scripts são executáveis
 - [x] Scripts copiam 19 fonts TTF
@@ -191,4 +191,4 @@ Para GitLab CI, GitHub Actions, etc:
 
 **Status:** ✅ Pronto para Produção
 
-Todos os scripts estão prontos e documentados. Execute `./deploy.sh` quando for fazer o próximo deploy!
+Todos os scripts estão prontos e documentados. Execute `./scripts/deploy.sh` quando for fazer o próximo deploy!

@@ -58,7 +58,7 @@
 | `docs/EXEMPLOS_INTEGRACAO_ASSINATURAS_MATRICULAS.js` | Doc | 22KB | 8 exemplos de código prontos |
 | `docs/IMPLEMENTACAO_BACKEND_ASSINATURAS_MATRICULAS.md` | Doc | 28KB | Backend em PHP completo |
 | `docs/MIGRACAO_ASSINATURAS_MATRICULAS.sql` | SQL | 18KB | Migrations com triggers |
-| `test-integracao-assinaturas-matriculas.sh` | Script | 15KB | 12 testes automatizados |
+| `scripts/test-integracao-assinaturas-matriculas.sh` | Script | 15KB | 12 testes automatizados |
 | `docs/RESUMO_EXECUTIVO_INTEGRACAO.md` | Doc | 20KB | Este documento |
 
 **Total de 128KB de documentação e código**
@@ -162,7 +162,7 @@ export function RootNavigator() {
 
 ```bash
 # 1. Tornar script executável
-chmod +x test-integracao-assinaturas-matriculas.sh
+chmod +x scripts/test-integracao-assinaturas-matriculas.sh
 
 # 2. Configurar token e URL
 # Editar as variáveis no início do script:
@@ -170,7 +170,7 @@ chmod +x test-integracao-assinaturas-matriculas.sh
 # ADMIN_TOKEN="seu_token_aqui"
 
 # 3. Executar testes
-./test-integracao-assinaturas-matriculas.sh
+./scripts/test-integracao-assinaturas-matriculas.sh
 
 # 4. Verificar relatório
 # Deve exibir: ✅ Testes Passados: X
@@ -561,7 +561,7 @@ Sistema de **Assinaturas + Matrículas** completamente integrado e pronto para u
         └── AssinaturasScreen.js                (Existente)
 
 📁 root/
-└── test-integracao-assinaturas-matriculas.sh   (✅ Novo)
+└── scripts/test-integracao-assinaturas-matriculas.sh   (✅ Novo)
 ```
 
 ---

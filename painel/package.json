@@ -9,8 +9,8 @@
     "web": "node -r ./node-polyfill.js ./node_modules/.bin/expo start --web --port 8082",
     "web:dev": "node -r ./node-polyfill.js bash -c 'source .env.development && ./node_modules/.bin/expo start --web --port 8082'",
     "web:prod": "node -r ./node-polyfill.js bash -c 'source .env.production && ./node_modules/.bin/expo start --web --port 8082'",
-    "web:build:dev": "bash -c 'source .env.development && DEPLOY_BASE_PATH=/dist ./deploy.sh'",
-    "web:build": "bash -c 'source .env.production && DEPLOY_BASE_PATH=/dist ./deploy.sh'",
+    "web:build:dev": "bash -c 'source .env.development && DEPLOY_BASE_PATH=/dist ./scripts/deploy.sh'",
+    "web:build": "bash -c 'source .env.production && DEPLOY_BASE_PATH=/dist ./scripts/deploy.sh'",
     "copy-icons": "node scripts/copy-icons.js",
     "postbuild": "node scripts/copy-icons.js"
   },

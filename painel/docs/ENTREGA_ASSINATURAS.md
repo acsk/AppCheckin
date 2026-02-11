@@ -73,7 +73,7 @@ Todos os arquivos abaixo foram criados e estão prontos para uso:
 
 ### 9. **Script de Testes**
 ```
-📄 test-assinaturas.sh
+📄 scripts/test-assinaturas.sh
    Tamanho: ~8 KB
    Testes: 15 (curl + validações)
    Formato: Bash script
@@ -162,7 +162,7 @@ Consulte `docs/IMPLEMENTACAO_ASSINATURAS.md` para:
 
 ```bash
 # Executar script de testes
-bash test-assinaturas.sh
+bash scripts/test-assinaturas.sh
 
 # Ou testar com curl
 curl -X GET http://localhost:8080/admin/assinaturas \
@@ -191,7 +191,7 @@ AppCheckin/painel/
 │   ├── IMPLEMENTACAO_ASSINATURAS.md ✅ NOVO
 │   └── ARQUITETURA_ASSINATURAS.md ✅ NOVO
 ├── ASSINATURAS_RESUMO.md ✅ NOVO
-├── test-assinaturas.sh ✅ NOVO
+├── scripts/test-assinaturas.sh ✅ NOVO
 └── ...
 ```
 
@@ -245,7 +245,7 @@ CREATE TABLE assinatura_renovacoes (
 
 ## 🧪 Testes Inclusos
 
-O arquivo `test-assinaturas.sh` contém 15 testes:
+O arquivo `scripts/test-assinaturas.sh` contém 15 testes:
 
 1. ✅ Listar assinaturas ativas
 2. ✅ Filtrar por plano

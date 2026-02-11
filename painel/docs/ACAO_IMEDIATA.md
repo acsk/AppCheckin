@@ -34,11 +34,11 @@ ls -la /Users/andrecabral/Projetos/AppCheckin/painel/dist/ | head -20
 cd /Users/andrecabral/Projetos/AppCheckin/painel
 
 # Executar deploy completo
-./deploy.sh
+./scripts/deploy.sh
 
 # Ou manualmente
 npx expo export --platform web
-./copy-fonts-only.sh
+./scripts/copy-fonts-only.sh
 ```
 
 ### **Passo 3: Fazer Upload para Servidor**
@@ -97,7 +97,7 @@ Execute este script para testar:
 
 ```bash
 cd /Users/andrecabral/Projetos/AppCheckin/painel
-./diagnostico.sh https://painel.appcheckin.com.br
+./scripts/diagnostico.sh https://painel.appcheckin.com.br
 ```
 
 ---
@@ -108,7 +108,7 @@ cd /Users/andrecabral/Projetos/AppCheckin/painel
 ☐ dist/ contém index.html, fonts.css, favicon.ico?
 ☐ dist/_expo/Fonts/ tem 19 arquivos .ttf?
 ☐ dist/fonts.css tem ~2.6 KB?
-☐ Executou ./deploy.sh ou npx expo export?
+☐ Executou ./scripts/deploy.sh ou npx expo export?
 ☐ Fez upload de dist/* para servidor?
 ☐ Verificou permissões no servidor (644/755)?
 ☐ Recarregou nginx/apache?
@@ -140,7 +140,7 @@ cd /Users/andrecabral/Projetos/AppCheckin/painel
 |---------|-------|---------|
 | Todos 404 | Arquivos não no servidor | Upload dist/* novamente |
 | CSS/JS 404 | DocumentRoot errado | Apuntar para `/var/www/painel` (sem `/dist`) |
-| Fonts 404 | Fonts não copiados | Executar `./deploy.sh` |
+| Fonts 404 | Fonts não copiados | Executar `./scripts/deploy.sh` |
 | Permissão negada | Permissões erradas | `chmod -R 755 /var/www/painel/` |
 | Rewrite não funciona | .htaccess faltando | Criar `.htaccess` (Apache) |
 

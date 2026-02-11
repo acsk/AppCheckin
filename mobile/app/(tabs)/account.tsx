@@ -137,6 +137,19 @@ export default function AccountScreen() {
     ).toUpperCase();
   };
 
+  const getUserPhotoUri = () => {
+    if (photoUrl) return photoUrl;
+    if (userProfile?.foto_caminho) {
+      const raw = userProfile.foto_caminho;
+      if (/^https?:\/\//i.test(raw)) return raw;
+      if (apiUrl) return `${apiUrl}${raw}`;
+    }
+    if (userProfile?.foto_base64) {
+      return `data:image/jpeg;base64,${userProfile.foto_base64}`;
+    }
+    return null;
+  };
+
   // Exibir exatamente o nome fornecido pelo backend, sem normalizações
 
   const getTenantName = () => {
@@ -634,6 +647,8 @@ export default function AccountScreen() {
     lastRankingCalledIdRef.current = null;
     hasVerifiedTokenTenantRef.current = false;
     // Limpa dados dependentes de tenant para evitar exibição de informações antigas
+    setPhotoUrl(null);
+    setPhotoError(null);
     setRanking([]);
     setRankingPeriodo("");
     setRankingModalidades([]);
@@ -956,6 +971,8 @@ export default function AccountScreen() {
     );
   }
 
+  const userPhotoUri = getUserPhotoUri();
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Mostrar erro de foto se houver */}
@@ -975,9 +992,9 @@ export default function AccountScreen() {
           <View style={styles.headerUserLeft}>
             <View style={styles.headerPhotoWrapper}>
               <View style={styles.headerPhotoContainer}>
-                {photoUrl ? (
+                {userPhotoUri ? (
                   <Image
-                    source={{ uri: photoUrl }}
+                    source={{ uri: userPhotoUri }}
                     style={styles.headerPhotoImage}
                     onError={(error) => {
                       console.error(
@@ -1002,19 +1019,19 @@ export default function AccountScreen() {
                   {userRoleLabels.join(" • ")}
                 </Text>
               ) : null}
-              {getTenantDisplayName() && (
-                <TouchableOpacity
-                  style={styles.tenantSwitchButton}
-                  onPress={() => setShowTenantModal(true)}
-                  accessibilityLabel="Trocar de academia"
-                  activeOpacity={0.8}
-                >
-                  <Feather name="building" size={12} color={colors.primary} />
-                  <Text style={styles.tenantSwitchButtonText}>
-                    {getTenantDisplayName()}
-                  </Text>
-                </TouchableOpacity>
-              )}
+              {/* {getTenantDisplayName() && (
+                  <TouchableOpacity
+                    style={styles.tenantSwitchButton}
+                    onPress={() => setShowTenantModal(true)}
+                    accessibilityLabel="Trocar de academia"
+                    activeOpacity={0.8}
+                  >
+                    <Feather name="building" size={12} color={colors.primary} />
+                    <Text style={styles.tenantSwitchButtonText}>
+                      {getTenantDisplayName()}
+                    </Text>
+                  </TouchableOpacity>
+                )} */}
             </View>
           </View>
           <TouchableOpacity
@@ -1362,36 +1379,31 @@ export default function AccountScreen() {
           ]}
         >
           <View style={styles.sidebarHeader}>
-            <TouchableOpacity
-              style={styles.sidebarPhotoContainer}
-              onPress={handleChangePhoto}
-              disabled={updatingPhoto}
-            >
-              {photoUrl ? (
-                <Image
-                  source={{ uri: photoUrl }}
-                  style={styles.sidebarPhotoImage}
-                />
-              ) : userProfile.foto_caminho ? (
-                <Image
-                  source={{ uri: `${apiUrl}${userProfile.foto_caminho}` }}
-                  style={styles.sidebarPhotoImage}
-                />
-              ) : userProfile.foto_base64 ? (
-                <Image
-                  source={{
-                    uri: `data:image/jpeg;base64,${userProfile.foto_base64}`,
-                  }}
-                  style={styles.sidebarPhotoImage}
-                />
-              ) : (
-                <Text style={styles.sidebarPhotoInitials}>
-                  {getInitials(userProfile.nome)}
-                </Text>
-              )}
-            </TouchableOpacity>
-            <View style={styles.sidebarPhotoCameraIcon}>
-              <Feather name="camera" size={12} color="#fff" />
+            <View style={styles.sidebarPhotoWrapper}>
+              <TouchableOpacity
+                style={styles.sidebarPhotoContainer}
+                onPress={handleChangePhoto}
+                disabled={updatingPhoto}
+              >
+                {userPhotoUri ? (
+                  <Image
+                    source={{ uri: userPhotoUri }}
+                    style={styles.sidebarPhotoImage}
+                  />
+                ) : (
+                  <Text style={styles.sidebarPhotoInitials}>
+                    {getInitials(userProfile.nome)}
+                  </Text>
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.sidebarPhotoCameraBadge}
+                onPress={handleChangePhoto}
+                disabled={updatingPhoto}
+                accessibilityLabel="Alterar foto"
+              >
+                <Feather name="camera" size={28} color="#fff" />
+              </TouchableOpacity>
             </View>
             <View style={styles.sidebarHeaderInfo}>
               <Text style={styles.sidebarUserName}>{userProfile.nome}</Text>
@@ -1687,13 +1699,15 @@ const styles = StyleSheet.create({
   },
   headerPhotoWrapper: {
     position: "relative",
-    width: 64,
-    height: 64,
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    overflow: "hidden",
   },
   headerPhotoContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 84,
+    height: 84,
+    borderRadius: 42,
     backgroundColor: "rgba(255,255,255,0.2)",
     justifyContent: "center",
     alignItems: "center",
@@ -1704,6 +1718,7 @@ const styles = StyleSheet.create({
   headerPhotoImage: {
     width: "100%",
     height: "100%",
+    borderRadius: 999,
   },
   headerPhotoInitials: {
     fontSize: 20,
@@ -1760,9 +1775,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   sidebarPhotoContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 128,
+    height: 128,
+    borderRadius: 64,
     backgroundColor: "rgba(255,255,255,0.18)",
     justifyContent: "center",
     alignItems: "center",
@@ -1770,25 +1785,32 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "rgba(255,255,255,0.7)",
   },
-  sidebarPhotoCameraIcon: {
+  sidebarPhotoWrapper: {
+    position: "relative",
+    width: 128,
+    height: 128,
+    borderRadius: 64,
+  },
+  sidebarPhotoImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: 999,
+  },
+  sidebarPhotoCameraBadge: {
     position: "absolute",
-    left: 44,
-    top: 44,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    right: -8,
+    bottom: -8,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: "rgba(0,0,0,0.45)",
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.7)",
   },
-  sidebarPhotoImage: {
-    width: "100%",
-    height: "100%",
-  },
   sidebarPhotoInitials: {
-    fontSize: 22,
+    fontSize: 44,
     fontWeight: "800",
     color: "#fff",
   },
