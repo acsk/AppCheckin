@@ -3,23 +3,28 @@
   RewriteEngine On
   RewriteBase /
 
+  # Forçar o index da pasta dist mesmo que exista index.html na raiz
+  RewriteCond %{DOCUMENT_ROOT}/dist/index.html -f
+  RewriteRule ^index\.html$ /dist/index.html [L,NC]
+
+  RewriteCond %{DOCUMENT_ROOT}/dist/index.html -f
+  RewriteRule ^$ /dist/index.html [L,NC]
+
+  # Se os assets estiverem em /dist (deploy com pasta dist), mapear /_expo e /assets
+  # (mesmo que exista /assets na raiz, priorizar /dist/assets)
+  RewriteCond %{DOCUMENT_ROOT}/dist/_expo -d
+  RewriteRule ^_expo/(.*)$ /dist/_expo/$1 [L,NC]
+
+  RewriteCond %{DOCUMENT_ROOT}/dist/assets -d
+  RewriteRule ^assets/(.*)$ /dist/assets/$1 [L,NC]
+
+  RewriteCond %{DOCUMENT_ROOT}/dist/favicon.ico -f
+  RewriteRule ^favicon.ico$ /dist/favicon.ico [L,NC]
+
   # Deixar arquivos reais no servidor passarem (não reescrever)
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
-
-  # Se os assets estiverem em /dist (deploy com pasta dist), mapear /_expo e /assets
-  RewriteCond %{DOCUMENT_ROOT}/dist/_expo -d
-  RewriteCond %{DOCUMENT_ROOT}/_expo !-d
-  RewriteRule ^_expo/(.*)$ /dist/_expo/$1 [L,NC]
-
-  RewriteCond %{DOCUMENT_ROOT}/dist/assets -d
-  RewriteCond %{DOCUMENT_ROOT}/assets !-d
-  RewriteRule ^assets/(.*)$ /dist/assets/$1 [L,NC]
-
-  RewriteCond %{DOCUMENT_ROOT}/dist/favicon.ico -f
-  RewriteCond %{DOCUMENT_ROOT}/favicon.ico !-f
-  RewriteRule ^favicon.ico$ /dist/favicon.ico [L,NC]
 
   # SPA fallback quando dist está na raiz (assets em /_expo)
   RewriteCond %{DOCUMENT_ROOT}/index.html -f
