@@ -535,6 +535,27 @@ class SuperAdminController
         if ($usuarioExistente) {
             // Usuário já existe - verificar se já tem vínculo com este tenant
             $adminId = $usuarioExistente['id'];
+
+            // Atualizar dados do usuário existente (se fornecidos)
+            $updateData = [];
+            if (!empty($data['nome'])) $updateData['nome'] = $data['nome'];
+            if (!empty($data['email'])) $updateData['email'] = $data['email'];
+            if (isset($data['telefone'])) $updateData['telefone'] = $data['telefone'];
+            if (isset($data['cpf'])) $updateData['cpf'] = $data['cpf'];
+
+            if (!empty($data['senha'])) {
+                if (strlen($data['senha']) < 6) {
+                    $response->getBody()->write(json_encode([
+                        'errors' => ['Senha deve ter no mínimo 6 caracteres']
+                    ]));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+                }
+                $updateData['senha'] = $data['senha'];
+            }
+
+            if (!empty($updateData)) {
+                $this->usuarioModel->update($adminId, $updateData);
+            }
             
             $stmtVerifica = $db->prepare("
                 SELECT COUNT(*) as count
@@ -1846,4 +1867,3 @@ class SuperAdminController
         return $response->withHeader('Content-Type', 'application/json');
     }
 }
-
