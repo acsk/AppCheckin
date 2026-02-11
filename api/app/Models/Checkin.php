@@ -318,6 +318,39 @@ class Checkin
     }
 
     /**
+     * Contar check-ins do usuário no mês atual
+     * Apenas checkins com presente = true ou NULL (pendentes) são contados
+     * Checkins com presente = false (faltas) NÃO contam no limite mensal
+     * @param int $usuarioId ID do usuário
+     * @param int|null $modalidadeId Filtrar por modalidade (opcional)
+     */
+    public function contarCheckinsNoMes(int $usuarioId, ?int $modalidadeId = null): int
+    {
+        $sql = "SELECT COUNT(*) FROM checkins c
+                INNER JOIN alunos a ON a.id = c.aluno_id";
+        $params = ['usuario_id' => $usuarioId];
+        
+        if ($modalidadeId) {
+            $sql .= " INNER JOIN turmas t ON c.turma_id = t.id";
+        }
+        
+        $sql .= " WHERE a.usuario_id = :usuario_id
+                  AND YEAR(c.data_checkin_date) = YEAR(CURDATE())
+                  AND MONTH(c.data_checkin_date) = MONTH(CURDATE())
+                  AND (c.presente IS NULL OR c.presente = 1)";
+        
+        if ($modalidadeId) {
+            $sql .= " AND t.modalidade_id = :modalidade_id";
+            $params['modalidade_id'] = $modalidadeId;
+        }
+        
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        
+        return (int) $stmt->fetchColumn();
+    }
+
+    /**
      * Obter limite de check-ins do plano do usuário
      */
     /**
@@ -328,9 +361,11 @@ class Checkin
      */
     public function obterLimiteCheckinsPlano(int $usuarioId, int $tenantId, ?int $modalidadeId = null): array
     {
-        $sql = "SELECT p.checkins_semanais, p.nome as plano_nome, p.modalidade_id
+        $sql = "SELECT p.checkins_semanais, p.nome as plano_nome, p.modalidade_id,
+                       COALESCE(pc.permite_reposicao, 0) as permite_reposicao
              FROM matriculas m
              INNER JOIN planos p ON m.plano_id = p.id
+             LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id AND pc.tenant_id = m.tenant_id
              INNER JOIN alunos a ON a.id = m.aluno_id
              INNER JOIN status_matricula sm ON sm.id = m.status_id
              WHERE a.usuario_id = :usuario_id
@@ -359,7 +394,8 @@ class Checkin
             'limite' => $result ? (int) $result['checkins_semanais'] : 0,
             'plano_nome' => $result ? $result['plano_nome'] : 'Sem plano',
             'tem_plano' => $result !== false,
-            'modalidade_id' => $result ? (int) $result['modalidade_id'] : null
+            'modalidade_id' => $result ? (int) $result['modalidade_id'] : null,
+            'permite_reposicao' => $result ? (bool) $result['permite_reposicao'] : false
         ];
     }
 

@@ -1412,21 +1412,41 @@ class MobileController
             $planoInfo = $this->checkinModel->obterLimiteCheckinsPlano($userId, $tenantId, $modalidadeTurma);
             
             if ($planoInfo['tem_plano'] && $planoInfo['limite'] > 0) {
-                // Contar check-ins apenas na mesma modalidade
-                $checkinsNaSemana = $this->checkinModel->contarCheckinsNaSemana($userId, $modalidadeTurma);
-                
-                if ($checkinsNaSemana >= $planoInfo['limite']) {
-                    $response->getBody()->write(json_encode([
-                        'success' => false,
-                        'error' => 'Você atingiu o limite de check-ins desta semana',
-                        'detalhes' => [
-                            'plano' => $planoInfo['plano_nome'],
-                            'limite_semana' => $planoInfo['limite'],
-                            'checkins_semana' => $checkinsNaSemana,
-                            'mensagem' => 'Seu plano (' . $planoInfo['plano_nome'] . ') permite ' . $planoInfo['limite'] . ' check-in(s) por semana. Você já realizou ' . $checkinsNaSemana . '.'
-                        ]
-                    ]));
-                    return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                if ($planoInfo['permite_reposicao']) {
+                    $limiteMensal = $planoInfo['limite'] * 4;
+                    $checkinsNoMes = $this->checkinModel->contarCheckinsNoMes($userId, $modalidadeTurma);
+                    
+                    if ($checkinsNoMes >= $limiteMensal) {
+                        $response->getBody()->write(json_encode([
+                            'success' => false,
+                            'error' => 'Você atingiu o limite de check-ins deste mês',
+                            'detalhes' => [
+                                'plano' => $planoInfo['plano_nome'],
+                                'limite_mensal' => $limiteMensal,
+                                'checkins_mes' => $checkinsNoMes,
+                                'permite_reposicao' => true,
+                                'mensagem' => 'Seu plano (' . $planoInfo['plano_nome'] . ') permite até ' . $limiteMensal . ' check-in(s) por mês. Você já realizou ' . $checkinsNoMes . '.'
+                            ]
+                        ]));
+                        return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                    }
+                } else {
+                    // Contar check-ins apenas na mesma modalidade
+                    $checkinsNaSemana = $this->checkinModel->contarCheckinsNaSemana($userId, $modalidadeTurma);
+                    
+                    if ($checkinsNaSemana >= $planoInfo['limite']) {
+                        $response->getBody()->write(json_encode([
+                            'success' => false,
+                            'error' => 'Você atingiu o limite de check-ins desta semana',
+                            'detalhes' => [
+                                'plano' => $planoInfo['plano_nome'],
+                                'limite_semana' => $planoInfo['limite'],
+                                'checkins_semana' => $checkinsNaSemana,
+                                'mensagem' => 'Seu plano (' . $planoInfo['plano_nome'] . ') permite ' . $planoInfo['limite'] . ' check-in(s) por semana. Você já realizou ' . $checkinsNaSemana . '.'
+                            ]
+                        ]));
+                        return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                    }
                 }
             } elseif (!$planoInfo['tem_plano']) {
                 // Usuário não tem plano ativo para esta modalidade
@@ -3497,7 +3517,7 @@ class MobileController
                 $placeholders = implode(',', array_fill(0, count($planoIds), '?'));
                 $stmtCiclos = $this->db->prepare("
                     SELECT pc.id, pc.plano_id, af.nome, af.codigo, pc.meses, pc.valor, 
-                           pc.valor_mensal_equivalente, pc.desconto_percentual, pc.permite_recorrencia,
+                           pc.valor_mensal_equivalente, pc.desconto_percentual, pc.permite_recorrencia, pc.permite_reposicao,
                            af.ordem
                     FROM plano_ciclos pc
                     INNER JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
@@ -3554,6 +3574,7 @@ class MobileController
                         'valor_mensal_formatado' => 'R$ ' . number_format($valorMensalEquivalente, 2, ',', '.'),
                         'desconto_percentual' => $economiaPercentual,
                         'permite_recorrencia' => (bool)$ciclo['permite_recorrencia'],
+                        'permite_reposicao' => (bool)$ciclo['permite_reposicao'],
                         'economia' => $economiaPercentual > 0 
                             ? 'Economize ' . $economiaPercentual . '%'
                             : null,
@@ -3715,7 +3736,7 @@ class MobileController
             // 2. Buscar ciclos de pagamento do plano
             $stmtCiclos = $this->db->prepare("
                 SELECT pc.id, af.nome, af.codigo, pc.meses, pc.valor,
-                       pc.valor_mensal_equivalente, pc.desconto_percentual, pc.permite_recorrencia,
+                       pc.valor_mensal_equivalente, pc.desconto_percentual, pc.permite_recorrencia, pc.permite_reposicao,
                        af.ordem
                 FROM plano_ciclos pc
                 INNER JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
@@ -3757,6 +3778,7 @@ class MobileController
                     'valor_mensal_formatado' => 'R$ ' . number_format($vme, 2, ',', '.'),
                     'desconto_percentual' => $economiaPercentual,
                     'permite_recorrencia' => (bool)$c['permite_recorrencia'],
+                    'permite_reposicao' => (bool)$c['permite_reposicao'],
                     'economia' => $economiaPercentual > 0
                         ? 'Economize ' . $economiaPercentual . '%'
                         : null,

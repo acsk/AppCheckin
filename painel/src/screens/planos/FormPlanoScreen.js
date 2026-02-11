@@ -54,6 +54,7 @@ export default function FormPlanoScreen() {
     tipo_ciclo_id: '',
     valor: '',
     permite_recorrencia: true,
+    permite_reposicao: false,
     ativo: true,
   });
 
@@ -229,6 +230,7 @@ export default function FormPlanoScreen() {
       tipo_ciclo_id: '',
       valor: '',
       permite_recorrencia: true,
+      permite_reposicao: false,
       ativo: true,
     });
     setEditingCicloId(null);
@@ -254,6 +256,7 @@ export default function FormPlanoScreen() {
       tipo_ciclo_id: tipoCicloId,
       valor: ciclo.valor ? parseFloat(ciclo.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '',
       permite_recorrencia: ciclo.permite_recorrencia === 1 || ciclo.permite_recorrencia === true,
+      permite_reposicao: ciclo.permite_reposicao === 1 || ciclo.permite_reposicao === true,
       ativo: ciclo.ativo === 1 || ciclo.ativo === true,
     });
     setEditingCicloId(ciclo.id);
@@ -288,6 +291,7 @@ export default function FormPlanoScreen() {
       const payload = {
         valor: valorConvertido,
         permite_recorrencia: cicloForm.permite_recorrencia ? 1 : 0,
+        permite_reposicao: cicloForm.permite_reposicao ? 1 : 0,
         ativo: cicloForm.ativo ? 1 : 0,
       };
 
@@ -452,7 +456,7 @@ export default function FormPlanoScreen() {
 
               {/* Switches */}
               <View style={styles.modalSwitchesRow}>
-                <View style={[styles.switchRow, styles.flex1]}>
+                <View style={styles.switchRow}>
                   <View style={styles.switchInfo}>
                     <Text style={styles.switchLabel}>Recorrência</Text>
                     <Text style={styles.switchDescription}>
@@ -468,7 +472,7 @@ export default function FormPlanoScreen() {
                   />
                 </View>
 
-                <View style={[styles.switchRow, styles.flex1]}>
+                <View style={styles.switchRow}>
                   <View style={styles.switchInfo}>
                     <Text style={styles.switchLabel}>Ativo</Text>
                     <Text style={styles.switchDescription}>
@@ -481,6 +485,21 @@ export default function FormPlanoScreen() {
                     disabled={savingCiclo}
                     trackColor={{ false: '#d1d5db', true: '#3b82f6' }}
                     thumbColor={cicloForm.ativo ? '#3b82f6' : '#9ca3af'}
+                  />
+                </View>
+                <View style={styles.switchRow}>
+                  <View style={styles.switchInfo}>
+                    <Text style={styles.switchLabel}>Permite Reposição</Text>
+                    <Text style={styles.switchDescription}>
+                      {cicloForm.permite_reposicao ? 'Reposição liberada' : 'Reposição não permitida'}
+                    </Text>
+                  </View>
+                  <Switch
+                    value={cicloForm.permite_reposicao}
+                    onValueChange={(value) => setCicloForm(prev => ({ ...prev, permite_reposicao: value }))}
+                    disabled={savingCiclo}
+                    trackColor={{ false: '#d1d5db', true: '#f97316' }}
+                    thumbColor={cicloForm.permite_reposicao ? '#f97316' : '#9ca3af'}
                   />
                 </View>
               </View>
@@ -760,6 +779,11 @@ export default function FormPlanoScreen() {
                           <View style={styles.cicloTags}>
                             <View style={[styles.cicloTag, ciclo.permite_recorrencia ? styles.cicloTagActive : styles.cicloTagInactive]}>
                               <Text style={styles.cicloTagText}>{ciclo.permite_recorrencia ? 'Recorrente' : 'Avulso'}</Text>
+                            </View>
+                            <View style={[styles.cicloTag, (ciclo.permite_reposicao === 1 || ciclo.permite_reposicao === true) ? styles.cicloTagActive : styles.cicloTagInactive]}>
+                              <Text style={styles.cicloTagText}>
+                                {(ciclo.permite_reposicao === 1 || ciclo.permite_reposicao === true) ? 'Reposição' : 'Sem reposição'}
+                              </Text>
                             </View>
                             <View style={[styles.cicloTag, ciclo.ativo ? styles.cicloTagActive : styles.cicloTagInactive]}>
                               <Text style={styles.cicloTagText}>{ciclo.ativo ? 'Ativo' : 'Inativo'}</Text>
@@ -1288,8 +1312,8 @@ const styles = StyleSheet.create({
     maxHeight: 400,
   },
   modalSwitchesRow: {
-    flexDirection: 'row',
-    gap: 16,
+    flexDirection: 'column',
+    gap: 12,
     marginTop: 8,
   },
   modalActions: {

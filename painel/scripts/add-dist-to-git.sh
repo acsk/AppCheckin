@@ -2,7 +2,8 @@
 
 # Script para adicionar dist ao git
 
-cd "$(dirname "$0")"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR/.."
 
 echo "Adicionando dist/ ao git..."
 

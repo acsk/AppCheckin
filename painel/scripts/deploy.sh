@@ -16,7 +16,8 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 # Diretórios
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SOURCE_FONTS="$PROJECT_DIR/node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts"
 DIST_FONTS="$PROJECT_DIR/dist/_expo/Fonts"
 PUBLIC_FONTS_CSS="$PROJECT_DIR/public/fonts.css"

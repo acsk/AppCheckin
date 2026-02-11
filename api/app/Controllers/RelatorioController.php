@@ -149,6 +149,7 @@ class RelatorioController
                     pc.valor_mensal_equivalente,
                     pc.desconto_percentual,
                     pc.permite_recorrencia,
+                    pc.permite_reposicao,
                     pc.ativo,
                     af.nome as frequencia_nome,
                     af.codigo as frequencia_codigo,
@@ -177,6 +178,7 @@ class RelatorioController
                 $ciclo['valor_mensal_equivalente'] = (float) $ciclo['valor_mensal_equivalente'];
                 $ciclo['desconto_percentual'] = (float) $ciclo['desconto_percentual'];
                 $ciclo['permite_recorrencia'] = (bool) $ciclo['permite_recorrencia'];
+                $ciclo['permite_reposicao'] = (bool) $ciclo['permite_reposicao'];
                 $ciclo['ativo'] = (bool) $ciclo['ativo'];
                 $ciclo['valor_formatado'] = 'R$ ' . number_format($ciclo['valor'], 2, ',', '.');
                 $ciclo['valor_mensal_formatado'] = 'R$ ' . number_format($ciclo['valor_mensal_equivalente'], 2, ',', '.');

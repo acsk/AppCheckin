@@ -106,6 +106,41 @@ class CheckinController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
         }
 
+        // Verificar limite de check-ins conforme plano (se houver)
+        $modalidadeTurma = $turma['modalidade_id'] ?? null;
+        $planoInfo = $this->checkinModel->obterLimiteCheckinsPlano($userId, $tenantId, $modalidadeTurma);
+        if ($planoInfo['tem_plano'] && $planoInfo['limite'] > 0) {
+            if ($planoInfo['permite_reposicao']) {
+                $limiteMensal = $planoInfo['limite'] * 4;
+                $checkinsNoMes = $this->checkinModel->contarCheckinsNoMes($userId, $modalidadeTurma);
+                if ($checkinsNoMes >= $limiteMensal) {
+                    $response->getBody()->write(json_encode([
+                        'error' => 'Você atingiu o limite de check-ins deste mês',
+                        'detalhes' => [
+                            'plano' => $planoInfo['plano_nome'],
+                            'limite_mensal' => $limiteMensal,
+                            'checkins_mes' => $checkinsNoMes,
+                            'permite_reposicao' => true
+                        ]
+                    ]));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                }
+            } else {
+                $checkinsNaSemana = $this->checkinModel->contarCheckinsNaSemana($userId, $modalidadeTurma);
+                if ($checkinsNaSemana >= $planoInfo['limite']) {
+                    $response->getBody()->write(json_encode([
+                        'error' => 'Você atingiu o limite de check-ins desta semana',
+                        'detalhes' => [
+                            'plano' => $planoInfo['plano_nome'],
+                            'limite_semana' => $planoInfo['limite'],
+                            'checkins_semana' => $checkinsNaSemana
+                        ]
+                    ]));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                }
+            }
+        }
+
         // Criar check-in com timestamp do momento exato
         $checkinId = $this->checkinModel->create($userId, $turmaId);
 
@@ -367,6 +402,41 @@ class CheckinController
                 'error' => 'Turma inválida ou inativa'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
+
+        // Verificar limite de check-ins conforme plano (se houver)
+        $modalidadeTurma = $turma['modalidade_id'] ?? null;
+        $planoInfo = $this->checkinModel->obterLimiteCheckinsPlano($usuarioId, $tenantId, $modalidadeTurma);
+        if ($planoInfo['tem_plano'] && $planoInfo['limite'] > 0) {
+            if ($planoInfo['permite_reposicao']) {
+                $limiteMensal = $planoInfo['limite'] * 4;
+                $checkinsNoMes = $this->checkinModel->contarCheckinsNoMes($usuarioId, $modalidadeTurma);
+                if ($checkinsNoMes >= $limiteMensal) {
+                    $response->getBody()->write(json_encode([
+                        'error' => 'Aluno atingiu o limite de check-ins deste mês',
+                        'detalhes' => [
+                            'plano' => $planoInfo['plano_nome'],
+                            'limite_mensal' => $limiteMensal,
+                            'checkins_mes' => $checkinsNoMes,
+                            'permite_reposicao' => true
+                        ]
+                    ]));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                }
+            } else {
+                $checkinsNaSemana = $this->checkinModel->contarCheckinsNaSemana($usuarioId, $modalidadeTurma);
+                if ($checkinsNaSemana >= $planoInfo['limite']) {
+                    $response->getBody()->write(json_encode([
+                        'error' => 'Aluno atingiu o limite de check-ins desta semana',
+                        'detalhes' => [
+                            'plano' => $planoInfo['plano_nome'],
+                            'limite_semana' => $planoInfo['limite'],
+                            'checkins_semana' => $checkinsNaSemana
+                        ]
+                    ]));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                }
+            }
         }
 
         // Criar check-in registrado pelo admin

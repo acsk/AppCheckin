@@ -144,7 +144,7 @@ class PlanoCicloController
             $sql = "
                 SELECT 
                     pc.id, af.nome, af.codigo, pc.meses, pc.valor, pc.valor_mensal_equivalente,
-                    pc.desconto_percentual, pc.permite_recorrencia, pc.ativo, af.ordem,
+                    pc.desconto_percentual, pc.permite_recorrencia, pc.permite_reposicao, pc.ativo, af.ordem,
                     pc.assinatura_frequencia_id
                 FROM plano_ciclos pc
                 INNER JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
@@ -190,6 +190,7 @@ class PlanoCicloController
                 $ciclo['valor'] = (float) $ciclo['valor'];
                 $ciclo['valor_mensal_equivalente'] = (float) $ciclo['valor_mensal_equivalente'];
                 $ciclo['permite_recorrencia'] = (bool) $ciclo['permite_recorrencia'];
+                $ciclo['permite_reposicao'] = (bool) $ciclo['permite_reposicao'];
                 $ciclo['ativo'] = (bool) $ciclo['ativo'];
                 $ciclo['valor_formatado'] = 'R$ ' . number_format($ciclo['valor'], 2, ',', '.');
                 $ciclo['valor_mensal_formatado'] = 'R$ ' . number_format($ciclo['valor_mensal_equivalente'], 2, ',', '.');
@@ -246,6 +247,7 @@ class PlanoCicloController
                     new OA\Property(property: "tipo_ciclo_id", type: "integer", example: 2, description: "ID da frequência (legado, use assinatura_frequencia_id)"),
                     new OA\Property(property: "valor", type: "number", format: "float", example: 240.00, description: "Valor total do ciclo"),
                     new OA\Property(property: "permite_recorrencia", type: "boolean", example: true, description: "true = assinatura recorrente, false = pagamento avulso. Permite 1 de cada por frequência."),
+                    new OA\Property(property: "permite_reposicao", type: "boolean", example: true, description: "true = permite reposição, false = não permite"),
                     new OA\Property(property: "ativo", type: "boolean", example: true)
                 ]
             )
@@ -311,6 +313,7 @@ class PlanoCicloController
             // Verificar se já existe ciclo com mesma frequência E mesmo tipo de recorrência
             // Permite: 1 ciclo com recorrência + 1 ciclo sem recorrência para mesma frequência
             $permiteRecorrencia = isset($data['permite_recorrencia']) ? (int) $data['permite_recorrencia'] : 1;
+            $permiteReposicao = isset($data['permite_reposicao']) ? (int) $data['permite_reposicao'] : 1;
             $stmtCheck = $this->db->prepare("
                 SELECT id FROM plano_ciclos 
                 WHERE plano_id = ? AND assinatura_frequencia_id = ? AND permite_recorrencia = ?
@@ -335,8 +338,8 @@ class PlanoCicloController
             // Inserir
             $stmt = $this->db->prepare("
                 INSERT INTO plano_ciclos 
-                (tenant_id, plano_id, assinatura_frequencia_id, meses, valor, desconto_percentual, permite_recorrencia, ativo)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (tenant_id, plano_id, assinatura_frequencia_id, meses, valor, desconto_percentual, permite_recorrencia, permite_reposicao, ativo)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             
             $stmt->execute([
@@ -347,6 +350,7 @@ class PlanoCicloController
                 (float) $data['valor'],
                 $descontoPercentual,
                 $permiteRecorrencia,
+                $permiteReposicao,
                 isset($data['ativo']) ? (int) $data['ativo'] : 1
             ]);
             
@@ -356,7 +360,8 @@ class PlanoCicloController
                 'success' => true,
                 'message' => 'Ciclo criado com sucesso',
                 'id' => $cicloId,
-                'permite_recorrencia' => (bool) $permiteRecorrencia
+                'permite_recorrencia' => (bool) $permiteRecorrencia,
+                'permite_reposicao' => (bool) $permiteReposicao
             ]));
             
             return $response->withHeader('Content-Type', 'application/json')->withStatus(201);
@@ -387,6 +392,7 @@ class PlanoCicloController
                 properties: [
                     new OA\Property(property: "valor", type: "number", format: "float", example: 230.00),
                     new OA\Property(property: "permite_recorrencia", type: "boolean", example: true),
+                    new OA\Property(property: "permite_reposicao", type: "boolean", example: true),
                     new OA\Property(property: "ativo", type: "boolean", example: true)
                 ]
             )
@@ -440,6 +446,7 @@ class PlanoCicloController
                 SET valor = COALESCE(?, valor),
                     desconto_percentual = ?,
                     permite_recorrencia = COALESCE(?, permite_recorrencia),
+                    permite_reposicao = COALESCE(?, permite_reposicao),
                     ativo = COALESCE(?, ativo),
                     updated_at = NOW()
                 WHERE id = ?
@@ -449,6 +456,7 @@ class PlanoCicloController
                 isset($data['valor']) ? (float) $data['valor'] : null,
                 $descontoPercentual,
                 isset($data['permite_recorrencia']) ? (int) $data['permite_recorrencia'] : null,
+                isset($data['permite_reposicao']) ? (int) $data['permite_reposicao'] : null,
                 isset($data['ativo']) ? (int) $data['ativo'] : null,
                 $cicloId
             ]);
@@ -560,7 +568,8 @@ class PlanoCicloController
                     new OA\Property(property: "desconto_trimestral", type: "number", example: 15, description: "Desconto % para ciclo trimestral"),
                     new OA\Property(property: "desconto_quadrimestral", type: "number", example: 20, description: "Desconto % para ciclo quadrimestral"),
                     new OA\Property(property: "desconto_semestral", type: "number", example: 25, description: "Desconto % para ciclo semestral"),
-                    new OA\Property(property: "desconto_anual", type: "number", example: 30, description: "Desconto % para ciclo anual")
+                    new OA\Property(property: "desconto_anual", type: "number", example: 30, description: "Desconto % para ciclo anual"),
+                    new OA\Property(property: "permite_reposicao", type: "boolean", example: true, description: "true = permite reposição, false = não permite")
                 ]
             )
         ),
@@ -598,7 +607,7 @@ class PlanoCicloController
             
             // Buscar ciclos existentes do plano com contagem de matrículas
             $stmtCiclosExistentes = $this->db->prepare("
-                SELECT pc.id, pc.assinatura_frequencia_id, pc.valor,
+                SELECT pc.id, pc.assinatura_frequencia_id, pc.valor, pc.permite_reposicao,
                        (SELECT COUNT(*) FROM matriculas m WHERE m.plano_ciclo_id = pc.id) as total_matriculas
                 FROM plano_ciclos pc
                 WHERE pc.plano_id = ? AND pc.tenant_id = ?
@@ -654,18 +663,19 @@ class PlanoCicloController
             
             $ciclosCriados = [];
             $ciclosIgnorados = [];
+            $permiteReposicao = isset($data['permite_reposicao']) ? (int) $data['permite_reposicao'] : 1;
             
             // Statement para INSERT (novos ciclos)
             $stmtInsert = $this->db->prepare("
                 INSERT INTO plano_ciclos 
-                (tenant_id, plano_id, assinatura_frequencia_id, meses, valor, desconto_percentual, permite_recorrencia, ativo)
-                VALUES (?, ?, ?, ?, ?, ?, 1, 1)
+                (tenant_id, plano_id, assinatura_frequencia_id, meses, valor, desconto_percentual, permite_recorrencia, permite_reposicao, ativo)
+                VALUES (?, ?, ?, ?, ?, ?, 1, ?, 1)
             ");
             
             // Statement para UPDATE (ciclos existentes sem matrículas)
             $stmtUpdate = $this->db->prepare("
                 UPDATE plano_ciclos 
-                SET valor = ?, desconto_percentual = ?, meses = ?, updated_at = NOW()
+                SET valor = ?, desconto_percentual = ?, meses = ?, permite_reposicao = COALESCE(?, permite_reposicao), updated_at = NOW()
                 WHERE id = ?
             ");
             
@@ -691,7 +701,8 @@ class PlanoCicloController
                             'assinatura_frequencia_id' => $frequenciaId,
                             'nome' => $tipo['nome'],
                             'motivo' => "Possui {$ciclosComMatriculas[$frequenciaId]} matrícula(s) vinculada(s)",
-                            'valor_atual' => (float) $cicloExistente['valor']
+                            'valor_atual' => (float) $cicloExistente['valor'],
+                            'permite_reposicao' => (bool) $cicloExistente['permite_reposicao']
                         ];
                         continue;
                     }
@@ -701,9 +712,13 @@ class PlanoCicloController
                         $valorComDesconto,
                         $desconto,
                         $meses,
+                        isset($data['permite_reposicao']) ? (int) $data['permite_reposicao'] : null,
                         $cicloExistente['id']
                     ]);
                     
+                    $permiteReposicaoAtual = isset($data['permite_reposicao'])
+                        ? (int) $data['permite_reposicao']
+                        : (int) ($cicloExistente['permite_reposicao'] ?? 1);
                     $ciclosCriados[] = [
                         'assinatura_frequencia_id' => $frequenciaId,
                         'nome' => $tipo['nome'],
@@ -711,7 +726,8 @@ class PlanoCicloController
                         'valor' => $valorComDesconto,
                         'desconto' => $desconto,
                         'economia' => round($valorBase - $valorComDesconto, 2),
-                        'acao' => 'atualizado'
+                        'acao' => 'atualizado',
+                        'permite_reposicao' => (bool) $permiteReposicaoAtual
                     ];
                 } else {
                     // Ciclo não existe, inserir novo
@@ -721,7 +737,8 @@ class PlanoCicloController
                         $frequenciaId,
                         $meses,
                         $valorComDesconto,
-                        $desconto
+                        $desconto,
+                        $permiteReposicao
                     ]);
                     
                     $ciclosCriados[] = [
@@ -731,7 +748,8 @@ class PlanoCicloController
                         'valor' => $valorComDesconto,
                         'desconto' => $desconto,
                         'economia' => round($valorBase - $valorComDesconto, 2),
-                        'acao' => 'criado'
+                        'acao' => 'criado',
+                        'permite_reposicao' => (bool) $permiteReposicao
                     ];
                 }
             }

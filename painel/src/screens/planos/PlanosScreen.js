@@ -131,6 +131,11 @@ export default function PlanosScreen() {
     }).format(value);
   };
 
+  const isReposicaoPermitida = (item) => {
+    const valor = item?.permite_reposicao;
+    return valor === 1 || valor === '1' || valor === true;
+  };
+
   const handleGerarRelatorio = async () => {
     try {
       setGerandoRelatorio(true);
@@ -198,6 +203,8 @@ export default function PlanosScreen() {
     .ciclos-table .tag { padding: 2px 8px; border-radius: 12px; font-size: 10px; font-weight: 600; }
     .tag-recorrente { background: #dbeafe; color: #2563eb; }
     .tag-avulso { background: #fef3c7; color: #d97706; }
+    .tag-reposicao { background: #dcfce7; color: #16a34a; }
+    .tag-sem-reposicao { background: #fee2e2; color: #dc2626; }
     .tag-ativo { background: #dcfce7; color: #16a34a; }
     .tag-inativo { background: #fee2e2; color: #dc2626; }
     .no-ciclos { padding: 20px; text-align: center; color: #9ca3af; font-style: italic; }
@@ -275,6 +282,7 @@ export default function PlanosScreen() {
                 <th>Período</th>
                 <th>Valor</th>
                 <th>Tipo</th>
+                <th>Reposição</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -285,6 +293,7 @@ export default function PlanosScreen() {
                   <td>${ciclo.meses || ciclo.periodo_meses || 1} ${(ciclo.meses || ciclo.periodo_meses || 1) > 1 ? 'meses' : 'mês'}</td>
                   <td class="valor">${formatCurrency(ciclo.valor)}</td>
                   <td><span class="tag ${ciclo.permite_recorrencia ? 'tag-recorrente' : 'tag-avulso'}">${ciclo.permite_recorrencia ? 'Recorrente' : 'Avulso'}</span></td>
+                  <td><span class="tag ${isReposicaoPermitida(ciclo) ? 'tag-reposicao' : 'tag-sem-reposicao'}">${isReposicaoPermitida(ciclo) ? 'Permitida' : 'Não permite'}</span></td>
                   <td><span class="tag ${ciclo.ativo ? 'tag-ativo' : 'tag-inativo'}">${ciclo.ativo ? 'Ativo' : 'Inativo'}</span></td>
                 </tr>
               `).join('')}
