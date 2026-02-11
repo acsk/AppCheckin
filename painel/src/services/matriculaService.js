@@ -2,9 +2,20 @@ import api from './api';
 import { prepararErro } from '../utils/errorHandler';
 
 export const matriculaService = {
-  async listar() {
+  async listar(filtros = {}) {
     try {
-      const response = await api.get('/admin/matriculas');
+      const params = new URLSearchParams();
+      if (filtros.pagina) params.append('pagina', filtros.pagina);
+      if (filtros.por_pagina) params.append('por_pagina', filtros.por_pagina);
+      if (filtros.status) params.append('status', filtros.status);
+      if (filtros.aluno_id) params.append('aluno_id', filtros.aluno_id);
+      if (filtros.incluir_inativos !== undefined) {
+        params.append('incluir_inativos', filtros.incluir_inativos ? 'true' : 'false');
+      }
+      if (filtros.busca) params.append('busca', filtros.busca);
+
+      const query = params.toString();
+      const response = await api.get(`/admin/matriculas${query ? `?${query}` : ''}`);
       return response.data;
     } catch (error) {
       console.error('Erro ao listar matrículas:', error);

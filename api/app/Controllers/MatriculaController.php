@@ -457,10 +457,40 @@ class MatriculaController
         $params = $request->getQueryParams();
         $db = require __DIR__ . '/../../config/database.php';
         $incluirInativos = isset($params['incluir_inativos']) && $params['incluir_inativos'] === 'true';
+        $pagina = isset($params['pagina']) ? max(1, (int) $params['pagina']) : null;
+        $porPagina = isset($params['por_pagina']) ? max(1, (int) $params['por_pagina']) : 50;
+        $usarPaginacao = $pagina !== null || isset($params['por_pagina']);
         
         // Verificar e atualizar status de matrículas pendentes vencidas
         $this->atualizarStatusMatriculasPendentes($db, $tenantId);
+
+        $baseSql = "
+            FROM matriculas m
+            INNER JOIN alunos a ON m.aluno_id = a.id
+            INNER JOIN usuarios u ON a.usuario_id = u.id
+            INNER JOIN planos p ON m.plano_id = p.id
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            LEFT JOIN modalidades modalidade ON p.modalidade_id = modalidade.id
+            LEFT JOIN usuarios admin_criou ON m.criado_por = admin_criou.id
+            WHERE m.tenant_id = ?
+        ";
+
+        $executeParams = [$tenantId];
+
+        if (!$incluirInativos) {
+            $baseSql .= " AND a.ativo = 1";
+        }
         
+        if (isset($params['aluno_id'])) {
+            $baseSql .= " AND m.aluno_id = ?";
+            $executeParams[] = $params['aluno_id'];
+        }
+        
+        if (isset($params['status'])) {
+            $baseSql .= " AND m.status_id = (SELECT id FROM status_matricula WHERE codigo = ? LIMIT 1)";
+            $executeParams[] = $params['status'];
+        }
+
         $sql = "
             SELECT 
                 m.*,
@@ -477,34 +507,18 @@ class MatriculaController
                 sm.codigo as status_codigo,
                 sm.nome as status_nome,
                 admin_criou.nome as criado_por_nome
-            FROM matriculas m
-            INNER JOIN alunos a ON m.aluno_id = a.id
-            INNER JOIN usuarios u ON a.usuario_id = u.id
-            INNER JOIN planos p ON m.plano_id = p.id
-            INNER JOIN status_matricula sm ON sm.id = m.status_id
-            LEFT JOIN modalidades modalidade ON p.modalidade_id = modalidade.id
-            LEFT JOIN usuarios admin_criou ON m.criado_por = admin_criou.id
-            WHERE m.tenant_id = ?
+            {$baseSql}
+            ORDER BY m.created_at DESC
         ";
-        
-        $executeParams = [$tenantId];
 
-        if (!$incluirInativos) {
-            $sql .= " AND a.ativo = 1";
+        if ($usarPaginacao) {
+            $offset = ($pagina ?? 1) - 1;
+            $offset = $offset < 0 ? 0 : $offset;
+            $sql .= " LIMIT ? OFFSET ?";
+            $executeParams[] = $porPagina;
+            $executeParams[] = $offset * $porPagina;
         }
-        
-        if (isset($params['aluno_id'])) {
-            $sql .= " AND m.aluno_id = ?";
-            $executeParams[] = $params['aluno_id'];
-        }
-        
-        if (isset($params['status'])) {
-            $sql .= " AND m.status_id = (SELECT id FROM status_matricula WHERE codigo = ? LIMIT 1)";
-            $executeParams[] = $params['status'];
-        }
-        
-        $sql .= " ORDER BY m.created_at DESC";
-        
+
         $stmt = $db->prepare($sql);
         $stmt->execute($executeParams);
         $matriculas = $stmt->fetchAll();
@@ -529,10 +543,27 @@ class MatriculaController
             $matricula['total_pagamentos'] = (float) array_sum(array_column($matricula['pagamentos'], 'valor'));
         }
         
-        $response->getBody()->write(json_encode([
-            'matriculas' => $matriculas,
-            'total' => count($matriculas)
-        ]));
+        if ($usarPaginacao) {
+            $countSql = "SELECT COUNT(*) as total {$baseSql}";
+            $stmtCount = $db->prepare($countSql);
+            $stmtCount->execute(array_slice($executeParams, 0, count($executeParams) - 2));
+            $total = (int) ($stmtCount->fetchColumn() ?? 0);
+            $paginaAtual = $pagina ?? 1;
+            $totalPaginas = $porPagina > 0 ? (int) ceil($total / $porPagina) : 0;
+
+            $response->getBody()->write(json_encode([
+                'matriculas' => $matriculas,
+                'total' => $total,
+                'pagina' => $paginaAtual,
+                'por_pagina' => $porPagina,
+                'total_paginas' => $totalPaginas
+            ]));
+        } else {
+            $response->getBody()->write(json_encode([
+                'matriculas' => $matriculas,
+                'total' => count($matriculas)
+            ]));
+        }
         return $response->withHeader('Content-Type', 'application/json');
     }
 
@@ -1192,4 +1223,3 @@ class MatriculaController
         return $response->withHeader('Content-Type', 'application/json');
     }
 }
-

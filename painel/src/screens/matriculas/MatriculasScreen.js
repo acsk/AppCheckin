@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -22,22 +22,34 @@ export default function MatriculasScreen() {
   const { width } = useWindowDimensions();
   const [matriculas, setMatriculas] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isSearching, setIsSearching] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [serverSearchTerm, setServerSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
+  const [pagina, setPagina] = useState(1);
+  const [porPagina] = useState(10);
+  const [totalPaginas, setTotalPaginas] = useState(1);
+  const [totalItens, setTotalItens] = useState(0);
+  const [cache, setCache] = useState({});
+  const statusEffectRef = useRef(false);
 
   const isMobile = width < 768;
 
   // Função de filtro
   const filteredMatriculas = matriculas.filter(matricula => {
-    const matchSearch = searchTerm === '' || 
-      matricula.usuario_nome?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      matricula.usuario_email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      matricula.plano_nome?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      matricula.modalidade_nome?.toLowerCase().includes(searchTerm.toLowerCase());
+    const term = searchTerm.trim().toLowerCase();
+    const matchSearch = term === '' || 
+      matricula.usuario_nome?.toLowerCase().includes(term) ||
+      matricula.usuario_email?.toLowerCase().includes(term) ||
+      matricula.plano_nome?.toLowerCase().includes(term) ||
+      matricula.modalidade_nome?.toLowerCase().includes(term);
     
     // Mapear filtro de texto para status_id
     const statusMap = { 'ativa': 1, 'vencida': 2, 'cancelada': 3, 'finalizada': 4, 'pendente': 5, 'bloqueado': 6 };
-    const matchStatus = statusFilter === 'todos' || matricula.status_id === statusMap[statusFilter];
+    const statusId = statusMap[statusFilter];
+    const statusTexto = matricula.status?.toString().toLowerCase();
+    const matchStatus = statusFilter === 'todos' ||
+      (matricula.status_id != null ? matricula.status_id === statusId : statusTexto === statusFilter);
     
     return matchSearch && matchStatus;
   });
@@ -46,21 +58,114 @@ export default function MatriculasScreen() {
     carregarMatriculas();
   }, []);
 
-  const carregarMatriculas = async () => {
+  useEffect(() => {
+    if (!statusEffectRef.current) {
+      statusEffectRef.current = true;
+      return;
+    }
+    setPagina(1);
+    carregarMatriculas({ pagina: 1, busca: serverSearchTerm });
+  }, [statusFilter]);
+
+  const buildCacheKey = ({ pagina, porPagina, status, incluirInativos, alunoId, busca }) =>
+    JSON.stringify({ pagina, porPagina, status, incluirInativos, alunoId, busca });
+
+  const normalizeLista = (data) => {
+    if (Array.isArray(data?.matriculas)) return data.matriculas;
+    if (Array.isArray(data?.data?.matriculas)) return data.data.matriculas;
+    if (Array.isArray(data)) return data;
+    return [];
+  };
+
+  const extractPagination = (data, fallbackPorPagina, fallbackPagina) => {
+    const paginacao = data?.paginacao || data?.pagination || data?.meta || {};
+    const total = paginacao.total || data?.total || data?.total_registros || data?.total_itens;
+    const totalPaginas =
+      paginacao.total_paginas ||
+      paginacao.totalPages ||
+      paginacao.total_paginas ||
+      (total ? Math.ceil(total / fallbackPorPagina) : 1);
+    const paginaAtual = paginacao.pagina || paginacao.page || fallbackPagina;
+
+    return {
+      total: total ?? null,
+      totalPaginas: totalPaginas || 1,
+      pagina: paginaAtual || 1,
+    };
+  };
+
+  const carregarMatriculas = async ({ pagina: paginaParam, busca, force = false } = {}) => {
+    const paginaAtual = paginaParam || pagina;
+    const status = statusFilter !== 'todos' ? statusFilter : undefined;
+    const incluirInativos = statusFilter === 'todos';
+    const alunoId = undefined;
+    const buscaParam = busca ?? serverSearchTerm;
+    const key = buildCacheKey({
+      pagina: paginaAtual,
+      porPagina,
+      status,
+      incluirInativos,
+      alunoId,
+      busca: buscaParam || '',
+    });
+
+    if (!force && cache[key]) {
+      const cached = cache[key];
+      setMatriculas(cached.matriculas);
+      setTotalPaginas(cached.totalPaginas || 1);
+      setTotalItens(cached.totalItens || 0);
+      setPagina(cached.pagina || paginaAtual);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      const data = await matriculaService.listar();
-      const lista = Array.isArray(data?.matriculas) 
-        ? data.matriculas 
-        : Array.isArray(data) 
-        ? data 
-        : [];
+      const data = await matriculaService.listar({
+        pagina: paginaAtual,
+        por_pagina: porPagina,
+        status,
+        aluno_id: alunoId,
+        incluir_inativos: incluirInativos,
+        busca: buscaParam || undefined,
+      });
+      const lista = normalizeLista(data);
+      const pagination = extractPagination(data, porPagina, paginaAtual);
+
       setMatriculas(lista);
+      setTotalPaginas(pagination.totalPaginas || 1);
+      setTotalItens(pagination.total ?? 0);
+      setPagina(pagination.pagina || paginaAtual);
+
+      setCache(prev => ({
+        ...prev,
+        [key]: {
+          matriculas: lista,
+          totalPaginas: pagination.totalPaginas || 1,
+          totalItens: pagination.total ?? 0,
+          pagina: pagination.pagina || paginaAtual,
+        },
+      }));
     } catch (error) {
       showAlert('Erro', 'Não foi possível carregar as matrículas');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePesquisar = async () => {
+    const termo = searchTerm.trim();
+    setIsSearching(true);
+    setServerSearchTerm(termo);
+    setPagina(1);
+    await carregarMatriculas({ pagina: 1, busca: termo });
+    setIsSearching(false);
+  };
+
+  const handlePageChange = (novaPagina) => {
+    if (novaPagina < 1 || novaPagina > totalPaginas || loading) return;
+    setPagina(novaPagina);
+    carregarMatriculas({ pagina: novaPagina });
   };
 
   const handleCancelar = async (matricula) => {
@@ -78,7 +183,7 @@ export default function MatriculasScreen() {
               const resultado = await matriculaService.cancelar(matricula.id);
               console.log('Resultado cancelamento:', resultado);
               showToast('Matrícula cancelada com sucesso');
-              await carregarMatriculas();
+              await carregarMatriculas({ pagina, busca: serverSearchTerm, force: true });
             } catch (error) {
               console.error('Erro ao cancelar:', error);
               const mensagemErro = error.mensagemLimpa || error.message || error.error || 'Não foi possível cancelar a matrícula';
@@ -367,20 +472,42 @@ export default function MatriculasScreen() {
 
         {/* Barra de Pesquisa e Filtros */}
         <View style={styles.searchContainer}>
-          <View style={styles.searchInputWrapper}>
-            <Feather name="search" size={20} color="#9ca3af" style={styles.searchIcon} />
-            <TextInput
-              style={styles.searchInput}
-              placeholder="Buscar por aluno, email, plano ou modalidade..."
-              placeholderTextColor="#9ca3af"
-              value={searchTerm}
-              onChangeText={setSearchTerm}
-            />
-            {searchTerm !== '' && (
-              <Pressable onPress={() => setSearchTerm('')} style={styles.clearButton}>
-                <Feather name="x" size={18} color="#9ca3af" />
-              </Pressable>
-            )}
+          <View style={styles.searchRow}>
+            <View style={styles.searchInputWrapper}>
+              <Feather name="search" size={20} color="#9ca3af" style={styles.searchIcon} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Buscar por aluno, email, plano ou modalidade..."
+                placeholderTextColor="#9ca3af"
+                value={searchTerm}
+                onChangeText={setSearchTerm}
+                onSubmitEditing={handlePesquisar}
+              />
+              {searchTerm !== '' && (
+                <Pressable onPress={() => setSearchTerm('')} style={styles.clearButton}>
+                  <Feather name="x" size={18} color="#9ca3af" />
+                </Pressable>
+              )}
+            </View>
+
+            <Pressable
+              onPress={handlePesquisar}
+              disabled={isSearching || loading}
+              style={({ pressed }) => [
+                styles.searchButton,
+                (isSearching || loading) && styles.searchButtonDisabled,
+                pressed && { opacity: 0.8 },
+              ]}
+            >
+              {isSearching ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Feather name="search" size={16} color="#fff" />
+                  <Text style={styles.searchButtonText}>Pesquisar</Text>
+                </>
+              )}
+            </Pressable>
           </View>
           
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
@@ -401,6 +528,7 @@ export default function MatriculasScreen() {
           
           <Text style={styles.resultCount}>
             {filteredMatriculas.length} {filteredMatriculas.length === 1 ? 'matrícula' : 'matrículas'}
+            {totalItens ? ` • Total: ${totalItens}` : ''}
           </Text>
         </View>
 
@@ -426,15 +554,48 @@ export default function MatriculasScreen() {
             </Text>
           </View>
         ) : (
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {isMobile ? (
-              <View style={styles.cardsContainer}>
-                {filteredMatriculas.map(renderMobileCard)}
-              </View>
-            ) : (
-              renderTable()
-            )}
-          </ScrollView>
+          <View style={{ flex: 1 }}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {isMobile ? (
+                <View style={styles.cardsContainer}>
+                  {filteredMatriculas.map(renderMobileCard)}
+                </View>
+              ) : (
+                renderTable()
+              )}
+            </ScrollView>
+            <View style={styles.paginationContainer}>
+              <Pressable
+                onPress={() => handlePageChange(pagina - 1)}
+                disabled={pagina <= 1 || loading}
+                style={({ pressed }) => [
+                  styles.paginationButton,
+                  (pagina <= 1 || loading) && styles.paginationButtonDisabled,
+                  pressed && { opacity: 0.8 },
+                ]}
+              >
+                <Feather name="chevron-left" size={18} color="#111827" />
+                <Text style={styles.paginationButtonText}>Anterior</Text>
+              </Pressable>
+
+              <Text style={styles.paginationInfo}>
+                Página {pagina} de {totalPaginas}
+              </Text>
+
+              <Pressable
+                onPress={() => handlePageChange(pagina + 1)}
+                disabled={pagina >= totalPaginas || loading}
+                style={({ pressed }) => [
+                  styles.paginationButton,
+                  (pagina >= totalPaginas || loading) && styles.paginationButtonDisabled,
+                  pressed && { opacity: 0.8 },
+                ]}
+              >
+                <Text style={styles.paginationButtonText}>Próxima</Text>
+                <Feather name="chevron-right" size={18} color="#111827" />
+              </Pressable>
+            </View>
+          </View>
         )}
       </View>
     </LayoutBase>
@@ -464,6 +625,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#e5e7eb',
   },
   searchInputWrapper: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#f9fafb',
@@ -471,7 +633,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e5e7eb',
     paddingHorizontal: 12,
-    marginBottom: 12,
   },
   searchIcon: {
     marginRight: 8,
@@ -484,6 +645,30 @@ const styles = StyleSheet.create({
   },
   clearButton: {
     padding: 4,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+  },
+  searchButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#f97316',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+  },
+  searchButtonDisabled: {
+    opacity: 0.6,
+  },
+  searchButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
   },
   filterScroll: {
     marginBottom: 12,
@@ -516,6 +701,40 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6b7280',
     fontWeight: '500',
+  },
+  paginationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    backgroundColor: '#fff',
+  },
+  paginationButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    backgroundColor: '#f9fafb',
+  },
+  paginationButtonDisabled: {
+    opacity: 0.5,
+  },
+  paginationButtonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#111827',
+  },
+  paginationInfo: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
   },
   title: {
     fontSize: 24,
