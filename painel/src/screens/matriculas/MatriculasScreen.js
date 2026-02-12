@@ -14,6 +14,7 @@ import {
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import LayoutBase from '../../components/LayoutBase';
+import ConfirmModal from '../../components/ConfirmModal';
 import { matriculaService } from '../../services/matriculaService';
 import { StyleSheet } from 'react-native';
 
@@ -33,6 +34,8 @@ export default function MatriculasScreen() {
   const [totalPaginas, setTotalPaginas] = useState(1);
   const [totalItens, setTotalItens] = useState(0);
   const [cache, setCache] = useState({});
+  const [confirmDelete, setConfirmDelete] = useState({ visible: false, matricula: null });
+  const [deleting, setDeleting] = useState(false);
   const statusEffectRef = useRef(false);
 
   const isMobile = width < 768;
@@ -170,31 +173,31 @@ export default function MatriculasScreen() {
     carregarMatriculas({ pagina: novaPagina });
   };
 
-  const handleCancelar = async (matricula) => {
-    Alert.alert(
-      'Cancelar Matrícula',
-      `Deseja realmente cancelar a matrícula de ${matricula.usuario_nome} no plano ${matricula.plano_nome} (${matricula.modalidade_nome})?`,
-      [
-        { text: 'Não', style: 'cancel' },
-        {
-          text: 'Sim, Cancelar',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              console.log('Cancelando matrícula ID:', matricula.id);
-              const resultado = await matriculaService.cancelar(matricula.id);
-              console.log('Resultado cancelamento:', resultado);
-              showToast('Matrícula cancelada com sucesso');
-              await carregarMatriculas({ pagina, busca: serverSearchTerm, force: true });
-            } catch (error) {
-              console.error('Erro ao cancelar:', error);
-              const mensagemErro = error.mensagemLimpa || error.message || error.error || 'Não foi possível cancelar a matrícula';
-              showAlert('Erro', mensagemErro);
-            }
-          },
-        },
-      ]
-    );
+  const handleOpenDeleteModal = (matricula) => {
+    setConfirmDelete({ visible: true, matricula });
+  };
+
+  const handleCloseDeleteModal = () => {
+    if (deleting) return;
+    setConfirmDelete({ visible: false, matricula: null });
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!confirmDelete.matricula || deleting) return;
+    try {
+      setDeleting(true);
+      const resultado = await matriculaService.deletar(confirmDelete.matricula.id);
+      const mensagem = resultado?.message || 'Matrícula cancelada com sucesso';
+      showToast(mensagem);
+      setConfirmDelete({ visible: false, matricula: null });
+      await carregarMatriculas({ pagina, busca: serverSearchTerm, force: true });
+    } catch (error) {
+      console.error('Erro ao excluir:', error);
+      const mensagemErro = error.mensagemLimpa || error.message || error.error || 'Não foi possível excluir a matrícula';
+      showAlert('Erro', mensagemErro);
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const showAlert = (title, message) => {
@@ -351,15 +354,15 @@ export default function MatriculasScreen() {
         </Pressable>
         {matricula.status_id !== 3 && matricula.status_id !== 4 && (
           <Pressable
-            onPress={() => handleCancelar(matricula)}
+            onPress={() => handleOpenDeleteModal(matricula)}
             style={({ pressed }) => [
               styles.btnAction,
               styles.btnCancelar,
               pressed && { opacity: 0.7 },
             ]}
           >
-            <Feather name="x-circle" size={16} color="#ef4444" />
-            <Text style={styles.btnCancelarText}>Cancelar</Text>
+            <Feather name="trash-2" size={16} color="#ef4444" />
+            <Text style={styles.btnCancelarText}>Excluir</Text>
           </Pressable>
         )}
       </View>
@@ -442,11 +445,11 @@ export default function MatriculasScreen() {
             </Pressable>
             {matricula.status_id !== 3 && matricula.status_id !== 4 && (
               <Pressable
-                onPress={() => handleCancelar(matricula)}
+                onPress={() => handleOpenDeleteModal(matricula)}
                 className="h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
                 style={({ pressed }) => [pressed && { opacity: 0.7 }]}
               >
-                <Feather name="x-circle" size={18} color="#ef4444" />
+                <Feather name="trash-2" size={18} color="#ef4444" />
               </Pressable>
             )}
           </View>
@@ -599,6 +602,21 @@ export default function MatriculasScreen() {
             </View>
           </View>
         )}
+
+        <ConfirmModal
+          visible={confirmDelete.visible}
+          title="Excluir Matrícula"
+          message={
+            confirmDelete.matricula
+              ? `Deseja realmente excluir a matrícula de ${confirmDelete.matricula.usuario_nome} no plano ${confirmDelete.matricula.plano_nome} (${confirmDelete.matricula.modalidade_nome})?`
+              : 'Deseja realmente excluir esta matrícula?'
+          }
+          onConfirm={handleConfirmDelete}
+          onCancel={handleCloseDeleteModal}
+          confirmText="Confirmar"
+          cancelText="Cancelar"
+          type="danger"
+        />
       </View>
     </LayoutBase>
   );

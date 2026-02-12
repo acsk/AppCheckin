@@ -839,6 +839,97 @@ class MatriculaController
         ]));
         return $response->withHeader('Content-Type', 'application/json');
     }
+
+    /**
+     * Deletar matrícula (hard delete)
+     */
+    public function delete(Request $request, Response $response, array $args): Response
+    {
+        $matriculaId = (int) $args['id'];
+        $tenantId = $request->getAttribute('tenantId', 1);
+        $db = require __DIR__ . '/../../config/database.php';
+
+        $stmt = $db->prepare("
+            SELECT m.id, m.aluno_id
+            FROM matriculas m
+            WHERE m.id = ? AND m.tenant_id = ?
+        ");
+        $stmt->execute([$matriculaId, $tenantId]);
+        $matricula = $stmt->fetch();
+
+        if (!$matricula) {
+            $response->getBody()->write(json_encode(['error' => 'Matrícula não encontrada']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        try {
+            $db->beginTransaction();
+
+            // Desvincular assinaturas (quando houver)
+            $stmtAssinaturas = $db->prepare("
+                UPDATE assinaturas 
+                SET matricula_id = NULL 
+                WHERE matricula_id = ? AND tenant_id = ?
+            ");
+            $stmtAssinaturas->execute([$matriculaId, $tenantId]);
+
+            // Remover assinaturas MercadoPago vinculadas
+            $stmtAssinaturasMp = $db->prepare("
+                DELETE FROM assinaturas_mercadopago 
+                WHERE matricula_id = ? AND tenant_id = ?
+            ");
+            $stmtAssinaturasMp->execute([$matriculaId, $tenantId]);
+
+            // Remover pagamentos MercadoPago vinculados
+            $stmtPagamentosMp = $db->prepare("
+                DELETE FROM pagamentos_mercadopago 
+                WHERE matricula_id = ? AND tenant_id = ?
+            ");
+            $stmtPagamentosMp->execute([$matriculaId, $tenantId]);
+
+            // Remover pagamentos do plano vinculados
+            $stmtPagamentosPlano = $db->prepare("
+                DELETE FROM pagamentos_plano 
+                WHERE matricula_id = ? AND tenant_id = ?
+            ");
+            $stmtPagamentosPlano->execute([$matriculaId, $tenantId]);
+
+            // Deletar matrícula
+            $stmtDelete = $db->prepare("
+                DELETE FROM matriculas 
+                WHERE id = ? AND tenant_id = ?
+            ");
+            $stmtDelete->execute([$matriculaId, $tenantId]);
+
+            // Remover plano do usuário (se existir)
+            $stmtAluno = $db->prepare("SELECT usuario_id FROM alunos WHERE id = ?");
+            $stmtAluno->execute([$matricula['aluno_id']]);
+            $alunoRow = $stmtAluno->fetch();
+            if ($alunoRow) {
+                $stmtUpdateUsuario = $db->prepare("
+                    UPDATE usuarios 
+                    SET plano_id = NULL, data_vencimento_plano = NULL
+                    WHERE id = ?
+                ");
+                $stmtUpdateUsuario->execute([$alunoRow['usuario_id']]);
+            }
+
+            $db->commit();
+        } catch (\Exception $e) {
+            $db->rollBack();
+            $response->getBody()->write(json_encode([
+                'error' => 'Erro ao deletar matrícula',
+                'details' => $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+
+        $response->getBody()->write(json_encode([
+            'message' => 'Matrícula deletada com sucesso',
+            'matricula_id' => $matriculaId
+        ]));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
     
     /**
      * Dar baixa em pagamento de plano (marcar como pago)

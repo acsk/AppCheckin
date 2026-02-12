@@ -53,6 +53,16 @@ export const matriculaService = {
     }
   },
 
+  async deletar(id) {
+    try {
+      const response = await api.delete(`/admin/matriculas/${id}`);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao excluir matrícula:', error);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
   async buscarPagamentos(id) {
     try {
       const response = await api.get(`/admin/matriculas/${id}/pagamentos`);
