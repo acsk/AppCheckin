@@ -493,20 +493,21 @@ class MatriculaController
 
         $sql = "
             SELECT 
-                m.*,
+                m.id,
+                m.aluno_id,
+                a.usuario_id,
                 a.nome as usuario_nome,
                 u.email as usuario_email,
-                a.usuario_id,
+                m.plano_id,
                 p.nome as plano_nome,
-                p.valor as plano_valor,
-                p.duracao_dias,
-                p.checkins_semanais,
+                m.valor,
+                m.data_inicio,
+                m.proxima_data_vencimento,
                 modalidade.nome as modalidade_nome,
                 modalidade.icone as modalidade_icone,
                 modalidade.cor as modalidade_cor,
                 sm.codigo as status_codigo,
-                sm.nome as status_nome,
-                admin_criou.nome as criado_por_nome
+                sm.nome as status_nome
             {$baseSql}
             ORDER BY m.created_at DESC
         ";
@@ -523,25 +524,6 @@ class MatriculaController
         $stmt->execute($executeParams);
         $matriculas = $stmt->fetchAll();
 
-        // Adicionar pagamentos a cada matrícula
-        foreach ($matriculas as &$matricula) {
-            $stmtPagamentos = $db->prepare("
-                SELECT 
-                    id,
-                    CAST(valor AS DECIMAL(10,2)) as valor,
-                    data_vencimento,
-                    data_pagamento,
-                    status_pagamento_id,
-                    (SELECT nome FROM status_pagamento WHERE id = status_pagamento_id) as status,
-                    observacoes
-                FROM pagamentos_plano
-                WHERE matricula_id = ?
-                ORDER BY data_vencimento ASC
-            ");
-            $stmtPagamentos->execute([$matricula['id']]);
-            $matricula['pagamentos'] = $stmtPagamentos->fetchAll() ?? [];
-            $matricula['total_pagamentos'] = (float) array_sum(array_column($matricula['pagamentos'], 'valor'));
-        }
         
         if ($usarPaginacao) {
             $countSql = "SELECT COUNT(*) as total {$baseSql}";
