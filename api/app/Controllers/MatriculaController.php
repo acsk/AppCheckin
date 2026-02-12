@@ -503,6 +503,7 @@ class MatriculaController
                 m.valor,
                 m.data_inicio,
                 m.proxima_data_vencimento,
+                m.status_id,
                 modalidade.nome as modalidade_nome,
                 modalidade.icone as modalidade_icone,
                 modalidade.cor as modalidade_cor,
