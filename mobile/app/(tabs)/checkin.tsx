@@ -167,6 +167,8 @@ export default function CheckinScreen() {
     const base = normalizeUtf8(String(name || "")).trim();
     if (!base) return "Aluno";
     const parts = base.split(/\s+/);
+    if (parts.length <= 2) return parts.join(" ");
+    if (parts[1].length <= 2) return parts.slice(0, 3).join(" ");
     return parts.slice(0, 2).join(" ");
   };
 
