@@ -33,6 +33,16 @@ export const matriculaService = {
     }
   },
 
+  async deletePreview(id) {
+    try {
+      const response = await api.get(`/admin/matriculas/${id}/delete-preview`);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao carregar prévia de exclusão:', error);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
   async criar(data) {
     try {
       const response = await api.post('/admin/matriculas', data);

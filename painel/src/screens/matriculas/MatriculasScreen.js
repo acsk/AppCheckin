@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   useWindowDimensions,
   Alert,
+  Modal,
   Platform,
   ToastAndroid,
   TextInput,
@@ -14,7 +15,6 @@ import {
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import LayoutBase from '../../components/LayoutBase';
-import ConfirmModal from '../../components/ConfirmModal';
 import { matriculaService } from '../../services/matriculaService';
 import { StyleSheet } from 'react-native';
 
@@ -34,7 +34,13 @@ export default function MatriculasScreen() {
   const [totalPaginas, setTotalPaginas] = useState(1);
   const [totalItens, setTotalItens] = useState(0);
   const [cache, setCache] = useState({});
-  const [confirmDelete, setConfirmDelete] = useState({ visible: false, matricula: null });
+  const [deletePreview, setDeletePreview] = useState({
+    visible: false,
+    loading: false,
+    data: null,
+    error: null,
+    matricula: null,
+  });
   const [deleting, setDeleting] = useState(false);
   const statusEffectRef = useRef(false);
 
@@ -173,27 +179,73 @@ export default function MatriculasScreen() {
     carregarMatriculas({ pagina: novaPagina });
   };
 
-  const handleOpenDeleteModal = (matricula) => {
-    setConfirmDelete({ visible: true, matricula });
+  const handleOpenDeletePreview = async (matricula) => {
+    setDeletePreview({
+      visible: true,
+      loading: true,
+      data: null,
+      error: null,
+      matricula,
+    });
+
+    try {
+      const data = await matriculaService.deletePreview(matricula.id);
+      setDeletePreview((prev) => ({
+        ...prev,
+        loading: false,
+        data,
+      }));
+    } catch (error) {
+      console.error('Erro ao carregar prévia de exclusão:', error);
+      const mensagemErro =
+        error.mensagemLimpa ||
+        error.message ||
+        error.error ||
+        'Não foi possível carregar a prévia de exclusão';
+      setDeletePreview((prev) => ({
+        ...prev,
+        loading: false,
+        error: mensagemErro,
+      }));
+    }
   };
 
-  const handleCloseDeleteModal = () => {
+  const handleCloseDeletePreview = () => {
     if (deleting) return;
-    setConfirmDelete({ visible: false, matricula: null });
+    setDeletePreview({
+      visible: false,
+      loading: false,
+      data: null,
+      error: null,
+      matricula: null,
+    });
   };
 
   const handleConfirmDelete = async () => {
-    if (!confirmDelete.matricula || deleting) return;
+    if (deleting) return;
+    const matriculaId =
+      deletePreview?.data?.matricula?.id || deletePreview?.matricula?.id;
+    if (!matriculaId) return;
     try {
       setDeleting(true);
-      const resultado = await matriculaService.deletar(confirmDelete.matricula.id);
+      const resultado = await matriculaService.deletar(matriculaId);
       const mensagem = resultado?.message || 'Matrícula cancelada com sucesso';
       showToast(mensagem);
-      setConfirmDelete({ visible: false, matricula: null });
+      setDeletePreview({
+        visible: false,
+        loading: false,
+        data: null,
+        error: null,
+        matricula: null,
+      });
       await carregarMatriculas({ pagina, busca: serverSearchTerm, force: true });
     } catch (error) {
       console.error('Erro ao excluir:', error);
-      const mensagemErro = error.mensagemLimpa || error.message || error.error || 'Não foi possível excluir a matrícula';
+      const mensagemErro =
+        error.mensagemLimpa ||
+        error.message ||
+        error.error ||
+        'Não foi possível excluir a matrícula';
       showAlert('Erro', mensagemErro);
     } finally {
       setDeleting(false);
@@ -279,6 +331,34 @@ export default function MatriculasScreen() {
     }).format(value || 0);
   };
 
+  const formatResumo = (resumo) => {
+    if (!resumo) return null;
+    if (Array.isArray(resumo)) {
+      return resumo.map((item) => String(item)).join('\n');
+    }
+    if (typeof resumo === 'object') {
+      if (resumo.message || resumo.mensagem) {
+        return resumo.message || resumo.mensagem;
+      }
+      return Object.entries(resumo)
+        .map(([key, value]) => `${key}: ${String(value)}`)
+        .join('\n');
+    }
+    return String(resumo);
+  };
+
+  const getPreviewCount = (items) => (Array.isArray(items) ? items.length : items ? 1 : 0);
+
+  const renderPreviewRow = (label, value) => {
+    if (value === null || value === undefined || value === '') return null;
+    return (
+      <View style={styles.previewRow}>
+        <Text style={styles.previewLabel}>{label}</Text>
+        <Text style={styles.previewValue}>{value}</Text>
+      </View>
+    );
+  };
+
   const renderMobileCard = (matricula) => (
     <View key={matricula.id} style={styles.card}>
       <View style={styles.cardHeader}>
@@ -354,7 +434,7 @@ export default function MatriculasScreen() {
         </Pressable>
         {matricula.status_id !== 3 && matricula.status_id !== 4 && (
           <Pressable
-            onPress={() => handleOpenDeleteModal(matricula)}
+            onPress={() => handleOpenDeletePreview(matricula)}
             style={({ pressed }) => [
               styles.btnAction,
               styles.btnCancelar,
@@ -445,7 +525,7 @@ export default function MatriculasScreen() {
             </Pressable>
             {matricula.status_id !== 3 && matricula.status_id !== 4 && (
               <Pressable
-                onPress={() => handleOpenDeleteModal(matricula)}
+                onPress={() => handleOpenDeletePreview(matricula)}
                 className="h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
                 style={({ pressed }) => [pressed && { opacity: 0.7 }]}
               >
@@ -457,6 +537,22 @@ export default function MatriculasScreen() {
       ))}
     </View>
   );
+
+  const previewData = deletePreview.data;
+  const previewResumo = formatResumo(previewData?.resumo);
+  const previewAluno = previewData?.aluno || {};
+  const previewPlano = previewData?.plano || {};
+  const previewModalidade = previewPlano?.modalidade || {};
+  const previewMatricula = previewData?.matricula || {};
+  const previewStatus =
+    previewMatricula.status_nome ||
+    (previewMatricula.status_id ? getStatusLabel(previewMatricula.status_id) : undefined);
+  const previewCounts = {
+    pagamentosPlano: getPreviewCount(previewData?.pagamentos_plano),
+    assinaturas: getPreviewCount(previewData?.assinaturas),
+    assinaturasMp: getPreviewCount(previewData?.assinaturas_mercadopago),
+    pagamentosMp: getPreviewCount(previewData?.pagamentos_mercadopago),
+  };
 
   return (
     <LayoutBase title="Matrículas" subtitle="Gerencie as matrículas dos alunos">
@@ -603,20 +699,159 @@ export default function MatriculasScreen() {
           </View>
         )}
 
-        <ConfirmModal
-          visible={confirmDelete.visible}
-          title="Excluir Matrícula"
-          message={
-            confirmDelete.matricula
-              ? `Deseja realmente excluir a matrícula de ${confirmDelete.matricula.usuario_nome} no plano ${confirmDelete.matricula.plano_nome} (${confirmDelete.matricula.modalidade_nome})?`
-              : 'Deseja realmente excluir esta matrícula?'
-          }
-          onConfirm={handleConfirmDelete}
-          onCancel={handleCloseDeleteModal}
-          confirmText="Confirmar"
-          cancelText="Cancelar"
-          type="danger"
-        />
+        <Modal
+          visible={deletePreview.visible}
+          transparent
+          animationType="fade"
+          onRequestClose={handleCloseDeletePreview}
+        >
+          <View style={styles.previewOverlay}>
+            <View style={[styles.previewModal, isMobile && styles.previewModalMobile]}>
+              <View style={styles.previewHeader}>
+                <Text style={styles.previewTitle}>Revisar exclusão</Text>
+                <Pressable
+                  onPress={handleCloseDeletePreview}
+                  style={({ pressed }) => [
+                    styles.previewCloseButton,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <Feather name="x" size={18} color="#64748b" />
+                </Pressable>
+              </View>
+
+              <View style={styles.previewDivider} />
+
+              {deletePreview.loading ? (
+                <View style={styles.previewState}>
+                  <ActivityIndicator size="large" color="#f97316" />
+                  <Text style={styles.previewStateText}>Carregando prévia...</Text>
+                </View>
+              ) : deletePreview.error ? (
+                <View style={styles.previewState}>
+                  <Feather name="alert-circle" size={22} color="#ef4444" />
+                  <Text style={styles.previewErrorText}>{deletePreview.error}</Text>
+                </View>
+              ) : (
+                <ScrollView
+                  style={styles.previewBody}
+                  contentContainerStyle={styles.previewBodyContent}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {previewResumo ? (
+                    <View style={styles.previewSection}>
+                      <Text style={styles.previewSectionTitle}>Resumo</Text>
+                      <Text style={styles.previewResumo}>{previewResumo}</Text>
+                    </View>
+                  ) : null}
+
+                  <View style={styles.previewSection}>
+                    <Text style={styles.previewSectionTitle}>Aluno</Text>
+                    {renderPreviewRow('Nome', previewAluno.nome)}
+                    {renderPreviewRow('Email', previewAluno.email)}
+                    {renderPreviewRow('Telefone', previewAluno.telefone)}
+                  </View>
+
+                  <View style={styles.previewSection}>
+                    <Text style={styles.previewSectionTitle}>Plano</Text>
+                    {renderPreviewRow('Plano', previewPlano.nome)}
+                    {renderPreviewRow('Modalidade', previewModalidade.nome)}
+                    {renderPreviewRow(
+                      'Valor do plano',
+                      previewPlano.valor != null ? formatCurrency(previewPlano.valor) : null
+                    )}
+                    {renderPreviewRow(
+                      'Duração',
+                      previewPlano.duracao_dias != null ? `${previewPlano.duracao_dias} dias` : null
+                    )}
+                    {renderPreviewRow(
+                      'Check-ins semanais',
+                      previewPlano.checkins_semanais != null
+                        ? `${previewPlano.checkins_semanais}x/sem`
+                        : null
+                    )}
+                  </View>
+
+                  <View style={styles.previewSection}>
+                    <Text style={styles.previewSectionTitle}>Matrícula</Text>
+                    {renderPreviewRow('ID', previewMatricula.id)}
+                    {renderPreviewRow('Status', previewStatus)}
+                    {renderPreviewRow(
+                      'Valor',
+                      previewMatricula.valor != null ? formatCurrency(previewMatricula.valor) : null
+                    )}
+                    {renderPreviewRow(
+                      'Data matrícula',
+                      previewMatricula.data_matricula
+                        ? formatDate(previewMatricula.data_matricula)
+                        : null
+                    )}
+                    {renderPreviewRow(
+                      'Início',
+                      previewMatricula.data_inicio
+                        ? formatDate(previewMatricula.data_inicio)
+                        : null
+                    )}
+                    {renderPreviewRow(
+                      'Vencimento',
+                      previewMatricula.data_vencimento
+                        ? formatDate(previewMatricula.data_vencimento)
+                        : null
+                    )}
+                    {renderPreviewRow(
+                      'Próximo vencimento',
+                      previewMatricula.proxima_data_vencimento
+                        ? formatDate(previewMatricula.proxima_data_vencimento)
+                        : null
+                    )}
+                    {renderPreviewRow('Tipo cobrança', previewMatricula.tipo_cobranca)}
+                    {renderPreviewRow('Dia vencimento', previewMatricula.dia_vencimento)}
+                    {renderPreviewRow('Observações', previewMatricula.observacoes)}
+                  </View>
+
+                  <View style={styles.previewSection}>
+                    <Text style={styles.previewSectionTitle}>Registros relacionados</Text>
+                    {renderPreviewRow('Pagamentos do plano', previewCounts.pagamentosPlano)}
+                    {renderPreviewRow('Assinaturas', previewCounts.assinaturas)}
+                    {renderPreviewRow('Assinaturas Mercado Pago', previewCounts.assinaturasMp)}
+                    {renderPreviewRow('Pagamentos Mercado Pago', previewCounts.pagamentosMp)}
+                  </View>
+                </ScrollView>
+              )}
+
+              <View style={styles.previewActions}>
+                <Pressable
+                  onPress={handleCloseDeletePreview}
+                  disabled={deleting}
+                  style={({ pressed }) => [
+                    styles.previewButton,
+                    styles.previewButtonSecondary,
+                    pressed && { opacity: 0.8 },
+                  ]}
+                >
+                  <Text style={styles.previewButtonSecondaryText}>Cancelar</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleConfirmDelete}
+                  disabled={deletePreview.loading || deleting || deletePreview.error}
+                  style={({ pressed }) => [
+                    styles.previewButton,
+                    styles.previewButtonDanger,
+                    (deletePreview.loading || deleting || deletePreview.error) &&
+                      styles.previewButtonDisabled,
+                    pressed && { opacity: 0.9 },
+                  ]}
+                >
+                  {deleting ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.previewButtonDangerText}>Confirmar exclusão</Text>
+                  )}
+                </Pressable>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </View>
     </LayoutBase>
   );
@@ -973,5 +1208,147 @@ const styles = StyleSheet.create({
   },
   btnTableAction: {
     padding: 8,
+  },
+  // Modal de prévia de exclusão
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  previewModal: {
+    width: '100%',
+    maxWidth: 720,
+    maxHeight: '85%',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    overflow: 'hidden',
+  },
+  previewModalMobile: {
+    maxHeight: '90%',
+  },
+  previewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  previewTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  previewCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f3f4f6',
+  },
+  previewDivider: {
+    height: 1,
+    backgroundColor: '#e5e7eb',
+  },
+  previewBody: {
+    paddingHorizontal: 20,
+  },
+  previewBodyContent: {
+    paddingVertical: 16,
+    gap: 16,
+  },
+  previewSection: {
+    gap: 8,
+  },
+  previewSectionTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  previewResumo: {
+    fontSize: 13,
+    color: '#334155',
+    lineHeight: 18,
+    backgroundColor: '#f8fafc',
+    borderRadius: 10,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  previewRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f1f5f9',
+  },
+  previewLabel: {
+    fontSize: 13,
+    color: '#64748b',
+    fontWeight: '500',
+    flex: 1,
+    paddingRight: 12,
+  },
+  previewValue: {
+    fontSize: 13,
+    color: '#111827',
+    fontWeight: '600',
+    textAlign: 'right',
+    flex: 1,
+  },
+  previewActions: {
+    flexDirection: 'row',
+    gap: 12,
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+    backgroundColor: '#fff',
+  },
+  previewButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  previewButtonSecondary: {
+    backgroundColor: '#f3f4f6',
+  },
+  previewButtonSecondaryText: {
+    color: '#64748b',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  previewButtonDanger: {
+    backgroundColor: '#ef4444',
+  },
+  previewButtonDangerText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  previewButtonDisabled: {
+    opacity: 0.6,
+  },
+  previewState: {
+    padding: 24,
+    alignItems: 'center',
+    gap: 12,
+  },
+  previewStateText: {
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  previewErrorText: {
+    fontSize: 13,
+    color: '#ef4444',
+    textAlign: 'center',
   },
 });

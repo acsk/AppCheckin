@@ -1002,6 +1002,7 @@ return function ($app) {
         $group->get('/matriculas', [MatriculaController::class, 'listar']);
         $group->get('/matriculas/{id}', [MatriculaController::class, 'buscar']);
         $group->get('/matriculas/{id}/pagamentos', [MatriculaController::class, 'buscarPagamentos']);
+        $group->get('/matriculas/{id}/delete-preview', [MatriculaController::class, 'deletePreview']);
         $group->delete('/matriculas/{id}', [MatriculaController::class, 'delete']);
         $group->post('/matriculas/{id}/cancelar', [MatriculaController::class, 'cancelar']);
         $group->post('/matriculas/contas/{id}/baixa', [MatriculaController::class, 'darBaixaConta']);

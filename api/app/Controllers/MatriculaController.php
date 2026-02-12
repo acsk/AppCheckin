@@ -841,6 +841,292 @@ class MatriculaController
     }
 
     /**
+     * Prévia completa de exclusão da matrícula
+     */
+    public function deletePreview(Request $request, Response $response, array $args): Response
+    {
+        $matriculaId = (int) $args['id'];
+        $tenantId = $request->getAttribute('tenantId', 1);
+        $db = require __DIR__ . '/../../config/database.php';
+
+        // Buscar dados completos da matrícula
+        $stmt = $db->prepare("
+            SELECT 
+                m.id,
+                m.tenant_id,
+                m.aluno_id,
+                a.usuario_id,
+                a.nome as aluno_nome,
+                u.email as aluno_email,
+                u.telefone as aluno_telefone,
+                m.plano_id,
+                m.plano_ciclo_id,
+                m.tipo_cobranca,
+                m.data_matricula,
+                m.data_inicio,
+                m.data_vencimento,
+                m.dia_vencimento,
+                m.periodo_teste,
+                m.data_inicio_cobranca,
+                m.proxima_data_vencimento,
+                m.valor,
+                m.status_id,
+                sm.codigo as status_codigo,
+                sm.nome as status_nome,
+                m.motivo_id,
+                mm.codigo as motivo_codigo,
+                mm.nome as motivo_nome,
+                m.matricula_anterior_id,
+                m.plano_anterior_id,
+                m.observacoes,
+                m.created_at,
+                m.updated_at,
+                p.nome as plano_nome,
+                p.valor as plano_valor,
+                p.duracao_dias,
+                p.checkins_semanais,
+                modalidade.id as modalidade_id,
+                modalidade.nome as modalidade_nome,
+                modalidade.icone as modalidade_icone,
+                modalidade.cor as modalidade_cor
+            FROM matriculas m
+            INNER JOIN alunos a ON m.aluno_id = a.id
+            INNER JOIN usuarios u ON a.usuario_id = u.id
+            INNER JOIN planos p ON m.plano_id = p.id
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            LEFT JOIN motivo_matricula mm ON mm.id = m.motivo_id
+            LEFT JOIN modalidades modalidade ON p.modalidade_id = modalidade.id
+            WHERE m.id = ? AND m.tenant_id = ?
+        ");
+        $stmt->execute([$matriculaId, $tenantId]);
+        $matricula = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$matricula) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Matrícula não encontrada'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        // Pagamentos do plano
+        $stmtPagamentos = $db->prepare("
+            SELECT 
+                pp.id,
+                CAST(pp.valor AS DECIMAL(10,2)) as valor,
+                pp.data_vencimento,
+                pp.data_pagamento,
+                pp.status_pagamento_id,
+                sp.nome as status,
+                pp.forma_pagamento_id,
+                fp.nome as forma_pagamento_nome,
+                pp.observacoes,
+                pp.created_at,
+                pp.updated_at
+            FROM pagamentos_plano pp
+            LEFT JOIN status_pagamento sp ON sp.id = pp.status_pagamento_id
+            LEFT JOIN formas_pagamento fp ON fp.id = pp.forma_pagamento_id
+            WHERE pp.matricula_id = ? AND pp.tenant_id = ?
+            ORDER BY pp.data_vencimento ASC
+        ");
+        $stmtPagamentos->execute([$matriculaId, $tenantId]);
+        $pagamentosPlano = $stmtPagamentos->fetchAll(\PDO::FETCH_ASSOC) ?? [];
+
+        // Assinaturas (tabela genérica)
+        $stmtAssinaturas = $db->prepare("
+            SELECT 
+                a.id,
+                a.tenant_id,
+                a.aluno_id,
+                a.matricula_id,
+                a.plano_id,
+                g.codigo as gateway_codigo,
+                g.nome as gateway_nome,
+                a.gateway_assinatura_id,
+                a.gateway_cliente_id,
+                s.codigo as status_codigo,
+                s.nome as status_nome,
+                s.cor as status_cor,
+                a.status_gateway,
+                a.valor,
+                a.moeda,
+                f.codigo as frequencia_codigo,
+                f.nome as frequencia_nome,
+                f.dias as frequencia_dias,
+                a.data_inicio,
+                a.data_fim,
+                a.proxima_cobranca,
+                a.ultima_cobranca,
+                mp.codigo as metodo_pagamento_codigo,
+                mp.nome as metodo_pagamento_nome,
+                a.cartao_ultimos_digitos,
+                a.cartao_bandeira,
+                a.tentativas_cobranca,
+                a.motivo_cancelamento,
+                ct.codigo as cancelado_por_codigo,
+                ct.nome as cancelado_por_nome,
+                a.criado_em,
+                a.atualizado_em
+            FROM assinaturas a
+            LEFT JOIN assinatura_gateways g ON a.gateway_id = g.id
+            LEFT JOIN assinatura_status s ON a.status_id = s.id
+            LEFT JOIN assinatura_frequencias f ON a.frequencia_id = f.id
+            LEFT JOIN metodos_pagamento mp ON a.metodo_pagamento_id = mp.id
+            LEFT JOIN assinatura_cancelamento_tipos ct ON a.cancelado_por_id = ct.id
+            WHERE a.matricula_id = ? AND a.tenant_id = ?
+            ORDER BY a.id DESC
+        ");
+        $stmtAssinaturas->execute([$matriculaId, $tenantId]);
+        $assinaturas = $stmtAssinaturas->fetchAll(\PDO::FETCH_ASSOC) ?? [];
+
+        // Assinaturas MercadoPago (legado)
+        $stmtAssinaturasMp = $db->prepare("
+            SELECT 
+                id,
+                tenant_id,
+                matricula_id,
+                aluno_id,
+                plano_ciclo_id,
+                mp_preapproval_id,
+                mp_plan_id,
+                mp_payer_id,
+                status,
+                valor,
+                moeda,
+                dia_cobranca,
+                data_inicio,
+                data_fim,
+                proxima_cobranca,
+                ultima_cobranca,
+                tentativas_falha,
+                motivo_cancelamento,
+                cancelado_por,
+                data_cancelamento,
+                created_at,
+                updated_at
+            FROM assinaturas_mercadopago
+            WHERE matricula_id = ? AND tenant_id = ?
+            ORDER BY id DESC
+        ");
+        $stmtAssinaturasMp->execute([$matriculaId, $tenantId]);
+        $assinaturasMp = $stmtAssinaturasMp->fetchAll(\PDO::FETCH_ASSOC) ?? [];
+
+        // Pagamentos MercadoPago (provedor)
+        $stmtPagamentosMp = $db->prepare("
+            SELECT 
+                id,
+                tenant_id,
+                matricula_id,
+                aluno_id,
+                usuario_id,
+                payment_id,
+                external_reference,
+                preference_id,
+                status,
+                status_detail,
+                transaction_amount,
+                payment_method_id,
+                payment_type_id,
+                installments,
+                date_approved,
+                date_created,
+                payer_email,
+                payer_identification_type,
+                payer_identification_number,
+                created_at,
+                updated_at
+            FROM pagamentos_mercadopago
+            WHERE matricula_id = ? AND tenant_id = ?
+            ORDER BY date_created DESC
+        ");
+        $stmtPagamentosMp->execute([$matriculaId, $tenantId]);
+        $pagamentosMp = $stmtPagamentosMp->fetchAll(\PDO::FETCH_ASSOC) ?? [];
+
+        // Totais e resumo
+        $totalPagamentosPlano = count($pagamentosPlano);
+        $totalPagamentosMp = count($pagamentosMp);
+        $totalAssinaturas = count($assinaturas);
+        $totalAssinaturasMp = count($assinaturasMp);
+        $valorTotalPlano = (float) array_sum(array_column($pagamentosPlano, 'valor'));
+        $valorTotalMp = (float) array_sum(array_column($pagamentosMp, 'transaction_amount'));
+
+        $resumo = [
+            'matricula_id' => (int) $matricula['id'],
+            'aluno_id' => (int) $matricula['aluno_id'],
+            'usuario_id' => (int) $matricula['usuario_id'],
+            'status' => $matricula['status_codigo'],
+            'total_pagamentos_plano' => $totalPagamentosPlano,
+            'total_pagamentos_provedor' => $totalPagamentosMp,
+            'total_assinaturas' => $totalAssinaturas,
+            'total_assinaturas_mercadopago' => $totalAssinaturasMp,
+            'valor_total_pagamentos_plano' => $valorTotalPlano,
+            'valor_total_pagamentos_provedor' => $valorTotalMp,
+            'impacto' => [
+                'pagamentos_plano' => ['acao' => 'deletar', 'total' => $totalPagamentosPlano],
+                'pagamentos_mercadopago' => ['acao' => 'deletar', 'total' => $totalPagamentosMp],
+                'assinaturas' => ['acao' => 'desvincular', 'total' => $totalAssinaturas],
+                'assinaturas_mercadopago' => ['acao' => 'deletar', 'total' => $totalAssinaturasMp]
+            ]
+        ];
+
+        $response->getBody()->write(json_encode([
+            'resumo' => $resumo,
+            'matricula' => [
+                'id' => (int) $matricula['id'],
+                'tenant_id' => (int) $matricula['tenant_id'],
+                'aluno_id' => (int) $matricula['aluno_id'],
+                'usuario_id' => (int) $matricula['usuario_id'],
+                'plano_id' => (int) $matricula['plano_id'],
+                'plano_ciclo_id' => $matricula['plano_ciclo_id'],
+                'tipo_cobranca' => $matricula['tipo_cobranca'],
+                'data_matricula' => $matricula['data_matricula'],
+                'data_inicio' => $matricula['data_inicio'],
+                'data_vencimento' => $matricula['data_vencimento'],
+                'dia_vencimento' => $matricula['dia_vencimento'],
+                'periodo_teste' => (int) $matricula['periodo_teste'],
+                'data_inicio_cobranca' => $matricula['data_inicio_cobranca'],
+                'proxima_data_vencimento' => $matricula['proxima_data_vencimento'],
+                'valor' => $matricula['valor'],
+                'status_id' => (int) $matricula['status_id'],
+                'status_codigo' => $matricula['status_codigo'],
+                'status_nome' => $matricula['status_nome'],
+                'motivo_id' => $matricula['motivo_id'],
+                'motivo_codigo' => $matricula['motivo_codigo'],
+                'motivo_nome' => $matricula['motivo_nome'],
+                'matricula_anterior_id' => $matricula['matricula_anterior_id'],
+                'plano_anterior_id' => $matricula['plano_anterior_id'],
+                'observacoes' => $matricula['observacoes'],
+                'created_at' => $matricula['created_at'],
+                'updated_at' => $matricula['updated_at']
+            ],
+            'aluno' => [
+                'id' => (int) $matricula['aluno_id'],
+                'usuario_id' => (int) $matricula['usuario_id'],
+                'nome' => $matricula['aluno_nome'],
+                'email' => $matricula['aluno_email'],
+                'telefone' => $matricula['aluno_telefone']
+            ],
+            'plano' => [
+                'id' => (int) $matricula['plano_id'],
+                'nome' => $matricula['plano_nome'],
+                'valor' => $matricula['plano_valor'],
+                'duracao_dias' => (int) $matricula['duracao_dias'],
+                'checkins_semanais' => (int) $matricula['checkins_semanais'],
+                'modalidade' => [
+                    'id' => $matricula['modalidade_id'],
+                    'nome' => $matricula['modalidade_nome'],
+                    'icone' => $matricula['modalidade_icone'],
+                    'cor' => $matricula['modalidade_cor']
+                ]
+            ],
+            'pagamentos_plano' => $pagamentosPlano,
+            'assinaturas' => $assinaturas,
+            'assinaturas_mercadopago' => $assinaturasMp,
+            'pagamentos_mercadopago' => $pagamentosMp
+        ], JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+    }
+
+    /**
      * Deletar matrícula (hard delete)
      */
     public function delete(Request $request, Response $response, array $args): Response
