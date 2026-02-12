@@ -407,7 +407,10 @@ class AuthController
             'current_tenant_id' => $currentTenantId
         ]));
 
-        return $response->withHeader('Content-Type', 'application/json');
+        return $response
+            ->withHeader('Content-Type', 'application/json')
+            ->withHeader('Cache-Control', 'private, max-age=300')
+            ->withHeader('Vary', 'Authorization, X-Tenant-Id');
     }
 
     /**

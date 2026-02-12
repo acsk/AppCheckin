@@ -192,7 +192,10 @@ class MobileController
                 'success' => true,
                 'data' => $perfil
             ]));
-            return $response->withHeader('Content-Type', 'application/json');
+            return $response
+                ->withHeader('Content-Type', 'application/json')
+                ->withHeader('Cache-Control', 'private, max-age=300')
+                ->withHeader('Vary', 'Authorization, X-Tenant-Id');
         } catch (\Exception $e) {
             error_log("Erro no endpoint /mobile/perfil: " . $e->getMessage());
             $response->getBody()->write(json_encode([
@@ -1061,7 +1064,10 @@ class MobileController
             ]
         ], JSON_UNESCAPED_UNICODE));
         
-        return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+        return $response
+            ->withHeader('Content-Type', 'application/json; charset=utf-8')
+            ->withHeader('Cache-Control', 'private, max-age=300')
+            ->withHeader('Vary', 'Authorization, X-Tenant-Id');
     }
 
     /**
@@ -3124,7 +3130,11 @@ class MobileController
                 'data' => $responseData
             ], JSON_UNESCAPED_UNICODE));
             
-            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(200);
+            return $response
+                ->withHeader('Content-Type', 'application/json; charset=utf-8')
+                ->withHeader('Cache-Control', 'private, max-age=300')
+                ->withHeader('Vary', 'Authorization, X-Tenant-Id')
+                ->withStatus(200);
             
         } catch (\Exception $e) {
             error_log("Erro em rankingMensal: " . $e->getMessage());
