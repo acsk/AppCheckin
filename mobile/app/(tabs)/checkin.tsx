@@ -1734,6 +1734,19 @@ export default function CheckinScreen() {
                   const professorName =
                     turma.professor?.nome || turma.professor || "";
                   const horaLimite = getHoraLimiteCheckin(turma);
+                  const displayName = cleanTurmaName(
+                    turma.nome,
+                    turma.modalidade,
+                    turma.professor,
+                  );
+                  const modalidadeNome = normalizeUtf8(
+                    String(turma.modalidade?.nome || ""),
+                  ).trim();
+                  const shouldShowName =
+                    !!displayName &&
+                    displayName !== "Turma" &&
+                    (!modalidadeNome ||
+                      displayName.toLowerCase() !== modalidadeNome.toLowerCase());
 
                   return (
                     <TouchableOpacity
@@ -1757,13 +1770,11 @@ export default function CheckinScreen() {
                               {turma.horario.inicio.slice(0, 5)} -{" "}
                               {turma.horario.fim.slice(0, 5)}
                             </Text>
-                            <Text style={styles.scheduleName}>
-                              {cleanTurmaName(
-                                turma.nome,
-                                turma.modalidade,
-                                turma.professor,
-                              )}
-                            </Text>
+                            {shouldShowName && (
+                              <Text style={styles.scheduleName}>
+                                {displayName}
+                              </Text>
+                            )}
                             {!!professorName && (
                               <Text style={styles.scheduleSubtitle}>
                                 {normalizeUtf8(professorName)}
