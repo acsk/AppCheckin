@@ -163,6 +163,13 @@ export default function CheckinScreen() {
     return modalidadeNome || "Turma";
   };
 
+  const formatParticipantName = (name?: string | null) => {
+    const base = normalizeUtf8(String(name || "")).trim();
+    if (!base) return "Aluno";
+    const parts = base.split(/\s+/);
+    return parts.slice(0, 2).join(" ");
+  };
+
   // Carregar tenant atual ao montar
   useEffect(() => {
     (async () => {
@@ -1473,7 +1480,7 @@ export default function CheckinScreen() {
                                   </View>
                                   <View style={styles.participantInfo}>
                                     <Text style={styles.participantName}>
-                                      {normalizeUtf8(
+                                      {formatParticipantName(
                                         c.usuario_nome || "Aluno",
                                       ).toUpperCase()}
                                     </Text>
@@ -2300,9 +2307,9 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   participantAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: "#e5e7eb",
     alignItems: "center",
     justifyContent: "center",
