@@ -340,8 +340,22 @@ export default function MatriculasScreen() {
       if (resumo.message || resumo.mensagem) {
         return resumo.message || resumo.mensagem;
       }
+      const formatValue = (value) => {
+        if (value === null || value === undefined) return '-';
+        if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+          return String(value);
+        }
+        if (Array.isArray(value)) {
+          return value.length ? value.map(formatValue).join(', ') : '[]';
+        }
+        try {
+          return JSON.stringify(value);
+        } catch {
+          return String(value);
+        }
+      };
       return Object.entries(resumo)
-        .map(([key, value]) => `${key}: ${String(value)}`)
+        .map(([key, value]) => `${key}: ${formatValue(value)}`)
         .join('\n');
     }
     return String(resumo);
