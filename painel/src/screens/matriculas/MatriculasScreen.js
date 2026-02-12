@@ -554,6 +554,155 @@ export default function MatriculasScreen() {
     pagamentosMp: getPreviewCount(previewData?.pagamentos_mercadopago),
   };
 
+  const previewModalContent = (
+    <View style={[styles.previewOverlay, Platform.OS === 'web' && styles.previewOverlayWeb]}>
+      <View style={[styles.previewModal, isMobile && styles.previewModalMobile]}>
+        <View style={styles.previewHeader}>
+          <Text style={styles.previewTitle}>Revisar exclusão</Text>
+          <Pressable
+            onPress={handleCloseDeletePreview}
+            style={({ pressed }) => [
+              styles.previewCloseButton,
+              pressed && { opacity: 0.7 },
+            ]}
+          >
+            <Feather name="x" size={18} color="#64748b" />
+          </Pressable>
+        </View>
+
+        <View style={styles.previewDivider} />
+
+        {deletePreview.loading ? (
+          <View style={styles.previewState}>
+            <ActivityIndicator size="large" color="#f97316" />
+            <Text style={styles.previewStateText}>Carregando prévia...</Text>
+          </View>
+        ) : deletePreview.error ? (
+          <View style={styles.previewState}>
+            <Feather name="alert-circle" size={22} color="#ef4444" />
+            <Text style={styles.previewErrorText}>{deletePreview.error}</Text>
+          </View>
+        ) : (
+          <ScrollView
+            style={styles.previewBody}
+            contentContainerStyle={styles.previewBodyContent}
+            showsVerticalScrollIndicator={false}
+          >
+            {previewResumo ? (
+              <View style={styles.previewSection}>
+                <Text style={styles.previewSectionTitle}>Resumo</Text>
+                <Text style={styles.previewResumo}>{previewResumo}</Text>
+              </View>
+            ) : null}
+
+            <View style={styles.previewSection}>
+              <Text style={styles.previewSectionTitle}>Aluno</Text>
+              {renderPreviewRow('Nome', previewAluno.nome)}
+              {renderPreviewRow('Email', previewAluno.email)}
+              {renderPreviewRow('Telefone', previewAluno.telefone)}
+            </View>
+
+            <View style={styles.previewSection}>
+              <Text style={styles.previewSectionTitle}>Plano</Text>
+              {renderPreviewRow('Plano', previewPlano.nome)}
+              {renderPreviewRow('Modalidade', previewModalidade.nome)}
+              {renderPreviewRow(
+                'Valor do plano',
+                previewPlano.valor != null ? formatCurrency(previewPlano.valor) : null
+              )}
+              {renderPreviewRow(
+                'Duração',
+                previewPlano.duracao_dias != null ? `${previewPlano.duracao_dias} dias` : null
+              )}
+              {renderPreviewRow(
+                'Check-ins semanais',
+                previewPlano.checkins_semanais != null
+                  ? `${previewPlano.checkins_semanais}x/sem`
+                  : null
+              )}
+            </View>
+
+            <View style={styles.previewSection}>
+              <Text style={styles.previewSectionTitle}>Matrícula</Text>
+              {renderPreviewRow('ID', previewMatricula.id)}
+              {renderPreviewRow('Status', previewStatus)}
+              {renderPreviewRow(
+                'Valor',
+                previewMatricula.valor != null ? formatCurrency(previewMatricula.valor) : null
+              )}
+              {renderPreviewRow(
+                'Data matrícula',
+                previewMatricula.data_matricula
+                  ? formatDate(previewMatricula.data_matricula)
+                  : null
+              )}
+              {renderPreviewRow(
+                'Início',
+                previewMatricula.data_inicio
+                  ? formatDate(previewMatricula.data_inicio)
+                  : null
+              )}
+              {renderPreviewRow(
+                'Vencimento',
+                previewMatricula.data_vencimento
+                  ? formatDate(previewMatricula.data_vencimento)
+                  : null
+              )}
+              {renderPreviewRow(
+                'Próximo vencimento',
+                previewMatricula.proxima_data_vencimento
+                  ? formatDate(previewMatricula.proxima_data_vencimento)
+                  : null
+              )}
+              {renderPreviewRow('Tipo cobrança', previewMatricula.tipo_cobranca)}
+              {renderPreviewRow('Dia vencimento', previewMatricula.dia_vencimento)}
+              {renderPreviewRow('Observações', previewMatricula.observacoes)}
+            </View>
+
+            <View style={styles.previewSection}>
+              <Text style={styles.previewSectionTitle}>Registros relacionados</Text>
+              {renderPreviewRow('Pagamentos do plano', previewCounts.pagamentosPlano)}
+              {renderPreviewRow('Assinaturas', previewCounts.assinaturas)}
+              {renderPreviewRow('Assinaturas Mercado Pago', previewCounts.assinaturasMp)}
+              {renderPreviewRow('Pagamentos Mercado Pago', previewCounts.pagamentosMp)}
+            </View>
+          </ScrollView>
+        )}
+
+        <View style={styles.previewActions}>
+          <Pressable
+            onPress={handleCloseDeletePreview}
+            disabled={deleting}
+            style={({ pressed }) => [
+              styles.previewButton,
+              styles.previewButtonSecondary,
+              pressed && { opacity: 0.8 },
+            ]}
+          >
+            <Text style={styles.previewButtonSecondaryText}>Cancelar</Text>
+          </Pressable>
+          <Pressable
+            onPress={handleConfirmDelete}
+            disabled={deletePreview.loading || deleting || deletePreview.error}
+            style={({ pressed }) => [
+              styles.previewButton,
+              styles.previewButtonDanger,
+              (deletePreview.loading || deleting || deletePreview.error) &&
+                styles.previewButtonDisabled,
+              pressed && { opacity: 0.9 },
+            ]}
+          >
+            {deleting ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.previewButtonDangerText}>Confirmar exclusão</Text>
+            )}
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+
   return (
     <LayoutBase title="Matrículas" subtitle="Gerencie as matrículas dos alunos">
       <View style={styles.container}>
@@ -699,159 +848,20 @@ export default function MatriculasScreen() {
           </View>
         )}
 
-        <Modal
-          visible={deletePreview.visible}
-          transparent
-          animationType="fade"
-          onRequestClose={handleCloseDeletePreview}
-        >
-          <View style={styles.previewOverlay}>
-            <View style={[styles.previewModal, isMobile && styles.previewModalMobile]}>
-              <View style={styles.previewHeader}>
-                <Text style={styles.previewTitle}>Revisar exclusão</Text>
-                <Pressable
-                  onPress={handleCloseDeletePreview}
-                  style={({ pressed }) => [
-                    styles.previewCloseButton,
-                    pressed && { opacity: 0.7 },
-                  ]}
-                >
-                  <Feather name="x" size={18} color="#64748b" />
-                </Pressable>
-              </View>
-
-              <View style={styles.previewDivider} />
-
-              {deletePreview.loading ? (
-                <View style={styles.previewState}>
-                  <ActivityIndicator size="large" color="#f97316" />
-                  <Text style={styles.previewStateText}>Carregando prévia...</Text>
-                </View>
-              ) : deletePreview.error ? (
-                <View style={styles.previewState}>
-                  <Feather name="alert-circle" size={22} color="#ef4444" />
-                  <Text style={styles.previewErrorText}>{deletePreview.error}</Text>
-                </View>
-              ) : (
-                <ScrollView
-                  style={styles.previewBody}
-                  contentContainerStyle={styles.previewBodyContent}
-                  showsVerticalScrollIndicator={false}
-                >
-                  {previewResumo ? (
-                    <View style={styles.previewSection}>
-                      <Text style={styles.previewSectionTitle}>Resumo</Text>
-                      <Text style={styles.previewResumo}>{previewResumo}</Text>
-                    </View>
-                  ) : null}
-
-                  <View style={styles.previewSection}>
-                    <Text style={styles.previewSectionTitle}>Aluno</Text>
-                    {renderPreviewRow('Nome', previewAluno.nome)}
-                    {renderPreviewRow('Email', previewAluno.email)}
-                    {renderPreviewRow('Telefone', previewAluno.telefone)}
-                  </View>
-
-                  <View style={styles.previewSection}>
-                    <Text style={styles.previewSectionTitle}>Plano</Text>
-                    {renderPreviewRow('Plano', previewPlano.nome)}
-                    {renderPreviewRow('Modalidade', previewModalidade.nome)}
-                    {renderPreviewRow(
-                      'Valor do plano',
-                      previewPlano.valor != null ? formatCurrency(previewPlano.valor) : null
-                    )}
-                    {renderPreviewRow(
-                      'Duração',
-                      previewPlano.duracao_dias != null ? `${previewPlano.duracao_dias} dias` : null
-                    )}
-                    {renderPreviewRow(
-                      'Check-ins semanais',
-                      previewPlano.checkins_semanais != null
-                        ? `${previewPlano.checkins_semanais}x/sem`
-                        : null
-                    )}
-                  </View>
-
-                  <View style={styles.previewSection}>
-                    <Text style={styles.previewSectionTitle}>Matrícula</Text>
-                    {renderPreviewRow('ID', previewMatricula.id)}
-                    {renderPreviewRow('Status', previewStatus)}
-                    {renderPreviewRow(
-                      'Valor',
-                      previewMatricula.valor != null ? formatCurrency(previewMatricula.valor) : null
-                    )}
-                    {renderPreviewRow(
-                      'Data matrícula',
-                      previewMatricula.data_matricula
-                        ? formatDate(previewMatricula.data_matricula)
-                        : null
-                    )}
-                    {renderPreviewRow(
-                      'Início',
-                      previewMatricula.data_inicio
-                        ? formatDate(previewMatricula.data_inicio)
-                        : null
-                    )}
-                    {renderPreviewRow(
-                      'Vencimento',
-                      previewMatricula.data_vencimento
-                        ? formatDate(previewMatricula.data_vencimento)
-                        : null
-                    )}
-                    {renderPreviewRow(
-                      'Próximo vencimento',
-                      previewMatricula.proxima_data_vencimento
-                        ? formatDate(previewMatricula.proxima_data_vencimento)
-                        : null
-                    )}
-                    {renderPreviewRow('Tipo cobrança', previewMatricula.tipo_cobranca)}
-                    {renderPreviewRow('Dia vencimento', previewMatricula.dia_vencimento)}
-                    {renderPreviewRow('Observações', previewMatricula.observacoes)}
-                  </View>
-
-                  <View style={styles.previewSection}>
-                    <Text style={styles.previewSectionTitle}>Registros relacionados</Text>
-                    {renderPreviewRow('Pagamentos do plano', previewCounts.pagamentosPlano)}
-                    {renderPreviewRow('Assinaturas', previewCounts.assinaturas)}
-                    {renderPreviewRow('Assinaturas Mercado Pago', previewCounts.assinaturasMp)}
-                    {renderPreviewRow('Pagamentos Mercado Pago', previewCounts.pagamentosMp)}
-                  </View>
-                </ScrollView>
-              )}
-
-              <View style={styles.previewActions}>
-                <Pressable
-                  onPress={handleCloseDeletePreview}
-                  disabled={deleting}
-                  style={({ pressed }) => [
-                    styles.previewButton,
-                    styles.previewButtonSecondary,
-                    pressed && { opacity: 0.8 },
-                  ]}
-                >
-                  <Text style={styles.previewButtonSecondaryText}>Cancelar</Text>
-                </Pressable>
-                <Pressable
-                  onPress={handleConfirmDelete}
-                  disabled={deletePreview.loading || deleting || deletePreview.error}
-                  style={({ pressed }) => [
-                    styles.previewButton,
-                    styles.previewButtonDanger,
-                    (deletePreview.loading || deleting || deletePreview.error) &&
-                      styles.previewButtonDisabled,
-                    pressed && { opacity: 0.9 },
-                  ]}
-                >
-                  {deleting ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={styles.previewButtonDangerText}>Confirmar exclusão</Text>
-                  )}
-                </Pressable>
-              </View>
-            </View>
-          </View>
-        </Modal>
+        {Platform.OS === 'web' ? (
+          deletePreview.visible ? (
+            previewModalContent
+          ) : null
+        ) : (
+          <Modal
+            visible={deletePreview.visible}
+            transparent
+            animationType="fade"
+            onRequestClose={handleCloseDeletePreview}
+          >
+            {previewModalContent}
+          </Modal>
+        )}
       </View>
     </LayoutBase>
   );
@@ -861,6 +871,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f8fafc',
+    position: 'relative',
   },
   header: {
     flexDirection: 'row',
@@ -1216,6 +1227,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
+  },
+  previewOverlayWeb: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 50,
   },
   previewModal: {
     width: '100%',
