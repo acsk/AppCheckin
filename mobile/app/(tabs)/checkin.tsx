@@ -70,6 +70,7 @@ export default function CheckinScreen() {
   const selectedDateRef = useRef<Date | null>(null);
   const isFetchingSchedulesRef = useRef(false);
   const latestSchedulesReqRef = useRef<number>(0);
+  const SCHEDULES_CACHE_TTL_MS = 60 * 1000;
 
   // papel_id: 1 = Aluno, 2 = Professor, 3 = Admin, 4 = Super Admin
   // Regras:
@@ -379,6 +380,28 @@ export default function CheckinScreen() {
       console.log("⏳ Ignorando fetch duplicado de horários");
       return;
     }
+    const formattedDate = formatDateParam(date);
+    const tenantIdForCache =
+      tenantIdOverride ?? currentTenant?.tenant?.id ?? currentTenant?.id ?? "default";
+    const cacheKey = `@appcheckin:horarios_cache:${tenantIdForCache}:${formattedDate}`;
+    try {
+      const cachedStr = await AsyncStorage.getItem(cacheKey);
+      if (cachedStr) {
+        const cached = JSON.parse(cachedStr);
+        if (
+          cached?.ts &&
+          Array.isArray(cached?.turmas) &&
+          Date.now() - Number(cached.ts) < SCHEDULES_CACHE_TTL_MS
+        ) {
+          console.log("📦 Usando cache de horários (TTL 1 min)");
+          setAvailableSchedules(cached.turmas);
+          return;
+        }
+      }
+    } catch (cacheError) {
+      console.warn("⚠️ Falha ao ler cache de horários", cacheError);
+    }
+
     isFetchingSchedulesRef.current = true;
     setLoading(true);
     try {
@@ -394,7 +417,6 @@ export default function CheckinScreen() {
       }
       console.log("✅ Token encontrado:", token.substring(0, 20) + "...");
 
-      const formattedDate = formatDateParam(date);
       console.log("📅 Data formatada:", formattedDate);
 
       const url = `${getApiUrlRuntime()}/mobile/horarios-disponiveis?data=${formattedDate}`;
@@ -467,6 +489,14 @@ export default function CheckinScreen() {
           );
         });
         setAvailableSchedules(data.data.turmas);
+        try {
+          await AsyncStorage.setItem(
+            cacheKey,
+            JSON.stringify({ ts: Date.now(), turmas: data.data.turmas }),
+          );
+        } catch (cacheError) {
+          console.warn("⚠️ Falha ao gravar cache de horários", cacheError);
+        }
       } else {
         console.warn("⚠️ Resposta inválida ou sem turmas");
         console.log("   success:", data.success);
