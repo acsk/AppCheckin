@@ -1393,30 +1393,99 @@ export default function CheckinScreen() {
     <>
       <SafeAreaView style={styles.container} edges={["top"]}>
         {/* Header com Botão Recarregar */}
-        <View style={styles.headerTop}>
-          <View style={{ flexDirection: "column" }}>
-            <Text style={styles.headerTitle}>Checkin</Text>
-          </View>
-          <View style={styles.headerActions}>
-            <View style={styles.switchRow}>
-              <Text style={styles.switchLabel}>Só disponíveis</Text>
-              <Switch
-                value={showOnlyAvailable}
-                onValueChange={setShowOnlyAvailable}
-                trackColor={{
-                  false: "rgba(255,255,255,0.25)",
-                  true: "rgba(255,255,255,0.5)",
-                }}
-                thumbColor="#fff"
-              />
+        <View
+          style={[
+            styles.headerTop,
+            participantsTurma && styles.headerTopDetailed,
+          ]}
+        >
+          <View style={styles.headerTopRow}>
+            <View style={styles.headerLeft}>
+              {participantsTurma ? (
+                <>
+                  <TouchableOpacity
+                    style={styles.headerBackButton}
+                    onPress={() => {
+                      setParticipantsTurma(null);
+                      setParticipants([]);
+                    }}
+                  >
+                    <Feather name="arrow-left" size={18} color="#fff" />
+                  </TouchableOpacity>
+                  <View
+                    style={[
+                      styles.headerIconCircle,
+                      {
+                        backgroundColor: `${participantsTurma?.modalidade?.cor || colors.primary}35`,
+                      },
+                    ]}
+                  >
+                    {participantsTurma?.modalidade?.icone ? (
+                      <MaterialCommunityIcons
+                        name={participantsTurma.modalidade.icone as any}
+                        size={18}
+                        color="#fff"
+                      />
+                    ) : (
+                      <Feather name="activity" size={18} color="#fff" />
+                    )}
+                  </View>
+                  <View style={styles.headerTextBlock}>
+                    <Text style={styles.headerTitle}>
+                      {normalizeUtf8(
+                        participantsTurma?.modalidade?.nome ||
+                          participantsTurma?.nome ||
+                          "Turma",
+                      )}{" "}
+                      -{" "}
+                      {normalizeUtf8(
+                        participantsTurma?.professor?.nome ||
+                          participantsTurma?.professor ||
+                          "",
+                      )}
+                    </Text>
+                  </View>
+                </>
+              ) : (
+                <Text style={styles.headerTitle}>Checkin</Text>
+              )}
             </View>
-            <TouchableOpacity
-              style={styles.refreshButton}
-              onPress={generateCalendarDays}
-            >
-              <Feather name="refresh-cw" size={20} color="#fff" />
-            </TouchableOpacity>
+            {!participantsTurma && (
+              <View style={styles.headerRight}>
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>Só disponíveis</Text>
+                  <Switch
+                    value={showOnlyAvailable}
+                    onValueChange={setShowOnlyAvailable}
+                    trackColor={{
+                      false: "rgba(255,255,255,0.25)",
+                      true: "rgba(255,255,255,0.5)",
+                    }}
+                    thumbColor="#fff"
+                  />
+                </View>
+              </View>
+            )}
           </View>
+          {participantsTurma && (
+            <View style={styles.headerInfoRow}>
+              <View style={styles.headerChip}>
+                <Feather name="clock" size={14} color="#fff" />
+                <Text style={styles.headerChipText}>
+                  {getHoraInicio(participantsTurma)?.slice(0, 5)} -{" "}
+                  {getHoraFim(participantsTurma)?.slice(0, 5)}
+                </Text>
+              </View>
+              {getHoraLimiteCheckin(participantsTurma) ? (
+                <View style={styles.headerChip}>
+                  <Feather name="clock" size={14} color="#fff" />
+                  <Text style={styles.headerChipText}>
+                    Check-in até {getHoraLimiteCheckin(participantsTurma)}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          )}
         </View>
 
         {/* Modal para trocar de tenant */}
@@ -1479,138 +1548,59 @@ export default function CheckinScreen() {
           showsVerticalScrollIndicator={false}
         >
           {/* Calendar */}
-          <View style={styles.calendarSection} className="notranslate">
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.calendarContainer}
-            >
-              {calendarDays.map((date, index) => {
-                const { day, dayName } = formatDateDisplay(date);
-                const isSelected =
-                  selectedDate &&
-                  selectedDate.toDateString() === date.toDateString();
+          {!participantsTurma && (
+            <View style={styles.calendarSection} className="notranslate">
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.calendarContainer}
+              >
+                {calendarDays.map((date, index) => {
+                  const { day, dayName } = formatDateDisplay(date);
+                  const isSelected =
+                    selectedDate &&
+                    selectedDate.toDateString() === date.toDateString();
 
-                return (
-                  <TouchableOpacity
-                    key={index}
-                    style={[
-                      styles.calendarDay,
-                      isSelected && styles.calendarDaySelected,
-                    ]}
-                    onPress={() => setSelectedDate(new Date(date))}
-                  >
-                    <Text
+                  return (
+                    <TouchableOpacity
+                      key={index}
                       style={[
-                        styles.calendarDayName,
-                        isSelected && styles.calendarDayNameSelected,
+                        styles.calendarDay,
+                        isSelected && styles.calendarDaySelected,
                       ]}
-                      className="notranslate"
+                      onPress={() => setSelectedDate(new Date(date))}
                     >
-                      {dayName}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.calendarDayNumber,
-                        isSelected && styles.calendarDayNumberSelected,
-                      ]}
-                    >
-                      {day}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-          </View>
+                      <Text
+                        style={[
+                          styles.calendarDayName,
+                          isSelected && styles.calendarDayNameSelected,
+                        ]}
+                        className="notranslate"
+                      >
+                        {dayName}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.calendarDayNumber,
+                          isSelected && styles.calendarDayNumberSelected,
+                        ]}
+                      >
+                        {day}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
 
           {/* Available Schedules */}
           <View style={styles.schedulesSection}>
             {participantsTurma ? (
               <>
-                <View style={styles.participantsTopRow}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setParticipantsTurma(null);
-                      setParticipants([]);
-                    }}
-                    style={[
-                      styles.backButtonInline,
-                      {
-                        backgroundColor: `${participantsTurma?.modalidade?.cor || colors.primary}15`,
-                      },
-                    ]}
-                  >
-                    <Feather
-                      name="arrow-left"
-                      size={20}
-                      color={
-                        participantsTurma?.modalidade?.cor || colors.primary
-                      }
-                    />
-                  </TouchableOpacity>
-                  <View
-                    style={[
-                      styles.turmaIconCircle,
-                      {
-                        backgroundColor: `${participantsTurma?.modalidade?.cor || colors.primary}20`,
-                      },
-                    ]}
-                  >
-                    {participantsTurma?.modalidade?.icone ? (
-                      <MaterialCommunityIcons
-                        name={participantsTurma.modalidade.icone as any}
-                        size={18}
-                        color={
-                          participantsTurma?.modalidade?.cor || colors.primary
-                        }
-                      />
-                    ) : (
-                      <Feather
-                        name="activity"
-                        size={18}
-                        color={
-                          participantsTurma?.modalidade?.cor || colors.primary
-                        }
-                      />
-                    )}
-                  </View>
-                </View>
+                <View style={styles.participantsTopRow} />
 
                 <View style={styles.participantsWrapper}>
-                  <Text style={styles.participantsTitle}>
-                    {normalizeUtf8(participantsTurma.nome || "Turma")}
-                  </Text>
-
-                  <View style={styles.participantsMetaRow}>
-                    <View style={styles.metaChip}>
-                      <Feather
-                        name="clock"
-                        size={14}
-                        color={
-                          participantsTurma?.modalidade?.cor || colors.primary
-                        }
-                      />
-                      <Text style={styles.metaChipText}>
-                        {getHoraInicio(participantsTurma)?.slice(0, 5)} -{" "}
-                        {getHoraFim(participantsTurma)?.slice(0, 5)}
-                      </Text>
-                    </View>
-                    {getHoraLimiteCheckin(participantsTurma) ? (
-                      <View style={styles.metaChip}>
-                        <Feather
-                          name="clock"
-                          size={14}
-                          color={
-                            participantsTurma?.modalidade?.cor || colors.primary
-                          }
-                        />
-                        <Text style={styles.metaChipText}>
-                          Check-in até {getHoraLimiteCheckin(participantsTurma)}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-
                   <View style={styles.participantsContent}>
                     {participantsLoading ? (
                       <Text style={styles.loadingText}>Carregando...</Text>
@@ -1810,9 +1800,56 @@ export default function CheckinScreen() {
                                   : "#ef4444";
                               }
                               return (
-                                <View
+                                <TouchableOpacity
                                   key={c.checkin_id || idx}
                                   style={styles.participantItem}
+                                  activeOpacity={0.7}
+                                  onPress={() => {
+                                    const horarioInicio =
+                                      getHoraInicio(participantsTurma)?.slice(
+                                        0,
+                                        5,
+                                      ) || "";
+                                    const horarioFim =
+                                      getHoraFim(participantsTurma)?.slice(
+                                        0,
+                                        5,
+                                      ) || "";
+                                    router.push({
+                                      pathname: "/checkin-detalhes",
+                                      params: {
+                                        checkinId: String(
+                                          c.checkin_id || c.id || "",
+                                        ),
+                                        alunoId: String(c.aluno_id || ""),
+                                        alunoNome: normalizeUtf8(
+                                          c.usuario_nome || "Aluno",
+                                        ),
+                                        foto:
+                                          c.foto_caminho || alunoFoto || "",
+                                        presente: String(
+                                          c.presente ?? "",
+                                        ),
+                                        presencaConfirmadaEm:
+                                          c.presenca_confirmada_em || "",
+                                        dataCheckin:
+                                          c.data_checkin || c.created_at || "",
+                                        turmaId: String(
+                                          participantsTurma?.id || "",
+                                        ),
+                                        turmaNome: normalizeUtf8(
+                                          participantsTurma?.nome || "Turma",
+                                        ),
+                                        dataAula: selectedDate
+                                          ? new Date(selectedDate).toISOString()
+                                          : "",
+                                        horario:
+                                          horarioInicio && horarioFim
+                                            ? `${horarioInicio} - ${horarioFim}`
+                                            : "",
+                                      },
+                                    });
+                                  }}
                                 >
                                   <View
                                     style={[
@@ -1894,7 +1931,7 @@ export default function CheckinScreen() {
                                       </TouchableOpacity>
                                     </View>
                                   )}
-                                </View>
+                                </TouchableOpacity>
                               );
                             })}
                           </View>
@@ -2431,10 +2468,70 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 8,
   },
+  headerTopDetailed: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: 10,
+  },
+  headerTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    width: "100%",
+  },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: "800",
     color: "#fff",
+  },
+  headerSubtitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "rgba(255,255,255,0.8)",
+  },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flex: 1,
+  },
+  headerRight: {
+    alignItems: "flex-end",
+    marginLeft: 12,
+  },
+  headerBackButton: {
+    padding: 6,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.18)",
+  },
+  headerIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerTextBlock: {
+    flexShrink: 1,
+  },
+  headerInfoRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  headerChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.2)",
+  },
+  headerChipText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
   },
   headerActions: {
     flexDirection: "row",
@@ -2642,11 +2739,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: "#f3f4f6",
   },
-  participantsTitle: {
-    fontSize: 19,
-    fontWeight: "800",
-    color: colors.text,
-  },
   participantsListContainer: {
     borderTopWidth: 1,
     borderTopColor: "#eef2f7",
@@ -2763,25 +2855,6 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 12,
     fontWeight: "700",
-  },
-  participantsMetaRow: {
-    flexDirection: "row",
-    gap: 8,
-    flexWrap: "wrap",
-  },
-  metaChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    backgroundColor: "#f3f4f6",
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  metaChipText: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    fontWeight: "600",
   },
   checkinButton: {
     marginTop: 12,
