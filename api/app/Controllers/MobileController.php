@@ -1573,6 +1573,9 @@ class MobileController
             }
 
             // Verificar limite de check-ins conforme plano (se houver)
+            // Regra do manual:
+            // - Não validar limite semanal
+            // - Se permite reposição, validar limite mensal
             $modalidadeTurma = $turma['modalidade_id'] ?? null;
             $planoInfo = $this->checkinModel->obterLimiteCheckinsPlano($usuarioId, $tenantId, $modalidadeTurma);
             if ($planoInfo['tem_plano'] && $planoInfo['limite'] > 0) {
@@ -1588,20 +1591,6 @@ class MobileController
                                 'limite_mensal' => $limiteMensal,
                                 'checkins_mes' => $checkinsNoMes,
                                 'permite_reposicao' => true
-                            ]
-                        ]));
-                        return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
-                    }
-                } else {
-                    $checkinsNaSemana = $this->checkinModel->contarCheckinsNaSemana($usuarioId, $modalidadeTurma);
-                    if ($checkinsNaSemana >= $planoInfo['limite']) {
-                        $response->getBody()->write(json_encode([
-                            'success' => false,
-                            'error' => 'Aluno atingiu o limite de check-ins desta semana',
-                            'detalhes' => [
-                                'plano' => $planoInfo['plano_nome'],
-                                'limite_semana' => $planoInfo['limite'],
-                                'checkins_semana' => $checkinsNaSemana
                             ]
                         ]));
                         return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
