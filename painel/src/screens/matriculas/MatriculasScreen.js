@@ -28,7 +28,7 @@ export default function MatriculasScreen() {
   const [serverSearchTerm, setServerSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
   const [pagina, setPagina] = useState(1);
-  const [porPagina] = useState(15
+  const [porPagina] = useState(50
     
   );
   const [totalPaginas, setTotalPaginas] = useState(1);

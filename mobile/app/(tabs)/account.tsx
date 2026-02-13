@@ -1049,7 +1049,7 @@ export default function AccountScreen() {
         showsVerticalScrollIndicator={false}
       >
         {/* Calendário Semanal de Check-ins */}
-        <View style={styles.weekCalendarSection}>
+        <View style={styles.weekCalendarSection} className="notranslate">
           <View style={styles.weekCalendarHeader}>
             <Text style={styles.sectionTitle}>Minha Semana</Text>
             <Text style={styles.weekPeriodText}>{formatWeekPeriod()}</Text>
@@ -1085,6 +1085,7 @@ export default function AccountScreen() {
                         isToday && styles.weekDayNameToday,
                         hasCheckin && styles.weekDayNameChecked,
                       ]}
+                      className="notranslate"
                     >
                       {day.dayName}
                     </Text>

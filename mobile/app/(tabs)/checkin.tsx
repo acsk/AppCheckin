@@ -1117,7 +1117,8 @@ export default function CheckinScreen() {
   const formatDateDisplay = (date: Date) => {
     console.log("📅 Formatando data:", date);
     const day = date.getDate();
-    const dayName = date.toLocaleDateString("pt-BR", { weekday: "short" });
+    const dayNames = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+    const dayName = dayNames[date.getDay()] || "";
     return { day, dayName: dayName.toUpperCase() };
   };
 
@@ -1294,7 +1295,7 @@ export default function CheckinScreen() {
           showsVerticalScrollIndicator={false}
         >
           {/* Calendar */}
-          <View style={styles.calendarSection}>
+          <View style={styles.calendarSection} className="notranslate">
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -1320,6 +1321,7 @@ export default function CheckinScreen() {
                         styles.calendarDayName,
                         isSelected && styles.calendarDayNameSelected,
                       ]}
+                      className="notranslate"
                     >
                       {dayName}
                     </Text>
