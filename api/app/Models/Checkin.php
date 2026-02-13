@@ -434,11 +434,17 @@ class Checkin
              WHERE id = :checkin_id"
         );
         
-        return $stmt->execute([
+        $ok = $stmt->execute([
             'presente' => $presente ? 1 : 0,
             'confirmado_por' => $confirmadoPor,
             'checkin_id' => $checkinId
         ]);
+
+        if ($ok && $presente) {
+            $this->finalizarMatriculasDiariasPorCheckins([$checkinId]);
+        }
+
+        return $ok;
     }
 
     /**
@@ -462,8 +468,13 @@ class Checkin
         
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
+
+        $atualizados = $stmt->rowCount();
+        if ($presente && $atualizados > 0) {
+            $this->finalizarMatriculasDiariasPorCheckins($checkinIds);
+        }
         
-        return $stmt->rowCount();
+        return $atualizados;
     }
 
     /**
@@ -577,6 +588,7 @@ class Checkin
             $confirmados = 0;
             $faltasRegistradas = 0;
             $presencasRegistradas = 0;
+            $checkinsPresentes = [];
             
             foreach ($presencas as $checkinId => $presente) {
                 $presente = filter_var($presente, FILTER_VALIDATE_BOOLEAN);
@@ -603,6 +615,7 @@ class Checkin
                     $confirmados++;
                     if ($presente) {
                         $presencasRegistradas++;
+                        $checkinsPresentes[] = (int) $checkinId;
                     } else {
                         $faltasRegistradas++;
                     }
@@ -613,6 +626,10 @@ class Checkin
             $checkinsRemovidos = ['removidos' => 0, 'checkins' => []];
             if ($removerFaltantes && $faltasRegistradas > 0) {
                 $checkinsRemovidos = $this->removerCheckinsFaltantes($turmaId, $tenantId);
+            }
+
+            if (!empty($checkinsPresentes)) {
+                $this->finalizarMatriculasDiariasPorCheckins($checkinsPresentes);
             }
             
             $this->db->commit();
@@ -629,6 +646,57 @@ class Checkin
             $this->db->rollBack();
             throw $e;
         }
+    }
+
+    /**
+     * Finaliza matrículas diárias (duracao_dias = 1) quando presença for confirmada
+     * @param array $checkinIds IDs de check-ins confirmados como presentes
+     */
+    private function finalizarMatriculasDiariasPorCheckins(array $checkinIds): void
+    {
+        if (empty($checkinIds)) {
+            return;
+        }
+
+        $statusId = $this->buscarStatusConcluidaId();
+        if (!$statusId) {
+            return;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($checkinIds), '?'));
+
+        $sql = "
+            UPDATE matriculas m
+            INNER JOIN planos p ON p.id = m.plano_id
+            INNER JOIN checkins c ON c.aluno_id = m.aluno_id AND c.tenant_id = m.tenant_id
+            SET m.status_id = ?,
+                m.updated_at = NOW()
+            WHERE c.id IN ($placeholders)
+              AND c.presente = 1
+              AND p.duracao_dias = 1
+              AND m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1)
+        ";
+
+        $params = array_merge([$statusId], $checkinIds);
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+    }
+
+    /**
+     * Buscar status "concluida" (fallback para "finalizada")
+     */
+    private function buscarStatusConcluidaId(): ?int
+    {
+        $stmt = $this->db->prepare("SELECT id FROM status_matricula WHERE codigo = ? LIMIT 1");
+        $stmt->execute(['concluida']);
+        $id = $stmt->fetchColumn();
+        if ($id) {
+            return (int) $id;
+        }
+
+        $stmt->execute(['finalizada']);
+        $id = $stmt->fetchColumn();
+        return $id ? (int) $id : null;
     }
 
     /**
