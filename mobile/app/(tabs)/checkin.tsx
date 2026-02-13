@@ -1374,9 +1374,10 @@ export default function CheckinScreen() {
     return `${m}min`;
   };
 
-  const schedulesToRender = showOnlyAvailable
-    ? availableSchedules.filter((turma) => !isCheckinDisabled(turma))
-    : availableSchedules;
+  const schedulesToRender =
+    showOnlyAvailable && !isProfessorOuAdmin
+      ? availableSchedules.filter((turma) => !isCheckinDisabled(turma))
+      : availableSchedules;
 
   // Debug: Log dos estados para verificar papel do usuário
   console.log(
@@ -1631,6 +1632,9 @@ export default function CheckinScreen() {
                                   if (manualSearchError) {
                                     setManualSearchError(null);
                                   }
+                                  if (!text.trim()) {
+                                    setManualSearchResults([]);
+                                  }
                                 }}
                                 autoCapitalize="none"
                                 autoCorrect={false}
@@ -1638,6 +1642,18 @@ export default function CheckinScreen() {
                                 returnKeyType="search"
                                 onSubmitEditing={handleManualSearch}
                               />
+                              {!!manualSearchQuery.trim() && (
+                                <TouchableOpacity
+                                  style={styles.manualCheckinClearButton}
+                                  onPress={() => {
+                                    setManualSearchQuery("");
+                                    setManualSearchResults([]);
+                                    setManualSearchError(null);
+                                  }}
+                                >
+                                  <Feather name="x" size={16} color="#6b7280" />
+                                </TouchableOpacity>
+                              )}
                               <TouchableOpacity
                                 style={[
                                   styles.manualCheckinSearchButton,
@@ -1902,17 +1918,6 @@ export default function CheckinScreen() {
                   {isProfessorOuAdmin &&
                     checkinsRecentes.length > 0 &&
                     (() => {
-                      const foraPeriodo = !isDurantePeriodo(
-                        participantsTurma,
-                        selectedDate,
-                      );
-                      const horaInicio = getHoraInicio(
-                        participantsTurma,
-                      )?.slice(0, 5);
-                      const horaFim = getHoraFim(participantsTurma)?.slice(
-                        0,
-                        5,
-                      );
                       return (
                         <>
                           <TouchableOpacity
@@ -1923,16 +1928,6 @@ export default function CheckinScreen() {
                                 styles.checkinButtonDisabled,
                             ]}
                             onPress={() => {
-                              if (foraPeriodo) {
-                                const msg =
-                                  horaInicio && horaFim
-                                    ? `Fora do período da aula. Horário: ${horaInicio} - ${horaFim}.`
-                                    : horaInicio
-                                      ? `Fora do período da aula. Abre às ${horaInicio}.`
-                                      : "Fora do período da aula.";
-                                showErrorModal(msg, "warning");
-                                return;
-                              }
                               confirmarPresencas();
                             }}
                             disabled={confirmandoPresenca}
@@ -1957,11 +1952,6 @@ export default function CheckinScreen() {
                               </>
                             )}
                           </TouchableOpacity>
-                          {foraPeriodo && horaInicio && horaFim ? (
-                            <Text style={styles.outOfPeriodHint}>
-                              Disponível das {horaInicio} às {horaFim}
-                            </Text>
-                          ) : null}
                         </>
                       );
                     })()}
@@ -2071,8 +2061,9 @@ export default function CheckinScreen() {
             ) : schedulesToRender.length > 0 ? (
               <View style={styles.schedulesList}>
                 {schedulesToRender.map((turma) => {
-                  const disabled = isTurmaDisabled(turma, selectedDate);
-                  const statusColor = disabled ? "#d9534f" : "#2e7d32";
+                  const isClosed = isTurmaDisabled(turma, selectedDate);
+                  const disabled = isProfessorOuAdmin ? false : isClosed;
+                  const statusColor = isClosed ? "#d9534f" : "#2e7d32";
                   const professorName =
                     turma.professor?.nome || turma.professor || "";
                   const horaLimite = getHoraLimiteCheckin(turma);
@@ -2178,7 +2169,7 @@ export default function CheckinScreen() {
                               </Text>
                             </View>
                           ) : null}
-                          {disabled && (
+                          {isClosed && (
                             <>
                               <View style={styles.statusDot} />
                               <View style={styles.infoItem}>
@@ -2668,10 +2659,11 @@ const styles = StyleSheet.create({
   manualCheckinBox: {
     backgroundColor: "#f9fafb",
     borderRadius: 14,
-    padding: 12,
+    padding: 16,
     gap: 10,
     borderWidth: 1,
     borderColor: "#eef2f7",
+    marginBottom: 8,
   },
   manualCheckinTitle: {
     fontSize: 13,
@@ -2706,6 +2698,14 @@ const styles = StyleSheet.create({
   },
   manualCheckinSearchButtonDisabled: {
     opacity: 0.5,
+  },
+  manualCheckinClearButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#e5e7eb",
   },
   manualCheckinError: {
     color: "#b3261e",
