@@ -7,6 +7,7 @@ import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   Linking,
   Modal,
   SafeAreaView,
@@ -82,6 +83,16 @@ export default function PlanosScreen() {
   const [redirectModalVisible, setRedirectModalVisible] = useState(false);
   const [countdown, setCountdown] = useState(3);
   const [paymentUrlToOpen, setPaymentUrlToOpen] = useState<string | null>(null);
+  const [pixModalVisible, setPixModalVisible] = useState(false);
+  const [pixData, setPixData] = useState<{
+    matricula_id: number;
+    valor: number;
+    qr_code?: string | null;
+    qr_code_base64?: string | null;
+    ticket_url?: string | null;
+    expires_at?: string | null;
+  } | null>(null);
+  const [pixLoading, setPixLoading] = useState(false);
   const [selectedCicloByPlano, setSelectedCicloByPlano] = useState<
     Record<number, number>
   >({});
@@ -232,6 +243,52 @@ export default function PlanosScreen() {
   ) => {
     setErrorModalData({ title, message, type });
     setErrorModalVisible(true);
+  };
+
+  const formatCurrency = (value: number) => {
+    try {
+      return new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+      }).format(value || 0);
+    } catch {
+      return `R$ ${Number(value || 0).toFixed(2)}`;
+    }
+  };
+
+  const formatDateTime = (value?: string | null) => {
+    if (!value) return "";
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return value;
+    return d.toLocaleString("pt-BR");
+  };
+
+  const copyToClipboard = async (value: string) => {
+    try {
+      if (
+        typeof navigator !== "undefined" &&
+        navigator.clipboard &&
+        navigator.clipboard.writeText
+      ) {
+        await navigator.clipboard.writeText(value);
+        return true;
+      }
+      if (typeof document !== "undefined") {
+        const input = document.createElement("textarea");
+        input.value = value;
+        input.setAttribute("readonly", "true");
+        input.style.position = "absolute";
+        input.style.left = "-9999px";
+        document.body.appendChild(input);
+        input.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(input);
+        return ok;
+      }
+      return false;
+    } catch {
+      return false;
+    }
   };
 
   const fetchPlanos = async (baseUrl: string) => {
@@ -453,6 +510,144 @@ export default function PlanosScreen() {
     [apiUrl, selectedCicloByPlano],
   );
 
+  const handlePagarPix = React.useCallback(
+    async (plano: Plan) => {
+      try {
+        setPixLoading(true);
+        setPlanoComprando(plano.id);
+
+        const selectedCicloId = selectedCicloByPlano[plano.id];
+        const selectedCiclo = plano.ciclos?.find(
+          (c) => c.id === selectedCicloId,
+        );
+
+        if (!selectedCiclo) {
+          showErrorModal(
+            "⚠️ Ciclo não selecionado",
+            "Por favor, selecione um ciclo antes de pagar.",
+            "warning",
+          );
+          setPixLoading(false);
+          setPlanoComprando(null);
+          return;
+        }
+
+        const token = await AsyncStorage.getItem("@appcheckin:token");
+        if (!token) {
+          throw new Error("Token não encontrado");
+        }
+
+        const matriculaResponse = await fetch(
+          `${apiUrl}/mobile/comprar-plano`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              plano_id: plano.id,
+              plano_ciclo_id: selectedCiclo.id,
+            }),
+          },
+        );
+
+        if (!matriculaResponse.ok) {
+          const errorText = await matriculaResponse.text();
+          try {
+            const errorData = JSON.parse(errorText);
+            showErrorModal(
+              "⚠️ Problema na Compra",
+              errorData.message || "Não foi possível processar sua compra",
+              "error",
+            );
+          } catch {
+            showErrorModal(
+              "⚠️ Problema na Compra",
+              "Não foi possível processar sua compra. Tente novamente.",
+              "error",
+            );
+          }
+          setPixLoading(false);
+          setPlanoComprando(null);
+          return;
+        }
+
+        const matriculaData = await matriculaResponse.json();
+        if (!matriculaData.success) {
+          const errorMessage =
+            matriculaData.message || "Erro desconhecido ao processar compra";
+          showErrorModal("❌ Não foi Possível Comprar", errorMessage, "error");
+          setPixLoading(false);
+          setPlanoComprando(null);
+          return;
+        }
+
+        const matriculaId =
+          matriculaData.data?.matricula_id || matriculaData.data?.matricula?.id;
+
+        if (!matriculaId) {
+          showErrorModal(
+            "⚠️ Erro",
+            "Não foi possível identificar a matrícula para gerar o PIX.",
+            "error",
+          );
+          setPixLoading(false);
+          setPlanoComprando(null);
+          return;
+        }
+
+        const pixResponse = await fetch(`${apiUrl}/mobile/pagamento/pix`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ matricula_id: matriculaId }),
+        });
+
+        const pixText = await pixResponse.text();
+        let pixJson: any = {};
+        try {
+          pixJson = pixText ? JSON.parse(pixText) : {};
+        } catch {
+          pixJson = {};
+        }
+
+        if (!pixResponse.ok || !pixJson.success) {
+          const msg =
+            pixJson?.message ||
+            pixJson?.error ||
+            pixText ||
+            "Não foi possível gerar o PIX.";
+          showErrorModal("⚠️ Erro ao Gerar PIX", msg, "error");
+          setPixLoading(false);
+          setPlanoComprando(null);
+          return;
+        }
+
+        const pix = pixJson.data?.pix || {};
+        setPixData({
+          matricula_id: Number(pixJson.data?.matricula_id || matriculaId),
+          valor: Number(pixJson.data?.valor || selectedCiclo.valor || 0),
+          qr_code: pix.qr_code || null,
+          qr_code_base64: pix.qr_code_base64 || null,
+          ticket_url: pix.ticket_url || null,
+          expires_at: pix.expires_at || null,
+        });
+        setPixModalVisible(true);
+      } catch (err) {
+        const errorMsg =
+          err instanceof Error ? err.message : "Erro ao gerar PIX";
+        showErrorModal("❌ Algo Deu Errado", errorMsg, "error");
+      } finally {
+        setPixLoading(false);
+        setPlanoComprando(null);
+      }
+    },
+    [apiUrl, selectedCicloByPlano],
+  );
+
   const renderPlanCard = ({ item: plano }: { item: Plan }) => {
     const ciclos = (plano.ciclos || []).sort((a, b) => a.meses - b.meses);
     const selectedCicloId = selectedCicloByPlano[plano.id];
@@ -616,6 +811,31 @@ export default function PlanosScreen() {
             </>
           )}
         </TouchableOpacity>
+
+        {!plano.is_plano_atual && selectedCiclo && (
+          <TouchableOpacity
+            style={[
+              styles.pixButton,
+              pixLoading && planoComprando === plano.id
+                ? styles.pixButtonLoading
+                : null,
+            ]}
+            onPress={() => handlePagarPix(plano)}
+            disabled={pixLoading && planoComprando === plano.id}
+          >
+            {pixLoading && planoComprando === plano.id ? (
+              <>
+                <ActivityIndicator color="#fff" size="small" />
+                <Text style={styles.pixButtonText}>Gerando PIX...</Text>
+              </>
+            ) : (
+              <>
+                <Feather name="zap" size={18} color="#fff" />
+                <Text style={styles.pixButtonText}>Pagar com PIX</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
       </View>
     );
   };
@@ -905,6 +1125,105 @@ export default function PlanosScreen() {
               color={colors.primary}
               style={{ marginBottom: 24 }}
             />
+          </View>
+        </View>
+      </Modal>
+
+      {/* PIX Modal */}
+      <Modal
+        visible={pixModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPixModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, styles.modalSuccess]}>
+            <View style={[styles.iconCircle, styles.iconCircleSuccess]}>
+              <Feather name="zap" size={40} color="#0a7f3c" />
+            </View>
+            <Text style={styles.modalTitle}>Pagamento via PIX</Text>
+            <Text style={styles.modalMessage}>
+              Escaneie o QR Code ou copie o código abaixo.
+            </Text>
+
+            <View style={styles.pixInfoRow}>
+              <View style={styles.pixInfoCard}>
+                <Text style={styles.pixInfoLabel}>Valor</Text>
+                <Text style={styles.pixInfoValue}>
+                  {formatCurrency(pixData?.valor || 0)}
+                </Text>
+              </View>
+              <View style={styles.pixInfoCard}>
+                <Text style={styles.pixInfoLabel}>Validade</Text>
+                <Text style={styles.pixInfoValue}>
+                  {formatDateTime(pixData?.expires_at)}
+                </Text>
+              </View>
+            </View>
+
+            {pixData?.qr_code_base64 ? (
+              <View style={styles.pixQrBox}>
+                <Image
+                  source={{ uri: `data:image/png;base64,${pixData.qr_code_base64}` }}
+                  style={styles.pixQrImage}
+                />
+              </View>
+            ) : null}
+
+            {!!pixData?.qr_code && (
+              <View style={styles.pixCodeBox}>
+                <ScrollView style={styles.pixCodeScroll}>
+                  <Text style={styles.pixCodeText} selectable>
+                    {pixData.qr_code}
+                  </Text>
+                </ScrollView>
+              </View>
+            )}
+
+            {!!pixData?.qr_code && (
+              <TouchableOpacity
+                style={styles.pixCopyButton}
+                onPress={async () => {
+                  const ok = await copyToClipboard(pixData.qr_code || "");
+                  if (ok) {
+                    showErrorModal(
+                      "✅ Código copiado",
+                      "O código PIX foi copiado para a área de transferência.",
+                      "success",
+                    );
+                  } else {
+                    showErrorModal(
+                      "⚠️ Não foi possível copiar",
+                      "Copie manualmente o código PIX.",
+                      "warning",
+                    );
+                  }
+                }}
+              >
+                <Feather name="copy" size={16} color="#fff" />
+                <Text style={styles.pixCopyButtonText}>Copiar código</Text>
+              </TouchableOpacity>
+            )}
+
+            {!!pixData?.ticket_url && (
+              <TouchableOpacity
+                style={styles.pixOpenButton}
+                onPress={() => {
+                  if (pixData?.ticket_url) {
+                    Linking.openURL(pixData.ticket_url);
+                  }
+                }}
+              >
+                <Text style={styles.pixOpenButtonText}>Abrir no banco</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={[styles.modalButton, styles.buttonSuccess]}
+              onPress={() => setPixModalVisible(false)}
+            >
+              <Text style={styles.modalButtonText}>Fechar</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -1326,6 +1645,109 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "700",
     color: "#fff",
+  },
+  pixButton: {
+    marginTop: 10,
+    backgroundColor: "#32bcad",
+    paddingVertical: 14,
+    borderRadius: 16,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+  },
+  pixButtonLoading: {
+    opacity: 0.7,
+  },
+  pixButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  pixInfoRow: {
+    width: "100%",
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  pixInfoCard: {
+    flex: 1,
+    backgroundColor: "#f8fafc",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  pixInfoLabel: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  pixInfoValue: {
+    fontSize: 13,
+    color: colors.text,
+    fontWeight: "700",
+    marginTop: 4,
+  },
+  pixQrBox: {
+    marginTop: 12,
+    marginBottom: 8,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: "#f8fafc",
+  },
+  pixQrImage: {
+    width: 220,
+    height: 220,
+  },
+  pixCodeBox: {
+    width: "100%",
+    maxHeight: 120,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#fff",
+    padding: 10,
+    marginBottom: 12,
+  },
+  pixCodeScroll: {
+    width: "100%",
+  },
+  pixCodeText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
+  pixCopyButton: {
+    width: "100%",
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    flexDirection: "row",
+    gap: 8,
+    backgroundColor: "#32bcad",
+    marginBottom: 10,
+  },
+  pixCopyButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  pixOpenButton: {
+    width: "100%",
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    backgroundColor: colors.primary,
+    marginBottom: 10,
+  },
+  pixOpenButtonText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "700",
   },
   errorContainer: {
     flex: 1,

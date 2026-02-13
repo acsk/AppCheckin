@@ -6,6 +6,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
     ActivityIndicator,
+    Image,
     Linking,
     Modal,
     SafeAreaView,
@@ -13,6 +14,7 @@ import {
     StyleSheet,
     Text,
     TouchableOpacity,
+    useWindowDimensions,
     View,
 } from "react-native";
 
@@ -87,6 +89,18 @@ export default function PlanoDetalhesScreen() {
   const [redirectModalVisible, setRedirectModalVisible] = useState(false);
   const [countdown, setCountdown] = useState(3);
   const [paymentUrlToOpen, setPaymentUrlToOpen] = useState<string | null>(null);
+  const [pixModalVisible, setPixModalVisible] = useState(false);
+  const [pixData, setPixData] = useState<{
+    matricula_id: number;
+    valor: number;
+    qr_code?: string | null;
+    qr_code_base64?: string | null;
+    ticket_url?: string | null;
+    expires_at?: string | null;
+  } | null>(null);
+  const [pixLoading, setPixLoading] = useState(false);
+  const [pixCopied, setPixCopied] = useState(false);
+  const { width: screenWidth } = useWindowDimensions();
 
   const handleBack = () => {
     if ("canGoBack" in router && typeof router.canGoBack === "function") {
@@ -106,6 +120,52 @@ export default function PlanoDetalhesScreen() {
   ) => {
     setErrorModalData({ title, message, type });
     setErrorModalVisible(true);
+  };
+
+  const formatCurrency = (value: number) => {
+    try {
+      return new Intl.NumberFormat("pt-BR", {
+        style: "currency",
+        currency: "BRL",
+      }).format(value || 0);
+    } catch {
+      return `R$ ${Number(value || 0).toFixed(2)}`;
+    }
+  };
+
+  const formatDateTime = (value?: string | null) => {
+    if (!value) return "";
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return value;
+    return d.toLocaleString("pt-BR");
+  };
+
+  const copyToClipboard = async (value: string) => {
+    try {
+      if (
+        typeof navigator !== "undefined" &&
+        navigator.clipboard &&
+        navigator.clipboard.writeText
+      ) {
+        await navigator.clipboard.writeText(value);
+        return true;
+      }
+      if (typeof document !== "undefined") {
+        const input = document.createElement("textarea");
+        input.value = value;
+        input.setAttribute("readonly", "true");
+        input.style.position = "absolute";
+        input.style.left = "-9999px";
+        document.body.appendChild(input);
+        input.select();
+        const ok = document.execCommand("copy");
+        document.body.removeChild(input);
+        return ok;
+      }
+      return false;
+    } catch {
+      return false;
+    }
   };
 
   const fetchPlanoDetalhes = async (baseUrl: string, planoId: string) => {
@@ -342,6 +402,120 @@ export default function PlanoDetalhesScreen() {
     }
   };
 
+  const handlePagarPix = async () => {
+    if (!plano || !selectedCicloId) return;
+    const selectedCiclo = plano.ciclos?.find((c) => c.id === selectedCicloId);
+    if (!selectedCiclo) {
+      showErrorModal(
+        "⚠️ Ciclo não selecionado",
+        "Por favor, selecione um ciclo antes de pagar.",
+        "warning",
+      );
+      return;
+    }
+
+    try {
+      setPixLoading(true);
+      const token = await AsyncStorage.getItem("@appcheckin:token");
+      if (!token) throw new Error("Token não encontrado");
+
+      const response = await fetch(`${apiUrl}/mobile/comprar-plano`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          plano_id: plano.id,
+          plano_ciclo_id: selectedCiclo.id,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        try {
+          const errorData = JSON.parse(errorText);
+          showErrorModal(
+            "⚠️ Problema na Compra",
+            errorData.message || "Não foi possível processar sua compra",
+            "error",
+          );
+        } catch {
+          showErrorModal(
+            "⚠️ Problema na Compra",
+            "Não foi possível processar sua compra. Tente novamente.",
+            "error",
+          );
+        }
+        return;
+      }
+
+      const data = await response.json();
+      if (!data.success) {
+        showErrorModal(
+          "❌ Não foi Possível Comprar",
+          data.message || "Erro desconhecido ao processar compra",
+          "error",
+        );
+        return;
+      }
+
+      const matriculaId = data.data?.matricula_id || data.data?.matricula?.id;
+      if (!matriculaId) {
+        showErrorModal(
+          "⚠️ Erro",
+          "Não foi possível identificar a matrícula para gerar o PIX.",
+          "error",
+        );
+        return;
+      }
+
+      const pixResponse = await fetch(`${apiUrl}/mobile/pagamento/pix`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ matricula_id: matriculaId }),
+      });
+
+      const pixText = await pixResponse.text();
+      let pixJson: any = {};
+      try {
+        pixJson = pixText ? JSON.parse(pixText) : {};
+      } catch {
+        pixJson = {};
+      }
+
+      if (!pixResponse.ok || !pixJson.success) {
+        const msg =
+          pixJson?.message ||
+          pixJson?.error ||
+          pixText ||
+          "Não foi possível gerar o PIX.";
+        showErrorModal("⚠️ Erro ao Gerar PIX", msg, "error");
+        return;
+      }
+
+      const pix = pixJson.data?.pix || {};
+      setPixData({
+        matricula_id: Number(pixJson.data?.matricula_id || matriculaId),
+        valor: Number(pixJson.data?.valor || selectedCiclo.valor || 0),
+        qr_code: pix.qr_code || null,
+        qr_code_base64: pix.qr_code_base64 || null,
+        ticket_url: pix.ticket_url || null,
+        expires_at: pix.expires_at || null,
+      });
+      setPixModalVisible(true);
+    } catch (err) {
+      const errorMsg =
+        err instanceof Error ? err.message : "Erro ao gerar PIX";
+      showErrorModal("❌ Algo Deu Errado", errorMsg, "error");
+    } finally {
+      setPixLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -422,6 +596,7 @@ export default function PlanoDetalhesScreen() {
     typeof statusNomeRaw === "string" ? statusNomeRaw.toLowerCase() : "";
   const isPendente = statusCodigo === "pendente" || statusNome.includes("pendente");
   const isPlanoAtivo = !!plano.is_plano_atual && !isPendente;
+  const qrSize = Math.min(320, Math.round(screenWidth * 0.72));
 
   return (
     <SafeAreaView style={styles.container}>
@@ -585,31 +760,62 @@ export default function PlanoDetalhesScreen() {
             <Text style={styles.footerButtonText}>Plano Ativo</Text>
           </View>
         ) : (
-          <TouchableOpacity
-            style={[
-              styles.footerButton,
-              (!selectedCiclo || comprando) && styles.footerButtonDisabled,
-            ]}
-            onPress={handleContratar}
-            disabled={!selectedCiclo || comprando}
-            activeOpacity={0.8}
-          >
-            {comprando ? (
-              <>
-                <ActivityIndicator color="#fff" size="small" />
-                <Text style={styles.footerButtonText}>Processando...</Text>
-              </>
-            ) : (
-              <>
-                <Feather name="shopping-cart" size={18} color="#fff" />
-                <Text style={styles.footerButtonText}>
-                  {selectedCiclo
-                    ? `Contratar por ${selectedCiclo.valor_formatado}`
-                    : "Escolha um ciclo"}
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
+          <View style={styles.footerStack}>
+            <TouchableOpacity
+              style={[
+                styles.footerButton,
+                (!selectedCiclo || comprando) && styles.footerButtonDisabled,
+              ]}
+              onPress={handleContratar}
+              disabled={!selectedCiclo || comprando}
+              activeOpacity={0.8}
+            >
+              {comprando ? (
+                <>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={styles.footerButtonText}>Processando...</Text>
+                </>
+              ) : (
+                <>
+                  <Feather name="shopping-cart" size={18} color="#fff" />
+                  <Text style={styles.footerButtonText}>
+                    {selectedCiclo
+                      ? `Contratar por ${selectedCiclo.valor_formatado}`
+                      : "Escolha um ciclo"}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            {!!selectedCiclo &&
+              selectedCiclo.permite_recorrencia === false && (
+                <TouchableOpacity
+                  style={[
+                    styles.footerPixButton,
+                    pixLoading && styles.footerPixButtonLoading,
+                  ]}
+                  onPress={handlePagarPix}
+                  disabled={pixLoading}
+                  activeOpacity={0.8}
+                >
+                  {pixLoading ? (
+                    <>
+                      <ActivityIndicator color="#fff" size="small" />
+                      <Text style={styles.footerButtonText}>
+                        Gerando PIX...
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Feather name="zap" size={18} color="#fff" />
+                      <Text style={styles.footerButtonText}>
+                        Pagar com PIX
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+          </View>
         )}
       </View>
 
@@ -699,6 +905,103 @@ export default function PlanoDetalhesScreen() {
               }}
             >
               <Text style={styles.modalButtonText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* PIX Modal */}
+      <Modal visible={pixModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Pagamento via PIX</Text>
+            <Text style={styles.modalMessage}>
+              Escaneie o QR Code ou copie o código abaixo.
+            </Text>
+
+            <View style={styles.pixInfoRow}>
+              <View style={styles.pixInfoCard}>
+                <Text style={styles.pixInfoLabel}>Valor</Text>
+                <Text style={styles.pixInfoValue}>
+                  {formatCurrency(pixData?.valor || 0)}
+                </Text>
+              </View>
+              <View style={styles.pixInfoCard}>
+                <Text style={styles.pixInfoLabel}>Validade</Text>
+                <Text style={styles.pixInfoValue}>
+                  {formatDateTime(pixData?.expires_at)}
+                </Text>
+              </View>
+            </View>
+
+            {pixData?.qr_code_base64 ? (
+              <View style={styles.pixQrBox}>
+                <Image
+                  source={{
+                    uri: `data:image/png;base64,${pixData.qr_code_base64}`,
+                  }}
+                  style={[styles.pixQrImage, { width: qrSize, height: qrSize }]}
+                />
+              </View>
+            ) : null}
+
+            {!!pixData?.qr_code && (
+              <>
+                <Text style={styles.pixCodeLabel}>Código de pagamento</Text>
+                <View style={styles.pixCodeInput}>
+                  <Text
+                    style={styles.pixCodeText}
+                    numberOfLines={1}
+                    ellipsizeMode="tail"
+                  >
+                    {pixData.qr_code}
+                  </Text>
+                  <TouchableOpacity
+                    style={[
+                      styles.pixCopyIconButton,
+                      pixCopied && styles.pixCopyIconButtonCopied,
+                    ]}
+                    onPress={async () => {
+                      const ok = await copyToClipboard(pixData.qr_code || "");
+                      if (ok) {
+                        setPixCopied(true);
+                        setTimeout(() => setPixCopied(false), 1800);
+                      } else {
+                        showErrorModal(
+                          "⚠️ Não foi possível copiar",
+                          "Copie manualmente o código PIX.",
+                          "warning",
+                        );
+                      }
+                    }}
+                  >
+                    <Feather name="copy" size={16} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+                {pixCopied && (
+                  <Text style={styles.pixCopiedText}>Código copiado!</Text>
+                )}
+              </>
+            )}
+
+            {!!pixData?.ticket_url && (
+              <TouchableOpacity
+                style={styles.pixOpenButton}
+                onPress={() => {
+                  if (pixData?.ticket_url) {
+                    Linking.openURL(pixData.ticket_url);
+                  }
+                }}
+              >
+                <Text style={styles.pixOpenButtonText}>Abrir no banco</Text>
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={[styles.modalButton, { backgroundColor: "#6b7280" }]}
+              onPress={() => setPixModalVisible(false)}
+            >
+              <Text style={styles.modalButtonText}>Fechar</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1067,6 +1370,9 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 10,
   },
+  footerStack: {
+    gap: 10,
+  },
   footerButton: {
     flexDirection: "row",
     alignItems: "center",
@@ -1078,6 +1384,18 @@ const styles = StyleSheet.create({
   },
   footerButtonDisabled: {
     backgroundColor: "#d1d5db",
+  },
+  footerPixButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#32bcad",
+    paddingVertical: 12,
+    borderRadius: 12,
+    gap: 10,
+  },
+  footerPixButtonLoading: {
+    opacity: 0.7,
   },
   footerButtonAtivo: {
     flexDirection: "row",
@@ -1105,9 +1423,10 @@ const styles = StyleSheet.create({
   modalContent: {
     backgroundColor: "#fff",
     borderRadius: 20,
-    padding: 28,
+    padding: 22,
     alignItems: "center",
-    minWidth: "80%",
+    width: "100%",
+    maxWidth: 520,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.15,
@@ -1146,5 +1465,99 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 14,
     fontWeight: "600",
+  },
+  pixInfoRow: {
+    width: "100%",
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  pixInfoCard: {
+    flex: 1,
+    backgroundColor: "#f8fafc",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  pixInfoLabel: {
+    fontSize: 11,
+    color: "#6b7280",
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  pixInfoValue: {
+    fontSize: 13,
+    color: "#111827",
+    fontWeight: "700",
+    marginTop: 4,
+  },
+  pixQrBox: {
+    marginTop: 12,
+    marginBottom: 8,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: "#f8fafc",
+  },
+  pixQrImage: {
+    width: 280,
+    height: 280,
+  },
+  pixCodeLabel: {
+    alignSelf: "flex-start",
+    fontSize: 12,
+    color: "#374151",
+    fontWeight: "700",
+    marginBottom: 6,
+  },
+  pixCodeInput: {
+    width: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#fff",
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+    overflow: "hidden",
+  },
+  pixCodeText: {
+    flex: 1,
+    fontSize: 12,
+    color: "#4b5563",
+  },
+  pixCopyIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#32bcad",
+  },
+  pixCopyIconButtonCopied: {
+    backgroundColor: "#16a34a",
+  },
+  pixCopiedText: {
+    marginTop: 8,
+    fontSize: 12,
+    color: "#16a34a",
+    fontWeight: "700",
+  },
+  pixOpenButton: {
+    width: "100%",
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    backgroundColor: colors.primary,
+    marginBottom: 10,
+  },
+  pixOpenButtonText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "700",
   },
 });

@@ -853,6 +853,7 @@ return function ($app) {
         
         // Verificar pagamento e ativar matrícula
         $group->post('/verificar-pagamento', [MobileController::class, 'verificarPagamento']);
+        $group->post('/pagamento/pix', [MobileController::class, 'gerarPagamentoPix']);
         
         // Detalhes da matrícula e pagamentos
         $group->get('/matriculas/{matriculaId}', [MobileController::class, 'detalheMatricula']);

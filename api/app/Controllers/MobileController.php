@@ -4465,7 +4465,8 @@ class MobileController
             content: new OA\JsonContent(
                 properties: [
                     new OA\Property(property: "plano_id", type: "integer", example: 1, description: "ID do plano escolhido"),
-                    new OA\Property(property: "dia_vencimento", type: "integer", example: 5, description: "Dia do mês para vencimento (1-31)")
+                    new OA\Property(property: "dia_vencimento", type: "integer", example: 5, description: "Dia do mês para vencimento (1-31)"),
+                    new OA\Property(property: "metodo_pagamento", type: "string", example: "pix", description: "Método de pagamento: pix ou checkout")
                 ],
                 required: ["plano_id", "dia_vencimento"]
             )
@@ -4487,7 +4488,8 @@ class MobileController
                                 new OA\Property(property: "valor", type: "number", example: 99.90),
                                 new OA\Property(property: "status", type: "string", example: "pendente"),
                                 new OA\Property(property: "payment_url", type: "string", example: "https://www.mercadopago.com.br/checkout/..."),
-                                new OA\Property(property: "preference_id", type: "string", example: "123456789-abc-def")
+                                new OA\Property(property: "preference_id", type: "string", example: "123456789-abc-def"),
+                                new OA\Property(property: "pix", type: "object", nullable: true)
                             ]
                         )
                     ]
@@ -4532,6 +4534,17 @@ class MobileController
             $planoCicloId = !empty($data['plano_ciclo_id']) ? (int) $data['plano_ciclo_id'] : null;
             // Dia de vencimento é opcional, padrão = 5
             $diaVencimento = isset($data['dia_vencimento']) ? (int) $data['dia_vencimento'] : 5;
+            $metodoPagamento = strtolower(trim($data['metodo_pagamento'] ?? 'checkout'));
+
+            if (!in_array($metodoPagamento, ['checkout', 'pix'], true)) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'METODO_PAGAMENTO_INVALIDO',
+                    'message' => 'Método de pagamento inválido. Use pix ou checkout.'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
 
             // Validar dia de vencimento se foi fornecido
             if ($diaVencimento < 1 || $diaVencimento > 31) {
@@ -4614,7 +4627,12 @@ class MobileController
                         'success' => false,
                         'type' => 'error',
                         'code' => 'CICLO_NAO_ENCONTRADO',
-                        'message' => 'Ciclo de pagamento não encontrado'
+                        'message' => 'Ciclo de pagamento não encontrado',
+                        'debug' => [
+                            'tenant_id' => $tenantId,
+                            'plano_id' => $planoId,
+                            'plano_ciclo_id' => $planoCicloId
+                        ]
                     ]));
                     return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
                 }
@@ -4626,6 +4644,15 @@ class MobileController
             
             // Determinar se é pagamento recorrente ou avulso
             $isRecorrente = $ciclo ? (bool) $ciclo['permite_recorrencia'] : true;
+            if ($metodoPagamento === 'pix' && $isRecorrente) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'PIX_NAO_DISPONIVEL_RECORRENTE',
+                    'message' => 'Pagamento PIX não está disponível para planos recorrentes'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
 
             // Verificar se valor é maior que zero
             if ($valorCompra <= 0) {
@@ -4779,6 +4806,7 @@ class MobileController
             $paymentUrl = null;
             $preferenceId = null;
             $tipoPagamento = 'pagamento_unico';
+            $pixData = null;
 
             try {
                 // Passar tenant_id para carregar credenciais específicas do tenant
@@ -4802,6 +4830,7 @@ class MobileController
                     'aluno_nome' => $usuario['nome'],
                     'aluno_email' => $usuario['email'],
                     'aluno_telefone' => $usuario['telefone'] ?? '',
+                    'aluno_cpf' => $usuario['cpf'] ?? null,
                     'plano_nome' => $plano['nome'],
                     'descricao' => $descricaoCompra,
                     'valor' => $valorCompra,
@@ -4814,7 +4843,25 @@ class MobileController
 
                 error_log("[MobileController::comprarPlano] Ciclo: {$cicloNome}, Meses: {$duracaoMeses}, Recorrente: " . ($isRecorrente ? 'SIM' : 'NÃO'));
 
-                if ($isRecorrente) {
+                if ($metodoPagamento === 'pix') {
+                    $cpfPix = preg_replace('/[^0-9]/', '', $usuario['cpf'] ?? '');
+                    if (strlen($cpfPix) !== 11) {
+                        $response->getBody()->write(json_encode([
+                            'success' => false,
+                            'type' => 'error',
+                            'code' => 'CPF_OBRIGATORIO_PIX',
+                            'message' => 'CPF válido é obrigatório para pagamento PIX'
+                        ]));
+                        return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                    }
+
+                    error_log("[MobileController::comprarPlano] Criando PAGAMENTO PIX...");
+                    $pixData = $mercadoPago->criarPagamentoPix($dadosPagamento);
+                    $tipoPagamento = 'pix';
+                    $paymentUrl = $pixData['ticket_url'] ?? null;
+                    $preferenceId = null;
+                    $externalReference = $pixData['external_reference'] ?? null;
+                } elseif ($isRecorrente) {
                     // ASSINATURA RECORRENTE (preapproval) no Mercado Pago
                     error_log("[MobileController::comprarPlano] Criando ASSINATURA RECORRENTE (preapproval)...");
                     $preferencia = $mercadoPago->criarPreferenciaAssinatura($dadosPagamento, $duracaoMeses);
@@ -4855,6 +4902,10 @@ class MobileController
                         $stmtMetodo = $this->db->prepare("SELECT id FROM metodos_pagamento WHERE codigo = 'credit_card'");
                         $stmtMetodo->execute();
                         $metodoPagamentoId = $stmtMetodo->fetchColumn() ?: 1;
+                    } elseif ($metodoPagamento === 'pix') {
+                        $stmtMetodo = $this->db->prepare("SELECT id FROM metodos_pagamento WHERE codigo = 'pix'");
+                        $stmtMetodo->execute();
+                        $metodoPagamentoId = $stmtMetodo->fetchColumn() ?: null;
                     }
                     
                     // Buscar plano_id da matrícula
@@ -4924,7 +4975,9 @@ class MobileController
                 'success' => true,
                 'message' => $tipoPagamento === 'assinatura' 
                     ? "Matrícula criada. Complete a assinatura {$cicloNome} para ativar."
-                    : "Matrícula criada. Complete o pagamento {$cicloNome} para ativar.",
+                    : ($tipoPagamento === 'pix'
+                        ? "Matrícula criada. Complete o pagamento PIX para ativar."
+                        : "Matrícula criada. Complete o pagamento {$cicloNome} para ativar."),
                 'data' => [
                     'matricula_id' => $matriculaId,
                     'plano_id' => $planoId,
@@ -4942,10 +4995,20 @@ class MobileController
                     'payment_url' => $paymentUrl,
                     'preference_id' => $preferenceId,
                     'tipo_pagamento' => $tipoPagamento,
+                    'metodo_pagamento' => $metodoPagamento,
                     'tipo_cobranca' => $isRecorrente ? 'recorrente' : 'avulso',
                     'recorrente' => $isRecorrente,
                     'assinatura_id' => $assinaturaDbId ?? null,
-                    'mp_preapproval_id' => $isRecorrente ? ($preferencia['id'] ?? null) : null
+                    'mp_preapproval_id' => $isRecorrente ? ($preferencia['id'] ?? null) : null,
+                    'pix' => $pixData ? [
+                        'payment_id' => $pixData['id'] ?? null,
+                        'status' => $pixData['status'] ?? null,
+                        'status_detail' => $pixData['status_detail'] ?? null,
+                        'qr_code' => $pixData['qr_code'] ?? null,
+                        'qr_code_base64' => $pixData['qr_code_base64'] ?? null,
+                        'ticket_url' => $pixData['ticket_url'] ?? null,
+                        'expires_at' => $pixData['date_of_expiration'] ?? null
+                    ] : null
                 ]
             ];
             
@@ -5080,6 +5143,163 @@ class MobileController
                 'message' => 'Erro ao verificar pagamento: ' . $e->getMessage()
             ]));
             
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * Gerar pagamento PIX para matrícula existente
+     */
+    #[OA\Post(
+        path: "/mobile/pagamento/pix",
+        summary: "Gerar PIX para matrícula existente",
+        description: "Gera QR Code PIX para uma matrícula pendente/avulsa do usuário.",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ["matricula_id"],
+                properties: [
+                    new OA\Property(property: "matricula_id", type: "integer", example: 123)
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: "PIX gerado com sucesso"),
+            new OA\Response(response: 400, description: "Dados inválidos"),
+            new OA\Response(response: 403, description: "Matrícula inválida"),
+            new OA\Response(response: 404, description: "Matrícula não encontrada"),
+            new OA\Response(response: 500, description: "Erro interno")
+        ]
+    )]
+    public function gerarPagamentoPix(Request $request, Response $response): Response
+    {
+        try {
+            $userId = $request->getAttribute('userId');
+            $tenantId = $request->getAttribute('tenantId');
+            $body = $request->getParsedBody() ?? [];
+
+            if (!$tenantId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Nenhum tenant selecionado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            $matriculaId = (int) ($body['matricula_id'] ?? 0);
+            if (!$matriculaId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'matricula_id é obrigatório'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            $stmtMatricula = $this->db->prepare("
+                SELECT m.id, m.valor, m.tipo_cobranca, sm.codigo as status_codigo,
+                       p.nome as plano_nome, p.modalidade_id, m.proxima_data_vencimento,
+                       a.id as aluno_id, u.id as usuario_id, u.nome as aluno_nome, u.email as aluno_email,
+                       u.telefone as aluno_telefone, u.cpf as aluno_cpf, md.nome as modalidade_nome
+                FROM matriculas m
+                INNER JOIN alunos a ON a.id = m.aluno_id
+                INNER JOIN usuarios u ON u.id = a.usuario_id
+                INNER JOIN planos p ON p.id = m.plano_id
+                LEFT JOIN modalidades md ON md.id = p.modalidade_id
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
+                WHERE m.id = :matricula_id AND m.tenant_id = :tenant_id AND u.id = :usuario_id
+                LIMIT 1
+            ");
+            $stmtMatricula->execute([
+                'matricula_id' => $matriculaId,
+                'tenant_id' => $tenantId,
+                'usuario_id' => $userId
+            ]);
+            $matricula = $stmtMatricula->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$matricula) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Matrícula não encontrada'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            if (($matricula['tipo_cobranca'] ?? '') === 'recorrente') {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'PIX não disponível para matrícula recorrente'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+            }
+
+            if (($matricula['status_codigo'] ?? '') === 'ativa') {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Matrícula já está ativa'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+            }
+
+            $cpfPix = preg_replace('/[^0-9]/', '', $matricula['aluno_cpf'] ?? '');
+            if (strlen($cpfPix) !== 11) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'CPF válido é obrigatório para pagamento PIX'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            $stmtTenant = $this->db->prepare("SELECT nome FROM tenants WHERE id = ?");
+            $stmtTenant->execute([$tenantId]);
+            $tenantData = $stmtTenant->fetch(\PDO::FETCH_ASSOC);
+            $academiaNome = $tenantData['nome'] ?? 'Academia';
+
+            $dadosPagamento = [
+                'tenant_id' => $tenantId,
+                'matricula_id' => (int) $matricula['id'],
+                'aluno_id' => (int) $matricula['aluno_id'],
+                'usuario_id' => (int) $matricula['usuario_id'],
+                'aluno_nome' => $matricula['aluno_nome'],
+                'aluno_email' => $matricula['aluno_email'],
+                'aluno_telefone' => $matricula['aluno_telefone'] ?? '',
+                'aluno_cpf' => $matricula['aluno_cpf'] ?? null,
+                'plano_nome' => $matricula['plano_nome'],
+                'descricao' => "{$matricula['plano_nome']} - {$matricula['modalidade_nome']}",
+                'valor' => (float) $matricula['valor'],
+                'academia_nome' => $academiaNome
+            ];
+
+            $mercadoPago = new \App\Services\MercadoPagoService($tenantId);
+            $pixData = $mercadoPago->criarPagamentoPix($dadosPagamento);
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'data' => [
+                    'matricula_id' => (int) $matricula['id'],
+                    'valor' => (float) $matricula['valor'],
+                    'pix' => [
+                        'payment_id' => $pixData['id'] ?? null,
+                        'status' => $pixData['status'] ?? null,
+                        'status_detail' => $pixData['status_detail'] ?? null,
+                        'qr_code' => $pixData['qr_code'] ?? null,
+                        'qr_code_base64' => $pixData['qr_code_base64'] ?? null,
+                        'ticket_url' => $pixData['ticket_url'] ?? null,
+                        'expires_at' => $pixData['date_of_expiration'] ?? null
+                    ]
+                ]
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+
+        } catch (\Exception $e) {
+            error_log('[MobileController::gerarPagamentoPix] Erro: ' . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao gerar PIX',
+                'message' => $e->getMessage()
+            ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
     }

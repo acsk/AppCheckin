@@ -280,6 +280,77 @@ class MercadoPagoService
             'external_reference' => $preference['external_reference']
         ];
     }
+
+    /**
+     * Criar pagamento PIX e retornar QR Code
+     *
+     * @param array $data Dados da matrícula e aluno
+     * @return array Resposta com dados PIX (qr_code, qr_code_base64, ticket_url)
+     */
+    public function criarPagamentoPix(array $data): array
+    {
+        $this->validarCredenciais();
+
+        $cpf = isset($data['aluno_cpf']) ? preg_replace('/[^0-9]/', '', $data['aluno_cpf']) : '';
+        if (strlen($cpf) !== 11) {
+            throw new Exception('CPF válido é obrigatório para pagamento PIX');
+        }
+
+        $payerEmail = $data['aluno_email'] ?? '';
+        if (!$this->isProduction) {
+            $payerEmail = 'test_user_' . ($data['aluno_id'] ?? rand(100000, 999999)) . '@testuser.com';
+        }
+
+        $nomeCompleto = trim($data['aluno_nome'] ?? '');
+        $partesNome = $nomeCompleto !== '' ? explode(' ', $nomeCompleto, 2) : [];
+        $firstName = $partesNome[0] ?? 'Test';
+        $lastName = $partesNome[1] ?? 'User';
+
+        $metadata = [
+            'tenant_id' => $data['tenant_id'] ?? null,
+            'matricula_id' => $data['matricula_id'] ?? null,
+            'aluno_id' => $data['aluno_id'] ?? null,
+            'usuario_id' => $data['usuario_id'] ?? null,
+            'tipo' => 'matricula_pix',
+            'email_real' => $data['aluno_email'] ?? ''
+        ];
+
+        $externalReference = "MAT-{$data['matricula_id']}-" . time();
+
+        $payment = [
+            'transaction_amount' => (float) $data['valor'],
+            'description' => $data['descricao'] ?? $data['plano_nome'] ?? 'Pagamento PIX',
+            'payment_method_id' => 'pix',
+            'payer' => [
+                'email' => $payerEmail,
+                'first_name' => $firstName,
+                'last_name' => $lastName,
+                'identification' => [
+                    'type' => 'CPF',
+                    'number' => $cpf
+                ]
+            ],
+            'external_reference' => $externalReference,
+            'notification_url' => $this->notificationUrl,
+            'metadata' => $metadata
+        ];
+
+        $response = $this->fazerRequisicao('POST', '/v1/payments', $payment);
+
+        $tx = $response['point_of_interaction']['transaction_data'] ?? $response['transaction_data'] ?? null;
+
+        return [
+            'id' => $response['id'] ?? null,
+            'status' => $response['status'] ?? null,
+            'status_detail' => $response['status_detail'] ?? null,
+            'external_reference' => $response['external_reference'] ?? $externalReference,
+            'date_of_expiration' => $response['date_of_expiration'] ?? null,
+            'qr_code' => $tx['qr_code'] ?? null,
+            'qr_code_base64' => $tx['qr_code_base64'] ?? null,
+            'ticket_url' => $tx['ticket_url'] ?? null,
+            'raw' => $response
+        ];
+    }
     
     /**
      * Processar notificação de webhook do Mercado Pago

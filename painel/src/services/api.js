@@ -9,6 +9,25 @@ export const setOnUnauthorized = (callback) => {
   onUnauthorizedCallback = callback;
 };
 
+const decodeJwtPayload = (token) => {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const json = atob(base64);
+    return JSON.parse(json);
+  } catch (error) {
+    return null;
+  }
+};
+
+const isTokenExpired = (token) => {
+  const payload = decodeJwtPayload(token);
+  if (!payload || !payload.exp) return false;
+  const now = Math.floor(Date.now() / 1000);
+  return payload.exp <= now;
+};
+
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
@@ -21,6 +40,15 @@ api.interceptors.request.use(
   async (config) => {
     const token = await AsyncStorage.getItem('@appcheckin:token');
     if (token) {
+      if (isTokenExpired(token)) {
+        console.warn('🚫 Token expirado - redirecionando para login...');
+        await AsyncStorage.removeItem('@appcheckin:token');
+        await AsyncStorage.removeItem('@appcheckin:user');
+        if (onUnauthorizedCallback) {
+          onUnauthorizedCallback();
+        }
+        return Promise.reject(new Error('Sessão expirada'));
+      }
       config.headers.Authorization = `Bearer ${token}`;
       console.log('🔑 Token adicionado ao header');
     } else {
