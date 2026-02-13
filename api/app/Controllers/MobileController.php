@@ -1216,6 +1216,442 @@ class MobileController
     }
 
     /**
+     * Buscar alunos por nome, CPF ou email (para check-in manual)
+     */
+    #[OA\Get(
+        path: "/mobile/alunos/buscar",
+        summary: "Buscar alunos para check-in manual",
+        description: "Busca alunos do tenant por nome, CPF ou email para o professor registrar check-in manualmente.",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        parameters: [
+            new OA\Parameter(name: "q", in: "query", required: false, description: "Busca geral (nome, CPF ou email)"),
+            new OA\Parameter(name: "nome", in: "query", required: false, description: "Nome do aluno"),
+            new OA\Parameter(name: "cpf", in: "query", required: false, description: "CPF do aluno (com ou sem pontuação)"),
+            new OA\Parameter(name: "email", in: "query", required: false, description: "Email do aluno"),
+            new OA\Parameter(name: "limit", in: "query", required: false, description: "Limite de resultados (máx 50)", schema: new OA\Schema(type: "integer", default: 20)),
+            new OA\Parameter(name: "offset", in: "query", required: false, description: "Offset para paginação", schema: new OA\Schema(type: "integer", default: 0))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: "Lista de alunos"),
+            new OA\Response(response: 400, description: "Parâmetros inválidos"),
+            new OA\Response(response: 403, description: "Acesso negado"),
+            new OA\Response(response: 500, description: "Erro interno")
+        ]
+    )]
+    public function buscarAlunosParaCheckin(Request $request, Response $response): Response
+    {
+        try {
+            if ($this->dbInitError) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Erro ao inicializar banco',
+                    'message' => $this->dbInitError
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            }
+
+            $tenantId = $request->getAttribute('tenantId');
+            $userId = $request->getAttribute('userId');
+            $queryParams = $request->getQueryParams();
+
+            if (!$tenantId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Nenhum tenant selecionado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Garantir que o usuário é professor/admin no tenant
+            $stmtPapel = $this->db->prepare("
+                SELECT tup.papel_id
+                FROM tenant_usuario_papel tup
+                WHERE tup.usuario_id = :usuario_id
+                  AND tup.tenant_id = :tenant_id
+                  AND tup.ativo = 1
+                ORDER BY tup.papel_id DESC
+                LIMIT 1
+            ");
+            $stmtPapel->execute([
+                'usuario_id' => $userId,
+                'tenant_id' => $tenantId
+            ]);
+            $papelId = (int) ($stmtPapel->fetchColumn() ?: 0);
+
+            if ($papelId < 2) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Acesso negado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+            }
+
+            $q = trim($queryParams['q'] ?? '');
+            $nome = trim($queryParams['nome'] ?? '');
+            $cpf = trim($queryParams['cpf'] ?? '');
+            $email = trim($queryParams['email'] ?? '');
+
+            if ($q !== '' && $nome === '' && $cpf === '' && $email === '') {
+                $nome = $q;
+                $cpf = $q;
+                $email = $q;
+            }
+
+            $cpfLimpo = preg_replace('/[^0-9]/', '', $cpf);
+            $emailNorm = $email !== '' ? mb_strtolower($email, 'UTF-8') : '';
+
+            $limit = min((int) ($queryParams['limit'] ?? 20), 50);
+            $offset = max((int) ($queryParams['offset'] ?? 0), 0);
+
+            $searchConds = [];
+            $params = [
+                'tenant_id' => $tenantId
+            ];
+
+            if ($nome !== '') {
+                $searchConds[] = "(u.nome LIKE :nome_u OR a.nome LIKE :nome_a)";
+                $params['nome_u'] = '%' . $nome . '%';
+                $params['nome_a'] = '%' . $nome . '%';
+            }
+
+            if ($emailNorm !== '') {
+                $searchConds[] = "LOWER(u.email) LIKE :email";
+                $params['email'] = '%' . $emailNorm . '%';
+            }
+
+            if ($cpfLimpo !== '') {
+                if (strlen($cpfLimpo) === 11) {
+                    $searchConds[] = "u.cpf = :cpf";
+                    $params['cpf'] = $cpfLimpo;
+                } else {
+                    $searchConds[] = "u.cpf LIKE :cpf_like";
+                    $params['cpf_like'] = '%' . $cpfLimpo . '%';
+                }
+            }
+
+            if (empty($searchConds)) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Informe nome, CPF ou email para buscar'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            $sql = "
+                SELECT 
+                    a.id as aluno_id,
+                    u.id as usuario_id,
+                    COALESCE(NULLIF(a.nome, ''), u.nome) as nome,
+                    u.email,
+                    u.cpf,
+                    a.foto_caminho
+                FROM usuarios u
+                INNER JOIN tenant_usuario_papel tup 
+                    ON tup.usuario_id = u.id 
+                   AND tup.tenant_id = :tenant_id
+                   AND tup.papel_id = 1
+                   AND tup.ativo = 1
+                LEFT JOIN alunos a ON a.usuario_id = u.id
+                WHERE (" . implode(' OR ', $searchConds) . ")
+                ORDER BY u.nome ASC
+                LIMIT {$limit} OFFSET {$offset}
+            ";
+
+            $stmt = $this->db->prepare($sql);
+            foreach ($params as $key => $value) {
+                $stmt->bindValue(':' . $key, $value);
+            }
+            $stmt->execute();
+
+            $alunos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            $alunosFormatados = array_map(function($a) {
+                return [
+                    'aluno_id' => (int) ($a['aluno_id'] ?? 0),
+                    'usuario_id' => (int) ($a['usuario_id'] ?? 0),
+                    'nome' => $a['nome'] ?? '',
+                    'email' => $a['email'] ?? null,
+                    'cpf' => $a['cpf'] ?? null,
+                    'foto_caminho' => $a['foto_caminho'] ?? null
+                ];
+            }, $alunos);
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'data' => [
+                    'total' => count($alunosFormatados),
+                    'limit' => $limit,
+                    'offset' => $offset,
+                    'alunos' => $alunosFormatados
+                ]
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+        } catch (\Throwable $e) {
+            error_log("Erro em buscarAlunosParaCheckin: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao buscar alunos',
+                'message' => $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * Registrar check-in manual pelo professor
+     */
+    #[OA\Post(
+        path: "/mobile/checkin/manual",
+        summary: "Registrar check-in manual (professor)",
+        description: "Permite que professor/admin registre check-in manual para um aluno.",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ["turma_id"],
+                properties: [
+                    new OA\Property(property: "turma_id", type: "integer", description: "ID da turma", example: 1),
+                    new OA\Property(property: "aluno_id", type: "integer", description: "ID do aluno", example: 10),
+                    new OA\Property(property: "usuario_id", type: "integer", description: "ID do usuário (alternativo ao aluno_id)", example: 10)
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 201, description: "Check-in manual registrado"),
+            new OA\Response(response: 400, description: "Parâmetros inválidos"),
+            new OA\Response(response: 403, description: "Sem permissão ou matrícula inválida"),
+            new OA\Response(response: 404, description: "Aluno ou turma não encontrados"),
+            new OA\Response(response: 500, description: "Erro interno")
+        ]
+    )]
+    public function registrarCheckinManual(Request $request, Response $response): Response
+    {
+        try {
+            if ($this->dbInitError) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Erro ao inicializar banco',
+                    'message' => $this->dbInitError
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            }
+
+            $tenantId = $request->getAttribute('tenantId');
+            $professorId = $request->getAttribute('userId');
+            $data = $request->getParsedBody() ?? [];
+
+            if (!$tenantId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Nenhum tenant selecionado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            if (empty($data['turma_id']) || (empty($data['aluno_id']) && empty($data['usuario_id']))) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'turma_id e aluno_id (ou usuario_id) são obrigatórios'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+            }
+
+            $turmaId = (int) $data['turma_id'];
+            $alunoIdInput = isset($data['aluno_id']) ? (int) $data['aluno_id'] : null;
+            $usuarioIdInput = isset($data['usuario_id']) ? (int) $data['usuario_id'] : null;
+
+            // Buscar aluno no tenant (garante vínculo papel_id=1)
+            if ($alunoIdInput) {
+                $stmtAluno = $this->db->prepare("
+                    SELECT a.id as aluno_id, a.usuario_id, u.nome, u.email
+                    FROM alunos a
+                    INNER JOIN usuarios u ON u.id = a.usuario_id
+                    INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = a.usuario_id
+                        AND tup.tenant_id = :tenant_id
+                        AND tup.papel_id = 1
+                        AND tup.ativo = 1
+                    WHERE a.id = :aluno_id
+                    LIMIT 1
+                ");
+                $stmtAluno->execute([
+                    'tenant_id' => $tenantId,
+                    'aluno_id' => $alunoIdInput
+                ]);
+            } else {
+                $stmtAluno = $this->db->prepare("
+                    SELECT a.id as aluno_id, a.usuario_id, u.nome, u.email
+                    FROM alunos a
+                    INNER JOIN usuarios u ON u.id = a.usuario_id
+                    INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = a.usuario_id
+                        AND tup.tenant_id = :tenant_id
+                        AND tup.papel_id = 1
+                        AND tup.ativo = 1
+                    WHERE a.usuario_id = :usuario_id
+                    LIMIT 1
+                ");
+                $stmtAluno->execute([
+                    'tenant_id' => $tenantId,
+                    'usuario_id' => $usuarioIdInput
+                ]);
+            }
+
+            $aluno = $stmtAluno->fetch(\PDO::FETCH_ASSOC);
+            if (!$aluno) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Aluno não encontrado no tenant'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            $alunoId = (int) $aluno['aluno_id'];
+            $usuarioId = (int) $aluno['usuario_id'];
+
+            // Atualizar status das matrículas vencidas do aluno
+            $this->atualizarStatusMatriculasVencidas($usuarioId, $tenantId);
+
+            // Verificar matrícula ativa
+            $stmtMatricula = $this->db->prepare("
+                SELECT m.id, m.proxima_data_vencimento, m.periodo_teste,
+                       sm.codigo as status_codigo, sm.nome as status_nome
+                FROM matriculas m
+                INNER JOIN alunos a ON a.id = m.aluno_id
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
+                WHERE a.usuario_id = :usuario_id
+                AND m.tenant_id = :tenant_id
+                AND sm.codigo = 'ativa'
+                ORDER BY m.created_at DESC
+                LIMIT 1
+            ");
+            $stmtMatricula->execute([
+                'usuario_id' => $usuarioId,
+                'tenant_id' => $tenantId
+            ]);
+            $matricula = $stmtMatricula->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$matricula) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Aluno não possui matrícula ativa',
+                    'code' => 'SEM_MATRICULA'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+            }
+
+            $hoje = date('Y-m-d');
+            if ($matricula['proxima_data_vencimento'] && $matricula['proxima_data_vencimento'] < $hoje) {
+                $dataVencimento = date('d/m/Y', strtotime($matricula['proxima_data_vencimento']));
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => "Acesso do aluno expirou em {$dataVencimento}",
+                    'code' => 'MATRICULA_VENCIDA',
+                    'data_vencimento' => $matricula['proxima_data_vencimento']
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+            }
+
+            // Verificar se turma existe e está ativa no tenant
+            $turma = $this->turmaModel->findById($turmaId, $tenantId);
+            if (!$turma || (isset($turma['ativo']) && !$turma['ativo'])) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Turma inválida ou inativa'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Verificar se aluno já tem check-in nesta turma
+            if ($this->checkinModel->usuarioTemCheckinNaTurma($usuarioId, $turmaId)) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Aluno já tem check-in nesta turma'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Verificar limite de check-ins conforme plano (se houver)
+            $modalidadeTurma = $turma['modalidade_id'] ?? null;
+            $planoInfo = $this->checkinModel->obterLimiteCheckinsPlano($usuarioId, $tenantId, $modalidadeTurma);
+            if ($planoInfo['tem_plano'] && $planoInfo['limite'] > 0) {
+                if ($planoInfo['permite_reposicao']) {
+                    $limiteMensal = $planoInfo['limite'] * 4;
+                    $checkinsNoMes = $this->checkinModel->contarCheckinsNoMes($usuarioId, $modalidadeTurma);
+                    if ($checkinsNoMes >= $limiteMensal) {
+                        $response->getBody()->write(json_encode([
+                            'success' => false,
+                            'error' => 'Aluno atingiu o limite de check-ins deste mês',
+                            'detalhes' => [
+                                'plano' => $planoInfo['plano_nome'],
+                                'limite_mensal' => $limiteMensal,
+                                'checkins_mes' => $checkinsNoMes,
+                                'permite_reposicao' => true
+                            ]
+                        ]));
+                        return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                    }
+                } else {
+                    $checkinsNaSemana = $this->checkinModel->contarCheckinsNaSemana($usuarioId, $modalidadeTurma);
+                    if ($checkinsNaSemana >= $planoInfo['limite']) {
+                        $response->getBody()->write(json_encode([
+                            'success' => false,
+                            'error' => 'Aluno atingiu o limite de check-ins desta semana',
+                            'detalhes' => [
+                                'plano' => $planoInfo['plano_nome'],
+                                'limite_semana' => $planoInfo['limite'],
+                                'checkins_semana' => $checkinsNaSemana
+                            ]
+                        ]));
+                        return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                    }
+                }
+            }
+
+            // Registrar check-in manual
+            $stmtInsert = $this->db->prepare("
+                INSERT INTO checkins (aluno_id, turma_id, tenant_id, registrado_por_admin, admin_id)
+                VALUES (:aluno_id, :turma_id, :tenant_id, 1, :admin_id)
+            ");
+            $stmtInsert->execute([
+                'aluno_id' => $alunoId,
+                'turma_id' => $turmaId,
+                'tenant_id' => $tenantId,
+                'admin_id' => $professorId
+            ]);
+
+            $checkinId = (int) $this->db->lastInsertId();
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'message' => 'Check-in manual registrado com sucesso',
+                'data' => [
+                    'checkin_id' => $checkinId,
+                    'aluno' => [
+                        'aluno_id' => $alunoId,
+                        'usuario_id' => $usuarioId,
+                        'nome' => $aluno['nome'] ?? '',
+                        'email' => $aluno['email'] ?? null
+                    ],
+                    'turma_id' => $turmaId,
+                    'data_hora' => date('Y-m-d H:i:s')
+                ]
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(201);
+        } catch (\Throwable $e) {
+            error_log("Erro em registrarCheckinManual: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao registrar check-in manual',
+                'message' => $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
      * Registra check-in do usuário em uma turma selecionada
      */
     #[OA\Post(
@@ -1688,6 +2124,121 @@ class MobileController
             $response->getBody()->write(json_encode([
                 'success' => false,
                 'error' => 'Erro ao desfazer check-in',
+                'message' => $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * Desfazer check-in manual (professor/admin)
+     */
+    #[OA\Delete(
+        path: "/mobile/checkin/manual/{checkinId}/desfazer",
+        summary: "Desfazer check-in manual (professor)",
+        description: "Professor/admin remove um check-in de aluno no tenant. Só é permitido se a aula ainda não começou.",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        parameters: [
+            new OA\Parameter(name: "checkinId", in: "path", required: true, description: "ID do check-in", schema: new OA\Schema(type: "integer"))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: "Check-in desfeito com sucesso"),
+            new OA\Response(response: 400, description: "checkinId obrigatório ou aula já começou"),
+            new OA\Response(response: 401, description: "Não autorizado"),
+            new OA\Response(response: 403, description: "Sem permissão"),
+            new OA\Response(response: 404, description: "Check-in não encontrado")
+        ]
+    )]
+    public function desfazerCheckinManual(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $tenantId = $request->getAttribute('tenantId');
+            $checkinId = (int) ($args['checkinId'] ?? $args['id'] ?? 0);
+
+            if (!$checkinId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'checkinId é obrigatório'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Buscar check-in (tenant)
+            $sql = "SELECT c.id, c.aluno_id, c.turma_id, t.dia_id, d.data as dia_data
+                    FROM checkins c
+                    INNER JOIN turmas t ON c.turma_id = t.id
+                    INNER JOIN dias d ON t.dia_id = d.id
+                    WHERE c.id = :checkin_id AND t.tenant_id = :tenant_id";
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute([
+                'checkin_id' => $checkinId,
+                'tenant_id' => $tenantId
+            ]);
+            $checkin = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$checkin) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Check-in não encontrado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            // Buscar dados da turma para verificar horário
+            $turmaId = (int) $checkin['turma_id'];
+            $turma = $this->turmaModel->findById($turmaId, $tenantId);
+
+            if (!$turma) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Turma não encontrada'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            // Validar se a aula já começou ou passou
+            $agora = new \DateTime();
+            $diaAula = $checkin['dia_data'];
+            $horarioInicio = $turma['horario_inicio'];
+            $dataHorarioInicio = new \DateTime($diaAula . ' ' . $horarioInicio);
+
+            if ($agora >= $dataHorarioInicio) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Não é possível desfazer o check-in. A aula já começou ou passou',
+                    'detalhes' => [
+                        'aula_inicio' => $dataHorarioInicio->format('Y-m-d H:i:s'),
+                        'agora' => $agora->format('Y-m-d H:i:s')
+                    ]
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Deletar check-in
+            $deleteSql = "DELETE FROM checkins WHERE id = :checkin_id";
+            $deleteStmt = $this->db->prepare($deleteSql);
+            $deleteStmt->execute(['checkin_id' => $checkinId]);
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'message' => 'Check-in desfeito com sucesso',
+                'data' => [
+                    'checkin_id' => $checkinId,
+                    'turma' => [
+                        'id' => (int) $turma['id'],
+                        'nome' => $turma['nome'],
+                        'horario_inicio' => $turma['horario_inicio']
+                    ]
+                ]
+            ]));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(200);
+
+        } catch (\Exception $e) {
+            error_log("Erro em desfazerCheckinManual: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao desfazer check-in manual',
                 'message' => $e->getMessage()
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);

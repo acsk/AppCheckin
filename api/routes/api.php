@@ -857,6 +857,11 @@ return function ($app) {
         // Detalhes da matrícula e pagamentos
         $group->get('/matriculas/{matriculaId}', [MobileController::class, 'detalheMatricula']);
         
+        // Buscar alunos para check-in manual (professor/admin)
+        $group->get('/alunos/buscar', [MobileController::class, 'buscarAlunosParaCheckin'])->add(ProfessorMiddleware::class);
+        $group->post('/checkin/manual', [MobileController::class, 'registrarCheckinManual'])->add(ProfessorMiddleware::class);
+        $group->delete('/checkin/manual/{checkinId}/desfazer', [MobileController::class, 'desfazerCheckinManual'])->add(ProfessorMiddleware::class);
+
         // Check-in
         $group->post('/checkin', [MobileController::class, 'registrarCheckin']);
         $group->delete('/checkin/{checkinId}/desfazer', [MobileController::class, 'desfazerCheckin']);

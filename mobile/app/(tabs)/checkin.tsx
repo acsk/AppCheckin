@@ -11,6 +11,7 @@ import {
   ScrollView,
   StyleSheet,
   Switch,
+  TextInput,
   Text,
   TouchableOpacity,
   View,
@@ -64,6 +65,19 @@ export default function CheckinScreen() {
     {},
   );
   const [confirmandoPresenca, setConfirmandoPresenca] = useState(false);
+  const [manualSearchQuery, setManualSearchQuery] = useState("");
+  const [manualSearchResults, setManualSearchResults] = useState<any[]>([]);
+  const [manualSearchLoading, setManualSearchLoading] = useState(false);
+  const [manualSearchError, setManualSearchError] = useState<string | null>(
+    null,
+  );
+  const [manualCheckinLoading, setManualCheckinLoading] = useState<
+    Record<number, boolean>
+  >({});
+  const [confirmManualModal, setConfirmManualModal] = useState<{
+    visible: boolean;
+    aluno: any | null;
+  }>({ visible: false, aluno: null });
   const [currentTenant, setCurrentTenant] = useState<any | null>(null);
   const [tenantsList] = useState<any[]>([]);
   const [tenantModalVisible, setTenantModalVisible] = useState(false);
@@ -946,6 +960,9 @@ export default function CheckinScreen() {
     setParticipants([]);
     setCheckinsRecentes([]);
     setAlunosTotal(0);
+    setManualSearchQuery("");
+    setManualSearchResults([]);
+    setManualSearchError(null);
     setParticipantsTurma(mergeTurmaFromList(turma.id, turma));
 
     try {
@@ -1012,6 +1029,172 @@ export default function CheckinScreen() {
     } finally {
       setParticipantsLoading(false);
     }
+  };
+
+  const parseAlunosSearchResponse = (payload: any): any[] => {
+    if (!payload) return [];
+    const data = payload.data ?? payload;
+    if (Array.isArray(data?.alunos)) return data.alunos;
+    if (Array.isArray(data?.lista)) return data.lista;
+    if (Array.isArray(data?.resultados)) return data.resultados;
+    if (Array.isArray(data)) return data;
+    return [];
+  };
+
+  const buildAlunoSearchUrl = (query: string) => {
+    const trimmed = normalizeUtf8(String(query || "")).trim();
+    if (!trimmed) return null;
+    if (trimmed.includes("@")) {
+      return `${getApiUrlRuntime()}/mobile/alunos/buscar?email=${encodeURIComponent(
+        trimmed,
+      )}`;
+    }
+    const digits = trimmed.replace(/\D/g, "");
+    if (digits.length === 11) {
+      return `${getApiUrlRuntime()}/mobile/alunos/buscar?cpf=${encodeURIComponent(
+        digits,
+      )}`;
+    }
+    return `${getApiUrlRuntime()}/mobile/alunos/buscar?q=${encodeURIComponent(
+      trimmed,
+    )}`;
+  };
+
+  const handleManualSearch = async () => {
+    if (!participantsTurma?.id) return;
+    const url = buildAlunoSearchUrl(manualSearchQuery);
+    if (!url) {
+      setManualSearchError("Informe nome, CPF ou e-mail.");
+      setManualSearchResults([]);
+      return;
+    }
+
+    setManualSearchLoading(true);
+    setManualSearchError(null);
+    try {
+      const token = await AsyncStorage.getItem("@appcheckin:token");
+      if (!token) {
+        setManualSearchError("Token não encontrado.");
+        return;
+      }
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const text = await response.text();
+      let data: any = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = {};
+      }
+
+      if (!response.ok) {
+        const apiMessage =
+          data?.error ||
+          data?.message ||
+          text ||
+          "Não foi possível buscar o aluno.";
+        setManualSearchError(normalizeUtf8(String(apiMessage)));
+        setManualSearchResults([]);
+        return;
+      }
+
+      const alunos = parseAlunosSearchResponse(data);
+      setManualSearchResults(alunos);
+      if (!alunos.length) {
+        setManualSearchError("Nenhum aluno encontrado.");
+      }
+    } catch (error) {
+      console.error("Erro ao buscar aluno:", error);
+      setManualSearchError("Falha ao buscar aluno.");
+    } finally {
+      setManualSearchLoading(false);
+    }
+  };
+
+  const handleManualCheckin = async (aluno: any) => {
+    if (!participantsTurma?.id || !aluno?.id) return;
+    if (manualCheckinLoading[aluno.id]) return;
+
+    setManualCheckinLoading((prev) => ({ ...prev, [aluno.id]: true }));
+    try {
+      const token = await AsyncStorage.getItem("@appcheckin:token");
+      if (!token) {
+        showErrorModal("Token não encontrado. Faça login novamente.", "error");
+        return;
+      }
+
+      const response = await fetch(
+        `${getApiUrlRuntime()}/mobile/checkin/manual`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            turma_id: participantsTurma.id,
+            aluno_id: aluno.id,
+          }),
+        },
+      );
+
+      const text = await response.text();
+      let data: any = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = {};
+      }
+
+      if (!response.ok) {
+        const apiMessage =
+          data?.error ||
+          data?.message ||
+          text ||
+          "Não foi possível adicionar o aluno.";
+        showErrorModal(normalizeUtf8(String(apiMessage)), "error");
+        return;
+      }
+
+      showErrorModal(
+        normalizeUtf8(data?.message || "Check-in manual realizado."),
+        "success",
+      );
+      await openParticipants(
+        mergeTurmaFromList(participantsTurma.id, participantsTurma),
+      );
+    } catch (error) {
+      console.error("Erro ao fazer check-in manual:", error);
+      showErrorModal("Falha ao realizar o check-in manual.", "error");
+    } finally {
+      setManualCheckinLoading((prev) => ({ ...prev, [aluno.id]: false }));
+    }
+  };
+
+  const openManualConfirm = (aluno: any) => {
+    setConfirmManualModal({ visible: true, aluno });
+    Animated.spring(modalScale, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 50,
+      friction: 7,
+    }).start();
+  };
+
+  const closeManualConfirm = () => {
+    Animated.timing(modalScale, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      setConfirmManualModal({ visible: false, aluno: null });
+    });
   };
 
   // Efeito para verificar se o usuário tem check-in, após definir o callback
@@ -1432,6 +1615,161 @@ export default function CheckinScreen() {
                       <Text style={styles.loadingText}>Carregando...</Text>
                     ) : (
                       <>
+                        {isProfessorOuAdmin && (
+                          <View style={styles.manualCheckinBox}>
+                            <Text style={styles.manualCheckinTitle}>
+                              Adicionar aluno ao check-in
+                            </Text>
+                            <View style={styles.manualCheckinRow}>
+                              <TextInput
+                                style={styles.manualCheckinInput}
+                                placeholder="Nome, CPF ou e-mail"
+                                placeholderTextColor="#9ca3af"
+                                value={manualSearchQuery}
+                                onChangeText={(text) => {
+                                  setManualSearchQuery(text);
+                                  if (manualSearchError) {
+                                    setManualSearchError(null);
+                                  }
+                                }}
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                                keyboardType="default"
+                                returnKeyType="search"
+                                onSubmitEditing={handleManualSearch}
+                              />
+                              <TouchableOpacity
+                                style={[
+                                  styles.manualCheckinSearchButton,
+                                  (!manualSearchQuery.trim() ||
+                                    manualSearchLoading) &&
+                                    styles.manualCheckinSearchButtonDisabled,
+                                ]}
+                                onPress={handleManualSearch}
+                                disabled={
+                                  !manualSearchQuery.trim() ||
+                                  manualSearchLoading
+                                }
+                              >
+                                <Feather name="search" size={16} color="#fff" />
+                              </TouchableOpacity>
+                            </View>
+                            {!!manualSearchError && (
+                              <Text style={styles.manualCheckinError}>
+                                {manualSearchError}
+                              </Text>
+                            )}
+                            {manualSearchLoading ? (
+                              <Text style={styles.loadingText}>
+                                Buscando...
+                              </Text>
+                            ) : null}
+                            {manualSearchResults.length > 0 && (
+                              <View style={styles.manualCheckinResults}>
+                                {manualSearchResults.map((aluno, idx) => {
+                                  const alunoId = Number(
+                                    aluno.id ?? aluno.aluno_id ?? 0,
+                                  );
+                                  const alreadyCheckedIn =
+                                    checkinsRecentes.some(
+                                      (c) =>
+                                        Number(c.aluno_id) === Number(alunoId),
+                                    ) ||
+                                    participants.some(
+                                      (p) =>
+                                        Number(p.aluno_id) === Number(alunoId) &&
+                                        Number(p.checkins) > 0,
+                                    );
+                                  const photoUrl = getUserPhotoUrl(
+                                    aluno.foto_caminho || null,
+                                  );
+                                  const isLoading =
+                                    !!manualCheckinLoading[alunoId];
+
+                                  return (
+                                    <View
+                                      key={alunoId || idx}
+                                      style={styles.manualCheckinItem}
+                                    >
+                                      <View style={styles.manualCheckinAvatar}>
+                                        {photoUrl ? (
+                                          <Image
+                                            source={{ uri: photoUrl }}
+                                            style={
+                                              styles.manualCheckinAvatarImage
+                                            }
+                                          />
+                                        ) : (
+                                          <Feather
+                                            name="user"
+                                            size={18}
+                                            color="#9ca3af"
+                                          />
+                                        )}
+                                      </View>
+                                      <View
+                                        style={styles.manualCheckinItemInfo}
+                                      >
+                                        <Text
+                                          style={styles.manualCheckinItemName}
+                                        >
+                                          {normalizeUtf8(
+                                            aluno.nome ||
+                                              aluno.usuario_nome ||
+                                              "Aluno",
+                                          )}
+                                        </Text>
+                                        {!!aluno.email && (
+                                          <Text
+                                            style={styles.manualCheckinItemMeta}
+                                          >
+                                            {normalizeUtf8(aluno.email)}
+                                          </Text>
+                                        )}
+                                        {!!aluno.cpf && (
+                                          <Text
+                                            style={styles.manualCheckinItemMeta}
+                                          >
+                                            {aluno.cpf}
+                                          </Text>
+                                        )}
+                                      </View>
+                                      <TouchableOpacity
+                                        style={[
+                                          styles.manualCheckinAddButton,
+                                          (alreadyCheckedIn || isLoading) &&
+                                            styles.manualCheckinAddButtonDisabled,
+                                        ]}
+                                        onPress={() =>
+                                          openManualConfirm({
+                                            ...aluno,
+                                            id: alunoId || aluno.id,
+                                          })
+                                        }
+                                        disabled={
+                                          alreadyCheckedIn || isLoading
+                                        }
+                                      >
+                                        <Text
+                                          style={
+                                            styles.manualCheckinAddButtonText
+                                          }
+                                        >
+                                          {alreadyCheckedIn
+                                            ? "Já incluído"
+                                            : isLoading
+                                              ? "Incluindo..."
+                                              : "Adicionar"}
+                                        </Text>
+                                      </TouchableOpacity>
+                                    </View>
+                                  );
+                                })}
+                              </View>
+                            )}
+                          </View>
+                        )}
+
                         {/* Lista de check-ins recentes (visível para todos; botões só para professor/admin) */}
                         {checkinsRecentes.length > 0 && (
                           <View style={styles.participantsListContainer}>
@@ -1549,7 +1887,9 @@ export default function CheckinScreen() {
                         {/* Mensagem quando não há check-ins */}
                         {(!isProfessorOuAdmin ||
                           checkinsRecentes.length === 0) &&
-                          participantsToShow.length === 0 && (
+                          participantsToShow.length === 0 &&
+                          manualSearchResults.length === 0 &&
+                          !manualSearchLoading && (
                             <Text style={styles.loadingText}>
                               Nenhum participante ainda
                             </Text>
@@ -1975,6 +2315,82 @@ export default function CheckinScreen() {
         </TouchableOpacity>
       </Modal>
 
+      {/* Modal de confirmação do check-in manual */}
+      <Modal
+        visible={confirmManualModal.visible}
+        transparent
+        animationType="fade"
+        onRequestClose={closeManualConfirm}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={closeManualConfirm}
+        >
+          <Animated.View
+            style={[
+              styles.modalContainer,
+              {
+                transform: [{ scale: modalScale }],
+              },
+            ]}
+          >
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View style={styles.modalContent}>
+                <View
+                  style={[
+                    styles.modalIconContainer,
+                    styles.modalIconContainerInfo,
+                  ]}
+                >
+                  <Feather name="help-circle" size={48} color={colors.primary} />
+                </View>
+                <Text style={styles.modalTitle}>Confirmar check-in</Text>
+                <Text style={styles.modalMessage}>
+                  Deseja fazer check-in de{" "}
+                  {normalizeUtf8(
+                    confirmManualModal.aluno?.nome ||
+                      confirmManualModal.aluno?.usuario_nome ||
+                      "Aluno",
+                  )}
+                  ?
+                </Text>
+                <View style={styles.confirmButtonsRow}>
+                  <TouchableOpacity
+                    style={[styles.confirmButton, styles.confirmButtonCancel]}
+                    onPress={closeManualConfirm}
+                  >
+                    <Text style={styles.confirmButtonText}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.confirmButton, styles.confirmButtonConfirm]}
+                    onPress={async () => {
+                      const aluno = confirmManualModal.aluno;
+                      closeManualConfirm();
+                      if (aluno?.id) {
+                        await handleManualCheckin(aluno);
+                      }
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.confirmButtonText,
+                        styles.confirmButtonTextLight,
+                      ]}
+                    >
+                      Confirmar
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableOpacity>
+          </Animated.View>
+        </TouchableOpacity>
+      </Modal>
+
       {toastVisible && (
         <View style={[styles.toastContainer, styles[`toast_${toast.type}`]]}>
           <Feather
@@ -2248,6 +2664,105 @@ const styles = StyleSheet.create({
   },
   participantsContent: {
     gap: 12,
+  },
+  manualCheckinBox: {
+    backgroundColor: "#f9fafb",
+    borderRadius: 14,
+    padding: 12,
+    gap: 10,
+    borderWidth: 1,
+    borderColor: "#eef2f7",
+  },
+  manualCheckinTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.textSecondary,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  manualCheckinRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  manualCheckinInput: {
+    flex: 1,
+    height: 42,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    paddingHorizontal: 12,
+    fontSize: 14,
+    color: colors.text,
+    backgroundColor: "#fff",
+  },
+  manualCheckinSearchButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primary,
+  },
+  manualCheckinSearchButtonDisabled: {
+    opacity: 0.5,
+  },
+  manualCheckinError: {
+    color: "#b3261e",
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  manualCheckinResults: {
+    gap: 8,
+  },
+  manualCheckinItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#eef2f7",
+  },
+  manualCheckinAvatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#e5e7eb",
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
+  manualCheckinAvatarImage: {
+    width: "100%",
+    height: "100%",
+  },
+  manualCheckinItemInfo: {
+    flex: 1,
+  },
+  manualCheckinItemName: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  manualCheckinItemMeta: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  manualCheckinAddButton: {
+    backgroundColor: "#10b981",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  manualCheckinAddButtonDisabled: {
+    backgroundColor: "#9ca3af",
+  },
+  manualCheckinAddButtonText: {
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: "700",
   },
   participantsMetaRow: {
     flexDirection: "row",
@@ -2613,6 +3128,31 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 17,
     fontWeight: "700",
+  },
+  confirmButtonsRow: {
+    flexDirection: "row",
+    width: "100%",
+    gap: 10,
+  },
+  confirmButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  confirmButtonCancel: {
+    backgroundColor: "#e5e7eb",
+  },
+  confirmButtonConfirm: {
+    backgroundColor: colors.primary,
+  },
+  confirmButtonText: {
+    color: "#111827",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  confirmButtonTextLight: {
+    color: "#fff",
   },
   tenantSwitchButton: {
     marginTop: 2,
