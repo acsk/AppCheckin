@@ -1580,7 +1580,7 @@ class MobileController
             $planoInfo = $this->checkinModel->obterLimiteCheckinsPlano($usuarioId, $tenantId, $modalidadeTurma);
             if ($planoInfo['tem_plano'] && $planoInfo['limite'] > 0) {
                 if ($planoInfo['permite_reposicao']) {
-                    $limiteMensal = $planoInfo['limite'] * 4;
+                    $limiteMensal = (int) ($planoInfo['limite_mensal'] ?? ($planoInfo['limite'] * 4));
                     $checkinsNoMes = $this->checkinModel->contarCheckinsNoMes($usuarioId, $modalidadeTurma);
                     if ($checkinsNoMes >= $limiteMensal) {
                         $response->getBody()->write(json_encode([
@@ -1844,7 +1844,7 @@ class MobileController
             
             if ($planoInfo['tem_plano'] && $planoInfo['limite'] > 0) {
                 if ($planoInfo['permite_reposicao']) {
-                    $limiteMensal = $planoInfo['limite'] * 4;
+                    $limiteMensal = (int) ($planoInfo['limite_mensal'] ?? ($planoInfo['limite'] * 4));
                     $checkinsNoMes = $this->checkinModel->contarCheckinsNoMes($userId, $modalidadeTurma);
                     
                     if ($checkinsNoMes >= $limiteMensal) {

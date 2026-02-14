@@ -404,7 +404,9 @@ class Checkin
             'plano_nome' => $result ? $result['plano_nome'] : 'Sem plano',
             'tem_plano' => $result !== false,
             'modalidade_id' => $result ? (int) $result['modalidade_id'] : null,
-            'permite_reposicao' => $result ? (bool) $result['permite_reposicao'] : false
+            'permite_reposicao' => $result ? (bool) $result['permite_reposicao'] : false,
+            // Para planos com reposição, o limite efetivo é mensal (4x o semanal)
+            'limite_mensal' => $result ? ((bool) $result['permite_reposicao'] ? ((int) $result['checkins_semanais'] * 4) : null) : null
         ];
     }
 
