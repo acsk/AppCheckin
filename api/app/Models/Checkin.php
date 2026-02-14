@@ -362,7 +362,16 @@ class Checkin
     public function obterLimiteCheckinsPlano(int $usuarioId, int $tenantId, ?int $modalidadeId = null): array
     {
         $sql = "SELECT p.checkins_semanais, p.nome as plano_nome, p.modalidade_id,
-                       COALESCE(pc.permite_reposicao, 0) as permite_reposicao
+                       CASE
+                           WHEN m.plano_ciclo_id IS NOT NULL THEN COALESCE(pc.permite_reposicao, 0)
+                           ELSE COALESCE((
+                               SELECT MAX(pc2.permite_reposicao)
+                               FROM plano_ciclos pc2
+                               WHERE pc2.plano_id = p.id
+                                 AND pc2.tenant_id = m.tenant_id
+                                 AND pc2.ativo = 1
+                           ), 0)
+                       END as permite_reposicao
              FROM matriculas m
              INNER JOIN planos p ON m.plano_id = p.id
              LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id AND pc.tenant_id = m.tenant_id
