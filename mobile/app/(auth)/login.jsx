@@ -5,6 +5,7 @@ import {
     ActivityIndicator,
     Alert,
     KeyboardAvoidingView,
+    Modal,
     Platform,
     ScrollView,
     StyleSheet,
@@ -26,6 +27,10 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState("");
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
+  const [tenantSelectionVisible, setTenantSelectionVisible] = useState(false);
+  const [tenantOptions, setTenantOptions] = useState([]);
+  const [pendingTenantLogin, setPendingTenantLogin] = useState(null);
+  const [selectingTenantId, setSelectingTenantId] = useState(null);
 
   const handleLogin = async () => {
     // Proteção contra múltiplos cliques
@@ -60,6 +65,19 @@ export default function LoginScreen() {
         // NÃO chama setLoading(false) aqui - deixa loading=true para bloquear interações
         router.replace("/(tabs)");
         console.log("✅ Redirect executado");
+      } else if (
+        response?.requires_tenant_selection &&
+        Array.isArray(response?.tenants) &&
+        response.tenants.length > 0
+      ) {
+        console.log("🏷️ Seleção de tenant necessária");
+        setTenantOptions(response.tenants);
+        setPendingTenantLogin({
+          userId: response?.user?.id,
+          email,
+        });
+        setTenantSelectionVisible(true);
+        setLoading(false);
       } else {
         console.log("⚠️ Login sem token", response);
         Alert.alert("Erro", "Não foi possível fazer login");
@@ -100,6 +118,49 @@ export default function LoginScreen() {
       setFormError(mensagem);
       Alert.alert("Erro ao fazer login", mensagem);
       setLoading(false);
+    }
+  };
+
+  const handleSelectTenant = async (tenant) => {
+    const tenantData = tenant?.tenant || tenant;
+    const tenantId = tenantData?.id ?? tenant?.id;
+
+    if (!tenantId) {
+      Alert.alert("Erro", "Tenant inválido");
+      return;
+    }
+    if (!pendingTenantLogin?.userId || !pendingTenantLogin?.email) {
+      Alert.alert("Erro", "Dados de login incompletos");
+      return;
+    }
+
+    setSelectingTenantId(tenantId);
+    setLoading(true);
+    try {
+      const response = await authService.selectTenantPublic(
+        pendingTenantLogin.userId,
+        pendingTenantLogin.email,
+        tenantId,
+      );
+
+      if (response && response.token) {
+        console.log("✅ Tenant selecionado com sucesso");
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        setTenantSelectionVisible(false);
+        router.replace("/(tabs)");
+      } else {
+        Alert.alert("Erro", "Não foi possível selecionar a academia");
+      }
+    } catch (error) {
+      const mensagem =
+        error?.message ||
+        error?.error ||
+        "Não foi possível selecionar a academia";
+      setFormError(mensagem);
+      Alert.alert("Erro", mensagem);
+    } finally {
+      setLoading(false);
+      setSelectingTenantId(null);
     }
   };
 
@@ -231,6 +292,64 @@ export default function LoginScreen() {
         visible={showRecoveryModal}
         onClose={() => setShowRecoveryModal(false)}
       />
+
+      {/* Tenant Selection Modal */}
+      <Modal
+        visible={tenantSelectionVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setTenantSelectionVisible(false)}
+      >
+        <View style={styles.tenantModalOverlay}>
+          <View style={styles.tenantModalCard}>
+            <Text style={styles.tenantModalTitle}>
+              Selecione a academia
+            </Text>
+            <ScrollView
+              contentContainerStyle={styles.tenantList}
+              showsVerticalScrollIndicator={false}
+            >
+              {tenantOptions.map((item, index) => {
+                const t = item?.tenant || item;
+                const tenantId = t?.id ?? item?.id ?? index;
+                const nome = t?.nome ?? t?.name ?? "Academia";
+                const status = item?.status ?? null;
+                const isSelecting = selectingTenantId === tenantId;
+                return (
+                  <TouchableOpacity
+                    key={tenantId}
+                    style={styles.tenantOptionButton}
+                    onPress={() => handleSelectTenant(item)}
+                    disabled={loading}
+                  >
+                    {isSelecting ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <>
+                        <Text style={styles.tenantOptionText}>{nome}</Text>
+                        {status ? (
+                          <Text style={styles.tenantOptionSubtext}>
+                            Status: {status}
+                          </Text>
+                        ) : null}
+                      </>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <View style={styles.tenantModalActions}>
+              <TouchableOpacity
+                style={styles.tenantCancelButton}
+                onPress={() => setTenantSelectionVisible(false)}
+                disabled={loading}
+              >
+                <Text style={styles.tenantCancelText}>Voltar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -402,6 +521,59 @@ const styles = StyleSheet.create({
   registerText: {
     fontSize: 14,
     color: colors.primary,
+    fontWeight: "600",
+  },
+  tenantModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    justifyContent: "center",
+    padding: 20,
+  },
+  tenantModalCard: {
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: "#f5d0c5",
+    maxHeight: "80%",
+  },
+  tenantModalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#111827",
+    marginBottom: 16,
+  },
+  tenantList: {
+    gap: 12,
+    paddingBottom: 8,
+  },
+  tenantOptionButton: {
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+  },
+  tenantOptionText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  tenantOptionSubtext: {
+    color: "rgba(255,255,255,0.85)",
+    marginTop: 4,
+    fontSize: 12,
+  },
+  tenantModalActions: {
+    marginTop: 16,
+    alignItems: "center",
+  },
+  tenantCancelButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+  },
+  tenantCancelText: {
+    color: colors.primary,
+    fontSize: 14,
     fontWeight: "600",
   },
 });

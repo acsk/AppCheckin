@@ -51,6 +51,7 @@ export const CONFIG = {
     "/auth/register",
     "/auth/register-mobile",
     "/auth/select-tenant",
+    "/auth/select-tenant-public",
   ],
 
   // Headers padrão

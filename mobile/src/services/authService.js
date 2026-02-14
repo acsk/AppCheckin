@@ -8,7 +8,6 @@ import api from "./api";
 export const authService = {
   /**
    * Realiza login com email e senha
-   * Se houver múltiplos tenants, seleciona automaticamente o primeiro
    */
   async login(email, senha) {
     try {
@@ -59,24 +58,6 @@ export const authService = {
         }
 
         return response.data;
-      }
-
-      // Se não tem token mas tem múltiplos tenants, selecionar o primeiro automaticamente
-      if (
-        response.data.requires_tenant_selection &&
-        response.data.tenants?.length > 0
-      ) {
-        const firstTenant = response.data.tenants[0];
-        const tenantId = firstTenant.tenant?.id || firstTenant.id;
-
-        // Fazer seleção inicial de tenant (endpoint público)
-        const selectResponse = await this.selectTenantInitial(
-          response.data.user.id,
-          email,
-          tenantId,
-        );
-
-        return selectResponse;
       }
 
       return response.data;
@@ -131,9 +112,9 @@ export const authService = {
    * Seleção inicial de tenant durante login (endpoint público)
    * Usada quando o login retorna múltiplos tenants sem token
    */
-  async selectTenantInitial(userId, email, tenantId) {
+  async selectTenantPublic(userId, email, tenantId) {
     try {
-      const response = await api.post("/auth/select-tenant-initial", {
+      const response = await api.post("/auth/select-tenant-public", {
         user_id: userId,
         email: email,
         tenant_id: tenantId,
@@ -182,6 +163,13 @@ export const authService = {
       const errorData = error.response?.data || error;
       throw errorData;
     }
+  },
+
+  /**
+   * Compat: manter assinatura antiga caso alguma tela use
+   */
+  async selectTenantInitial(userId, email, tenantId) {
+    return this.selectTenantPublic(userId, email, tenantId);
   },
 
   /**
