@@ -133,7 +133,7 @@ export const turmaService = {
   // Deletar turma permanentemente
   async deletarPermanente(id) {
     try {
-      const response = await api.delete(`/turmas/${id}/permanente`);
+      const response = await api.delete(`/admin/turmas/${id}/permanente`);
       return response.data;
     } catch (error) {
       console.error('Erro ao deletar turma permanentemente:', error);
