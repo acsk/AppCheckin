@@ -729,6 +729,8 @@ return function ($app) {
     
     // Seleção inicial de tenant durante login (rota pública - usada quando múltiplos tenants)
     $app->post('/auth/select-tenant-initial', [AuthController::class, 'selectTenantPublic']);
+    // Alias para compatibilidade com front/mobile
+    $app->post('/auth/select-tenant-public', [AuthController::class, 'selectTenantPublic']);
 
     // ========================================
     // Rotas Super Admin (role_id = 3)
