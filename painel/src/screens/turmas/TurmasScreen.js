@@ -24,6 +24,7 @@ export default function TurmasScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState({ visible: false, id: null, nome: '' });
+  const [confirmDeletePermanente, setConfirmDeletePermanente] = useState({ visible: false, id: null, nome: '' });
   const [searchText, setSearchText] = useState('');
   const [dataSelecionada, setDataSelecionada] = useState(obterHoje());
   const [calendarVisible, setCalendarVisible] = useState(false);
@@ -933,6 +934,34 @@ ${listaTurmas ? `Turmas deletadas:\n${listaTurmas}` : ''}
     }
   };
 
+  const handleDeletePermanente = (id, nome) => {
+    setConfirmDeletePermanente({ visible: true, id, nome });
+  };
+
+  const confirmarDeletePermanente = async () => {
+    try {
+      setSubmitting(true);
+      await turmaService.deletarPermanente(confirmDeletePermanente.id);
+      const updated = turmas.filter(t => t.id !== confirmDeletePermanente.id);
+      setTurmas(updated);
+      setTurmasFiltradas(updated.filter(t => {
+        const termoLower = searchText.toLowerCase();
+        return (
+          t.nome?.toLowerCase().includes(termoLower) ||
+          t.modalidade_nome?.toLowerCase().includes(termoLower) ||
+          t.professor_nome?.toLowerCase().includes(termoLower)
+        );
+      }));
+      showSuccess('Turma excluída permanentemente');
+      setConfirmDeletePermanente({ visible: false, id: null, nome: '' });
+    } catch (error) {
+      console.error('Erro ao excluir permanentemente:', error);
+      showError('Erro ao excluir turma permanentemente');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <LayoutBase noPadding>
       <View style={styles.container}>
@@ -1142,6 +1171,12 @@ ${listaTurmas ? `Turmas deletadas:\n${listaTurmas}` : ''}
                   </View>
                 </View>
                 <View className="flex-row justify-end gap-2" style={{ flex: 0.8 }}>
+                  <TouchableOpacity
+                    onPress={() => handleDeletePermanente(turma.id, turma.nome)}
+                    className="h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
+                  >
+                    <Feather name="trash-2" size={18} color="#ef4444" />
+                  </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => {
                       setTurmaDesativar(turma);
@@ -1555,6 +1590,17 @@ ${listaTurmas ? `Turmas deletadas:\n${listaTurmas}` : ''}
           message={`Deseja realmente deletar a aula de ${confirmDelete.nome}?`}
           onConfirm={confirmarDelete}
           onCancel={() => setConfirmDelete({ visible: false, id: null, nome: '' })}
+        />
+
+        <ConfirmModal
+          visible={confirmDeletePermanente.visible}
+          title="Excluir Aula Permanentemente"
+          message={`Deseja excluir permanentemente a aula ${confirmDeletePermanente.nome}? Esta ação não pode ser desfeita.`}
+          onConfirm={confirmarDeletePermanente}
+          onCancel={() => setConfirmDeletePermanente({ visible: false, id: null, nome: '' })}
+          confirmText="Sim, excluir"
+          cancelText="Não"
+          type="danger"
         />
 
         {/* Modal Replicar Turmas */}

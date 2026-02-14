@@ -436,6 +436,43 @@ class TurmaController
     }
 
     /**
+     * Deletar turma permanentemente
+     * DELETE /admin/turmas/{id}/permanente
+     */
+    public function deletePermanente(Request $request, Response $response, array $args): Response
+    {
+        $id = (int) $args['id'];
+        $tenantId = $request->getAttribute('tenantId');
+        
+        // Verificar se turma existe e pertence ao tenant
+        $turma = $this->turmaModel->findById($id, $tenantId);
+        if (!$turma) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Turma não encontrada'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
+        }
+        
+        try {
+            $this->turmaModel->deleteHard($id);
+            
+            $response->getBody()->write(json_encode([
+                'type' => 'success',
+                'message' => 'Turma deletada permanentemente'
+            ], JSON_UNESCAPED_UNICODE));
+            
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Erro ao deletar turma permanentemente: ' . $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
+        }
+    }
+
+    /**
      * Listar turmas de um professor
      * GET /admin/professores/{professorId}/turmas
      */
@@ -956,4 +993,3 @@ class TurmaController
         }
     }
 }
-

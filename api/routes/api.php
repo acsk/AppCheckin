@@ -1058,6 +1058,7 @@ return function ($app) {
         $group->post('/turmas/desativar', [TurmaController::class, 'desativarTurma']);
         $group->put('/turmas/{id}', [TurmaController::class, 'update']);
         $group->delete('/turmas/{id}', [TurmaController::class, 'delete']);
+        $group->delete('/turmas/{id}/permanente', [TurmaController::class, 'deletePermanente']);
         $group->get('/turmas/{id}/vagas', [TurmaController::class, 'verificarVagas']);
         $group->get('/professores/{professorId}/turmas', [TurmaController::class, 'listarPorProfessor']);
         

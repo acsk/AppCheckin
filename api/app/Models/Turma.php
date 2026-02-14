@@ -235,6 +235,15 @@ class Turma
         return $this->delete($id);
     }
 
+    /**
+     * Deletar turma permanentemente (hard delete)
+     */
+    public function deleteHard(int $id): bool
+    {
+        $stmt = $this->db->prepare("DELETE FROM turmas WHERE id = :id");
+        return $stmt->execute(['id' => $id]);
+    }
+
     /**     * Verificar se turma pertence ao tenant
      */
     public function pertenceAoTenant(int $turmaId, int $tenantId): bool
