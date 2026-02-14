@@ -1,4 +1,5 @@
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
+import Constants from "expo-constants";
 import AsyncStorage from "@/src/utils/storage";
 
 // Callback para notificar logout quando token é inválido
@@ -47,7 +48,32 @@ const api = {
   async request(method, endpoint, data = null, config = {}) {
     try {
       // Obter URL da API em tempo de execução
-      const API_URL = getApiUrlRuntime();
+      let API_URL = getApiUrlRuntime();
+      // Fallback: em device físico, substituir localhost pelo host do Expo
+      if (API_URL.includes("localhost") || API_URL.includes("127.0.0.1")) {
+        const rawHostUri =
+          Constants.expoConfig?.hostUri ||
+          Constants.expoGoConfig?.hostUri ||
+          Constants.expoGoConfig?.debuggerHost ||
+          Constants.manifest?.debuggerHost ||
+          Constants.manifest?.hostUri ||
+          Constants.manifest2?.extra?.expoGo?.developer?.hostUri ||
+          Constants.linkingUri;
+        if (rawHostUri) {
+          const cleaned = String(rawHostUri).replace(/^[a-zA-Z]+:\/\//, "");
+          const host = cleaned.split(":")[0];
+          if (host && host !== "localhost") {
+            API_URL = API_URL
+              .replace("http://localhost", `http://${host}`)
+              .replace("http://127.0.0.1", `http://${host}`)
+              .replace("https://localhost", `https://${host}`)
+              .replace("https://127.0.0.1", `https://${host}`);
+          }
+        }
+      }
+      if (__DEV__) {
+        console.log("🌐 API_URL (api.js):", API_URL);
+      }
 
       // Buscar token do storage
       const token = await AsyncStorage.getItem("@appcheckin:token");

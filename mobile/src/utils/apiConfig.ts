@@ -5,19 +5,83 @@
 
 import { CONFIG } from "@/src/config/urls";
 import { Platform } from "react-native";
+import Constants from "expo-constants";
 
 const isWeb = Platform.OS === "web";
+const isAndroid = Platform.OS === "android";
+const getEnvUrl = (): string | undefined => {
+  const fromProcess =
+    process.env.EXPO_PUBLIC_API_URL ||
+    process.env.REACT_APP_API_URL ||
+    process.env.VITE_API_URL;
+  if (fromProcess) return fromProcess;
+
+  const extra =
+    (Constants.expoConfig as any)?.extra ||
+    (Constants.manifest as any)?.extra ||
+    (Constants as any)?.manifest2?.extra ||
+    {};
+
+  return (
+    extra.EXPO_PUBLIC_API_URL ||
+    extra.REACT_APP_API_URL ||
+    extra.VITE_API_URL
+  );
+};
+
+const normalizeLocalhostForAndroid = (url: string): string => {
+  if (!isAndroid) return url;
+  if (!url) return url;
+  // Android emulator não resolve localhost do host; usar 10.0.2.2
+  return url
+    .replace("http://localhost", "http://10.0.2.2")
+    .replace("http://127.0.0.1", "http://10.0.2.2")
+    .replace("https://localhost", "https://10.0.2.2")
+    .replace("https://127.0.0.1", "https://10.0.2.2");
+};
+
+const getHostFromExpo = (): string | null => {
+  const rawHostUri =
+    (Constants.expoConfig as any)?.hostUri ||
+    (Constants.expoGoConfig as any)?.hostUri ||
+    (Constants.expoGoConfig as any)?.debuggerHost ||
+    (Constants.manifest as any)?.debuggerHost ||
+    (Constants.manifest as any)?.hostUri ||
+    (Constants as any)?.manifest2?.extra?.expoGo?.developer?.hostUri ||
+    (Constants as any)?.linkingUri;
+
+  if (!rawHostUri) return null;
+
+  // rawHostUri pode vir como "192.168.1.100:8081" ou "exp://192.168.1.100:8081"
+  const cleaned = String(rawHostUri).replace(/^[a-zA-Z]+:\/\//, "");
+  const host = cleaned.split(":")[0];
+  if (!host || host === "localhost") return null;
+  return host;
+};
+
+const normalizeLocalhostForDevice = (url: string): string => {
+  if (!url) return url;
+  if (!url.includes("localhost") && !url.includes("127.0.0.1")) {
+    return url;
+  }
+
+  const host = getHostFromExpo();
+  if (!host) return url;
+  return url
+    .replace("http://localhost", `http://${host}`)
+    .replace("http://127.0.0.1", `http://${host}`)
+    .replace("https://localhost", `https://${host}`)
+    .replace("https://127.0.0.1", `https://${host}`);
+};
 
 // Detectar URL base da API baseado no ambiente
 const getApiUrl = (): string => {
   // 1️⃣ Primeiro, tentar usar variável de ambiente (para override)
-  const envUrl =
-    process.env.EXPO_PUBLIC_API_URL ||
-    process.env.REACT_APP_API_URL ||
-    process.env.VITE_API_URL;
+  const envUrl = getEnvUrl();
 
   if (envUrl) {
-    return envUrl;
+    const normalized = normalizeLocalhostForAndroid(envUrl);
+    return normalizeLocalhostForDevice(normalized);
   }
 
   // 2️⃣ Se não houver env, usar URLs centralizadas de config
@@ -25,7 +89,8 @@ const getApiUrl = (): string => {
   const configUrl = CONFIG.api[appEnv as keyof typeof CONFIG.api];
 
   if (configUrl) {
-    return configUrl;
+    const normalized = normalizeLocalhostForAndroid(configUrl);
+    return normalizeLocalhostForDevice(normalized);
   }
 
   // 3️⃣ Em web (produção): tentar usar o host atual ou fallback
@@ -45,6 +110,14 @@ let cachedApiUrl: string | null = null;
 export const getApiUrlRuntime = (): string => {
   // Retornar valor em cache se disponível
   if (cachedApiUrl) {
+    // Se cache ainda está em localhost, tentar corrigir usando host do Expo
+    if (
+      (cachedApiUrl.includes("localhost") ||
+        cachedApiUrl.includes("127.0.0.1")) &&
+      getHostFromExpo()
+    ) {
+      cachedApiUrl = normalizeLocalhostForDevice(cachedApiUrl);
+    }
     return cachedApiUrl;
   }
 
@@ -67,6 +140,20 @@ export const getApiUrlRuntime = (): string => {
 
   const url = getApiUrl();
   cachedApiUrl = url;
+  if (__DEV__) {
+    console.log(
+      "🌐 API_URL runtime:",
+      cachedApiUrl,
+      "| platform:",
+      Platform.OS,
+      "| expoHost:",
+      getHostFromExpo() || "null",
+      "| envUrl:",
+      getEnvUrl() || "null",
+      "| appEnv:",
+      process.env.EXPO_PUBLIC_APP_ENV || "development",
+    );
+  }
   return url;
 };
 

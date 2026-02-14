@@ -850,6 +850,7 @@ return function ($app) {
         
         // Assinaturas recorrentes
         $group->get('/assinaturas', [AssinaturaController::class, 'minhasAssinaturas']);
+        $group->get('/assinaturas/aprovadas-hoje', [AssinaturaController::class, 'aprovadasHoje']);
         $group->post('/assinatura/criar', [AssinaturaController::class, 'criar']);
         $group->post('/assinatura/{id}/cancelar', [AssinaturaController::class, 'cancelar']);
         

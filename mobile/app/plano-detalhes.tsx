@@ -3,7 +3,7 @@ import { colors } from "@/src/theme/colors";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Image,
@@ -100,6 +100,10 @@ export default function PlanoDetalhesScreen() {
   } | null>(null);
   const [pixLoading, setPixLoading] = useState(false);
   const [pixCopied, setPixCopied] = useState(false);
+  const [pixChecking, setPixChecking] = useState(false);
+  const [pixPollingActive, setPixPollingActive] = useState(false);
+  const [pixStatusMessage, setPixStatusMessage] = useState<string | null>(null);
+  const pixCheckRunning = useRef(false);
   const { width: screenWidth } = useWindowDimensions();
 
   const handleBack = () => {
@@ -300,6 +304,99 @@ export default function PlanoDetalhesScreen() {
       })();
     }
   }, [redirectModalVisible, countdown, paymentUrlToOpen]);
+
+  useEffect(() => {
+    if (!pixPollingActive) return;
+    const interval = setInterval(() => {
+      checkPixAprovacao(false);
+    }, 3000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pixPollingActive, pixData?.matricula_id, apiUrl]);
+
+  const checkPixAprovacao = async (manual: boolean) => {
+    if (!pixData?.matricula_id || !apiUrl) return;
+    if (pixCheckRunning.current) return;
+
+    pixCheckRunning.current = true;
+    if (manual) {
+      setPixChecking(true);
+    }
+
+    try {
+      const token = await AsyncStorage.getItem("@appcheckin:token");
+      if (!token) throw new Error("Token não encontrado");
+
+      const url = `${apiUrl}/mobile/assinaturas/aprovadas-hoje?matricula_id=${pixData.matricula_id}`;
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      });
+
+      const text = await response.text();
+      let json: any = {};
+      try {
+        json = text ? JSON.parse(text) : {};
+      } catch {
+        json = {};
+      }
+
+      if (!response.ok) {
+        if (manual) {
+          showErrorModal(
+            "⚠️ Erro ao consultar pagamento",
+            json?.message || text || "Não foi possível verificar o pagamento.",
+            "warning",
+          );
+        }
+        return;
+      }
+
+      const statusGateway =
+        typeof json?.data?.status_gateway === "string"
+          ? json.data.status_gateway.toLowerCase()
+          : null;
+      const statusCodigo =
+        typeof json?.data?.status_codigo === "string"
+          ? json.data.status_codigo.toLowerCase()
+          : null;
+      const aprovado =
+        json?.approved === true ||
+        statusGateway === "approved" ||
+        statusCodigo === "paga";
+
+      if (aprovado) {
+        setPixPollingActive(false);
+        setPixModalVisible(false);
+        setPixStatusMessage(null);
+        router.replace("/minhas-assinaturas");
+        return;
+      }
+
+      if (manual) {
+        const pendingMessage =
+          statusGateway === "pending"
+            ? "Pagamento ainda pendente. Vamos continuar verificando a cada 3 segundos."
+            : "Pagamento ainda não confirmado. Vamos continuar verificando a cada 3 segundos.";
+        setPixStatusMessage(pendingMessage);
+        setPixPollingActive(true);
+      }
+    } catch (err) {
+      if (manual) {
+        const msg =
+          err instanceof Error ? err.message : "Erro ao consultar pagamento";
+        showErrorModal("⚠️ Erro ao consultar pagamento", msg, "warning");
+      }
+    } finally {
+      pixCheckRunning.current = false;
+      if (manual) {
+        setPixChecking(false);
+      }
+    }
+  };
 
   const handleContratar = async () => {
     if (!plano || !selectedCicloId) return;
@@ -506,6 +603,8 @@ export default function PlanoDetalhesScreen() {
         ticket_url: pix.ticket_url || null,
         expires_at: pix.expires_at || null,
       });
+      setPixStatusMessage(null);
+      setPixPollingActive(false);
       setPixModalVisible(true);
     } catch (err) {
       const errorMsg =
@@ -998,8 +1097,44 @@ export default function PlanoDetalhesScreen() {
             )}
 
             <TouchableOpacity
+              style={[
+                styles.pixCheckButton,
+                pixChecking && styles.pixCheckButtonLoading,
+              ]}
+              onPress={() => {
+                checkPixAprovacao(true);
+              }}
+              disabled={pixChecking}
+            >
+              {pixChecking ? (
+                <>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={styles.pixCheckButtonText}>
+                    Consultando pagamento...
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Feather name="check-circle" size={16} color="#fff" />
+                  <Text style={styles.pixCheckButtonText}>
+                    Já pagou? Consultar pagamento
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            {!!pixStatusMessage && (
+              <Text style={styles.pixStatusMessage}>{pixStatusMessage}</Text>
+            )}
+
+            <TouchableOpacity
               style={[styles.modalButton, { backgroundColor: "#6b7280" }]}
-              onPress={() => setPixModalVisible(false)}
+              onPress={() => {
+                setPixModalVisible(false);
+                setPixPollingActive(false);
+                setPixStatusMessage(null);
+                setPixChecking(false);
+              }}
             >
               <Text style={styles.modalButtonText}>Fechar</Text>
             </TouchableOpacity>
@@ -1559,5 +1694,31 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 15,
     fontWeight: "700",
+  },
+  pixCheckButton: {
+    width: "100%",
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#0f766e",
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 10,
+  },
+  pixCheckButtonLoading: {
+    backgroundColor: "#0f766e",
+    opacity: 0.85,
+  },
+  pixCheckButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  pixStatusMessage: {
+    fontSize: 12,
+    color: colors.textMuted,
+    textAlign: "center",
+    marginBottom: 10,
   },
 });

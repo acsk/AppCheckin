@@ -494,6 +494,73 @@ class AssinaturaController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
     }
+
+    /**
+     * Verificar se há assinatura aprovada hoje (para PIX/redirecionamento)
+     * GET /mobile/assinaturas/aprovadas-hoje?matricula_id=123
+     */
+    public function aprovadasHoje(Request $request, Response $response): Response
+    {
+        try {
+            $tenantId = $request->getAttribute('tenantId');
+            $usuarioId = $request->getAttribute('userId');
+            $params = $request->getQueryParams();
+            $matriculaId = isset($params['matricula_id']) ? (int)$params['matricula_id'] : 0;
+
+            if ($matriculaId <= 0) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'matricula_id é obrigatório'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            $stmt = $this->db->prepare("
+                SELECT a.id, a.matricula_id, a.tipo_cobranca, a.status_gateway,
+                       a.ultima_cobranca, a.atualizado_em, a.external_reference, a.payment_url,
+                       s.codigo as status_codigo, s.nome as status_nome
+                FROM assinaturas a
+                INNER JOIN alunos al ON al.id = a.aluno_id
+                LEFT JOIN assinatura_status s ON s.id = a.status_id
+                WHERE a.tenant_id = ?
+                  AND al.usuario_id = ?
+                  AND a.matricula_id = ?
+                  AND (a.status_gateway = 'approved' OR s.codigo IN ('ativa', 'paga'))
+                  AND DATE(COALESCE(a.ultima_cobranca, a.atualizado_em, a.criado_em)) = CURDATE()
+                ORDER BY a.atualizado_em DESC
+                LIMIT 1
+            ");
+            $stmt->execute([$tenantId, $usuarioId, $matriculaId]);
+            $assinatura = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'approved' => (bool)$assinatura,
+                'data' => $assinatura ? [
+                    'assinatura_id' => (int)$assinatura['id'],
+                    'matricula_id' => (int)$assinatura['matricula_id'],
+                    'status_gateway' => $assinatura['status_gateway'] ?? null,
+                    'status_codigo' => $assinatura['status_codigo'] ?? null,
+                    'status_nome' => $assinatura['status_nome'] ?? null,
+                    'tipo_cobranca' => $assinatura['tipo_cobranca'] ?? null,
+                    'ultima_cobranca' => $assinatura['ultima_cobranca'],
+                    'atualizado_em' => $assinatura['atualizado_em'],
+                    'external_reference' => $assinatura['external_reference'] ?? null,
+                    'payment_url' => $assinatura['payment_url'] ?? null
+                ] : null
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            error_log("[AssinaturaController::aprovadasHoje] Erro: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao consultar assinatura aprovada',
+                'detail' => $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
     
     private function getStatusLabel(string $status): string
     {

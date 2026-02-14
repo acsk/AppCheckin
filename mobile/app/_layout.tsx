@@ -9,9 +9,14 @@ import {
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef } from "react";
-import { AppState, Platform } from "react-native";
+import { AppState, Platform, StyleSheet, View } from "react-native";
+import {
+  SafeAreaProvider,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import { colors } from "@/src/theme/colors";
 
 // Importar Reanimated apenas no mobile
 if (Platform.OS !== "web") {
@@ -41,32 +46,62 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-      <ErrorBoundary>
-        <Stack>
-          <Stack.Screen name="index" options={{ headerShown: false }} />
-          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="planos" options={{ headerShown: false }} />
-          <Stack.Screen
-            name="plano-detalhes"
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name="minhas-assinaturas"
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name="matricula-detalhes"
-            options={{ headerShown: false }}
-          />
-          <Stack.Screen
-            name="turma-detalhes"
-            options={{ headerShown: false }}
-          />
-        </Stack>
-        <StatusBar style="auto" />
-      </ErrorBoundary>
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+        <ErrorBoundary>
+          <View style={styles.root}>
+            <StatusBarBackground />
+            <Stack>
+              <Stack.Screen name="index" options={{ headerShown: false }} />
+              <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="planos" options={{ headerShown: false }} />
+              <Stack.Screen
+                name="plano-detalhes"
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="minhas-assinaturas"
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="matricula-detalhes"
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="turma-detalhes"
+                options={{ headerShown: false }}
+              />
+            </Stack>
+          </View>
+          <StatusBar style="light" backgroundColor={colors.primary} />
+        </ErrorBoundary>
+      </ThemeProvider>
+    </SafeAreaProvider>
   );
 }
+
+function StatusBarBackground() {
+  const insets = useSafeAreaInsets();
+  if (!insets.top) return null;
+  return (
+    <View
+      pointerEvents="none"
+      style={[styles.statusBarFill, { height: insets.top }]}
+    />
+  );
+}
+
+const styles = StyleSheet.create({
+  root: {
+    flex: 1,
+  },
+  statusBarFill: {
+    backgroundColor: colors.primary,
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  },
+});
