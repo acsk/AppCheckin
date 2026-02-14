@@ -666,7 +666,7 @@ export default function FormPlanoScreen() {
                     enabled={!saving}
                     style={styles.picker}
                   >
-                    <Picker.Item label="1 dia" value="" />
+                    <Picker.Item label="1 dia" value="1" />
                     <Picker.Item label="30 dias (Mensal)" value="30" />
                     <Picker.Item label="90 dias (Trimestral)" value="90" />
                     <Picker.Item label="180 dias (Semestral)" value="180" />
