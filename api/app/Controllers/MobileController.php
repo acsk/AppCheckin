@@ -851,6 +851,7 @@ class MobileController
                 INNER JOIN turmas t ON c.turma_id = t.id
                 INNER JOIN dias d ON t.dia_id = d.id
                 WHERE a.usuario_id = :user_id
+                AND (c.presente IS NULL OR c.presente = 1)
                 ORDER BY d.data DESC, t.horario_inicio DESC 
                 LIMIT :limit OFFSET :offset";
         
@@ -865,7 +866,8 @@ class MobileController
         // Contar total
         $sqlCount = "SELECT COUNT(*) as total FROM checkins c
                      INNER JOIN alunos a ON a.id = c.aluno_id
-                     WHERE a.usuario_id = :user_id";
+                     WHERE a.usuario_id = :user_id
+                     AND (c.presente IS NULL OR c.presente = 1)";
         $stmtCount = $this->db->prepare($sqlCount);
         $stmtCount->execute(['user_id' => $userId]);
         $total = (int) $stmtCount->fetch()['total'];
@@ -1007,6 +1009,7 @@ class MobileController
                 WHERE a.usuario_id = :user_id 
                 AND t.tenant_id = :tenant_id
                 AND c.tenant_id = :tenant_id_c
+                AND (c.presente IS NULL OR c.presente = 1)
                 AND d.data BETWEEN :semana_inicio AND :semana_fim
                 ORDER BY d.data ASC";
         
