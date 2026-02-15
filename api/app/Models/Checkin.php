@@ -787,8 +787,9 @@ class Checkin
              INNER JOIN usuarios u ON a.usuario_id = u.id
              INNER JOIN turmas t ON c.turma_id = t.id AND t.tenant_id = c.tenant_id
              WHERE c.tenant_id = :tenant_id
-               AND MONTH(c.data_checkin_date) = MONTH(CURRENT_DATE())
-               AND YEAR(c.data_checkin_date) = YEAR(CURRENT_DATE())";
+               AND MONTH(COALESCE(c.data_checkin_date, DATE(c.created_at))) = MONTH(CURRENT_DATE())
+               AND YEAR(COALESCE(c.data_checkin_date, DATE(c.created_at))) = YEAR(CURRENT_DATE())
+               AND (c.presente IS NULL OR c.presente = 1)";
         
         if ($modalidadeId) {
             $sql .= " AND t.modalidade_id = :modalidade_id";
@@ -840,7 +841,7 @@ class Checkin
         
         foreach ($modalidades as $modalidade) {
             // Para cada modalidade, calcular a posição do usuário
-            $sqlRanking = "SELECT 
+        $sqlRanking = "SELECT 
                     aluno_id,
                     total_checkins,
                     posicao
@@ -853,8 +854,9 @@ class Checkin
                     INNER JOIN turmas t ON c.turma_id = t.id AND t.tenant_id = c.tenant_id
                     WHERE c.tenant_id = :tenant_id
                       AND t.modalidade_id = :modalidade_id
-                      AND MONTH(c.data_checkin_date) = MONTH(CURRENT_DATE())
-                      AND YEAR(c.data_checkin_date) = YEAR(CURRENT_DATE())
+                      AND MONTH(COALESCE(c.data_checkin_date, DATE(c.created_at))) = MONTH(CURRENT_DATE())
+                      AND YEAR(COALESCE(c.data_checkin_date, DATE(c.created_at))) = YEAR(CURRENT_DATE())
+                      AND (c.presente IS NULL OR c.presente = 1)
                     GROUP BY c.aluno_id
                 ) ranking
                 WHERE aluno_id = (SELECT id FROM alunos WHERE usuario_id = :usuario_id LIMIT 1)";
@@ -873,8 +875,9 @@ class Checkin
                 INNER JOIN turmas t ON c.turma_id = t.id AND t.tenant_id = c.tenant_id
                 WHERE c.tenant_id = :tenant_id
                   AND t.modalidade_id = :modalidade_id
-                  AND MONTH(c.data_checkin_date) = MONTH(CURRENT_DATE())
-                  AND YEAR(c.data_checkin_date) = YEAR(CURRENT_DATE())";
+                  AND MONTH(COALESCE(c.data_checkin_date, DATE(c.created_at))) = MONTH(CURRENT_DATE())
+                  AND YEAR(COALESCE(c.data_checkin_date, DATE(c.created_at))) = YEAR(CURRENT_DATE())
+                  AND (c.presente IS NULL OR c.presente = 1)";
             
             $stmtTotal = $this->db->prepare($sqlTotal);
             $stmtTotal->execute([

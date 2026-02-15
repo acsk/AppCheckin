@@ -3630,8 +3630,9 @@ class MobileController
             $stmtTotal = $this->db->prepare(
                 "SELECT COUNT(*) AS total FROM checkins c
                  WHERE c.tenant_id = :tenant_id
-                   AND MONTH(c.data_checkin_date) = MONTH(CURRENT_DATE())
-                   AND YEAR(c.data_checkin_date) = YEAR(CURRENT_DATE())"
+                   AND MONTH(COALESCE(c.data_checkin_date, DATE(c.created_at))) = MONTH(CURRENT_DATE())
+                   AND YEAR(COALESCE(c.data_checkin_date, DATE(c.created_at))) = YEAR(CURRENT_DATE())
+                   AND (c.presente IS NULL OR c.presente = 1)"
             );
             $stmtTotal->execute(['tenant_id' => (int)$tenantId]);
             $totalTenantMes = (int) ($stmtTotal->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
