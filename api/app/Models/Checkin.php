@@ -303,7 +303,7 @@ class Checkin
         // presente = 1 (presente) ou presente IS NULL (pendente) contam
         // presente = 0 (falta) NÃO conta - libera crédito para reposição
         $sql .= " WHERE a.usuario_id = :usuario_id
-                  AND YEARWEEK(c.created_at, 1) = YEARWEEK(NOW(), 1)
+                  AND YEARWEEK(COALESCE(c.data_checkin_date, DATE(c.created_at)), 1) = YEARWEEK(CURDATE(), 1)
                   AND (c.presente IS NULL OR c.presente = 1)";
         
         if ($modalidadeId) {
@@ -335,8 +335,8 @@ class Checkin
         }
         
         $sql .= " WHERE a.usuario_id = :usuario_id
-                  AND YEAR(c.data_checkin_date) = YEAR(CURDATE())
-                  AND MONTH(c.data_checkin_date) = MONTH(CURDATE())
+                  AND YEAR(COALESCE(c.data_checkin_date, DATE(c.created_at))) = YEAR(CURDATE())
+                  AND MONTH(COALESCE(c.data_checkin_date, DATE(c.created_at))) = MONTH(CURDATE())
                   AND (c.presente IS NULL OR c.presente = 1)";
         
         if ($modalidadeId) {

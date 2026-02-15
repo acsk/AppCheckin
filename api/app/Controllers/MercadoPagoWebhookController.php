@@ -568,6 +568,12 @@ class MercadoPagoWebhookController
             $this->ativarMatricula($matriculaIdInt);
             $this->baixarPagamentoPlano($matriculaIdInt, $pagamento);
             $this->atualizarAssinaturaAvulsa($matriculaIdInt, $pagamento);
+        } elseif (in_array($pagamento['status'], ['refunded', 'cancelled', 'charged_back'], true)) {
+            // Para pagamentos avulsos estornados/cancelados, cancelar assinatura e matrícula
+            $matriculaIdInt = (int) $matriculaId;
+            error_log("[Webhook MP] ⚠️ Pagamento {$pagamento['status']} - matriculaId: {$matriculaIdInt}");
+            $this->cancelarMatricula($matriculaIdInt);
+            $this->atualizarAssinaturaAvulsaCancelada($matriculaIdInt, $pagamento);
         }
     }
     
@@ -662,6 +668,70 @@ class MercadoPagoWebhookController
             // Não lança exceção para não interromper o fluxo do webhook
         }
     }
+
+    /**
+     * Atualizar assinatura avulsa para cancelada após estorno/cancelamento
+     */
+    private function atualizarAssinaturaAvulsaCancelada(int $matriculaId, array $pagamento): void
+    {
+        try {
+            error_log("[Webhook MP] 🔍 Buscando assinatura (cancelamento) para matrícula #{$matriculaId}...");
+            
+            $preferenceId = $pagamento['preference_id'] ?? null;
+            $stmtBuscar = $this->db->prepare("
+                SELECT a.id, a.tipo_cobranca, a.gateway_preference_id, a.status_id,
+                       a.matricula_id,
+                       s.codigo as status_atual
+                FROM assinaturas a
+                LEFT JOIN assinatura_status s ON s.id = a.status_id
+                WHERE a.matricula_id = ? 
+                   OR (a.gateway_preference_id = ? AND ? IS NOT NULL)
+                LIMIT 1
+            ");
+            $stmtBuscar->execute([$matriculaId, $preferenceId, $preferenceId]);
+            $assinatura = $stmtBuscar->fetch(\PDO::FETCH_ASSOC);
+            
+            if (!$assinatura) {
+                error_log("[Webhook MP] ⚠️ Nenhuma assinatura encontrada para cancelamento (matrícula #{$matriculaId})");
+                return;
+            }
+            
+            // Só aplicar para avulso
+            if (($assinatura['tipo_cobranca'] ?? '') !== 'avulso') {
+                error_log("[Webhook MP] ℹ️ Assinatura #{$assinatura['id']} não é avulsa, ignorando cancelamento");
+                return;
+            }
+            
+            // Buscar ID do status 'cancelada'
+            $stmtStatus = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'cancelada'");
+            $stmtStatus->execute();
+            $statusId = $stmtStatus->fetchColumn() ?: null;
+            
+            if (!$statusId) {
+                error_log("[Webhook MP] ⚠️ Status 'cancelada' não encontrado, abortando");
+                return;
+            }
+            
+            $stmtUpdate = $this->db->prepare("
+                UPDATE assinaturas
+                SET status_id = ?,
+                    status_gateway = ?,
+                    atualizado_em = NOW()
+                WHERE id = ?
+            ");
+            $stmtUpdate->execute([
+                $statusId,
+                $pagamento['status'] ?? 'cancelled',
+                $assinatura['id']
+            ]);
+            
+            if ($stmtUpdate->rowCount() > 0) {
+                error_log("[Webhook MP] ✅ Assinatura #{$assinatura['id']} cancelada após estorno/cancelamento");
+            }
+        } catch (\Exception $e) {
+            error_log("[Webhook MP] ⚠️ Erro ao cancelar assinatura avulsa: " . $e->getMessage());
+        }
+    }
     
     /**
      * Ativar matrícula após pagamento aprovado
@@ -680,6 +750,36 @@ class MercadoPagoWebhookController
         
         if ($stmtUpdate->rowCount() > 0) {
             error_log("Matrícula #{$matriculaId} ativada após pagamento aprovado");
+        }
+    }
+
+    /**
+     * Cancelar matrícula após estorno/cancelamento
+     */
+    private function cancelarMatricula(int $matriculaId): void
+    {
+        $stmtStatus = $this->db->prepare("SELECT id FROM status_matricula WHERE codigo = 'cancelada' LIMIT 1");
+        $stmtStatus->execute();
+        $statusCanceladaId = $stmtStatus->fetchColumn();
+        
+        if (!$statusCanceladaId) {
+            error_log("[Webhook MP] ⚠️ Status 'cancelada' não encontrado para matrícula");
+            return;
+        }
+        
+        $stmtUpdate = $this->db->prepare("
+            UPDATE matriculas
+            SET status_id = ?,
+                updated_at = NOW()
+            WHERE id = ?
+            AND status_id IN (
+                SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'pendente', 'vencida')
+            )
+        ");
+        $stmtUpdate->execute([$statusCanceladaId, $matriculaId]);
+        
+        if ($stmtUpdate->rowCount() > 0) {
+            error_log("[Webhook MP] ✅ Matrícula #{$matriculaId} cancelada após estorno/cancelamento");
         }
     }
     
