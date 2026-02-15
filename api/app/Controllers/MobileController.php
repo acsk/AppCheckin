@@ -217,7 +217,8 @@ class MobileController
             // Total de check-ins do usuário (via aluno_id)
             $sqlTotal = "SELECT COUNT(*) as total FROM checkins c
                          INNER JOIN alunos a ON a.id = c.aluno_id
-                         WHERE a.usuario_id = :user_id";
+                         WHERE a.usuario_id = :user_id
+                         AND (c.presente IS NULL OR c.presente = 1)";
             $stmt = $this->db->prepare($sqlTotal);
             $stmt->execute(['user_id' => $userId]);
             $totalCheckins = (int) ($stmt->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
@@ -226,8 +227,9 @@ class MobileController
             $sqlMes = "SELECT COUNT(*) as total FROM checkins c
                        INNER JOIN alunos a ON a.id = c.aluno_id
                        WHERE a.usuario_id = :user_id 
-                       AND MONTH(c.data_checkin) = MONTH(CURRENT_DATE())
-                       AND YEAR(c.data_checkin) = YEAR(CURRENT_DATE())";
+                       AND MONTH(COALESCE(c.data_checkin_date, DATE(c.created_at))) = MONTH(CURRENT_DATE())
+                       AND YEAR(COALESCE(c.data_checkin_date, DATE(c.created_at))) = YEAR(CURRENT_DATE())
+                       AND (c.presente IS NULL OR c.presente = 1)";
             $stmtMes = $this->db->prepare($sqlMes);
             $stmtMes->execute(['user_id' => $userId]);
             $checkinsMes = (int) ($stmtMes->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
@@ -236,12 +238,13 @@ class MobileController
             $sequencia = $this->calcularSequencia($userId);
 
             // Último check-in
-            $sqlUltimo = "SELECT c.data_checkin, t.horario_inicio as hora, d.data
+            $sqlUltimo = "SELECT c.data_checkin_date, t.horario_inicio as hora, d.data
                           FROM checkins c
                           INNER JOIN alunos a ON a.id = c.aluno_id
                           INNER JOIN turmas t ON c.turma_id = t.id
                           INNER JOIN dias d ON t.dia_id = d.id
                           WHERE a.usuario_id = :user_id
+                          AND (c.presente IS NULL OR c.presente = 1)
                           ORDER BY d.data DESC, t.horario_inicio DESC LIMIT 1";
             
             $stmtUltimo = $this->db->prepare($sqlUltimo);
@@ -253,7 +256,7 @@ class MobileController
                 'checkins_mes' => $checkinsMes,
                 'sequencia_dias' => $sequencia,
                 'ultimo_checkin' => $ultimoCheckin ? [
-                    'data' => $ultimoCheckin['data'] ?? date('Y-m-d'),
+                    'data' => $ultimoCheckin['data'] ?? ($ultimoCheckin['data_checkin_date'] ?? date('Y-m-d')),
                     'hora' => $ultimoCheckin['hora'] ?? '00:00:00'
                 ] : null,
             ];
@@ -283,6 +286,7 @@ class MobileController
                 INNER JOIN turmas t ON c.turma_id = t.id
                 INNER JOIN dias d ON t.dia_id = d.id
                 WHERE a.usuario_id = :user_id
+                AND (c.presente IS NULL OR c.presente = 1)
                 ORDER BY d.data DESC LIMIT 30";
         
         $stmt = $this->db->prepare($sql);
