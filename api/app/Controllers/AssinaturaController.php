@@ -404,6 +404,33 @@ class AssinaturaController
                 ], JSON_UNESCAPED_UNICODE));
                 return $response->withHeader('Content-Type', 'application/json');
             }
+
+            // Reconciliar assinaturas avulsas canceladas/estornadas (casos manuais)
+            try {
+                $stmtStatusCancelada = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'cancelada' LIMIT 1");
+                $stmtStatusCancelada->execute();
+                $statusCanceladaId = (int) ($stmtStatusCancelada->fetchColumn() ?: 0);
+
+                if ($statusCanceladaId > 0) {
+                    $stmtReconcilia = $this->db->prepare("
+                        UPDATE assinaturas a
+                        INNER JOIN pagamentos_mercadopago pm
+                            ON pm.matricula_id = a.matricula_id
+                           AND pm.tenant_id = a.tenant_id
+                        SET a.status_id = ?,
+                            a.status_gateway = pm.status,
+                            a.atualizado_em = NOW()
+                        WHERE a.aluno_id = ?
+                          AND a.tenant_id = ?
+                          AND a.tipo_cobranca = 'avulso'
+                          AND pm.status IN ('cancelled', 'refunded', 'charged_back')
+                          AND (a.status_id != ? OR a.status_gateway NOT IN ('cancelled', 'refunded', 'charged_back'))
+                    ");
+                    $stmtReconcilia->execute([$statusCanceladaId, $alunoId, $tenantId, $statusCanceladaId]);
+                }
+            } catch (\Exception $e) {
+                error_log("[minhasAssinaturas] Erro ao reconciliar assinaturas: " . $e->getMessage());
+            }
             
             $stmt = $this->db->prepare("
                 SELECT a.id, a.status_id, a.valor, a.data_inicio, a.data_fim, a.proxima_cobranca,
