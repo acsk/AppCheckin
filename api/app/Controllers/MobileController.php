@@ -4883,6 +4883,62 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
 
+            // Se já existe matrícula pendente na mesma modalidade, reutilizar o pagamento anterior
+            $stmtPendente = $this->db->prepare("
+                SELECT m.id, m.plano_id, m.plano_ciclo_id, m.valor, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento,
+                       sm.codigo as status_codigo
+                FROM matriculas m
+                INNER JOIN planos p ON p.id = m.plano_id
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
+                WHERE m.aluno_id = ?
+                  AND m.tenant_id = ?
+                  AND p.modalidade_id = ?
+                  AND sm.codigo = 'pendente'
+                ORDER BY m.updated_at DESC, m.id DESC
+                LIMIT 1
+            ");
+            $stmtPendente->execute([$alunoId, $tenantId, $plano['modalidade_id']]);
+            $matriculaPendente = $stmtPendente->fetch(\PDO::FETCH_ASSOC) ?: null;
+
+            if ($matriculaPendente) {
+                // Buscar assinatura pendente para recuperar payment_url/preference_id
+                $stmtAss = $this->db->prepare("
+                    SELECT id, gateway_preference_id, payment_url, tipo_cobranca, status_gateway
+                    FROM assinaturas
+                    WHERE matricula_id = ? AND tenant_id = ?
+                    ORDER BY id DESC
+                    LIMIT 1
+                ");
+                $stmtAss->execute([(int)$matriculaPendente['id'], $tenantId]);
+                $assinaturaPendente = $stmtAss->fetch(\PDO::FETCH_ASSOC) ?: null;
+
+                $response->getBody()->write(json_encode([
+                    'success' => true,
+                    'message' => 'Já existe pagamento pendente. Reabra para concluir.',
+                    'data' => [
+                        'matricula_id' => (int) $matriculaPendente['id'],
+                        'plano_id' => (int) $matriculaPendente['plano_id'],
+                        'plano_ciclo_id' => $matriculaPendente['plano_ciclo_id'] ? (int)$matriculaPendente['plano_ciclo_id'] : null,
+                        'plano_nome' => $plano['nome'],
+                        'modalidade' => $plano['modalidade_nome'],
+                        'valor' => (float) $matriculaPendente['valor'],
+                        'valor_formatado' => 'R$ ' . number_format((float)$matriculaPendente['valor'], 2, ',', '.'),
+                        'status' => 'pendente',
+                        'data_inicio' => $matriculaPendente['data_inicio'],
+                        'data_vencimento' => $matriculaPendente['proxima_data_vencimento'] ?? $matriculaPendente['data_vencimento'],
+                        'vencida' => ($matriculaPendente['proxima_data_vencimento'] ?? $matriculaPendente['data_vencimento']) < date('Y-m-d'),
+                        'payment_url' => $assinaturaPendente['payment_url'] ?? null,
+                        'preference_id' => $assinaturaPendente['gateway_preference_id'] ?? null,
+                        'tipo_pagamento' => ($assinaturaPendente['tipo_cobranca'] ?? '') === 'avulso' ? 'pagamento_unico' : 'assinatura',
+                        'metodo_pagamento' => $metodoPagamento,
+                        'tipo_cobranca' => $assinaturaPendente['tipo_cobranca'] ?? 'avulso',
+                        'recorrente' => ($assinaturaPendente['tipo_cobranca'] ?? '') === 'recorrente'
+                    ]
+                ], JSON_UNESCAPED_UNICODE));
+
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+            }
+
             // Verificar se existe matrícula vencida na mesma modalidade para reutilizar
             $stmtVencida = $this->db->prepare("
                 SELECT m.id, m.plano_id, m.plano_ciclo_id, m.valor, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento,
@@ -5384,6 +5440,102 @@ class MobileController
                 ]
             ]));
             
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * Reabrir pagamento pendente de matrícula
+     * GET /mobile/pagamento/reabrir/{matriculaId}
+     */
+    public function reabrirPagamentoPendente(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $userId = (int) $request->getAttribute('userId');
+            $tenantId = (int) $request->getAttribute('tenantId');
+            $matriculaId = (int) ($args['matriculaId'] ?? 0);
+
+            if ($matriculaId <= 0) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'matriculaId inválido'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            $stmt = $this->db->prepare("
+                SELECT m.id, m.plano_id, m.plano_ciclo_id, m.valor, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento,
+                       sm.codigo as status_codigo,
+                       p.nome as plano_nome, md.nome as modalidade_nome
+                FROM matriculas m
+                INNER JOIN alunos a ON a.id = m.aluno_id
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
+                INNER JOIN planos p ON p.id = m.plano_id
+                LEFT JOIN modalidades md ON md.id = p.modalidade_id
+                WHERE m.id = ?
+                  AND m.tenant_id = ?
+                  AND a.usuario_id = ?
+                LIMIT 1
+            ");
+            $stmt->execute([$matriculaId, $tenantId, $userId]);
+            $matricula = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$matricula) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'Matrícula não encontrada'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            if (($matricula['status_codigo'] ?? '') !== 'pendente') {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'A matrícula não está pendente'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            $stmtAss = $this->db->prepare("
+                SELECT id, gateway_preference_id, payment_url, tipo_cobranca, status_gateway
+                FROM assinaturas
+                WHERE matricula_id = ? AND tenant_id = ?
+                ORDER BY id DESC
+                LIMIT 1
+            ");
+            $stmtAss->execute([$matriculaId, $tenantId]);
+            $assinatura = $stmtAss->fetch(\PDO::FETCH_ASSOC) ?: null;
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'message' => 'Pagamento pendente encontrado',
+                'data' => [
+                    'matricula_id' => (int) $matricula['id'],
+                    'plano_id' => (int) $matricula['plano_id'],
+                    'plano_ciclo_id' => $matricula['plano_ciclo_id'] ? (int)$matricula['plano_ciclo_id'] : null,
+                    'plano_nome' => $matricula['plano_nome'],
+                    'modalidade' => $matricula['modalidade_nome'],
+                    'valor' => (float) $matricula['valor'],
+                    'valor_formatado' => 'R$ ' . number_format((float)$matricula['valor'], 2, ',', '.'),
+                    'status' => 'pendente',
+                    'data_inicio' => $matricula['data_inicio'],
+                    'data_vencimento' => $matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'],
+                    'vencida' => ($matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento']) < date('Y-m-d'),
+                    'payment_url' => $assinatura['payment_url'] ?? null,
+                    'preference_id' => $assinatura['gateway_preference_id'] ?? null,
+                    'tipo_pagamento' => ($assinatura['tipo_cobranca'] ?? '') === 'avulso' ? 'pagamento_unico' : 'assinatura',
+                    'tipo_cobranca' => $assinatura['tipo_cobranca'] ?? 'avulso',
+                    'recorrente' => ($assinatura['tipo_cobranca'] ?? '') === 'recorrente'
+                ]
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+        } catch (\Exception $e) {
+            error_log("[MobileController::reabrirPagamentoPendente] Erro: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'message' => 'Erro ao reabrir pagamento'
+            ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
     }
