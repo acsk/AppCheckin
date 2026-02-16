@@ -6,6 +6,36 @@ import api from "./api";
  * Gerencia login, logout, seleção de tenant e armazenamento de tokens
  */
 export const authService = {
+  _getTenantIdFromData(tenantLike) {
+    return tenantLike?.tenant?.id ?? tenantLike?.id ?? null;
+  },
+
+  _getTenantRoles(tenantsList, tenantId) {
+    if (!tenantId || !Array.isArray(tenantsList)) return [];
+    const match = tenantsList.find(
+      (t) => (t?.tenant?.id ?? t?.id) === tenantId,
+    );
+    const roles = match?.papeis || match?.roles || [];
+    return Array.isArray(roles) ? roles : [];
+  },
+
+  _applyTenantRolesToUser(user, roles) {
+    if (!user) return user;
+    if (!Array.isArray(roles) || roles.length === 0) return user;
+    const unique = [];
+    const seen = new Set();
+    roles.forEach((r) => {
+      const id = r?.id ?? r?.papel_id;
+      if (!id || seen.has(id)) return;
+      seen.add(id);
+      unique.push(r);
+    });
+    return {
+      ...user,
+      papeis: unique,
+      papel_id: user?.papel_id ?? unique[0]?.id ?? unique[0]?.papel_id ?? null,
+    };
+  },
   /**
    * Realiza login com email e senha
    */
@@ -22,11 +52,8 @@ export const authService = {
 
       // Se tem token, já salva (usuário tem apenas 1 tenant)
       if (response.data.token) {
+        let userToSave = response.data.user;
         await AsyncStorage.setItem("@appcheckin:token", response.data.token);
-        await AsyncStorage.setItem(
-          "@appcheckin:user",
-          JSON.stringify(response.data.user),
-        );
 
         // Salvar tenants disponíveis (para trocar depois)
         if (response.data.tenants) {
@@ -39,6 +66,12 @@ export const authService = {
           if (response.data.tenants.length > 0) {
             const firstTenantData = response.data.tenants[0];
             const tenantToSave = firstTenantData.tenant || firstTenantData;
+            const tenantId = this._getTenantIdFromData(tenantToSave);
+            const roles = this._getTenantRoles(
+              response.data.tenants,
+              tenantId,
+            );
+            userToSave = this._applyTenantRolesToUser(userToSave, roles);
             
             await AsyncStorage.setItem(
               "@appcheckin:current_tenant",
@@ -56,6 +89,11 @@ export const authService = {
             }
           }
         }
+
+        await AsyncStorage.setItem(
+          "@appcheckin:user",
+          JSON.stringify(userToSave),
+        );
 
         return response.data;
       }
@@ -121,15 +159,12 @@ export const authService = {
       });
 
       if (response.data.token) {
+        let userToSave = response.data.user;
         console.log("🔐 SELECT-TENANT-INITIAL RESPONSE:", JSON.stringify(response.data, null, 2));
         console.log("🔐 USER após select-tenant:", response.data.user);
         console.log("🔐 USER.papel_id após select-tenant:", response.data.user?.papel_id);
         
         await AsyncStorage.setItem("@appcheckin:token", response.data.token);
-        await AsyncStorage.setItem(
-          "@appcheckin:user",
-          JSON.stringify(response.data.user),
-        );
 
         // Salvar tenants disponíveis (para trocar depois)
         if (response.data.tenants) {
@@ -146,6 +181,27 @@ export const authService = {
             JSON.stringify(response.data.tenant),
           );
           const t = response.data.tenant;
+          let roles = this._getTenantRoles(
+            response.data.tenants,
+            this._getTenantIdFromData(t),
+          );
+          if (!roles.length) {
+            try {
+              const storedTenantsJson = await AsyncStorage.getItem(
+                "@appcheckin:tenants",
+              );
+              const storedTenants = storedTenantsJson
+                ? JSON.parse(storedTenantsJson)
+                : [];
+              roles = this._getTenantRoles(
+                storedTenants,
+                this._getTenantIdFromData(t),
+              );
+            } catch {
+              roles = [];
+            }
+          }
+          userToSave = this._applyTenantRolesToUser(userToSave, roles);
           if (t?.id) {
             await AsyncStorage.setItem("@appcheckin:tenant_id", String(t.id));
           }
@@ -156,6 +212,11 @@ export const authService = {
             await AsyncStorage.setItem("@appcheckin:tenant_nome", t.nome);
           }
         }
+
+        await AsyncStorage.setItem(
+          "@appcheckin:user",
+          JSON.stringify(userToSave),
+        );
       }
 
       return response.data;
@@ -182,11 +243,8 @@ export const authService = {
       });
 
       if (response.data.token) {
+        let userToSave = response.data.user;
         await AsyncStorage.setItem("@appcheckin:token", response.data.token);
-        await AsyncStorage.setItem(
-          "@appcheckin:user",
-          JSON.stringify(response.data.user),
-        );
 
         // Atualizar tenant atual
         if (response.data.tenant) {
@@ -195,6 +253,27 @@ export const authService = {
             JSON.stringify(response.data.tenant),
           );
           const t = response.data.tenant;
+          let roles = this._getTenantRoles(
+            response.data.tenants,
+            this._getTenantIdFromData(t),
+          );
+          if (!roles.length) {
+            try {
+              const storedTenantsJson = await AsyncStorage.getItem(
+                "@appcheckin:tenants",
+              );
+              const storedTenants = storedTenantsJson
+                ? JSON.parse(storedTenantsJson)
+                : [];
+              roles = this._getTenantRoles(
+                storedTenants,
+                this._getTenantIdFromData(t),
+              );
+            } catch {
+              roles = [];
+            }
+          }
+          userToSave = this._applyTenantRolesToUser(userToSave, roles);
           if (t?.id) {
             await AsyncStorage.setItem("@appcheckin:tenant_id", String(t.id));
           }
@@ -205,6 +284,11 @@ export const authService = {
             await AsyncStorage.setItem("@appcheckin:tenant_nome", t.nome);
           }
         }
+
+        await AsyncStorage.setItem(
+          "@appcheckin:user",
+          JSON.stringify(userToSave),
+        );
       }
 
       return response.data;
