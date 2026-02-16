@@ -973,6 +973,10 @@ const styles = StyleSheet.create({
     color: "#111827",
   },
 
+  actionStack: {
+    gap: 10,
+  },
+
   /* Botão Pagar */
   botaoPagar: {
     flexDirection: "row",
@@ -983,9 +987,24 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 14,
     gap: 8,
-    marginBottom: 10,
   },
   botaoPagarTexto: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+
+  botaoCancelarDiaria: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#dc2626",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    gap: 8,
+  },
+  botaoCancelarDiariaTexto: {
     color: "#fff",
     fontSize: 14,
     fontWeight: "700",
