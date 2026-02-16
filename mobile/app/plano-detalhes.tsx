@@ -713,6 +713,16 @@ export default function PlanoDetalhesScreen() {
             <Feather name="arrow-left" size={18} color="#fff" />
             <Text style={styles.retryButtonText}>Voltar aos Planos</Text>
           </TouchableOpacity>
+          {typeof error === "string" &&
+            error.toLowerCase().includes("tenant") && (
+              <TouchableOpacity
+                style={styles.loginButton}
+                onPress={() => router.replace("/(auth)/login")}
+              >
+                <Feather name="log-in" size={18} color="#fff" />
+                <Text style={styles.loginButtonText}>Fazer Login</Text>
+              </TouchableOpacity>
+            )}
         </View>
       </SafeAreaView>
     );
@@ -1296,6 +1306,21 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   retryButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  loginButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#334155",
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 12,
+    gap: 8,
+    marginTop: 12,
+  },
+  loginButtonText: {
     color: "#fff",
     fontSize: 14,
     fontWeight: "600",

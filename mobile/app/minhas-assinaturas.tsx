@@ -497,6 +497,16 @@ export default function MinhasAssinaturasScreen() {
         <Feather name="refresh-cw" size={18} color="#fff" />
         <Text style={styles.botaoTentarNovamenteText}>Tentar Novamente</Text>
       </TouchableOpacity>
+      {typeof error === "string" &&
+        error.toLowerCase().includes("tenant") && (
+          <TouchableOpacity
+            style={styles.botaoLogin}
+            onPress={() => router.replace("/(auth)/login")}
+          >
+            <Feather name="log-in" size={18} color="#fff" />
+            <Text style={styles.botaoLoginText}>Fazer Login</Text>
+          </TouchableOpacity>
+        )}
     </View>
   );
 
@@ -977,6 +987,21 @@ const styles = StyleSheet.create({
   },
 
   botaoTentarNovamenteText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  botaoLogin: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#334155",
+    paddingVertical: 14,
+    paddingHorizontal: 28,
+    borderRadius: 12,
+    gap: 8,
+    marginTop: 12,
+  },
+  botaoLoginText: {
     color: "#fff",
     fontSize: 14,
     fontWeight: "600",

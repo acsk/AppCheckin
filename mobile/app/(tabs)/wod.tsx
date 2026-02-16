@@ -268,6 +268,16 @@ export default function WodScreen() {
             <TouchableOpacity style={styles.retryButton} onPress={loadModalidades}>
               <Text style={styles.retryButtonText}>Tentar Novamente</Text>
             </TouchableOpacity>
+            {typeof error === "string" &&
+              error.toLowerCase().includes("tenant") && (
+                <TouchableOpacity
+                  style={styles.loginButton}
+                  onPress={() => router.replace("/(auth)/login")}
+                >
+                  <Feather name="log-in" size={18} color="#fff" />
+                  <Text style={styles.loginButtonText}>Fazer Login</Text>
+                </TouchableOpacity>
+              )}
           </View>
         </ScrollView>
       </SafeAreaView>
@@ -617,6 +627,21 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   retryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  loginButton: {
+    backgroundColor: '#334155',
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+  },
+  loginButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',

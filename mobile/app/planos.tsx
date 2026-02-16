@@ -966,6 +966,16 @@ export default function PlanosScreen() {
           >
             <Text style={styles.retryButtonText}>Tentar novamente</Text>
           </TouchableOpacity>
+          {typeof error === "string" &&
+            error.toLowerCase().includes("tenant") && (
+              <TouchableOpacity
+                style={styles.loginButton}
+                onPress={() => router.replace("/(auth)/login")}
+              >
+                <Feather name="log-in" size={18} color="#fff" />
+                <Text style={styles.loginButtonText}>Fazer Login</Text>
+              </TouchableOpacity>
+            )}
         </View>
       ) : planos.length === 0 ? (
         <View style={styles.emptyContainer}>
@@ -1775,6 +1785,21 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   retryButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  loginButton: {
+    marginTop: 12,
+    backgroundColor: "#334155",
+    paddingHorizontal: 32,
+    paddingVertical: 12,
+    borderRadius: 8,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  loginButtonText: {
     color: "#fff",
     fontWeight: "600",
     fontSize: 14,
