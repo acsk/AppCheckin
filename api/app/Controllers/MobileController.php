@@ -5158,6 +5158,7 @@ class MobileController
             $preferenceId = null;
             $tipoPagamento = 'pagamento_unico';
             $pixData = null;
+            $pixPaymentId = null;
 
             try {
                 // Passar tenant_id para carregar credenciais específicas do tenant
@@ -5210,7 +5211,8 @@ class MobileController
                     $pixData = $mercadoPago->criarPagamentoPix($dadosPagamento);
                     $tipoPagamento = 'pix';
                     $paymentUrl = $pixData['ticket_url'] ?? null;
-                    $preferenceId = null;
+                    $pixPaymentId = $pixData['id'] ?? null;
+                    $preferenceId = $pixPaymentId;
                     $externalReference = $pixData['external_reference'] ?? null;
                 } elseif ($isRecorrente) {
                     // ASSINATURA RECORRENTE (preapproval) no Mercado Pago
@@ -5223,10 +5225,12 @@ class MobileController
                     $preferencia = $mercadoPago->criarPreferenciaPagamento($dadosPagamento);
                     $tipoPagamento = 'pagamento_unico';
                 }
-                    
-                $paymentUrl = $preferencia['init_point'];
-                $preferenceId = $preferencia['id'];
-                $externalReference = $preferencia['external_reference'] ?? null;
+                
+                if (isset($preferencia)) {
+                    $paymentUrl = $preferencia['init_point'] ?? $paymentUrl;
+                    $preferenceId = $preferencia['id'] ?? $preferenceId;
+                    $externalReference = $preferencia['external_reference'] ?? $externalReference;
+                }
 
                 error_log("[MobileController::comprarPlano] ✅ Link gerado ({$tipoPagamento}): {$preferenceId}, external_ref: {$externalReference}");
 
@@ -5274,7 +5278,7 @@ class MobileController
                     
                     // IDs do gateway conforme tipo
                     $gatewayAssinaturaId = $isRecorrente ? $preferenceId : null;
-                    $gatewayPreferenceId = !$isRecorrente ? $preferenceId : null;
+                    $gatewayPreferenceId = !$isRecorrente ? ($preferenceId ?? $pixPaymentId) : null;
                     
                     // Se reutilizou matrícula, tentar atualizar assinatura existente (matricula_id é UNIQUE)
                     $assinaturaAtualizada = false;
