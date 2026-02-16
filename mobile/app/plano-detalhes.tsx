@@ -103,6 +103,7 @@ export default function PlanoDetalhesScreen() {
   const [pixChecking, setPixChecking] = useState(false);
   const [pixPollingActive, setPixPollingActive] = useState(false);
   const [pixStatusMessage, setPixStatusMessage] = useState<string | null>(null);
+  const [pixWaitSeconds, setPixWaitSeconds] = useState(0);
   const pixCheckRunning = useRef(false);
   const { width: screenWidth } = useWindowDimensions();
 
@@ -314,6 +315,14 @@ export default function PlanoDetalhesScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pixPollingActive, pixData?.matricula_id, apiUrl]);
 
+  useEffect(() => {
+    if (!pixPollingActive) return;
+    const timer = setInterval(() => {
+      setPixWaitSeconds((prev) => prev + 1);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [pixPollingActive]);
+
   const checkPixAprovacao = async (manual: boolean) => {
     if (!pixData?.matricula_id || !apiUrl) return;
     if (pixCheckRunning.current) return;
@@ -383,6 +392,7 @@ export default function PlanoDetalhesScreen() {
             : "Pagamento ainda não confirmado. Vamos continuar verificando a cada 3 segundos.";
         setPixStatusMessage(pendingMessage);
         setPixPollingActive(true);
+        setPixWaitSeconds(0);
       }
     } catch (err) {
       if (manual) {
@@ -605,6 +615,7 @@ export default function PlanoDetalhesScreen() {
       });
       setPixStatusMessage(null);
       setPixPollingActive(false);
+      setPixWaitSeconds(0);
       setPixModalVisible(true);
     } catch (err) {
       const errorMsg =
@@ -1145,9 +1156,44 @@ export default function PlanoDetalhesScreen() {
                 setPixPollingActive(false);
                 setPixStatusMessage(null);
                 setPixChecking(false);
+                setPixWaitSeconds(0);
               }}
             >
               <Text style={styles.modalButtonText}>Fechar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* PIX Checking Modal */}
+      <Modal
+        visible={pixChecking || pixPollingActive}
+        transparent
+        animationType="fade"
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={[styles.modalIcon, { backgroundColor: "rgba(15, 118, 110, 0.1)" }]}>
+              <ActivityIndicator size="large" color="#0f766e" />
+            </View>
+            <Text style={styles.modalTitle}>Consultando pagamento</Text>
+            <Text style={styles.modalMessage}>
+              {pixStatusMessage ||
+                "Aguardando confirmação do pagamento. Isso pode levar alguns instantes."}
+            </Text>
+            <Text style={styles.pixWaitCounter}>
+              {`Tempo aguardando: ${pixWaitSeconds}s`}
+            </Text>
+            <TouchableOpacity
+              style={styles.pixCancelWaitButton}
+              onPress={() => {
+                setPixChecking(false);
+                setPixPollingActive(false);
+                setPixStatusMessage(null);
+                setPixWaitSeconds(0);
+              }}
+            >
+              <Text style={styles.pixCancelWaitButtonText}>Cancelar</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1746,5 +1792,24 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     textAlign: "center",
     marginBottom: 10,
+  },
+  pixWaitCounter: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    textAlign: "center",
+    marginTop: 6,
+  },
+  pixCancelWaitButton: {
+    marginTop: 16,
+    width: "100%",
+    paddingVertical: 12,
+    borderRadius: 12,
+    alignItems: "center",
+    backgroundColor: "#6b7280",
+  },
+  pixCancelWaitButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
   },
 });
