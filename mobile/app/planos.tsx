@@ -417,6 +417,7 @@ export default function PlanosScreen() {
             body: JSON.stringify({
               plano_id: plano.id,
               plano_ciclo_id: selectedCiclo.id,
+              metodo_pagamento: "checkout",
             }),
           },
         );
@@ -447,7 +448,7 @@ export default function PlanosScreen() {
         }
 
         const matriculaData = await matriculaResponse.json();
-        console.log("✅ Resposta da API:", matriculaData);
+        console.log("✅ [Contratar] Resposta da API:", matriculaData);
 
         // Verificar se a API retornou sucesso
         if (!matriculaData.success) {
@@ -464,6 +465,9 @@ export default function PlanosScreen() {
         let paymentUrl = matriculaData.data?.payment_url;
         let matriculaId =
           matriculaData.data?.matricula_id || matriculaData.data?.matricula?.id;
+        const metodoPagamento = String(
+          matriculaData.data?.metodo_pagamento || "",
+        ).toLowerCase();
 
         // Se não encontrou em payment_url, procura em outras estruturas
         if (!paymentUrl && matriculaData.data?.pagamento) {
@@ -488,6 +492,14 @@ export default function PlanosScreen() {
             "error",
           );
           return;
+        }
+
+        if (metodoPagamento && metodoPagamento !== "checkout") {
+          showErrorModal(
+            "⚠️ Método de pagamento diferente",
+            "O pagamento pendente não é do checkout. Tente novamente ou gere um novo pagamento.",
+            "warning",
+          );
         }
 
         console.log("💳 Payment URL:", paymentUrl);
@@ -550,6 +562,7 @@ export default function PlanosScreen() {
             body: JSON.stringify({
               plano_id: plano.id,
               plano_ciclo_id: selectedCiclo.id,
+              metodo_pagamento: "pix",
             }),
           },
         );
@@ -576,10 +589,35 @@ export default function PlanosScreen() {
         }
 
         const matriculaData = await matriculaResponse.json();
+        console.log("✅ [PIX] Resposta da API:", matriculaData);
         if (!matriculaData.success) {
           const errorMessage =
             matriculaData.message || "Erro desconhecido ao processar compra";
           showErrorModal("❌ Não foi Possível Comprar", errorMessage, "error");
+          setPixLoading(false);
+          setPlanoComprando(null);
+          return;
+        }
+
+        const metodoPagamento = String(
+          matriculaData.data?.metodo_pagamento || "",
+        ).toLowerCase();
+        if (
+          metodoPagamento &&
+          metodoPagamento !== "pix" &&
+          matriculaData.data?.payment_url
+        ) {
+          showErrorModal(
+            "⚠️ Pagamento pendente no checkout",
+            "Já existe um pagamento pendente no checkout. Vamos abrir o link para você concluir.",
+            "warning",
+          );
+          const supported = await Linking.canOpenURL(
+            matriculaData.data.payment_url,
+          );
+          if (supported) {
+            await Linking.openURL(matriculaData.data.payment_url);
+          }
           setPixLoading(false);
           setPlanoComprando(null);
           return;

@@ -454,6 +454,7 @@ export default function PlanoDetalhesScreen() {
         body: JSON.stringify({
           plano_id: plano.id,
           plano_ciclo_id: selectedCiclo.id,
+          metodo_pagamento: "checkout",
         }),
       });
 
@@ -493,6 +494,9 @@ export default function PlanoDetalhesScreen() {
 
       let paymentUrl = data.data?.payment_url;
       const matriculaId = data.data?.matricula_id || data.data?.matricula?.id;
+      const metodoPagamento = String(
+        data.data?.metodo_pagamento || "",
+      ).toLowerCase();
 
       if (!paymentUrl && data.data?.pagamento) {
         paymentUrl = data.data.pagamento.url;
@@ -505,6 +509,14 @@ export default function PlanoDetalhesScreen() {
           "error",
         );
         return;
+      }
+
+      if (metodoPagamento && metodoPagamento !== "checkout") {
+        showErrorModal(
+          "⚠️ Método de pagamento diferente",
+          "O pagamento pendente não é do checkout. Tente novamente ou gere um novo pagamento.",
+          "warning",
+        );
       }
 
       setPaymentUrlToOpen(paymentUrl);
@@ -552,6 +564,7 @@ export default function PlanoDetalhesScreen() {
         body: JSON.stringify({
           plano_id: plano.id,
           plano_ciclo_id: selectedCiclo.id,
+          metodo_pagamento: "pix",
         }),
       });
 
@@ -582,6 +595,22 @@ export default function PlanoDetalhesScreen() {
           data.message || "Erro desconhecido ao processar compra",
           "error",
         );
+        return;
+      }
+
+      const metodoPagamento = String(
+        data.data?.metodo_pagamento || "",
+      ).toLowerCase();
+      if (metodoPagamento && metodoPagamento !== "pix" && data.data?.payment_url) {
+        showErrorModal(
+          "⚠️ Pagamento pendente no checkout",
+          "Já existe um pagamento pendente no checkout. Vamos abrir o link para você concluir.",
+          "warning",
+        );
+        const supported = await Linking.canOpenURL(data.data.payment_url);
+        if (supported) {
+          await Linking.openURL(data.data.payment_url);
+        }
         return;
       }
 
