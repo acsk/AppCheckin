@@ -4983,6 +4983,61 @@ class MobileController
                                     (int) $assinaturaPendente['id'],
                                     $tenantId
                                 ]);
+                            } else {
+                                // Se não existe assinatura, criar uma nova pendente vinculada à matrícula
+                                $stmtGateway = $this->db->prepare("SELECT id FROM assinatura_gateways WHERE codigo = 'mercadopago'");
+                                $stmtGateway->execute();
+                                $gatewayId = $stmtGateway->fetchColumn() ?: 1;
+
+                                $stmtStatus = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'pendente'");
+                                $stmtStatus->execute();
+                                $statusId = $stmtStatus->fetchColumn() ?: 1;
+
+                                $stmtMetodo = $this->db->prepare("SELECT id FROM metodos_pagamento WHERE codigo = 'pix'");
+                                $stmtMetodo->execute();
+                                $metodoPagamentoId = $stmtMetodo->fetchColumn() ?: null;
+
+                                // Frequência: tentar usar o ciclo do plano, senão mensal
+                                $frequenciaId = 4;
+                                if (!empty($matriculaPendente['plano_ciclo_id'])) {
+                                    $stmtFreq = $this->db->prepare("
+                                        SELECT af.id
+                                        FROM plano_ciclos pc
+                                        INNER JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
+                                        WHERE pc.id = ? AND pc.tenant_id = ?
+                                        LIMIT 1
+                                    ");
+                                    $stmtFreq->execute([(int)$matriculaPendente['plano_ciclo_id'], $tenantId]);
+                                    $frequenciaId = $stmtFreq->fetchColumn() ?: 4;
+                                }
+
+                                $stmtAssinatura = $this->db->prepare("
+                                    INSERT INTO assinaturas
+                                    (tenant_id, matricula_id, aluno_id, plano_id,
+                                     gateway_id, gateway_preference_id, external_reference, payment_url,
+                                     status_id, status_gateway, valor, frequencia_id, dia_cobranca,
+                                     data_inicio, data_fim, proxima_cobranca, metodo_pagamento_id, tipo_cobranca, criado_em)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                                ");
+                                $stmtAssinatura->execute([
+                                    $tenantId,
+                                    (int) $matriculaPendente['id'],
+                                    $alunoId,
+                                    (int) $matriculaPendente['plano_id'],
+                                    $gatewayId,
+                                    (string) $paymentIdPix,
+                                    $externalReference,
+                                    $paymentUrlPix,
+                                    $statusId,
+                                    (float) $matriculaPendente['valor'],
+                                    $frequenciaId,
+                                    (int) date('d'),
+                                    date('Y-m-d'),
+                                    $matriculaPendente['proxima_data_vencimento'] ?? $matriculaPendente['data_vencimento'],
+                                    null,
+                                    $metodoPagamentoId,
+                                    'avulso'
+                                ]);
                             }
 
                             $assinaturaPendente['gateway_preference_id'] = (string) $paymentIdPix;
@@ -5939,8 +5994,155 @@ class MobileController
                 'academia_nome' => $academiaNome
             ];
 
+            // Se já existe PIX válido salvo, reutilizar
+            $stmtPix = $this->db->prepare("
+                SELECT payment_id, ticket_url, qr_code, qr_code_base64, expires_at, status
+                FROM pagamentos_pix
+                WHERE tenant_id = ? AND matricula_id = ?
+                ORDER BY id DESC
+                LIMIT 1
+            ");
+            $stmtPix->execute([$tenantId, (int) $matricula['id']]);
+            $pixSalvo = $stmtPix->fetch(\PDO::FETCH_ASSOC) ?: null;
+
+            if ($pixSalvo && !empty($pixSalvo['expires_at']) && strtotime($pixSalvo['expires_at']) >= time()) {
+                $response->getBody()->write(json_encode([
+                    'success' => true,
+                    'data' => [
+                        'matricula_id' => (int) $matricula['id'],
+                        'valor' => (float) $matricula['valor'],
+                        'pix' => [
+                            'payment_id' => $pixSalvo['payment_id'] ?? null,
+                            'status' => $pixSalvo['status'] ?? null,
+                            'status_detail' => null,
+                            'qr_code' => $pixSalvo['qr_code'] ?? null,
+                            'qr_code_base64' => $pixSalvo['qr_code_base64'] ?? null,
+                            'ticket_url' => $pixSalvo['ticket_url'] ?? null,
+                            'expires_at' => $pixSalvo['expires_at'] ?? null
+                        ]
+                    ]
+                ], JSON_UNESCAPED_UNICODE));
+
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+            }
+
             $mercadoPago = new \App\Services\MercadoPagoService($tenantId);
             $pixData = $mercadoPago->criarPagamentoPix($dadosPagamento);
+
+            // Salvar dados do PIX para reabrir
+            try {
+                if (!empty($pixData['id']) && !empty($pixData['ticket_url'])) {
+                    $stmtPixSave = $this->db->prepare("
+                        INSERT INTO pagamentos_pix
+                        (tenant_id, matricula_id, payment_id, ticket_url, qr_code, qr_code_base64, expires_at, status)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ");
+                    $stmtPixSave->execute([
+                        $tenantId,
+                        (int) $matricula['id'],
+                        (string) ($pixData['id'] ?? ''),
+                        $pixData['ticket_url'] ?? null,
+                        $pixData['qr_code'] ?? null,
+                        $pixData['qr_code_base64'] ?? null,
+                        isset($pixData['date_of_expiration']) ? date('Y-m-d H:i:s', strtotime($pixData['date_of_expiration'])) : null,
+                        $pixData['status'] ?? 'pending'
+                    ]);
+                }
+            } catch (\Exception $e) {
+                error_log('[MobileController::gerarPagamentoPix] Erro ao salvar PIX: ' . $e->getMessage());
+            }
+
+            // Atualizar ou criar assinatura avulsa vinculada à matrícula
+            try {
+                $paymentIdPix = $pixData['id'] ?? null;
+                $paymentUrlPix = $pixData['ticket_url'] ?? null;
+                $externalReference = $pixData['external_reference'] ?? ("MAT-{$matricula['id']}-" . time());
+
+                if ($paymentIdPix && $paymentUrlPix) {
+                    $stmtAss = $this->db->prepare("
+                        SELECT id FROM assinaturas
+                        WHERE matricula_id = ? AND tenant_id = ?
+                        ORDER BY id DESC
+                        LIMIT 1
+                    ");
+                    $stmtAss->execute([(int) $matricula['id'], $tenantId]);
+                    $assinaturaId = $stmtAss->fetchColumn();
+
+                    if ($assinaturaId) {
+                        $stmtUpdateAss = $this->db->prepare("
+                            UPDATE assinaturas
+                            SET gateway_preference_id = ?,
+                                external_reference = ?,
+                                payment_url = ?,
+                                status_gateway = 'pending',
+                                atualizado_em = NOW()
+                            WHERE id = ? AND tenant_id = ?
+                        ");
+                        $stmtUpdateAss->execute([
+                            (string) $paymentIdPix,
+                            $externalReference,
+                            $paymentUrlPix,
+                            (int) $assinaturaId,
+                            $tenantId
+                        ]);
+                    } else {
+                        $stmtGateway = $this->db->prepare("SELECT id FROM assinatura_gateways WHERE codigo = 'mercadopago'");
+                        $stmtGateway->execute();
+                        $gatewayId = $stmtGateway->fetchColumn() ?: 1;
+
+                        $stmtStatus = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'pendente'");
+                        $stmtStatus->execute();
+                        $statusId = $stmtStatus->fetchColumn() ?: 1;
+
+                        $stmtMetodo = $this->db->prepare("SELECT id FROM metodos_pagamento WHERE codigo = 'pix'");
+                        $stmtMetodo->execute();
+                        $metodoPagamentoId = $stmtMetodo->fetchColumn() ?: null;
+
+                        $frequenciaId = 4;
+                        if (!empty($matricula['plano_ciclo_id'])) {
+                            $stmtFreq = $this->db->prepare("
+                                SELECT af.id
+                                FROM plano_ciclos pc
+                                INNER JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
+                                WHERE pc.id = ? AND pc.tenant_id = ?
+                                LIMIT 1
+                            ");
+                            $stmtFreq->execute([(int)$matricula['plano_ciclo_id'], $tenantId]);
+                            $frequenciaId = $stmtFreq->fetchColumn() ?: 4;
+                        }
+
+                        $stmtAssinatura = $this->db->prepare("
+                            INSERT INTO assinaturas
+                            (tenant_id, matricula_id, aluno_id, plano_id,
+                             gateway_id, gateway_preference_id, external_reference, payment_url,
+                             status_id, status_gateway, valor, frequencia_id, dia_cobranca,
+                             data_inicio, data_fim, proxima_cobranca, metodo_pagamento_id, tipo_cobranca, criado_em)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                        ");
+                        $stmtAssinatura->execute([
+                            $tenantId,
+                            (int) $matricula['id'],
+                            (int) $matricula['aluno_id'],
+                            (int) $matricula['plano_id'],
+                            $gatewayId,
+                            (string) $paymentIdPix,
+                            $externalReference,
+                            $paymentUrlPix,
+                            $statusId,
+                            (float) $matricula['valor'],
+                            $frequenciaId,
+                            (int) date('d'),
+                            date('Y-m-d'),
+                            $matricula['proxima_data_vencimento'] ?? null,
+                            null,
+                            $metodoPagamentoId,
+                            'avulso'
+                        ]);
+                    }
+                }
+            } catch (\Exception $e) {
+                error_log('[MobileController::gerarPagamentoPix] Erro ao atualizar assinatura: ' . $e->getMessage());
+            }
 
             $response->getBody()->write(json_encode([
                 'success' => true,
