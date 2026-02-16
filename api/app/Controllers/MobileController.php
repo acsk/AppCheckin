@@ -4912,6 +4912,119 @@ class MobileController
                 $stmtAss->execute([(int)$matriculaPendente['id'], $tenantId]);
                 $assinaturaPendente = $stmtAss->fetch(\PDO::FETCH_ASSOC) ?: null;
 
+                // Se o usuário pediu PIX e não existe PIX salvo, gerar 1x e atualizar a assinatura
+                if ($metodoPagamento === 'pix') {
+                    $temPixSalvo = !empty($assinaturaPendente['payment_url'])
+                        && str_contains($assinaturaPendente['payment_url'], '/payments/')
+                        && !empty($assinaturaPendente['gateway_preference_id']);
+
+                    // Buscar PIX salvo no banco
+                    $pixSalvo = null;
+                    if ($temPixSalvo) {
+                        $stmtPix = $this->db->prepare("
+                            SELECT payment_id, ticket_url, qr_code, qr_code_base64, expires_at, status
+                            FROM pagamentos_pix
+                            WHERE tenant_id = ? AND matricula_id = ?
+                            ORDER BY id DESC
+                            LIMIT 1
+                        ");
+                        $stmtPix->execute([$tenantId, (int)$matriculaPendente['id']]);
+                        $pixSalvo = $stmtPix->fetch(\PDO::FETCH_ASSOC) ?: null;
+                    }
+
+                    $pixExpirado = false;
+                    if ($pixSalvo && !empty($pixSalvo['expires_at'])) {
+                        $pixExpirado = strtotime($pixSalvo['expires_at']) < time();
+                    }
+
+                    if (!$temPixSalvo || $pixExpirado) {
+                        $stmtTenant = $this->db->prepare("SELECT nome FROM tenants WHERE id = ?");
+                        $stmtTenant->execute([$tenantId]);
+                        $tenantData = $stmtTenant->fetch(\PDO::FETCH_ASSOC);
+                        $academiaNome = $tenantData['nome'] ?? 'Academia';
+
+                        $dadosPagamentoPix = [
+                            'tenant_id' => $tenantId,
+                            'matricula_id' => (int) $matriculaPendente['id'],
+                            'aluno_id' => $alunoId,
+                            'usuario_id' => $userId,
+                            'aluno_nome' => $usuario['nome'],
+                            'aluno_email' => $usuario['email'],
+                            'aluno_telefone' => $usuario['telefone'] ?? '',
+                            'aluno_cpf' => $usuario['cpf'] ?? null,
+                            'plano_nome' => $plano['nome'],
+                            'descricao' => "{$plano['nome']} - {$plano['modalidade_nome']}",
+                            'valor' => (float) $matriculaPendente['valor'],
+                            'academia_nome' => $academiaNome
+                        ];
+
+                        $mercadoPago = new \App\Services\MercadoPagoService($tenantId);
+                        $pixData = $mercadoPago->criarPagamentoPix($dadosPagamentoPix);
+
+                        $externalReference = $pixData['external_reference'] ?? ("MAT-{$matriculaPendente['id']}-" . time());
+                        $paymentUrlPix = $pixData['ticket_url'] ?? null;
+                        $paymentIdPix = $pixData['id'] ?? null;
+
+                        if ($paymentUrlPix && $paymentIdPix) {
+                            if ($assinaturaPendente) {
+                                $stmtUpdateAss = $this->db->prepare("
+                                    UPDATE assinaturas
+                                    SET gateway_preference_id = ?,
+                                        external_reference = ?,
+                                        payment_url = ?,
+                                        status_gateway = 'pending',
+                                        atualizado_em = NOW()
+                                    WHERE id = ? AND tenant_id = ?
+                                ");
+                                $stmtUpdateAss->execute([
+                                    (string) $paymentIdPix,
+                                    $externalReference,
+                                    $paymentUrlPix,
+                                    (int) $assinaturaPendente['id'],
+                                    $tenantId
+                                ]);
+                            }
+
+                            $assinaturaPendente['gateway_preference_id'] = (string) $paymentIdPix;
+                            $assinaturaPendente['payment_url'] = $paymentUrlPix;
+                            $assinaturaPendente['tipo_cobranca'] = $assinaturaPendente['tipo_cobranca'] ?? 'avulso';
+
+                            try {
+                                $stmtPixSave = $this->db->prepare("
+                                    INSERT INTO pagamentos_pix
+                                    (tenant_id, matricula_id, payment_id, ticket_url, qr_code, qr_code_base64, expires_at, status)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                ");
+                                $stmtPixSave->execute([
+                                    $tenantId,
+                                    (int) $matriculaPendente['id'],
+                                    (string) $paymentIdPix,
+                                    $paymentUrlPix,
+                                    $pixData['qr_code'] ?? null,
+                                    $pixData['qr_code_base64'] ?? null,
+                                    isset($pixData['date_of_expiration']) ? date('Y-m-d H:i:s', strtotime($pixData['date_of_expiration'])) : null,
+                                    $pixData['status'] ?? 'pending'
+                                ]);
+                            } catch (\Exception $e) {
+                                error_log("[MobileController::comprarPlano] Erro ao salvar PIX (reabrir): " . $e->getMessage());
+                            }
+                        }
+                    } elseif ($pixSalvo) {
+                        // Reutilizar PIX salvo
+                        $assinaturaPendente['payment_url'] = $pixSalvo['ticket_url'] ?? $assinaturaPendente['payment_url'];
+                        $assinaturaPendente['gateway_preference_id'] = $pixSalvo['payment_id'] ?? $assinaturaPendente['gateway_preference_id'];
+                        $pixData = [
+                            'id' => $pixSalvo['payment_id'] ?? null,
+                            'status' => $pixSalvo['status'] ?? null,
+                            'status_detail' => null,
+                            'qr_code' => $pixSalvo['qr_code'] ?? null,
+                            'qr_code_base64' => $pixSalvo['qr_code_base64'] ?? null,
+                            'ticket_url' => $pixSalvo['ticket_url'] ?? null,
+                            'date_of_expiration' => $pixSalvo['expires_at'] ?? null
+                        ];
+                    }
+                }
+
                 $response->getBody()->write(json_encode([
                     'success' => true,
                     'message' => 'Já existe pagamento pendente. Reabra para concluir.',
@@ -4929,10 +5042,19 @@ class MobileController
                         'vencida' => ($matriculaPendente['proxima_data_vencimento'] ?? $matriculaPendente['data_vencimento']) < date('Y-m-d'),
                         'payment_url' => $assinaturaPendente['payment_url'] ?? null,
                         'preference_id' => $assinaturaPendente['gateway_preference_id'] ?? null,
-                        'tipo_pagamento' => ($assinaturaPendente['tipo_cobranca'] ?? '') === 'avulso' ? 'pagamento_unico' : 'assinatura',
+                        'tipo_pagamento' => $metodoPagamento === 'pix' ? 'pix' : (($assinaturaPendente['tipo_cobranca'] ?? '') === 'avulso' ? 'pagamento_unico' : 'assinatura'),
                         'metodo_pagamento' => $metodoPagamento,
                         'tipo_cobranca' => $assinaturaPendente['tipo_cobranca'] ?? 'avulso',
-                        'recorrente' => ($assinaturaPendente['tipo_cobranca'] ?? '') === 'recorrente'
+                        'recorrente' => ($assinaturaPendente['tipo_cobranca'] ?? '') === 'recorrente',
+                        'pix' => $pixData ? [
+                            'payment_id' => $pixData['id'] ?? null,
+                            'status' => $pixData['status'] ?? null,
+                            'status_detail' => $pixData['status_detail'] ?? null,
+                            'qr_code' => $pixData['qr_code'] ?? null,
+                            'qr_code_base64' => $pixData['qr_code_base64'] ?? null,
+                            'ticket_url' => $pixData['ticket_url'] ?? null,
+                            'expires_at' => $pixData['date_of_expiration'] ?? null
+                        ] : null
                     ]
                 ], JSON_UNESCAPED_UNICODE));
 
@@ -5214,6 +5336,29 @@ class MobileController
                     $pixPaymentId = $pixData['id'] ?? null;
                     $preferenceId = $pixPaymentId;
                     $externalReference = $pixData['external_reference'] ?? null;
+
+                    // Salvar dados do PIX para reabrir
+                    try {
+                        if ($pixPaymentId && $paymentUrl) {
+                            $stmtPix = $this->db->prepare("
+                                INSERT INTO pagamentos_pix
+                                (tenant_id, matricula_id, payment_id, ticket_url, qr_code, qr_code_base64, expires_at, status)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            ");
+                            $stmtPix->execute([
+                                $tenantId,
+                                $matriculaId,
+                                (string) $pixPaymentId,
+                                $paymentUrl,
+                                $pixData['qr_code'] ?? null,
+                                $pixData['qr_code_base64'] ?? null,
+                                isset($pixData['date_of_expiration']) ? date('Y-m-d H:i:s', strtotime($pixData['date_of_expiration'])) : null,
+                                $pixData['status'] ?? 'pending'
+                            ]);
+                        }
+                    } catch (\Exception $e) {
+                        error_log("[MobileController::comprarPlano] Erro ao salvar PIX: " . $e->getMessage());
+                    }
                 } elseif ($isRecorrente) {
                     // ASSINATURA RECORRENTE (preapproval) no Mercado Pago
                     error_log("[MobileController::comprarPlano] Criando ASSINATURA RECORRENTE (preapproval)...");
@@ -5510,6 +5655,18 @@ class MobileController
             $stmtAss->execute([$matriculaId, $tenantId]);
             $assinatura = $stmtAss->fetch(\PDO::FETCH_ASSOC) ?: null;
 
+            // Buscar PIX salvo (se existir)
+            $pixSalvo = null;
+            $stmtPix = $this->db->prepare("
+                SELECT payment_id, ticket_url, qr_code, qr_code_base64, expires_at, status
+                FROM pagamentos_pix
+                WHERE tenant_id = ? AND matricula_id = ?
+                ORDER BY id DESC
+                LIMIT 1
+            ");
+            $stmtPix->execute([$tenantId, $matriculaId]);
+            $pixSalvo = $stmtPix->fetch(\PDO::FETCH_ASSOC) ?: null;
+
             $response->getBody()->write(json_encode([
                 'success' => true,
                 'message' => 'Pagamento pendente encontrado',
@@ -5529,7 +5686,16 @@ class MobileController
                     'preference_id' => $assinatura['gateway_preference_id'] ?? null,
                     'tipo_pagamento' => ($assinatura['tipo_cobranca'] ?? '') === 'avulso' ? 'pagamento_unico' : 'assinatura',
                     'tipo_cobranca' => $assinatura['tipo_cobranca'] ?? 'avulso',
-                    'recorrente' => ($assinatura['tipo_cobranca'] ?? '') === 'recorrente'
+                    'recorrente' => ($assinatura['tipo_cobranca'] ?? '') === 'recorrente',
+                    'pix' => $pixSalvo ? [
+                        'payment_id' => $pixSalvo['payment_id'] ?? null,
+                        'status' => $pixSalvo['status'] ?? null,
+                        'status_detail' => null,
+                        'qr_code' => $pixSalvo['qr_code'] ?? null,
+                        'qr_code_base64' => $pixSalvo['qr_code_base64'] ?? null,
+                        'ticket_url' => $pixSalvo['ticket_url'] ?? null,
+                        'expires_at' => $pixSalvo['expires_at'] ?? null
+                    ] : null
                 ]
             ], JSON_UNESCAPED_UNICODE));
 
