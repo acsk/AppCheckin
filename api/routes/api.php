@@ -889,6 +889,8 @@ return function ($app) {
         
         // Ranking de check-ins
         $group->get('/ranking/mensal', [MobileController::class, 'rankingMensal']);
+        // Cancelar compra de diária
+        $group->post('/diaria/{matriculaId}/cancelar', [MobileController::class, 'cancelarDiaria']);
     })->add(AuthMiddleware::class);
 
     // ========================================

@@ -158,6 +158,7 @@ try {
                 LIMIT 500
             ";
             $stmt = $db->prepare($sqlVencida);
+            
             $stmt->execute(['tenant_id' => $tenant['id']]);
             $vencidasAtualizadas = $stmt->rowCount();
             logMessage("  ✓ Matrículas Vencidas: {$vencidasAtualizadas}\n", $quiet);
@@ -182,6 +183,22 @@ try {
             $stmt->execute(['tenant_id' => $tenant['id']]);
             $canceladasAtualizadas = $stmt->rowCount();
             logMessage("  ✓ Matrículas Canceladas: {$canceladasAtualizadas}\n", $quiet);
+
+            // 3.1 Atualizar matrículas para VENCIDA quando a data de vencimento expirou
+            // Regras de expiração por data (independente de pagamentos)
+            $sqlVencidaPorData = "
+                UPDATE matriculas m
+                SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'vencida' LIMIT 1),
+                    m.updated_at = NOW()
+                WHERE m.tenant_id = :tenant_id
+                AND m.status_id IN (SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'pendente'))
+                AND m.proxima_data_vencimento < CURDATE()
+                LIMIT 1000
+            ";
+            $stmt = $db->prepare($sqlVencidaPorData);
+            $stmt->execute(['tenant_id' => $tenant['id']]);
+            $vencidasPorData = $stmt->rowCount();
+            logMessage("  ✓ Matrículas Vencidas (por data): {$vencidasPorData}\n", $quiet);
             
             // 4. Sincronizar matrículas com assinaturas canceladas
             // Se a assinatura foi cancelada, a matrícula também deve ser cancelada
@@ -267,7 +284,7 @@ try {
             // Commit da transação
             $db->commit();
             
-            $totalTenant = $vencidasAtualizadas + $canceladasAtualizadas + $sincCanceladas + $sincPausadas + $sincExpiradas + $reativadas;
+            $totalTenant = $vencidasAtualizadas + $canceladasAtualizadas + $vencidasPorData + $sincCanceladas + $sincPausadas + $sincExpiradas + $reativadas;
             $totalAtualizado += $totalTenant;
             
             if ($totalTenant > 0) {

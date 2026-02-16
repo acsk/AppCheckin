@@ -188,6 +188,46 @@ class MatriculaController
             }
         }
 
+        // Buscar matrícula vencida (ou com data vencida) para reutilizar
+        $stmtVencida = $db->prepare("
+            SELECT m.*, p.modalidade_id, sm.codigo as status_codigo
+            FROM matriculas m
+            INNER JOIN planos p ON p.id = m.plano_id
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            WHERE m.aluno_id = ? AND m.tenant_id = ? AND p.modalidade_id = ?
+            ORDER BY m.updated_at DESC, m.id DESC
+            LIMIT 1
+        ");
+        $stmtVencida->execute([$alunoId, $tenantId, $modalidadeAtual]);
+        $matriculaVencida = $stmtVencida->fetch(\PDO::FETCH_ASSOC) ?: null;
+        $reutilizandoMatricula = false;
+
+        if ($matriculaVencida) {
+            $statusCodigo = $matriculaVencida['status_codigo'] ?? null;
+            $vencimentoAtual = $matriculaVencida['proxima_data_vencimento'] ?? $matriculaVencida['data_vencimento'] ?? null;
+            $hoje = date('Y-m-d');
+            $vencidaPorData = $vencimentoAtual && $vencimentoAtual < $hoje;
+
+            if ($vencidaPorData && $statusCodigo !== 'vencida') {
+                $stmtStatusVencida = $db->prepare("SELECT id FROM status_matricula WHERE codigo = 'vencida' LIMIT 1");
+                $stmtStatusVencida->execute();
+                $statusVencidaId = $stmtStatusVencida->fetchColumn();
+                if ($statusVencidaId) {
+                    $stmtMarcarVencida = $db->prepare("
+                        UPDATE matriculas
+                        SET status_id = ?, updated_at = NOW()
+                        WHERE id = ? AND tenant_id = ?
+                    ");
+                    $stmtMarcarVencida->execute([$statusVencidaId, $matriculaVencida['id'], $tenantId]);
+                    $statusCodigo = 'vencida';
+                }
+            }
+
+            if ($statusCodigo === 'vencida' || $vencidaPorData) {
+                $reutilizandoMatricula = true;
+            }
+        }
+
         // VALIDAÇÃO: Só validar se for mudança na MESMA modalidade
         if ($matriculaMesmaModalidade && $matriculaMesmaModalidade['plano_id'] != $planoId) {
             // Verificar se a matrícula está dentro do período de validade
@@ -300,38 +340,81 @@ class MatriculaController
         $motivoRow = $stmtMotivo->fetch();
         $motivoId = $motivoRow ? $motivoRow['id'] : 1; // 1 = nova
 
-        // Criar matrícula:
-        // - ATIVA se for período teste (permite check-in imediato)
-        // - PENDENTE se for paga (primeira parcela precisa ser paga)
-        $stmtInsert = $db->prepare("
-            INSERT INTO matriculas 
-            (tenant_id, aluno_id, plano_id, data_matricula, data_inicio, data_vencimento, 
-             valor, status_id, motivo_id, matricula_anterior_id, plano_anterior_id, observacoes, criado_por,
-             dia_vencimento, periodo_teste, data_inicio_cobranca, proxima_data_vencimento)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ");
-        
-        $stmtInsert->execute([
-            $tenantId,
-            $alunoId,
-            $planoId,
-            $dataMatricula,
-            $dataInicio,
-            $dataVencimento,
-            $valorMatricula,
-            $statusId,
-            $motivoId,
-            $matriculaAnteriorId,
-            $planoAnteriorId,
-            $data['observacoes'] ?? null,
-            $adminId,
-            $data['dia_vencimento'],
-            $periodoTeste,
-            $dataInicioCobranca,
-            $proximaDataVencimento->format('Y-m-d')
-        ]);
-        
-        $matriculaId = (int) $db->lastInsertId();
+        if ($reutilizandoMatricula && $matriculaVencida) {
+            $matriculaId = (int) $matriculaVencida['id'];
+            $planoAnteriorId = (int) $matriculaVencida['plano_id'];
+
+            $stmtUpdateMatricula = $db->prepare("
+                UPDATE matriculas
+                SET plano_id = ?,
+                    data_matricula = ?,
+                    data_inicio = ?,
+                    data_vencimento = ?,
+                    valor = ?,
+                    status_id = ?,
+                    motivo_id = ?,
+                    plano_anterior_id = ?,
+                    observacoes = ?,
+                    criado_por = ?,
+                    dia_vencimento = ?,
+                    periodo_teste = ?,
+                    data_inicio_cobranca = ?,
+                    proxima_data_vencimento = ?,
+                    updated_at = NOW()
+                WHERE id = ? AND tenant_id = ?
+            ");
+            $stmtUpdateMatricula->execute([
+                $planoId,
+                $dataMatricula,
+                $dataInicio,
+                $dataVencimento,
+                $valorMatricula,
+                $statusId,
+                $motivoId,
+                $planoAnteriorId,
+                $data['observacoes'] ?? null,
+                $adminId,
+                $data['dia_vencimento'],
+                $periodoTeste,
+                $dataInicioCobranca,
+                $proximaDataVencimento->format('Y-m-d'),
+                $matriculaId,
+                $tenantId
+            ]);
+        } else {
+            // Criar matrícula:
+            // - ATIVA se for período teste (permite check-in imediato)
+            // - PENDENTE se for paga (primeira parcela precisa ser paga)
+            $stmtInsert = $db->prepare("
+                INSERT INTO matriculas 
+                (tenant_id, aluno_id, plano_id, data_matricula, data_inicio, data_vencimento, 
+                 valor, status_id, motivo_id, matricula_anterior_id, plano_anterior_id, observacoes, criado_por,
+                 dia_vencimento, periodo_teste, data_inicio_cobranca, proxima_data_vencimento)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+            
+            $stmtInsert->execute([
+                $tenantId,
+                $alunoId,
+                $planoId,
+                $dataMatricula,
+                $dataInicio,
+                $dataVencimento,
+                $valorMatricula,
+                $statusId,
+                $motivoId,
+                $matriculaAnteriorId,
+                $planoAnteriorId,
+                $data['observacoes'] ?? null,
+                $adminId,
+                $data['dia_vencimento'],
+                $periodoTeste,
+                $dataInicioCobranca,
+                $proximaDataVencimento->format('Y-m-d')
+            ]);
+            
+            $matriculaId = (int) $db->lastInsertId();
+        }
         
         // DEBUG LOG
         error_log("=== MATRICULA CRIADA ===");

@@ -3696,6 +3696,176 @@ class MobileController
     }
 
     /**
+     * Cancelar compra de diária
+     * POST /mobile/diaria/{matriculaId}/cancelar
+     * Regra: não pode ter check-in feito nem presença confirmada (presente = 1)
+     */
+    public function cancelarDiaria(Request $request, Response $response, array $args): Response
+    {
+        $userId = (int) $request->getAttribute('userId');
+        $tenantId = (int) $request->getAttribute('tenantId');
+        $matriculaId = (int) ($args['matriculaId'] ?? 0);
+
+        if ($matriculaId <= 0) {
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'message' => 'matricula_id inválido'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
+
+        try {
+            // Buscar matrícula do usuário e garantir que é diária avulsa
+            $stmtMat = $this->db->prepare("
+                SELECT m.id, m.aluno_id, m.tenant_id, m.plano_id,
+                       m.data_inicio, m.data_vencimento, m.tipo_cobranca,
+                       sm.codigo as status_codigo,
+                       p.duracao_dias, p.modalidade_id
+                FROM matriculas m
+                INNER JOIN alunos a ON a.id = m.aluno_id
+                INNER JOIN planos p ON p.id = m.plano_id
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
+                WHERE m.id = ?
+                  AND a.usuario_id = ?
+                  AND m.tenant_id = ?
+                LIMIT 1
+            ");
+            $stmtMat->execute([$matriculaId, $userId, $tenantId]);
+            $matricula = $stmtMat->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$matricula) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'Matrícula não encontrada'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            if (($matricula['tipo_cobranca'] ?? '') !== 'avulso' || (int)($matricula['duracao_dias'] ?? 0) !== 1) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'Apenas diárias avulsas podem ser canceladas'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            if (($matricula['status_codigo'] ?? '') === 'cancelada') {
+                $response->getBody()->write(json_encode([
+                    'success' => true,
+                    'message' => 'Matrícula já está cancelada'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json');
+            }
+
+            // Verificar se há check-in feito na janela da diária
+            $dataInicio = $matricula['data_inicio'] ?? null;
+            $dataFim = $matricula['data_vencimento'] ?? $dataInicio;
+            $modalidadeId = (int) ($matricula['modalidade_id'] ?? 0);
+
+            $stmtCheckins = $this->db->prepare("
+                SELECT 
+                    COUNT(*) as total_checkins,
+                    SUM(CASE WHEN c.presente = 1 THEN 1 ELSE 0 END) as presentes
+                FROM checkins c
+                INNER JOIN turmas t ON c.turma_id = t.id
+                INNER JOIN dias d ON t.dia_id = d.id
+                WHERE c.aluno_id = ?
+                  AND c.tenant_id = ?
+                  AND t.modalidade_id = ?
+                  AND d.data BETWEEN ? AND ?
+            ");
+            $stmtCheckins->execute([
+                (int) $matricula['aluno_id'],
+                $tenantId,
+                $modalidadeId,
+                $dataInicio,
+                $dataFim
+            ]);
+            $checkins = $stmtCheckins->fetch(\PDO::FETCH_ASSOC) ?: ['total_checkins' => 0, 'presentes' => 0];
+
+            if ((int) $checkins['total_checkins'] > 0 || (int) $checkins['presentes'] > 0) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'Não é possível cancelar: já existe check-in realizado para esta diária'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            $this->db->beginTransaction();
+
+            // Cancelar matrícula
+            $stmtStatusCancelada = $this->db->prepare("SELECT id FROM status_matricula WHERE codigo = 'cancelada' LIMIT 1");
+            $stmtStatusCancelada->execute();
+            $statusCanceladaId = (int) ($stmtStatusCancelada->fetchColumn() ?: 0);
+            if ($statusCanceladaId <= 0) {
+                throw new \Exception("Status 'cancelada' não encontrado");
+            }
+
+            $stmtCancelMat = $this->db->prepare("
+                UPDATE matriculas
+                SET status_id = ?,
+                    updated_at = NOW()
+                WHERE id = ? AND tenant_id = ?
+            ");
+            $stmtCancelMat->execute([$statusCanceladaId, $matriculaId, $tenantId]);
+
+            // Cancelar assinatura avulsa vinculada
+            $stmtStatusAssCancel = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'cancelada' LIMIT 1");
+            $stmtStatusAssCancel->execute();
+            $statusAssCancelId = (int) ($stmtStatusAssCancel->fetchColumn() ?: 0);
+            if ($statusAssCancelId > 0) {
+                $stmtCancelAss = $this->db->prepare("
+                    UPDATE assinaturas
+                    SET status_id = ?,
+                        status_gateway = 'cancelled',
+                        atualizado_em = NOW()
+                    WHERE matricula_id = ?
+                      AND tenant_id = ?
+                      AND tipo_cobranca = 'avulso'
+                ");
+                $stmtCancelAss->execute([$statusAssCancelId, $matriculaId, $tenantId]);
+            }
+
+            // Cancelar pagamento pendente da matrícula (se existir)
+            $stmtStatusPag = $this->db->prepare("SELECT id FROM status_pagamento WHERE codigo = 'cancelado' LIMIT 1");
+            $stmtStatusPag->execute();
+            $statusPagCancelId = (int) ($stmtStatusPag->fetchColumn() ?: 0);
+            if ($statusPagCancelId <= 0) {
+                $stmtStatusPag = $this->db->prepare("SELECT id FROM status_pagamento WHERE nome = 'Cancelado' LIMIT 1");
+                $stmtStatusPag->execute();
+                $statusPagCancelId = (int) ($stmtStatusPag->fetchColumn() ?: 0);
+            }
+
+            if ($statusPagCancelId > 0) {
+                $stmtCancelPag = $this->db->prepare("
+                    UPDATE pagamentos_plano
+                    SET status_pagamento_id = ?,
+                        updated_at = NOW()
+                    WHERE matricula_id = ?
+                      AND tenant_id = ?
+                ");
+                $stmtCancelPag->execute([$statusPagCancelId, $matriculaId, $tenantId]);
+            }
+
+            $this->db->commit();
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'message' => 'Compra da diária cancelada com sucesso'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            $this->db->rollBack();
+            error_log("[MobileController::cancelarDiaria] Erro: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'message' => 'Erro ao cancelar diária'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
      * Upload de foto de perfil do usuário
      */
     #[OA\Post(
@@ -4713,6 +4883,48 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
 
+            // Verificar se existe matrícula vencida na mesma modalidade para reutilizar
+            $stmtVencida = $this->db->prepare("
+                SELECT m.id, m.plano_id, m.plano_ciclo_id, m.valor, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento,
+                       sm.codigo as status_codigo
+                FROM matriculas m
+                INNER JOIN planos p ON p.id = m.plano_id
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
+                WHERE m.aluno_id = ?
+                  AND m.tenant_id = ?
+                  AND p.modalidade_id = ?
+                ORDER BY m.updated_at DESC, m.id DESC
+                LIMIT 1
+            ");
+            $stmtVencida->execute([$alunoId, $tenantId, $plano['modalidade_id']]);
+            $matriculaExistente = $stmtVencida->fetch(\PDO::FETCH_ASSOC) ?: null;
+
+            $reutilizandoMatricula = false;
+            if ($matriculaExistente) {
+                $statusCodigo = $matriculaExistente['status_codigo'] ?? null;
+                $vencimento = $matriculaExistente['proxima_data_vencimento'] ?? $matriculaExistente['data_vencimento'];
+                $vencidaPorData = $vencimento && $vencimento < date('Y-m-d');
+
+                if ($vencidaPorData && $statusCodigo !== 'vencida') {
+                    $stmtStatusVencida = $this->db->prepare("SELECT id FROM status_matricula WHERE codigo = 'vencida' LIMIT 1");
+                    $stmtStatusVencida->execute();
+                    $statusVencidaId = $stmtStatusVencida->fetchColumn();
+                    if ($statusVencidaId) {
+                        $stmtMarcarVencida = $this->db->prepare("
+                            UPDATE matriculas
+                            SET status_id = ?, updated_at = NOW()
+                            WHERE id = ? AND tenant_id = ?
+                        ");
+                        $stmtMarcarVencida->execute([$statusVencidaId, $matriculaExistente['id'], $tenantId]);
+                        $statusCodigo = 'vencida';
+                    }
+                }
+
+                if ($statusCodigo === 'vencida' || $vencidaPorData) {
+                    $reutilizandoMatricula = true;
+                }
+            }
+
             // Calcular datas baseado no ciclo
             $dataInicio = date('Y-m-d');
             $dataMatricula = $dataInicio;
@@ -4737,49 +4949,124 @@ class MobileController
             $statusRow = $stmtStatus->fetch(\PDO::FETCH_ASSOC);
             $statusId = $statusRow['id'] ?? 5;
 
-            // Buscar motivo "nova"
-            $stmtMotivo = $this->db->prepare("SELECT id FROM motivo_matricula WHERE codigo = 'nova'");
-            $stmtMotivo->execute();
+            // Buscar motivo
+            $motivoCodigo = 'nova';
+            $planoAnteriorId = null;
+            if ($reutilizandoMatricula && $matriculaExistente) {
+                $planoAnteriorId = (int) $matriculaExistente['plano_id'];
+                if ($planoAnteriorId === $planoId) {
+                    $motivoCodigo = 'renovacao';
+                } else {
+                    $valorAnterior = (float) ($matriculaExistente['valor'] ?? 0);
+                    $motivoCodigo = $valorCompra >= $valorAnterior ? 'upgrade' : 'downgrade';
+                }
+            }
+
+            $stmtMotivo = $this->db->prepare("SELECT id FROM motivo_matricula WHERE codigo = ?");
+            $stmtMotivo->execute([$motivoCodigo]);
             $motivoRow = $stmtMotivo->fetch(\PDO::FETCH_ASSOC);
             $motivoId = $motivoRow['id'] ?? 1;
 
-            // Criar matrícula com status PENDENTE
-            error_log("[MobileController::comprarPlano] Preparando INSERT - tenantId={$tenantId}, alunoId={$alunoId}, planoId={$planoId}, planoCicloId=" . ($planoCicloId ?? 'null') . ", valorCompra={$valorCompra}, statusId={$statusId}, motivoId={$motivoId}");
-            
             // tipo_cobranca: 'recorrente' para assinaturas, 'avulso' para pagamento único
             $tipoCobrancaMatricula = $isRecorrente ? 'recorrente' : 'avulso';
-            
-            $stmtInsert = $this->db->prepare("
-                INSERT INTO matriculas 
-                (tenant_id, aluno_id, plano_id, plano_ciclo_id, tipo_cobranca, data_matricula, data_inicio, data_vencimento, 
-                 valor, status_id, motivo_id, dia_vencimento, periodo_teste, proxima_data_vencimento, criado_por)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
-            ");
 
-            $insertParams = [
-                $tenantId,
-                $alunoId,
-                $planoId,
-                $planoCicloId,
-                $tipoCobrancaMatricula,
-                $dataMatricula,
-                $dataInicio,
-                $dataVencimento->format('Y-m-d'),
-                $valorCompra,
-                $statusId,
-                $motivoId,
-                $diaVencimento,
-                $proximaDataVencimento->format('Y-m-d'),
-                $userId
-            ];
-            
-            error_log("[MobileController::comprarPlano] INSERT params: " . json_encode($insertParams));
-            
-            $stmtInsert->execute($insertParams);
+            if ($reutilizandoMatricula && $matriculaExistente) {
+                $matriculaId = (int) $matriculaExistente['id'];
+                error_log("[MobileController::comprarPlano] Reutilizando matrícula vencida ID: {$matriculaId}");
 
-            $matriculaId = (int) $this->db->lastInsertId();
+                $stmtUpdateMat = $this->db->prepare("
+                    UPDATE matriculas
+                    SET plano_id = ?,
+                        plano_ciclo_id = ?,
+                        tipo_cobranca = ?,
+                        data_matricula = ?,
+                        data_inicio = ?,
+                        data_vencimento = ?,
+                        valor = ?,
+                        status_id = ?,
+                        motivo_id = ?,
+                        plano_anterior_id = ?,
+                        dia_vencimento = ?,
+                        proxima_data_vencimento = ?,
+                        criado_por = ?,
+                        updated_at = NOW()
+                    WHERE id = ? AND tenant_id = ?
+                ");
+                $stmtUpdateMat->execute([
+                    $planoId,
+                    $planoCicloId,
+                    $tipoCobrancaMatricula,
+                    $dataMatricula,
+                    $dataInicio,
+                    $dataVencimento->format('Y-m-d'),
+                    $valorCompra,
+                    $statusId,
+                    $motivoId,
+                    $planoAnteriorId,
+                    $diaVencimento,
+                    $proximaDataVencimento->format('Y-m-d'),
+                    $userId,
+                    $matriculaId,
+                    $tenantId
+                ]);
 
-            error_log("[MobileController::comprarPlano] Matrícula criada ID: {$matriculaId}, Ciclo: {$cicloNome}, Valor: {$valorCompra}, Status: pendente");
+                // Registrar histórico de planos
+                try {
+                    $stmtHistorico = $this->db->prepare("
+                        INSERT INTO historico_planos 
+                        (usuario_id, plano_anterior_id, plano_novo_id, data_inicio, data_vencimento, valor_pago, motivo, observacoes, criado_por)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ");
+                    $stmtHistorico->execute([
+                        $userId,
+                        $planoAnteriorId,
+                        $planoId,
+                        $dataInicio,
+                        $dataVencimento->format('Y-m-d'),
+                        $valorCompra,
+                        $motivoCodigo,
+                        'Atualização de matrícula vencida via app',
+                        $userId
+                    ]);
+                } catch (\Exception $e) {
+                    error_log("[MobileController::comprarPlano] Erro ao registrar histórico: " . $e->getMessage());
+                }
+            } else {
+                // Criar matrícula com status PENDENTE
+                error_log("[MobileController::comprarPlano] Preparando INSERT - tenantId={$tenantId}, alunoId={$alunoId}, planoId={$planoId}, planoCicloId=" . ($planoCicloId ?? 'null') . ", valorCompra={$valorCompra}, statusId={$statusId}, motivoId={$motivoId}");
+
+                $stmtInsert = $this->db->prepare("
+                    INSERT INTO matriculas 
+                    (tenant_id, aluno_id, plano_id, plano_ciclo_id, tipo_cobranca, data_matricula, data_inicio, data_vencimento, 
+                     valor, status_id, motivo_id, dia_vencimento, periodo_teste, proxima_data_vencimento, criado_por)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+                ");
+
+                $insertParams = [
+                    $tenantId,
+                    $alunoId,
+                    $planoId,
+                    $planoCicloId,
+                    $tipoCobrancaMatricula,
+                    $dataMatricula,
+                    $dataInicio,
+                    $dataVencimento->format('Y-m-d'),
+                    $valorCompra,
+                    $statusId,
+                    $motivoId,
+                    $diaVencimento,
+                    $proximaDataVencimento->format('Y-m-d'),
+                    $userId
+                ];
+
+                error_log("[MobileController::comprarPlano] INSERT params: " . json_encode($insertParams));
+
+                $stmtInsert->execute($insertParams);
+
+                $matriculaId = (int) $this->db->lastInsertId();
+
+                error_log("[MobileController::comprarPlano] Matrícula criada ID: {$matriculaId}, Ciclo: {$cicloNome}, Valor: {$valorCompra}, Status: pendente");
+            }
 
             // Criar registro de pagamento PENDENTE em pagamentos_plano
             try {
@@ -4933,39 +5220,90 @@ class MobileController
                     $gatewayAssinaturaId = $isRecorrente ? $preferenceId : null;
                     $gatewayPreferenceId = !$isRecorrente ? $preferenceId : null;
                     
-                    $stmtAssinatura = $this->db->prepare("
-                        INSERT INTO assinaturas
-                        (tenant_id, matricula_id, aluno_id, plano_id,
-                         gateway_id, gateway_assinatura_id, gateway_preference_id, external_reference, payment_url,
-                         status_id, status_gateway,
-                         valor, frequencia_id, dia_cobranca, data_inicio, data_fim, proxima_cobranca,
-                         metodo_pagamento_id, tipo_cobranca, criado_em)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-                    ");
-                    
-                    $stmtAssinatura->execute([
-                        $tenantId,
-                        $matriculaId,
-                        $alunoId,
-                        $planoIdMatricula,
-                        $gatewayId,
-                        $gatewayAssinaturaId,
-                        $gatewayPreferenceId,
-                        $externalReference,
-                        $paymentUrl,
-                        $statusId,
-                        $valorCompra,
-                        $frequenciaId,
-                        $diaCobranca,
-                        date('Y-m-d'),
-                        $dataFim,
-                        $proximaCobranca,
-                        $metodoPagamentoId,
-                        $tipoCobranca
-                    ]);
-                    
-                    $assinaturaDbId = (int) $this->db->lastInsertId();
-                    error_log("[MobileController::comprarPlano] ✅ {$tipoCobranca} salva no banco ID: {$assinaturaDbId}");
+                    // Se reutilizou matrícula, tentar atualizar assinatura existente (matricula_id é UNIQUE)
+                    $assinaturaAtualizada = false;
+                    if ($reutilizandoMatricula ?? false) {
+                        $stmtUpdateAss = $this->db->prepare("
+                            UPDATE assinaturas
+                            SET gateway_id = ?,
+                                gateway_assinatura_id = ?,
+                                gateway_preference_id = ?,
+                                external_reference = ?,
+                                payment_url = ?,
+                                status_id = ?,
+                                status_gateway = 'pending',
+                                valor = ?,
+                                frequencia_id = ?,
+                                dia_cobranca = ?,
+                                data_inicio = ?,
+                                data_fim = ?,
+                                proxima_cobranca = ?,
+                                metodo_pagamento_id = ?,
+                                tipo_cobranca = ?,
+                                atualizado_em = NOW()
+                            WHERE matricula_id = ? AND tenant_id = ?
+                            LIMIT 1
+                        ");
+                        $stmtUpdateAss->execute([
+                            $gatewayId,
+                            $gatewayAssinaturaId,
+                            $gatewayPreferenceId,
+                            $externalReference,
+                            $paymentUrl,
+                            $statusId,
+                            $valorCompra,
+                            $frequenciaId,
+                            $diaCobranca,
+                            date('Y-m-d'),
+                            $dataFim,
+                            $proximaCobranca,
+                            $metodoPagamentoId,
+                            $tipoCobranca,
+                            $matriculaId,
+                            $tenantId
+                        ]);
+                        $assinaturaAtualizada = $stmtUpdateAss->rowCount() > 0;
+                        if ($assinaturaAtualizada) {
+                            $assinaturaDbId = $matriculaId;
+                            error_log("[MobileController::comprarPlano] ✅ Assinatura atualizada para matrícula {$matriculaId}");
+                        }
+                    }
+
+                    if (!$assinaturaAtualizada) {
+                        $stmtAssinatura = $this->db->prepare("
+                            INSERT INTO assinaturas
+                            (tenant_id, matricula_id, aluno_id, plano_id,
+                             gateway_id, gateway_assinatura_id, gateway_preference_id, external_reference, payment_url,
+                             status_id, status_gateway,
+                             valor, frequencia_id, dia_cobranca, data_inicio, data_fim, proxima_cobranca,
+                             metodo_pagamento_id, tipo_cobranca, criado_em)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                        ");
+                        
+                        $stmtAssinatura->execute([
+                            $tenantId,
+                            $matriculaId,
+                            $alunoId,
+                            $planoIdMatricula,
+                            $gatewayId,
+                            $gatewayAssinaturaId,
+                            $gatewayPreferenceId,
+                            $externalReference,
+                            $paymentUrl,
+                            $statusId,
+                            $valorCompra,
+                            $frequenciaId,
+                            $diaCobranca,
+                            date('Y-m-d'),
+                            $dataFim,
+                            $proximaCobranca,
+                            $metodoPagamentoId,
+                            $tipoCobranca
+                        ]);
+                        
+                        $assinaturaDbId = (int) $this->db->lastInsertId();
+                        error_log("[MobileController::comprarPlano] ✅ {$tipoCobranca} salva no banco ID: {$assinaturaDbId}");
+                    }
                     
                 } catch (\Exception $e) {
                     error_log("[MobileController::comprarPlano] ⚠️ Erro ao salvar assinatura: " . $e->getMessage());
@@ -4982,10 +5320,10 @@ class MobileController
             $responseData = [
                 'success' => true,
                 'message' => $tipoPagamento === 'assinatura' 
-                    ? "Matrícula criada. Complete a assinatura {$cicloNome} para ativar."
+                    ? ($reutilizandoMatricula ? "Matrícula atualizada. Complete a assinatura {$cicloNome} para ativar." : "Matrícula criada. Complete a assinatura {$cicloNome} para ativar.")
                     : ($tipoPagamento === 'pix'
-                        ? "Matrícula criada. Complete o pagamento PIX para ativar."
-                        : "Matrícula criada. Complete o pagamento {$cicloNome} para ativar."),
+                        ? ($reutilizandoMatricula ? "Matrícula atualizada. Complete o pagamento PIX para ativar." : "Matrícula criada. Complete o pagamento PIX para ativar.")
+                        : ($reutilizandoMatricula ? "Matrícula atualizada. Complete o pagamento {$cicloNome} para ativar." : "Matrícula criada. Complete o pagamento {$cicloNome} para ativar.")),
                 'data' => [
                     'matricula_id' => $matriculaId,
                     'plano_id' => $planoId,
