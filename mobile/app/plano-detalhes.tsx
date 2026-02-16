@@ -103,7 +103,6 @@ export default function PlanoDetalhesScreen() {
   const [pixChecking, setPixChecking] = useState(false);
   const [pixPollingActive, setPixPollingActive] = useState(false);
   const [pixStatusMessage, setPixStatusMessage] = useState<string | null>(null);
-  const [diariaCanceling, setDiariaCanceling] = useState(false);
   const pixCheckRunning = useRef(false);
   const { width: screenWidth } = useWindowDimensions();
 
@@ -396,56 +395,6 @@ export default function PlanoDetalhesScreen() {
       if (manual) {
         setPixChecking(false);
       }
-    }
-  };
-
-  const handleCancelarDiaria = async () => {
-    if (!pixData?.matricula_id || !apiUrl) return;
-    if (diariaCanceling) return;
-
-    try {
-      setDiariaCanceling(true);
-      const token = await AsyncStorage.getItem("@appcheckin:token");
-      if (!token) throw new Error("Token não encontrado");
-
-      const url = `${apiUrl}/mobile/diaria/${pixData.matricula_id}/cancelar`;
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      const text = await response.text();
-      let json: any = {};
-      try {
-        json = text ? JSON.parse(text) : {};
-      } catch {
-        json = {};
-      }
-
-      if (!response.ok || json?.success === false) {
-        const msg =
-          json?.message || text || "Erro ao cancelar diária";
-        showErrorModal("⚠️ Erro ao cancelar diária", msg, "warning");
-        return;
-      }
-
-      setPixPollingActive(false);
-      setPixStatusMessage(null);
-      setPixModalVisible(false);
-      showErrorModal(
-        "✅ Diária cancelada",
-        json?.message || "Compra da diária cancelada com sucesso.",
-        "success",
-      );
-    } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : "Erro ao cancelar diária";
-      showErrorModal("⚠️ Erro ao cancelar diária", msg, "warning");
-    } finally {
-      setDiariaCanceling(false);
     }
   };
 
@@ -1146,41 +1095,17 @@ export default function PlanoDetalhesScreen() {
 
             {!!pixData?.ticket_url && (
               <TouchableOpacity
-                style={styles.pixOpenButton}
+                style={styles.pixOpenLink}
                 onPress={() => {
                   if (pixData?.ticket_url) {
                     Linking.openURL(pixData.ticket_url);
                   }
                 }}
               >
-                <Text style={styles.pixOpenButtonText}>Abrir no banco</Text>
+                <Feather name="external-link" size={14} color={colors.primary} />
+                <Text style={styles.pixOpenLinkText}>Abrir no banco</Text>
               </TouchableOpacity>
             )}
-
-            <TouchableOpacity
-              style={[
-                styles.pixCancelDiariaButton,
-                diariaCanceling && styles.pixCancelDiariaButtonLoading,
-              ]}
-              onPress={handleCancelarDiaria}
-              disabled={diariaCanceling}
-            >
-              {diariaCanceling ? (
-                <>
-                  <ActivityIndicator color="#fff" size="small" />
-                  <Text style={styles.pixCancelDiariaButtonText}>
-                    Cancelando diária...
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <Feather name="x-circle" size={16} color="#fff" />
-                  <Text style={styles.pixCancelDiariaButtonText}>
-                    Cancelar diária
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
 
             <TouchableOpacity
               style={[
@@ -1783,38 +1708,18 @@ const styles = StyleSheet.create({
     color: "#16a34a",
     fontWeight: "700",
   },
-  pixOpenButton: {
-    width: "100%",
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: "center",
-    backgroundColor: colors.primary,
-    marginBottom: 10,
-  },
-  pixOpenButtonText: {
-    color: "#fff",
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  pixCancelDiariaButton: {
-    width: "100%",
-    paddingVertical: 12,
-    borderRadius: 12,
+  pixOpenLink: {
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#dc2626",
-    flexDirection: "row",
-    gap: 8,
-    marginBottom: 10,
+    gap: 6,
+    marginBottom: 12,
   },
-  pixCancelDiariaButtonLoading: {
-    backgroundColor: "#dc2626",
-    opacity: 0.85,
-  },
-  pixCancelDiariaButtonText: {
-    color: "#fff",
-    fontSize: 14,
+  pixOpenLinkText: {
+    color: colors.primary,
+    fontSize: 13,
     fontWeight: "700",
+    textDecorationLine: "underline",
   },
   pixCheckButton: {
     width: "100%",

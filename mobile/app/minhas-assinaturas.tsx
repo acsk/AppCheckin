@@ -41,6 +41,7 @@ interface PlanoAssinatura {
 
 interface Assinatura {
   id: number;
+  matricula_id?: number | null;
   status: StatusAssinatura;
   valor: number;
   tipo_cobranca?: string | null;
@@ -79,6 +80,7 @@ export default function MinhasAssinaturasScreen() {
   const [error, setError] = useState<string | null>(null);
   const [apiUrl, setApiUrl] = useState("");
   const [cancelando, setCancelando] = useState<number | null>(null);
+  const [cancelandoDiaria, setCancelandoDiaria] = useState<number | null>(null);
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
   const [assinaturaParaCancelar, setAssinaturaParaCancelar] =
     useState<Assinatura | null>(null);
@@ -334,18 +336,90 @@ export default function MinhasAssinaturasScreen() {
     [confirmarCancelamento],
   );
 
+  const handleCancelarDiaria = useCallback(
+    async (assinatura: Assinatura) => {
+      if (!assinatura.matricula_id) {
+        showErrorModal(
+          "⚠️ Matrícula não encontrada",
+          "Não foi possível identificar a matrícula para cancelar a diária.",
+          "warning",
+        );
+        return;
+      }
+
+      try {
+        setCancelandoDiaria(assinatura.matricula_id);
+        const token = await AsyncStorage.getItem("@appcheckin:token");
+        if (!token) {
+          throw new Error("Token não encontrado");
+        }
+
+        const url = `${apiUrl}/mobile/diaria/${assinatura.matricula_id}/cancelar`;
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        const text = await response.text();
+        let json: any = {};
+        try {
+          json = text ? JSON.parse(text) : {};
+        } catch {
+          json = {};
+        }
+
+        if (!response.ok || json?.success === false) {
+          const msg = json?.message || text || "Erro ao cancelar diária";
+          showErrorModal("⚠️ Erro ao cancelar diária", msg, "warning");
+          return;
+        }
+
+        showErrorModal(
+          "✅ Diária cancelada",
+          json?.message || "Compra da diária cancelada com sucesso.",
+          "success",
+        );
+
+        setTimeout(() => {
+          fetchAssinaturasCallback(apiUrl);
+        }, 1200);
+      } catch (err) {
+        const errorMsg =
+          err instanceof Error ? err.message : "Erro ao cancelar diária";
+        showErrorModal("❌ Erro ao cancelar diária", errorMsg, "error");
+      } finally {
+        setCancelandoDiaria(null);
+      }
+    },
+    [apiUrl, fetchAssinaturasCallback],
+  );
+
   const renderAssinatura = ({ item }: { item: Assinatura }) => {
     const dataInicioText = formatDate(item.data_inicio) || "-";
     const isAtiva = item.status.codigo === "ativa";
     const isCancelada =
       item.status.codigo === "cancelada" || item.status.codigo === "cancelled";
     const isPendente = item.status.codigo === "pendente";
+    const statusCodigo =
+      typeof item.status.codigo === "string"
+        ? item.status.codigo.toLowerCase()
+        : "";
+    const isPago =
+      statusCodigo === "paga" ||
+      statusCodigo === "pago" ||
+      statusCodigo === "paid" ||
+      statusCodigo === "approved";
     const isAvulso = item.tipo_cobranca === "avulso" || item.recorrente === false;
     const proximaCobrancaRaw = isAvulso ? item.data_fim : item.proxima_cobranca;
     const proximaCobrancaText = formatDate(proximaCobrancaRaw);
     const ultimaCobrancaText = formatDate(item.ultima_cobranca);
     const podePagar =
       isPendente && !!item.payment_url && item.pode_pagar !== false;
+    const podeCancelarDiaria =
+      isAvulso && isPago && !!item.matricula_id;
 
     // Formatar valor
     const valorFormatado = new Intl.NumberFormat("pt-BR", {
@@ -433,36 +507,60 @@ export default function MinhasAssinaturasScreen() {
           )}
         </View>
 
-        {podePagar && (
-          <TouchableOpacity
-            style={styles.botaoPagar}
-            onPress={() => handlePagarAssinatura(item)}
-            activeOpacity={0.8}
-          >
-            <Feather name="credit-card" size={16} color="#fff" />
-            <Text style={styles.botaoPagarTexto}>Pagar agora</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Botão Cancelar */}
-        {!isAvulso && (isAtiva || isPendente) && (
-          <TouchableOpacity
-            style={styles.botaoCancelar}
-            onPress={() => handleCancelarAssinatura(item)}
-            disabled={cancelando === item.id}
-            activeOpacity={0.7}
-          >
-            {cancelando === item.id ? (
-              <ActivityIndicator color="#DC3545" size="small" />
-            ) : (
-              <>
-                <Feather name="trash-2" size={16} color="#DC3545" />
-                <Text style={styles.botaoCancelarTexto}>
-                  Cancelar Assinatura
-                </Text>
-              </>
+        {(podePagar || podeCancelarDiaria || (!isAvulso && (isAtiva || isPendente))) && (
+          <View style={styles.actionStack}>
+            {podePagar && (
+              <TouchableOpacity
+                style={styles.botaoPagar}
+                onPress={() => handlePagarAssinatura(item)}
+                activeOpacity={0.8}
+              >
+                <Feather name="credit-card" size={16} color="#fff" />
+                <Text style={styles.botaoPagarTexto}>Pagar agora</Text>
+              </TouchableOpacity>
             )}
-          </TouchableOpacity>
+
+            {podeCancelarDiaria && (
+              <TouchableOpacity
+                style={styles.botaoCancelarDiaria}
+                onPress={() => handleCancelarDiaria(item)}
+                disabled={cancelandoDiaria === item.matricula_id}
+                activeOpacity={0.7}
+              >
+                {cancelandoDiaria === item.matricula_id ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <>
+                    <Feather name="x-circle" size={16} color="#fff" />
+                    <Text style={styles.botaoCancelarDiariaTexto}>
+                      Cancelar diária
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+
+            {/* Botão Cancelar */}
+            {!isAvulso && (isAtiva || isPendente) && (
+              <TouchableOpacity
+                style={styles.botaoCancelar}
+                onPress={() => handleCancelarAssinatura(item)}
+                disabled={cancelando === item.id}
+                activeOpacity={0.7}
+              >
+                {cancelando === item.id ? (
+                  <ActivityIndicator color="#DC3545" size="small" />
+                ) : (
+                  <>
+                    <Feather name="trash-2" size={16} color="#DC3545" />
+                    <Text style={styles.botaoCancelarTexto}>
+                      Cancelar Assinatura
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
         )}
       </View>
     );
