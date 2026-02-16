@@ -414,6 +414,13 @@ export default function PlanoDetalhesScreen() {
     if (!plano || !selectedCicloId) return;
 
     const selectedCiclo = plano.ciclos?.find((c) => c.id === selectedCicloId);
+    console.log("🧪 [Contratar] selectedCiclo:", {
+      id: selectedCiclo?.id,
+      nome: selectedCiclo?.nome,
+      permite_recorrencia: selectedCiclo?.permite_recorrencia,
+      pix_disponivel: selectedCiclo?.pix_disponivel,
+      metodos_pagamento: selectedCiclo?.metodos_pagamento,
+    });
     if (!selectedCiclo) {
       showErrorModal(
         "⚠️ Ciclo não selecionado",
@@ -472,7 +479,8 @@ export default function PlanoDetalhesScreen() {
       }
 
       const data = await response.json();
-      console.log("✅ Resposta:", data);
+      console.log("✅ [Contratar] Resposta:", data);
+      console.log("✅ [Contratar] payment_url:", data?.data?.payment_url);
 
       if (!data.success) {
         showErrorModal(
@@ -514,6 +522,13 @@ export default function PlanoDetalhesScreen() {
   const handlePagarPix = async () => {
     if (!plano || !selectedCicloId) return;
     const selectedCiclo = plano.ciclos?.find((c) => c.id === selectedCicloId);
+    console.log("🧪 [PIX] selectedCiclo:", {
+      id: selectedCiclo?.id,
+      nome: selectedCiclo?.nome,
+      permite_recorrencia: selectedCiclo?.permite_recorrencia,
+      pix_disponivel: selectedCiclo?.pix_disponivel,
+      metodos_pagamento: selectedCiclo?.metodos_pagamento,
+    });
     if (!selectedCiclo) {
       showErrorModal(
         "⚠️ Ciclo não selecionado",
@@ -560,6 +575,7 @@ export default function PlanoDetalhesScreen() {
       }
 
       const data = await response.json();
+      console.log("✅ [PIX] Resposta:", data);
       if (!data.success) {
         showErrorModal(
           "❌ Não foi Possível Comprar",
