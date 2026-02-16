@@ -4908,7 +4908,7 @@ class MobileController
             $stmtPendente->execute([$alunoId, $tenantId, $plano['modalidade_id']]);
             $matriculaPendente = $stmtPendente->fetch(\PDO::FETCH_ASSOC) ?: null;
 
-            if ($matriculaPendente) {
+            if ($matriculaPendente && $metodoPagamento === 'pix') {
                 // Buscar assinatura pendente para recuperar payment_url/preference_id
                 $stmtAss = $this->db->prepare("
                     SELECT id, gateway_preference_id, payment_url, tipo_cobranca, status_gateway
@@ -5124,23 +5124,32 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
             }
 
-            // Verificar se existe matrícula vencida na mesma modalidade para reutilizar
-            $stmtVencida = $this->db->prepare("
-                SELECT m.id, m.plano_id, m.plano_ciclo_id, m.valor, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento,
-                       sm.codigo as status_codigo
-                FROM matriculas m
-                INNER JOIN planos p ON p.id = m.plano_id
-                INNER JOIN status_matricula sm ON sm.id = m.status_id
-                WHERE m.aluno_id = ?
-                  AND m.tenant_id = ?
-                  AND p.modalidade_id = ?
-                ORDER BY m.updated_at DESC, m.id DESC
-                LIMIT 1
-            ");
-            $stmtVencida->execute([$alunoId, $tenantId, $plano['modalidade_id']]);
-            $matriculaExistente = $stmtVencida->fetch(\PDO::FETCH_ASSOC) ?: null;
-
+            // Se existe matrícula pendente e o método é checkout, reutilizar para gerar novo pagamento
+            $matriculaExistente = null;
             $reutilizandoMatricula = false;
+            if ($matriculaPendente && $metodoPagamento !== 'pix') {
+                $matriculaExistente = $matriculaPendente;
+                $reutilizandoMatricula = true;
+            }
+
+            // Verificar se existe matrícula vencida na mesma modalidade para reutilizar (apenas se não já reutilizou pendente)
+            if (!$matriculaExistente) {
+                $stmtVencida = $this->db->prepare("
+                    SELECT m.id, m.plano_id, m.plano_ciclo_id, m.valor, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento,
+                           sm.codigo as status_codigo
+                    FROM matriculas m
+                    INNER JOIN planos p ON p.id = m.plano_id
+                    INNER JOIN status_matricula sm ON sm.id = m.status_id
+                    WHERE m.aluno_id = ?
+                      AND m.tenant_id = ?
+                      AND p.modalidade_id = ?
+                    ORDER BY m.updated_at DESC, m.id DESC
+                    LIMIT 1
+                ");
+                $stmtVencida->execute([$alunoId, $tenantId, $plano['modalidade_id']]);
+                $matriculaExistente = $stmtVencida->fetch(\PDO::FETCH_ASSOC) ?: null;
+                $reutilizandoMatricula = false;
+            }
             if ($matriculaExistente) {
                 $statusCodigo = $matriculaExistente['status_codigo'] ?? null;
                 $vencimento = $matriculaExistente['proxima_data_vencimento'] ?? $matriculaExistente['data_vencimento'];
