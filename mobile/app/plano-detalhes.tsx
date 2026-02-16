@@ -29,6 +29,8 @@ interface Ciclo {
   valor_mensal_formatado: string;
   desconto_percentual: number;
   permite_recorrencia: boolean;
+  pix_disponivel?: boolean;
+  metodos_pagamento?: string[];
   economia: string | null;
   economia_valor: string | null;
 }
@@ -690,6 +692,12 @@ export default function PlanoDetalhesScreen() {
 
   const ciclos = (plano.ciclos || []).sort((a, b) => a.meses - b.meses);
   const selectedCiclo = ciclos.find((c) => c.id === selectedCicloId);
+  const metodosPagamento = Array.isArray(selectedCiclo?.metodos_pagamento)
+    ? selectedCiclo?.metodos_pagamento.map((m) => String(m).toLowerCase())
+    : [];
+  const checkoutDisponivel = metodosPagamento.includes("checkout");
+  const pixDisponivel =
+    metodosPagamento.includes("pix") || selectedCiclo?.pix_disponivel === true;
   const statusCodigoRaw =
     plano.status_codigo ||
     (typeof plano.status === "string" ? plano.status : plano.status?.codigo) ||
@@ -884,10 +892,11 @@ export default function PlanoDetalhesScreen() {
             <TouchableOpacity
               style={[
                 styles.footerButton,
-                (!selectedCiclo || comprando) && styles.footerButtonDisabled,
+                (!selectedCiclo || comprando || !checkoutDisponivel) &&
+                  styles.footerButtonDisabled,
               ]}
               onPress={handleContratar}
-              disabled={!selectedCiclo || comprando}
+              disabled={!selectedCiclo || comprando || !checkoutDisponivel}
               activeOpacity={0.8}
             >
               {comprando ? (
@@ -900,15 +909,16 @@ export default function PlanoDetalhesScreen() {
                   <Feather name="shopping-cart" size={18} color="#fff" />
                   <Text style={styles.footerButtonText}>
                     {selectedCiclo
-                      ? `Contratar por ${selectedCiclo.valor_formatado}`
+                      ? checkoutDisponivel
+                        ? `Contratar por ${selectedCiclo.valor_formatado}`
+                        : "Checkout indisponível"
                       : "Escolha um ciclo"}
                   </Text>
                 </>
               )}
             </TouchableOpacity>
 
-            {!!selectedCiclo &&
-              selectedCiclo.permite_recorrencia === false && (
+            {!!selectedCiclo && pixDisponivel && (
                 <TouchableOpacity
                   style={[
                     styles.footerPixButton,

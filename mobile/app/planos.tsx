@@ -31,6 +31,8 @@ interface Ciclo {
   valor_mensal_formatado: string;
   desconto_percentual: number;
   permite_recorrencia: boolean;
+  pix_disponivel?: boolean;
+  metodos_pagamento?: string[];
   economia?: string | null;
 }
 
@@ -773,7 +775,18 @@ export default function PlanosScreen() {
           </View>
         )}
 
-        <TouchableOpacity
+        {(() => {
+          const metodosPagamento = Array.isArray(selectedCiclo?.metodos_pagamento)
+            ? selectedCiclo?.metodos_pagamento.map((m) => String(m).toLowerCase())
+            : [];
+          const checkoutDisponivel = metodosPagamento.includes("checkout");
+          const pixDisponivel =
+            metodosPagamento.includes("pix") ||
+            selectedCiclo?.pix_disponivel === true;
+
+          return (
+            <>
+              <TouchableOpacity
           style={[
             styles.contratarButton,
             comprando && planoComprando === plano.id
@@ -782,12 +795,17 @@ export default function PlanosScreen() {
             !selectedCiclo &&
               !plano.is_plano_atual &&
               styles.contratarButtonDisabled,
+            selectedCiclo &&
+              !plano.is_plano_atual &&
+              !checkoutDisponivel &&
+              styles.contratarButtonDisabled,
           ]}
           onPress={() => handleContratar(plano)}
           disabled={
             !selectedCiclo ||
             plano.is_plano_atual ||
-            (comprando && planoComprando === plano.id)
+            (comprando && planoComprando === plano.id) ||
+            (selectedCiclo && !checkoutDisponivel)
           }
         >
           {plano.is_plano_atual ? (
@@ -805,14 +823,16 @@ export default function PlanosScreen() {
               <Feather name="shopping-cart" size={18} color="#fff" />
               <Text style={styles.contratarButtonText}>
                 {selectedCiclo
-                  ? `Contratar por ${selectedCiclo.valor_formatado}`
+                  ? checkoutDisponivel
+                    ? `Contratar por ${selectedCiclo.valor_formatado}`
+                    : "Checkout indisponível"
                   : "Escolha um ciclo para continuar"}
               </Text>
             </>
           )}
         </TouchableOpacity>
 
-        {!plano.is_plano_atual && selectedCiclo && (
+        {!plano.is_plano_atual && selectedCiclo && pixDisponivel && (
           <TouchableOpacity
             style={[
               styles.pixButton,
@@ -836,6 +856,9 @@ export default function PlanosScreen() {
             )}
           </TouchableOpacity>
         )}
+            </>
+          );
+        })()}
       </View>
     );
   };

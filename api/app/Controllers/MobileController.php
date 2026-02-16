@@ -4303,6 +4303,10 @@ class MobileController
                         'desconto_percentual' => $economiaPercentual,
                         'permite_recorrencia' => (bool)$ciclo['permite_recorrencia'],
                         'permite_reposicao' => (bool)$ciclo['permite_reposicao'],
+                        'pix_disponivel' => !(bool)$ciclo['permite_recorrencia'],
+                        'metodos_pagamento' => (bool)$ciclo['permite_recorrencia']
+                            ? ['checkout']
+                            : ['checkout', 'pix'],
                         'economia' => $economiaPercentual > 0 
                             ? 'Economize ' . $economiaPercentual . '%'
                             : null,
@@ -4507,6 +4511,10 @@ class MobileController
                     'desconto_percentual' => $economiaPercentual,
                     'permite_recorrencia' => (bool)$c['permite_recorrencia'],
                     'permite_reposicao' => (bool)$c['permite_reposicao'],
+                    'pix_disponivel' => !(bool)$c['permite_recorrencia'],
+                    'metodos_pagamento' => (bool)$c['permite_recorrencia']
+                        ? ['checkout']
+                        : ['checkout', 'pix'],
                     'economia' => $economiaPercentual > 0
                         ? 'Economize ' . $economiaPercentual . '%'
                         : null,
