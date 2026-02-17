@@ -581,44 +581,30 @@ class MercadoPagoService
     
     /**
      * Criar preferência de assinatura recorrente (para ciclos mensais)
-     * Mostra ao usuário que será cobrado automaticamente todo mês
      * 
-     * NOTA: A API de preapproval do Mercado Pago requer configuração específica
-     * e pode não funcionar em todos os ambientes. Como fallback, usamos
-     * checkout de preferência com informação de recorrência.
+     * IMPORTANTE: Assinaturas de planos/pacotes SEMPRE usam preapproval (sem fallback)
+     * PIX e pagamentos avulsos usam preference ou criarPagamentoPix
      * 
      * @param array $data Dados da assinatura
      * @param int $duracaoMeses Duração do ciclo em meses (1=mensal, 2=bimestral, etc)
-     * @return array Resposta com init_point para assinatura
+     * @return array Resposta com init_point para assinatura (sempre preapproval)
+     * @throws Exception Se preapproval falhar
      */
     public function criarPreferenciaAssinatura(array $data, int $duracaoMeses = 1): array
     {
         $this->validarCredenciais();
         
-        // Tentar criar assinatura via preapproval primeiro
-        try {
-            return $this->tentarCriarPreapproval($data, $duracaoMeses);
-        } catch (Exception $e) {
-            error_log("[MercadoPagoService] ⚠️ Preapproval falhou: " . $e->getMessage());
-            error_log("[MercadoPagoService] 🔄 Usando checkout de preferência como fallback");
-            
-            // Fallback: usar checkout de preferência com informação de recorrência
-            $nomeCiclo = match($duracaoMeses) {
-                1 => 'Mensal',
-                2 => 'Bimestral',
-                3 => 'Trimestral',
-                6 => 'Semestral',
-                12 => 'Anual',
-                default => "{$duracaoMeses}x mêses"
-            };
-            $data['descricao'] = "Assinatura {$nomeCiclo} - {$data['plano_nome']} (será cobrado automaticamente)";
-            $data['apenas_cartao'] = true; // Restringir apenas cartão de crédito para assinaturas
-            return $this->criarPreferenciaPagamento($data);
-        }
+        // Criar assinatura via preapproval (sem fallback para preservar o comportamento correto)
+        return $this->tentarCriarPreapproval($data, $duracaoMeses);
     }
     
     /**
-     * Tentar criar assinatura via API de preapproval
+     * Tentar criar assinatura via API de preapproval (SEMPRE usado para planos/pacotes)
+     * 
+     * @param array $data Dados da assinatura
+     * @param int $duracaoMeses Frequência em meses (1=mensal, 2=bimestral)
+     * @return array Resposta com id e init_point da preapproval
+     * @throws Exception Se a criação falhar
      */
     private function tentarCriarPreapproval(array $data, int $duracaoMeses = 1): array
     {
@@ -642,7 +628,7 @@ class MercadoPagoService
                 'transaction_amount' => (float) $data['valor'],
                 'currency_id' => 'BRL'
             ],
-            // Permitir APENAS cartão de crédito
+            // Permitir APENAS cartão de crédito para assinaturas
             'payment_methods_allowed' => [
                 'payment_types' => [
                     ['id' => 'credit_card']
@@ -652,7 +638,10 @@ class MercadoPagoService
             'status' => 'pending'
         ];
         
-        error_log("[MercadoPagoService] 🔄 Tentando criar PREAPPROVAL (assinatura)");
+        error_log("[MercadoPagoService] 🔄 Criando PREAPPROVAL (assinatura recorrente)");
+        error_log("[MercadoPagoService] Email: {$payerEmail}");
+        error_log("[MercadoPagoService] Valor: " . $data['valor'] . " BRL");
+        error_log("[MercadoPagoService] Frequência: {$duracaoMeses} mês(es)");
         error_log("[MercadoPagoService] Payload: " . json_encode($payload, JSON_UNESCAPED_UNICODE));
         
         $ch = curl_init();
@@ -666,7 +655,8 @@ class MercadoPagoService
                 'Content-Type: application/json',
                 'X-Idempotency-Key: ' . uniqid('sub_', true)
             ],
-            CURLOPT_TIMEOUT => 30
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_SSL_VERIFYPEER => true
         ]);
         
         $response = curl_exec($ch);
@@ -678,6 +668,7 @@ class MercadoPagoService
         error_log("[MercadoPagoService] 📥 Response: " . $response);
         
         if ($error) {
+            error_log("[MercadoPagoService] ❌ CURL Error: {$error}");
             throw new Exception("Erro na requisição: {$error}");
         }
         
@@ -685,6 +676,7 @@ class MercadoPagoService
         
         if ($httpCode >= 400) {
             $errorMessage = $responseData['message'] ?? $responseData['error'] ?? 'Erro desconhecido';
+            error_log("[MercadoPagoService] ❌ Erro Mercado Pago [{$httpCode}]: {$errorMessage}");
             throw new Exception("Erro Mercado Pago [{$httpCode}]: {$errorMessage}");
         }
         
@@ -693,15 +685,22 @@ class MercadoPagoService
             ? $responseData['init_point'] 
             : ($responseData['sandbox_init_point'] ?? $responseData['init_point']);
         
-        error_log("[MercadoPagoService] ✅ Preapproval criado! ID: " . ($responseData['id'] ?? 'N/A'));
+        if (empty($paymentUrl)) {
+            throw new Exception("Nenhuma URL de pagamento retornada pelo Mercado Pago");
+        }
+        
+        error_log("[MercadoPagoService] ✅ Preapproval criado com sucesso!");
+        error_log("[MercadoPagoService] 📍 ID: " . ($responseData['id'] ?? 'N/A'));
         error_log("[MercadoPagoService] 🔗 URL: " . $paymentUrl);
+        error_log("[MercadoPagoService] 🌍 Ambiente: " . ($this->isProduction ? 'PRODUÇÃO' : 'SANDBOX'));
         
         return [
             'id' => $responseData['id'],
             'init_point' => $paymentUrl,
             'sandbox_init_point' => $responseData['sandbox_init_point'] ?? null,
             'external_reference' => $payload['external_reference'],
-            'tipo' => 'assinatura'
+            'tipo' => 'assinatura',
+            'preapproval_id' => $responseData['id']
         ];
     }
     

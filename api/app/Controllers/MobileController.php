@@ -3836,7 +3836,19 @@ class MobileController
             ];
 
             $mercadoPago = new \App\Services\MercadoPagoService($tenantId);
-            $preferencia = $mercadoPago->criarPreferenciaPagamento($dadosPagamento);
+            
+            // Pacotes também são recorrentes (preapproval)
+            try {
+                $preferencia = $mercadoPago->criarPreferenciaAssinatura($dadosPagamento, 1);
+                $tipoPagamento = 'assinatura';
+            } catch (\Exception $e) {
+                error_log("[MobileController::pagarPacote] Erro ao criar preapproval: " . $e->getMessage());
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'Falha ao processar pagamento do pacote. Por favor, tente novamente.'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            }
 
             // Atualizar contrato com payment_url
             $stmtUpdate = $this->db->prepare("
@@ -5609,9 +5621,23 @@ class MobileController
                     }
                 } elseif ($isRecorrente) {
                     // ASSINATURA RECORRENTE (preapproval) no Mercado Pago
+                    // Planos e pacotes SEMPRE usam preapproval, nunca preference
                     error_log("[MobileController::comprarPlano] Criando ASSINATURA RECORRENTE (preapproval)...");
-                    $preferencia = $mercadoPago->criarPreferenciaAssinatura($dadosPagamento, $duracaoMeses);
-                    $tipoPagamento = 'assinatura';
+                    try {
+                        $preferencia = $mercadoPago->criarPreferenciaAssinatura($dadosPagamento, $duracaoMeses);
+                        $tipoPagamento = 'assinatura';
+                    } catch (\Exception $e) {
+                        // Se preapproval falhar, retornar erro (sem fallback)
+                        error_log("[MobileController::comprarPlano] ❌ Erro ao criar preapproval: " . $e->getMessage());
+                        $response->getBody()->write(json_encode([
+                            'success' => false,
+                            'type' => 'error',
+                            'code' => 'PREAPPROVAL_ERRO',
+                            'message' => 'Falha ao processar assinatura. Por favor, tente novamente ou entre em contato com o suporte.',
+                            'details' => $e->getMessage()
+                        ]));
+                        return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+                    }
                 } else {
                     // PAGAMENTO ÚNICO/AVULSO (preference) no Mercado Pago
                     error_log("[MobileController::comprarPlano] Criando PAGAMENTO AVULSO (preference)...");
