@@ -3743,6 +3743,9 @@ class MobileController
             $tenantId = (int) $request->getAttribute('tenantId');
             $userId = (int) $request->getAttribute('userId');
             $contratoId = (int) ($args['contratoId'] ?? 0);
+            $body = $request->getParsedBody() ?? [];
+            $query = $request->getQueryParams() ?? [];
+            $forceNew = !empty($body['force_new']) || !empty($query['force_new']);
 
             if ($contratoId <= 0) {
                 $response->getBody()->write(json_encode([
@@ -3780,8 +3783,8 @@ class MobileController
 
             $valorTotal = (float) $contrato['valor_total'];
 
-            // Se já existe payment_url, reusar
-            if (!empty($contrato['payment_url'])) {
+            // Se já existe payment_url, reusar (a menos que force_new=1)
+            if (!empty($contrato['payment_url']) && !$forceNew) {
                 $response->getBody()->write(json_encode([
                     'success' => true,
                     'message' => 'Pagamento já gerado',
