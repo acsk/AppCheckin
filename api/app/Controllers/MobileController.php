@@ -3778,6 +3778,8 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
 
+            $valorTotal = (float) $contrato['valor_total'];
+
             // Se já existe payment_url, reusar
             if (!empty($contrato['payment_url'])) {
                 $response->getBody()->write(json_encode([
@@ -3818,7 +3820,9 @@ class MobileController
                 'aluno_cpf' => $usuario['cpf'] ?? null,
                 'plano_nome' => $contrato['pacote_nome'] ?? 'Pacote',
                 'descricao' => "Pacote: " . ($contrato['pacote_nome'] ?? 'Pacote'),
-                'valor' => (float) $contrato['valor_total'],
+                'valor' => $valorTotal,
+                'item_id' => 'PACOTE_' . $contratoId,
+                'external_reference' => 'PAC-' . $contratoId . '-' . time(),
                 'max_parcelas' => 12,
                 'academia_nome' => $academiaNome,
                 'apenas_cartao' => false,

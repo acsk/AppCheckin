@@ -190,7 +190,7 @@ class MercadoPagoService
         
         // Montar itens do pagamento
         $items = [[
-            'id' => $data['matricula_id'] ?? null,
+            'id' => $data['item_id'] ?? ($data['matricula_id'] ?? null),
             'title' => $data['plano_nome'] ?? 'Plano Academia',
             'description' => $data['descricao'] ?? 'Pagamento de matrícula',
             'picture_url' => $data['imagem_url'] ?? null,
@@ -216,6 +216,13 @@ class MercadoPagoService
                 'number' => $data['aluno_telefone'] ?? ''
             ]
         ];
+        $cpf = isset($data['aluno_cpf']) ? preg_replace('/[^0-9]/', '', $data['aluno_cpf']) : '';
+        if (strlen($cpf) === 11) {
+            $payer['identification'] = [
+                'type' => 'CPF',
+                'number' => $cpf
+            ];
+        }
         
         // Metadados para identificar o pagamento (guardar email real aqui)
         $metadata = [
@@ -236,7 +243,7 @@ class MercadoPagoService
             'items' => $items,
             'payer' => $payer,
             'metadata' => $metadata,
-            'external_reference' => "MAT-{$data['matricula_id']}-" . time(),
+            'external_reference' => $data['external_reference'] ?? ("MAT-{$data['matricula_id']}-" . time()),
             'notification_url' => $this->notificationUrl,
             'back_urls' => [
                 'success' => $this->successUrl,
