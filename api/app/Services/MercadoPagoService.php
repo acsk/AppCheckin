@@ -599,7 +599,8 @@ class MercadoPagoService
     }
     
     /**
-     * Tentar criar assinatura via API de preapproval (SEMPRE usado para planos/pacotes)
+     * Tentar criar assinatura via API de preapproval_plan (SEMPRE usado para planos/pacotes)
+     * API mais estável que /preapproval para assinaturas do Mercado Pago
      * 
      * @param array $data Dados da assinatura
      * @param int $duracaoMeses Frequência em meses (1=mensal, 2=bimestral)
@@ -614,42 +615,93 @@ class MercadoPagoService
             $payerEmail = 'test_user_' . ($data['aluno_id'] ?? rand(100000, 999999)) . '@testuser.com';
         }
         
-        // Montar payload de assinatura (preapproval)
-        // frequency = número de ciclos, frequency_type = tipo (months, weeks, days)
-        // Ex: frequency=1, frequency_type=months = cobrança mensal
-        // Ex: frequency=1, frequency_type=weeks = cobrança semanal
-        $payload = [
+        // Montar payload para /preapproval_plan (API mais estável)
+        // Próximo passo: usuário autoriza e faz pagamento no checkout
+        $planPayload = [
             'reason' => $data['plano_nome'] . ' - ' . ($data['academia_nome'] ?? 'Academia'),
-            'external_reference' => "MAT-{$data['matricula_id']}-" . time(),
-            'payer_email' => $payerEmail,
             'auto_recurring' => [
                 'frequency' => $duracaoMeses,
                 'frequency_type' => 'months',
                 'transaction_amount' => (float) $data['valor'],
                 'currency_id' => 'BRL'
             ],
-            // Permitir APENAS cartão de crédito para assinaturas
-            'payment_methods_allowed' => [
-                'payment_types' => [
-                    ['id' => 'credit_card']
-                ]
+            'back_url' => $this->successUrl,
+            'external_reference' => "MAT-{$data['matricula_id']}-" . time()
+        ];
+        
+        error_log("[MercadoPagoService] 🔄 Criando PREAPPROVAL_PLAN (assinatura recorrente)");
+        error_log("[MercadoPagoService] Email: {$payerEmail}");
+        error_log("[MercadoPagoService] Valor: " . $data['valor'] . " BRL");
+        error_log("[MercadoPagoService] Frequência: {$duracaoMeses} mês(es)");
+        error_log("[MercadoPagoService] Payload: " . json_encode($planPayload, JSON_UNESCAPED_UNICODE));
+        
+        // Passo 1: Criar plano de assinatura
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $this->baseUrl . '/preapproval_plan',
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => json_encode($planPayload),
+            CURLOPT_HTTPHEADER => [
+                'Authorization: Bearer ' . $this->accessToken,
+                'Content-Type: application/json',
+                'X-Idempotency-Key: ' . uniqid('plan_', true)
+            ],
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_SSL_VERIFYPEER => true
+        ]);
+        
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+        
+        error_log("[MercadoPagoService] 📥 HTTP Code: {$httpCode}");
+        error_log("[MercadoPagoService] 📥 Response: " . $response);
+        
+        if ($error) {
+            error_log("[MercadoPagoService] ❌ CURL Error: {$error}");
+            throw new Exception("Erro na requisição: {$error}");
+        }
+        
+        $planData = json_decode($response, true);
+        
+        if ($httpCode >= 400) {
+            $errorMessage = $planData['message'] ?? $planData['error'] ?? 'Erro desconhecido';
+            error_log("[MercadoPagoService] ❌ Erro Mercado Pago [{$httpCode}]: {$errorMessage}");
+            throw new Exception("Erro Mercado Pago [{$httpCode}]: {$errorMessage}");
+        }
+        
+        $planId = $planData['id'] ?? null;
+        if (!$planId) {
+            throw new Exception("Plano criado mas sem ID retornado");
+        }
+        
+        // Passo 2: Criar preapproval vinculada ao plano
+        $preapprovalPayload = [
+            'reason' => $data['plano_nome'] . ' - ' . ($data['academia_nome'] ?? 'Academia'),
+            'external_reference' => "MAT-{$data['matricula_id']}-" . time(),
+            'payer_email' => $payerEmail,
+            'plan_id' => $planId,
+            'auto_recurring' => [
+                'frequency' => $duracaoMeses,
+                'frequency_type' => 'months',
+                'transaction_amount' => (float) $data['valor'],
+                'currency_id' => 'BRL'
             ],
             'back_url' => $this->successUrl,
             'status' => 'pending'
         ];
         
-        error_log("[MercadoPagoService] 🔄 Criando PREAPPROVAL (assinatura recorrente)");
-        error_log("[MercadoPagoService] Email: {$payerEmail}");
-        error_log("[MercadoPagoService] Valor: " . $data['valor'] . " BRL");
-        error_log("[MercadoPagoService] Frequência: {$duracaoMeses} mês(es)");
-        error_log("[MercadoPagoService] Payload: " . json_encode($payload, JSON_UNESCAPED_UNICODE));
+        error_log("[MercadoPagoService] 🔄 Criando PREAPPROVAL vinculada ao plano {$planId}");
+        error_log("[MercadoPagoService] Payload: " . json_encode($preapprovalPayload, JSON_UNESCAPED_UNICODE));
         
         $ch = curl_init();
         curl_setopt_array($ch, [
             CURLOPT_URL => $this->baseUrl . '/preapproval',
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => json_encode($payload),
+            CURLOPT_POSTFIELDS => json_encode($preapprovalPayload),
             CURLOPT_HTTPHEADER => [
                 'Authorization: Bearer ' . $this->accessToken,
                 'Content-Type: application/json',
@@ -686,11 +738,19 @@ class MercadoPagoService
             : ($responseData['sandbox_init_point'] ?? $responseData['init_point']);
         
         if (empty($paymentUrl)) {
+            error_log("[MercadoPagoService] ⚠️ Response Data: " . json_encode($responseData));
             throw new Exception("Nenhuma URL de pagamento retornada pelo Mercado Pago");
+        }
+        
+        // Validar que é realmente preapproval (URL deve conter subscription)
+        if (!str_contains($paymentUrl, 'subscription')) {
+            error_log("[MercadoPagoService] ⚠️ URL recebida não é preapproval: " . $paymentUrl);
+            error_log("[MercadoPagoService] 🔧 Response completa: " . json_encode($responseData));
         }
         
         error_log("[MercadoPagoService] ✅ Preapproval criado com sucesso!");
         error_log("[MercadoPagoService] 📍 ID: " . ($responseData['id'] ?? 'N/A'));
+        error_log("[MercadoPagoService] 📋 Plan ID: " . $planId);
         error_log("[MercadoPagoService] 🔗 URL: " . $paymentUrl);
         error_log("[MercadoPagoService] 🌍 Ambiente: " . ($this->isProduction ? 'PRODUÇÃO' : 'SANDBOX'));
         
@@ -698,9 +758,10 @@ class MercadoPagoService
             'id' => $responseData['id'],
             'init_point' => $paymentUrl,
             'sandbox_init_point' => $responseData['sandbox_init_point'] ?? null,
-            'external_reference' => $payload['external_reference'],
+            'external_reference' => $preapprovalPayload['external_reference'],
             'tipo' => 'assinatura',
-            'preapproval_id' => $responseData['id']
+            'preapproval_id' => $responseData['id'],
+            'plan_id' => $planId
         ];
     }
     
