@@ -33,7 +33,21 @@ export const authService = {
 
   async selectTenant(tenantId) {
     try {
-      const response = await api.post('/auth/select-tenant', { tenant_id: tenantId });
+      const token = await AsyncStorage.getItem('@appcheckin:token');
+      let response;
+
+      if (token) {
+        response = await api.post('/auth/select-tenant', { tenant_id: tenantId });
+      } else {
+        const tempUserJson = await AsyncStorage.getItem('@appcheckin:temp_user');
+        const tempUser = tempUserJson ? JSON.parse(tempUserJson) : null;
+        const payload = {
+          tenant_id: tenantId,
+          user_id: tempUser?.id,
+          email: tempUser?.email,
+        };
+        response = await api.post('/auth/select-tenant-public', payload);
+      }
       const normalizedUser = this.normalizeUser(response.data.user);
       
       if (response.data.token) {
