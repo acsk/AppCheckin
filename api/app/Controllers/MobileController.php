@@ -3783,16 +3783,7 @@ class MobileController
 
             $valorTotal = (float) $contrato['valor_total'];
 
-            // URLs antigas (preference) não são mais válidas, sempre gerar NOVA com preapproval
-            // Detectar se URL é antiga (contém /checkout/ em vez de /subscription/)
-            $urlAntigaPreference = !empty($contrato['payment_url']) && str_contains($contrato['payment_url'], '/checkout/');
-            
-            // Se URL é antiga (preference em vez de preapproval), sempre regenerar
-            if ($urlAntigaPreference) {
-                $forceNew = true;
-                error_log("[MobileController::pagarPacote] URL antiga (preference) detectada, forçando regeneração");
-            }
-
+            // Se já existe payment_url, reusar (a menos que force_new=1)
             if (!empty($contrato['payment_url']) && !$forceNew) {
                 $response->getBody()->write(json_encode([
                     'success' => true,
@@ -3845,19 +3836,7 @@ class MobileController
             ];
 
             $mercadoPago = new \App\Services\MercadoPagoService($tenantId);
-            
-            // Pacotes também são recorrentes (preapproval)
-            try {
-                $preferencia = $mercadoPago->criarPreferenciaAssinatura($dadosPagamento, 1);
-                $tipoPagamento = 'assinatura';
-            } catch (\Exception $e) {
-                error_log("[MobileController::pagarPacote] Erro ao criar preapproval: " . $e->getMessage());
-                $response->getBody()->write(json_encode([
-                    'success' => false,
-                    'message' => 'Falha ao processar pagamento do pacote. Por favor, tente novamente.'
-                ], JSON_UNESCAPED_UNICODE));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
-            }
+            $preferencia = $mercadoPago->criarPreferenciaPagamento($dadosPagamento);
 
             // Atualizar contrato com payment_url
             $stmtUpdate = $this->db->prepare("
@@ -5648,22 +5627,10 @@ class MobileController
                         return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
                     }
                 } else {
-                    // PAGAMENTO ÚNICO/AVULSO (preapproval) no Mercado Pago
-                    error_log("[MobileController::comprarPlano] Criando PAGAMENTO AVULSO (preapproval)...");
-                    try {
-                        $preferencia = $mercadoPago->criarPreferenciaAssinatura($dadosPagamento, 1);
-                        $tipoPagamento = 'pagamento_unico';
-                    } catch (\Exception $e) {
-                        error_log("[MobileController::comprarPlano] ❌ Erro ao criar preapproval para avulso: " . $e->getMessage());
-                        $response->getBody()->write(json_encode([
-                            'success' => false,
-                            'type' => 'error',
-                            'code' => 'PREAPPROVAL_ERRO',
-                            'message' => 'Falha ao processar pagamento. Por favor, tente novamente ou entre em contato com o suporte.',
-                            'details' => $e->getMessage()
-                        ]));
-                        return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
-                    }
+                    // PAGAMENTO ÚNICO/AVULSO (preference) no Mercado Pago
+                    error_log("[MobileController::comprarPlano] Criando PAGAMENTO AVULSO (preference)...");
+                    $preferencia = $mercadoPago->criarPreferenciaPagamento($dadosPagamento);
+                    $tipoPagamento = 'pagamento_unico';
                 }
                 
                 if (isset($preferencia)) {
@@ -5962,97 +5929,6 @@ class MobileController
             $stmtPix->execute([$tenantId, $matriculaId]);
             $pixSalvo = $stmtPix->fetch(\PDO::FETCH_ASSOC) ?: null;
 
-            // ⚠️ Se payment_url é antiga (preference em vez de preapproval), REGENERAR com novo método
-            $paymentUrlFinal = null;
-            $preferenciaIdFinal = null;
-            $urlAntigaDetectada = false;
-            
-            if ($assinatura && !empty($assinatura['payment_url'])) {
-                // Detectar URL antiga: preference tem /checkout/, preapproval tem /subscription/
-                if (str_contains($assinatura['payment_url'], '/checkout/') && !str_contains($assinatura['payment_url'], '/subscription/')) {
-                    $urlAntigaDetectada = true;
-                    error_log("[MobileController::reabrirPagamentoPendente] URL ANTIGA detectada (preference), regenerando com preapproval...");
-                }
-            }
-            
-            // Se URL é antiga, regenerar com preapproval
-            if ($urlAntigaDetectada && ($assinatura['tipo_cobranca'] ?? '') !== 'pix') {
-                try {
-                    error_log("[MobileController::reabrirPagamentoPendente] Regenerando link com preapproval para matrícula {$matriculaId}");
-                    
-                    // Buscar dados para regenerar
-                    $stmtDados = $this->db->prepare("
-                        SELECT u.id as usuario_id, u.nome, u.email, u.telefone, u.cpf,
-                               al.id as aluno_id,
-                               p.nome as plano_nome,
-                               md.nome as academia_nome,
-                               pc.meses,
-                               m.valor
-                        FROM matriculas m
-                        INNER JOIN alunos al ON al.id = m.aluno_id
-                        INNER JOIN usuarios u ON u.id = al.usuario_id
-                        INNER JOIN planos p ON p.id = m.plano_id
-                        INNER JOIN modalidades md ON md.id = p.modalidade_id
-                        INNER JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
-                        WHERE m.id = ? AND m.tenant_id = ?
-                        LIMIT 1
-                    ");
-                    $stmtDados->execute([$matriculaId, $tenantId]);
-                    $dadosPagamento = $stmtDados->fetch(\PDO::FETCH_ASSOC);
-                    
-                    if ($dadosPagamento) {
-                        $mercadoPago = new \App\Services\MercadoPagoService($tenantId);
-                        
-                        $dadosPreapproval = [
-                            'tenant_id' => $tenantId,
-                            'matricula_id' => $matriculaId,
-                            'aluno_id' => $dadosPagamento['aluno_id'],
-                            'usuario_id' => $dadosPagamento['usuario_id'],
-                            'aluno_nome' => $dadosPagamento['nome'],
-                            'aluno_email' => $dadosPagamento['email'],
-                            'aluno_telefone' => $dadosPagamento['telefone'] ?? '',
-                            'aluno_cpf' => $dadosPagamento['cpf'] ?? null,
-                            'plano_nome' => $dadosPagamento['plano_nome'],
-                            'descricao' => $dadosPagamento['plano_nome'],
-                            'valor' => (float) $dadosPagamento['valor'],
-                            'academia_nome' => $dadosPagamento['academia_nome'] ?? 'Academia',
-                            'apenas_cartao' => true
-                        ];
-                        
-                        // Gerar nova preapproval
-                        $preferencia = $mercadoPago->criarPreferenciaAssinatura($dadosPreapproval, (int)($dadosPagamento['meses'] ?? 1));
-                        $paymentUrlFinal = $preferencia['init_point'] ?? null;
-                        $preferenciaIdFinal = $preferencia['id'] ?? null;
-                        
-                        // Atualizar assinatura com novo link
-                        if ($paymentUrlFinal && $preferenciaIdFinal) {
-                            $stmtUpdateAssURL = $this->db->prepare("
-                                UPDATE assinaturas
-                                SET gateway_preference_id = ?, payment_url = ?, status_gateway = 'pending', atualizado_em = NOW()
-                                WHERE id = ? AND tenant_id = ?
-                            ");
-                            $stmtUpdateAssURL->execute([
-                                $preferenciaIdFinal,
-                                $paymentUrlFinal,
-                                $assinatura['id'],
-                                $tenantId
-                            ]);
-                            
-                            error_log("[MobileController::reabrirPagamentoPendente] ✅ Assinatura atualizada com novo preapproval");
-                        }
-                    }
-                } catch (\Exception $e) {
-                    error_log("[MobileController::reabrirPagamentoPendente] ❌ Erro ao regenerar preapproval: " . $e->getMessage());
-                    // Usar URL antiga se falhar na regeneração
-                    $paymentUrlFinal = $assinatura['payment_url'] ?? null;
-                    $preferenciaIdFinal = $assinatura['gateway_preference_id'] ?? null;
-                }
-            } else {
-                // URL é nova ou PIX, usar como está
-                $paymentUrlFinal = $assinatura['payment_url'] ?? null;
-                $preferenciaIdFinal = $assinatura['gateway_preference_id'] ?? null;
-            }
-
             $response->getBody()->write(json_encode([
                 'success' => true,
                 'message' => 'Pagamento pendente encontrado',
@@ -6068,12 +5944,11 @@ class MobileController
                     'data_inicio' => $matricula['data_inicio'],
                     'data_vencimento' => $matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'],
                     'vencida' => ($matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento']) < date('Y-m-d'),
-                    'payment_url' => $paymentUrlFinal,
-                    'preference_id' => $preferenciaIdFinal,
+                    'payment_url' => $assinatura['payment_url'] ?? null,
+                    'preference_id' => $assinatura['gateway_preference_id'] ?? null,
                     'tipo_pagamento' => ($assinatura['tipo_cobranca'] ?? '') === 'avulso' ? 'pagamento_unico' : 'assinatura',
                     'tipo_cobranca' => $assinatura['tipo_cobranca'] ?? 'avulso',
                     'recorrente' => ($assinatura['tipo_cobranca'] ?? '') === 'recorrente',
-                    'url_regenerada' => $urlAntigaDetectada,
                     'pix' => $pixSalvo ? [
                         'payment_id' => $pixSalvo['payment_id'] ?? null,
                         'status' => $pixSalvo['status'] ?? null,
