@@ -5639,10 +5639,22 @@ class MobileController
                         return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
                     }
                 } else {
-                    // PAGAMENTO ÚNICO/AVULSO (preference) no Mercado Pago
-                    error_log("[MobileController::comprarPlano] Criando PAGAMENTO AVULSO (preference)...");
-                    $preferencia = $mercadoPago->criarPreferenciaPagamento($dadosPagamento);
-                    $tipoPagamento = 'pagamento_unico';
+                    // PAGAMENTO ÚNICO/AVULSO (preapproval) no Mercado Pago
+                    error_log("[MobileController::comprarPlano] Criando PAGAMENTO AVULSO (preapproval)...");
+                    try {
+                        $preferencia = $mercadoPago->criarPreferenciaAssinatura($dadosPagamento, 1);
+                        $tipoPagamento = 'pagamento_unico';
+                    } catch (\Exception $e) {
+                        error_log("[MobileController::comprarPlano] ❌ Erro ao criar preapproval para avulso: " . $e->getMessage());
+                        $response->getBody()->write(json_encode([
+                            'success' => false,
+                            'type' => 'error',
+                            'code' => 'PREAPPROVAL_ERRO',
+                            'message' => 'Falha ao processar pagamento. Por favor, tente novamente ou entre em contato com o suporte.',
+                            'details' => $e->getMessage()
+                        ]));
+                        return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+                    }
                 }
                 
                 if (isset($preferencia)) {
