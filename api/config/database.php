@@ -67,6 +67,13 @@ try {
     
     // Garantir UTF-8 na conexão
     $pdo->exec("SET CHARACTER SET utf8mb4");
+    // Garantir timezone Brasil na sessão (fallback para offset)
+    try {
+        $pdo->exec("SET time_zone = 'America/Sao_Paulo'");
+    } catch (PDOException $e) {
+        // Se timezone nomeado não estiver disponível, usar offset
+        $pdo->exec("SET time_zone = '-03:00'");
+    }
     
     return $pdo;
 } catch (PDOException $e) {

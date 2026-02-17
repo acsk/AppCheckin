@@ -568,12 +568,165 @@ class MercadoPagoWebhookController
             $this->ativarMatricula($matriculaIdInt);
             $this->baixarPagamentoPlano($matriculaIdInt, $pagamento);
             $this->atualizarAssinaturaAvulsa($matriculaIdInt, $pagamento);
+            // Se for pagamento de pacote, ativar contrato e matrículas
+            if (!empty($metadata['tipo']) && $metadata['tipo'] === 'pacote' && !empty($metadata['pacote_contrato_id'])) {
+                $this->ativarPacoteContrato((int) $metadata['pacote_contrato_id'], $pagamento);
+            }
         } elseif (in_array($pagamento['status'], ['refunded', 'cancelled', 'charged_back'], true)) {
             // Para pagamentos avulsos estornados/cancelados, cancelar assinatura e matrícula
             $matriculaIdInt = (int) $matriculaId;
             error_log("[Webhook MP] ⚠️ Pagamento {$pagamento['status']} - matriculaId: {$matriculaIdInt}");
             $this->cancelarMatricula($matriculaIdInt);
             $this->atualizarAssinaturaAvulsaCancelada($matriculaIdInt, $pagamento);
+        }
+    }
+
+    /**
+     * Ativar contrato de pacote e gerar matrículas rateadas
+     */
+    private function ativarPacoteContrato(int $contratoId, array $pagamento): void
+    {
+        try {
+            $this->db->beginTransaction();
+
+            $stmtContrato = $this->db->prepare("
+                SELECT pc.*, p.plano_id, p.plano_ciclo_id, p.valor_total
+                FROM pacote_contratos pc
+                INNER JOIN pacotes p ON p.id = pc.pacote_id
+                WHERE pc.id = ? AND pc.tenant_id = ?
+                LIMIT 1
+            ");
+            $stmtContrato->execute([$contratoId, $pagamento['metadata']['tenant_id'] ?? null]);
+            $contrato = $stmtContrato->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$contrato) {
+                $this->db->rollBack();
+                return;
+            }
+
+            if (($contrato['status'] ?? '') === 'ativo') {
+                $this->db->rollBack();
+                return;
+            }
+
+            $stmtBenef = $this->db->prepare("
+                SELECT pb.id, pb.aluno_id
+                FROM pacote_beneficiarios pb
+                WHERE pb.pacote_contrato_id = ? AND pb.tenant_id = ?
+            ");
+            $stmtBenef->execute([$contratoId, $contrato['tenant_id']]);
+            $beneficiarios = $stmtBenef->fetchAll(\PDO::FETCH_ASSOC);
+
+            if (empty($beneficiarios)) {
+                $this->db->rollBack();
+                return;
+            }
+
+            $valorTotal = (float) $contrato['valor_total'];
+            $valorRateado = $valorTotal / max(1, count($beneficiarios));
+
+            $dataInicio = date('Y-m-d');
+            $dataFim = null;
+            if (!empty($contrato['plano_ciclo_id'])) {
+                $stmtCiclo = $this->db->prepare("SELECT meses FROM plano_ciclos WHERE id = ? AND tenant_id = ? LIMIT 1");
+                $stmtCiclo->execute([(int)$contrato['plano_ciclo_id'], $contrato['tenant_id']]);
+                $meses = (int) ($stmtCiclo->fetchColumn() ?: 0);
+                if ($meses > 0) {
+                    $dataFim = date('Y-m-d', strtotime("+{$meses} months"));
+                }
+            }
+            if (!$dataFim) {
+                $stmtPlano = $this->db->prepare("SELECT duracao_dias FROM planos WHERE id = ? AND tenant_id = ? LIMIT 1");
+                $stmtPlano->execute([(int)$contrato['plano_id'], $contrato['tenant_id']]);
+                $duracaoDias = (int) ($stmtPlano->fetchColumn() ?: 30);
+                $dataFim = date('Y-m-d', strtotime("+{$duracaoDias} days"));
+            }
+
+            $stmtUpdContrato = $this->db->prepare("
+                UPDATE pacote_contratos
+                SET status = 'ativo',
+                    pagamento_id = ?,
+                    data_inicio = ?,
+                    data_fim = ?,
+                    updated_at = NOW()
+                WHERE id = ? AND tenant_id = ?
+            ");
+            $stmtUpdContrato->execute([
+                $pagamento['id'] ?? null,
+                $dataInicio,
+                $dataFim,
+                $contratoId,
+                $contrato['tenant_id']
+            ]);
+
+            $stmtStatusAtiva = $this->db->prepare("SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1");
+            $stmtStatusAtiva->execute();
+            $statusAtivaId = (int) ($stmtStatusAtiva->fetchColumn() ?: 1);
+
+            $stmtMotivo = $this->db->prepare("SELECT id FROM motivo_matricula WHERE codigo = 'nova' LIMIT 1");
+            $stmtMotivo->execute();
+            $motivoId = (int) ($stmtMotivo->fetchColumn() ?: 1);
+
+            foreach ($beneficiarios as $ben) {
+                $stmtMat = $this->db->prepare("
+                    INSERT INTO matriculas
+                    (tenant_id, aluno_id, plano_id, plano_ciclo_id, tipo_cobranca,
+                     data_matricula, data_inicio, data_vencimento, valor, valor_rateado,
+                     status_id, motivo_id, proxima_data_vencimento, pacote_contrato_id, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, 'avulso', ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                ");
+                $stmtMat->execute([
+                    $contrato['tenant_id'],
+                    (int) $ben['aluno_id'],
+                    (int) $contrato['plano_id'],
+                    !empty($contrato['plano_ciclo_id']) ? (int) $contrato['plano_ciclo_id'] : null,
+                    $dataInicio,
+                    $dataInicio,
+                    $dataFim,
+                    $valorRateado,
+                    $valorRateado,
+                    $statusAtivaId,
+                    $motivoId,
+                    $dataFim,
+                    $contratoId
+                ]);
+                $matriculaId = (int) $this->db->lastInsertId();
+
+                $stmtUpdBen = $this->db->prepare("
+                    UPDATE pacote_beneficiarios
+                    SET matricula_id = ?, valor_rateado = ?, status = 'ativo', updated_at = NOW()
+                    WHERE id = ? AND tenant_id = ?
+                ");
+                $stmtUpdBen->execute([
+                    $matriculaId,
+                    $valorRateado,
+                    (int) $ben['id'],
+                    $contrato['tenant_id']
+                ]);
+
+                $stmtPag = $this->db->prepare("
+                    INSERT INTO pagamentos_plano
+                    (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento,
+                     status_pagamento_id, pacote_contrato_id, observacoes, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, (SELECT id FROM status_pagamento WHERE codigo = 'aprovado' LIMIT 1), ?, 'Pacote rateado', NOW(), NOW())
+                ");
+                $stmtPag->execute([
+                    $contrato['tenant_id'],
+                    (int) $ben['aluno_id'],
+                    $matriculaId,
+                    (int) $contrato['plano_id'],
+                    $valorRateado,
+                    $dataInicio,
+                    $contratoId
+                ]);
+            }
+
+            $this->db->commit();
+        } catch (\Exception $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            error_log("[Webhook MP] Erro ao ativar pacote: " . $e->getMessage());
         }
     }
     

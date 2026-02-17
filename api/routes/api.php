@@ -35,6 +35,7 @@ use App\Controllers\MercadoPagoWebhookController;
 use App\Controllers\PlanoCicloController;
 use App\Controllers\AssinaturaController;
 use App\Controllers\RelatorioController;
+use App\Controllers\PacoteController;
 use App\Middlewares\AuthMiddleware;
 use App\Middlewares\TenantMiddleware;
 use App\Middlewares\AdminMiddleware;
@@ -861,6 +862,10 @@ return function ($app) {
         
         // Detalhes da matrícula e pagamentos
         $group->get('/matriculas/{matriculaId}', [MobileController::class, 'detalheMatricula']);
+
+        // Pacotes (pagante)
+        $group->get('/pacotes/pendentes', [MobileController::class, 'pacotesPendentes']);
+        $group->post('/pacotes/contratos/{contratoId}/pagar', [MobileController::class, 'pagarPacote']);
         
         // Buscar alunos para check-in manual (professor/admin)
         $group->get('/alunos/buscar', [MobileController::class, 'buscarAlunosParaCheckin'])->add(ProfessorMiddleware::class);
@@ -1035,6 +1040,14 @@ return function ($app) {
         $group->post('/pagamentos-plano/{id}/confirmar', [PagamentoPlanoController::class, 'confirmar']);
         $group->delete('/pagamentos-plano/{id}', [PagamentoPlanoController::class, 'cancelar']);
         $group->post('/pagamentos-plano/marcar-atrasados', [PagamentoPlanoController::class, 'marcarAtrasados']);
+
+        // Pacotes (admin)
+        $group->get('/pacotes', [PacoteController::class, 'listar']);
+        $group->post('/pacotes', [PacoteController::class, 'criar']);
+        $group->put('/pacotes/{id}', [PacoteController::class, 'atualizar']);
+        $group->post('/pacotes/{pacoteId}/contratar', [PacoteController::class, 'contratar']);
+        $group->post('/pacotes/contratos/{contratoId}/beneficiarios', [PacoteController::class, 'definirBeneficiarios']);
+        $group->post('/pacotes/contratos/{contratoId}/confirmar-pagamento', [PacoteController::class, 'confirmarPagamento']);
         
         // Modalidades
         $group->get('/modalidades', [ModalidadeController::class, 'index']);

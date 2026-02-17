@@ -60,9 +60,43 @@ interface Assinatura {
   pode_pagar?: boolean;
 }
 
+interface PacoteBeneficiario {
+  aluno_id: number;
+  nome: string;
+  status?: string | null;
+}
+
+interface PacoteInfo {
+  nome?: string | null;
+  descricao?: string | null;
+  valor_total?: number | null;
+  qtd_beneficiarios?: number | null;
+}
+
+interface PacoteContrato {
+  id?: number;
+  contrato_id?: number;
+  status?: string | null;
+  status_codigo?: string | null;
+  status_nome?: string | null;
+  status_cor?: string | null;
+  valor_total?: number | null;
+  data_inicio?: string | null;
+  data_fim?: string | null;
+  payment_url?: string | null;
+  pacote?: PacoteInfo | null;
+  pacote_nome?: string | null;
+  pacote_descricao?: string | null;
+  beneficiarios?: PacoteBeneficiario[];
+}
+
 interface ApiResponse {
   success: boolean;
   assinaturas?: Assinatura[];
+  pacotes?: PacoteContrato[];
+  data?: {
+    pacotes?: PacoteContrato[];
+  };
   error?: string;
 }
 
@@ -76,11 +110,13 @@ export default function MinhasAssinaturasScreen() {
   const router = useRouter();
 
   const [assinaturas, setAssinaturas] = useState<Assinatura[]>([]);
+  const [pacotes, setPacotes] = useState<PacoteContrato[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [apiUrl, setApiUrl] = useState("");
   const [cancelando, setCancelando] = useState<number | null>(null);
   const [cancelandoDiaria, setCancelandoDiaria] = useState<number | null>(null);
+  const [pagandoPacoteId, setPagandoPacoteId] = useState<number | null>(null);
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
   const [assinaturaParaCancelar, setAssinaturaParaCancelar] =
     useState<Assinatura | null>(null);
@@ -106,6 +142,14 @@ export default function MinhasAssinaturasScreen() {
     return Number.isNaN(date.getTime())
       ? null
       : date.toLocaleDateString("pt-BR");
+  };
+
+  const formatCurrency = (value?: number | null) => {
+    const numeric = typeof value === "number" && !Number.isNaN(value) ? value : 0;
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(numeric);
   };
 
   const handlePagarAssinatura = async (assinatura: Assinatura) => {
@@ -182,6 +226,13 @@ export default function MinhasAssinaturasScreen() {
         } else {
           console.warn("⚠️ Resposta sem assinaturas:", data);
           setAssinaturas([]);
+        }
+
+        const pacotesData = data.pacotes ?? data.data?.pacotes ?? [];
+        if (Array.isArray(pacotesData)) {
+          setPacotes(pacotesData);
+        } else {
+          setPacotes([]);
         }
       } catch (err) {
         const errorMsg =
@@ -397,6 +448,91 @@ export default function MinhasAssinaturasScreen() {
     [apiUrl, fetchAssinaturasCallback],
   );
 
+  const handlePagarPacote = useCallback(
+    async (pacote: PacoteContrato) => {
+      try {
+        const contratoId = pacote.contrato_id ?? pacote.id;
+        if (!contratoId) {
+          showErrorModal(
+            "⚠️ Contrato inválido",
+            "Não foi possível identificar o contrato do pacote.",
+            "warning",
+          );
+          return;
+        }
+
+        setPagandoPacoteId(contratoId);
+
+        const token = await AsyncStorage.getItem("@appcheckin:token");
+        if (!token) throw new Error("Token não encontrado");
+
+        const url = `${apiUrl}/mobile/pacotes/contratos/${contratoId}/pagar`;
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        const text = await response.text();
+        let json: any = {};
+        try {
+          json = text ? JSON.parse(text) : {};
+        } catch {
+          json = {};
+        }
+
+        if (!response.ok || json?.success === false) {
+          const msg = json?.message || json?.error || text || "Erro ao gerar pagamento";
+          showErrorModal("⚠️ Erro ao gerar pagamento", msg, "warning");
+          return;
+        }
+
+        const paymentUrl =
+          json?.payment_url || json?.data?.payment_url || pacote.payment_url;
+        if (!paymentUrl) {
+          showErrorModal(
+            "⚠️ Pagamento indisponível",
+            "Não foi possível gerar o link de pagamento.",
+            "warning",
+          );
+          return;
+        }
+
+        setPacotes((prev) =>
+          prev.map((item) => {
+            const itemId = item.contrato_id ?? item.id;
+            if (itemId !== contratoId) return item;
+            return {
+              ...item,
+              payment_url: paymentUrl,
+            };
+          }),
+        );
+
+        const supported = await Linking.canOpenURL(paymentUrl);
+        if (!supported) {
+          showErrorModal(
+            "⚠️ Não foi possível abrir o link",
+            "Tente novamente em instantes.",
+            "error",
+          );
+          return;
+        }
+
+        await Linking.openURL(paymentUrl);
+      } catch (err) {
+        const errorMsg =
+          err instanceof Error ? err.message : "Erro ao gerar pagamento";
+        showErrorModal("❌ Erro", errorMsg, "error");
+      } finally {
+        setPagandoPacoteId(null);
+      }
+    },
+    [apiUrl],
+  );
+
   const renderAssinatura = ({ item }: { item: Assinatura }) => {
     const dataInicioText = formatDate(item.data_inicio) || "-";
     const isAtiva = item.status.codigo === "ativa";
@@ -421,11 +557,7 @@ export default function MinhasAssinaturasScreen() {
     const podeCancelarDiaria =
       isAvulso && isPago && !!item.matricula_id;
 
-    // Formatar valor
-    const valorFormatado = new Intl.NumberFormat("pt-BR", {
-      style: "currency",
-      currency: "BRL",
-    }).format(item.valor);
+    const valorFormatado = formatCurrency(item.valor);
 
     return (
       <View style={styles.card}>
@@ -566,6 +698,120 @@ export default function MinhasAssinaturasScreen() {
     );
   };
 
+  const renderPacoteItem = (item: PacoteContrato) => {
+    const contratoId = item.contrato_id ?? item.id;
+    const statusCodigo =
+      item.status_codigo ||
+      item.status ||
+      item.status_nome ||
+      "pendente";
+    const statusLower = String(statusCodigo).toLowerCase();
+    const isPendente = statusLower.includes("pendente") || statusLower === "pending";
+    const statusText =
+      item.status_nome ||
+      item.status ||
+      (isPendente ? "Pendente" : "Ativo");
+    const statusColor = item.status_cor || (isPendente ? "#f59e0b" : "#22c55e");
+    const pacoteNome =
+      item.pacote_nome || item.pacote?.nome || "Pacote";
+    const pacoteDescricao =
+      item.pacote_descricao || item.pacote?.descricao || "";
+    const total =
+      typeof item.valor_total === "number"
+        ? item.valor_total
+        : item.pacote?.valor_total || 0;
+    const qtd = item.pacote?.qtd_beneficiarios || item.beneficiarios?.length || 0;
+    const rateio = qtd > 0 ? total / qtd : null;
+    const dataInicio = formatDate(item.data_inicio);
+    const dataFim = formatDate(item.data_fim);
+    const buttonLabel = item.payment_url ? "Pagar pacote" : "Gerar pagamento";
+
+    return (
+      <View
+        key={`pacote-${contratoId ?? Math.random().toString(36)}`}
+        style={styles.pacoteCard}
+      >
+        <View style={styles.pacoteHeader}>
+          <View style={styles.pacoteInfo}>
+            <Text style={styles.pacoteNome}>{pacoteNome}</Text>
+            {!!pacoteDescricao && (
+              <Text style={styles.pacoteDescricao}>{pacoteDescricao}</Text>
+            )}
+          </View>
+          <View style={[styles.pacoteStatusBadge, { backgroundColor: statusColor }]}>
+            <Text style={styles.pacoteStatusText}>{statusText}</Text>
+          </View>
+        </View>
+
+        <View style={styles.pacoteMetaRow}>
+          <View style={styles.pacoteMetaItem}>
+            <Text style={styles.pacoteMetaLabel}>Total</Text>
+            <Text style={styles.pacoteMetaValue}>{formatCurrency(total)}</Text>
+          </View>
+          <View style={styles.pacoteMetaDivider} />
+          <View style={styles.pacoteMetaItem}>
+            <Text style={styles.pacoteMetaLabel}>Beneficiários</Text>
+            <Text style={styles.pacoteMetaValue}>{qtd || "-"}</Text>
+          </View>
+          <View style={styles.pacoteMetaDivider} />
+          <View style={styles.pacoteMetaItem}>
+            <Text style={styles.pacoteMetaLabel}>Rateio</Text>
+            <Text style={styles.pacoteMetaValue}>
+              {rateio ? formatCurrency(rateio) : "-"}
+            </Text>
+          </View>
+        </View>
+
+        {(dataInicio || dataFim) && (
+          <View style={styles.pacoteDatesRow}>
+            {!!dataInicio && (
+              <Text style={styles.pacoteDateText}>Início: {dataInicio}</Text>
+            )}
+            {!!dataFim && (
+              <Text style={styles.pacoteDateText}>Fim: {dataFim}</Text>
+            )}
+          </View>
+        )}
+
+        {!!item.beneficiarios?.length && (
+          <View style={styles.pacoteBeneficiarios}>
+            <Text style={styles.pacoteBeneficiariosTitle}>Beneficiários</Text>
+            <View style={styles.pacoteBeneficiariosList}>
+              {item.beneficiarios.map((beneficiario) => (
+                <View
+                  key={`benef-${item.id}-${beneficiario.aluno_id}`}
+                  style={styles.pacoteBeneficiarioChip}
+                >
+                  <Text style={styles.pacoteBeneficiarioText}>
+                    {beneficiario.nome}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {isPendente && contratoId && (
+          <TouchableOpacity
+            style={styles.pacotePagarButton}
+            onPress={() => handlePagarPacote(item)}
+            disabled={pagandoPacoteId === contratoId}
+            activeOpacity={0.8}
+          >
+            {pagandoPacoteId === contratoId ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Feather name="credit-card" size={16} color="#fff" />
+                <Text style={styles.pacotePagarButtonText}>{buttonLabel}</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
+
   const renderEmptyState = () => (
     <View style={styles.emptyContainer}>
       <Feather name="inbox" size={48} color={colors.primary} />
@@ -636,13 +882,56 @@ export default function MinhasAssinaturasScreen() {
         </View>
       ) : error ? (
         renderErrorState()
-      ) : assinaturas.length === 0 ? (
+      ) : assinaturas.length === 0 && pacotes.length === 0 ? (
         renderEmptyState()
       ) : (
         <FlatList
           data={assinaturas}
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderAssinatura}
+          ListHeaderComponent={
+            <View style={styles.sectionsWrapper}>
+              {pacotes.length > 0 && (
+                <View style={styles.pacotesSection}>
+                  <View style={styles.sectionHeader}>
+                    <View style={styles.sectionHeaderIcon}>
+                      <Feather name="users" size={18} color={colors.primary} />
+                    </View>
+                    <Text style={styles.pacotesTitle}>Pacotes</Text>
+                    <View style={styles.sectionHeaderLine} />
+                  </View>
+                  <Text style={styles.pacotesSubtitle}>
+                    Pacotes vinculados ao seu pagamento
+                  </Text>
+                  <View style={styles.pacotesList}>
+                    {pacotes.map(renderPacoteItem)}
+                  </View>
+                </View>
+              )}
+              <View style={styles.assinaturasSectionHeader}>
+                <View style={styles.sectionHeader}>
+                  <View style={styles.sectionHeaderIcon}>
+                    <Feather name="file-text" size={18} color={colors.primary} />
+                  </View>
+                  <Text style={styles.assinaturasTitle}>Assinaturas</Text>
+                  <View style={styles.sectionHeaderLine} />
+                </View>
+                <Text style={styles.assinaturasSubtitle}>
+                  Suas assinaturas individuais
+                </Text>
+              </View>
+            </View>
+          }
+          ListEmptyComponent={
+            pacotes.length > 0 ? (
+              <View style={styles.assinaturasEmptyNote}>
+                <Feather name="info" size={16} color={colors.primary} />
+                <Text style={styles.assinaturasEmptyNoteText}>
+                  Você não possui assinaturas individuais no momento.
+                </Text>
+              </View>
+            ) : null
+          }
           contentContainerStyle={styles.listContent}
           scrollEnabled={true}
           showsVerticalScrollIndicator={false}
@@ -817,6 +1106,214 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingBottom: 32,
     gap: 16,
+  },
+  sectionsWrapper: {
+    gap: 16,
+  },
+
+  /* Pacotes */
+  pacotesSection: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#eef2f7",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 2,
+    gap: 10,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  sectionHeaderIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: `${colors.primary}14`,
+  },
+  sectionHeaderLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#e5e7eb",
+  },
+  pacotesTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: colors.primary,
+  },
+  pacotesSubtitle: {
+    fontSize: 12,
+    color: colors.textMuted,
+    marginBottom: 4,
+  },
+  pacotesList: {
+    gap: 12,
+    marginBottom: 6,
+  },
+  assinaturasSectionHeader: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: "#eef2f7",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 2,
+    gap: 4,
+  },
+  assinaturasTitle: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: colors.primary,
+  },
+  assinaturasSubtitle: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  pacoteCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#eff2f6",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 12,
+    elevation: 2,
+    gap: 12,
+  },
+  pacoteHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  pacoteInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  pacoteNome: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: colors.text,
+  },
+  pacoteDescricao: {
+    fontSize: 12,
+    color: colors.textMuted,
+  },
+  pacoteStatusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  pacoteStatusText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "700",
+    textTransform: "uppercase",
+  },
+  pacoteMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f8fafc",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: "#eef2f7",
+  },
+  pacoteMetaItem: {
+    flex: 1,
+    gap: 4,
+  },
+  pacoteMetaLabel: {
+    fontSize: 11,
+    color: colors.textMuted,
+    fontWeight: "600",
+  },
+  pacoteMetaValue: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  pacoteMetaDivider: {
+    width: 1,
+    height: 36,
+    backgroundColor: "#e5e7eb",
+    marginHorizontal: 8,
+  },
+  pacoteDatesRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  pacoteDateText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: "600",
+  },
+  pacoteBeneficiarios: {
+    gap: 8,
+  },
+  pacoteBeneficiariosTitle: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  pacoteBeneficiariosList: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+  },
+  pacoteBeneficiarioChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: "#eef2ff",
+  },
+  pacoteBeneficiarioText: {
+    fontSize: 11,
+    color: colors.primary,
+    fontWeight: "700",
+  },
+  pacotePagarButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.primary,
+    borderRadius: 12,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  pacotePagarButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  assinaturasEmptyNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#eef2f7",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  assinaturasEmptyNoteText: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: "600",
   },
 
   /* Card */

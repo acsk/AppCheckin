@@ -827,6 +827,19 @@ export default function PlanoDetalhesScreen() {
           )}
         </View>
 
+        {isPendente && (
+          <View style={styles.pendingBanner}>
+            <Feather name="alert-circle" size={16} color="#b45309" />
+            <View style={styles.pendingBannerContent}>
+              <Text style={styles.pendingBannerTitle}>Pagamento pendente</Text>
+              <Text style={styles.pendingBannerText}>
+                Você já iniciou a contratação deste plano. Conclua o pagamento
+                para ativar a matrícula.
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* Descrição */}
         {!!plano.descricao && (
           <View style={styles.section}>
@@ -834,6 +847,48 @@ export default function PlanoDetalhesScreen() {
             <Text style={styles.descricaoText}>{plano.descricao}</Text>
           </View>
         )}
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Informações do plano</Text>
+          <View style={styles.featuresList}>
+            <View style={styles.featureItem}>
+              <View style={styles.featureIconCircle}>
+                <Feather name="calendar" size={16} color={colors.primary} />
+              </View>
+              <View style={styles.featureContent}>
+                <Text style={styles.featureLabel}>Duração</Text>
+                <Text style={styles.featureValue}>
+                  {plano.duracao_texto ||
+                    `${plano.duracao_dias} ${
+                      plano.duracao_dias === 1 ? "dia" : "dias"
+                    }`}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.featureDivider} />
+            <View style={styles.featureItem}>
+              <View style={styles.featureIconCircle}>
+                <Feather name="check-square" size={16} color={colors.primary} />
+              </View>
+              <View style={styles.featureContent}>
+                <Text style={styles.featureLabel}>Check-ins</Text>
+                <Text style={styles.featureValue}>
+                  {plano.checkins_semanais} por semana
+                </Text>
+              </View>
+            </View>
+            <View style={styles.featureDivider} />
+            <View style={styles.featureItem}>
+              <View style={styles.featureIconCircle}>
+                <Feather name="activity" size={16} color={colors.primary} />
+              </View>
+              <View style={styles.featureContent}>
+                <Text style={styles.featureLabel}>Modalidade</Text>
+                <Text style={styles.featureValue}>{plano.modalidade.nome}</Text>
+              </View>
+            </View>
+          </View>
+        </View>
 
         {/* Seleção de Ciclo */}
         {ciclos.length > 0 && (
@@ -1464,6 +1519,31 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.textSecondary,
     lineHeight: 20,
+  },
+  pendingBanner: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+    backgroundColor: "#fef3c7",
+    borderRadius: 14,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#f59e0b",
+    marginBottom: 12,
+  },
+  pendingBannerContent: {
+    flex: 1,
+    gap: 4,
+  },
+  pendingBannerTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#92400e",
+  },
+  pendingBannerText: {
+    fontSize: 12,
+    color: "#92400e",
+    lineHeight: 18,
   },
 
   /* Features */

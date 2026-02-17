@@ -503,11 +503,55 @@ class AssinaturaController
                 
                 $assinaturas[] = $assinaturaData;
             }
+
+            // Pacotes onde o usuário é pagante (ver beneficiários)
+            $pacotes = [];
+            try {
+                $stmtPacotes = $this->db->prepare("
+                    SELECT pc.id as contrato_id, pc.status, pc.valor_total, pc.data_inicio, pc.data_fim,
+                           p.nome as pacote_nome
+                    FROM pacote_contratos pc
+                    INNER JOIN pacotes p ON p.id = pc.pacote_id
+                    WHERE pc.tenant_id = ? AND pc.pagante_usuario_id = ?
+                    ORDER BY pc.created_at DESC
+                ");
+                $stmtPacotes->execute([$tenantId, $usuarioId]);
+                $pacotesRows = $stmtPacotes->fetchAll(\PDO::FETCH_ASSOC);
+
+                foreach ($pacotesRows as $pc) {
+                    $stmtBen = $this->db->prepare("
+                        SELECT a.id as aluno_id, a.nome as aluno_nome
+                        FROM pacote_beneficiarios pb
+                        INNER JOIN alunos a ON a.id = pb.aluno_id
+                        WHERE pb.pacote_contrato_id = ? AND pb.tenant_id = ?
+                    ");
+                    $stmtBen->execute([(int)$pc['contrato_id'], $tenantId]);
+                    $beneficiarios = $stmtBen->fetchAll(\PDO::FETCH_ASSOC);
+
+                    $pacotes[] = [
+                        'contrato_id' => (int) $pc['contrato_id'],
+                        'status' => $pc['status'],
+                        'valor_total' => (float) $pc['valor_total'],
+                        'data_inicio' => $pc['data_inicio'],
+                        'data_fim' => $pc['data_fim'],
+                        'pacote_nome' => $pc['pacote_nome'],
+                        'beneficiarios' => array_map(function ($b) {
+                            return [
+                                'aluno_id' => (int) $b['aluno_id'],
+                                'nome' => $b['aluno_nome']
+                            ];
+                        }, $beneficiarios)
+                    ];
+                }
+            } catch (\Exception $e) {
+                error_log("[minhasAssinaturas] Erro ao buscar pacotes: " . $e->getMessage());
+            }
             
             $response->getBody()->write(json_encode([
                 'success' => true,
                 'assinaturas' => $assinaturas,
-                'total' => count($assinaturas)
+                'total' => count($assinaturas),
+                'pacotes' => $pacotes
             ], JSON_UNESCAPED_UNICODE));
             
             return $response->withHeader('Content-Type', 'application/json');

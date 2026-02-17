@@ -872,7 +872,7 @@ class MatriculaController
         $stmtAluno->execute([$matricula['aluno_id']]);
         $alunoRow = $stmtAluno->fetch();
         
-        if ($alunoRow) {
+        if ($alunoRow && $this->usuariosTemColunasPlano($db)) {
             $stmtUpdateUsuario = $db->prepare("
                 UPDATE usuarios 
                 SET plano_id = NULL, data_vencimento_plano = NULL
@@ -1274,7 +1274,7 @@ class MatriculaController
             $stmtAluno = $db->prepare("SELECT usuario_id FROM alunos WHERE id = ?");
             $stmtAluno->execute([$matricula['aluno_id']]);
             $alunoRow = $stmtAluno->fetch();
-            if ($alunoRow) {
+            if ($alunoRow && $this->usuariosTemColunasPlano($db)) {
                 $stmtUpdateUsuario = $db->prepare("
                     UPDATE usuarios 
                     SET plano_id = NULL, data_vencimento_plano = NULL
@@ -1429,6 +1429,25 @@ class MatriculaController
             'proxima_parcela' => $proximaParcela ?? null
         ]));
         return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    private function usuariosTemColunasPlano(\PDO $db): bool
+    {
+        static $cache = null;
+        if ($cache !== null) {
+            return $cache;
+        }
+
+        $stmt = $db->prepare("
+            SELECT COUNT(*) AS total
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'usuarios'
+              AND COLUMN_NAME = 'plano_id'
+        ");
+        $stmt->execute();
+        $cache = ((int) $stmt->fetchColumn()) > 0;
+        return $cache;
     }
 
     /**

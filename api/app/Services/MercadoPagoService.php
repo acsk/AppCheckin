@@ -226,6 +226,10 @@ class MercadoPagoService
             'tipo' => 'matricula',
             'email_real' => $data['aluno_email'] ?? '' // Guardar email real nos metadados
         ];
+
+        if (!empty($data['metadata_extra']) && is_array($data['metadata_extra'])) {
+            $metadata = array_merge($metadata, $data['metadata_extra']);
+        }
         
         // Montar preferência
         $preference = [

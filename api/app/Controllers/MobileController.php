@@ -3696,6 +3696,175 @@ class MobileController
     }
 
     /**
+     * Listar pacotes pendentes do pagante
+     * GET /mobile/pacotes/pendentes
+     */
+    public function pacotesPendentes(Request $request, Response $response): Response
+    {
+        try {
+            $tenantId = (int) $request->getAttribute('tenantId');
+            $userId = (int) $request->getAttribute('userId');
+
+            $stmt = $this->db->prepare("
+                SELECT pc.id as contrato_id, pc.status, pc.valor_total, pc.data_inicio, pc.data_fim,
+                       pc.payment_url, pc.payment_preference_id,
+                       p.nome as pacote_nome
+                FROM pacote_contratos pc
+                INNER JOIN pacotes p ON p.id = pc.pacote_id
+                WHERE pc.tenant_id = ? AND pc.pagante_usuario_id = ? AND pc.status = 'pendente'
+                ORDER BY pc.created_at DESC
+            ");
+            $stmt->execute([$tenantId, $userId]);
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'pacotes' => $rows,
+                'total' => count($rows)
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            error_log("[MobileController::pacotesPendentes] Erro: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'message' => 'Erro ao listar pacotes pendentes'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * Gerar pagamento do pacote (pagante)
+     * POST /mobile/pacotes/contratos/{contratoId}/pagar
+     */
+    public function pagarPacote(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $tenantId = (int) $request->getAttribute('tenantId');
+            $userId = (int) $request->getAttribute('userId');
+            $contratoId = (int) ($args['contratoId'] ?? 0);
+
+            if ($contratoId <= 0) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'contratoId inválido'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            $stmtContrato = $this->db->prepare("
+                SELECT pc.*, p.nome as pacote_nome, p.valor_total
+                FROM pacote_contratos pc
+                INNER JOIN pacotes p ON p.id = pc.pacote_id
+                WHERE pc.id = ? AND pc.tenant_id = ? AND pc.pagante_usuario_id = ?
+                LIMIT 1
+            ");
+            $stmtContrato->execute([$contratoId, $tenantId, $userId]);
+            $contrato = $stmtContrato->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$contrato) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'Contrato não encontrado'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            if (($contrato['status'] ?? '') !== 'pendente') {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'Contrato não está pendente'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Se já existe payment_url, reusar
+            if (!empty($contrato['payment_url'])) {
+                $response->getBody()->write(json_encode([
+                    'success' => true,
+                    'message' => 'Pagamento já gerado',
+                    'data' => [
+                        'contrato_id' => (int) $contrato['id'],
+                        'payment_url' => $contrato['payment_url'],
+                        'preference_id' => $contrato['payment_preference_id'],
+                        'valor_total' => (float) $contrato['valor_total']
+                    ]
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json');
+            }
+
+            // Buscar dados do pagante
+            $stmtUsuario = $this->db->prepare("
+                SELECT u.id, u.nome, u.email, u.telefone, u.cpf
+                FROM usuarios u
+                WHERE u.id = ? LIMIT 1
+            ");
+            $stmtUsuario->execute([$userId]);
+            $usuario = $stmtUsuario->fetch(\PDO::FETCH_ASSOC);
+
+            $stmtTenant = $this->db->prepare("SELECT nome FROM tenants WHERE id = ?");
+            $stmtTenant->execute([$tenantId]);
+            $tenantData = $stmtTenant->fetch(\PDO::FETCH_ASSOC);
+            $academiaNome = $tenantData['nome'] ?? 'Academia';
+
+            $dadosPagamento = [
+                'tenant_id' => $tenantId,
+                'matricula_id' => null,
+                'aluno_id' => null,
+                'usuario_id' => $userId,
+                'aluno_nome' => $usuario['nome'] ?? '',
+                'aluno_email' => $usuario['email'] ?? '',
+                'aluno_telefone' => $usuario['telefone'] ?? '',
+                'aluno_cpf' => $usuario['cpf'] ?? null,
+                'plano_nome' => $contrato['pacote_nome'] ?? 'Pacote',
+                'descricao' => "Pacote: " . ($contrato['pacote_nome'] ?? 'Pacote'),
+                'valor' => (float) $contrato['valor_total'],
+                'max_parcelas' => 12,
+                'academia_nome' => $academiaNome,
+                'apenas_cartao' => false,
+                'metadata_extra' => [
+                    'tipo' => 'pacote',
+                    'pacote_contrato_id' => (int) $contratoId
+                ]
+            ];
+
+            $mercadoPago = new \App\Services\MercadoPagoService($tenantId);
+            $preferencia = $mercadoPago->criarPreferenciaPagamento($dadosPagamento);
+
+            // Atualizar contrato com payment_url
+            $stmtUpdate = $this->db->prepare("
+                UPDATE pacote_contratos
+                SET payment_url = ?, payment_preference_id = ?, updated_at = NOW()
+                WHERE id = ? AND tenant_id = ?
+            ");
+            $stmtUpdate->execute([
+                $preferencia['init_point'] ?? null,
+                $preferencia['id'] ?? null,
+                $contratoId,
+                $tenantId
+            ]);
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'data' => [
+                    'contrato_id' => $contratoId,
+                    'payment_url' => $preferencia['init_point'] ?? null,
+                    'preference_id' => $preferencia['id'] ?? null,
+                    'valor_total' => (float) $contrato['valor_total']
+                ]
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            error_log("[MobileController::pagarPacote] Erro: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'message' => 'Erro ao gerar pagamento do pacote'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
      * Cancelar compra de diária
      * POST /mobile/diaria/{matriculaId}/cancelar
      * Regra: não pode ter check-in feito nem presença confirmada (presente = 1)

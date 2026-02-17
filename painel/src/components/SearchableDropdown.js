@@ -24,6 +24,7 @@ export default function SearchableDropdown({
   disabled = false,
   error = false,
   renderItem = null,
+  renderSelected = null,
   filterFunction = null,
   style,
 }) {
@@ -89,16 +90,32 @@ export default function SearchableDropdown({
       >
         <View style={styles.content}>
           <Feather name="search" size={18} color="#6b7280" style={styles.icon} />
-          <Text
-            style={[
-              styles.text,
-              !selectedItem && styles.placeholder,
-              disabled && styles.textDisabled,
-            ]}
-            numberOfLines={1}
-          >
-            {selectedItem ? selectedItem[labelKey] : placeholder}
-          </Text>
+          {selectedItem ? (
+            renderSelected ? (
+              renderSelected(selectedItem)
+            ) : (
+              <Text
+                style={[
+                  styles.text,
+                  disabled && styles.textDisabled,
+                ]}
+                numberOfLines={1}
+              >
+                {selectedItem[labelKey]}
+              </Text>
+            )
+          ) : (
+            <Text
+              style={[
+                styles.text,
+                styles.placeholder,
+                disabled && styles.textDisabled,
+              ]}
+              numberOfLines={1}
+            >
+              {placeholder}
+            </Text>
+          )}
           {selectedItem && !disabled && (
             <TouchableOpacity
               onPress={(e) => {
