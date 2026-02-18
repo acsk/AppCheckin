@@ -850,6 +850,7 @@ class MercadoPagoWebhookController
                 error_log("[Webhook MP] ✅ Pagamento de pacote APROVADO - Chamando ativarPacoteContrato");
                 
                 $pacoteContratoId = $metadata['pacote_contrato_id'] ?? null;
+                $tenantIdFromMetadata = $metadata['tenant_id'] ?? null;
                 
                 // FALLBACK: Extrair do external_reference se não estiver no metadata
                 if (!$pacoteContratoId && $externalReference && preg_match('/PAC-(\d+)-/', $externalReference, $matches)) {
@@ -857,7 +858,31 @@ class MercadoPagoWebhookController
                     error_log("[Webhook MP] 🎯 pacote_contrato_id extraído do external_reference: {$pacoteContratoId}");
                 }
                 
+                // FALLBACK: Se tenant_id não está no metadata, buscar da tabela pacote_contratos
+                if (!$tenantIdFromMetadata && $pacoteContratoId) {
+                    error_log("[Webhook MP] 🔍 tenant_id não encontrado em metadata, buscando em pacote_contratos...");
+                    $stmtTenantFallback = $this->db->prepare("
+                        SELECT tenant_id FROM pacote_contratos 
+                        WHERE id = ? 
+                        LIMIT 1
+                    ");
+                    $stmtTenantFallback->execute([$pacoteContratoId]);
+                    $tenantFallback = $stmtTenantFallback->fetch(\PDO::FETCH_ASSOC);
+                    
+                    if ($tenantFallback) {
+                        $tenantIdFromMetadata = (int) $tenantFallback['tenant_id'];
+                        error_log("[Webhook MP] ✅ tenant_id encontrado em pacote_contratos: {$tenantIdFromMetadata}");
+                        
+                        // Atualizar metadata para ter tenant_id
+                        $metadata['tenant_id'] = $tenantIdFromMetadata;
+                    } else {
+                        error_log("[Webhook MP] ❌ Não conseguiu encontrar tenant_id para contrato {$pacoteContratoId}");
+                    }
+                }
+                
                 if ($pacoteContratoId) {
+                    // Repassar pagamento com metadata atualizada
+                    $pagamento['metadata'] = $metadata;
                     $this->ativarPacoteContrato($pacoteContratoId, $pagamento);
                 } else {
                     error_log("[Webhook MP] ❌ pacote_contrato_id não encontrado no metadata nem no external_reference");
