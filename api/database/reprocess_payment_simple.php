@@ -17,17 +17,16 @@ try {
     echo "\n🔄 Reprocessando pagamento #{$paymentId}...\n\n";
     
     // Conexão direta com o banco (sem Composer)
-    $dsn = getenv('DB_DSN') ?: 'mysql:host=' . (getenv('DB_HOST') ?: 'localhost') . ';dbname=' . (getenv('DB_NAME') ?: 'appcheckin');
-    $user = getenv('DB_USER') ?: 'root';
-    $pass = getenv('DB_PASS') ?: '';
+    $dsn = 'mysql:host=localhost;dbname=u304177849_api';
+    $user = 'u304177849_api';
+    $pass = '+DEEJ&7t';
     
     try {
         $db = new PDO($dsn, $user, $pass);
         $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     } catch (PDOException $e) {
-        // Tentar com credenciais padrão
-        $db = new PDO('mysql:host=localhost;dbname=appcheckin', 'root', 'root');
-        $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+        echo "❌ Erro de conexão: " . $e->getMessage() . "\n";
+        exit(1);
     }
     
     echo "✅ Conectado ao banco de dados\n\n";
