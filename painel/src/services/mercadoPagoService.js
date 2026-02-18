@@ -41,6 +41,16 @@ const mercadoPagoService = {
       throw prepararErro(error.response?.data || error);
     }
   },
+
+  async reprocessarWebhook(webhookId) {
+    try {
+      const response = await api.post(`/api/webhooks/mercadopago/reprocess/${webhookId}`);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao reprocessar webhook MP:', error.response?.data || error.message);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
 };
 
 export default mercadoPagoService;

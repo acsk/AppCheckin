@@ -10,6 +10,7 @@ export default function PagamentosMPScreen() {
   const [loading, setLoading] = useState(false);
   const [consultando, setConsultando] = useState(false);
   const [reprocessando, setReprocessando] = useState(false);
+  const [reprocessandoWebhook, setReprocessandoWebhook] = useState(null);
   const [webhooks, setWebhooks] = useState([]);
   const [resultado, setResultado] = useState(null);
 
@@ -65,6 +66,34 @@ export default function PagamentosMPScreen() {
       showError(error.mensagemLimpa || error.error || 'Erro ao reprocessar pagamento');
     } finally {
       setReprocessando(false);
+    }
+  };
+
+  const handleVerWebhook = async (webhookId) => {
+    try {
+      setConsultando(true);
+      const response = await mercadoPagoService.buscarWebhook(webhookId);
+      setResultado(response);
+    } catch (error) {
+      console.error('Erro ao buscar webhook MP:', error);
+      showError(error.mensagemLimpa || error.error || 'Erro ao buscar webhook');
+    } finally {
+      setConsultando(false);
+    }
+  };
+
+  const handleReprocessarWebhook = async (webhookId) => {
+    try {
+      setReprocessandoWebhook(webhookId);
+      const response = await mercadoPagoService.reprocessarWebhook(webhookId);
+      setResultado(response);
+      showSuccess('Webhook reprocessado');
+      carregarWebhooks();
+    } catch (error) {
+      console.error('Erro ao reprocessar webhook MP:', error);
+      showError(error.mensagemLimpa || error.error || 'Erro ao reprocessar webhook');
+    } finally {
+      setReprocessandoWebhook(null);
     }
   };
 
@@ -152,6 +181,7 @@ export default function PagamentosMPScreen() {
                 <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 140 }}>Tipo</Text>
                 <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 200 }}>Data</Text>
                 <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 1 }}>Status</Text>
+                <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 120, textAlign: 'right' }}>Ações</Text>
               </View>
               {webhooks.map((item) => (
                 <View key={item.id || item.webhook_id} className="flex-row items-center border-b border-slate-100 px-4 py-2">
@@ -159,6 +189,25 @@ export default function PagamentosMPScreen() {
                   <Text className="text-[12px] text-slate-600" style={{ width: 140 }}>{item.type || item.tipo || '-'}</Text>
                   <Text className="text-[12px] text-slate-600" style={{ width: 200 }}>{item.created_at || item.data_criacao || '-'}</Text>
                   <Text className="text-[12px] text-slate-600" style={{ flex: 1 }}>{item.status || '-'}</Text>
+                  <View style={{ width: 120 }} className="flex-row items-center justify-end gap-2">
+                    <TouchableOpacity
+                      className="h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white"
+                      onPress={() => handleVerWebhook(item.id || item.webhook_id)}
+                    >
+                      <Feather name="eye" size={14} color="#0f172a" />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      className="h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white"
+                      onPress={() => handleReprocessarWebhook(item.id || item.webhook_id)}
+                      disabled={reprocessandoWebhook === (item.id || item.webhook_id)}
+                    >
+                      {reprocessandoWebhook === (item.id || item.webhook_id) ? (
+                        <ActivityIndicator size="small" color="#f97316" />
+                      ) : (
+                        <Feather name="refresh-ccw" size={14} color="#f97316" />
+                      )}
+                    </TouchableOpacity>
+                  </View>
                 </View>
               ))}
             </View>

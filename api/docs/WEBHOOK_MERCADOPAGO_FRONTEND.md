@@ -311,11 +311,18 @@ async function verificarPacote(contratoId) {
 
 ### Matrícula falha a ativar
 
-**Debug:**
+**Debug (requer login Admin):**
 ```javascript
-// Frontend pode consultar logs de webhook:
-GET /api/webhooks/mercadopago/list (admin only)
-GET /api/webhooks/mercadopago/show/{webhookId} (admin only)
+// Frontend Admin pode consultar logs de webhook:
+GET /api/webhooks/mercadopago/list
+GET /api/webhooks/mercadopago/show/{webhookId}
+GET /api/webhooks/mercadopago/payment/{paymentId}
+```
+
+**Reprocessar Webhook Perdido:**
+```bash
+POST /api/webhooks/mercadopago/reprocess/{webhookId}
+# Webhook será reprocessado com os dados salvos no banco
 ```
 
 ### Recovery Automático
@@ -324,6 +331,12 @@ Sistema executa **CRON a cada 5 minutos** que:
 - Busca webhooks com `status='sucesso'` mas `matricula_id=null`
 - Reprocessa automaticamente
 - Cria matrículas perdidas
+
+**Você também pode reprocessar manualmente:**
+```bash
+POST /api/webhooks/mercadopago/payment/146749614928/reprocess
+# Busca detalhes na API MP e cria matrículas
+```
 
 ---
 
@@ -351,10 +364,11 @@ POST   /admin/pacotes/contratos/{id}/confirmar-pagamento → Marcar como pago
 
 ### Debug (Admin/Dev)
 ```
-GET    /api/webhooks/mercadopago/list                    → Listar webhooks recebidos
-GET    /api/webhooks/mercadopago/show/{id}               → Detalhes webhook
-GET    /api/webhooks/mercadopago/payment/{paymentId}     → Consultar MP direto
-POST   /api/webhooks/mercadopago/payment/{id}/reprocess  → Reprocessar manualmente
+GET    /api/webhooks/mercadopago/list                    → Listar webhooks recebidos (requer Auth Admin)
+GET    /api/webhooks/mercadopago/show/{id}               → Detalhes webhook (requer Auth Admin)
+GET    /api/webhooks/mercadopago/payment/{paymentId}     → Consultar MP direto (requer Auth Admin)
+POST   /api/webhooks/mercadopago/reprocess/{id}          → Reprocessar webhook manualmente (requer Auth Admin)
+POST   /api/webhooks/mercadopago/payment/{paymentId}/reprocess  → Reprocessar pagamento (requer Auth Admin)
 ```
 
 ---
@@ -387,16 +401,38 @@ curl -X POST https://appcheckin.com.br/api/webhooks/mercadopago \
   }'
 ```
 
+### Listar Webhooks Recebidos (Admin)
+```bash
+curl -X GET https://appcheckin.com.br/api/webhooks/mercadopago/list \
+  -H "Authorization: Bearer YOUR_ADMIN_JWT_TOKEN" \
+  -H "Content-Type: application/json"
+```
+
+### Ver Detalhes de Webhook Específico (Admin)
+```bash
+curl -X GET https://appcheckin.com.br/api/webhooks/mercadopago/show/123 \
+  -H "Authorization: Bearer YOUR_ADMIN_JWT_TOKEN" \
+  -H "Content-Type: application/json"
+```
+
+### Consultar Pagamento Direto na API MP (Admin)
+```bash
+curl -X GET https://appcheckin.com.br/api/webhooks/mercadopago/payment/146749614928 \
+  -H "Authorization: Bearer YOUR_ADMIN_JWT_TOKEN" \
+  -H "Content-Type: application/json"
+```
+
+### Reprocessar Webhook Manualmente (Admin)
+```bash
+curl -X POST https://appcheckin.com.br/api/webhooks/mercadopago/reprocess/123 \
+  -H "Authorization: Bearer YOUR_ADMIN_JWT_TOKEN" \
+  -H "Content-Type: application/json"
+```
+
 ### Verificar Status de Matrícula
 ```bash
 curl -X GET https://appcheckin.com.br/api/mobile/matriculas/123 \
   -H "Authorization: Bearer YOUR_JWT_TOKEN"
-```
-
-### Listar Webhooks Recebidos (Admin)
-```bash
-curl -X GET https://appcheckin.com.br/api/webhooks/mercadopago/list \
-  -H "Authorization: Bearer YOUR_ADMIN_JWT_TOKEN"
 ```
 
 ---
