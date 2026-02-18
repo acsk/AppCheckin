@@ -13,11 +13,31 @@ class MercadoPagoWebhookController
 {
     private $db;
     private ?MercadoPagoService $mercadoPagoService = null;
+    private string $logFile;
     
     public function __construct()
     {
         $this->db = require __DIR__ . '/../../config/database.php';
         // MercadoPagoService será instanciado com tenant_id quando processar a notificação
+        
+        // Definir arquivo de log dedicado para webhook
+        $this->logFile = __DIR__ . '/../../storage/logs/webhook_mercadopago.log';
+        @mkdir(dirname($this->logFile), 0777, true);
+    }
+    
+    /**
+     * Registrar log em arquivo e em error_log
+     */
+    private function logWebhook(string $message): void
+    {
+        $timestamp = date('Y-m-d H:i:s');
+        $fullMessage = "[{$timestamp}] {$message}";
+        
+        // Gravar em arquivo (para fácil acompanhamento na VPS)
+        file_put_contents($this->logFile, $fullMessage . "\n", FILE_APPEND | LOCK_EX);
+        
+        // Manter também em error_log (compatibilidade)
+        error_log($message);
     }
     
     /**
@@ -39,8 +59,8 @@ class MercadoPagoWebhookController
             $body = $request->getParsedBody();
             
             // Log da notificação
-            error_log("=== WEBHOOK MERCADO PAGO ===");
-            error_log("Body recebido: " . json_encode($body));
+            $this->logWebhook("=== WEBHOOK MERCADO PAGO ===");
+            $this->logWebhook("Body recebido: " . json_encode($body));
             
             // Validar se é notificação válida
             if (!isset($body['type']) || !isset($body['data']['id'])) {
