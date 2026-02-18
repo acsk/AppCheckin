@@ -615,6 +615,17 @@ class MercadoPagoService
             $payerEmail = 'test_user_' . ($data['aluno_id'] ?? rand(100000, 999999)) . '@testuser.com';
         }
         
+        // Preparar external_reference baseado no tipo de pagamento
+        $externalRef = $data['external_reference'] ?? '';
+        if (empty($externalRef)) {
+            // Se não tiver, criar baseado no tipo
+            if (!empty($data['metadata_extra']['pacote_contrato_id'])) {
+                $externalRef = 'PAC-' . $data['metadata_extra']['pacote_contrato_id'] . '-' . time();
+            } else {
+                $externalRef = 'MAT-' . ($data['matricula_id'] ?? 'ASSINATURA') . '-' . time();
+            }
+        }
+        
         // Montar payload para /preapproval_plan (API mais estável)
         // Próximo passo: usuário autoriza e faz pagamento no checkout
         $planPayload = [
@@ -626,10 +637,11 @@ class MercadoPagoService
                 'currency_id' => 'BRL'
             ],
             'back_url' => $this->successUrl,
-            'external_reference' => "MAT-{$data['matricula_id']}-" . time()
+            'external_reference' => $externalRef
         ];
         
         error_log("[MercadoPagoService] 🔄 Criando PREAPPROVAL_PLAN (assinatura recorrente)");
+        error_log("[MercadoPagoService] 📦 Tipo: " . (strpos($externalRef, 'PAC-') === 0 ? 'PACOTE' : 'MATRICULA'));
         error_log("[MercadoPagoService] Email: {$payerEmail}");
         error_log("[MercadoPagoService] Valor: " . $data['valor'] . " BRL");
         error_log("[MercadoPagoService] Frequência: {$duracaoMeses} mês(es)");
@@ -680,7 +692,7 @@ class MercadoPagoService
         // Passo 2: Criar preapproval vinculada ao plano
         $preapprovalPayload = [
             'reason' => $data['plano_nome'] . ' - ' . ($data['academia_nome'] ?? 'Academia'),
-            'external_reference' => "MAT-{$data['matricula_id']}-" . time(),
+            'external_reference' => $externalRef,
             'payer_email' => $payerEmail,
             'plan_id' => $planId,
             'auto_recurring' => [

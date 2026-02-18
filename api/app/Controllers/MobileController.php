@@ -3756,9 +3756,11 @@ class MobileController
             }
 
             $stmtContrato = $this->db->prepare("
-                SELECT pc.*, p.nome as pacote_nome, p.valor_total
+                SELECT pc.*, p.nome as pacote_nome, p.valor_total, p.plano_ciclo_id,
+                       COALESCE(pc2.permite_recorrencia, 0) as permite_recorrencia
                 FROM pacote_contratos pc
                 INNER JOIN pacotes p ON p.id = pc.pacote_id
+                LEFT JOIN plano_ciclos pc2 ON pc2.id = p.plano_ciclo_id
                 WHERE pc.id = ? AND pc.tenant_id = ? AND pc.pagante_usuario_id = ?
                 LIMIT 1
             ");
@@ -3782,6 +3784,9 @@ class MobileController
             }
 
             $valorTotal = (float) $contrato['valor_total'];
+            $permiteRecorrencia = (bool) ($contrato['permite_recorrencia'] ?? false);
+            
+            error_log("[MobileController::pagarPacote] permite_recorrencia = " . ($permiteRecorrencia ? 'SIM (recorrente)' : 'NÃO (avulso)'));
 
             // Se já existe payment_url, reusar (a menos que force_new=1)
             if (!empty($contrato['payment_url']) && !$forceNew) {
@@ -3828,7 +3833,7 @@ class MobileController
                 'external_reference' => 'PAC-' . $contratoId . '-' . time(),
                 'max_parcelas' => 12,
                 'academia_nome' => $academiaNome,
-                'apenas_cartao' => false,
+                'apenas_cartao' => $permiteRecorrencia, // Recorrentes só com cartão
                 'metadata_extra' => [
                     'tipo' => 'pacote',
                     'pacote_contrato_id' => (int) $contratoId
@@ -3836,7 +3841,24 @@ class MobileController
             ];
 
             $mercadoPago = new \App\Services\MercadoPagoService($tenantId);
-            $preferencia = $mercadoPago->criarPreferenciaPagamento($dadosPagamento);
+            
+            // Escolher tipo de preferência baseado em permite_recorrencia
+            if ($permiteRecorrencia) {
+                error_log("[MobileController::pagarPacote] Criando PREAPPROVAL (recorrente)...");
+                // Para pacotes recorrentes, buscar duração em meses
+                $duracaoMeses = 1; // padrão
+                if (!empty($contrato['plano_ciclo_id'])) {
+                    $stmtCiclo = $this->db->prepare("SELECT meses FROM plano_ciclos WHERE id = ? AND tenant_id = ? LIMIT 1");
+                    $stmtCiclo->execute([(int)$contrato['plano_ciclo_id'], $tenantId]);
+                    $duracaoMeses = (int) ($stmtCiclo->fetchColumn() ?: 1);
+                }
+                error_log("[MobileController::pagarPacote] Duração: {$duracaoMeses} mês(es)");
+                
+                $preferencia = $mercadoPago->criarPreferenciaAssinatura($dadosPagamento, $duracaoMeses);
+            } else {
+                error_log("[MobileController::pagarPacote] Criando PREFERENCE (avulso)...");
+                $preferencia = $mercadoPago->criarPreferenciaPagamento($dadosPagamento);
+            }
 
             // Atualizar contrato com payment_url
             $stmtUpdate = $this->db->prepare("
