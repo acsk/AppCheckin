@@ -1073,6 +1073,44 @@ class MercadoPagoWebhookController
                 return;
             }
 
+            // Buscar PAGANTE (usuario que pagou o pacote)
+            $pagante_usuario_id = $contrato['pagante_usuario_id'] ?? null;
+            $pagante_aluno_id = null;
+            
+            if ($pagante_usuario_id) {
+                error_log("[Webhook MP] 👤 Buscando aluno_id do pagante (usuario_id={$pagante_usuario_id})...");
+                
+                // Procurar se o usuario tem aluno_id direto (perfil aluno-responsável)
+                $stmtPaganteAluno = $this->db->prepare("
+                    SELECT aluno_id FROM usuarios
+                    WHERE id = ? AND tenant_id = ? AND aluno_id IS NOT NULL
+                    LIMIT 1
+                ");
+                $stmtPaganteAluno->execute([$pagante_usuario_id, $contrato['tenant_id']]);
+                $pagante_aluno_id = $stmtPaganteAluno->fetchColumn();
+                
+                if ($pagante_aluno_id) {
+                    error_log("[Webhook MP]    ✅ Pagante tem aluno_id direto: {$pagante_aluno_id}");
+                } else {
+                    // Se não tiver aluno_id direto, procurar primeiro aluno vinculado
+                    $stmtResponsavel = $this->db->prepare("
+                        SELECT aluno_id FROM alunos_responsaveis
+                        WHERE usuario_responsavel_id = ? AND tenant_id = ?
+                        ORDER BY created_at ASC
+                        LIMIT 1
+                    ");
+                    $stmtResponsavel->execute([$pagante_usuario_id, $contrato['tenant_id']]);
+                    $pagante_aluno_id = $stmtResponsavel->fetchColumn();
+                    
+                    if ($pagante_aluno_id) {
+                        error_log("[Webhook MP]    ✅ Pagante é responsável e tem alunos vinculados, usando: {$pagante_aluno_id}");
+                    } else {
+                        error_log("[Webhook MP]    ⚠️ Pagante não tem aluno_id associado, ignorando pagante");
+                    }
+                }
+            }
+
+            // Buscar BENEFICIÁRIOS (dependentes)
             $stmtBenef = $this->db->prepare("
                 SELECT pb.id, pb.aluno_id
                 FROM pacote_beneficiarios pb
@@ -1081,24 +1119,42 @@ class MercadoPagoWebhookController
             $stmtBenef->execute([$contratoId, $contrato['tenant_id']]);
             $beneficiarios = $stmtBenef->fetchAll(\PDO::FETCH_ASSOC);
 
-            error_log("[Webhook MP] 👥 Total de beneficiários: " . count($beneficiarios));
+            // Montar lista COMPLETA: pagante + beneficiários
+            $todasAsMatriculas = [];
             
-            if (!empty($beneficiarios)) {
-                error_log("[Webhook MP] 📋 Beneficiários encontrados:");
-                foreach ($beneficiarios as $b) {
-                    error_log("[Webhook MP]    - ID: {$b['id']}, Aluno ID: {$b['aluno_id']}");
+            // Adicionar pagante se tiver aluno_id
+            if ($pagante_aluno_id) {
+                $todasAsMatriculas[] = [
+                    'id' => 'pagante_' . $pagante_usuario_id,
+                    'aluno_id' => $pagante_aluno_id,
+                    'tipo' => 'pagante'
+                ];
+            }
+            
+            // Adicionar beneficiários
+            foreach ($beneficiarios as $b) {
+                $b['tipo'] = 'beneficiario';
+                $todasAsMatriculas[] = $b;
+            }
+
+            error_log("[Webhook MP] 👥 Total de pessoas (pagante + beneficiários): " . count($todasAsMatriculas));
+            
+            if (!empty($todasAsMatriculas)) {
+                error_log("[Webhook MP] 📋 Pessoas que receberão matrícula:");
+                foreach ($todasAsMatriculas as $m) {
+                    $tipo_label = ($m['tipo'] === 'pagante') ? '💳 PAGANTE' : '👨‍👩‍👧 BENEFICIÁRIO';
+                    error_log("[Webhook MP]    {$tipo_label}: Aluno ID {$m['aluno_id']}");
                 }
             }
             
-            if (empty($beneficiarios)) {
-                error_log("[Webhook MP] ❌ Nenhum beneficiário encontrado para contrato {$contratoId}");
-                error_log("[Webhook MP] SQL: SELECT pb.id, pb.aluno_id FROM pacote_beneficiarios pb WHERE pb.pacote_contrato_id = {$contratoId} AND pb.tenant_id = {$contrato['tenant_id']}");
+            if (empty($todasAsMatriculas)) {
+                error_log("[Webhook MP] ❌ Nenhuma matrícula para criar (sem pagante e sem beneficiários)");
                 $this->db->rollBack();
                 return;
             }
 
             $valorTotal = (float) $contrato['valor_total'];
-            $valorRateado = $valorTotal / max(1, count($beneficiarios));
+            $valorRateado = $valorTotal / max(1, count($todasAsMatriculas));
 
             error_log("[Webhook MP] 💰 Valor total: {$valorTotal}, Valor rateado por beneficiário: {$valorRateado}");
 
@@ -1174,10 +1230,10 @@ class MercadoPagoWebhookController
                 $gatewayId = 1;
             }
 
-            foreach ($beneficiarios as $ben) {
+            foreach ($todasAsMatriculas as $ben) {
                 $tipoCobranca = (bool) ($contrato['permite_recorrencia'] ?? false) ? 'recorrente' : 'avulso';
                 
-                error_log("[Webhook MP] 🎓 Processando beneficiário aluno_id={$ben['aluno_id']}, tipo_cobranca={$tipoCobranca}");
+                error_log("[Webhook MP] 🎓 Processando aluno_id={$ben['aluno_id']}, tipo_cobranca={$tipoCobranca}, origem=" . ($ben['tipo'] ?? 'desconhecido'));
                 
                 // Verificar se matrícula já existe para este aluno + pacote
                 $stmtVerificar = $this->db->prepare("

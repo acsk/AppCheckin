@@ -158,10 +158,11 @@ export default function PacotesScreen() {
 
   const calcularResumoPacote = (pacote) => {
     const total = Number(pacote.valor_total) || 0;
-    const qtd = Number(pacote.qtd_beneficiarios) || 1;
-    const porBenef = qtd > 0 ? total / qtd : total;
+    const qtdDependentes = Number(pacote.qtd_beneficiarios) || 1;
+    const qtdPessoas = qtdDependentes + 1; // dependentes + pagante
+    const porBenef = qtdPessoas > 0 ? total / qtdPessoas : total;
     const planoValor = Number(pacote.plano_valor || pacote.plano_preco || pacote.plano_valor_total) || 0;
-    const referenciaPlano = planoValor > 0 ? planoValor * qtd : 0;
+    const referenciaPlano = planoValor > 0 ? planoValor * qtdPessoas : 0;
     const desconto = referenciaPlano > 0 ? ((1 - total / referenciaPlano) * 100) : null;
 
     return {
@@ -199,17 +200,18 @@ export default function PacotesScreen() {
 
   const calcularSimulacao = (dados) => {
     const total = dados?.valor_total != null ? Number(dados.valor_total) : parseCurrency(pacoteForm.valor_total);
-    const qtd = Number(dados?.qtd_beneficiarios || pacoteForm.qtd_beneficiarios) || 1;
-    const porBenef = qtd > 0 ? total / qtd : total;
+    const qtdDependentes = Number(dados?.qtd_beneficiarios || pacoteForm.qtd_beneficiarios) || 1;
+    const qtdPessoas = qtdDependentes + 1; // dependentes + pagante
+    const porBenef = qtdPessoas > 0 ? total / qtdPessoas : total;
     const planoId = dados?.plano_id || pacoteForm.plano_id;
     const planoSelecionado = planos.find((plano) => String(plano.id) === String(planoId));
     const planoValor = Number(dados?.plano_valor || planoSelecionado?.valor) || 0;
-    const referenciaPlano = planoValor > 0 ? planoValor * qtd : 0;
+    const referenciaPlano = planoValor > 0 ? planoValor * qtdPessoas : 0;
     const desconto = referenciaPlano > 0 ? ((1 - total / referenciaPlano) * 100) : null;
 
     return {
       total,
-      qtd,
+      qtd: qtdPessoas,
       porBenef,
       planoValor,
       referenciaPlano,
