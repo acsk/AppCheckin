@@ -1080,33 +1080,20 @@ class MercadoPagoWebhookController
             if ($pagante_usuario_id) {
                 error_log("[Webhook MP] 👤 Buscando aluno_id do pagante (usuario_id={$pagante_usuario_id})...");
                 
-                // Procurar se o usuario tem aluno_id direto (perfil aluno-responsável)
-                $stmtPaganteAluno = $this->db->prepare("
-                    SELECT aluno_id FROM usuarios
-                    WHERE id = ? AND tenant_id = ? AND aluno_id IS NOT NULL
+                // Procurar se o usuario TEM um aluno associado (usuario_id = aluno.usuario_id)
+                $stmtAlunoUsuario = $this->db->prepare("
+                    SELECT id FROM alunos
+                    WHERE usuario_id = ?
+                    ORDER BY id ASC
                     LIMIT 1
                 ");
-                $stmtPaganteAluno->execute([$pagante_usuario_id, $contrato['tenant_id']]);
-                $pagante_aluno_id = $stmtPaganteAluno->fetchColumn();
+                $stmtAlunoUsuario->execute([$pagante_usuario_id]);
+                $pagante_aluno_id = (int) ($stmtAlunoUsuario->fetchColumn() ?: 0);
                 
                 if ($pagante_aluno_id) {
-                    error_log("[Webhook MP]    ✅ Pagante tem aluno_id direto: {$pagante_aluno_id}");
+                    error_log("[Webhook MP]    ✅ Pagante encontrado como aluno: {$pagante_aluno_id}");
                 } else {
-                    // Se não tiver aluno_id direto, procurar primeiro aluno vinculado
-                    $stmtResponsavel = $this->db->prepare("
-                        SELECT aluno_id FROM alunos_responsaveis
-                        WHERE usuario_responsavel_id = ? AND tenant_id = ?
-                        ORDER BY created_at ASC
-                        LIMIT 1
-                    ");
-                    $stmtResponsavel->execute([$pagante_usuario_id, $contrato['tenant_id']]);
-                    $pagante_aluno_id = $stmtResponsavel->fetchColumn();
-                    
-                    if ($pagante_aluno_id) {
-                        error_log("[Webhook MP]    ✅ Pagante é responsável e tem alunos vinculados, usando: {$pagante_aluno_id}");
-                    } else {
-                        error_log("[Webhook MP]    ⚠️ Pagante não tem aluno_id associado, ignorando pagante");
-                    }
+                    error_log("[Webhook MP]    ⚠️ Pagante não tem aluno_id associado, ignorando");
                 }
             }
 
