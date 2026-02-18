@@ -404,8 +404,9 @@ class MercadoPagoService
      * @param string $paymentId ID do pagamento no Mercado Pago
      * @return array Informações do pagamento
      */
-    public function buscarPagamento(string $paymentId): array
+    public function buscarPagamento($paymentId): array
     {
+        $paymentId = (string) $paymentId;
         $this->validarCredenciais();
         
         $response = $this->fazerRequisicao('GET', "/v1/payments/{$paymentId}");
