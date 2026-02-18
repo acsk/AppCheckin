@@ -699,59 +699,150 @@ class MercadoPagoWebhookController
             foreach ($beneficiarios as $ben) {
                 $tipoCobranca = (bool) ($contrato['permite_recorrencia'] ?? false) ? 'recorrente' : 'avulso';
                 
-                $stmtMat = $this->db->prepare("
-                    INSERT INTO matriculas
-                    (tenant_id, aluno_id, plano_id, plano_ciclo_id, tipo_cobranca,
-                     data_matricula, data_inicio, data_vencimento, valor, valor_rateado,
-                     status_id, motivo_id, proxima_data_vencimento, pacote_contrato_id, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                // Verificar se matrícula já existe para este aluno + pacote
+                $stmtVerificar = $this->db->prepare("
+                    SELECT id, status_id, data_vencimento, valor, valor_rateado
+                    FROM matriculas
+                    WHERE aluno_id = ? AND pacote_contrato_id = ? AND tenant_id = ?
+                    ORDER BY id DESC LIMIT 1
                 ");
-                $stmtMat->execute([
-                    $contrato['tenant_id'],
-                    (int) $ben['aluno_id'],
-                    (int) $contrato['plano_id'],
-                    !empty($contrato['plano_ciclo_id']) ? (int) $contrato['plano_ciclo_id'] : null,
-                    $tipoCobranca,
-                    $dataInicio,
-                    $dataInicio,
-                    $dataFim,
-                    $valorRateado,
-                    $valorRateado,
-                    $statusAtivaId,
-                    $motivoId,
-                    $dataFim,
-                    $contratoId
-                ]);
-                $matriculaId = (int) $this->db->lastInsertId();
-
-                // Se é recorrente, criar assinatura também
-                if ($tipoCobranca === 'recorrente' && $statusAssinaturaId && $gatewayId) {
-                    $stmtAssinatura = $this->db->prepare("
-                        INSERT INTO assinaturas
-                        (tenant_id, matricula_id, aluno_id, plano_id,
-                         gateway_id, gateway_preference_id, external_reference, payment_url,
-                         status_id, status_gateway, valor, frequencia_id, dia_cobranca,
-                         data_inicio, data_fim, proxima_cobranca, tipo_cobranca, criado_em)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?, ?, ?, ?, ?, ?, 'recorrente', NOW())
+                $stmtVerificar->execute([(int) $ben['aluno_id'], $contratoId, $contrato['tenant_id']]);
+                $matriculaExistente = $stmtVerificar->fetch(\PDO::FETCH_ASSOC);
+                
+                if ($matriculaExistente) {
+                    // ATUALIZAR matrícula existente (renovação recorrente)
+                    $matriculaId = (int) $matriculaExistente['id'];
+                    $dadosAntigos = [
+                        'status_id' => $matriculaExistente['status_id'],
+                        'data_vencimento' => $matriculaExistente['data_vencimento'],
+                        'valor' => (float) $matriculaExistente['valor'],
+                        'valor_rateado' => (float) $matriculaExistente['valor_rateado']
+                    ];
+                    
+                    $stmtUpdate = $this->db->prepare("
+                        UPDATE matriculas
+                        SET status_id = ?, data_vencimento = ?, proxima_data_vencimento = ?, 
+                            valor = ?, valor_rateado = ?, updated_at = NOW()
+                        WHERE id = ? AND tenant_id = ?
                     ");
-                    $stmtAssinatura->execute([
-                        $contrato['tenant_id'],
+                    $stmtUpdate->execute([
+                        $statusAtivaId,
+                        $dataFim,
+                        $dataFim,
+                        $valorRateado,
+                        $valorRateado,
                         $matriculaId,
+                        $contrato['tenant_id']
+                    ]);
+                    
+                    $tipoOperacaoHistorico = 'UPDATE';
+                } else {
+                    // CRIAR nova matrícula
+                    $stmtMat = $this->db->prepare("
+                        INSERT INTO matriculas
+                        (tenant_id, aluno_id, plano_id, plano_ciclo_id, tipo_cobranca,
+                         data_matricula, data_inicio, data_vencimento, valor, valor_rateado,
+                         status_id, motivo_id, proxima_data_vencimento, pacote_contrato_id, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                    ");
+                    $stmtMat->execute([
+                        $contrato['tenant_id'],
                         (int) $ben['aluno_id'],
                         (int) $contrato['plano_id'],
-                        $gatewayId,
-                        $pagamento['id'] ?? null,
-                        'pacote_' . $contratoId . '_' . $matriculaId,
-                        $pagamento['init_point'] ?? null,
-                        $statusAssinaturaId,
-                        (float) $valorRateado,
-                        $frequenciaId,
-                        (int) date('d'),
+                        !empty($contrato['plano_ciclo_id']) ? (int) $contrato['plano_ciclo_id'] : null,
+                        $tipoCobranca,
+                        $dataInicio,
                         $dataInicio,
                         $dataFim,
+                        $valorRateado,
+                        $valorRateado,
+                        $statusAtivaId,
+                        $motivoId,
                         $dataFim,
+                        $contratoId
                     ]);
+                    $matriculaId = (int) $this->db->lastInsertId();
+                    $dadosAntigos = null;
+                    $tipoOperacaoHistorico = 'INSERT';
                 }
+
+                // Se é recorrente, criar ou atualizar assinatura também
+                if ($tipoCobranca === 'recorrente' && $statusAssinaturaId && $gatewayId) {
+                    // Verificar se assinatura já existe
+                    $stmtAssinComprovacao = $this->db->prepare("
+                        SELECT id FROM assinaturas
+                        WHERE matricula_id = ? AND tenant_id = ?
+                        LIMIT 1
+                    ");
+                    $stmtAssinComprovacao->execute([$matriculaId, $contrato['tenant_id']]);
+                    $assinaturaExistente = $stmtAssinComprovacao->fetchColumn();
+                    
+                    if (!$assinaturaExistente) {
+                        // Criar nova assinatura
+                        $stmtAssinatura = $this->db->prepare("
+                            INSERT INTO assinaturas
+                            (tenant_id, matricula_id, aluno_id, plano_id,
+                             gateway_id, gateway_preference_id, external_reference, payment_url,
+                             status_id, status_gateway, valor, frequencia_id, dia_cobranca,
+                             data_inicio, data_fim, proxima_cobranca, tipo_cobranca, criado_em)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?, ?, ?, ?, ?, ?, 'recorrente', NOW())
+                        ");
+                        $stmtAssinatura->execute([
+                            $contrato['tenant_id'],
+                            $matriculaId,
+                            (int) $ben['aluno_id'],
+                            (int) $contrato['plano_id'],
+                            $gatewayId,
+                            $pagamento['id'] ?? null,
+                            'pacote_' . $contratoId . '_' . $matriculaId,
+                            $pagamento['init_point'] ?? null,
+                            $statusAssinaturaId,
+                            (float) $valorRateado,
+                            $frequenciaId,
+                            (int) date('d'),
+                            $dataInicio,
+                            $dataFim,
+                            $dataFim,
+                        ]);
+                    } else {
+                        // Atualizar assinatura existente
+                        $stmtAssinUpdate = $this->db->prepare("
+                            UPDATE assinaturas
+                            SET status_id = ?, data_fim = ?, proxima_cobranca = ?, valor = ?, 
+                                status_gateway = 'approved', atualizado_em = NOW()
+                            WHERE matricula_id = ? AND tenant_id = ?
+                        ");
+                        $stmtAssinUpdate->execute([
+                            $statusAssinaturaId,
+                            $dataFim,
+                            $dataFim,
+                            (float) $valorRateado,
+                            $matriculaId,
+                            $contrato['tenant_id']
+                        ]);
+                    }
+                }
+                
+                // Registrar a operação no histórico
+                $dadosNovos = [
+                    'aluno_id' => (int) $ben['aluno_id'],
+                    'plano_id' => (int) $contrato['plano_id'],
+                    'plano_ciclo_id' => !empty($contrato['plano_ciclo_id']) ? (int) $contrato['plano_ciclo_id'] : null,
+                    'data_vencimento' => $dataFim,
+                    'valor' => (float) $valorRateado,
+                    'status_id' => $statusAtivaId,
+                    'tipo_cobranca' => $tipoCobranca
+                ];
+                
+                $this->registrarHistoricoMatricula(
+                    $contrato['tenant_id'],
+                    $matriculaId,
+                    (int) $ben['aluno_id'],
+                    $tipoOperacaoHistorico,
+                    $dadosAntigos,
+                    $dadosNovos,
+                    $tipoOperacaoHistorico === 'INSERT' ? 'Primeira compra do pacote' : 'Renovação recorrente do pacote'
+                );
 
                 $stmtUpdBen = $this->db->prepare("
                     UPDATE pacote_beneficiarios
@@ -1133,5 +1224,48 @@ class MercadoPagoWebhookController
         ];
         
         return $mapeamento[$paymentMethodId] ?? 2; // Default: PIX
+    }
+
+    /**
+     * Registrar mudança em matrícula no histórico
+     *
+     * @param int $tenantId
+     * @param int $matriculaId
+     * @param int $alunoId
+     * @param string $tipoOperacao INSERT ou UPDATE
+     * @param ?array $dadosAntigos Dados anteriores (null para INSERT)
+     * @param array $dadosNovos Dados novos após a operação
+     * @param string $motivo Motivo da mudança
+     */
+    private function registrarHistoricoMatricula(
+        int $tenantId,
+        int $matriculaId,
+        int $alunoId,
+        string $tipoOperacao,
+        ?array $dadosAntigos,
+        array $dadosNovos,
+        string $motivo
+    ): void {
+        try {
+            $stmt = $this->db->prepare("
+                INSERT INTO matriculas_historico
+                (tenant_id, matricula_id, aluno_id, tipo_operacao, dados_anteriores, dados_novos, motivo, criado_em)
+                VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
+            ");
+            
+            $stmt->execute([
+                $tenantId,
+                $matriculaId,
+                $alunoId,
+                $tipoOperacao,
+                $dadosAntigos ? json_encode($dadosAntigos, JSON_UNESCAPED_UNICODE) : null,
+                json_encode($dadosNovos, JSON_UNESCAPED_UNICODE),
+                $motivo
+            ]);
+            
+            error_log("[Webhook MP] 📝 Histórico registrado para matrícula #{$matriculaId}: {$tipoOperacao} ({$motivo})");
+        } catch (\Exception $e) {
+            error_log("[Webhook MP] ⚠️ Erro ao registrar histórico da matrícula #{$matriculaId}: " . $e->getMessage());
+        }
     }
 }
