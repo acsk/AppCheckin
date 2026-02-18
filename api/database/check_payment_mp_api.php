@@ -29,8 +29,14 @@ try {
         }
     }
     
-    $accessToken = $env['MERCADOPAGO_ACCESS_TOKEN'] ?? getenv('MERCADOPAGO_ACCESS_TOKEN') ?? null;
-    $isProduction = ($env['MERCADOPAGO_MODE'] ?? getenv('MERCADOPAGO_MODE') ?? 'sandbox') === 'production';
+    $mpEnv = $env['MP_ENVIRONMENT'] ?? getenv('MP_ENVIRONMENT') ?? 'sandbox';
+    $isProduction = $mpEnv === 'production';
+    
+    if ($isProduction) {
+        $accessToken = $env['MP_ACCESS_TOKEN_PROD'] ?? getenv('MP_ACCESS_TOKEN_PROD') ?? null;
+    } else {
+        $accessToken = $env['MP_ACCESS_TOKEN_TEST'] ?? getenv('MP_ACCESS_TOKEN_TEST') ?? null;
+    }
     
     if (!$accessToken) {
         echo "❌ Access token não encontrado no .env\n";
