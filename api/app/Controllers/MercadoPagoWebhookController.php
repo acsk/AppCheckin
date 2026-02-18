@@ -83,6 +83,8 @@ class MercadoPagoWebhookController
             // Processar notificação baseado no tipo
             error_log("[Webhook MP] Processando notificação tipo: {$type}...");
             
+            $resultadoProcessamento = null;
+            
             if ($type === 'subscription_preapproval' || $type === 'subscription' || $type === 'preapproval') {
                 // Notificação de assinatura (preapproval)
                 $assinatura = $mercadoPagoService->buscarAssinatura($dataId);
@@ -91,12 +93,14 @@ class MercadoPagoWebhookController
                 // Atualizar status da assinatura
                 $this->atualizarAssinatura($assinatura);
                 
-                $response->getBody()->write(json_encode([
+                $resultadoProcessamento = [
                     'success' => true,
                     'message' => 'Assinatura processada',
                     'subscription_status' => $assinatura['status'] ?? null,
                     'preapproval_id' => $assinatura['preapproval_id'] ?? $dataId
-                ]));
+                ];
+                
+                $response->getBody()->write(json_encode($resultadoProcessamento));
             } else {
                 // Notificação de pagamento normal
                 $pagamento = $mercadoPagoService->processarNotificacao($body);
@@ -105,13 +109,18 @@ class MercadoPagoWebhookController
                 // Atualizar status no banco de dados
                 $this->atualizarPagamento($pagamento);
                 
-                $response->getBody()->write(json_encode([
+                $resultadoProcessamento = [
                     'success' => true,
                     'message' => 'Notificação processada',
                     'payment_status' => $pagamento['status'] ?? null,
                     'matricula_id' => $pagamento['metadata']['matricula_id'] ?? null
-                ]));
+                ];
+                
+                $response->getBody()->write(json_encode($resultadoProcessamento));
             }
+            
+            // Salvar payload no banco para auditoria
+            $this->salvarWebhookPayload($body, $type, $dataId, 'sucesso', null, $resultadoProcessamento);
             
             error_log("[Webhook MP] ✅ Processamento concluído com sucesso");
             return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
@@ -120,12 +129,84 @@ class MercadoPagoWebhookController
             error_log("[Webhook MP] ❌ ERRO: " . $e->getMessage());
             error_log("[Webhook MP] Stack: " . $e->getTraceAsString());
             
+            // Salvar payload com erro
+            $type = $body['type'] ?? 'unknown';
+            $dataId = $body['data']['id'] ?? null;
+            $this->salvarWebhookPayload($body, $type, $dataId, 'erro', $e->getMessage(), null);
+            
             // Retornar 200 mesmo com erro para evitar reenvios
             $response->getBody()->write(json_encode([
                 'success' => false,
                 'error' => $e->getMessage()
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
+        }
+    }
+    
+    /**
+     * Salvar payload do webhook no banco para auditoria
+     */
+    private function salvarWebhookPayload(
+        array $body, 
+        string $tipo, 
+        ?int $dataId, 
+        string $statusProcessamento, 
+        ?string $erroProcessamento = null,
+        ?array $resultadoProcessamento = null
+    ): void
+    {
+        try {
+            // Extrair informações do body
+            $externalReference = null;
+            $paymentId = null;
+            $preapprovalId = null;
+            $tenantId = null;
+            
+            // Se é notificação de pagamento
+            if ($tipo === 'payment') {
+                $paymentId = $dataId;
+                // Tentar extrair external_reference do body (pode estar em metadata)
+                // Será preenchido via query que buscará os dados completos do MP
+            } 
+            // Se é notificação de assinatura
+            elseif (in_array($tipo, ['subscription_preapproval', 'subscription', 'preapproval'])) {
+                $preapprovalId = $dataId;
+            }
+            
+            $stmt = $this->db->prepare("
+                INSERT INTO webhook_payloads_mercadopago (
+                    tenant_id, 
+                    tipo, 
+                    data_id, 
+                    external_reference, 
+                    payment_id, 
+                    preapproval_id, 
+                    status, 
+                    erro_processamento, 
+                    payload, 
+                    resultado_processamento, 
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+            ");
+            
+            $stmt->execute([
+                $tenantId,
+                $tipo,
+                $dataId,
+                $externalReference,
+                $paymentId,
+                $preapprovalId,
+                $statusProcessamento,
+                $erroProcessamento,
+                json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                $resultadoProcessamento ? json_encode($resultadoProcessamento, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) : null
+            ]);
+            
+            error_log("[Webhook MP] 💾 Payload salvo no banco para auditoria - ID: " . $this->db->lastInsertId());
+            
+        } catch (\Exception $e) {
+            error_log("[Webhook MP] ⚠️ Erro ao salvar payload para auditoria: " . $e->getMessage());
+            // Não lança exceção para não interromper o fluxo do webhook
         }
     }
     
@@ -325,13 +406,49 @@ class MercadoPagoWebhookController
         $status = $assinatura['status'] ?? 'pending';
         $statusDetail = $assinatura['status_detail'] ?? $status;
         
-        error_log("[Webhook MP] 📋 Atualizando assinatura: preapproval_id={$preapprovalId}, status={$status}");
+        error_log("[Webhook MP] 📋 Atualizando assinatura: preapproval_id={$preapprovalId}, external_reference={$externalReference}, status={$status}");
+        
+        // ⭐ NOVO: Detectar se é PACOTE pelo external_reference (PAC-xxx)
+        if (strpos($externalReference, 'PAC-') === 0) {
+            error_log("[Webhook MP] 🎁 DETECÇÃO: Assinatura recorrente de PACOTE encontrada!");
+            error_log("[Webhook MP] 📦 External Reference: {$externalReference}");
+            
+            // Extrair contratoId do formato PAC-{contratoId}-{timestamp}
+            if (preg_match('/PAC-(\d+)-/', $externalReference, $matches)) {
+                $contratoId = (int) $matches[1];
+                error_log("[Webhook MP] 🎯 Contrato ID extraído: {$contratoId}");
+                
+                if ($status === 'approved' || $status === 'authorized') {
+                    error_log("[Webhook MP] ✅ Assinatura de PACOTE APROVADA - Chamando ativarPacoteContrato");
+                    // Montar objeto pagamento similiar para ativarPacoteContrato
+                    $pagamento = [
+                        'id' => $preapprovalId,
+                        'status' => $status,
+                        'metadata' => [
+                            'tipo' => 'pacote',
+                            'pacote_contrato_id' => $contratoId
+                        ],
+                        'init_point' => $assinatura['init_point'] ?? null
+                    ];
+                    $this->ativarPacoteContrato($contratoId, $pagamento);
+                } else {
+                    error_log("[Webhook MP] ⚠️ Assinatura de pacote com status: {$status} (não processando)");
+                }
+            } else {
+                error_log("[Webhook MP] ❌ Não consegui extrair contratoId do external_reference: {$externalReference}");
+            }
+            return; // IMPORTANTE: sair daqui, não continuar processamento normal
+        }
+        
+        // ========== PROCESSAMENTO NORMAL (para assinatura de matrícula regular) ==========
         
         // Extrair matrícula do external_reference (formato: MAT-123-timestamp)
         $matriculaId = null;
         if (preg_match('/MAT-(\d+)/', $externalReference, $matches)) {
             $matriculaId = (int)$matches[1];
         }
+        
+        error_log("[Webhook MP] 📋 Processando assinatura regular de matrícula (não-pacote)");
         
         // Buscar assinatura na tabela assinaturas pelo gateway_assinatura_id
         $stmtBuscar = $this->db->prepare("

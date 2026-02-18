@@ -626,6 +626,18 @@ class MercadoPagoService
             }
         }
         
+        // Preparar metadados para serem enviados ao MP
+        $metadata = [
+            'tenant_id' => $data['tenant_id'] ?? null,
+            'matricula_id' => $data['matricula_id'] ?? null,
+            'aluno_id' => $data['aluno_id'] ?? null,
+            'usuario_id' => $data['usuario_id'] ?? null,
+            'tipo' => 'matricula'
+        ];
+        if (!empty($data['metadata_extra']) && is_array($data['metadata_extra'])) {
+            $metadata = array_merge($metadata, $data['metadata_extra']);
+        }
+        
         // Montar payload para /preapproval_plan (API mais estável)
         // Próximo passo: usuário autoriza e faz pagamento no checkout
         $planPayload = [
@@ -637,14 +649,17 @@ class MercadoPagoService
                 'currency_id' => 'BRL'
             ],
             'back_url' => $this->successUrl,
-            'external_reference' => $externalRef
+            'external_reference' => $externalRef,
+            'metadata' => $metadata
         ];
         
         error_log("[MercadoPagoService] 🔄 Criando PREAPPROVAL_PLAN (assinatura recorrente)");
         error_log("[MercadoPagoService] 📦 Tipo: " . (strpos($externalRef, 'PAC-') === 0 ? 'PACOTE' : 'MATRICULA'));
+        error_log("[MercadoPagoService] 🏢 Tenant: " . ($metadata['tenant_id'] ?? 'N/A'));
         error_log("[MercadoPagoService] Email: {$payerEmail}");
         error_log("[MercadoPagoService] Valor: " . $data['valor'] . " BRL");
         error_log("[MercadoPagoService] Frequência: {$duracaoMeses} mês(es)");
+        error_log("[MercadoPagoService] External Reference: {$externalRef}");
         error_log("[MercadoPagoService] Payload: " . json_encode($planPayload, JSON_UNESCAPED_UNICODE));
         
         // Passo 1: Criar plano de assinatura
@@ -689,12 +704,15 @@ class MercadoPagoService
             throw new Exception("Plano criado mas sem ID retornado");
         }
         
+        error_log("[MercadoPagoService] ✅ Plano criado: {$planId}");
+        
         // Passo 2: Criar preapproval vinculada ao plano
         $preapprovalPayload = [
             'reason' => $data['plano_nome'] . ' - ' . ($data['academia_nome'] ?? 'Academia'),
             'external_reference' => $externalRef,
             'payer_email' => $payerEmail,
             'plan_id' => $planId,
+            'metadata' => $metadata,
             'auto_recurring' => [
                 'frequency' => $duracaoMeses,
                 'frequency_type' => 'months',
