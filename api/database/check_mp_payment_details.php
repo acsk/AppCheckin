@@ -51,22 +51,22 @@ echo "=== DADOS DO PAGAMENTO ===\n";
 echo "ID: {$payment['id']}\n";
 echo "Status: {$payment['status']}\n";
 echo "Status Detail: {$payment['status_detail']}\n";
-echo "External Reference: {$payment['external_reference'] ?? 'N/A'}\n";
+echo "External Reference: " . (isset($payment['external_reference']) ? $payment['external_reference'] : 'N/A') . "\n";
 echo "Transaction Amount: {$payment['transaction_amount']}\n";
 echo "Date Created: {$payment['date_created']}\n";
-echo "Date Approved: {$payment['date_approved'] ?? 'N/A'}\n";
+echo "Date Approved: " . (isset($payment['date_approved']) ? $payment['date_approved'] : 'N/A') . "\n";
 
 echo "\n=== METADATA (CRÍTICO!) ===\n";
 if (empty($payment['metadata'])) {
     echo "❌ METADATA VAZIA OU NÃO EXISTE!\n";
-    echo "   Payment nos metadados: " . json_encode($payment['metadata'] ?? []) . "\n";
+    echo "   Payment nos metadados: " . json_encode(isset($payment['metadata']) ? $payment['metadata'] : []) . "\n";
 } else {
     echo "✅ METADATA ENCONTRADA:\n";
     echo json_encode($payment['metadata'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) . "\n";
 }
 
 echo "\n=== PREFERENCE ID ===\n";
-echo "Preference ID: {$payment['preference_id'] ?? 'N/A'}\n";
+echo "Preference ID: " . (isset($payment['preference_id']) ? $payment['preference_id'] : 'N/A') . "\n";
 
 // Se tiver preference_id, buscar a preferência também
 if (!empty($payment['preference_id'])) {
