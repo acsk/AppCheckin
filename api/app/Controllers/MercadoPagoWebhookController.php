@@ -486,9 +486,34 @@ class MercadoPagoWebhookController
      */
     private function atualizarPagamento(array $pagamento): void
     {
+        error_log("[Webhook MP] 📊 ATUALIZANDO PAGAMENTO");
+        error_log("[Webhook MP] 📋 Status: " . ($pagamento['status'] ?? 'N/A'));
+        error_log("[Webhook MP] 💳 ID Pagamento: " . ($pagamento['id'] ?? 'N/A'));
+        error_log("[Webhook MP] 📝 External reference: " . ($pagamento['external_reference'] ?? 'N/A'));
+        error_log("[Webhook MP] 🏷️ Metadados completos: " . json_encode($pagamento['metadata'] ?? []));
+        
         $externalReference = $pagamento['external_reference'];
         $metadata = $pagamento['metadata'];
         
+        // Para pagamentos de pacote, não há matrícula ainda (será criada pelo webhook)
+        // Saímos do fluxo normal de pagamento e processamos direto com ativarPacoteContrato
+        if (!empty($metadata['tipo']) && $metadata['tipo'] === 'pacote') {
+            error_log("[Webhook MP] 🎁 PACOTE DETECTED - Processando como pagamento de pacote");
+            
+            if ($pagamento['status'] === 'approved') {
+                error_log("[Webhook MP] ✅ Pagamento de pacote APROVADO - Chamando ativarPacoteContrato");
+                if (!empty($metadata['pacote_contrato_id'])) {
+                    $this->ativarPacoteContrato((int) $metadata['pacote_contrato_id'], $pagamento);
+                } else {
+                    error_log("[Webhook MP] ❌ pacote_contrato_id não encontrado no metadata");
+                }
+            } else {
+                error_log("[Webhook MP] ⚠️ Pagamento de pacote com status: {$pagamento['status']} (não processando)");
+            }
+            return; // Sair da função aqui, não continua com o fluxo de matrícula avulsa
+        }
+        
+        // PAGAMENTOS AVULSOS (de matrícula)
         // Extrair IDs da external_reference (formato: MAT-123-timestamp)
         if (preg_match('/MAT-(\d+)/', $externalReference, $matches)) {
             $matriculaId = $matches[1];
@@ -562,16 +587,14 @@ class MercadoPagoWebhookController
         }
         
         // Se pagamento foi aprovado, ativar matrícula, baixar pagamento_plano e atualizar assinatura
+        // (Note: Pacotes são processados no início desta função e retornam cedo)
         if ($pagamento['status'] === 'approved') {
             $matriculaIdInt = (int) $matriculaId;
             error_log("[Webhook MP] ✅ Pagamento APROVADO - matriculaId: {$matriculaIdInt}");
+            
             $this->ativarMatricula($matriculaIdInt);
             $this->baixarPagamentoPlano($matriculaIdInt, $pagamento);
             $this->atualizarAssinaturaAvulsa($matriculaIdInt, $pagamento);
-            // Se for pagamento de pacote, ativar contrato e matrículas
-            if (!empty($metadata['tipo']) && $metadata['tipo'] === 'pacote' && !empty($metadata['pacote_contrato_id'])) {
-                $this->ativarPacoteContrato((int) $metadata['pacote_contrato_id'], $pagamento);
-            }
         } elseif (in_array($pagamento['status'], ['refunded', 'cancelled', 'charged_back'], true)) {
             // Para pagamentos avulsos estornados/cancelados, cancelar assinatura e matrícula
             $matriculaIdInt = (int) $matriculaId;
@@ -587,7 +610,13 @@ class MercadoPagoWebhookController
     private function ativarPacoteContrato(int $contratoId, array $pagamento): void
     {
         try {
+            error_log("[Webhook MP] 🎯 INICIANDO ativarPacoteContrato - contratoId: {$contratoId}");
+            error_log("[Webhook MP] 📦 Metadados do pagamento: " . json_encode($pagamento['metadata'] ?? []));
+            
             $this->db->beginTransaction();
+
+            $tenantId = $pagamento['metadata']['tenant_id'] ?? null;
+            error_log("[Webhook MP] 🏢 tenant_id: {$tenantId}");
 
             $stmtContrato = $this->db->prepare("
                 SELECT pc.*, p.plano_id, p.plano_ciclo_id, p.valor_total,
@@ -598,15 +627,19 @@ class MercadoPagoWebhookController
                 WHERE pc.id = ? AND pc.tenant_id = ?
                 LIMIT 1
             ");
-            $stmtContrato->execute([$contratoId, $pagamento['metadata']['tenant_id'] ?? null]);
+            $stmtContrato->execute([$contratoId, $tenantId]);
             $contrato = $stmtContrato->fetch(\PDO::FETCH_ASSOC);
 
             if (!$contrato) {
+                error_log("[Webhook MP] ❌ Contrato não encontrado: contratoId={$contratoId}, tenantId={$tenantId}");
                 $this->db->rollBack();
                 return;
             }
 
+            error_log("[Webhook MP] ✅ Contrato encontrado: status=" . ($contrato['status'] ?? 'null'));
+            
             if (($contrato['status'] ?? '') === 'ativo') {
+                error_log("[Webhook MP] ⚠️ Contrato já está ativo, ignorando");
                 $this->db->rollBack();
                 return;
             }
@@ -619,13 +652,18 @@ class MercadoPagoWebhookController
             $stmtBenef->execute([$contratoId, $contrato['tenant_id']]);
             $beneficiarios = $stmtBenef->fetchAll(\PDO::FETCH_ASSOC);
 
+            error_log("[Webhook MP] 👥 Total de beneficiários: " . count($beneficiarios));
+            
             if (empty($beneficiarios)) {
+                error_log("[Webhook MP] ❌ Nenhum beneficiário encontrado para contrato {$contratoId}");
                 $this->db->rollBack();
                 return;
             }
 
             $valorTotal = (float) $contrato['valor_total'];
             $valorRateado = $valorTotal / max(1, count($beneficiarios));
+
+            error_log("[Webhook MP] 💰 Valor total: {$valorTotal}, Valor rateado por beneficiário: {$valorRateado}");
 
             $dataInicio = date('Y-m-d');
             $dataFim = null;
@@ -644,6 +682,8 @@ class MercadoPagoWebhookController
                 $dataFim = date('Y-m-d', strtotime("+{$duracaoDias} days"));
             }
 
+            error_log("[Webhook MP] 📅 Data início: {$dataInicio}, Data fim: {$dataFim}");
+
             $stmtUpdContrato = $this->db->prepare("
                 UPDATE pacote_contratos
                 SET status = 'ativo',
@@ -660,10 +700,13 @@ class MercadoPagoWebhookController
                 $contratoId,
                 $contrato['tenant_id']
             ]);
+            
+            error_log("[Webhook MP] ✅ Contrato atualizado para status 'ativo'");
 
             $stmtStatusAtiva = $this->db->prepare("SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1");
             $stmtStatusAtiva->execute();
             $statusAtivaId = (int) ($stmtStatusAtiva->fetchColumn() ?: 1);
+
 
             $stmtMotivo = $this->db->prepare("SELECT id FROM motivo_matricula WHERE codigo = 'nova' LIMIT 1");
             $stmtMotivo->execute();
@@ -690,14 +733,14 @@ class MercadoPagoWebhookController
                 $stmtStatusAssinatura->execute();
                 $statusAssinaturaId = $stmtStatusAssinatura->fetchColumn() ?: 1;
 
-                // Gateway Mercado Pago
-                $stmtGateway = $this->db->prepare("SELECT id FROM gateways WHERE tipo = 'mercadopago' LIMIT 1");
-                $stmtGateway->execute();
-                $gatewayId = $stmtGateway->fetchColumn() ?: 1;
+                // Gateway Mercado Pago (usar ID 1 como padrão)
+                $gatewayId = 1;
             }
 
             foreach ($beneficiarios as $ben) {
                 $tipoCobranca = (bool) ($contrato['permite_recorrencia'] ?? false) ? 'recorrente' : 'avulso';
+                
+                error_log("[Webhook MP] 🎓 Processando beneficiário aluno_id={$ben['aluno_id']}, tipo_cobranca={$tipoCobranca}");
                 
                 // Verificar se matrícula já existe para este aluno + pacote
                 $stmtVerificar = $this->db->prepare("
@@ -735,6 +778,7 @@ class MercadoPagoWebhookController
                         $contrato['tenant_id']
                     ]);
                     
+                    error_log("[Webhook MP] 🔄 Matrícula ATUALIZADA: matricula_id={$matriculaId}, novo_vencimento={$dataFim}");
                     $tipoOperacaoHistorico = 'UPDATE';
                 } else {
                     // CRIAR nova matrícula
@@ -762,12 +806,14 @@ class MercadoPagoWebhookController
                         $contratoId
                     ]);
                     $matriculaId = (int) $this->db->lastInsertId();
+                    error_log("[Webhook MP] ✨ Matrícula CRIADA: matricula_id={$matriculaId}, aluno_id={$ben['aluno_id']}, vencimento={$dataFim}");
                     $dadosAntigos = null;
                     $tipoOperacaoHistorico = 'INSERT';
                 }
 
                 // Se é recorrente, criar ou atualizar assinatura também
                 if ($tipoCobranca === 'recorrente' && $statusAssinaturaId && $gatewayId) {
+                    error_log("[Webhook MP] 🔐 Processando assinatura recorrente para matrícula {$matriculaId}");
                     // Verificar se assinatura já existe
                     $stmtAssinComprovacao = $this->db->prepare("
                         SELECT id FROM assinaturas
@@ -778,6 +824,7 @@ class MercadoPagoWebhookController
                     $assinaturaExistente = $stmtAssinComprovacao->fetchColumn();
                     
                     if (!$assinaturaExistente) {
+                        error_log("[Webhook MP] 🆕 Criando NOVA assinatura");
                         // Criar nova assinatura
                         $stmtAssinatura = $this->db->prepare("
                             INSERT INTO assinaturas
@@ -804,8 +851,10 @@ class MercadoPagoWebhookController
                             $dataFim,
                             $dataFim,
                         ]);
+                        error_log("[Webhook MP] ✨ Assinatura CRIADA para matrícula {$matriculaId}");
                     } else {
                         // Atualizar assinatura existente
+                        error_log("[Webhook MP] 🔄 Atualizando assinatura existente para matrícula {$matriculaId}");
                         $stmtAssinUpdate = $this->db->prepare("
                             UPDATE assinaturas
                             SET status_id = ?, data_fim = ?, proxima_cobranca = ?, valor = ?, 
@@ -820,6 +869,7 @@ class MercadoPagoWebhookController
                             $matriculaId,
                             $contrato['tenant_id']
                         ]);
+                        error_log("[Webhook MP] ✅ Assinatura ATUALIZADA para matrícula {$matriculaId}");
                     }
                 }
                 
@@ -871,14 +921,20 @@ class MercadoPagoWebhookController
                     $dataInicio,
                     $contratoId
                 ]);
+                
+                error_log("[Webhook MP] 💾 Pagamento de pacote rateado registrado para matrícula {$matriculaId}");
+                error_log("[Webhook MP] ✨ Beneficiário FINALIZADO: aluno_id={$ben['aluno_id']}, matricula_id={$matriculaId}");
             }
 
+            error_log("[Webhook MP] 🎉 Todos os beneficiários processados. Fazendo COMMIT...");
             $this->db->commit();
+            error_log("[Webhook MP] ✅✅✅ PACOTE CONTRATO ATIVADO COM SUCESSO - contratoId: {$contratoId}");
         } catch (\Exception $e) {
             if ($this->db->inTransaction()) {
                 $this->db->rollBack();
             }
-            error_log("[Webhook MP] Erro ao ativar pacote: " . $e->getMessage());
+            error_log("[Webhook MP] ❌❌❌ ERRO CRÍTICO ao ativar pacote: " . $e->getMessage());
+            error_log("[Webhook MP] Stack trace: " . $e->getTraceAsString());
         }
     }
     
