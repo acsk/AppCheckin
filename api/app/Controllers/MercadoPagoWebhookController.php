@@ -211,6 +211,203 @@ class MercadoPagoWebhookController
     }
     
     /**
+     * Debug: Listar webhooks salvos
+     * 
+     * GET /api/webhooks/mercadopago/list
+     */
+    public function listarWebhooks(Request $request, Response $response): Response
+    {
+        try {
+            $filtro = $request->getQueryParams()['filtro'] ?? null;
+            $limite = (int) ($request->getQueryParams()['limite'] ?? 50);
+            
+            $sql = "SELECT id, created_at, tipo, data_id, status, external_reference, payment_id, preapproval_id, erro_processamento FROM webhook_payloads_mercadopago";
+            
+            if ($filtro === 'erro') {
+                $sql .= " WHERE status = 'erro'";
+            } elseif ($filtro === 'sucesso') {
+                $sql .= " WHERE status = 'sucesso'";
+            }
+            
+            $sql .= " ORDER BY id DESC LIMIT {$limite}";
+            
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute();
+            $webhooks = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'total' => count($webhooks),
+                'webhooks' => $webhooks
+            ], JSON_PRETTY_PRINT));
+            return $response->withHeader('Content-Type', 'application/json');
+            
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+    
+    /**
+     * Debug: Ver detalhes de um webhook específico
+     * 
+     * GET /api/webhooks/mercadopago/show/{id}
+     */
+    public function mostrarWebhook(Request $request, Response $response, int $id): Response
+    {
+        try {
+            $stmt = $this->db->prepare("SELECT * FROM webhook_payloads_mercadopago WHERE id = ? LIMIT 1");
+            $stmt->execute([$id]);
+            $webhook = $stmt->fetch(\PDO::FETCH_ASSOC);
+            
+            if (!$webhook) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Webhook não encontrado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+            
+            // Decodificar JSONs
+            $webhook['payload'] = json_decode($webhook['payload'], true);
+            $webhook['resultado_processamento'] = $webhook['resultado_processamento'] ? json_decode($webhook['resultado_processamento'], true) : null;
+            
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'webhook' => $webhook
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json');
+            
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+    
+    /**
+     * Debug: Reprocessar um webhook
+     * 
+     * POST /api/webhooks/mercadopago/reprocess/{id}
+     */
+    public function reprocessarWebhook(Request $request, Response $response, int $id): Response
+    {
+        try {
+            $stmt = $this->db->prepare("SELECT payload FROM webhook_payloads_mercadopago WHERE id = ? LIMIT 1");
+            $stmt->execute([$id]);
+            $resultado = $stmt->fetch(\PDO::FETCH_ASSOC);
+            
+            if (!$resultado) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Webhook não encontrado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+            
+            $payload = json_decode($resultado['payload'], true);
+            
+            // Reprocessar
+            $mercadoPagoService = $this->getMercadoPagoService();
+            if ($payload['type'] === 'payment') {
+                $pagamento = $mercadoPagoService->buscarPagamento($payload['data']['id']);
+                $this->atualizarPagamento($pagamento);
+            } elseif (in_array($payload['type'], ['subscription_preapproval', 'subscription', 'preapproval'])) {
+                $assinatura = $mercadoPagoService->buscarAssinatura($payload['data']['id']);
+                $this->atualizarAssinatura($assinatura);
+            }
+            
+            // Atualizar status
+            $stmtUpdate = $this->db->prepare("UPDATE webhook_payloads_mercadopago SET status = 'reprocessado', updated_at = NOW() WHERE id = ?");
+            $stmtUpdate->execute([$id]);
+            
+            error_log("[Webhook MP] 🔄 Webhook #{$id} reprocessado com sucesso");
+            
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'message' => 'Webhook reprocessado com sucesso'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json');
+            
+        } catch (\Exception $e) {
+            error_log("[Webhook MP] ❌ Erro ao reprocessar webhook: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+    
+    /**
+     * Debug: Buscar pagamento direto da API do MP
+     * 
+     * GET /api/webhooks/mercadopago/payment/{paymentId}
+     */
+    public function buscarPagamentoDebug(Request $request, Response $response, string $paymentId): Response
+    {
+        try {
+            $mercadoPagoService = $this->getMercadoPagoService();
+            $pagamento = $mercadoPagoService->buscarPagamento($paymentId);
+            
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'pagamento' => $pagamento
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json');
+            
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+    
+    /**
+     * Debug: Reprocessar pagamento específico
+     * 
+     * POST /api/webhooks/mercadopago/payment/{paymentId}/reprocess
+     */
+    public function reprocessarPagamento(Request $request, Response $response, string $paymentId): Response
+    {
+        try {
+            error_log("[Webhook MP] 🔄 Reprocessando pagamento #{$paymentId}...");
+            
+            $mercadoPagoService = $this->getMercadoPagoService();
+            $pagamento = $mercadoPagoService->buscarPagamento($paymentId);
+            
+            error_log("[Webhook MP] 💾 Dados do pagamento: " . json_encode($pagamento));
+            
+            // Reprocessar
+            $this->atualizarPagamento($pagamento);
+            
+            error_log("[Webhook MP] ✅ Pagamento #{$paymentId} reprocessado com sucesso");
+            
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'message' => 'Pagamento reprocessado com sucesso',
+                'payment_id' => $paymentId
+            ]));
+            return $response->withHeader('Content-Type', 'application/json');
+            
+        } catch (\Exception $e) {
+            error_log("[Webhook MP] ❌ Erro ao reprocessar pagamento: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+    
+    /**
      * Debug: Forçar processamento de um pagamento
      * 
      * POST /api/webhooks/mercadopago/debug
@@ -631,18 +828,39 @@ class MercadoPagoWebhookController
         
         $externalReference = $pagamento['external_reference'];
         $metadata = $pagamento['metadata'];
+        $tipo = $metadata['tipo'] ?? null;
+        
+        // FALLBACK: Se tipo não veio no metadata, tentar extrair do external_reference
+        if (!$tipo && $externalReference) {
+            if (strpos($externalReference, 'PAC-') === 0) {
+                $tipo = 'pacote';
+                error_log("[Webhook MP] 🎁 Tipo detectado como PACOTE pelo external_reference: {$externalReference}");
+            } elseif (strpos($externalReference, 'MAT-') === 0) {
+                $tipo = 'matricula';
+                error_log("[Webhook MP] 📚 Tipo detectado como MATRÍCULA pelo external_reference: {$externalReference}");
+            }
+        }
         
         // Para pagamentos de pacote, não há matrícula ainda (será criada pelo webhook)
         // Saímos do fluxo normal de pagamento e processamos direto com ativarPacoteContrato
-        if (!empty($metadata['tipo']) && $metadata['tipo'] === 'pacote') {
+        if ($tipo === 'pacote') {
             error_log("[Webhook MP] 🎁 PACOTE DETECTED - Processando como pagamento de pacote");
             
             if ($pagamento['status'] === 'approved') {
                 error_log("[Webhook MP] ✅ Pagamento de pacote APROVADO - Chamando ativarPacoteContrato");
-                if (!empty($metadata['pacote_contrato_id'])) {
-                    $this->ativarPacoteContrato((int) $metadata['pacote_contrato_id'], $pagamento);
+                
+                $pacoteContratoId = $metadata['pacote_contrato_id'] ?? null;
+                
+                // FALLBACK: Extrair do external_reference se não estiver no metadata
+                if (!$pacoteContratoId && $externalReference && preg_match('/PAC-(\d+)-/', $externalReference, $matches)) {
+                    $pacoteContratoId = (int) $matches[1];
+                    error_log("[Webhook MP] 🎯 pacote_contrato_id extraído do external_reference: {$pacoteContratoId}");
+                }
+                
+                if ($pacoteContratoId) {
+                    $this->ativarPacoteContrato($pacoteContratoId, $pagamento);
                 } else {
-                    error_log("[Webhook MP] ❌ pacote_contrato_id não encontrado no metadata");
+                    error_log("[Webhook MP] ❌ pacote_contrato_id não encontrado no metadata nem no external_reference");
                 }
             } else {
                 error_log("[Webhook MP] ⚠️ Pagamento de pacote com status: {$pagamento['status']} (não processando)");
@@ -651,14 +869,56 @@ class MercadoPagoWebhookController
         }
         
         // PAGAMENTOS AVULSOS (de matrícula)
-        // Extrair IDs da external_reference (formato: MAT-123-timestamp)
+        // Tentar extrair IDs da external_reference (formato: MAT-123-timestamp)
+        $matriculaId = null;
+        
         if (preg_match('/MAT-(\d+)/', $externalReference, $matches)) {
-            $matriculaId = $matches[1];
+            $matriculaId = (int) $matches[1];
+            error_log("[Webhook MP] 📌 Matrícula ID extraído do external_reference: {$matriculaId}");
         } else {
             $matriculaId = $metadata['matricula_id'] ?? null;
+            
+            if ($matriculaId) {
+                error_log("[Webhook MP] 📌 Matrícula ID extraído dos metadados: {$matriculaId}");
+            } else {
+                error_log("[Webhook MP] ⚠️ external_reference não contém MAT-, tentando fallback...");
+                
+                // FALLBACK 1: Procurar por payment_id na tabela pagamentos_mercadopago
+                $stmtFallback1 = $this->db->prepare("
+                    SELECT matricula_id FROM pagamentos_mercadopago 
+                    WHERE payment_id = ? 
+                    LIMIT 1
+                ");
+                $stmtFallback1->execute([$pagamento['id']]);
+                $fallback1 = $stmtFallback1->fetch(\PDO::FETCH_ASSOC);
+                
+                if ($fallback1) {
+                    $matriculaId = (int) $fallback1['matricula_id'];
+                    error_log("[Webhook MP] ✅ Fallback 1: Matrícula encontrada no pagamentos_mercadopago: {$matriculaId}");
+                }
+                
+                // FALLBACK 2: Se ainda não encontrou, procurar por aluno_id + data recente
+                if (!$matriculaId && isset($metadata['aluno_id'])) {
+                    $stmtFallback2 = $this->db->prepare("
+                        SELECT m.id FROM matriculas m
+                        WHERE m.aluno_id = ? 
+                        AND m.created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
+                        ORDER BY m.created_at DESC
+                        LIMIT 1
+                    ");
+                    $stmtFallback2->execute([$metadata['aluno_id']]);
+                    $fallback2 = $stmtFallback2->fetch(\PDO::FETCH_ASSOC);
+                    
+                    if ($fallback2) {
+                        $matriculaId = (int) $fallback2['id'];
+                        error_log("[Webhook MP] ✅ Fallback 2: Matrícula encontrada por aluno_id recente: {$matriculaId}");
+                    }
+                }
+            }
         }
         
         if (!$matriculaId) {
+            error_log("[Webhook MP] ❌ Falha: Matrícula não identificada por nenhum método (external_reference, metadata, payment_id, aluno_id)");
             throw new \Exception('Matrícula não identificada no pagamento');
         }
         
@@ -769,11 +1029,18 @@ class MercadoPagoWebhookController
 
             if (!$contrato) {
                 error_log("[Webhook MP] ❌ Contrato não encontrado: contratoId={$contratoId}, tenantId={$tenantId}");
+                error_log("[Webhook MP] SQL: SELECT pc.*, p.plano_id, p.plano_ciclo_id, p.valor_total, COALESCE(pc2.permite_recorrencia, 0) as permite_recorrencia FROM pacote_contratos pc INNER JOIN pacotes p ON p.id = pc.pacote_id LEFT JOIN plano_ciclos pc2 ON pc2.id = p.plano_ciclo_id WHERE pc.id = {$contratoId} AND pc.tenant_id = {$tenantId}");
                 $this->db->rollBack();
                 return;
             }
 
-            error_log("[Webhook MP] ✅ Contrato encontrado: status=" . ($contrato['status'] ?? 'null'));
+            error_log("[Webhook MP] ✅ Contrato encontrado:");
+            error_log("[Webhook MP]    ID: {$contrato['id']}");
+            error_log("[Webhook MP]    Status: {$contrato['status']}");
+            error_log("[Webhook MP]    Pacote ID: {$contrato['pacote_id']}");
+            error_log("[Webhook MP]    Plano ID: {$contrato['plano_id']}");
+            error_log("[Webhook MP]    Valor Total: {$contrato['valor_total']}");
+            error_log("[Webhook MP]    Permite Recorrência: {$contrato['permite_recorrencia']}");
             
             if (($contrato['status'] ?? '') === 'ativo') {
                 error_log("[Webhook MP] ⚠️ Contrato já está ativo, ignorando");
@@ -791,8 +1058,16 @@ class MercadoPagoWebhookController
 
             error_log("[Webhook MP] 👥 Total de beneficiários: " . count($beneficiarios));
             
+            if (!empty($beneficiarios)) {
+                error_log("[Webhook MP] 📋 Beneficiários encontrados:");
+                foreach ($beneficiarios as $b) {
+                    error_log("[Webhook MP]    - ID: {$b['id']}, Aluno ID: {$b['aluno_id']}");
+                }
+            }
+            
             if (empty($beneficiarios)) {
                 error_log("[Webhook MP] ❌ Nenhum beneficiário encontrado para contrato {$contratoId}");
+                error_log("[Webhook MP] SQL: SELECT pb.id, pb.aluno_id FROM pacote_beneficiarios pb WHERE pb.pacote_contrato_id = {$contratoId} AND pb.tenant_id = {$contrato['tenant_id']}");
                 $this->db->rollBack();
                 return;
             }
@@ -915,7 +1190,8 @@ class MercadoPagoWebhookController
                         $contrato['tenant_id']
                     ]);
                     
-                    error_log("[Webhook MP] 🔄 Matrícula ATUALIZADA: matricula_id={$matriculaId}, novo_vencimento={$dataFim}");
+                    $rowsAffected = $stmtUpdate->rowCount();
+                    error_log("[Webhook MP] 🔄 Matrícula ATUALIZADA: matricula_id={$matriculaId}, linhas_afetadas={$rowsAffected}, novo_vencimento={$dataFim}");
                     $tipoOperacaoHistorico = 'UPDATE';
                 } else {
                     // CRIAR nova matrícula
@@ -944,6 +1220,7 @@ class MercadoPagoWebhookController
                     ]);
                     $matriculaId = (int) $this->db->lastInsertId();
                     error_log("[Webhook MP] ✨ Matrícula CRIADA: matricula_id={$matriculaId}, aluno_id={$ben['aluno_id']}, vencimento={$dataFim}");
+                    error_log("[Webhook MP]    tenant_id={$contrato['tenant_id']}, plano_id={$contrato['plano_id']}, status_id={$statusAtivaId}");
                     $dadosAntigos = null;
                     $tipoOperacaoHistorico = 'INSERT';
                 }
