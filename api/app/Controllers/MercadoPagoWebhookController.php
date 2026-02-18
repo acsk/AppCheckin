@@ -1232,6 +1232,7 @@ class MercadoPagoWebhookController
 
             foreach ($todasAsMatriculas as $ben) {
                 $tipoCobranca = (bool) ($contrato['permite_recorrencia'] ?? false) ? 'recorrente' : 'avulso';
+                $ehPagante = ($ben['tipo'] === 'pagante');
                 
                 error_log("[Webhook MP] 🎓 Processando aluno_id={$ben['aluno_id']}, tipo_cobranca={$tipoCobranca}, origem=" . ($ben['tipo'] ?? 'desconhecido'));
                 
@@ -1306,9 +1307,10 @@ class MercadoPagoWebhookController
                     $tipoOperacaoHistorico = 'INSERT';
                 }
 
-                // Se é recorrente, criar ou atualizar assinatura também
-                if ($tipoCobranca === 'recorrente' && $statusAssinaturaId && $gatewayId) {
-                    error_log("[Webhook MP] 🔐 Processando assinatura recorrente para matrícula {$matriculaId}");
+                // Se é recorrente E é o PAGANTE, criar ou atualizar assinatura
+                // Nota: Apenas o pagante tem assinatura recorrente. Beneficiários apenas recebem matrículas.
+                if ($tipoCobranca === 'recorrente' && $ehPagante && $statusAssinaturaId && $gatewayId) {
+                    error_log("[Webhook MP] 🔐 Processando ASSINATURA recorrente APENAS para PAGANTE (matrícula {$matriculaId})");
                     // Verificar se assinatura já existe
                     $stmtAssinComprovacao = $this->db->prepare("
                         SELECT id FROM assinaturas
@@ -1319,7 +1321,7 @@ class MercadoPagoWebhookController
                     $assinaturaExistente = $stmtAssinComprovacao->fetchColumn();
                     
                     if (!$assinaturaExistente) {
-                        error_log("[Webhook MP] 🆕 Criando NOVA assinatura");
+                        error_log("[Webhook MP] 🆕 Criando NOVA assinatura para PAGANTE");
                         // Criar nova assinatura
                         $stmtAssinatura = $this->db->prepare("
                             INSERT INTO assinaturas
@@ -1346,10 +1348,10 @@ class MercadoPagoWebhookController
                             $dataFim,
                             $dataFim,
                         ]);
-                        error_log("[Webhook MP] ✨ Assinatura CRIADA para matrícula {$matriculaId}");
+                        error_log("[Webhook MP] ✨ Assinatura CRIADA para PAGANTE (matrícula {$matriculaId})");
                     } else {
                         // Atualizar assinatura existente
-                        error_log("[Webhook MP] 🔄 Atualizando assinatura existente para matrícula {$matriculaId}");
+                        error_log("[Webhook MP] 🔄 Atualizando assinatura existente para PAGANTE (matrícula {$matriculaId})");
                         $stmtAssinUpdate = $this->db->prepare("
                             UPDATE assinaturas
                             SET status_id = ?, data_fim = ?, proxima_cobranca = ?, valor = ?, 
@@ -1364,8 +1366,10 @@ class MercadoPagoWebhookController
                             $matriculaId,
                             $contrato['tenant_id']
                         ]);
-                        error_log("[Webhook MP] ✅ Assinatura ATUALIZADA para matrícula {$matriculaId}");
+                        error_log("[Webhook MP] ✅ Assinatura ATUALIZADA para PAGANTE (matrícula {$matriculaId})");
                     }
+                } elseif ($tipoCobranca === 'recorrente' && !$ehPagante) {
+                    error_log("[Webhook MP] 👨‍👩‍👧 Beneficiário NÃO recebe assinatura, apenas matrícula (matrícula {$matriculaId})");
                 }
                 
                 // Registrar a operação no histórico
