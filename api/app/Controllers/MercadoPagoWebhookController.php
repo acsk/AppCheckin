@@ -590,9 +590,11 @@ class MercadoPagoWebhookController
             $this->db->beginTransaction();
 
             $stmtContrato = $this->db->prepare("
-                SELECT pc.*, p.plano_id, p.plano_ciclo_id, p.valor_total
+                SELECT pc.*, p.plano_id, p.plano_ciclo_id, p.valor_total,
+                       COALESCE(pc2.permite_recorrencia, 0) as permite_recorrencia
                 FROM pacote_contratos pc
                 INNER JOIN pacotes p ON p.id = pc.pacote_id
+                LEFT JOIN plano_ciclos pc2 ON pc2.id = p.plano_ciclo_id
                 WHERE pc.id = ? AND pc.tenant_id = ?
                 LIMIT 1
             ");
@@ -667,19 +669,49 @@ class MercadoPagoWebhookController
             $stmtMotivo->execute();
             $motivoId = (int) ($stmtMotivo->fetchColumn() ?: 1);
 
+            // Buscar informações de frequência, status de assinatura e gateway para assinatura recorrente
+            $frequenciaId = 4; // mensal padrão
+            $statusAssinaturaId = null;
+            $gatewayId = null;
+            
+            if ((bool) ($contrato['permite_recorrencia'] ?? false) && !empty($contrato['plano_ciclo_id'])) {
+                $stmtFreq = $this->db->prepare("
+                    SELECT af.id
+                    FROM plano_ciclos pc
+                    INNER JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
+                    WHERE pc.id = ? AND pc.tenant_id = ?
+                    LIMIT 1
+                ");
+                $stmtFreq->execute([(int) $contrato['plano_ciclo_id'], $contrato['tenant_id']]);
+                $frequenciaId = $stmtFreq->fetchColumn() ?: 4;
+
+                // Status 'ativa' para assubscriptions
+                $stmtStatusAssinatura = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'ativa' LIMIT 1");
+                $stmtStatusAssinatura->execute();
+                $statusAssinaturaId = $stmtStatusAssinatura->fetchColumn() ?: 1;
+
+                // Gateway Mercado Pago
+                $stmtGateway = $this->db->prepare("SELECT id FROM gateways WHERE tipo = 'mercadopago' LIMIT 1");
+                $stmtGateway->execute();
+                $gatewayId = $stmtGateway->fetchColumn() ?: 1;
+            }
+
             foreach ($beneficiarios as $ben) {
+                $tipoCobranca = (bool) ($contrato['permite_recorrencia'] ?? false) ? 'recorrente' : 'avulso';
+                
                 $stmtMat = $this->db->prepare("
                     INSERT INTO matriculas
                     (tenant_id, aluno_id, plano_id, plano_ciclo_id, tipo_cobranca,
                      data_matricula, data_inicio, data_vencimento, valor, valor_rateado,
                      status_id, motivo_id, proxima_data_vencimento, pacote_contrato_id, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, 'avulso', ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
                 ");
                 $stmtMat->execute([
                     $contrato['tenant_id'],
                     (int) $ben['aluno_id'],
                     (int) $contrato['plano_id'],
                     !empty($contrato['plano_ciclo_id']) ? (int) $contrato['plano_ciclo_id'] : null,
+                    $tipoCobranca,
                     $dataInicio,
                     $dataInicio,
                     $dataFim,
@@ -691,6 +723,35 @@ class MercadoPagoWebhookController
                     $contratoId
                 ]);
                 $matriculaId = (int) $this->db->lastInsertId();
+
+                // Se é recorrente, criar assinatura também
+                if ($tipoCobranca === 'recorrente' && $statusAssinaturaId && $gatewayId) {
+                    $stmtAssinatura = $this->db->prepare("
+                        INSERT INTO assinaturas
+                        (tenant_id, matricula_id, aluno_id, plano_id,
+                         gateway_id, gateway_preference_id, external_reference, payment_url,
+                         status_id, status_gateway, valor, frequencia_id, dia_cobranca,
+                         data_inicio, data_fim, proxima_cobranca, tipo_cobranca, criado_em)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'approved', ?, ?, ?, ?, ?, ?, 'recorrente', NOW())
+                    ");
+                    $stmtAssinatura->execute([
+                        $contrato['tenant_id'],
+                        $matriculaId,
+                        (int) $ben['aluno_id'],
+                        (int) $contrato['plano_id'],
+                        $gatewayId,
+                        $pagamento['id'] ?? null,
+                        'pacote_' . $contratoId . '_' . $matriculaId,
+                        $pagamento['init_point'] ?? null,
+                        $statusAssinaturaId,
+                        (float) $valorRateado,
+                        $frequenciaId,
+                        (int) date('d'),
+                        $dataInicio,
+                        $dataFim,
+                        $dataFim,
+                    ]);
+                }
 
                 $stmtUpdBen = $this->db->prepare("
                     UPDATE pacote_beneficiarios
