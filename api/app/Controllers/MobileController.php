@@ -1540,11 +1540,39 @@ class MobileController
             $matricula = $stmtMatricula->fetch(\PDO::FETCH_ASSOC);
 
             if (!$matricula) {
-                $response->getBody()->write(json_encode([
+                // Buscar matrícula vencida para informar quando expirou
+                $stmtVencida = $this->db->prepare("
+                    SELECT m.id, m.proxima_data_vencimento, sm.codigo as status_codigo, sm.nome as status_nome
+                    FROM matriculas m
+                    INNER JOIN alunos a ON a.id = m.aluno_id
+                    INNER JOIN status_matricula sm ON sm.id = m.status_id
+                    WHERE a.usuario_id = :usuario_id
+                    AND m.tenant_id = :tenant_id
+                    AND m.proxima_data_vencimento IS NOT NULL
+                    ORDER BY m.proxima_data_vencimento DESC
+                    LIMIT 1
+                ");
+                $stmtVencida->execute([
+                    'usuario_id' => $usuarioId,
+                    'tenant_id' => $tenantId
+                ]);
+                $matriculaVencida = $stmtVencida->fetch(\PDO::FETCH_ASSOC);
+
+                $errorResponse = [
                     'success' => false,
-                    'error' => 'Aluno não possui matrícula ativa',
                     'code' => 'SEM_MATRICULA'
-                ]));
+                ];
+
+                if ($matriculaVencida) {
+                    $dataVencimento = date('d/m/Y', strtotime($matriculaVencida['proxima_data_vencimento']));
+                    $errorResponse['error'] = "Sua matrícula expirou em {$dataVencimento}";
+                    $errorResponse['data_vencimento'] = $matriculaVencida['proxima_data_vencimento'];
+                    $errorResponse['status'] = $matriculaVencida['status_nome'];
+                } else {
+                    $errorResponse['error'] = 'Aluno não possui matrícula ativa';
+                }
+
+                $response->getBody()->write(json_encode($errorResponse));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
             }
 
