@@ -1544,9 +1544,12 @@ export default function AccountScreen() {
                 onPress={async () => {
                   try {
                     // Verificar se existe token antes de navegar
-                    const token = await AsyncStorage.getItem("@appcheckin:token");
+                    const token =
+                      await AsyncStorage.getItem("@appcheckin:token");
                     if (!token) {
-                      console.warn("⚠️ Token não encontrado - redirecionando para login");
+                      console.warn(
+                        "⚠️ Token não encontrado - redirecionando para login",
+                      );
                       router.replace("/(auth)/login");
                       return;
                     }

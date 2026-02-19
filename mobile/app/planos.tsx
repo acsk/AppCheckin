@@ -1,10 +1,10 @@
 import { getApiUrlRuntime } from "@/src/config/urls";
+import { authService } from "@/src/services/authService";
 import { colors } from "@/src/theme/colors";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { authService } from "@/src/services/authService";
 import {
   ActivityIndicator,
   FlatList,
@@ -144,7 +144,9 @@ export default function PlanosScreen() {
 
         const user = await authService.getCurrentUser();
         if (!user) {
-          console.warn("⚠️ Usuário não autenticado - redirecionando para login");
+          console.warn(
+            "⚠️ Usuário não autenticado - redirecionando para login",
+          );
           await AsyncStorage.removeItem("@appcheckin:token");
           router.replace("/(auth)/login");
           setHasPermission(false);

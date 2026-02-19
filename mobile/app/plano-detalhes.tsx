@@ -294,7 +294,9 @@ export default function PlanoDetalhesScreen() {
 
         const user = await authService.getCurrentUser();
         if (!user) {
-          console.warn("⚠️ Usuário não autenticado - redirecionando para login");
+          console.warn(
+            "⚠️ Usuário não autenticado - redirecionando para login",
+          );
           await AsyncStorage.removeItem("@appcheckin:token");
           router.replace("/(auth)/login");
           setHasPermission(false);

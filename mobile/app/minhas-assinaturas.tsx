@@ -266,7 +266,9 @@ export default function MinhasAssinaturasScreen() {
 
         const user = await authService.getCurrentUser();
         if (!user) {
-          console.warn("⚠️ Usuário não autenticado - redirecionando para login");
+          console.warn(
+            "⚠️ Usuário não autenticado - redirecionando para login",
+          );
           await AsyncStorage.removeItem("@appcheckin:token");
           router.replace("/(auth)/login");
           setIsUserAdmin(false);
@@ -863,7 +865,9 @@ export default function MinhasAssinaturasScreen() {
               // Verificar se existe token antes de navegar
               const token = await AsyncStorage.getItem("@appcheckin:token");
               if (!token) {
-                console.warn("⚠️ Token não encontrado - redirecionando para login");
+                console.warn(
+                  "⚠️ Token não encontrado - redirecionando para login",
+                );
                 router.replace("/(auth)/login");
                 return;
               }
