@@ -309,6 +309,22 @@ async function verificarPacote(contratoId) {
 2. Incluir `metadata` com `tipo`, `tenant_id`, etc.
 3. Sistema faz fallback: extrai `pacote_contrato_id` do `external_reference`
 
+### Erro ao Consultar Pagamento no MP (404)
+
+**Sintoma:** `Erro Mercado Pago [404]: Si quieres conocer los recursos...`
+
+**Causas:**
+- Payment ID não existe naquela conta MP
+- Credenciais (token) expiradas ou inválidas
+- Conta MP diferente da que gerou o payment
+
+**Solução:**
+1. Verificar se o `payment_id` é válido
+2. Verificar se `MP_ACCESS_TOKEN_PROD` no `.env` é o token correto
+3. Verificar se o payment foi gerado nessa mesma conta
+
+**Testing:** Use um `payment_id` que você sabe que existe (gerado recentemente de um checkout real)
+
 ### Matrícula falha a ativar
 
 **Debug (requer login Admin):**
@@ -316,7 +332,7 @@ async function verificarPacote(contratoId) {
 // Frontend Admin pode consultar logs de webhook:
 GET /api/webhooks/mercadopago/list
 GET /api/webhooks/mercadopago/show/{webhookId}
-GET /api/webhooks/mercadopago/payment/{paymentId}
+GET /api/webhooks/mercadopago/payment/{paymentId}  // Requer payment_id válido!
 ```
 
 **Reprocessar Webhook Perdido:**
@@ -334,8 +350,9 @@ Sistema executa **CRON a cada 5 minutos** que:
 
 **Você também pode reprocessar manualmente:**
 ```bash
-POST /api/webhooks/mercadopago/payment/146749614928/reprocess
+POST /api/webhooks/mercadopago/payment/{paymentId}/reprocess
 # Busca detalhes na API MP e cria matrículas
+# ATENÇÃO: paymentId deve existir no Mercado Pago!
 ```
 
 ---
