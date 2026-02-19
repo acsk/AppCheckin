@@ -848,6 +848,25 @@ class AdminController
             // Data de início/fim
             $dataInicio = $contrato['data_inicio'] ?? date('Y-m-d');
             $dataFim = $contrato['data_fim'];
+            
+            error_log("[AdminController::gerarMatriculasPackage] Contrato #{$contratoId}: data_inicio={$dataInicio}, data_fim={$dataFim}");
+            
+            // Se não tem data_fim, calcular baseado no ciclo/duração
+            if (!$dataFim) {
+                if (!empty($contrato['plano_ciclo_id'])) {
+                    $stmtCiclo = $db->prepare("SELECT meses FROM plano_ciclos WHERE id = ? LIMIT 1");
+                    $stmtCiclo->execute([(int) $contrato['plano_ciclo_id']]);
+                    $meses = (int) ($stmtCiclo->fetchColumn() ?: 1);
+                    $dataFim = date('Y-m-d', strtotime("+{$meses} months", strtotime($dataInicio)));
+                    error_log("[AdminController::gerarMatriculasPackage] data_fim calculada a partir de ciclo ({$meses} meses): {$dataFim}");
+                } else {
+                    // Fallback: 30 dias
+                    $dataFim = date('Y-m-d', strtotime('+30 days', strtotime($dataInicio)));
+                    error_log("[AdminController::gerarMatriculasPackage] data_fim calculada com fallback (30 dias): {$dataFim}");
+                }
+            }
+            
+            error_log("[AdminController::gerarMatriculasPackage] Processando {" . count($todasAsMatriculas) . "} pessoas, valor_rateado={$valorRateado}, vencimento={$dataFim}");
 
             // Buscar status ativa
             $stmtStatusAtiva = $db->prepare("SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1");
