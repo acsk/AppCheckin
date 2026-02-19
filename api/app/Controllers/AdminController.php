@@ -984,6 +984,7 @@ class AdminController
                 'success' => true,
                 'message' => 'Matrículas geradas com sucesso',
                 'contrato_id' => $contratoId,
+                'assinatura_id' => $assinaturaPacote ? (int) $assinaturaPacote['id'] : null,
                 'matriculas_criadas' => count($matriculasCriadas),
                 'matriculas' => $matriculasCriadas
             ], JSON_UNESCAPED_UNICODE));

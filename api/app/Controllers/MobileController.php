@@ -3790,11 +3790,17 @@ class MobileController
 
             // Se já existe payment_url, reusar (a menos que force_new=1)
             if (!empty($contrato['payment_url']) && !$forceNew) {
+                // Buscar assinatura existente para retornar seu ID
+                $stmtAssinExist = $this->db->prepare("SELECT id FROM assinaturas WHERE pacote_contrato_id = ? AND tenant_id = ? LIMIT 1");
+                $stmtAssinExist->execute([$contratoId, $tenantId]);
+                $assinExistId = (int) ($stmtAssinExist->fetchColumn() ?: null);
+                
                 $response->getBody()->write(json_encode([
                     'success' => true,
                     'message' => 'Pagamento já gerado',
                     'data' => [
                         'contrato_id' => (int) $contrato['id'],
+                        'assinatura_id' => $assinExistId,
                         'payment_url' => $contrato['payment_url'],
                         'preference_id' => $contrato['payment_preference_id'],
                         'valor_total' => (float) $contrato['valor_total']
@@ -3957,6 +3963,7 @@ class MobileController
                 'success' => true,
                 'data' => [
                     'contrato_id' => $contratoId,
+                    'assinatura_id' => $assinaturaId,
                     'payment_url' => $preferencia['init_point'] ?? null,
                     'preference_id' => $preferencia['id'] ?? null,
                     'valor_total' => (float) $contrato['valor_total']
