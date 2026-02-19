@@ -879,6 +879,17 @@ class AdminController
 
             $matriculasCriadas = [];
 
+            // Buscar assinatura já criada em pagarPacote (com pacote_contrato_id)
+            $stmtAssinExistente = $db->prepare("
+                SELECT id, status_id FROM assinaturas
+                WHERE pacote_contrato_id = ? AND tenant_id = ?
+                LIMIT 1
+            ");
+            $stmtAssinExistente->execute([$contratoId, $tenantId]);
+            $assinaturaPacote = $stmtAssinExistente->fetch(\PDO::FETCH_ASSOC);
+            
+            error_log("[AdminController::gerarMatriculasPackage] Assinatura do pacote: " . ($assinaturaPacote ? 'encontrada #' . $assinaturaPacote['id'] : 'não encontrada'));
+
             foreach ($todasAsMatriculas as $ben) {
                 $ehPagante = ($ben['tipo'] === 'pagante');
                 $tipoCobranca = (bool) ($contrato['permite_recorrencia'] ?? false) ? 'recorrente' : 'avulso';
@@ -947,51 +958,23 @@ class AdminController
                     'vencimento' => $dataFim
                 ];
 
-                // Se é pagante e recorrente, criar/atualizar assinatura
-                if ($ehPagante && (bool) ($contrato['permite_recorrencia'] ?? false)) {
-                    $stmtStatusAssinatura = $db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'ativa' LIMIT 1");
-                    $stmtStatusAssinatura->execute();
-                    $statusAssinaturaId = $stmtStatusAssinatura->fetchColumn() ?: 1;
-
-                    $stmtAssinComprovacao = $db->prepare("
-                        SELECT id FROM assinaturas
-                        WHERE matricula_id = ? AND tenant_id = ?
-                        LIMIT 1
+                // Se é pagante, vincular assinatura existente à matrícula
+                if ($ehPagante && $assinaturaPacote) {
+                    // ATUALIZAR assinatura com a matrícula e aluno do pagante
+                    $stmtUpdateAssinatura = $db->prepare("
+                        UPDATE assinaturas
+                        SET matricula_id = ?, aluno_id = ?, status_id = (SELECT id FROM assinatura_status WHERE codigo = 'ativa' LIMIT 1),
+                            status_gateway = 'approved', valor = ?, updated_at = NOW()
+                        WHERE id = ? AND tenant_id = ?
                     ");
-                    $stmtAssinComprovacao->execute([$matriculaId, $tenantId]);
-                    $assinaturaExistente = $stmtAssinComprovacao->fetchColumn();
-
-                    if (!$assinaturaExistente) {
-                        $stmtGateway = $db->prepare("SELECT id FROM assinatura_gateways WHERE codigo = 'mercadopago' LIMIT 1");
-                        $stmtGateway->execute();
-                        $gatewayId = (int) ($stmtGateway->fetchColumn() ?: 1);
-
-                        $stmtFreq = $db->prepare("SELECT id FROM assinatura_frequencias WHERE codigo = 'mensal' LIMIT 1");
-                        $stmtFreq->execute();
-                        $frequenciaId = (int) ($stmtFreq->fetchColumn() ?: 4);
-
-                        $stmtAssinatura = $db->prepare("
-                            INSERT INTO assinaturas
-                            (tenant_id, matricula_id, aluno_id, plano_id,
-                             gateway_id, external_reference, status_id, status_gateway,
-                             valor, frequencia_id, dia_cobranca,
-                             data_inicio, proxima_cobranca, tipo_cobranca, criado_em, atualizado_em)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, 'approved', ?, ?, ?, CURDATE(), ?, 'recorrente', NOW(), NOW())
-                        ");
-                        $stmtAssinatura->execute([
-                            $tenantId,
-                            $matriculaId,
-                            (int) $ben['aluno_id'],
-                            (int) $contrato['plano_id'],
-                            $gatewayId,
-                            'pacote_' . $contratoId . '_' . $matriculaId,
-                            $statusAssinaturaId,
-                            $valorRateado,
-                            $frequenciaId,
-                            (int) date('d'),
-                            $dataFim
-                        ]);
-                    }
+                    $stmtUpdateAssinatura->execute([
+                        $matriculaId,
+                        (int) $ben['aluno_id'],
+                        $valorRateado,
+                        (int) $assinaturaPacote['id'],
+                        $tenantId
+                    ]);
+                    error_log("[AdminController::gerarMatriculasPackage] Assinatura #{$assinaturaPacote['id']} vinculada à matrícula #{$matriculaId} (pagante)");
                 }
             }
 

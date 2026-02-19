@@ -3894,6 +3894,12 @@ class MobileController
                 $diaCobranca = (int) date('d');
                 $tipoCobranca = $permiteRecorrencia ? 'recorrente' : 'avulso';
                 
+                // Buscar plano_id do pacote
+                $planoId = null;
+                $stmtPlano = $this->db->prepare("SELECT plano_id FROM pacotes WHERE id = ? LIMIT 1");
+                $stmtPlano->execute([$contrato['pacote_id'] ?? null]);
+                $planoId = (int) ($stmtPlano->fetchColumn() ?: null);
+                
                 // Inserir assinatura
                 $stmtAssinatura = $this->db->prepare("
                     INSERT INTO assinaturas
@@ -3902,11 +3908,12 @@ class MobileController
                      status_id, status_gateway,
                      valor, frequencia_id, dia_cobranca, data_inicio, data_fim, proxima_cobranca,
                      metodo_pagamento_id, tipo_cobranca, pacote_contrato_id, criado_em, atualizado_em)
-                    VALUES (?, NULL, NULL, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, CURDATE(), NULL, NULL, NULL, ?, ?, NOW(), NOW())
+                    VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, CURDATE(), NULL, NULL, NULL, ?, ?, NOW(), NOW())
                 ");
                 
                 $stmtAssinatura->execute([
                     $tenantId,
+                    $planoId ?: null,
                     $gatewayId,
                     $gatewayAssinaturaId,
                     $gatewayPreferenceId,
