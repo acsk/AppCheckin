@@ -92,7 +92,7 @@ $sqlPagamentos = "
         pp.matricula_id,
         pp.valor,
         pp.data_pagamento,
-        sp.codigo as status,
+        sp.nome as status,
         pp.observacoes,
         pp.created_at,
         pp.updated_at

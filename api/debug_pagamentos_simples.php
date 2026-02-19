@@ -78,7 +78,7 @@ $sql = "
         pp.valor,
         pp.data_vencimento,
         pp.data_pagamento,
-        sp.codigo as status,
+        sp.nome as status,
         pp.observacoes,
         pp.created_at,
         pp.updated_at
@@ -132,13 +132,13 @@ echo "════════════════════════�
 
 $sqlSumario = "
     SELECT 
-        sp.codigo as status,
+        sp.nome as status,
         COUNT(*) as total,
         SUM(pp.valor) as valor_total
     FROM pagamentos_plano pp
     INNER JOIN status_pagamento sp ON sp.id = pp.status_pagamento_id
-    GROUP BY sp.codigo
-    ORDER BY sp.codigo
+    GROUP BY sp.nome
+    ORDER BY sp.nome
 ";
 
 $resultSumario = $conn->query($sqlSumario);
@@ -165,7 +165,7 @@ $sqlRecentes = "
         pp.matricula_id,
         pp.valor,
         pp.data_pagamento,
-        sp.codigo as status,
+        sp.nome as status,
         pp.observacoes,
         pp.updated_at
     FROM pagamentos_plano pp
