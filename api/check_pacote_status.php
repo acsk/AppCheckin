@@ -12,10 +12,12 @@ $db_user = 'u304177849_api';
 $db_pass = '+DEEJ&7t';
 
 try {
-    $db = new PDO("mysql:host={$db_host};dbname={$db_name}", $db_user, $db_pass);
-    $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_THROW);
-    $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
-} catch (PDOException $e) {
+    $db = new PDO("mysql:host={$db_host};dbname={$db_name}", $db_user, $db_pass, [
+        \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+        \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
+        \PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4"
+    ]);
+} catch (Exception $e) {
     echo "❌ ERRO ao conectar ao banco de dados:\n";
     echo $e->getMessage() . "\n";
     exit(1);
