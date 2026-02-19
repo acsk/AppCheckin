@@ -3860,64 +3860,58 @@ class MobileController
                 $preferencia = $mercadoPago->criarPreferenciaPagamento($dadosPagamento);
             }
 
-            // 🎁 NOVO: Criar assinatura no banco ANTES de webhook chegar
-            // Isso permite que webhook encontre a assinatura e a atualize
+            // 🎁 CRIAR ASSINATURA (igual qualquer compra - só adicionando pacote_contrato_id)
             try {
-                $externalReference = $dadosPagamento['external_reference'] ?? 'PAC-' . $contratoId . '-' . time();
-                $gatewayAssinaturaId = $permiteRecorrencia ? ($preferencia['id'] ?? null) : null;
-                
-                // Buscar gateway_id para Mercado Pago
+                // Buscar gateway e status
                 $stmtGateway = $this->db->prepare("SELECT id FROM assinatura_gateways WHERE codigo = 'mercadopago' LIMIT 1");
                 $stmtGateway->execute();
                 $gatewayId = (int) ($stmtGateway->fetchColumn() ?: 1);
                 
-                // Buscar status_id para 'pendente'
                 $stmtStatus = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'pendente' LIMIT 1");
                 $stmtStatus->execute();
                 $statusId = (int) ($stmtStatus->fetchColumn() ?: 1);
                 
-                if ($gatewayAssinaturaId) {
-                    // Para preapprovals (recorrentes), criar assinatura com gateway_assinatura_id
-                    $stmtAssinatura = $this->db->prepare("
-                        INSERT INTO assinaturas
-                        (tenant_id, aluno_id, gateway_id, gateway_assinatura_id, status_id,
-                         status_gateway, valor, frequencia_id, data_inicio, 
-                         pacote_contrato_id, criado_em, atualizado_em)
-                        VALUES (?, NULL, ?, ?, ?, 'pending', 0, 4, CURDATE(), ?, NOW(), NOW())
-                    ");
-                    $stmtAssinatura->execute([
-                        $tenantId,
-                        $gatewayId,
-                        $gatewayAssinaturaId,
-                        $statusId,
-                        $contratoId
-                    ]);
-                    
-                    $assinaturaId = (int) $this->db->lastInsertId();
-                    error_log("[MobileController::pagarPacote] ✅ Assinatura criada (RECORRENTE): ID={$assinaturaId}, gateway_id={$gatewayAssinaturaId}, pacote_id={$contratoId}");
-                } else {
-                    // Para pagamentos únicos, criar assinatura simples
-                    $stmtAssinatura = $this->db->prepare("
-                        INSERT INTO assinaturas
-                        (tenant_id, aluno_id, gateway_id, gateway_cliente_id, status_id,
-                         status_gateway, valor, frequencia_id, data_inicio,
-                         pacote_contrato_id, criado_em, atualizado_em)
-                        VALUES (?, NULL, ?, ?, ?, 'pending', 0, 4, CURDATE(), ?, NOW(), NOW())
-                    ");
-                    $stmtAssinatura->execute([
-                        $tenantId,
-                        $gatewayId,
-                        $preferencia['id'] ?? null,
-                        $statusId,
-                        $contratoId
-                    ]);
-                    
-                    $assinaturaId = (int) $this->db->lastInsertId();
-                    error_log("[MobileController::pagarPacote] ✅ Assinatura criada (AVULSA): ID={$assinaturaId}, preference_id={$preferencia['id'] ?? null}, pacote_id={$contratoId}");
-                }
+                $stmtFreq = $this->db->prepare("SELECT id FROM assinatura_frequencias WHERE codigo = 'mensal' LIMIT 1");
+                $stmtFreq->execute();
+                $frequenciaId = (int) ($stmtFreq->fetchColumn() ?: 4);
+                
+                $externalReference = $dadosPagamento['external_reference'] ?? 'PAC-' . $contratoId . '-' . time();
+                $gatewayAssinaturaId = $permiteRecorrencia ? ($preferencia['id'] ?? null) : null;
+                $gatewayPreferenceId = !$permiteRecorrencia ? ($preferencia['id'] ?? null) : null;
+                $paymentUrl = $preferencia['init_point'] ?? null;
+                $diaCobranca = (int) date('d');
+                $tipoCobranca = $permiteRecorrencia ? 'recorrente' : 'avulso';
+                
+                // Inserir assinatura
+                $stmtAssinatura = $this->db->prepare("
+                    INSERT INTO assinaturas
+                    (tenant_id, matricula_id, aluno_id, plano_id,
+                     gateway_id, gateway_assinatura_id, gateway_preference_id, external_reference, payment_url,
+                     status_id, status_gateway,
+                     valor, frequencia_id, dia_cobranca, data_inicio, data_fim, proxima_cobranca,
+                     metodo_pagamento_id, tipo_cobranca, pacote_contrato_id, criado_em, atualizado_em)
+                    VALUES (?, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, CURDATE(), NULL, NULL, NULL, ?, ?, NOW(), NOW())
+                ");
+                
+                $stmtAssinatura->execute([
+                    $tenantId,
+                    $gatewayId,
+                    $gatewayAssinaturaId,
+                    $gatewayPreferenceId,
+                    $externalReference,
+                    $paymentUrl,
+                    $statusId,
+                    $valorTotal,
+                    $frequenciaId,
+                    $diaCobranca,
+                    $tipoCobranca,
+                    $contratoId
+                ]);
+                
+                $assinaturaId = (int) $this->db->lastInsertId();
+                error_log("[MobileController::pagarPacote] ✅ Assinatura criada: #{$assinaturaId}, pacote_id={$contratoId}, type={$tipoCobranca}");
             } catch (\Exception $e) {
                 error_log("[MobileController::pagarPacote] ⚠️ Erro ao criar assinatura: " . $e->getMessage());
-                // Continua mesmo se falhar (pode ser criada depois via webhook)
             }
 
             // Atualizar contrato com payment_url
