@@ -3790,10 +3790,20 @@ class MobileController
 
             // Se já existe payment_url, reusar (a menos que force_new=1)
             if (!empty($contrato['payment_url']) && !$forceNew) {
-                // Buscar assinatura existente para retornar seu ID
-                $stmtAssinExist = $this->db->prepare("SELECT id FROM assinaturas WHERE pacote_contrato_id = ? AND tenant_id = ? LIMIT 1");
-                $stmtAssinExist->execute([$contratoId, $tenantId]);
-                $assinExistId = (int) ($stmtAssinExist->fetchColumn() ?: null);
+                // Buscar assinatura existente através de assinatura_id na pacote_contratos
+                $assinExistId = !empty($contrato['assinatura_id']) 
+                    ? (int) $contrato['assinatura_id']
+                    : null;
+                
+                // FALLBACK: se assinatura_id est NULL, buscar por pacote_contrato_id (dados antigos)
+                if (empty($assinExistId)) {
+                    error_log("[MobileController::pagarPacote] ⚠️ assinatura_id vazio em pacote_contratos. Buscando por pacote_contrato_id...");
+                    $stmtAssinExist = $this->db->prepare("SELECT id FROM assinaturas WHERE pacote_contrato_id = ? AND tenant_id = ? LIMIT 1");
+                    $stmtAssinExist->execute([$contratoId, $tenantId]);
+                    $assinExistId = (int) ($stmtAssinExist->fetchColumn() ?: null);
+                }
+                
+                error_log("[MobileController::pagarPacote] ℹ️ Reutilizando payment_url existente. assinatura_id={$assinExistId}");
                 
                 $response->getBody()->write(json_encode([
                     'success' => true,
@@ -3934,6 +3944,12 @@ class MobileController
                 ]);
                 
                 $assinaturaId = (int) $this->db->lastInsertId();
+                
+                if ($assinaturaId <= 0) {
+                    error_log("[MobileController::pagarPacote] ❌ CRÍTICO: lastInsertId() retornou: {$assinaturaId}");
+                    throw new \Exception("Falha ao obter ID da assinatura após INSERT");
+                }
+                
                 error_log("[MobileController::pagarPacote] ✅ Assinatura criada: #{$assinaturaId}, pacote_id={$contratoId}, type={$tipoCobranca}");
             } catch (\Exception $e) {
                 error_log("[MobileController::pagarPacote] ❌ ERRO ao criar assinatura: " . $e->getMessage());
@@ -3947,18 +3963,33 @@ class MobileController
             }
 
             // Atualizar contrato com payment_url e assinatura_id
+            error_log("[MobileController::pagarPacote] 🔄 Atualizando pacote_contratos: id={$contratoId}, tenant_id={$tenantId}, assinatura_id={$assinaturaId}");
             $stmtUpdate = $this->db->prepare("
                 UPDATE pacote_contratos
                 SET payment_url = ?, payment_preference_id = ?, assinatura_id = ?, updated_at = NOW()
                 WHERE id = ? AND tenant_id = ?
             ");
-            $stmtUpdate->execute([
-                $preferencia['init_point'] ?? null,
-                $preferencia['id'] ?? null,
-                $assinaturaId,
-                $contratoId,
-                $tenantId
-            ]);
+            
+            try {
+                $resultUpdate = $stmtUpdate->execute([
+                    $preferencia['init_point'] ?? null,
+                    $preferencia['id'] ?? null,
+                    $assinaturaId,
+                    $contratoId,
+                    $tenantId
+                ]);
+                
+                $rowsAffected = $stmtUpdate->rowCount();
+                error_log("[MobileController::pagarPacote] ✅ UPDATE executado: rowCount={$rowsAffected}, result={$resultUpdate}");
+                
+                if ($rowsAffected <= 0) {
+                    error_log("[MobileController::pagarPacote] ⚠️ AVISO: UPDATE não afetou nenhuma linha. Verifique: id={$contratoId}, tenant_id={$tenantId}");
+                }
+            } catch (\Exception $e) {
+                error_log("[MobileController::pagarPacote] ❌ ERRO no UPDATE: " . $e->getMessage());
+                error_log("[MobileController::pagarPacote] Stack: " . $e->getTraceAsString());
+                throw $e;
+            }
 
             $response->getBody()->write(json_encode([
                 'success' => true,

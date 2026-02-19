@@ -1000,7 +1000,22 @@ class MercadoPagoWebhookController
             $this->db->beginTransaction();
 
             $tenantId = $pagamento['metadata']['tenant_id'] ?? null;
-            error_log("[Webhook MP] 🏢 tenant_id: {$tenantId}");
+            error_log("[Webhook MP] 🏢 tenant_id inicial: " . ($tenantId ?? 'NULL'));
+
+            // Se tenantId for null, buscar direto do contrato
+            if (!$tenantId) {
+                error_log("[Webhook MP] ⚠️ tenant_id NULL, buscando direto no contrato...");
+                $stmtTenant = $this->db->prepare("SELECT tenant_id FROM pacote_contratos WHERE id = ? LIMIT 1");
+                $stmtTenant->execute([$contratoId]);
+                $tenantId = (int) ($stmtTenant->fetchColumn() ?: 0);
+                error_log("[Webhook MP] ✅ tenant_id encontrado: {$tenantId}");
+            }
+
+            if (!$tenantId) {
+                error_log("[Webhook MP] ❌ CRÍTICO: tenant_id não foi encontrado nem no webhook nem no banco");
+                $this->db->rollBack();
+                return;
+            }
 
             $stmtContrato = $this->db->prepare("
                 SELECT pc.*, p.plano_id, p.plano_ciclo_id, p.valor_total,
@@ -1067,6 +1082,8 @@ class MercadoPagoWebhookController
             ");
             $stmtBenef->execute([$contratoId, $contrato['tenant_id']]);
             $beneficiarios = $stmtBenef->fetchAll(\PDO::FETCH_ASSOC);
+            
+            error_log("[Webhook MP] 👥 Beneficiários encontrados: " . count($beneficiarios));
 
             // Montar lista COMPLETA: pagante + beneficiários
             $todasAsMatriculas = [];
@@ -1135,6 +1152,14 @@ class MercadoPagoWebhookController
                     updated_at = NOW()
                 WHERE id = ? AND tenant_id = ?
             ");
+            
+            error_log("[Webhook MP] 🔧 Executando UPDATE com parâmetros:");
+            error_log("[Webhook MP]    pagamento_id: " . ($pagamento['id'] ?? 'null'));
+            error_log("[Webhook MP]    data_inicio: {$dataInicio}");
+            error_log("[Webhook MP]    data_fim: {$dataFim}");
+            error_log("[Webhook MP]    id: {$contratoId}");
+            error_log("[Webhook MP]    tenant_id: " . $contrato['tenant_id']);
+            
             $stmtUpdContrato->execute([
                 $pagamento['id'] ?? null,
                 $dataInicio,
@@ -1143,7 +1168,26 @@ class MercadoPagoWebhookController
                 $contrato['tenant_id']
             ]);
             
-            error_log("[Webhook MP] ✅ Contrato atualizado para status 'ativo'");
+            $rowsAffected = $stmtUpdContrato->rowCount();
+            error_log("[Webhook MP] 📊 UPDATE result: {$rowsAffected} linhas afetadas");
+            
+            if ($rowsAffected > 0) {
+                error_log("[Webhook MP] ✅ Contrato atualizado para status 'ativo'");
+            } else {
+                error_log("[Webhook MP] ⚠️ ATENÇÃO: UPDATE retornou 0 linhas afetadas!");
+                error_log("[Webhook MP] ⚠️ Verificando se contrato existe com: id={$contratoId}, tenant_id={$contrato['tenant_id']}");
+                
+                // Debug: Tentar refazer o SELECT para verificar
+                $stmtDebug = $this->db->prepare("SELECT id, status, tenant_id FROM pacote_contratos WHERE id = ?");
+                $stmtDebug->execute([$contratoId]);
+                $debugResult = $stmtDebug->fetch(\PDO::FETCH_ASSOC);
+                if ($debugResult) {
+                    error_log("[Webhook MP] ⚠️ DEBUG SELECT result: " . json_encode($debugResult));
+                    error_log("[Webhook MP] ⚠️ DEBUG: tenant_id do contrato = {$debugResult['tenant_id']}, esperado = {$contrato['tenant_id']}");
+                } else {
+                    error_log("[Webhook MP] ❌ Contrato não existe no banco!");
+                }
+            }
 
             $stmtStatusAtiva = $this->db->prepare("SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1");
             $stmtStatusAtiva->execute();
