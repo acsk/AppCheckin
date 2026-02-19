@@ -597,7 +597,8 @@ class AdminController
             }
 
             // Se pendente, lista com info básica
-            if ($status === 'pendente') {
+            if ($status === 'pendente' || $status === 'cancelado' || $status === 'expirado') {
+                // Para pendente/cancelado/expirado: info básica
                 $stmt = $db->prepare("
                     SELECT 
                         pc.id as contrato_id,
@@ -630,8 +631,7 @@ class AdminController
                     'contratos' => $contratos,
                     'total' => count($contratos)
                 ], JSON_UNESCAPED_UNICODE));
-            } else {
-                // Se ativo, lista com dependentes e matrículas criadas
+            } elseif ($status === 'ativo') {
                 $stmt = $db->prepare("
                     SELECT 
                         pc.id as contrato_id,
@@ -728,9 +728,11 @@ class AdminController
             return $response->withHeader('Content-Type', 'application/json');
         } catch (\Exception $e) {
             error_log("[AdminController::listarContratosPackage] Erro: " . $e->getMessage());
+            error_log("[AdminController::listarContratosPackage] Stack: " . $e->getTraceAsString());
             $response->getBody()->write(json_encode([
                 'success' => false,
-                'message' => 'Erro ao listar contratos'
+                'message' => 'Erro ao listar contratos',
+                'error' => $e->getMessage()
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
