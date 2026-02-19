@@ -2,6 +2,8 @@
 <?php
 /**
  * Executar webhook do Mercado Pago direto via CLI
+ * SEM dependências do Composer
+ * 
  * Uso: php webhook_execute.php [external_reference] [status] [payment_type]
  * 
  * Exemplos:
@@ -10,7 +12,53 @@
  *   php webhook_execute.php
  */
 
-require_once __DIR__ . '/config/database.php';
+// Carregar .env manualmente (sem Composer)
+function loadEnv($path) {
+    if (!file_exists($path)) return;
+    $lines = file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+    foreach ($lines as $line) {
+        if (strpos($line, '=') === false || $line[0] === '#') continue;
+        [$key, $value] = explode('=', $line, 2);
+        $key = trim($key);
+        $value = trim($value, '\'"');
+        if (!isset($_ENV[$key]) && !isset($_SERVER[$key])) {
+            $_ENV[$key] = $value;
+            putenv("$key=$value");
+        }
+    }
+}
+
+loadEnv(__DIR__ . '/.env');
+
+// Carregar variáveis de ambiente
+$host = $_ENV['DB_HOST'] ?? $_SERVER['DB_HOST'] ?? getenv('DB_HOST') ?? 'localhost';
+$dbname = $_ENV['DB_NAME'] ?? $_SERVER['DB_NAME'] ?? getenv('DB_NAME') ?? 'appcheckin';
+$user = $_ENV['DB_USER'] ?? $_SERVER['DB_USER'] ?? getenv('DB_USER') ?? 'root';
+$pass = $_ENV['DB_PASS'] ?? $_SERVER['DB_PASS'] ?? getenv('DB_PASS') ?? '';
+
+// Conectar ao banco direto
+try {
+    $db = new PDO(
+        "mysql:host={$host};dbname={$dbname};charset=utf8mb4",
+        $user,
+        $pass,
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_EMULATE_PREPARES => false,
+            PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci, time_zone = '-03:00'"
+        ]
+    );
+    $db->exec("SET CHARACTER SET utf8mb4");
+    try {
+        $db->exec("SET time_zone = 'America/Sao_Paulo'");
+    } catch (PDOException $e) {
+        $db->exec("SET time_zone = '-03:00'");
+    }
+} catch (PDOException $e) {
+    echo "❌ Erro ao conectar ao banco: " . $e->getMessage() . "\n\n";
+    exit(1);
+}
 
 $db = $GLOBALS['db'] ?? require __DIR__ . '/config/database.php';
 
