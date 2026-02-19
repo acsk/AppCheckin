@@ -54,6 +54,8 @@ export default function PacotesScreen() {
 
   const [loading, setLoading] = useState(true);
   const [pacotes, setPacotes] = useState([]);
+  const [contratosPendentes, setContratosPendentes] = useState([]);
+  const [contratosAtivos, setContratosAtivos] = useState([]);
   const [searchText, setSearchText] = useState('');
   const [modalNovo, setModalNovo] = useState(false);
   const [modalContratar, setModalContratar] = useState(false);
@@ -66,6 +68,8 @@ export default function PacotesScreen() {
   const [pacoteEditandoId, setPacoteEditandoId] = useState(null);
   const [salvando, setSalvando] = useState(false);
   const [carregandoDados, setCarregandoDados] = useState(false);
+  const [tab, setTab] = useState('pacotes'); // pacotes | pendentes | ativos
+  const [loadingContratos, setLoadingContratos] = useState(false);
 
   const [pacoteForm, setPacoteForm] = useState(INITIAL_PACOTE);
   const [contratoForm, setContratoForm] = useState(INITIAL_CONTRATO);
@@ -80,6 +84,8 @@ export default function PacotesScreen() {
   useEffect(() => {
     carregarPacotes();
     carregarDadosBase();
+    carregarContratos('pendente');
+    carregarContratos('ativo');
   }, []);
 
   const carregarPacotes = async () => {
@@ -121,6 +127,24 @@ export default function PacotesScreen() {
     }
   };
 
+  const carregarContratos = async (status) => {
+    try {
+      setLoadingContratos(true);
+      const response = await pacoteService.listarContratos(status);
+      const lista = Array.isArray(response) ? response : response.contratos || response.data?.contratos || [];
+      if (status === 'pendente') {
+        setContratosPendentes(lista);
+      } else if (status === 'ativo') {
+        setContratosAtivos(lista);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar contratos de pacote:', error);
+      showError(error.error || 'Não foi possível carregar contratos');
+    } finally {
+      setLoadingContratos(false);
+    }
+  };
+
   const carregarCiclos = async (planoId) => {
     if (!planoId) {
       setCiclos([]);
@@ -147,6 +171,26 @@ export default function PacotesScreen() {
       String(pacote.qtd_beneficiarios || '').includes(termo)
     );
   }, [pacotes, searchText]);
+
+  const pendentesFiltrados = useMemo(() => {
+    if (!searchText) return contratosPendentes;
+    const termo = searchText.toLowerCase();
+    return contratosPendentes.filter((item) =>
+      String(item.contrato_id || '').includes(termo) ||
+      item.pacote_nome?.toLowerCase().includes(termo) ||
+      item.pagante_nome?.toLowerCase().includes(termo)
+    );
+  }, [contratosPendentes, searchText]);
+
+  const ativosFiltrados = useMemo(() => {
+    if (!searchText) return contratosAtivos;
+    const termo = searchText.toLowerCase();
+    return contratosAtivos.filter((item) =>
+      String(item.contrato?.contrato_id || '').includes(termo) ||
+      item.contrato?.pacote_nome?.toLowerCase().includes(termo) ||
+      item.contrato?.pagante_nome?.toLowerCase().includes(termo)
+    );
+  }, [contratosAtivos, searchText]);
 
   const formatCurrency = (value) => {
     if (value == null) return 'R$ 0,00';
@@ -408,6 +452,31 @@ export default function PacotesScreen() {
     <LayoutBase title="Pacotes" subtitle="Gerenciar pacotes e contratos">
       <ScrollView className="flex-1">
         <View className="px-5 pt-5 pb-3">
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ gap: 8, paddingRight: 8 }}
+          >
+            <TouchableOpacity
+              className={`rounded-full px-4 py-2 ${tab === 'pacotes' ? 'bg-orange-500' : 'bg-slate-100'}`}
+              onPress={() => setTab('pacotes')}
+            >
+              <Text className={`text-xs font-semibold ${tab === 'pacotes' ? 'text-white' : 'text-slate-600'}`}>Pacotes</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              className={`rounded-full px-4 py-2 ${tab === 'pendentes' ? 'bg-orange-500' : 'bg-slate-100'}`}
+              onPress={() => setTab('pendentes')}
+            >
+              <Text className={`text-xs font-semibold ${tab === 'pendentes' ? 'text-white' : 'text-slate-600'}`}>Contratos Pendentes</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              className={`rounded-full px-4 py-2 ${tab === 'ativos' ? 'bg-orange-500' : 'bg-slate-100'}`}
+              onPress={() => setTab('ativos')}
+            >
+              <Text className={`text-xs font-semibold ${tab === 'ativos' ? 'text-white' : 'text-slate-600'}`}>Contratos Ativos</Text>
+            </TouchableOpacity>
+          </ScrollView>
+
           <View>
             <Text className="text-sm font-semibold text-slate-700 mb-1">Buscar pacotes</Text>
             <View className="flex-row items-center gap-2">
@@ -458,17 +527,17 @@ export default function PacotesScreen() {
         </View>
 
         <View className="px-5 pb-8">
-          {loading ? (
+          {tab === 'pacotes' && loading ? (
             <View className="items-center justify-center py-10">
               <ActivityIndicator size="large" color="#f97316" />
             </View>
-          ) : pacotesFiltrados.length === 0 ? (
+          ) : tab === 'pacotes' && pacotesFiltrados.length === 0 ? (
             <View className="items-center rounded-xl border border-slate-200 bg-white py-12">
               <Feather name="archive" size={44} color="#cbd5f5" />
               <Text className="mt-3 text-sm font-semibold text-slate-600">Nenhum pacote encontrado</Text>
               <Text className="text-xs text-slate-400">Cadastre um novo pacote para começar</Text>
             </View>
-          ) : isMobile ? (
+          ) : tab === 'pacotes' && isMobile ? (
             <View className="gap-3">
               {pacotesFiltrados.map((pacote) => (
                 <View key={pacote.id} className="rounded-xl border border-slate-200 bg-white p-4">
@@ -559,7 +628,7 @@ export default function PacotesScreen() {
                 </View>
               ))}
             </View>
-          ) : (
+          ) : tab === 'pacotes' ? (
             <View className="rounded-xl border border-slate-200 bg-white overflow-hidden">
               <View className="flex-row items-center border-b border-slate-200 bg-slate-50 px-4 py-2">
                 <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 220 }}>Pacote</Text>
@@ -635,6 +704,76 @@ export default function PacotesScreen() {
                 );
               })}
             </View>
+          ) : tab === 'pendentes' ? (
+            loadingContratos ? (
+              <View className="items-center justify-center py-10">
+                <ActivityIndicator size="large" color="#f97316" />
+              </View>
+            ) : pendentesFiltrados.length === 0 ? (
+              <View className="items-center rounded-xl border border-slate-200 bg-white py-12">
+                <Feather name="inbox" size={44} color="#cbd5f5" />
+                <Text className="mt-3 text-sm font-semibold text-slate-600">Nenhum contrato pendente</Text>
+                <Text className="text-xs text-slate-400">Aguardando novas contratações</Text>
+              </View>
+            ) : (
+              <View className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                <View className="flex-row items-center border-b border-slate-200 bg-slate-50 px-4 py-2">
+                  <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 110 }}>Contrato</Text>
+                  <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 200 }}>Pacote</Text>
+                  <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 200 }}>Pagante</Text>
+                  <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 120 }}>Benef.</Text>
+                  <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 140 }}>Valor</Text>
+                  <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 140 }}>Criado</Text>
+                </View>
+                {pendentesFiltrados.map((item) => (
+                  <View key={item.contrato_id} className="flex-row items-center border-b border-slate-100 px-4 py-2">
+                    <Text className="text-[12px] text-slate-600" style={{ width: 110 }}>#{item.contrato_id}</Text>
+                    <Text className="text-[12px] text-slate-600" style={{ width: 200 }} numberOfLines={1}>{item.pacote_nome}</Text>
+                    <Text className="text-[12px] text-slate-600" style={{ width: 200 }} numberOfLines={1}>{item.pagante_nome}</Text>
+                    <Text className="text-[12px] text-slate-600" style={{ width: 120 }}>{item.beneficiarios_adicionados}/{item.qtd_beneficiarios}</Text>
+                    <Text className="text-[12px] text-slate-600" style={{ width: 140 }}>{formatCurrency(item.valor_total)}</Text>
+                    <Text className="text-[12px] text-slate-600" style={{ width: 140 }}>{item.created_at || '-'}</Text>
+                  </View>
+                ))}
+              </View>
+            )
+          ) : (
+            loadingContratos ? (
+              <View className="items-center justify-center py-10">
+                <ActivityIndicator size="large" color="#f97316" />
+              </View>
+            ) : ativosFiltrados.length === 0 ? (
+              <View className="items-center rounded-xl border border-slate-200 bg-white py-12">
+                <Feather name="inbox" size={44} color="#cbd5f5" />
+                <Text className="mt-3 text-sm font-semibold text-slate-600">Nenhum contrato ativo</Text>
+                <Text className="text-xs text-slate-400">Sem contratos ativos no momento</Text>
+              </View>
+            ) : (
+              <View className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                <View className="flex-row items-center border-b border-slate-200 bg-slate-50 px-4 py-2">
+                  <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 110 }}>Contrato</Text>
+                  <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 200 }}>Pacote</Text>
+                  <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 170 }}>Plano</Text>
+                  <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 200 }}>Pagante</Text>
+                  <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 120 }}>Pessoas</Text>
+                  <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 140 }}>Faltando</Text>
+                  <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 140 }}>Valor</Text>
+                  <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 140 }}>Início</Text>
+                </View>
+                {ativosFiltrados.map((item) => (
+                  <View key={item.contrato?.contrato_id} className="flex-row items-center border-b border-slate-100 px-4 py-2">
+                    <Text className="text-[12px] text-slate-600" style={{ width: 110 }}>#{item.contrato?.contrato_id}</Text>
+                    <Text className="text-[12px] text-slate-600" style={{ width: 200 }} numberOfLines={1}>{item.contrato?.pacote_nome}</Text>
+                    <Text className="text-[12px] text-slate-600" style={{ width: 170 }} numberOfLines={1}>{item.contrato?.plano_nome}</Text>
+                    <Text className="text-[12px] text-slate-600" style={{ width: 200 }} numberOfLines={1}>{item.contrato?.pagante_nome}</Text>
+                    <Text className="text-[12px] text-slate-600" style={{ width: 120 }}>{item.qtd_pessoas}</Text>
+                    <Text className="text-[12px] text-slate-600" style={{ width: 140 }}>{item.qtd_matriculas_faltando}</Text>
+                    <Text className="text-[12px] text-slate-600" style={{ width: 140 }}>{formatCurrency(item.contrato?.valor_total)}</Text>
+                    <Text className="text-[12px] text-slate-600" style={{ width: 140 }}>{item.contrato?.data_inicio || '-'}</Text>
+                  </View>
+                ))}
+              </View>
+            )
           )}
         </View>
       </ScrollView>

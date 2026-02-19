@@ -109,6 +109,19 @@ const pacoteService = {
       throw prepararErro(error.response?.data || error);
     }
   },
+
+  /**
+   * Listar contratos de pacote por status
+   */
+  async listarContratos(status = 'pendente') {
+    try {
+      const response = await api.get('/admin/pacote-contratos', { params: { status } });
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao listar contratos de pacote:', error.response?.data || error.message);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
 };
 
 export default pacoteService;
