@@ -3897,12 +3897,12 @@ class MobileController
                 // Inserir assinatura
                 $stmtAssinatura = $this->db->prepare("
                     INSERT INTO assinaturas
-                    (tenant_id, matricula_id, aluno_id, plano_id,
+                    (tenant_id, matricula_id, plano_id,
                      gateway_id, gateway_assinatura_id, gateway_preference_id, external_reference, payment_url,
                      status_id, status_gateway,
                      valor, frequencia_id, dia_cobranca, data_inicio, data_fim, proxima_cobranca,
                      metodo_pagamento_id, tipo_cobranca, pacote_contrato_id, criado_em, atualizado_em)
-                    VALUES (?, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, CURDATE(), NULL, NULL, NULL, ?, ?, NOW(), NOW())
+                    VALUES (?, NULL, NULL, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, CURDATE(), NULL, NULL, NULL, ?, ?, NOW(), NOW())
                 ");
                 
                 $stmtAssinatura->execute([
