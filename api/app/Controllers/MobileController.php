@@ -3866,6 +3866,11 @@ class MobileController
                 $externalReference = $dadosPagamento['external_reference'] ?? 'PAC-' . $contratoId . '-' . time();
                 $gatewayAssinaturaId = $permiteRecorrencia ? ($preferencia['id'] ?? null) : null;
                 
+                // Buscar gateway_id para Mercado Pago
+                $stmtGateway = $this->db->prepare("SELECT id FROM assinatura_gateways WHERE codigo = 'mercadopago' LIMIT 1");
+                $stmtGateway->execute();
+                $gatewayId = (int) ($stmtGateway->fetchColumn() ?: 1);
+                
                 // Buscar status_id para 'pendente'
                 $stmtStatus = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'pendente' LIMIT 1");
                 $stmtStatus->execute();
@@ -3875,39 +3880,35 @@ class MobileController
                     // Para preapprovals (recorrentes), criar assinatura com gateway_assinatura_id
                     $stmtAssinatura = $this->db->prepare("
                         INSERT INTO assinaturas
-                        (tenant_id, usuario_id, gateway_assinatura_id, status_id,
-                         status_gateway, external_reference, payment_url, tipo_cobranca,
-                         pacote_contrato_id, criado_em, updated_at)
-                        VALUES (?, ?, ?, ?, 'pending', ?, ?, 'recorrente', ?, NOW(), NOW())
+                        (tenant_id, aluno_id, gateway_id, gateway_assinatura_id, status_id,
+                         status_gateway, valor, frequencia_id, data_inicio, 
+                         pacote_contrato_id, criado_em, atualizado_em)
+                        VALUES (?, NULL, ?, ?, ?, 'pending', 0, 4, CURDATE(), ?, NOW(), NOW())
                     ");
                     $stmtAssinatura->execute([
                         $tenantId,
-                        $userId,
+                        $gatewayId,
                         $gatewayAssinaturaId,
                         $statusId,
-                        $externalReference,
-                        $preferencia['init_point'] ?? null,
                         $contratoId
                     ]);
                     
                     $assinaturaId = (int) $this->db->lastInsertId();
                     error_log("[MobileController::pagarPacote] ✅ Assinatura criada (RECORRENTE): ID={$assinaturaId}, gateway_id={$gatewayAssinaturaId}, pacote_id={$contratoId}");
                 } else {
-                    // Para pagamentos únicos, criar assinatura com preference_id
+                    // Para pagamentos únicos, criar assinatura simples
                     $stmtAssinatura = $this->db->prepare("
                         INSERT INTO assinaturas
-                        (tenant_id, usuario_id, gateway_preference_id, status_id,
-                         status_gateway, external_reference, payment_url, tipo_cobranca,
-                         pacote_contrato_id, criado_em, updated_at)
-                        VALUES (?, ?, ?, ?, 'pending', ?, ?, 'avulso', ?, NOW(), NOW())
+                        (tenant_id, aluno_id, gateway_id, gateway_cliente_id, status_id,
+                         status_gateway, valor, frequencia_id, data_inicio,
+                         pacote_contrato_id, criado_em, atualizado_em)
+                        VALUES (?, NULL, ?, ?, ?, 'pending', 0, 4, CURDATE(), ?, NOW(), NOW())
                     ");
                     $stmtAssinatura->execute([
                         $tenantId,
-                        $userId,
+                        $gatewayId,
                         $preferencia['id'] ?? null,
                         $statusId,
-                        $externalReference,
-                        $preferencia['init_point'] ?? null,
                         $contratoId
                     ]);
                     
