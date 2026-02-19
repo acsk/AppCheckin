@@ -62,11 +62,11 @@ echo "🔍 VERIFICANDO ASSINATURAS COM PACOTE_CONTRATO_ID = 4...\n";
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n";
 
 $stmtA = $db->prepare("
-    SELECT id, tenant_id, usuario_id, created_at, status_id, 
-           gateway_assinatura_id, gateway_preference_id, pacote_contrato_id
+    SELECT id, tenant_id, aluno_id, criado_em as created_at, status_id, 
+           gateway_assinatura_id, pacote_contrato_id
     FROM assinaturas
     WHERE pacote_contrato_id = 4
-    ORDER BY created_at DESC
+    ORDER BY criado_em DESC
     LIMIT 5
 ");
 $stmtA->execute();
@@ -79,11 +79,10 @@ if (empty($assinaturas)) {
     foreach ($assinaturas as $ass) {
         echo "· ID: {$ass['id']}\n";
         echo "  Tenant: {$ass['tenant_id']}\n";
-        echo "  Usuário: {$ass['usuario_id']}\n";
+        echo "  Aluno: {$ass['aluno_id']}\n";
         echo "  Criada: {$ass['created_at']}\n";
         echo "  Status ID: {$ass['status_id']}\n";
         echo "  Gateway Assinatura: {$ass['gateway_assinatura_id']}\n";
-        echo "  Gateway Preference: {$ass['gateway_preference_id']}\n";
         echo "  Pacote ID: {$ass['pacote_contrato_id']}\n";
         echo "\n";
     }
