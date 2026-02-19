@@ -1505,8 +1505,8 @@ class MatriculaController
         if ($dataVencimento < $hoje) {
             // Data vencida → status "vencida"
             $novoStatusCodigo = 'vencida';
-        } elseif ($dataVencimento >= $hoje && $matricula['status_codigo'] === 'vencida') {
-            // Data válida e status era vencida → mudar para "ativa"
+        } elseif ($dataVencimento >= $hoje && $matricula['status_codigo'] !== 'ativa') {
+            // Data válida e status NÃO é ativa → mudar para "ativa" (ex: pendente → ativa)
             $novoStatusCodigo = 'ativa';
         }
 
