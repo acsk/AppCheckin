@@ -109,23 +109,6 @@ try {
         }
     }
     
-    // Guardar webhook no banco
-    echo "\n🔹 Gravando webhook no banco...\n";
-    $stmt = $db->prepare("
-        INSERT INTO webhook_payloads_mercadopago
-        (tenant_id, tipo, data_id, payment_id, payload, status, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, NOW())
-    ");
-    $stmt->execute([
-        $tenantId,
-        'payment',
-        (string)$paymentId,
-        (string)$paymentId,
-        json_encode($dadosPagamento),
-        $status
-    ]);
-    echo "✅ Webhook_payloads_mercadopago registrado\n";
-    
     // Processar o pagamento (atualizar status)
     if (preg_match('/^MAT-(\d+)-/', $externalReference, $matches)) {
         $matriculaId = (int)$matches[1];
