@@ -3860,6 +3860,65 @@ class MobileController
                 $preferencia = $mercadoPago->criarPreferenciaPagamento($dadosPagamento);
             }
 
+            // 🎁 NOVO: Criar assinatura no banco ANTES de webhook chegar
+            // Isso permite que webhook encontre a assinatura e a atualize
+            try {
+                $externalReference = $dadosPagamento['external_reference'] ?? 'PAC-' . $contratoId . '-' . time();
+                $gatewayAssinaturaId = $permiteRecorrencia ? ($preferencia['id'] ?? null) : null;
+                
+                // Buscar status_id para 'pendente'
+                $stmtStatus = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'pendente' LIMIT 1");
+                $stmtStatus->execute();
+                $statusId = (int) ($stmtStatus->fetchColumn() ?: 1);
+                
+                if ($gatewayAssinaturaId) {
+                    // Para preapprovals (recorrentes), criar assinatura com gateway_assinatura_id
+                    $stmtAssinatura = $this->db->prepare("
+                        INSERT INTO assinaturas
+                        (tenant_id, usuario_id, gateway_assinatura_id, status_id,
+                         status_gateway, external_reference, payment_url, tipo_cobranca,
+                         pacote_contrato_id, criado_em, updated_at)
+                        VALUES (?, ?, ?, ?, 'pending', ?, ?, 'recorrente', ?, NOW(), NOW())
+                    ");
+                    $stmtAssinatura->execute([
+                        $tenantId,
+                        $userId,
+                        $gatewayAssinaturaId,
+                        $statusId,
+                        $externalReference,
+                        $preferencia['init_point'] ?? null,
+                        $contratoId
+                    ]);
+                    
+                    $assinaturaId = (int) $this->db->lastInsertId();
+                    error_log("[MobileController::pagarPacote] ✅ Assinatura criada (RECORRENTE): ID={$assinaturaId}, gateway_id={$gatewayAssinaturaId}, pacote_id={$contratoId}");
+                } else {
+                    // Para pagamentos únicos, criar assinatura com preference_id
+                    $stmtAssinatura = $this->db->prepare("
+                        INSERT INTO assinaturas
+                        (tenant_id, usuario_id, gateway_preference_id, status_id,
+                         status_gateway, external_reference, payment_url, tipo_cobranca,
+                         pacote_contrato_id, criado_em, updated_at)
+                        VALUES (?, ?, ?, ?, 'pending', ?, ?, 'avulso', ?, NOW(), NOW())
+                    ");
+                    $stmtAssinatura->execute([
+                        $tenantId,
+                        $userId,
+                        $preferencia['id'] ?? null,
+                        $statusId,
+                        $externalReference,
+                        $preferencia['init_point'] ?? null,
+                        $contratoId
+                    ]);
+                    
+                    $assinaturaId = (int) $this->db->lastInsertId();
+                    error_log("[MobileController::pagarPacote] ✅ Assinatura criada (AVULSA): ID={$assinaturaId}, preference_id={$preferencia['id'] ?? null}, pacote_id={$contratoId}");
+                }
+            } catch (\Exception $e) {
+                error_log("[MobileController::pagarPacote] ⚠️ Erro ao criar assinatura: " . $e->getMessage());
+                // Continua mesmo se falhar (pode ser criada depois via webhook)
+            }
+
             // Atualizar contrato com payment_url
             $stmtUpdate = $this->db->prepare("
                 UPDATE pacote_contratos
