@@ -607,33 +607,14 @@ class MercadoPagoWebhookController
         
         error_log("[Webhook MP] 📋 Atualizando assinatura: preapproval_id={$preapprovalId}, external_reference={$externalReference}, status={$status}");
         
-        // ⭐ NOVO: Detectar se é PACOTE pelo external_reference (PAC-xxx)
+        // Extrair pacote_contrato_id se for PAC- (será armazenado associado à assinatura)
+        $pacoteContratoId = null;
         if (strpos($externalReference, 'PAC-') === 0) {
-            error_log("[Webhook MP] 🎁 DETECÇÃO: Assinatura recorrente de PACOTE encontrada!");
-            error_log("[Webhook MP] 📦 External Reference: {$externalReference}");
-            
-            // Extrair contratoId do formato PAC-{contratoId}-{timestamp}
             if (preg_match('/PAC-(\d+)-/', $externalReference, $matches)) {
-                $contratoId = (int) $matches[1];
-                error_log("[Webhook MP] 🎯 Contrato ID extraído: {$contratoId}");
-                
-                if ($status === 'approved' || $status === 'authorized') {
-                    error_log("[Webhook MP] ✅ Assinatura de PACOTE APROVADA");
-                    error_log("[Webhook MP] 🎯 Webhook de assinatura: criar matrícula do PAGANTE + assinatura");
-                    
-                    // NOVO: Apenas criar matrícula do pagante + assinatura
-                    // Os beneficiários serão criados quando o webhook de PAGAMENTO chegar
-                    $this->criarMatriculaPagantePacote($contratoId, $preapprovalId, $status);
-                } else {
-                    error_log("[Webhook MP] ⚠️ Assinatura de pacote com status: {$status} (não processando)");
-                }
-            } else {
-                error_log("[Webhook MP] ❌ Não consegui extrair contratoId do external_reference: {$externalReference}");
+                $pacoteContratoId = (int) $matches[1];
+                error_log("[Webhook MP] 🎁 Pacote detectado: pacote_contrato_id={$pacoteContratoId}");
             }
-            return; // IMPORTANTE: sair daqui, não continuar processamento normal
         }
-        
-        // ========== PROCESSAMENTO NORMAL (para assinatura de matrícula regular) ==========
         
         // Extrair matrícula do external_reference (formato: MAT-123-timestamp)
         $matriculaId = null;
@@ -641,7 +622,7 @@ class MercadoPagoWebhookController
             $matriculaId = (int)$matches[1];
         }
         
-        error_log("[Webhook MP] 📋 Processando assinatura regular de matrícula (não-pacote)");
+        error_log("[Webhook MP] 📋 Processando assinatura");
         
         // Buscar assinatura na tabela assinaturas pelo gateway_assinatura_id
         $stmtBuscar = $this->db->prepare("
@@ -672,17 +653,25 @@ class MercadoPagoWebhookController
             $stmtStatusId->execute([$statusInterno]);
             $statusId = $stmtStatusId->fetchColumn() ?: 1;
             
-            // Atualizar status da assinatura
-            $stmtUpdate = $this->db->prepare("
-                UPDATE assinaturas
-                SET status_id = ?,
-                    status_gateway = ?,
-                    atualizado_em = NOW()
-                WHERE id = ?
-            ");
-            $stmtUpdate->execute([$statusId, $status, $assinaturaDb['id']]);
+            // Atualizar status da assinatura (+ pacote_contrato_id se houver)
+            $sqlUpdate = "UPDATE assinaturas SET status_id = ?, status_gateway = ?, atualizado_em = NOW()";
+            $paramsUpdate = [$statusId, $status];
+            
+            if ($pacoteContratoId) {
+                $sqlUpdate .= ", pacote_contrato_id = ?";
+                $paramsUpdate[] = $pacoteContratoId;
+            }
+            
+            $sqlUpdate .= " WHERE id = ?";
+            $paramsUpdate[] = $assinaturaDb['id'];
+            
+            $stmtUpdate = $this->db->prepare($sqlUpdate);
+            $stmtUpdate->execute($paramsUpdate);
             
             error_log("[Webhook MP] ✅ Assinatura #{$assinaturaDb['id']} atualizada: {$assinaturaDb['status_atual']} -> {$statusInterno}");
+            if ($pacoteContratoId) {
+                error_log("[Webhook MP] ✅ Associado a pacote_contrato_id={$pacoteContratoId}");
+            }
         } else {
             error_log("[Webhook MP] ⚠️ Assinatura não encontrada no banco: preapproval_id={$preapprovalId}");
         }
@@ -1754,309 +1743,7 @@ class MercadoPagoWebhookController
      * 
      * Os beneficiários serão criados quando o webhook de PAGAMENTO chegar
      */
-    private function criarMatriculaPagantePacote(int $contratoId, string $preapprovalId, string $statusAssinatura): void
-    {
-        try {
-            error_log("[Webhook MP] 🎯 INICIANDO: criarMatriculaPagantePacote(contratoId={$contratoId})");
-            
-            // Buscar contrato
-            $stmtContrato = $this->db->prepare("
-                SELECT c.*, u.tenant_id, u.id as pagante_usuario_id
-                FROM pacote_contratos c
-                INNER JOIN usuarios u ON u.id = c.pagante_usuario_id
-                WHERE c.id = ?
-            ");
-            $stmtContrato->execute([$contratoId]);
-            $contrato = $stmtContrato->fetch(\PDO::FETCH_ASSOC);
-            
-            if (!$contrato) {
-                error_log("[Webhook MP] ❌ Contrato {$contratoId} não encontrado");
-                return;
-            }
-            
-            error_log("[Webhook MP] 📦 Contrato encontrado: tenant_id={$contrato['tenant_id']}, status={$contrato['status']}");
-            
-            // Buscar aluno_id do pagante
-            $pagante_usuario_id = $contrato['pagante_usuario_id'];
-            $stmtPagante = $this->db->prepare("SELECT id FROM alunos WHERE usuario_id = ? LIMIT 1");
-            $stmtPagante->execute([$pagante_usuario_id]);
-            $pagante_aluno_id = (int) ($stmtPagante->fetchColumn() ?: 0);
-            
-            if (!$pagante_aluno_id) {
-                error_log("[Webhook MP] ❌ Aluno do pagante não encontrado (usuario_id={$pagante_usuario_id})");
-                return;
-            }
-            
-            error_log("[Webhook MP] 👤 Pagante encontrado: aluno_id={$pagante_aluno_id}");
-            
-            // Iniciar transação
-            $this->db->beginTransaction();
-            
-            try {
-                // 1️⃣ CRIAR MATRÍCULA DO PAGANTE
-                $statusMatricula = 2; // 'ativa'
-                $valorRateado = (float)$contrato['valor_total']; // Por enquanto, só do pagante
-                
-                $stmtInsertMatricula = $this->db->prepare("
-                    INSERT INTO matriculas (
-                        tenant_id, aluno_id, pacote_contrato_id, plano_id, plano_ciclo_id,
-                        valor_rateado, tipo_cobranca, status_id, data_inicio,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, 'recorrente', ?, CURDATE(), NOW(), NOW())
-                ");
-                
-                $stmtInsertMatricula->execute([
-                    $contrato['tenant_id'],
-                    $pagante_aluno_id,
-                    $contratoId,
-                    $contrato['plano_id'] ?? 1,
-                    $contrato['plano_ciclo_id'] ?? null,
-                    $valorRateado,
-                    $statusMatricula
-                ]);
-                
-                $matriculaPaganteId = (int) $this->db->lastInsertId();
-                error_log("[Webhook MP] ✅ Matrícula do pagante criada: #{$matriculaPaganteId}");
-                
-                // 2️⃣ CRIAR ASSINATURA VINCULADA À MATRÍCULA
-                // IMPORTANTE: Armazenar pacote_contrato_id na assinatura para depois recuperar
-                
-                // Buscar status_id para 'ativa'
-                $stmtStatus = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'ativa' LIMIT 1");
-                $stmtStatus->execute();
-                $statusId = (int) ($stmtStatus->fetchColumn() ?: 2);
-                
-                $stmtInsertAssinatura = $this->db->prepare("
-                    INSERT INTO assinaturas (
-                        tenant_id, usuario_id, matricula_id, gateway_assinatura_id,
-                        tipo_cobranca, status_id, status_gateway, 
-                        pacote_contrato_id,
-                        created_at, updated_at
-                    ) VALUES (?, ?, ?, ?, 'recorrente', ?, ?, ?, NOW(), NOW())
-                ");
-                
-                $stmtInsertAssinatura->execute([
-                    $contrato['tenant_id'],
-                    $pagante_usuario_id,
-                    $matriculaPaganteId,
-                    $preapprovalId,
-                    $statusId,
-                    strtoupper($statusAssinatura),
-                    $contratoId  // ⭐ IMPORTANTE: Armazenar pacote_contrato_id aqui!
-                ]);
-                
-                $assinaturaId = (int) $this->db->lastInsertId();
-                error_log("[Webhook MP] ✅ Assinatura criada: #{$assinaturaId} (gateway_id={$preapprovalId}, pacote_id={$contratoId})");
-                
-                $this->db->commit();
-                error_log("[Webhook MP] ✅ SUCESSO: Matrícula do pagante + assinatura criadas");
-                
-            } catch (\Exception $e) {
-                $this->db->rollBack();
-                error_log("[Webhook MP] ❌ Erro na transação: " . $e->getMessage());
-                throw $e;
-            }
-            
-        } catch (\Exception $e) {
-            error_log("[Webhook MP] ❌ ERRO em criarMatriculaPagantePacote: " . $e->getMessage());
-            error_log("[Webhook MP] Stack: " . $e->getTraceAsString());
-        }
-    }
 
-    /**
-     * NOVO FLUXO: Processar pagamento de PACOTE
-     * 
-     * Este método é chamado quando webhook de pagamento chega com external_reference = "PAC-{contratoId}-..."
-     * 
-     * Neste ponto, a matrícula do PAGANTE já foi criada pelo webhook de assinatura.
-     * Agora precisamos:
-     * 1. Criar matrículas dos BENEFICIÁRIOS
-     * 2. Marcar pagamento como feito para todas as matrículas
-     */
-    private function processarPagamentoPacote(int $contratoId, array $pagamento): void
-    {
-        try {
-            error_log("[Webhook MP] 🎯 INICIANDO: processarPagamentoPacote(contratoId={$contratoId})");
-            
-            // Buscar contrato
-            $stmtContrato = $this->db->prepare("
-                SELECT c.*, u.tenant_id, u.id as pagante_usuario_id
-                FROM pacote_contratos c
-                INNER JOIN usuarios u ON u.id = c.pagante_usuario_id
-                WHERE c.id = ?
-            ");
-            $stmtContrato->execute([$contratoId]);
-            $contrato = $stmtContrato->fetch(\PDO::FETCH_ASSOC);
-            
-            if (!$contrato) {
-                error_log("[Webhook MP] ❌ Contrato {$contratoId} não encontrado");
-                return;
-            }
-            
-            // Buscar matrícula do pagante (criada pelo webhook de assinatura)
-            $stmtMatriculaPagante = $this->db->prepare("
-                SELECT id, aluno_id FROM matriculas
-                WHERE pacote_contrato_id = ?
-                ORDER BY created_at ASC
-                LIMIT 1
-            ");
-            $stmtMatriculaPagante->execute([$contratoId]);
-            $matriculaPagante = $stmtMatriculaPagante->fetch(\PDO::FETCH_ASSOC);
-            
-            if (!$matriculaPagante) {
-                error_log("[Webhook MP] ❌ Matrícula do pagante não encontrada para contrato {$contratoId}");
-                error_log("[Webhook MP]    Dica: webhook de assinatura não foi processado ainda?");
-                return;
-            }
-            
-            error_log("[Webhook MP] ✅ Matrícula do pagante encontrada: #{$matriculaPagante['id']}");
-            
-            // Buscar todos os BENEFICIÁRIOS
-            $stmtBeneficiarios = $this->db->prepare("
-                SELECT pb.aluno_id, pb.valor_rateado
-                FROM pacote_beneficiarios pb
-                WHERE pb.pacote_contrato_id = ? AND pb.tenant_id = ?
-            ");
-            $stmtBeneficiarios->execute([$contratoId, $contrato['tenant_id']]);
-            $beneficiarios = $stmtBeneficiarios->fetchAll(\PDO::FETCH_ASSOC);
-            
-            error_log("[Webhook MP] 👫 Total de beneficiários: " . count($beneficiarios));
-            
-            // Iniciar transação
-            $this->db->beginTransaction();
-            
-            try {
-                // 1️⃣ CRIAR MATRÍCULAS DOS BENEFICIÁRIOS
-                $statusMatricula = 2; // 'ativa'
-                $contador = 0;
-                
-                foreach ($beneficiarios as $beneficiario) {
-                    $stmtInsertBenef = $this->db->prepare("
-                        INSERT INTO matriculas (
-                            tenant_id, aluno_id, pacote_contrato_id, plano_id, plano_ciclo_id,
-                            valor_rateado, tipo_cobranca, status_id, data_inicio,
-                            created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, 'recorrente', ?, CURDATE(), NOW(), NOW())
-                    ");
-                    
-                    $stmtInsertBenef->execute([
-                        $contrato['tenant_id'],
-                        $beneficiario['aluno_id'],
-                        $contratoId,
-                        $contrato['plano_id'] ?? 1,
-                        $contrato['plano_ciclo_id'] ?? null,
-                        $beneficiario['valor_rateado'] ?? 0,
-                        $statusMatricula
-                    ]);
-                    
-                    $matriculaBenefId = (int) $this->db->lastInsertId();
-                    error_log("[Webhook MP] ✅ Matrícula do beneficiário criada: #{$matriculaBenefId} (aluno_id={$beneficiario['aluno_id']})");
-                    $contador++;
-                }
-                
-                // 2️⃣ MARCAR PAGAMENTO COMO REALIZADO PARA TODAS AS MATRÍCULAS
-                // Buscar forma de pagamento (PIX/Cartão)
-                $paymentMethodId = $pagamento['payment_method_id'] ?? 'pix';
-                $formaPagamentoId = $this->obterFormaPagamentoId($paymentMethodId);
-                
-                // Buscar status "pago"
-                $stmtStatusPago = $this->db->prepare("SELECT id FROM status_pagamento WHERE codigo = 'pago' LIMIT 1");
-                $stmtStatusPago->execute();
-                $statusPagoId = (int) ($stmtStatusPago->fetchColumn() ?: 2);
-                
-                // Inserir pagamento para o PAGANTE
-                $stmtInsertPagPagante = $this->db->prepare("
-                    INSERT INTO pagamentos_plano (
-                        tenant_id, aluno_id, matricula_id, plano_id,
-                        valor, data_vencimento, data_pagamento,
-                        status_pagamento_id, forma_pagamento_id, observacoes,
-                        payment_gateway_id, payment_gateway_reference, tipo_baixa_id,
-                        created_at, updated_at
-                    ) VALUES (
-                        ?, ?, ?, ?, ?, CURDATE(), NOW(),
-                        ?, ?, ?, 1, ?, 2,
-                        NOW(), NOW()
-                    )
-                ");
-                
-                $stmtInsertPagPagante->execute([
-                    $contrato['tenant_id'],
-                    $matriculaPagante['aluno_id'],
-                    $matriculaPagante['id'],
-                    $contrato['plano_id'] ?? 1,
-                    $contrato['valor_total'],
-                    $statusPagoId,
-                    $formaPagamentoId,
-                    'Pagamento de pacote via Mercado Pago - ID: ' . $pagamento['id'],
-                    $pagamento['id']
-                ]);
-                
-                error_log("[Webhook MP] ✅ Pagamento do PAGANTE marcado como pago");
-                
-                // Inserir pagamentos para os BENEFICIÁRIOS
-                $stmtInsertPagBenef = $this->db->prepare("
-                    INSERT INTO pagamentos_plano (
-                        tenant_id, aluno_id, matricula_id, plano_id,
-                        valor, data_vencimento, data_pagamento,
-                        status_pagamento_id, forma_pagamento_id, observacoes,
-                        payment_gateway_id, payment_gateway_reference, tipo_baixa_id,
-                        created_at, updated_at
-                    ) VALUES (
-                        ?, ?, ?, ?, ?, CURDATE(), NOW(),
-                        ?, ?, ?, 1, ?, 2,
-                        NOW(), NOW()
-                    )
-                ");
-                
-                // Buscar todas as matrículas dos beneficiários
-                $stmtMatBenef = $this->db->prepare("
-                    SELECT id, aluno_id FROM matriculas
-                    WHERE pacote_contrato_id = ? AND id != ?
-                    ORDER BY created_at ASC
-                ");
-                $stmtMatBenef->execute([$contratoId, $matriculaPagante['id']]);
-                $matriculasBenef = $stmtMatBenef->fetchAll(\PDO::FETCH_ASSOC);
-                
-                foreach ($matriculasBenef as $matBenef) {
-                    $stmtInsertPagBenef->execute([
-                        $contrato['tenant_id'],
-                        $matBenef['aluno_id'],
-                        $matBenef['id'],
-                        $contrato['plano_id'] ?? 1,
-                        $contrato['valor_total'] / (count($beneficiarios) + 1), // Rateado com pagante
-                        $statusPagoId,
-                        $formaPagamentoId,
-                        'Pagamento de pacote via Mercado Pago - ID: ' . $pagamento['id'],
-                        $pagamento['id']
-                    ]);
-                }
-                
-                error_log("[Webhook MP] ✅ Pagamentos dos BENEFICIÁRIOS marcados como pagos ({$contador})");
-                
-                // 3️⃣ MARCAR CONTRATO COMO ATIVO
-                $stmtUpdateContrato = $this->db->prepare("
-                    UPDATE pacote_contratos
-                    SET status = 'ativo', pagamento_id = ?, updated_at = NOW()
-                    WHERE id = ?
-                ");
-                $stmtUpdateContrato->execute([$pagamento['id'], $contratoId]);
-                
-                error_log("[Webhook MP] ✅ Contrato {$contratoId} marcado como 'ativo'");
-                
-                $this->db->commit();
-                error_log("[Webhook MP] ✅ SUCESSO: Pacote totalmente processado (pagante + {$contador} beneficiários)");
-                
-            } catch (\Exception $e) {
-                $this->db->rollBack();
-                error_log("[Webhook MP] ❌ Erro na transação: " . $e->getMessage());
-                throw $e;
-            }
-            
-        } catch (\Exception $e) {
-            error_log("[Webhook MP] ❌ ERRO em processarPagamentoPacote: " . $e->getMessage());
-            error_log("[Webhook MP] Stack: " . $e->getTraceAsString());
-        }
-    }
 
     /**
      * Registrar mudança em matrícula no histórico
