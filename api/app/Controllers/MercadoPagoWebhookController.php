@@ -1423,4 +1423,277 @@ class MercadoPagoWebhookController
             error_log("[Webhook MP] ⚠️ Erro ao registrar histórico da matrícula #{$matriculaId}: " . $e->getMessage());
         }
     }
+
+    /**
+     * Simular webhook de pagamento aprovado para testes
+     * GET /api/webhooks/mercadopago/test
+     * 
+     * Query params:
+     * - external_reference: MAT-{matricula_id}-{timestamp} ou PAC-{contrato_id}-{timestamp}
+     * - status: approved (padrão), pending, rejected
+     * - payment_type: credit_card (padrão), pix, boleto
+     * 
+     * Exemplo:
+     * GET /api/webhooks/mercadopago/test?external_reference=MAT-123-1708380000&status=approved&payment_type=credit_card
+     */
+    public function simularWebhook(Request $request, Response $response): Response
+    {
+        try {
+            $query = $request->getQueryParams();
+            
+            // Parâmetros
+            $externalReference = $query['external_reference'] ?? 'MAT-1-' . time();
+            $status = $query['status'] ?? 'approved';
+            $paymentType = $query['payment_type'] ?? 'credit_card';
+            
+            // Validar status
+            if (!in_array($status, ['pending', 'approved', 'rejected', 'authorized'])) {
+                $response->getBody()->write(json_encode([
+                    'error' => 'Status inválido. Use: pending, approved, rejected, authorized'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+            
+            // Gerar payment_id fake mas realista
+            $paymentId = (int)(mt_rand(1000000000, 9999999999));
+            
+            // Mapear payment_type para tipo de método de pagamento
+            $paymentMethodId = match($paymentType) {
+                'pix' => 'prompt_payment',
+                'boleto' => 'bolbradesco',
+                'credit_card' => 'visa',
+                default => 'visa'
+            };
+            
+            // Criar payload simulado (formato Mercado Pago)
+            $payload = [
+                'type' => 'payment',
+                'data' => [
+                    'id' => (string)$paymentId
+                ],
+                'action' => 'payment.created',
+                'timestamp' => date('Y-m-d\TH:i:s.000O'),
+                '__test__' => true  // Marcar como teste
+            ];
+            
+            // Dados adicionais que seriam recuperados via API MP
+            $dadosPagamento = [
+                'id' => (string)$paymentId,
+                'status' => $status,
+                'external_reference' => $externalReference,
+                'payment_type_id' => $paymentMethodId,
+                'statement_descriptor' => 'AppCheckin',
+                'transaction_amount' => 99.90,
+                'currency_id' => 'BRL',
+                'description' => 'Teste de pagamento simulado',
+                'payer' => [
+                    'id' => 123456789,
+                    'email' => 'teste@example.com',
+                    'first_name' => 'Teste',
+                    'last_name' => 'Simulado'
+                ],
+                'point_of_interaction' => [
+                    'type' => 'UNSPECIFIED'
+                ]
+            ];
+            
+            $this->logWebhook("=== WEBHOOK TESTE SIMULADO ===");
+            $this->logWebhook("External Reference: {$externalReference}");
+            $this->logWebhook("Status: {$status}");
+            $this->logWebhook("Payment Type: {$paymentType}");
+            $this->logWebhook("Payment ID: {$paymentId}");
+            
+            // Buscar tenant_id pela matrícula (se MAT-xxx ou PAC-xxx)
+            $tenantId = null;
+            if (preg_match('/^(MAT|PAC)-(\d+)-/', $externalReference, $matches)) {
+                $refId = (int)$matches[2];
+                
+                if ($matches[1] === 'MAT') {
+                    // Buscar matrícula para obter tenant_id
+                    $stmt = $this->db->prepare("SELECT tenant_id FROM matriculas WHERE id = ? LIMIT 1");
+                    $stmt->execute([$refId]);
+                    $matData = $stmt->fetch(\PDO::FETCH_ASSOC);
+                    if ($matData) {
+                        $tenantId = (int)$matData['tenant_id'];
+                    }
+                } elseif ($matches[1] === 'PAC') {
+                    // Buscar contrato para obter tenant_id
+                    $stmt = $this->db->prepare("SELECT tenant_id FROM pacote_contratos WHERE id = ? LIMIT 1");
+                    $stmt->execute([$refId]);
+                    $contData = $stmt->fetch(\PDO::FETCH_ASSOC);
+                    if ($contData) {
+                        $tenantId = (int)$contData['tenant_id'];
+                    }
+                }
+            }
+            
+            // Se não conseguiu descobrir tenant_id, usar o primeiro ou usar ENV
+            if (!$tenantId) {
+                $stmt = $this->db->prepare("SELECT id FROM tenants ORDER BY id ASC LIMIT 1");
+                $stmt->execute();
+                $tenantRow = $stmt->fetch(\PDO::FETCH_ASSOC);
+                $tenantId = $tenantRow ? (int)$tenantRow['id'] : 1;
+            }
+            
+            $this->logWebhook("Tenant ID: {$tenantId}");
+            
+            // Salvar webhook no banco para auditoria
+            try {
+                $stmt = $this->db->prepare("
+                    INSERT INTO webhook_payloads_mercadopago
+                    (tenant_id, tipo, data_id, payment_id, payload, status, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, NOW())
+                ");
+                $stmt->execute([
+                    $tenantId,
+                    'payment',
+                    (string)$paymentId,
+                    (string)$paymentId,
+                    json_encode($dadosPagamento, JSON_UNESCAPED_UNICODE),
+                    $status
+                ]);
+                $this->logWebhook("✅ Webhook registrado no banco");
+            } catch (\Exception $e) {
+                $this->logWebhook("⚠️ Erro ao salvar webhook: " . $e->getMessage());
+            }
+            
+            // Processar pagamento simulado
+            try {
+                $mercadoPago = $this->getMercadoPagoService($tenantId);
+                
+                // Processar com os dados simulados
+                $this->processarPagamentoSimulado($tenantId, $dadosPagamento, $externalReference);
+                
+                $response->getBody()->write(json_encode([
+                    'success' => true,
+                    'message' => 'Webhook de teste simulado com sucesso',
+                    'data' => [
+                        'payment_id' => $paymentId,
+                        'external_reference' => $externalReference,
+                        'status' => $status,
+                        'payment_type' => $paymentType,
+                        'tenant_id' => $tenantId,
+                        '__test__' => true
+                    ]
+                ], JSON_UNESCAPED_UNICODE));
+                
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
+                
+            } catch (\Exception $e) {
+                $this->logWebhook("❌ Erro ao processar webhook teste: " . $e->getMessage());
+                
+                $response->getBody()->write(json_encode([
+                    'error' => 'Erro ao processar webhook',
+                    'message' => $e->getMessage()
+                ], JSON_UNESCAPED_UNICODE));
+                
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            }
+            
+        } catch (\Exception $e) {
+            error_log("[Webhook MP] ❌ Erro ao simular webhook: " . $e->getMessage());
+            
+            $response->getBody()->write(json_encode([
+                'error' => 'Erro ao simular webhook',
+                'message' => $e->getMessage()
+            ]));
+            
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+    
+    /**
+     * Processar pagamento simulado (sem chamar API MP)
+     */
+    private function processarPagamentoSimulado(
+        int $tenantId,
+        array $dadosPagamento,
+        string $externalReference
+    ): void {
+        $paymentId = $dadosPagamento['id'];
+        $status = $dadosPagamento['status'];
+        
+        $this->logWebhook("Processando pagamento simulado: ID={$paymentId}, Status={$status}");
+        
+        // Verificar se é pagamento para matrícula (MAT-xxx) ou pacote (PAC-xxx)
+        if (preg_match('/^MAT-(\d+)-/', $externalReference, $matches)) {
+            // Pagamento de matrícula
+            $matriculaId = (int)$matches[1];
+            
+            // Buscar matrícula
+            $stmt = $this->db->prepare("SELECT * FROM matriculas WHERE id = ? AND tenant_id = ?");
+            $stmt->execute([$matriculaId, $tenantId]);
+            $matricula = $stmt->fetch(\PDO::FETCH_ASSOC);
+            
+            if (!$matricula) {
+                throw new \Exception("Matrícula #{$matriculaId} não encontrada");
+            }
+            
+            // Buscar ou criar assinatura
+            $stmtAss = $this->db->prepare("
+                SELECT id FROM assinaturas 
+                WHERE matricula_id = ? AND tenant_id = ? 
+                ORDER BY id DESC LIMIT 1
+            ");
+            $stmtAss->execute([$matriculaId, $tenantId]);
+            $assinatura = $stmtAss->fetch(\PDO::FETCH_ASSOC);
+            
+            if ($assinatura) {
+                // Atualizar status da assinatura
+                $statusCode = $status === 'approved' ? 'ativa' : 'pendente';
+                $stmtStatus = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = ?");
+                $stmtStatus->execute([$statusCode]);
+                $statusId = $stmtStatus->fetchColumn() ?: 1;
+                
+                $stmtUpdate = $this->db->prepare("
+                    UPDATE assinaturas 
+                    SET status_gateway = ?, status_id = ?, atualizado_em = NOW()
+                    WHERE id = ? AND tenant_id = ?
+                ");
+                $stmtUpdate->execute([$status, $statusId, $assinatura['id'], $tenantId]);
+                
+                $this->logWebhook("✅ Assinatura #{$assinatura['id']} atualizada para status '{$status}'");
+            }
+            
+            // Atualizar matrícula se aprovado
+            if ($status === 'approved') {
+                $stmtMatStatus = $this->db->prepare("SELECT id FROM status_matricula WHERE codigo = 'ativa'");
+                $stmtMatStatus->execute();
+                $matStatusId = $stmtMatStatus->fetchColumn() ?: 2;
+                
+                $stmtUpdMat = $this->db->prepare("
+                    UPDATE matriculas 
+                    SET status_id = ?, updated_at = NOW()
+                    WHERE id = ? AND tenant_id = ?
+                ");
+                $stmtUpdMat->execute([$matStatusId, $matriculaId, $tenantId]);
+                
+                $this->logWebhook("✅ Matrícula #{$matriculaId} ativada");
+            }
+            
+        } elseif (preg_match('/^PAC-(\d+)-/', $externalReference, $matches)) {
+            // Pagamento de pacote/contrato
+            $contratoId = (int)$matches[1];
+            
+            $stmt = $this->db->prepare("SELECT * FROM pacote_contratos WHERE id = ? AND tenant_id = ?");
+            $stmt->execute([$contratoId, $tenantId]);
+            $contrato = $stmt->fetch(\PDO::FETCH_ASSOC);
+            
+            if (!$contrato) {
+                throw new \Exception("Contrato #{$contratoId} não encontrado");
+            }
+            
+            // Atualizar status do contrato
+            if ($status === 'approved') {
+                $stmtUpd = $this->db->prepare("
+                    UPDATE pacote_contratos 
+                    SET status = 'pago', updated_at = NOW()
+                    WHERE id = ? AND tenant_id = ?
+                ");
+                $stmtUpd->execute([$contratoId, $tenantId]);
+                
+                $this->logWebhook("✅ Contrato #{$contratoId} marcado como pago");
+            }
+        }
+    }
 }
