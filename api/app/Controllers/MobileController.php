@@ -5363,6 +5363,28 @@ class MobileController
                                     $metodoPagamentoId,
                                     'avulso'
                                 ]);
+
+                                // Criar primeiro pagamento da assinatura
+                                try {
+                                    $stmtPagamento = $this->db->prepare("
+                                        INSERT INTO pagamentos_plano
+                                        (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento,
+                                         data_pagamento, status_pagamento_id, forma_pagamento_id, tipo_baixa_id,
+                                         observacoes, created_at, updated_at)
+                                        VALUES (?, ?, ?, ?, ?, ?, NOW(), 2, 9, 4, 'Assinatura recorrente - Primeiro pagamento', NOW(), NOW())
+                                    ");
+
+                                    $stmtPagamento->execute([
+                                        $tenantId,
+                                        $alunoId,
+                                        (int) $matriculaPendente['id'],
+                                        (int) $matriculaPendente['plano_id'],
+                                        (float) $matriculaPendente['valor'],
+                                        $matriculaPendente['proxima_data_vencimento'] ?? $matriculaPendente['data_vencimento'] ?? date('Y-m-d')
+                                    ]);
+                                } catch (\Exception $e) {
+                                    error_log("[MobileController] ⚠️ Erro ao criar pagamento_plano: " . $e->getMessage());
+                                }
                             }
 
                             $assinaturaPendente['gateway_preference_id'] = (string) $paymentIdPix;
@@ -5911,6 +5933,28 @@ class MobileController
                         
                         $assinaturaDbId = (int) $this->db->lastInsertId();
                         error_log("[MobileController::comprarPlano] ✅ {$tipoCobranca} salva no banco ID: {$assinaturaDbId}");
+
+                        // Criar primeiro pagamento da assinatura
+                        try {
+                            $stmtPagamento = $this->db->prepare("
+                                INSERT INTO pagamentos_plano
+                                (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento,
+                                 data_pagamento, status_pagamento_id, forma_pagamento_id, tipo_baixa_id,
+                                 observacoes, created_at, updated_at)
+                                VALUES (?, ?, ?, ?, ?, ?, NOW(), 2, 9, 4, 'Assinatura recorrente - Primeiro pagamento', NOW(), NOW())
+                            ");
+
+                            $stmtPagamento->execute([
+                                $tenantId,
+                                $alunoId,
+                                $matriculaId,
+                                $planoIdMatricula,
+                                $valorCompra,
+                                $proximaDataVencimento ? $proximaDataVencimento->format('Y-m-d') : date('Y-m-d')
+                            ]);
+                        } catch (\Exception $e) {
+                            error_log("[MobileController::comprarPlano] ⚠️ Erro ao criar pagamento_plano: " . $e->getMessage());
+                        }
                     }
                     
                 } catch (\Exception $e) {
@@ -6486,6 +6530,28 @@ class MobileController
                             $metodoPagamentoId,
                             'avulso'
                         ]);
+
+                        // Criar primeiro pagamento da assinatura
+                        try {
+                            $stmtPagamento = $this->db->prepare("
+                                INSERT INTO pagamentos_plano
+                                (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento,
+                                 data_pagamento, status_pagamento_id, forma_pagamento_id, tipo_baixa_id,
+                                 observacoes, created_at, updated_at)
+                                VALUES (?, ?, ?, ?, ?, ?, NOW(), 2, 9, 4, 'Assinatura recorrente - Primeiro pagamento', NOW(), NOW())
+                            ");
+
+                            $stmtPagamento->execute([
+                                $tenantId,
+                                (int) $matricula['aluno_id'],
+                                (int) $matricula['id'],
+                                (int) $matricula['plano_id'],
+                                (float) $matricula['valor'],
+                                $matricula['proxima_data_vencimento'] ?? date('Y-m-d')
+                            ]);
+                        } catch (\Exception $e) {
+                            error_log("[MobileController::gerarPagamentoPix] ⚠️ Erro ao criar pagamento_plano: " . $e->getMessage());
+                        }
                     }
                 }
             } catch (\Exception $e) {
