@@ -6,24 +6,29 @@
 
 // Carregar sem composer
 $env_file = __DIR__ . '/.env';
+$env_vars = [];
 if (file_exists($env_file)) {
     foreach (file($env_file) as $line) {
         $line = trim($line);
         if (empty($line) || $line[0] === '#') continue;
         
-        [$key, $value] = explode('=', $line, 2) + [1 => ''];
-        $key = trim($key);
-        $value = trim($value, '\'"');
-        putenv("$key=$value");
+        $parts = explode('=', $line, 2);
+        if (count($parts) === 2) {
+            $key = trim($parts[0]);
+            $value = trim($parts[1], '\'"');
+            $env_vars[$key] = $value;
+            putenv("$key=$value");
+        }
     }
 }
 
 // ID do último payment do webhook
 $payment_id = '7025650338';  // Do webhook que vimos: "id":"7025650338"
 
-$mp_token = getenv('MERCADOPAGO_ACCESS_TOKEN');
+$mp_token = $env_vars['MERCADOPAGO_ACCESS_TOKEN'] ?? getenv('MERCADOPAGO_ACCESS_TOKEN');
 if (!$mp_token) {
     echo "❌ MERCADOPAGO_ACCESS_TOKEN não configurado\n";
+    echo "Variáveis carregadas: " . json_encode(array_keys($env_vars)) . "\n";
     exit(1);
 }
 
