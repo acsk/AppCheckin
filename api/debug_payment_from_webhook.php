@@ -1,13 +1,22 @@
 <?php
 /**
  * Script para investigar qual payment ID vem no webhook subscription_authorized_payment
- * e o que o MP retorna quando consultamos esse payment
+ * SEM COMPOSER (compatível com PHP 7.4)
  */
 
-require __DIR__ . '/vendor/autoload.php';
-
-$dotenv = new \Dotenv\Dotenv(__DIR__);
-$dotenv->load();
+// Carregar sem composer
+$env_file = __DIR__ . '/.env';
+if (file_exists($env_file)) {
+    foreach (file($env_file) as $line) {
+        $line = trim($line);
+        if (empty($line) || $line[0] === '#') continue;
+        
+        [$key, $value] = explode('=', $line, 2) + [1 => ''];
+        $key = trim($key);
+        $value = trim($value, '\'"');
+        putenv("$key=$value");
+    }
+}
 
 // ID do último payment do webhook
 $payment_id = '7025650338';  // Do webhook que vimos: "id":"7025650338"
