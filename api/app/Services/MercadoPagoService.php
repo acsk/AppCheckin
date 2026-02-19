@@ -391,12 +391,7 @@ class MercadoPagoService
                 return $this->buscarPagamento($dataId);
                 
             case 'subscription':
-            case 'subscription_authorization':
-            case 'subscription_authorized_payment':
-                // Webhook de pagamento autorizado dentro de uma assinatura
-                // Trata como um payment normal, usando o dataId como payment_id
-                error_log("[MP Service] Webhook subscription_authorized_payment: tratando como payment com ID={$dataId}");
-                return $this->buscarPagamento($dataId);
+                return $this->buscarAssinatura($dataId);
                 
             default:
                 throw new Exception("Tipo de notificação não suportado: {$type}");

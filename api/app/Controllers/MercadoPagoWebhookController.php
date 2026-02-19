@@ -168,13 +168,6 @@ class MercadoPagoWebhookController
                 // Tentar extrair external_reference do body (pode estar em metadata)
                 // Será preenchido via query que buscará os dados completos do MP
             } 
-            // Se é notificação de assinatura com pagamento autorizado
-            elseif ($tipo === 'subscription_authorized_payment' || $tipo === 'subscription_authorization') {
-                // Webhook de pagamento dentro de assinatura
-                // Trata o data_id como payment_id
-                $paymentId = $dataId;
-                error_log("[Webhook MP] subscription_authorized_payment tratado como payment: payment_id={$paymentId}");
-            }
             // Se é notificação de assinatura
             elseif (in_array($tipo, ['subscription_preapproval', 'subscription', 'preapproval'])) {
                 $preapprovalId = $dataId;
