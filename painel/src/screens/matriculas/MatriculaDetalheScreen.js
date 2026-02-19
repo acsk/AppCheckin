@@ -309,6 +309,16 @@ export default function MatriculaDetalheScreen() {
     return vencimento < hoje;
   };
 
+  const isVencimentoAtingido = (dataVencimento) => {
+    if (!dataVencimento) return false;
+    const [year, month, day] = dataVencimento.split('-');
+    const vencimento = new Date(year, month - 1, day);
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    vencimento.setHours(0, 0, 0, 0);
+    return vencimento <= hoje;
+  };
+
   const calcularResumo = () => {
     const getStatusId = (pagamento) => Number(pagamento.status_pagamento_id);
     // Excluir pagamentos cancelados (status 4) do total
@@ -378,7 +388,9 @@ export default function MatriculaDetalheScreen() {
   };
   const isPagamentoBaixavel = (pagamento) => {
     const statusId = Number(pagamento.status_pagamento_id);
-    return statusId === 1 || statusId === 3;
+    if (statusId === 3) return true;
+    if (statusId === 1) return isVencimentoAtingido(pagamento.data_vencimento);
+    return false;
   };
 
   const resumo = calcularResumo();
