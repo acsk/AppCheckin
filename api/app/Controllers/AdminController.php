@@ -680,17 +680,17 @@ class AdminController
                             FROM matriculas m
                             INNER JOIN alunos a ON a.id = m.aluno_id
                             INNER JOIN status_matricula sm ON sm.id = m.status_id
-                            WHERE m.pacote_contrato_id = ? AND m.tenant_id = ?
+                            WHERE m.pacote_contrato_id = ?
                             ORDER BY m.created_at ASC
                         ");
-                        $stmtMatriculas->execute([$contratoId, $tenantId]);
+                        $stmtMatriculas->execute([$contratoId]);
                         $matriculas = $stmtMatriculas->fetchAll(\PDO::FETCH_ASSOC);
 
                         // Buscar pagante como aluno (se tiver)
                         $stmtPagante = $db->prepare("
-                            SELECT id, nome FROM alunos WHERE usuario_id = ? AND tenant_id = ? LIMIT 1
+                            SELECT id, nome FROM alunos WHERE usuario_id = ? LIMIT 1
                         ");
-                        $stmtPagante->execute([$contrato['pagante_usuario_id'], $tenantId]);
+                        $stmtPagante->execute([$contrato['pagante_usuario_id']]);
                         $pagante = $stmtPagante->fetch(\PDO::FETCH_ASSOC);
 
                         // Buscar beneficiários
