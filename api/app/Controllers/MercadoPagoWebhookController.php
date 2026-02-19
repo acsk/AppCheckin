@@ -843,10 +843,9 @@ class MercadoPagoWebhookController
                 }
                 
                 if ($pacoteContratoId) {
-                    // NOVO FLUXO: Webhook de assinatura JÁ criou a matrícula do pagante
-                    // Este webhook de pagamento só precisa criar as matrículas dos beneficiários
-                    error_log("[Webhook MP] 📨 Fluxo: Assinatura já criou pagante, apenas criar beneficiários");
-                    $this->processarPagamentoPacote($pacoteContratoId, $pagamento);
+                    // Ativar contrato e criar matrículas para todos (pagante + beneficiários)
+                    error_log("[Webhook MP] 📨 Ativando contrato e criando matrículas...");
+                    $this->ativarPacoteContrato($pacoteContratoId, $pagamento);
                 } else {
                     error_log("[Webhook MP] ❌ pacote_contrato_id não encontrado no metadata nem no external_reference");
                 }
