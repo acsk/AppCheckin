@@ -3861,6 +3861,18 @@ class MobileController
             }
 
             // 🎁 CRIAR ASSINATURA (igual qualquer compra - só adicionando pacote_contrato_id)
+            $assinaturaId = null;
+            if (empty($preferencia) || empty($preferencia['id'])) {
+                $erro = "Preferência do Mercado Pago não gerada corretamente. ID: " . ($preferencia['id'] ?? 'null');
+                error_log("[MobileController::pagarPacote] ❌ {$erro}");
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'Erro ao gerar pagamento do pacote',
+                    'error' => $erro
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            }
+
             try {
                 // Buscar gateway e status
                 $stmtGateway = $this->db->prepare("SELECT id FROM assinatura_gateways WHERE codigo = 'mercadopago' LIMIT 1");
@@ -3911,7 +3923,14 @@ class MobileController
                 $assinaturaId = (int) $this->db->lastInsertId();
                 error_log("[MobileController::pagarPacote] ✅ Assinatura criada: #{$assinaturaId}, pacote_id={$contratoId}, type={$tipoCobranca}");
             } catch (\Exception $e) {
-                error_log("[MobileController::pagarPacote] ⚠️ Erro ao criar assinatura: " . $e->getMessage());
+                error_log("[MobileController::pagarPacote] ❌ ERRO ao criar assinatura: " . $e->getMessage());
+                error_log("[MobileController::pagarPacote] Stack: " . $e->getTraceAsString());
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'Erro ao gerar pagamento do pacote',
+                    'error' => $e->getMessage()
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
             }
 
             // Atualizar contrato com payment_url
