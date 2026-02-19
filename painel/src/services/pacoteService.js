@@ -122,6 +122,19 @@ const pacoteService = {
       throw prepararErro(error.response?.data || error);
     }
   },
+
+  /**
+   * Gerar matrículas do contrato (pagante + dependentes)
+   */
+  async gerarMatriculas(contratoId) {
+    try {
+      const response = await api.post(`/admin/pacote-contratos/${contratoId}/gerar-matriculas`);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao gerar matrículas do pacote:', error.response?.data || error.message);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
 };
 
 export default pacoteService;

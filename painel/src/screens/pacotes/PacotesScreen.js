@@ -70,6 +70,8 @@ export default function PacotesScreen() {
   const [carregandoDados, setCarregandoDados] = useState(false);
   const [tab, setTab] = useState('pacotes'); // pacotes | pendentes | ativos
   const [loadingContratos, setLoadingContratos] = useState(false);
+  const [expandedContratos, setExpandedContratos] = useState({});
+  const [gerandoMatriculasId, setGerandoMatriculasId] = useState(null);
 
   const [pacoteForm, setPacoteForm] = useState(INITIAL_PACOTE);
   const [contratoForm, setContratoForm] = useState(INITIAL_CONTRATO);
@@ -142,6 +144,27 @@ export default function PacotesScreen() {
       showError(error.error || 'Não foi possível carregar contratos');
     } finally {
       setLoadingContratos(false);
+    }
+  };
+
+  const toggleContrato = (contratoId) => {
+    setExpandedContratos((prev) => ({
+      ...prev,
+      [contratoId]: !prev[contratoId],
+    }));
+  };
+
+  const handleGerarMatriculas = async (contratoId) => {
+    try {
+      setGerandoMatriculasId(contratoId);
+      const response = await pacoteService.gerarMatriculas(contratoId);
+      showSuccess(response.message || 'Matrículas geradas com sucesso');
+      carregarContratos('ativo');
+    } catch (error) {
+      console.error('Erro ao gerar matrículas:', error);
+      showError(error.error || error.mensagemLimpa || 'Não foi possível gerar as matrículas');
+    } finally {
+      setGerandoMatriculasId(null);
     }
   };
 
@@ -759,19 +782,80 @@ export default function PacotesScreen() {
                   <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 140 }}>Faltando</Text>
                   <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 140 }}>Valor</Text>
                   <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 140 }}>Início</Text>
+                  <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 140, textAlign: 'right' }}>Ações</Text>
                 </View>
-                {ativosFiltrados.map((item) => (
-                  <View key={item.contrato?.contrato_id} className="flex-row items-center border-b border-slate-100 px-4 py-2">
-                    <Text className="text-[12px] text-slate-600" style={{ width: 110 }}>#{item.contrato?.contrato_id}</Text>
-                    <Text className="text-[12px] text-slate-600" style={{ width: 200 }} numberOfLines={1}>{item.contrato?.pacote_nome}</Text>
-                    <Text className="text-[12px] text-slate-600" style={{ width: 170 }} numberOfLines={1}>{item.contrato?.plano_nome}</Text>
-                    <Text className="text-[12px] text-slate-600" style={{ width: 200 }} numberOfLines={1}>{item.contrato?.pagante_nome}</Text>
-                    <Text className="text-[12px] text-slate-600" style={{ width: 120 }}>{item.qtd_pessoas}</Text>
-                    <Text className="text-[12px] text-slate-600" style={{ width: 140 }}>{item.qtd_matriculas_faltando}</Text>
-                    <Text className="text-[12px] text-slate-600" style={{ width: 140 }}>{formatCurrency(item.contrato?.valor_total)}</Text>
-                    <Text className="text-[12px] text-slate-600" style={{ width: 140 }}>{item.contrato?.data_inicio || '-'}</Text>
-                  </View>
-                ))}
+                {ativosFiltrados.map((item) => {
+                  const contratoId = item.contrato?.contrato_id;
+                  const isExpanded = expandedContratos[contratoId];
+                  return (
+                    <View key={contratoId} className="border-b border-slate-100">
+                      <View className="flex-row items-center px-4 py-2">
+                        <Text className="text-[12px] text-slate-600" style={{ width: 110 }}>#{contratoId}</Text>
+                        <Text className="text-[12px] text-slate-600" style={{ width: 200 }} numberOfLines={1}>{item.contrato?.pacote_nome}</Text>
+                        <Text className="text-[12px] text-slate-600" style={{ width: 170 }} numberOfLines={1}>{item.contrato?.plano_nome}</Text>
+                        <Text className="text-[12px] text-slate-600" style={{ width: 200 }} numberOfLines={1}>{item.contrato?.pagante_nome}</Text>
+                        <Text className="text-[12px] text-slate-600" style={{ width: 120 }}>{item.qtd_pessoas}</Text>
+                        <Text className="text-[12px] text-slate-600" style={{ width: 140 }}>{item.qtd_matriculas_faltando}</Text>
+                        <Text className="text-[12px] text-slate-600" style={{ width: 140 }}>{formatCurrency(item.contrato?.valor_total)}</Text>
+                        <Text className="text-[12px] text-slate-600" style={{ width: 140 }}>{item.contrato?.data_inicio || '-'}</Text>
+                        <View style={{ width: 140 }} className="flex-row items-center justify-end gap-2">
+                          <TouchableOpacity
+                            className="h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white"
+                            onPress={() => toggleContrato(contratoId)}
+                          >
+                            <Feather name={isExpanded ? 'chevron-up' : 'chevron-down'} size={16} color="#0f172a" />
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            className="h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-3"
+                            onPress={() => handleGerarMatriculas(contratoId)}
+                            disabled={gerandoMatriculasId === contratoId}
+                          >
+                            {gerandoMatriculasId === contratoId ? (
+                              <ActivityIndicator size="small" color="#f97316" />
+                            ) : (
+                              <Text className="text-[11px] font-semibold text-slate-700">Gerar</Text>
+                            )}
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+
+                      {isExpanded && (
+                        <View className="bg-slate-50/60 px-4 py-3">
+                          <View className="flex-row gap-6">
+                            <View className="flex-1">
+                              <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-2">Pagante</Text>
+                              <Text className="text-[12px] text-slate-700">{item.pagante?.nome || item.contrato?.pagante_nome || '-'}</Text>
+                            </View>
+                            <View className="flex-1">
+                              <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-2">Beneficiários</Text>
+                              {item.beneficiarios?.length ? (
+                                item.beneficiarios.map((b) => (
+                                  <Text key={b.beneficiario_id || b.aluno_id} className="text-[12px] text-slate-700">
+                                    {b.nome || '-'}
+                                  </Text>
+                                ))
+                              ) : (
+                                <Text className="text-[12px] text-slate-400">Nenhum beneficiário</Text>
+                              )}
+                            </View>
+                            <View className="flex-1">
+                              <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 mb-2">Matrículas</Text>
+                              {item.matriculas_geradas?.length ? (
+                                item.matriculas_geradas.map((m) => (
+                                  <Text key={m.matricula_id} className="text-[12px] text-slate-700">
+                                    {m.aluno_nome || `Aluno ${m.aluno_id}`} • {m.status_codigo || '-'} • {m.data_vencimento || '-'}
+                                  </Text>
+                                ))
+                              ) : (
+                                <Text className="text-[12px] text-slate-400">Nenhuma matrícula gerada</Text>
+                              )}
+                            </View>
+                          </View>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
               </View>
             )
           )}
