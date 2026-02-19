@@ -22,7 +22,7 @@ export default function AlunosScreen() {
   const [paginaAtual, setPaginaAtual] = useState(1);
   const [totalPaginas, setTotalPaginas] = useState(1);
   const [totalAlunos, setTotalAlunos] = useState(0);
-  const [porPagina] = useState(20);
+  const [porPagina] = useState(110);
 
   useEffect(() => {
     ensureAdminAccess();
