@@ -1,21 +1,22 @@
 import { getApiUrlRuntime } from "@/src/config/urls";
+import { authService } from "@/src/services/authService";
 import { colors } from "@/src/theme/colors";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Image,
-    Linking,
-    Modal,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    useWindowDimensions,
-    View,
+  ActivityIndicator,
+  Image,
+  Linking,
+  Modal,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
 } from "react-native";
 
 interface Ciclo {
@@ -76,6 +77,7 @@ export default function PlanoDetalhesScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
 
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [plano, setPlano] = useState<PlanoDetalhes | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -277,17 +279,52 @@ export default function PlanoDetalhesScreen() {
     }
   };
 
+  // Verificar permissão de acesso
+  useEffect(() => {
+    const checkPermission = async () => {
+      try {
+        const user = await authService.getCurrentUser();
+        if (!user) {
+          console.warn("⚠️ Usuário não autenticado");
+          setHasPermission(false);
+          return;
+        }
+
+        // Verificar se o usuário é admin (papel_id 3) ou super admin (papel_id 4)
+        const isAdmin = user.papel_id === 3 || user.papel_id === 4;
+        const hasAdminRole =
+          Array.isArray(user.papeis) &&
+          user.papeis.some((r: any) => r.id === 3 || r.id === 4);
+
+        if (isAdmin || hasAdminRole) {
+          console.log("✅ Usuário tem permissão para acessar plano");
+          setHasPermission(true);
+        } else {
+          console.warn("❌ Usuário não tem permissão para acessar plano");
+          setHasPermission(false);
+          router.replace("/planos");
+        }
+      } catch (err) {
+        console.error("❌ Erro ao verificar permissão:", err);
+        setHasPermission(false);
+        router.replace("/planos");
+      }
+    };
+
+    checkPermission();
+  }, [router]);
+
   useEffect(() => {
     const init = async () => {
       const url = getApiUrlRuntime();
       setApiUrl(url);
-      if (id) {
+      if (id && hasPermission) {
         await fetchPlanoDetalhes(url, id);
       }
     };
     init();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id]);
+  }, [id, hasPermission]);
 
   // Countdown para modal de redirecionamento
   useEffect(() => {
@@ -601,7 +638,11 @@ export default function PlanoDetalhesScreen() {
       const metodoPagamento = String(
         data.data?.metodo_pagamento || "",
       ).toLowerCase();
-      if (metodoPagamento && metodoPagamento !== "pix" && data.data?.payment_url) {
+      if (
+        metodoPagamento &&
+        metodoPagamento !== "pix" &&
+        data.data?.payment_url
+      ) {
         showErrorModal(
           "⚠️ Pagamento pendente no checkout",
           "Já existe um pagamento pendente no checkout. Vamos abrir o link para você concluir.",
@@ -665,8 +706,7 @@ export default function PlanoDetalhesScreen() {
       setPixWaitSeconds(0);
       setPixModalVisible(true);
     } catch (err) {
-      const errorMsg =
-        err instanceof Error ? err.message : "Erro ao gerar PIX";
+      const errorMsg = err instanceof Error ? err.message : "Erro ao gerar PIX";
       showErrorModal("❌ Algo Deu Errado", errorMsg, "error");
     } finally {
       setPixLoading(false);
@@ -677,10 +717,7 @@ export default function PlanoDetalhesScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={handleBack}
-          >
+          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
             <Feather name="arrow-left" size={24} color="#fff" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Detalhes do Plano</Text>
@@ -698,10 +735,7 @@ export default function PlanoDetalhesScreen() {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={handleBack}
-          >
+          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
             <Feather name="arrow-left" size={24} color="#fff" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Detalhes do Plano</Text>
@@ -750,10 +784,13 @@ export default function PlanoDetalhesScreen() {
     (plano as { status_codigo_plano?: string }).status_codigo_plano ||
     (plano as { status_plano?: string }).status_plano ||
     (plano as { matricula_status_codigo?: string }).matricula_status_codigo ||
-    (plano as { matricula?: { status_codigo?: string; status?: { codigo?: string } } })
-      .matricula?.status_codigo ||
-    (plano as { matricula?: { status?: { codigo?: string } } }).matricula?.status
-      ?.codigo ||
+    (
+      plano as {
+        matricula?: { status_codigo?: string; status?: { codigo?: string } };
+      }
+    ).matricula?.status_codigo ||
+    (plano as { matricula?: { status?: { codigo?: string } } }).matricula
+      ?.status?.codigo ||
     null;
   const statusNomeRaw =
     (typeof plano.status === "string" ? plano.status : plano.status?.nome) ||
@@ -762,12 +799,11 @@ export default function PlanoDetalhesScreen() {
     plano.label ||
     "";
   const statusCodigo =
-    typeof statusCodigoRaw === "string"
-      ? statusCodigoRaw.toLowerCase()
-      : null;
+    typeof statusCodigoRaw === "string" ? statusCodigoRaw.toLowerCase() : null;
   const statusNome =
     typeof statusNomeRaw === "string" ? statusNomeRaw.toLowerCase() : "";
-  const isPendente = statusCodigo === "pendente" || statusNome.includes("pendente");
+  const isPendente =
+    statusCodigo === "pendente" || statusNome.includes("pendente");
   const isPlanoAtivo = !!plano.is_plano_atual && !isPendente;
   const qrSize = Math.min(320, Math.round(screenWidth * 0.72));
 
@@ -775,10 +811,7 @@ export default function PlanoDetalhesScreen() {
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={handleBack}
-        >
+        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <Feather name="arrow-left" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Detalhes do Plano</Text>
@@ -1019,32 +1052,28 @@ export default function PlanoDetalhesScreen() {
             </TouchableOpacity>
 
             {!!selectedCiclo && pixDisponivel && (
-                <TouchableOpacity
-                  style={[
-                    styles.footerPixButton,
-                    pixLoading && styles.footerPixButtonLoading,
-                  ]}
-                  onPress={handlePagarPix}
-                  disabled={pixLoading}
-                  activeOpacity={0.8}
-                >
-                  {pixLoading ? (
-                    <>
-                      <ActivityIndicator color="#fff" size="small" />
-                      <Text style={styles.footerButtonText}>
-                        Gerando PIX...
-                      </Text>
-                    </>
-                  ) : (
-                    <>
-                      <Feather name="zap" size={18} color="#fff" />
-                      <Text style={styles.footerButtonText}>
-                        Pagar com PIX
-                      </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              )}
+              <TouchableOpacity
+                style={[
+                  styles.footerPixButton,
+                  pixLoading && styles.footerPixButtonLoading,
+                ]}
+                onPress={handlePagarPix}
+                disabled={pixLoading}
+                activeOpacity={0.8}
+              >
+                {pixLoading ? (
+                  <>
+                    <ActivityIndicator color="#fff" size="small" />
+                    <Text style={styles.footerButtonText}>Gerando PIX...</Text>
+                  </>
+                ) : (
+                  <>
+                    <Feather name="zap" size={18} color="#fff" />
+                    <Text style={styles.footerButtonText}>Pagar com PIX</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
           </View>
         )}
       </View>
@@ -1223,7 +1252,11 @@ export default function PlanoDetalhesScreen() {
                   }
                 }}
               >
-                <Feather name="external-link" size={14} color={colors.primary} />
+                <Feather
+                  name="external-link"
+                  size={14}
+                  color={colors.primary}
+                />
                 <Text style={styles.pixOpenLinkText}>Abrir no banco</Text>
               </TouchableOpacity>
             )}
@@ -1283,7 +1316,12 @@ export default function PlanoDetalhesScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <View style={[styles.modalIcon, { backgroundColor: "rgba(15, 118, 110, 0.1)" }]}>
+            <View
+              style={[
+                styles.modalIcon,
+                { backgroundColor: "rgba(15, 118, 110, 0.1)" },
+              ]}
+            >
               <ActivityIndicator size="large" color="#0f766e" />
             </View>
             <Text style={styles.modalTitle}>Consultando pagamento</Text>

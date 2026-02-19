@@ -4,16 +4,16 @@ import AuthService from "@/src/services/authService";
 import MobileService from "@/src/services/mobileService";
 import { colors } from "@/src/theme/colors";
 import {
-  DiaCheckin,
-  RankingItem,
-  RankingModalidade,
-  UserProfile,
+    DiaCheckin,
+    RankingItem,
+    RankingModalidade,
+    UserProfile,
 } from "@/src/types";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { getTokenTenantId, handleAuthError } from "@/src/utils/authHelpers";
 import {
-  compressImage,
-  logCompressionInfo,
+    compressImage,
+    logCompressionInfo,
 } from "@/src/utils/imageCompression";
 import AsyncStorage from "@/src/utils/storage";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -21,19 +21,19 @@ import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  Dimensions,
-  Image,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Animated,
+    Dimensions,
+    Image,
+    Modal,
+    Platform,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -217,6 +217,17 @@ export default function AccountScreen() {
       setUserRoles([]);
     }
   }, []);
+
+  // Verificar se o usuário é admin (papel_id 3 ou 4)
+  const isUserAdmin = React.useMemo(() => {
+    if (!Array.isArray(userRoles) || userRoles.length === 0) {
+      return false;
+    }
+    return userRoles.some((role) => {
+      const roleId = Number(role?.id ?? role?.papel_id);
+      return roleId === 3 || roleId === 4;
+    });
+  }, [userRoles]);
 
   const getTenantImageUrl = () => {
     const raw =
@@ -1527,18 +1538,20 @@ export default function AccountScreen() {
               </View>
             )}
 
-            <TouchableOpacity
-              style={styles.sidebarMenuItem}
-              onPress={() => {
-                closeSidebar();
-                router.push("/planos");
-              }}
-            >
-              <View style={styles.sidebarMenuItemIcon}>
-                <Feather name="shopping-cart" size={16} color="#fff" />
-              </View>
-              <Text style={styles.sidebarMenuItemText}>Planos</Text>
-            </TouchableOpacity>
+            {isUserAdmin && (
+              <TouchableOpacity
+                style={styles.sidebarMenuItem}
+                onPress={() => {
+                  closeSidebar();
+                  router.push("/planos");
+                }}
+              >
+                <View style={styles.sidebarMenuItemIcon}>
+                  <Feather name="shopping-cart" size={16} color="#fff" />
+                </View>
+                <Text style={styles.sidebarMenuItemText}>Planos</Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
               style={styles.sidebarMenuItem}

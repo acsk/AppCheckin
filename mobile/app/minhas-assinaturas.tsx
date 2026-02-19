@@ -1,21 +1,22 @@
 import { getApiUrlRuntime } from "@/src/config/urls";
+import { authService } from "@/src/services/authService";
 import { colors } from "@/src/theme/colors";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  FlatList,
-  Linking,
-  Modal,
-  Platform,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    FlatList,
+    Linking,
+    Modal,
+    Platform,
+    SafeAreaView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 interface StatusAssinatura {
@@ -114,6 +115,7 @@ export default function MinhasAssinaturasScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [apiUrl, setApiUrl] = useState("");
+  const [isUserAdmin, setIsUserAdmin] = useState(false);
   const [cancelando, setCancelando] = useState<number | null>(null);
   const [cancelandoDiaria, setCancelandoDiaria] = useState<number | null>(null);
   const [pagandoPacoteId, setPagandoPacoteId] = useState<number | null>(null);
@@ -145,7 +147,8 @@ export default function MinhasAssinaturasScreen() {
   };
 
   const formatCurrency = (value?: number | null) => {
-    const numeric = typeof value === "number" && !Number.isNaN(value) ? value : 0;
+    const numeric =
+      typeof value === "number" && !Number.isNaN(value) ? value : 0;
     return new Intl.NumberFormat("pt-BR", {
       style: "currency",
       currency: "BRL",
@@ -247,6 +250,32 @@ export default function MinhasAssinaturasScreen() {
     },
     [router],
   );
+
+  // Verificar se o usuário é admin
+  useEffect(() => {
+    const checkAdminStatus = async () => {
+      try {
+        const user = await authService.getCurrentUser();
+        if (!user) {
+          setIsUserAdmin(false);
+          return;
+        }
+
+        // Verificar se o usuário é admin (papel_id 3) ou super admin (papel_id 4)
+        const isAdmin = user.papel_id === 3 || user.papel_id === 4;
+        const hasAdminRole =
+          Array.isArray(user.papeis) &&
+          user.papeis.some((r: any) => r.id === 3 || r.id === 4);
+
+        setIsUserAdmin(isAdmin || hasAdminRole);
+      } catch (err) {
+        console.warn("⚠️ Erro ao verificar status de admin:", err);
+        setIsUserAdmin(false);
+      }
+    };
+
+    checkAdminStatus();
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
@@ -484,7 +513,8 @@ export default function MinhasAssinaturasScreen() {
         }
 
         if (!response.ok || json?.success === false) {
-          const msg = json?.message || json?.error || text || "Erro ao gerar pagamento";
+          const msg =
+            json?.message || json?.error || text || "Erro ao gerar pagamento";
           showErrorModal("⚠️ Erro ao gerar pagamento", msg, "warning");
           return;
         }
@@ -548,14 +578,14 @@ export default function MinhasAssinaturasScreen() {
       statusCodigo === "pago" ||
       statusCodigo === "paid" ||
       statusCodigo === "approved";
-    const isAvulso = item.tipo_cobranca === "avulso" || item.recorrente === false;
+    const isAvulso =
+      item.tipo_cobranca === "avulso" || item.recorrente === false;
     const proximaCobrancaRaw = isAvulso ? item.data_fim : item.proxima_cobranca;
     const proximaCobrancaText = formatDate(proximaCobrancaRaw);
     const ultimaCobrancaText = formatDate(item.ultima_cobranca);
     const podePagar =
       isPendente && !!item.payment_url && item.pode_pagar !== false;
-    const podeCancelarDiaria =
-      isAvulso && isPago && !!item.matricula_id;
+    const podeCancelarDiaria = isAvulso && isPago && !!item.matricula_id;
 
     const valorFormatado = formatCurrency(item.valor);
 
@@ -608,9 +638,7 @@ export default function MinhasAssinaturasScreen() {
             <Feather name="calendar" size={16} color={colors.primary} />
             <View style={styles.dataContent}>
               <Text style={styles.dataLabel}>Início</Text>
-              <Text style={styles.dataValor}>
-                {dataInicioText}
-              </Text>
+              <Text style={styles.dataValor}>{dataInicioText}</Text>
             </View>
           </View>
 
@@ -619,9 +647,7 @@ export default function MinhasAssinaturasScreen() {
               <Feather name="clock" size={16} color={colors.primary} />
               <View style={styles.dataContent}>
                 <Text style={styles.dataLabel}>Próxima Cobrança</Text>
-                <Text style={styles.dataValor}>
-                  {proximaCobrancaText}
-                </Text>
+                <Text style={styles.dataValor}>{proximaCobrancaText}</Text>
               </View>
             </View>
           )}
@@ -631,15 +657,15 @@ export default function MinhasAssinaturasScreen() {
               <Feather name="check-circle" size={16} color={colors.primary} />
               <View style={styles.dataContent}>
                 <Text style={styles.dataLabel}>Última Cobrança</Text>
-                <Text style={styles.dataValor}>
-                  {ultimaCobrancaText}
-                </Text>
+                <Text style={styles.dataValor}>{ultimaCobrancaText}</Text>
               </View>
             </View>
           )}
         </View>
 
-        {(podePagar || podeCancelarDiaria || (!isAvulso && (isAtiva || isPendente))) && (
+        {(podePagar ||
+          podeCancelarDiaria ||
+          (!isAvulso && (isAtiva || isPendente))) && (
           <View style={styles.actionStack}>
             {podePagar && (
               <TouchableOpacity
@@ -701,26 +727,22 @@ export default function MinhasAssinaturasScreen() {
   const renderPacoteItem = (item: PacoteContrato) => {
     const contratoId = item.contrato_id ?? item.id;
     const statusCodigo =
-      item.status_codigo ||
-      item.status ||
-      item.status_nome ||
-      "pendente";
+      item.status_codigo || item.status || item.status_nome || "pendente";
     const statusLower = String(statusCodigo).toLowerCase();
-    const isPendente = statusLower.includes("pendente") || statusLower === "pending";
+    const isPendente =
+      statusLower.includes("pendente") || statusLower === "pending";
     const statusText =
-      item.status_nome ||
-      item.status ||
-      (isPendente ? "Pendente" : "Ativo");
+      item.status_nome || item.status || (isPendente ? "Pendente" : "Ativo");
     const statusColor = item.status_cor || (isPendente ? "#f59e0b" : "#22c55e");
-    const pacoteNome =
-      item.pacote_nome || item.pacote?.nome || "Pacote";
+    const pacoteNome = item.pacote_nome || item.pacote?.nome || "Pacote";
     const pacoteDescricao =
       item.pacote_descricao || item.pacote?.descricao || "";
     const total =
       typeof item.valor_total === "number"
         ? item.valor_total
         : item.pacote?.valor_total || 0;
-    const qtd = item.pacote?.qtd_beneficiarios || item.beneficiarios?.length || 0;
+    const qtd =
+      item.pacote?.qtd_beneficiarios || item.beneficiarios?.length || 0;
     const rateio = qtd > 0 ? total / qtd : null;
     const dataInicio = formatDate(item.data_inicio);
     const dataFim = formatDate(item.data_fim);
@@ -738,7 +760,9 @@ export default function MinhasAssinaturasScreen() {
               <Text style={styles.pacoteDescricao}>{pacoteDescricao}</Text>
             )}
           </View>
-          <View style={[styles.pacoteStatusBadge, { backgroundColor: statusColor }]}>
+          <View
+            style={[styles.pacoteStatusBadge, { backgroundColor: statusColor }]}
+          >
             <Text style={styles.pacoteStatusText}>{statusText}</Text>
           </View>
         </View>
@@ -819,13 +843,15 @@ export default function MinhasAssinaturasScreen() {
       <Text style={styles.emptyMessage}>
         Você não possui assinaturas ativas no momento.
       </Text>
-      <TouchableOpacity
-        style={styles.botaoVerPlanos}
-        onPress={() => router.push("/planos")}
-      >
-        <Feather name="shopping-cart" size={18} color="#fff" />
-        <Text style={styles.botaoVerPlanosText}>Ver Planos Disponíveis</Text>
-      </TouchableOpacity>
+      {isUserAdmin && (
+        <TouchableOpacity
+          style={styles.botaoVerPlanos}
+          onPress={() => router.push("/planos")}
+        >
+          <Feather name="shopping-cart" size={18} color="#fff" />
+          <Text style={styles.botaoVerPlanosText}>Ver Planos Disponíveis</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 
@@ -841,16 +867,15 @@ export default function MinhasAssinaturasScreen() {
         <Feather name="refresh-cw" size={18} color="#fff" />
         <Text style={styles.botaoTentarNovamenteText}>Tentar Novamente</Text>
       </TouchableOpacity>
-      {typeof error === "string" &&
-        error.toLowerCase().includes("tenant") && (
-          <TouchableOpacity
-            style={styles.botaoLogin}
-            onPress={() => router.replace("/(auth)/login")}
-          >
-            <Feather name="log-in" size={18} color="#fff" />
-            <Text style={styles.botaoLoginText}>Fazer Login</Text>
-          </TouchableOpacity>
-        )}
+      {typeof error === "string" && error.toLowerCase().includes("tenant") && (
+        <TouchableOpacity
+          style={styles.botaoLogin}
+          onPress={() => router.replace("/(auth)/login")}
+        >
+          <Feather name="log-in" size={18} color="#fff" />
+          <Text style={styles.botaoLoginText}>Fazer Login</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 
@@ -911,7 +936,11 @@ export default function MinhasAssinaturasScreen() {
               <View style={styles.assinaturasSectionHeader}>
                 <View style={styles.sectionHeader}>
                   <View style={styles.sectionHeaderIcon}>
-                    <Feather name="file-text" size={18} color={colors.primary} />
+                    <Feather
+                      name="file-text"
+                      size={18}
+                      color={colors.primary}
+                    />
                   </View>
                   <Text style={styles.assinaturasTitle}>Assinaturas</Text>
                   <View style={styles.sectionHeaderLine} />

@@ -1,4 +1,5 @@
 import { getApiUrlRuntime } from "@/src/config/urls";
+import { authService } from "@/src/services/authService";
 import { colors } from "@/src/theme/colors";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -66,6 +67,7 @@ interface ApiResponse {
 export default function PlanosScreen() {
   const router = useRouter();
 
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [planos, setPlanos] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -127,6 +129,39 @@ export default function PlanosScreen() {
     }
   }, [planos, selectedPlanoId]);
 
+  // Verificar permissão de acesso
+  useEffect(() => {
+    const checkPermission = async () => {
+      try {
+        const user = await authService.getCurrentUser();
+        if (!user) {
+          console.warn("⚠️ Usuário não autenticado");
+          setHasPermission(false);
+          return;
+        }
+
+        // Verificar se o usuário é admin (papel_id 3) ou super admin (papel_id 4)
+        const isAdmin = user.papel_id === 3 || user.papel_id === 4;
+        const hasAdminRole =
+          Array.isArray(user.papeis) &&
+          user.papeis.some((r: any) => r.id === 3 || r.id === 4);
+
+        if (isAdmin || hasAdminRole) {
+          console.log("✅ Usuário tem permissão para acessar planos");
+          setHasPermission(true);
+        } else {
+          console.warn("❌ Usuário não tem permissão para acessar planos");
+          setHasPermission(false);
+        }
+      } catch (err) {
+        console.error("❌ Erro ao verificar permissão:", err);
+        setHasPermission(false);
+      }
+    };
+
+    checkPermission();
+  }, []);
+
   useEffect(() => {
     const initializeAndFetch = async () => {
       try {
@@ -141,8 +176,12 @@ export default function PlanosScreen() {
       }
     };
 
-    initializeAndFetch();
-  }, []);
+    // Só inicializa se o usuário tem permissão
+    if (hasPermission === true) {
+      initializeAndFetch();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasPermission]);
 
   // Countdown para modal de redirecionamento
   useEffect(() => {
@@ -814,8 +853,12 @@ export default function PlanosScreen() {
         )}
 
         {(() => {
-          const metodosPagamento = Array.isArray(selectedCiclo?.metodos_pagamento)
-            ? selectedCiclo?.metodos_pagamento.map((m) => String(m).toLowerCase())
+          const metodosPagamento = Array.isArray(
+            selectedCiclo?.metodos_pagamento,
+          )
+            ? selectedCiclo?.metodos_pagamento.map((m) =>
+                String(m).toLowerCase(),
+              )
             : [];
           const checkoutDisponivel = metodosPagamento.includes("checkout");
           const pixDisponivel =
@@ -825,75 +868,77 @@ export default function PlanosScreen() {
           return (
             <>
               <TouchableOpacity
-          style={[
-            styles.contratarButton,
-            comprando && planoComprando === plano.id
-              ? styles.contratarButtonLoading
-              : null,
-            !selectedCiclo &&
-              !plano.is_plano_atual &&
-              styles.contratarButtonDisabled,
-            selectedCiclo &&
-              !plano.is_plano_atual &&
-              !checkoutDisponivel &&
-              styles.contratarButtonDisabled,
-          ]}
-          onPress={() => handleContratar(plano)}
-          disabled={
-            !selectedCiclo ||
-            plano.is_plano_atual ||
-            (comprando && planoComprando === plano.id) ||
-            (selectedCiclo && !checkoutDisponivel)
-          }
-        >
-          {plano.is_plano_atual ? (
-            <>
-              <Feather name="check" size={18} color="#fff" />
-              <Text style={styles.contratarButtonText}>Plano Ativo</Text>
-            </>
-          ) : comprando && planoComprando === plano.id ? (
-            <>
-              <ActivityIndicator color="#fff" size="small" />
-              <Text style={styles.contratarButtonText}>Processando...</Text>
-            </>
-          ) : (
-            <>
-              <Feather name="shopping-cart" size={18} color="#fff" />
-              <Text style={styles.contratarButtonText}>
-                {selectedCiclo
-                  ? checkoutDisponivel
-                    ? `Contratar por ${selectedCiclo.valor_formatado}`
-                    : "Checkout indisponível"
-                  : "Escolha um ciclo para continuar"}
-              </Text>
-            </>
-          )}
-        </TouchableOpacity>
+                style={[
+                  styles.contratarButton,
+                  comprando && planoComprando === plano.id
+                    ? styles.contratarButtonLoading
+                    : null,
+                  !selectedCiclo &&
+                    !plano.is_plano_atual &&
+                    styles.contratarButtonDisabled,
+                  selectedCiclo &&
+                    !plano.is_plano_atual &&
+                    !checkoutDisponivel &&
+                    styles.contratarButtonDisabled,
+                ]}
+                onPress={() => handleContratar(plano)}
+                disabled={
+                  !selectedCiclo ||
+                  plano.is_plano_atual ||
+                  (comprando && planoComprando === plano.id) ||
+                  (selectedCiclo && !checkoutDisponivel)
+                }
+              >
+                {plano.is_plano_atual ? (
+                  <>
+                    <Feather name="check" size={18} color="#fff" />
+                    <Text style={styles.contratarButtonText}>Plano Ativo</Text>
+                  </>
+                ) : comprando && planoComprando === plano.id ? (
+                  <>
+                    <ActivityIndicator color="#fff" size="small" />
+                    <Text style={styles.contratarButtonText}>
+                      Processando...
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Feather name="shopping-cart" size={18} color="#fff" />
+                    <Text style={styles.contratarButtonText}>
+                      {selectedCiclo
+                        ? checkoutDisponivel
+                          ? `Contratar por ${selectedCiclo.valor_formatado}`
+                          : "Checkout indisponível"
+                        : "Escolha um ciclo para continuar"}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
 
-        {!plano.is_plano_atual && selectedCiclo && pixDisponivel && (
-          <TouchableOpacity
-            style={[
-              styles.pixButton,
-              pixLoading && planoComprando === plano.id
-                ? styles.pixButtonLoading
-                : null,
-            ]}
-            onPress={() => handlePagarPix(plano)}
-            disabled={pixLoading && planoComprando === plano.id}
-          >
-            {pixLoading && planoComprando === plano.id ? (
-              <>
-                <ActivityIndicator color="#fff" size="small" />
-                <Text style={styles.pixButtonText}>Gerando PIX...</Text>
-              </>
-            ) : (
-              <>
-                <Feather name="zap" size={18} color="#fff" />
-                <Text style={styles.pixButtonText}>Pagar com PIX</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        )}
+              {!plano.is_plano_atual && selectedCiclo && pixDisponivel && (
+                <TouchableOpacity
+                  style={[
+                    styles.pixButton,
+                    pixLoading && planoComprando === plano.id
+                      ? styles.pixButtonLoading
+                      : null,
+                  ]}
+                  onPress={() => handlePagarPix(plano)}
+                  disabled={pixLoading && planoComprando === plano.id}
+                >
+                  {pixLoading && planoComprando === plano.id ? (
+                    <>
+                      <ActivityIndicator color="#fff" size="small" />
+                      <Text style={styles.pixButtonText}>Gerando PIX...</Text>
+                    </>
+                  ) : (
+                    <>
+                      <Feather name="zap" size={18} color="#fff" />
+                      <Text style={styles.pixButtonText}>Pagar com PIX</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
             </>
           );
         })()}
@@ -973,6 +1018,75 @@ export default function PlanosScreen() {
         <View style={styles.centerContent}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Carregando planos...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Verificar se a permissão está sendo carregada
+  if (hasPermission === null) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.centerContent}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Verificando permissões...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Bloquear acesso se o usuário não tem permissão
+  if (hasPermission === false) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.headerTop}>
+          <TouchableOpacity
+            style={styles.headerBackButton}
+            onPress={() => router.replace("/(tabs)/checkin")}
+          >
+            <Feather name="arrow-left" size={24} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitleCentered}>Planos</Text>
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={styles.centerContent}>
+          <Feather name="lock" size={64} color="#dc2626" />
+          <Text
+            style={[
+              styles.loadingText,
+              { fontSize: 18, fontWeight: "600", marginTop: 16 },
+            ]}
+          >
+            Acesso Restrito
+          </Text>
+          <Text
+            style={[
+              styles.loadingText,
+              {
+                fontSize: 14,
+                color: "#6b7280",
+                marginTop: 8,
+                textAlign: "center",
+                paddingHorizontal: 20,
+              },
+            ]}
+          >
+            Apenas administradores podem acessar esta página.
+          </Text>
+          <TouchableOpacity
+            style={[
+              styles.headerBackButton,
+              {
+                marginTop: 24,
+                paddingHorizontal: 16,
+                paddingVertical: 10,
+                backgroundColor: colors.primary,
+              },
+            ]}
+            onPress={() => router.replace("/(tabs)/checkin")}
+          >
+            <Text style={{ color: "#fff", fontWeight: "600" }}>Voltar</Text>
+          </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
@@ -1235,7 +1349,9 @@ export default function PlanosScreen() {
             {pixData?.qr_code_base64 ? (
               <View style={styles.pixQrBox}>
                 <Image
-                  source={{ uri: `data:image/png;base64,${pixData.qr_code_base64}` }}
+                  source={{
+                    uri: `data:image/png;base64,${pixData.qr_code_base64}`,
+                  }}
                   style={styles.pixQrImage}
                 />
               </View>
