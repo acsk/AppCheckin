@@ -570,4 +570,169 @@ class AdminController
         ]));
         return $response->withHeader('Content-Type', 'application/json');
     }
+
+    /**
+     * Listar contratos de pacotes PENDENTES (aguardando pagamento)
+     * GET /admin/pacote-contratos/pendentes
+     */
+    public function listarContratosPendentes(Request $request, Response $response): Response
+    {
+        try {
+            $tenantId = (int) $request->getAttribute('tenantId');
+            $db = require __DIR__ . '/../../config/database.php';
+
+            $stmt = $db->prepare("
+                SELECT 
+                    pc.id as contrato_id,
+                    pc.status,
+                    pc.valor_total,
+                    pc.data_inicio,
+                    pc.data_fim,
+                    pc.created_at,
+                    pc.updated_at,
+                    p.nome as pacote_nome,
+                    p.qtd_beneficiarios,
+                    u.id as pagante_usuario_id,
+                    u.nome as pagante_nome,
+                    u.email as pagante_email,
+                    COUNT(DISTINCT pb.id) as beneficiarios_adicionados
+                FROM pacote_contratos pc
+                INNER JOIN pacotes p ON p.id = pc.pacote_id
+                INNER JOIN usuarios u ON u.id = pc.pagante_usuario_id
+                LEFT JOIN pacote_beneficiarios pb ON pb.pacote_contrato_id = pc.id
+                WHERE pc.tenant_id = ? AND pc.status = 'pendente'
+                GROUP BY pc.id
+                ORDER BY pc.created_at DESC
+            ");
+            $stmt->execute([$tenantId]);
+            $contratos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'contratos' => $contratos,
+                'total' => count($contratos)
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            error_log("[AdminController::listarContratosPendentes] Erro: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'message' => 'Erro ao listar contratos pendentes'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * Listar contratos de pacotes ATIVOS com dependentes
+     * GET /admin/pacote-contratos/ativos
+     * Mostra pagante + beneficiários para gerar matrículas
+     */
+    public function listarContratosAtivos(Request $request, Response $response): Response
+    {
+        try {
+            $tenantId = (int) $request->getAttribute('tenantId');
+            $db = require __DIR__ . '/../../config/database.php';
+
+            // Contratos ativos
+            $stmt = $db->prepare("
+                SELECT 
+                    pc.id as contrato_id,
+                    pc.status,
+                    pc.valor_total,
+                    pc.data_inicio,
+                    pc.data_fim,
+                    pc.created_at,
+                    pc.updated_at,
+                    p.id as pacote_id,
+                    p.nome as pacote_nome,
+                    p.qtd_beneficiarios,
+                    p.plano_id,
+                    pl.nome as plano_nome,
+                    u.id as pagante_usuario_id,
+                    u.nome as pagante_nome,
+                    u.email as pagante_email,
+                    COUNT(DISTINCT pb.id) as beneficiarios_adicionados
+                FROM pacote_contratos pc
+                INNER JOIN pacotes p ON p.id = pc.pacote_id
+                INNER JOIN planos pl ON pl.id = p.plano_id
+                INNER JOIN usuarios u ON u.id = pc.pagante_usuario_id
+                LEFT JOIN pacote_beneficiarios pb ON pb.pacote_contrato_id = pc.id
+                WHERE pc.tenant_id = ? AND pc.status = 'ativo'
+                GROUP BY pc.id
+                ORDER BY pc.data_inicio DESC
+            ");
+            $stmt->execute([$tenantId]);
+            $contratos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Para cada contrato ativo, buscar pagante e beneficiários
+            $contratosFormatados = [];
+            foreach ($contratos as $contrato) {
+                $contratoId = (int) $contrato['contrato_id'];
+                
+                // Buscar matrículas criadas para este contrato
+                $stmtMatriculas = $db->prepare("
+                    SELECT 
+                        m.id as matricula_id,
+                        m.aluno_id,
+                        a.nome as aluno_nome,
+                        sm.codigo as status_codigo,
+                        m.data_inicio,
+                        m.data_vencimento
+                    FROM matriculas m
+                    INNER JOIN alunos a ON a.id = m.aluno_id
+                    INNER JOIN status_matricula sm ON sm.id = m.status_id
+                    WHERE m.pacote_contrato_id = ?
+                    ORDER BY m.created_at ASC
+                ");
+                $stmtMatriculas->execute([$contratoId]);
+                $matriculas = $stmtMatriculas->fetchAll(\PDO::FETCH_ASSOC);
+
+                // Buscar pagante como aluno (se tiver)
+                $stmtPagante = $db->prepare("
+                    SELECT id, nome FROM alunos WHERE usuario_id = ? AND tenant_id = ? LIMIT 1
+                ");
+                $stmtPagante->execute([$contrato['pagante_usuario_id'], $tenantId]);
+                $pagante = $stmtPagante->fetch(\PDO::FETCH_ASSOC);
+
+                // Buscar beneficiários
+                $stmtBenef = $db->prepare("
+                    SELECT 
+                        pb.id as beneficiario_id,
+                        pb.aluno_id,
+                        a.nome,
+                        a.usuario_id
+                    FROM pacote_beneficiarios pb
+                    INNER JOIN alunos a ON a.id = pb.aluno_id
+                    WHERE pb.pacote_contrato_id = ?
+                    ORDER BY pb.created_at ASC
+                ");
+                $stmtBenef->execute([$contratoId]);
+                $beneficiarios = $stmtBenef->fetchAll(\PDO::FETCH_ASSOC);
+
+                $contratosFormatados[] = [
+                    'contrato' => $contrato,
+                    'pagante' => $pagante ?: null,
+                    'beneficiarios' => $beneficiarios,
+                    'matriculas_geradas' => $matriculas,
+                    'qtd_pessoas' => count($beneficiarios) + ($pagante ? 1 : 0),
+                    'qtd_matriculas_faltando' => max(0, (count($beneficiarios) + ($pagante ? 1 : 0)) - count($matriculas))
+                ];
+            }
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'contratos' => $contratosFormatados,
+                'total' => count($contratosFormatados)
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            error_log("[AdminController::listarContratosAtivos] Erro: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'message' => 'Erro ao listar contratos ativos'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
 }

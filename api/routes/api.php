@@ -1056,6 +1056,10 @@ return function ($app) {
         $group->post('/pacotes/contratos/{contratoId}/beneficiarios', [PacoteController::class, 'definirBeneficiarios']);
         $group->post('/pacotes/contratos/{contratoId}/confirmar-pagamento', [PacoteController::class, 'confirmarPagamento']);
         
+        // Contratos de Pacotes (admin - painel)
+        $group->get('/pacote-contratos/pendentes', [AdminController::class, 'listarContratosPendentes']);
+        $group->get('/pacote-contratos/ativos', [AdminController::class, 'listarContratosAtivos']);
+        
         // Modalidades
         $group->get('/modalidades', [ModalidadeController::class, 'index']);
         $group->get('/modalidades/{id}', [ModalidadeController::class, 'show']);
