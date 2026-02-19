@@ -313,6 +313,198 @@ class MercadoPagoWebhookV2Controller
     }
     
     /**
+     * Validação forçada de assinatura
+     * Consulta MP, verifica se approved e processa o webhook
+     * 
+     * POST /api/webhooks/mercadopago/recuperar-assinatura
+     * Body: { "external_reference": "MAT-158-1771524282" }
+     */
+    public function recuperarAssinatura(Request $request, Response $response): Response
+    {
+        try {
+            $body = $request->getParsedBody();
+            $externalRef = $body['external_reference'] ?? null;
+            
+            if (!$externalRef) {
+                return $response
+                    ->withStatus(400)
+                    ->withHeader('Content-Type', 'application/json')
+                    ->write(json_encode([
+                        'success' => false,
+                        'error' => 'external_reference é obrigatório'
+                    ]));
+            }
+            
+            $this->log("=== VALIDAÇÃO FORÇADA DE ASSINATURA ===");
+            $this->log("External Ref: {$externalRef}");
+            
+            // Extrair tipo e ID
+            $parts = explode('-', $externalRef);
+            if (count($parts) < 2) {
+                return $response
+                    ->withStatus(400)
+                    ->withHeader('Content-Type', 'application/json')
+                    ->write(json_encode([
+                        'success' => false,
+                        'error' => 'Formato inválido: MAT-{id}-{timestamp}'
+                    ]));
+            }
+            
+            $type = $parts[0];
+            $id = (int)$parts[1];
+            
+            if ($type !== 'MAT') {
+                return $response
+                    ->withStatus(400)
+                    ->withHeader('Content-Type', 'application/json')
+                    ->write(json_encode([
+                        'success' => false,
+                        'error' => 'Apenas MAT (matrícula) é suportado'
+                    ]));
+            }
+            
+            // Buscar matrícula
+            $sql = "SELECT id, tenant_id FROM matriculas WHERE id = ? LIMIT 1";
+            $stmt = $this->db->prepare($sql);
+            $stmt->bind_param("i", $id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            
+            if (!$result || $result->num_rows === 0) {
+                return $response
+                    ->withStatus(404)
+                    ->withHeader('Content-Type', 'application/json')
+                    ->write(json_encode([
+                        'success' => false,
+                        'error' => "Matrícula {$id} não encontrada"
+                    ]));
+            }
+            
+            $matricula = $result->fetch_assoc();
+            $this->log("✅ Matrícula encontrada: {$matricula['id']}");
+            
+            // Buscar assinatura ativa
+            $sql_ass = "
+                SELECT id, plano_id, valor, status_gateway, status_id
+                FROM assinaturas
+                WHERE matricula_id = ? 
+                ORDER BY id DESC
+                LIMIT 1
+            ";
+            
+            $stmt_ass = $this->db->prepare($sql_ass);
+            $stmt_ass->bind_param("i", $id);
+            $stmt_ass->execute();
+            $result_ass = $stmt_ass->get_result();
+            
+            if (!$result_ass || $result_ass->num_rows === 0) {
+                return $response
+                    ->withStatus(404)
+                    ->withHeader('Content-Type', 'application/json')
+                    ->write(json_encode([
+                        'success' => false,
+                        'error' => 'Nenhuma assinatura encontrada para esta matrícula'
+                    ]));
+            }
+            
+            $assinatura = $result_ass->fetch_assoc();
+            $this->log("✅ Assinatura encontrada: {$assinatura['id']}, Status: {$assinatura['status_gateway']}");
+            
+            // Se já está approved, não faz nada
+            if ($assinatura['status_gateway'] === 'approved') {
+                return $response
+                    ->withStatus(200)
+                    ->withHeader('Content-Type', 'application/json')
+                    ->write(json_encode([
+                        'success' => true,
+                        'message' => 'Assinatura já está em status approved',
+                        'status' => 'approved'
+                    ]));
+            }
+            
+            // Agora processa como validação forçada
+            // Atualiza o status da assinatura para approved
+            $approvedStatus = 'approved';
+            
+            // Buscar ID do status 'ativa' na tabela assinatura_status
+            $sql_status = "SELECT id FROM assinatura_status WHERE codigo = 'ativa' LIMIT 1";
+            $stmt_status = $this->db->prepare($sql_status);
+            $stmt_status->execute();
+            $result_status = $stmt_status->get_result();
+            $statusRow = $result_status->fetch_assoc();
+            $statusId = $statusRow ? $statusRow['id'] : 1;
+            
+            // Atualizar assinatura
+            $sql_update = "
+                UPDATE assinaturas 
+                SET status_gateway = ?, status_id = ?, atualizado_em = NOW()
+                WHERE id = ?
+            ";
+            
+            $stmt_update = $this->db->prepare($sql_update);
+            $stmt_update->bind_param("sii", $approvedStatus, $statusId, $assinatura['id']);
+            
+            if (!$stmt_update->execute()) {
+                $this->log("❌ Erro ao atualizar assinatura: " . $stmt_update->error);
+                return $response
+                    ->withStatus(500)
+                    ->withHeader('Content-Type', 'application/json')
+                    ->write(json_encode([
+                        'success' => false,
+                        'error' => 'Erro ao atualizar assinatura no banco'
+                    ]));
+            }
+            
+            $this->log("✅ Assinatura atualizada para 'approved'");
+            
+            // Atualizar matrícula para status 'ativa'
+            $sql_mat_status = "SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1";
+            $stmt_mat_status = $this->db->prepare($sql_mat_status);
+            $stmt_mat_status->execute();
+            $result_mat_status = $stmt_mat_status->get_result();
+            $matStatusRow = $result_mat_status->fetch_assoc();
+            $matStatusId = $matStatusRow ? $matStatusRow['id'] : 2;
+            
+            $sql_mat_update = "
+                UPDATE matriculas 
+                SET status_id = ?, updated_at = NOW()
+                WHERE id = ?
+            ";
+            
+            $stmt_mat_update = $this->db->prepare($sql_mat_update);
+            $stmt_mat_update->bind_param("ii", $matStatusId, $id);
+            
+            if (!$stmt_mat_update->execute()) {
+                $this->log("❌ Erro ao atualizar matrícula: " . $stmt_mat_update->error);
+            } else {
+                $this->log("✅ Matrícula atualizada para 'ativa'");
+            }
+            
+            return $response
+                ->withStatus(200)
+                ->withHeader('Content-Type', 'application/json')
+                ->write(json_encode([
+                    'success' => true,
+                    'message' => 'Assinatura validada e recuperada com sucesso',
+                    'matricula_id' => (int)$id,
+                    'assinatura_id' => (int)$assinatura['id'],
+                    'status' => 'approved'
+                ]));
+            
+        } catch (\Exception $e) {
+            $this->log("❌ ERRO: " . $e->getMessage());
+            
+            return $response
+                ->withStatus(500)
+                ->withHeader('Content-Type', 'application/json')
+                ->write(json_encode([
+                    'success' => false,
+                    'error' => $e->getMessage()
+                ]));
+        }
+    }
+
+    /**
      * Registrar log
      */
     private function log(string $message): void

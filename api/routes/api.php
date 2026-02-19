@@ -231,6 +231,11 @@ return function ($app) {
     // Webhook Mercado Pago V2 - usando SDK oficial (sem autenticação)
     $app->post('/api/webhooks/mercadopago/v2', [\App\Controllers\MercadoPagoWebhookV2Controller::class, 'processar']);
     
+    // Endpoint de validação forçada de assinatura (protegido)
+    // POST /api/webhooks/mercadopago/recuperar-assinatura
+    // Body: { "external_reference": "MAT-158-1771524282" }
+    $app->post('/api/webhooks/mercadopago/recuperar-assinatura', [\App\Controllers\MercadoPagoWebhookV2Controller::class, 'recuperarAssinatura'])->add(AuthMiddleware::class);
+    
     // Webhook Teste - Simular webhook de pagamento (DEV/TEST)
     // Exemplo: GET /api/webhooks/mercadopago/test?external_reference=MAT-1-1708&status=approved&payment_type=credit_card
     $app->get('/api/webhooks/mercadopago/test', [MercadoPagoWebhookController::class, 'simularWebhook']);
