@@ -255,8 +255,20 @@ export default function MinhasAssinaturasScreen() {
   useEffect(() => {
     const checkAdminStatus = async () => {
       try {
+        // Verificar se existe token
+        const token = await AsyncStorage.getItem("@appcheckin:token");
+        if (!token) {
+          console.warn("❌ Token não encontrado - redirecionando para login");
+          router.replace("/(auth)/login");
+          setIsUserAdmin(false);
+          return;
+        }
+
         const user = await authService.getCurrentUser();
         if (!user) {
+          console.warn("⚠️ Usuário não autenticado - redirecionando para login");
+          await AsyncStorage.removeItem("@appcheckin:token");
+          router.replace("/(auth)/login");
           setIsUserAdmin(false);
           return;
         }
@@ -275,7 +287,7 @@ export default function MinhasAssinaturasScreen() {
     };
 
     checkAdminStatus();
-  }, []);
+  }, [router]);
 
   useFocusEffect(
     useCallback(() => {
@@ -846,7 +858,20 @@ export default function MinhasAssinaturasScreen() {
       {isUserAdmin && (
         <TouchableOpacity
           style={styles.botaoVerPlanos}
-          onPress={() => router.push("/planos")}
+          onPress={async () => {
+            try {
+              // Verificar se existe token antes de navegar
+              const token = await AsyncStorage.getItem("@appcheckin:token");
+              if (!token) {
+                console.warn("⚠️ Token não encontrado - redirecionando para login");
+                router.replace("/(auth)/login");
+                return;
+              }
+              router.push("/planos");
+            } catch (err) {
+              console.error("❌ Erro ao navegar para planos:", err);
+            }
+          }}
         >
           <Feather name="shopping-cart" size={18} color="#fff" />
           <Text style={styles.botaoVerPlanosText}>Ver Planos Disponíveis</Text>

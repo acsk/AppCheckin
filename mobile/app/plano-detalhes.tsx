@@ -283,9 +283,20 @@ export default function PlanoDetalhesScreen() {
   useEffect(() => {
     const checkPermission = async () => {
       try {
+        // Verificar se existe token
+        const token = await AsyncStorage.getItem("@appcheckin:token");
+        if (!token) {
+          console.warn("❌ Token não encontrado - redirecionando para login");
+          router.replace("/(auth)/login");
+          setHasPermission(false);
+          return;
+        }
+
         const user = await authService.getCurrentUser();
         if (!user) {
-          console.warn("⚠️ Usuário não autenticado");
+          console.warn("⚠️ Usuário não autenticado - redirecionando para login");
+          await AsyncStorage.removeItem("@appcheckin:token");
+          router.replace("/(auth)/login");
           setHasPermission(false);
           return;
         }

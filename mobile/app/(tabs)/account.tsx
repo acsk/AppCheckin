@@ -1541,9 +1541,20 @@ export default function AccountScreen() {
             {isUserAdmin && (
               <TouchableOpacity
                 style={styles.sidebarMenuItem}
-                onPress={() => {
-                  closeSidebar();
-                  router.push("/planos");
+                onPress={async () => {
+                  try {
+                    // Verificar se existe token antes de navegar
+                    const token = await AsyncStorage.getItem("@appcheckin:token");
+                    if (!token) {
+                      console.warn("⚠️ Token não encontrado - redirecionando para login");
+                      router.replace("/(auth)/login");
+                      return;
+                    }
+                    closeSidebar();
+                    router.push("/planos");
+                  } catch (err) {
+                    console.error("❌ Erro ao navegar para planos:", err);
+                  }
                 }}
               >
                 <View style={styles.sidebarMenuItemIcon}>
