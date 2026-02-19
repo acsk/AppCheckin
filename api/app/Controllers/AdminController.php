@@ -763,7 +763,7 @@ class AdminController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
 
-            // Buscar contrato
+            // Buscar contrato (incluindo assinatura_id)
             $stmtContrato = $db->prepare("
                 SELECT pc.*, p.plano_id, p.plano_ciclo_id, p.valor_total,
                        COALESCE(pc2.permite_recorrencia, 0) as permite_recorrencia
@@ -879,14 +879,17 @@ class AdminController
 
             $matriculasCriadas = [];
 
-            // Buscar assinatura já criada em pagarPacote (com pacote_contrato_id)
-            $stmtAssinExistente = $db->prepare("
-                SELECT id, status_id FROM assinaturas
-                WHERE pacote_contrato_id = ? AND tenant_id = ?
-                LIMIT 1
-            ");
-            $stmtAssinExistente->execute([$contratoId, $tenantId]);
-            $assinaturaPacote = $stmtAssinExistente->fetch(\PDO::FETCH_ASSOC);
+            // Buscar assinatura criada em pagarPacote (via pacote_contratos.assinatura_id)
+            $assinaturaPacote = null;
+            if (!empty($contrato['assinatura_id'])) {
+                $stmtAssinExistente = $db->prepare("
+                    SELECT id, status_id FROM assinaturas
+                    WHERE id = ? AND tenant_id = ?
+                    LIMIT 1
+                ");
+                $stmtAssinExistente->execute([(int) $contrato['assinatura_id'], $tenantId]);
+                $assinaturaPacote = $stmtAssinExistente->fetch(\PDO::FETCH_ASSOC);
+            }
             
             error_log("[AdminController::gerarMatriculasPackage] Assinatura do pacote: " . ($assinaturaPacote ? 'encontrada #' . $assinaturaPacote['id'] : 'não encontrada'));
 

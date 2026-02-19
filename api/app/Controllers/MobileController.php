@@ -3946,15 +3946,16 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
             }
 
-            // Atualizar contrato com payment_url
+            // Atualizar contrato com payment_url e assinatura_id
             $stmtUpdate = $this->db->prepare("
                 UPDATE pacote_contratos
-                SET payment_url = ?, payment_preference_id = ?, updated_at = NOW()
+                SET payment_url = ?, payment_preference_id = ?, assinatura_id = ?, updated_at = NOW()
                 WHERE id = ? AND tenant_id = ?
             ");
             $stmtUpdate->execute([
                 $preferencia['init_point'] ?? null,
                 $preferencia['id'] ?? null,
+                $assinaturaId,
                 $contratoId,
                 $tenantId
             ]);
