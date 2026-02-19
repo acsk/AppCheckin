@@ -492,17 +492,19 @@ export default function MatriculaDetalheScreen() {
               <Text className="text-lg font-extrabold text-emerald-800">{formatCurrency(matricula.valor)}</Text>
             </View>
 
-            {/* Botão Editar Data de Vencimento */}
-            <View className="border-t border-slate-100 px-5 py-3">
-              <Pressable
-                onPress={handleAbrirModalEditarVencimento}
-                className="flex-row items-center justify-center gap-2 rounded-lg bg-orange-500 py-3"
-                style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-              >
-                <Feather name="calendar" size={16} color="#fff" />
-                <Text className="text-sm font-semibold text-white">Alterar Data de Vencimento</Text>
-              </Pressable>
-            </View>
+            {/* Botão Editar Data de Vencimento (somente quando não há valor) */}
+            {!(matricula?.valor > 0) && (
+              <View className="border-t border-slate-100 px-5 py-3">
+                <Pressable
+                  onPress={handleAbrirModalEditarVencimento}
+                  className="flex-row items-center justify-center gap-2 rounded-lg bg-orange-500 py-3"
+                  style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                >
+                  <Feather name="calendar" size={16} color="#fff" />
+                  <Text className="text-sm font-semibold text-white">Alterar Data de Vencimento</Text>
+                </Pressable>
+              </View>
+            )}
           </View>
 
           {/* Faturas (todas as parcelas em uma tabela única) */}
