@@ -665,56 +665,62 @@ class AdminController
                 // Para cada contrato ativo, buscar pagante e beneficiários
                 $contratosFormatados = [];
                 foreach ($contratos as $contrato) {
-                    $contratoId = (int) $contrato['contrato_id'];
-                    
-                    // Buscar matrículas criadas para este contrato
-                    $stmtMatriculas = $db->prepare("
-                        SELECT 
-                            m.id as matricula_id,
-                            m.aluno_id,
-                            a.nome as aluno_nome,
-                            sm.codigo as status_codigo,
-                            m.data_inicio,
-                            m.data_vencimento
-                        FROM matriculas m
-                        INNER JOIN alunos a ON a.id = m.aluno_id
-                        INNER JOIN status_matricula sm ON sm.id = m.status_id
-                        WHERE m.pacote_contrato_id = ?
-                        ORDER BY m.created_at ASC
-                    ");
-                    $stmtMatriculas->execute([$contratoId]);
-                    $matriculas = $stmtMatriculas->fetchAll(\PDO::FETCH_ASSOC);
+                    try {
+                        $contratoId = (int) $contrato['contrato_id'];
+                        
+                        // Buscar matrículas criadas para este contrato
+                        $stmtMatriculas = $db->prepare("
+                            SELECT 
+                                m.id as matricula_id,
+                                m.aluno_id,
+                                a.nome as aluno_nome,
+                                sm.codigo as status_codigo,
+                                m.data_inicio,
+                                m.data_vencimento
+                            FROM matriculas m
+                            INNER JOIN alunos a ON a.id = m.aluno_id
+                            INNER JOIN status_matricula sm ON sm.id = m.status_id
+                            WHERE m.pacote_contrato_id = ? AND m.tenant_id = ?
+                            ORDER BY m.created_at ASC
+                        ");
+                        $stmtMatriculas->execute([$contratoId, $tenantId]);
+                        $matriculas = $stmtMatriculas->fetchAll(\PDO::FETCH_ASSOC);
 
-                    // Buscar pagante como aluno (se tiver)
-                    $stmtPagante = $db->prepare("
-                        SELECT id, nome FROM alunos WHERE usuario_id = ? AND tenant_id = ? LIMIT 1
-                    ");
-                    $stmtPagante->execute([$contrato['pagante_usuario_id'], $tenantId]);
-                    $pagante = $stmtPagante->fetch(\PDO::FETCH_ASSOC);
+                        // Buscar pagante como aluno (se tiver)
+                        $stmtPagante = $db->prepare("
+                            SELECT id, nome FROM alunos WHERE usuario_id = ? AND tenant_id = ? LIMIT 1
+                        ");
+                        $stmtPagante->execute([$contrato['pagante_usuario_id'], $tenantId]);
+                        $pagante = $stmtPagante->fetch(\PDO::FETCH_ASSOC);
 
-                    // Buscar beneficiários
-                    $stmtBenef = $db->prepare("
-                        SELECT 
-                            pb.id as beneficiario_id,
-                            pb.aluno_id,
-                            a.nome,
-                            a.usuario_id
-                        FROM pacote_beneficiarios pb
-                        INNER JOIN alunos a ON a.id = pb.aluno_id
-                        WHERE pb.pacote_contrato_id = ?
-                        ORDER BY pb.created_at ASC
-                    ");
-                    $stmtBenef->execute([$contratoId]);
-                    $beneficiarios = $stmtBenef->fetchAll(\PDO::FETCH_ASSOC);
+                        // Buscar beneficiários
+                        $stmtBenef = $db->prepare("
+                            SELECT 
+                                pb.id as beneficiario_id,
+                                pb.aluno_id,
+                                a.nome,
+                                a.usuario_id
+                            FROM pacote_beneficiarios pb
+                            INNER JOIN alunos a ON a.id = pb.aluno_id
+                            WHERE pb.pacote_contrato_id = ?
+                            ORDER BY pb.created_at ASC
+                        ");
+                        $stmtBenef->execute([$contratoId]);
+                        $beneficiarios = $stmtBenef->fetchAll(\PDO::FETCH_ASSOC);
 
-                    $contratosFormatados[] = [
-                        'contrato' => $contrato,
-                        'pagante' => $pagante ?: null,
-                        'beneficiarios' => $beneficiarios,
-                        'matriculas_geradas' => $matriculas,
-                        'qtd_pessoas' => count($beneficiarios) + ($pagante ? 1 : 0),
-                        'qtd_matriculas_faltando' => max(0, (count($beneficiarios) + ($pagante ? 1 : 0)) - count($matriculas))
-                    ];
+                        $contratosFormatados[] = [
+                            'contrato' => $contrato,
+                            'pagante' => $pagante ?: null,
+                            'beneficiarios' => $beneficiarios,
+                            'matriculas_geradas' => $matriculas,
+                            'qtd_pessoas' => count($beneficiarios) + ($pagante ? 1 : 0),
+                            'qtd_matriculas_faltando' => max(0, (count($beneficiarios) + ($pagante ? 1 : 0)) - count($matriculas))
+                        ];
+                    } catch (\Exception $loopError) {
+                        error_log("[AdminController::listarContratosPackage] Erro no loop contrato {$contratoId}: " . $loopError->getMessage());
+                        error_log("[AdminController::listarContratosPackage] Stack: " . $loopError->getTraceAsString());
+                        throw $loopError; // Re-throw para ser capturado pelo catch externo
+                    }
                 }
 
                 $response->getBody()->write(json_encode([
