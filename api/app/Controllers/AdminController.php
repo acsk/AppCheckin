@@ -912,7 +912,7 @@ class AdminController
                     $stmtUpdate = $db->prepare("
                         UPDATE matriculas
                         SET status_id = ?, data_vencimento = ?, proxima_data_vencimento = ?,
-                            valor = ?, valor_rateado = ?, updated_at = NOW()
+                            valor = ?, valor_rateado = ?
                         WHERE id = ? AND tenant_id = ?
                     ");
                     $stmtUpdate->execute([
@@ -967,7 +967,7 @@ class AdminController
                     $stmtUpdateAssinatura = $db->prepare("
                         UPDATE assinaturas
                         SET matricula_id = ?, aluno_id = ?, status_id = (SELECT id FROM assinatura_status WHERE codigo = 'ativa' LIMIT 1),
-                            status_gateway = 'approved', valor = ?, updated_at = NOW()
+                            status_gateway = 'approved', valor = ?
                         WHERE id = ? AND tenant_id = ?
                     ");
                     $stmtUpdateAssinatura->execute([
