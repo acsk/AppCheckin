@@ -25,12 +25,18 @@ if (file_exists($env_file)) {
 // ID do último payment do webhook
 $payment_id = '7025650338';  // Do webhook que vimos: "id":"7025650338"
 
-$mp_token = $env_vars['MERCADOPAGO_ACCESS_TOKEN'] ?? getenv('MERCADOPAGO_ACCESS_TOKEN');
+// Determinar qual token usar (test ou prod)
+$environment = $env_vars['MP_ENVIRONMENT'] ?? 'test';
+$token_key = ($environment === 'prod') ? 'MP_ACCESS_TOKEN_PROD' : 'MP_ACCESS_TOKEN_TEST';
+$mp_token = $env_vars[$token_key] ?? getenv($token_key);
+
 if (!$mp_token) {
-    echo "❌ MERCADOPAGO_ACCESS_TOKEN não configurado\n";
+    echo "❌ Token MP não configurado (tentei usar {$token_key})\n";
     echo "Variáveis carregadas: " . json_encode(array_keys($env_vars)) . "\n";
     exit(1);
 }
+
+echo "✅ Token MP encontrado (ambiente: {$environment})\n";
 
 echo "🔍 Investigando payment ID: $payment_id\n";
 echo "───────────────────────────────────────────────────────────────\n\n";
