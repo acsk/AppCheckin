@@ -743,4 +743,262 @@ class AdminController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
     }
+
+    /**
+     * Gerar matrículas para um pacote específico
+     * POST /admin/pacote-contratos/{contratoId}/gerar-matriculas
+     */
+    public function gerarMatriculasPackage(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $tenantId = (int) $request->getAttribute('tenantId');
+            $contratoId = (int) ($args['contratoId'] ?? 0);
+            $db = require __DIR__ . '/../../config/database.php';
+
+            if ($contratoId <= 0) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'contratoId inválido'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Buscar contrato
+            $stmtContrato = $db->prepare("
+                SELECT pc.*, p.plano_id, p.plano_ciclo_id, p.valor_total,
+                       COALESCE(pc2.permite_recorrencia, 0) as permite_recorrencia
+                FROM pacote_contratos pc
+                INNER JOIN pacotes p ON p.id = pc.pacote_id
+                LEFT JOIN plano_ciclos pc2 ON pc2.id = p.plano_ciclo_id
+                WHERE pc.id = ? AND pc.tenant_id = ?
+                LIMIT 1
+            ");
+            $stmtContrato->execute([$contratoId, $tenantId]);
+            $contrato = $stmtContrato->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$contrato) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'Contrato não encontrado'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            if (($contrato['status'] ?? '') !== 'ativo') {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'Contrato não está ativo. Status atual: ' . $contrato['status']
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            $db->beginTransaction();
+
+            // Buscar PAGANTE
+            $pagante_usuario_id = $contrato['pagante_usuario_id'] ?? null;
+            $pagante_aluno_id = null;
+            
+            if ($pagante_usuario_id) {
+                $stmtAlunoUsuario = $db->prepare("
+                    SELECT id FROM alunos
+                    WHERE usuario_id = ?
+                    ORDER BY id ASC
+                    LIMIT 1
+                ");
+                $stmtAlunoUsuario->execute([$pagante_usuario_id]);
+                $pagante_aluno_id = (int) ($stmtAlunoUsuario->fetchColumn() ?: 0);
+            }
+
+            // Buscar BENEFICIÁRIOS
+            $stmtBenef = $db->prepare("
+                SELECT pb.id, pb.aluno_id
+                FROM pacote_beneficiarios pb
+                WHERE pb.pacote_contrato_id = ?
+            ");
+            $stmtBenef->execute([$contratoId]);
+            $beneficiarios = $stmtBenef->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Montar lista COMPLETA
+            $todasAsMatriculas = [];
+            if ($pagante_aluno_id) {
+                $todasAsMatriculas[] = [
+                    'id' => 'pagante_' . $pagante_usuario_id,
+                    'aluno_id' => $pagante_aluno_id,
+                    'tipo' => 'pagante'
+                ];
+            }
+            
+            foreach ($beneficiarios as $b) {
+                $b['tipo'] = 'beneficiario';
+                $todasAsMatriculas[] = $b;
+            }
+
+            if (empty($todasAsMatriculas)) {
+                $db->rollBack();
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'Nenhuma matrícula para criar (sem pagante e sem beneficiários)'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            $valorTotal = (float) $contrato['valor_total'];
+            $valorRateado = $valorTotal / max(1, count($todasAsMatriculas));
+
+            // Data de início/fim
+            $dataInicio = $contrato['data_inicio'] ?? date('Y-m-d');
+            $dataFim = $contrato['data_fim'];
+
+            // Buscar status ativa
+            $stmtStatusAtiva = $db->prepare("SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1");
+            $stmtStatusAtiva->execute();
+            $statusAtivaId = (int) ($stmtStatusAtiva->fetchColumn() ?: 1);
+
+            $stmtMotivo = $db->prepare("SELECT id FROM motivo_matricula WHERE codigo = 'nova' LIMIT 1");
+            $stmtMotivo->execute();
+            $motivoId = (int) ($stmtMotivo->fetchColumn() ?: 1);
+
+            $matriculasCriadas = [];
+
+            foreach ($todasAsMatriculas as $ben) {
+                $ehPagante = ($ben['tipo'] === 'pagante');
+                $tipoCobranca = (bool) ($contrato['permite_recorrencia'] ?? false) ? 'recorrente' : 'avulso';
+                
+                // Verificar se já existe
+                $stmtVerificar = $db->prepare("
+                    SELECT id, status_id
+                    FROM matriculas
+                    WHERE aluno_id = ? AND pacote_contrato_id = ? AND tenant_id = ?
+                    ORDER BY id DESC LIMIT 1
+                ");
+                $stmtVerificar->execute([(int) $ben['aluno_id'], $contratoId, $tenantId]);
+                $matriculaExistente = $stmtVerificar->fetch(\PDO::FETCH_ASSOC);
+                
+                if ($matriculaExistente) {
+                    // ATUALIZAR
+                    $stmtUpdate = $db->prepare("
+                        UPDATE matriculas
+                        SET status_id = ?, data_vencimento = ?, proxima_data_vencimento = ?,
+                            valor = ?, valor_rateado = ?, updated_at = NOW()
+                        WHERE id = ? AND tenant_id = ?
+                    ");
+                    $stmtUpdate->execute([
+                        $statusAtivaId,
+                        $dataFim,
+                        $dataFim,
+                        $valorRateado,
+                        $valorRateado,
+                        $matriculaExistente['id'],
+                        $tenantId
+                    ]);
+                    $matriculaId = (int) $matriculaExistente['id'];
+                } else {
+                    // CRIAR
+                    $stmtMat = $db->prepare("
+                        INSERT INTO matriculas
+                        (tenant_id, aluno_id, plano_id, plano_ciclo_id, tipo_cobranca,
+                         data_matricula, data_inicio, data_vencimento, valor, valor_rateado,
+                         status_id, motivo_id, proxima_data_vencimento, pacote_contrato_id, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                    ");
+                    $stmtMat->execute([
+                        $tenantId,
+                        (int) $ben['aluno_id'],
+                        (int) $contrato['plano_id'],
+                        !empty($contrato['plano_ciclo_id']) ? (int) $contrato['plano_ciclo_id'] : null,
+                        $tipoCobranca,
+                        $dataInicio,
+                        $dataInicio,
+                        $dataFim,
+                        $valorRateado,
+                        $valorRateado,
+                        $statusAtivaId,
+                        $motivoId,
+                        $dataFim,
+                        $contratoId
+                    ]);
+                    $matriculaId = (int) $db->lastInsertId();
+                }
+
+                $matriculasCriadas[] = [
+                    'aluno_id' => $ben['aluno_id'],
+                    'matricula_id' => $matriculaId,
+                    'tipo' => $ben['tipo'],
+                    'valor_rateado' => $valorRateado,
+                    'vencimento' => $dataFim
+                ];
+
+                // Se é pagante e recorrente, criar/atualizar assinatura
+                if ($ehPagante && (bool) ($contrato['permite_recorrencia'] ?? false)) {
+                    $stmtStatusAssinatura = $db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'ativa' LIMIT 1");
+                    $stmtStatusAssinatura->execute();
+                    $statusAssinaturaId = $stmtStatusAssinatura->fetchColumn() ?: 1;
+
+                    $stmtAssinComprovacao = $db->prepare("
+                        SELECT id FROM assinaturas
+                        WHERE matricula_id = ? AND tenant_id = ?
+                        LIMIT 1
+                    ");
+                    $stmtAssinComprovacao->execute([$matriculaId, $tenantId]);
+                    $assinaturaExistente = $stmtAssinComprovacao->fetchColumn();
+
+                    if (!$assinaturaExistente) {
+                        $stmtGateway = $db->prepare("SELECT id FROM assinatura_gateways WHERE codigo = 'mercadopago' LIMIT 1");
+                        $stmtGateway->execute();
+                        $gatewayId = (int) ($stmtGateway->fetchColumn() ?: 1);
+
+                        $stmtFreq = $db->prepare("SELECT id FROM assinatura_frequencias WHERE codigo = 'mensal' LIMIT 1");
+                        $stmtFreq->execute();
+                        $frequenciaId = (int) ($stmtFreq->fetchColumn() ?: 4);
+
+                        $stmtAssinatura = $db->prepare("
+                            INSERT INTO assinaturas
+                            (tenant_id, matricula_id, aluno_id, plano_id,
+                             gateway_id, external_reference, status_id, status_gateway,
+                             valor, frequencia_id, dia_cobranca,
+                             data_inicio, proxima_cobranca, tipo_cobranca, criado_em, atualizado_em)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, 'approved', ?, ?, ?, CURDATE(), ?, 'recorrente', NOW(), NOW())
+                        ");
+                        $stmtAssinatura->execute([
+                            $tenantId,
+                            $matriculaId,
+                            (int) $ben['aluno_id'],
+                            (int) $contrato['plano_id'],
+                            $gatewayId,
+                            'pacote_' . $contratoId . '_' . $matriculaId,
+                            $statusAssinaturaId,
+                            $valorRateado,
+                            $frequenciaId,
+                            (int) date('d'),
+                            $dataFim
+                        ]);
+                    }
+                }
+            }
+
+            $db->commit();
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'message' => 'Matrículas geradas com sucesso',
+                'contrato_id' => $contratoId,
+                'matriculas_criadas' => count($matriculasCriadas),
+                'matriculas' => $matriculasCriadas
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json');
+
+        } catch (\Exception $e) {
+            if (isset($db) && $db->inTransaction()) {
+                $db->rollBack();
+            }
+            error_log("[AdminController::gerarMatriculasPackage] Erro: " . $e->getMessage());
+            error_log("[AdminController::gerarMatriculasPackage] Stack: " . $e->getTraceAsString());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'message' => 'Erro ao gerar matrículas',
+                'error' => $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
 }

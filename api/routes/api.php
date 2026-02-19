@@ -1058,6 +1058,7 @@ return function ($app) {
         
         // Contratos de Pacotes (admin - painel) - filtro por status
         $group->get('/pacote-contratos', [AdminController::class, 'listarContratosPackage']);
+        $group->post('/pacote-contratos/{contratoId}/gerar-matriculas', [AdminController::class, 'gerarMatriculasPackage']);
         
         // Modalidades
         $group->get('/modalidades', [ModalidadeController::class, 'index']);
