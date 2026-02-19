@@ -5,6 +5,7 @@ namespace App\Controllers;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Services\MercadoPagoService;
+use OpenApi\Attributes as OA;
 
 /**
  * Controller para processar webhooks do Mercado Pago
@@ -1436,36 +1437,36 @@ class MercadoPagoWebhookController
      * Exemplo:
      * GET /api/webhooks/mercadopago/test?external_reference=MAT-123-1708380000&status=approved&payment_type=credit_card
      */
-    #[\OpenApi\Attributes\Get(
+    #[OA\Get(
         path: "/api/webhooks/mercadopago/test",
         summary: "Simular webhook de pagamento",
         description: "Simula um webhook de pagamento do Mercado Pago para testes. Cria um payment_id fake, processa o pagamento e atualiza assinatura/matrícula. Útil para simular fluxos de pagamento sem integração real com MP.",
         tags: ["Webhook - Testes"],
         parameters: [
-            new \OpenApi\Attributes\Parameter(
+            new OA\Parameter(
                 name: "external_reference",
                 in: "query",
                 description: "Referência externa do pagamento. Formato: MAT-{matricula_id}-{timestamp} ou PAC-{contrato_id}-{timestamp}",
                 required: false,
-                schema: new \OpenApi\Attributes\Schema(type: "string", example: "MAT-123-1708380000")
+                schema: new OA\Schema(type: "string", example: "MAT-123-1708380000")
             ),
-            new \OpenApi\Attributes\Parameter(
+            new OA\Parameter(
                 name: "status",
                 in: "query",
                 description: "Status do pagamento simulado",
                 required: false,
-                schema: new \OpenApi\Attributes\Schema(
+                schema: new OA\Schema(
                     type: "string",
                     enum: ["pending", "approved", "rejected", "authorized"],
                     default: "approved"
                 )
             ),
-            new \OpenApi\Attributes\Parameter(
+            new OA\Parameter(
                 name: "payment_type",
                 in: "query",
                 description: "Tipo de método de pagamento simulado",
                 required: false,
-                schema: new \OpenApi\Attributes\Schema(
+                schema: new OA\Schema(
                     type: "string",
                     enum: ["credit_card", "pix", "boleto"],
                     default: "credit_card"
@@ -1473,33 +1474,33 @@ class MercadoPagoWebhookController
             )
         ],
         responses: [
-            new \OpenApi\Attributes\Response(
+            new OA\Response(
                 response: 200,
                 description: "Webhook simulado com sucesso",
-                content: new \OpenApi\Attributes\JsonContent(
+                content: new OA\JsonContent(
                     properties: [
-                        new \OpenApi\Attributes\Property(property: "success", type: "boolean", example: true),
-                        new \OpenApi\Attributes\Property(property: "message", type: "string", example: "Webhook de teste simulado com sucesso"),
-                        new \OpenApi\Attributes\Property(
+                        new OA\Property(property: "success", type: "boolean", example: true),
+                        new OA\Property(property: "message", type: "string", example: "Webhook de teste simulado com sucesso"),
+                        new OA\Property(
                             property: "data",
                             type: "object",
                             properties: [
-                                new \OpenApi\Attributes\Property(property: "payment_id", type: "string", example: "1234567890"),
-                                new \OpenApi\Attributes\Property(property: "external_reference", type: "string", example: "MAT-123-1708380000"),
-                                new \OpenApi\Attributes\Property(property: "status", type: "string", example: "approved"),
-                                new \OpenApi\Attributes\Property(property: "payment_type", type: "string", example: "credit_card"),
-                                new \OpenApi\Attributes\Property(property: "tenant_id", type: "integer", example: 1),
-                                new \OpenApi\Attributes\Property(property: "__test__", type: "boolean", example: true)
+                                new OA\Property(property: "payment_id", type: "string", example: "1234567890"),
+                                new OA\Property(property: "external_reference", type: "string", example: "MAT-123-1708380000"),
+                                new OA\Property(property: "status", type: "string", example: "approved"),
+                                new OA\Property(property: "payment_type", type: "string", example: "credit_card"),
+                                new OA\Property(property: "tenant_id", type: "integer", example: 1),
+                                new OA\Property(property: "__test__", type: "boolean", example: true)
                             ]
                         )
                     ]
                 )
             ),
-            new \OpenApi\Attributes\Response(
+            new OA\Response(
                 response: 400,
                 description: "Status inválido ou parâmetro mal formatado"
             ),
-            new \OpenApi\Attributes\Response(
+            new OA\Response(
                 response: 500,
                 description: "Erro ao processar webhook simulado"
             )
