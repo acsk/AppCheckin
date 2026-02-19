@@ -17,7 +17,15 @@ $status = $argv[2] ?? 'approved';
 $paymentType = $argv[3] ?? 'credit_card';
 
 // URL do endpoint de teste
-$baseUrl = 'https://appcheckin.com.br/api';
+// Tentar usar localhost em primeiro lugar (para servidor local)
+// Se estiver em produção com domínio, usar: https://appcheckin.com.br/api
+$baseUrl = 'http://localhost:8000/api';
+if (!empty($_ENV['APP_URL'])) {
+    $baseUrl = $_ENV['APP_URL'] . '/api';
+} elseif (getenv('APP_URL')) {
+    $baseUrl = getenv('APP_URL') . '/api';
+}
+
 $testUrl = "{$baseUrl}/webhooks/mercadopago/test";
 
 // Montar URL com query parameters
