@@ -82,8 +82,7 @@ $sql = "
         matricula_id,
         gateway_assinatura_id,
         external_reference,
-        status_gateway,
-        ultimo_sincronizado = IF(updated_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR), 'Sim', 'Não') as sincronizado_recentemente
+        status_gateway
     FROM assinaturas
     ORDER BY id
 ";
