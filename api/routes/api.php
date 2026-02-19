@@ -228,6 +228,9 @@ return function ($app) {
     // Webhook Mercado Pago (sem autenticação - MP precisa acessar)
     $app->post('/api/webhooks/mercadopago', [MercadoPagoWebhookController::class, 'processarWebhook']);
     
+    // Webhook Mercado Pago V2 - usando SDK oficial (sem autenticação)
+    $app->post('/api/webhooks/mercadopago/v2', [\App\Controllers\MercadoPagoWebhookV2Controller::class, 'processar']);
+    
     // Endpoints de Debug para Webhook MP (protegidos por Admin)
     $app->get('/api/webhooks/mercadopago/list', [MercadoPagoWebhookController::class, 'listarWebhooks'])->add(AdminMiddleware::class)->add(AuthMiddleware::class);
     $app->get('/api/webhooks/mercadopago/show/{id}', [MercadoPagoWebhookController::class, 'mostrarWebhook'])->add(AdminMiddleware::class)->add(AuthMiddleware::class);

@@ -57,6 +57,10 @@ class ComposerStaticInit8fec87e7d05f5790afda9b873a3dda8e
         array (
             'OpenApi\\' => 8,
         ),
+        'M' =>
+        array (
+            'MercadoPago\\' => 12,
+        ),
         'G' =>
         array (
             'GuzzleHttp\\Psr7\\' => 16,
@@ -186,6 +190,10 @@ class ComposerStaticInit8fec87e7d05f5790afda9b873a3dda8e
         'OpenApi\\' =>
         array (
             0 => __DIR__ . '/..' . '/zircote/swagger-php/src',
+        ),
+        'MercadoPago\\' =>
+        array (
+            0 => __DIR__ . '/..' . '/mercadopago/dx-php/src/MercadoPago',
         ),
         'GuzzleHttp\\Psr7\\' =>
         array (
