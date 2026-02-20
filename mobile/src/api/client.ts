@@ -81,7 +81,16 @@ client.interceptors.request.use(
     config.headers = headers;
 
     if (!token && !isAuthEndpoint(config.url) && !shouldSkipAuth) {
-      if (onUnauthorizedCallback) onUnauthorizedCallback();
+      console.warn(
+        "[Axios] ⚠️ TOKEN_MISSING detectado para rota protegida:",
+        config.url
+      );
+      if (onUnauthorizedCallback) {
+        console.log("[Axios] Chamando onUnauthorizedCallback...");
+        onUnauthorizedCallback();
+      } else {
+        console.warn("[Axios] ⚠️ onUnauthorizedCallback não foi registrado!");
+      }
       return Promise.reject({
         response: {
           status: 401,

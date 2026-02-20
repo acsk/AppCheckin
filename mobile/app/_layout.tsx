@@ -2,14 +2,15 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import { setOnUnauthorized as setOnUnauthorizedClient } from "@/src/api/client";
 import { setOnUnauthorized } from "@/src/services/api";
 import { handleAuthError } from "@/src/utils/authHelpers";
+import AsyncStorage from "@/src/utils/storage";
 import {
     DarkTheme,
     DefaultTheme,
     ThemeProvider,
 } from "@react-navigation/native";
-import { Stack, useRouter } from "expo-router";
+import { useSegments, Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { AppState, Platform, StyleSheet, View } from "react-native";
 import {
     SafeAreaProvider,
@@ -24,20 +25,82 @@ if (Platform.OS !== "web") {
   require("react-native-reanimated");
 }
 
+// Rotas que NÃO precisam de autenticação
+const PUBLIC_ROUTES = ["(auth)", "index"];
+
+// Rotas que PRECISAM de autenticação
+const PROTECTED_ROUTES = [
+  "(tabs)",
+  "planos",
+  "plano-detalhes",
+  "minhas-assinaturas",
+  "matricula",
+  "matricula-detalhes",
+  "turma-detalhes",
+  "checkin",
+  "checkin-detalhes",
+];
+
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const router = useRouter();
   const appState = useRef(AppState.currentState);
+  const segments = useSegments();
+  const [isTokenChecked, setIsTokenChecked] = useState(false);
+  const [hasToken, setHasToken] = useState(false);
+
+  // Guard: verificar token ao iniciar e redirecionar rotas protegidas
+  useEffect(() => {
+    const checkTokenAndGuard = async () => {
+      console.log("[RootLayout] Verificando autenticação... Segments:", segments);
+      
+      const token = await AsyncStorage.getItem("@appcheckin:token");
+      const authenticated = !!token;
+      setHasToken(authenticated);
+
+      // Obter rota atual (primeiro segment após root)
+      const currentSegment = segments?.[0];
+
+      // Se tentando acessar rota protegida sem token, redirecionar IMEDIATAMENTE
+      if (
+        currentSegment &&
+        PROTECTED_ROUTES.includes(currentSegment) &&
+        !authenticated
+      ) {
+        console.warn(
+          `[RootLayout] ❌ Acesso negado à rota protegida: ${currentSegment} - redirecionando para login`
+        );
+        // Usar setTimeout para garantir que o redirect aconteça
+        setTimeout(() => {
+          router.replace("/(auth)/login");
+        }, 50);
+      } else if (authenticated && currentSegment === "(auth)") {
+        // Se autenticado tentando acessar (auth), redirecionar para home
+        console.log("[RootLayout] Usuário autenticado em (auth), redirecionando para home");
+        setTimeout(() => {
+          router.replace("/(tabs)");
+        }, 50);
+      }
+
+      setIsTokenChecked(true);
+    };
+
+    checkTokenAndGuard();
+  }, [segments, router]);
 
   useEffect(() => {
     // Configurar callback para tratar 401 globalmente
     setOnUnauthorized(async () => {
+      console.log("[RootLayout:setOnUnauthorized] Token inválido, redirecionando...");
       await handleAuthError();
+      console.log("[RootLayout:setOnUnauthorized] Executando router.replace");
       router.replace("/(auth)/login");
     });
 
     setOnUnauthorizedClient(async () => {
+      console.log("[RootLayout:setOnUnauthorizedClient] Token inválido, redirecionando...");
       await handleAuthError();
+      console.log("[RootLayout:setOnUnauthorizedClient] Executando router.replace");
       router.replace("/(auth)/login");
     });
 
@@ -50,6 +113,17 @@ export default function RootLayout() {
       subscription.remove();
     };
   }, [router]);
+
+  // Não renderizar nada até verificar autenticação
+  if (!isTokenChecked) {
+    return (
+      <SafeAreaProvider>
+        <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+          <View style={styles.root} />
+        </ThemeProvider>
+      </SafeAreaProvider>
+    );
+  }
 
   return (
     <SafeAreaProvider>

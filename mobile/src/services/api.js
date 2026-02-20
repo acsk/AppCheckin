@@ -130,9 +130,14 @@ const api = {
         console.warn(
           "⚠️ Nenhum token encontrado em storage (@appcheckin:token)",
         );
-        console.warn("⚠️ Você precisa fazer login primeiro!");
+        console.warn("⚠️ Para rota protegida:", endpoint);
         if (!isAuthEndpoint && !shouldSkipAuth && onUnauthorizedCallback) {
+          console.log("[API] Chamando onUnauthorizedCallback...");
           onUnauthorizedCallback();
+        } else {
+          if (!onUnauthorizedCallback) {
+            console.warn("[API] ⚠️ onUnauthorizedCallback não foi registrado!");
+          }
         }
         if (!isAuthEndpoint && !shouldSkipAuth) {
           throw {
