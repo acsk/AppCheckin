@@ -44,6 +44,11 @@ const ROLE_NAME_FALLBACK: Record<number, string> = {
   4: "Super Admin",
 };
 
+const withShadow = (
+  webBoxShadow: string,
+  nativeShadow: Record<string, unknown>,
+) => (Platform.OS === "web" ? { boxShadow: webBoxShadow } : nativeShadow);
+
 export default function AccountScreen() {
   const router = useRouter();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -65,6 +70,7 @@ export default function AccountScreen() {
   const [updatingPhoto, setUpdatingPhoto] = useState(false);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [hasPhotoLoadError, setHasPhotoLoadError] = useState(false);
   const [apiUrl, setApiUrl] = useState<string>("");
   // const [assetsUrl, setAssetsUrl] = useState<string>("");
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
@@ -138,11 +144,23 @@ export default function AccountScreen() {
   };
 
   const getUserPhotoUri = () => {
+    const buildAbsoluteUrl = (base: string, path: string) => {
+      const normalizedBase = (base || "").trim().replace(/\/+$/, "");
+      const normalizedPath = (path || "").trim().replace(/^\/+/, "");
+      if (!normalizedBase || !normalizedPath) {
+        return null;
+      }
+      return `${normalizedBase}/${normalizedPath}`;
+    };
+
     if (photoUrl) return photoUrl;
     if (userProfile?.foto_caminho) {
-      const raw = userProfile.foto_caminho;
+      const raw = userProfile.foto_caminho.trim();
       if (/^https?:\/\//i.test(raw)) return raw;
-      if (apiUrl) return `${apiUrl}${raw}`;
+      if (apiUrl) {
+        const fullUrl = buildAbsoluteUrl(apiUrl, raw);
+        if (fullUrl) return fullUrl;
+      }
     }
     if (userProfile?.foto_base64) {
       return `data:image/jpeg;base64,${userProfile.foto_base64}`;
@@ -277,6 +295,7 @@ export default function AccountScreen() {
           return;
         }
         setUserProfile(profileData.data);
+        setHasPhotoLoadError(false);
         console.log(
           "✅ [loadUserProfileMemo] Perfil carregado com sucesso:",
           profileData.data?.nome,
@@ -660,6 +679,7 @@ export default function AccountScreen() {
     // Limpa dados dependentes de tenant para evitar exibição de informações antigas
     setPhotoUrl(null);
     setPhotoError(null);
+    setHasPhotoLoadError(false);
     setRanking([]);
     setRankingPeriodo("");
     setRankingModalidades([]);
@@ -882,6 +902,7 @@ export default function AccountScreen() {
             // Armazenar URL da foto se disponível
             if (response.data?.caminho_url) {
               const apiUrl = getApiUrlRuntime();
+              setHasPhotoLoadError(false);
               setPhotoUrl(`${apiUrl}${response.data.caminho_url}`);
               console.log(
                 "📸 URL da foto armazenada:",
@@ -956,6 +977,10 @@ export default function AccountScreen() {
 
   // (removidas: definições duplicadas tardias de loadModalidadesFromTurmas e loadRankingMemo)
 
+  const userPhotoUri = getUserPhotoUri();
+  const shouldRenderUserPhoto = Boolean(userPhotoUri && !hasPhotoLoadError);
+  const userPhotoUriSafe = userPhotoUri || "";
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -982,8 +1007,6 @@ export default function AccountScreen() {
     );
   }
 
-  const userPhotoUri = getUserPhotoUri();
-
   return (
     <SafeAreaView style={styles.container}>
       {/* Mostrar erro de foto se houver */}
@@ -1003,15 +1026,18 @@ export default function AccountScreen() {
           <View style={styles.headerUserLeft}>
             <View style={styles.headerPhotoWrapper}>
               <View style={styles.headerPhotoContainer}>
-                {userPhotoUri ? (
+                {shouldRenderUserPhoto ? (
                   <Image
-                    source={{ uri: userPhotoUri }}
+                    source={{ uri: userPhotoUriSafe }}
                     style={styles.headerPhotoImage}
-                    onError={(error) => {
-                      console.error(
-                        "❌ Erro ao carregar foto do usuário:",
-                        error,
-                      );
+                    onError={(event) => {
+                      const reason =
+                        event?.nativeEvent?.error || "Erro desconhecido";
+                      console.warn("⚠️ Falha ao carregar foto do usuário:", {
+                        uri: userPhotoUriSafe,
+                        reason,
+                      });
+                      setHasPhotoLoadError(true);
                     }}
                   />
                 ) : (
@@ -1675,11 +1701,13 @@ const styles = StyleSheet.create({
     borderBottomWidth: 0,
     borderBottomLeftRadius: 22,
     borderBottomRightRadius: 22,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.18,
-    shadowRadius: 8,
-    elevation: 6,
+    ...withShadow("0px 3px 8px rgba(0, 0, 0, 0.18)", {
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 3 },
+      shadowOpacity: 0.18,
+      shadowRadius: 8,
+      elevation: 6,
+    }),
   },
   headerUserRow: {
     flexDirection: "row",
@@ -1997,11 +2025,13 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     borderWidth: 1,
     borderColor: "#f0f1f4",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 2,
+    ...withShadow("0px 6px 10px rgba(0, 0, 0, 0.06)", {
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.06,
+      shadowRadius: 10,
+      elevation: 2,
+    }),
   },
   weekCalendarHeader: {
     flexDirection: "row",
@@ -2084,11 +2114,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#10b981",
     justifyContent: "center",
     alignItems: "center",
-    shadowColor: "#10b981",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3,
-    elevation: 2,
+    ...withShadow("0px 2px 3px rgba(16, 185, 129, 0.25)", {
+      shadowColor: "#10b981",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 3,
+      elevation: 2,
+    }),
   },
   weekDayMissedIcon: {
     width: 24,
@@ -2160,11 +2192,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 1,
     borderColor: "#f0f1f4",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 2,
+    ...withShadow("0px 6px 10px rgba(0, 0, 0, 0.06)", {
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.06,
+      shadowRadius: 10,
+      elevation: 2,
+    }),
   },
   statLabel: {
     fontSize: 13,
@@ -2187,11 +2221,13 @@ const styles = StyleSheet.create({
     gap: 12,
     borderWidth: 1,
     borderColor: "#f0f1f4",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 2,
+    ...withShadow("0px 6px 10px rgba(0, 0, 0, 0.06)", {
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.06,
+      shadowRadius: 10,
+      elevation: 2,
+    }),
   },
   lastCheckinContent: {
     flex: 1,
@@ -2213,11 +2249,13 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     borderWidth: 1,
     borderColor: "#f0f1f4",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 2,
+    ...withShadow("0px 6px 10px rgba(0, 0, 0, 0.06)", {
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.06,
+      shadowRadius: 10,
+      elevation: 2,
+    }),
   },
   infoItem: {
     flexDirection: "row",
@@ -2249,11 +2287,13 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: "#f0f1f4",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 2,
+    ...withShadow("0px 6px 10px rgba(0, 0, 0, 0.06)", {
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.06,
+      shadowRadius: 10,
+      elevation: 2,
+    }),
   },
   membershipHeader: {
     flexDirection: "row",
@@ -2382,11 +2422,13 @@ const styles = StyleSheet.create({
     padding: 18,
     borderWidth: 1,
     borderColor: colors.primary + "35",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.1,
-    shadowRadius: 12,
-    elevation: 4,
+    ...withShadow("0px 6px 12px rgba(0, 0, 0, 0.1)", {
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.1,
+      shadowRadius: 12,
+      elevation: 4,
+    }),
   },
   rankingList: {
     gap: 10,
@@ -2539,11 +2581,13 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     borderWidth: 1,
     borderColor: "#f0f1f4",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 2,
+    ...withShadow("0px 6px 10px rgba(0, 0, 0, 0.06)", {
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.06,
+      shadowRadius: 10,
+      elevation: 2,
+    }),
   },
   academiaCardContent: {
     flex: 1,
@@ -2589,11 +2633,13 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: "#f0f1f4",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 2,
+    ...withShadow("0px 6px 10px rgba(0, 0, 0, 0.06)", {
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.06,
+      shadowRadius: 10,
+      elevation: 2,
+    }),
   },
   contratoHeader: {
     flexDirection: "row",
@@ -2711,11 +2757,13 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     gap: 10,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    elevation: 3,
+    ...withShadow("0px 6px 10px rgba(0, 0, 0, 0.12)", {
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.12,
+      shadowRadius: 10,
+      elevation: 3,
+    }),
   },
   changePasswordText: {
     color: "#fff",
@@ -2780,11 +2828,13 @@ const styles = StyleSheet.create({
     padding: 18,
     borderWidth: 1,
     borderColor: "#f0f1f4",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 3,
+    ...withShadow("0px 6px 10px rgba(0, 0, 0, 0.1)", {
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.1,
+      shadowRadius: 10,
+      elevation: 3,
+    }),
   },
   tenantModalTitle: {
     fontSize: 18,
