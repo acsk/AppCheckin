@@ -4,7 +4,7 @@
  */
 
 import AsyncStorage from "@/src/utils/storage";
-import { useRouter, useNavigation } from "expo-router";
+import { useNavigation, useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 
 interface UseProtectedRouteOptions {

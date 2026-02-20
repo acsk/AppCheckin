@@ -4,7 +4,7 @@
  */
 
 import AsyncStorage from "@/src/utils/storage";
-import { useSegments, useRouter, usePathname } from "expo-router";
+import { usePathname, useRouter, useSegments } from "expo-router";
 import { useEffect, useRef } from "react";
 
 // Rotas públicas (sem autenticação)

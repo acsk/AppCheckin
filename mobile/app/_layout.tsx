@@ -8,7 +8,7 @@ import {
     DefaultTheme,
     ThemeProvider,
 } from "@react-navigation/native";
-import { useSegments, Stack, useRouter } from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useRef, useState } from "react";
 import { AppState, Platform, StyleSheet, View } from "react-native";
@@ -52,8 +52,11 @@ export default function RootLayout() {
   // Guard: verificar token ao iniciar e redirecionar rotas protegidas
   useEffect(() => {
     const checkTokenAndGuard = async () => {
-      console.log("[RootLayout] Verificando autenticação... Segments:", segments);
-      
+      console.log(
+        "[RootLayout] Verificando autenticação... Segments:",
+        segments,
+      );
+
       const token = await AsyncStorage.getItem("@appcheckin:token");
       const authenticated = !!token;
       setHasToken(authenticated);
@@ -68,7 +71,7 @@ export default function RootLayout() {
         !authenticated
       ) {
         console.warn(
-          `[RootLayout] ❌ Acesso negado à rota protegida: ${currentSegment} - redirecionando para login`
+          `[RootLayout] ❌ Acesso negado à rota protegida: ${currentSegment} - redirecionando para login`,
         );
         // Usar setTimeout para garantir que o redirect aconteça
         setTimeout(() => {
@@ -76,7 +79,9 @@ export default function RootLayout() {
         }, 50);
       } else if (authenticated && currentSegment === "(auth)") {
         // Se autenticado tentando acessar (auth), redirecionar para home
-        console.log("[RootLayout] Usuário autenticado em (auth), redirecionando para home");
+        console.log(
+          "[RootLayout] Usuário autenticado em (auth), redirecionando para home",
+        );
         setTimeout(() => {
           router.replace("/(tabs)");
         }, 50);
@@ -91,16 +96,22 @@ export default function RootLayout() {
   useEffect(() => {
     // Configurar callback para tratar 401 globalmente
     setOnUnauthorized(async () => {
-      console.log("[RootLayout:setOnUnauthorized] Token inválido, redirecionando...");
+      console.log(
+        "[RootLayout:setOnUnauthorized] Token inválido, redirecionando...",
+      );
       await handleAuthError();
       console.log("[RootLayout:setOnUnauthorized] Executando router.replace");
       router.replace("/(auth)/login");
     });
 
     setOnUnauthorizedClient(async () => {
-      console.log("[RootLayout:setOnUnauthorizedClient] Token inválido, redirecionando...");
+      console.log(
+        "[RootLayout:setOnUnauthorizedClient] Token inválido, redirecionando...",
+      );
       await handleAuthError();
-      console.log("[RootLayout:setOnUnauthorizedClient] Executando router.replace");
+      console.log(
+        "[RootLayout:setOnUnauthorizedClient] Executando router.replace",
+      );
       router.replace("/(auth)/login");
     });
 
@@ -118,7 +129,9 @@ export default function RootLayout() {
   if (!isTokenChecked) {
     return (
       <SafeAreaProvider>
-        <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+        <ThemeProvider
+          value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
+        >
           <View style={styles.root} />
         </ThemeProvider>
       </SafeAreaProvider>

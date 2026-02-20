@@ -50,19 +50,17 @@ export function AuthGuard({ children }: AuthGuardProps) {
           !authenticated
         ) {
           console.log(
-            `[AuthGuard] Acesso negado à rota protegida "${currentSegment}" - redirecionando para login`
+            `[AuthGuard] Acesso negado à rota protegida "${currentSegment}" - redirecionando para login`,
           );
           router.replace("/(auth)/login");
           return;
         }
 
         // Se autenticado mas tentando acessar auth, redirecionar para home
-        if (
-          currentSegment &&
-          currentSegment === "(auth)" &&
-          authenticated
-        ) {
-          console.log("[AuthGuard] Usuário autenticado, redirecionando de (auth) para home");
+        if (currentSegment && currentSegment === "(auth)" && authenticated) {
+          console.log(
+            "[AuthGuard] Usuário autenticado, redirecionando de (auth) para home",
+          );
           router.replace("/(tabs)");
           return;
         }
