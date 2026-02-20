@@ -63,13 +63,30 @@ export const CONFIG = {
 
 // Função para obter a URL da API em tempo de execução
 export function getApiUrlRuntime(): string {
-  // Determina o ambiente baseado na URL atual
-  const isProduction =
-    typeof window !== "undefined" &&
-    window.location?.hostname &&
-    !window.location.hostname.includes("localhost");
+  const appEnv = (process.env.EXPO_PUBLIC_APP_ENV || "").toLowerCase();
 
-  return isProduction ? CONFIG.api.production : CONFIG.api.development;
+  if (appEnv === "production") {
+    return CONFIG.api.production;
+  }
+
+  if (appEnv === "development") {
+    return CONFIG.api.development;
+  }
+
+  // Fallback para web quando EXPO_PUBLIC_APP_ENV não estiver definido
+  if (typeof window !== "undefined" && window.location?.hostname) {
+    const hostname = window.location.hostname;
+    const isLocalDevHost =
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname.startsWith("192.168.") ||
+      hostname.startsWith("10.") ||
+      hostname.endsWith(".local");
+
+    return isLocalDevHost ? CONFIG.api.development : CONFIG.api.production;
+  }
+
+  return CONFIG.api.development;
 }
 
 export default CONFIG;
