@@ -20,8 +20,7 @@ class TenantMiddleware
             return $resp
                 ->withHeader('Access-Control-Allow-Origin', '*')
                 ->withHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS')
-                // Removido X-Tenant-* dos headers permitidos
-                ->withHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Accept, Origin, Authorization')
+                ->withHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Accept, Origin, Authorization, Cache-Control, Pragma, Expires, X-Tenant-Id')
                 ->withHeader('Access-Control-Max-Age', '86400')
                 ->withStatus(204);
         }
