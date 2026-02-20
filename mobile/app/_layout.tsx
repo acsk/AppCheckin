@@ -1,4 +1,5 @@
 import ErrorBoundary from "@/components/ErrorBoundary";
+import { setOnUnauthorized as setOnUnauthorizedClient } from "@/src/api/client";
 import { setOnUnauthorized } from "@/src/services/api";
 import { handleAuthError } from "@/src/utils/authHelpers";
 import {
@@ -8,11 +9,11 @@ import {
 } from "@react-navigation/native";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { AppState, Platform, StyleSheet, View } from "react-native";
 import {
-  SafeAreaProvider,
-  useSafeAreaInsets,
+    SafeAreaProvider,
+    useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
 import { useColorScheme } from "@/hooks/use-color-scheme";
@@ -35,6 +36,11 @@ export default function RootLayout() {
       router.replace("/(auth)/login");
     });
 
+    setOnUnauthorizedClient(async () => {
+      await handleAuthError();
+      router.replace("/(auth)/login");
+    });
+
     // Listener para mudanças no AppState
     const subscription = AppState.addEventListener("change", (nextAppState) => {
       appState.current = nextAppState;
@@ -43,7 +49,7 @@ export default function RootLayout() {
     return () => {
       subscription.remove();
     };
-  }, []);
+  }, [router]);
 
   return (
     <SafeAreaProvider>

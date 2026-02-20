@@ -77,6 +77,12 @@ const api = {
 
       // Buscar token do storage
       const token = await AsyncStorage.getItem("@appcheckin:token");
+      const shouldSkipAuth = Boolean(config?.skipAuth);
+      const isAuthEndpoint =
+        endpoint === "/auth/login" ||
+        endpoint === "/auth/register-mobile" ||
+        endpoint === "/auth/select-tenant" ||
+        endpoint === "/auth/select-tenant-public";
 
       // Debug: listar todas as chaves do storage
       const allKeys = await AsyncStorage.getAllKeys?.();
@@ -125,6 +131,19 @@ const api = {
           "⚠️ Nenhum token encontrado em storage (@appcheckin:token)",
         );
         console.warn("⚠️ Você precisa fazer login primeiro!");
+        if (!isAuthEndpoint && !shouldSkipAuth && onUnauthorizedCallback) {
+          onUnauthorizedCallback();
+        }
+        if (!isAuthEndpoint && !shouldSkipAuth) {
+          throw {
+            response: {
+              status: 401,
+              data: { code: "TOKEN_MISSING", message: "Token não encontrado" },
+            },
+            message: "Token não encontrado",
+            code: "TOKEN_MISSING",
+          };
+        }
       }
 
       // Log da requisição

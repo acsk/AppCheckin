@@ -40,6 +40,16 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   return headers;
 }
 
+function isAuthEndpoint(url?: string): boolean {
+  if (!url) return false;
+  return (
+    url.includes("/auth/login") ||
+    url.includes("/auth/register-mobile") ||
+    url.includes("/auth/select-tenant") ||
+    url.includes("/auth/select-tenant-public")
+  );
+}
+
 function normalizeError(error: AxiosError) {
   const status = error.response?.status ?? 0;
   const data: any = error.response?.data;
@@ -62,11 +72,26 @@ export const client: AxiosInstance = axios.create({
 client.interceptors.request.use(
   async (config: InternalAxiosRequestConfig) => {
     const dynamicHeaders = await getAuthHeaders();
+    const token = await AsyncStorage.getItem(TOKEN_KEY);
+    const shouldSkipAuth = Boolean((config as any)?.skipAuth);
     const headers = {
       ...(config.headers || {}),
       ...dynamicHeaders,
     } as any;
     config.headers = headers;
+
+    if (!token && !isAuthEndpoint(config.url) && !shouldSkipAuth) {
+      if (onUnauthorizedCallback) onUnauthorizedCallback();
+      return Promise.reject({
+        response: {
+          status: 401,
+          data: { code: "TOKEN_MISSING", message: "Token não encontrado" },
+        },
+        code: "TOKEN_MISSING",
+        message: "Token não encontrado",
+        isNetworkError: false,
+      });
+    }
 
     if (typeof window !== "undefined") {
       headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
