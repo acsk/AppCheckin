@@ -2,11 +2,11 @@ import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
     ScrollView,
     StyleSheet,
     Text,
@@ -15,6 +15,7 @@ import {
     View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import * as SecureStore from "expo-secure-store";
 import PasswordRecoveryModal from "../../components/PasswordRecoveryModal";
 import { authService } from "../../src/services/authService";
 import { colors } from "../../src/theme/colors";
@@ -24,6 +25,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const LOGIN_EMAIL_KEY = "@appcheckin:login_email";
   const LOGIN_PASSWORD_KEY = "@appcheckin:login_password";
+  const LOGIN_REMEMBER_KEY = "@appcheckin:login_remember";
   const [email, setEmail] = useState(__DEV__ ? "andrecabrall@gmail.com" : "");
   const [senha, setSenha] = useState(__DEV__ ? "123456" : "");
   const [showPassword, setShowPassword] = useState(false);
@@ -35,15 +37,66 @@ export default function LoginScreen() {
   const [pendingTenantLogin, setPendingTenantLogin] = useState(null);
   const [selectingTenantId, setSelectingTenantId] = useState(null);
   const [credentialsHydrated, setCredentialsHydrated] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
+
+  const getPassword = async () => {
+    if (Platform.OS === "web") {
+      return await AsyncStorage.getItem(LOGIN_PASSWORD_KEY);
+    }
+
+    try {
+      return await SecureStore.getItemAsync(LOGIN_PASSWORD_KEY);
+    } catch (error) {
+      console.warn("⚠️ Erro ao ler senha segura:", error);
+      return null;
+    }
+  };
+
+  const setPassword = async (value) => {
+    if (Platform.OS === "web") {
+      await AsyncStorage.setItem(LOGIN_PASSWORD_KEY, value);
+      return;
+    }
+
+    try {
+      await SecureStore.setItemAsync(LOGIN_PASSWORD_KEY, value);
+    } catch (error) {
+      console.warn("⚠️ Erro ao salvar senha segura:", error);
+    }
+  };
+
+  const removePassword = async () => {
+    if (Platform.OS === "web") {
+      await AsyncStorage.removeItem(LOGIN_PASSWORD_KEY);
+      return;
+    }
+
+    try {
+      await SecureStore.deleteItemAsync(LOGIN_PASSWORD_KEY);
+    } catch (error) {
+      console.warn("⚠️ Erro ao remover senha segura:", error);
+    }
+  };
 
   useEffect(() => {
     let isMounted = true;
 
     const loadSavedCredentials = async () => {
       try {
+        const rememberValue = await AsyncStorage.getItem(LOGIN_REMEMBER_KEY);
+        const rememberEnabled =
+          rememberValue === null ? true : rememberValue === "true";
+
+        if (!isMounted) return;
+        setRememberMe(rememberEnabled);
+
+        if (!rememberEnabled) {
+          return;
+        }
+
         const [savedEmail, savedPassword] = await Promise.all([
           AsyncStorage.getItem(LOGIN_EMAIL_KEY),
-          AsyncStorage.getItem(LOGIN_PASSWORD_KEY),
+          getPassword(),
         ]);
 
         if (!isMounted) return;
@@ -66,6 +119,7 @@ export default function LoginScreen() {
 
   useEffect(() => {
     if (!credentialsHydrated) return;
+    if (!rememberMe) return;
 
     const persistCredentials = async () => {
       try {
@@ -76,9 +130,9 @@ export default function LoginScreen() {
         }
 
         if (senha?.trim()) {
-          await AsyncStorage.setItem(LOGIN_PASSWORD_KEY, senha);
+          await setPassword(senha);
         } else {
-          await AsyncStorage.removeItem(LOGIN_PASSWORD_KEY);
+          await removePassword();
         }
       } catch (error) {
         console.warn("⚠️ Erro ao salvar credenciais:", error);
@@ -86,7 +140,26 @@ export default function LoginScreen() {
     };
 
     persistCredentials();
-  }, [email, senha, credentialsHydrated]);
+  }, [email, senha, rememberMe, credentialsHydrated]);
+
+  useEffect(() => {
+    if (!credentialsHydrated) return;
+
+    const persistRememberState = async () => {
+      try {
+        await AsyncStorage.setItem(LOGIN_REMEMBER_KEY, String(rememberMe));
+
+        if (!rememberMe) {
+          await AsyncStorage.removeItem(LOGIN_EMAIL_KEY);
+          await removePassword();
+        }
+      } catch (error) {
+        console.warn("⚠️ Erro ao salvar preferência:", error);
+      }
+    };
+
+    persistRememberState();
+  }, [rememberMe, credentialsHydrated]);
 
   const handleLogin = async () => {
     // Proteção contra múltiplos cliques
@@ -309,6 +382,25 @@ export default function LoginScreen() {
                 </TouchableOpacity>
               </View>
 
+              {/* Remember Me */}
+              <TouchableOpacity
+                style={styles.rememberRow}
+                onPress={() => setRememberMe((prev) => !prev)}
+                disabled={loading}
+              >
+                <View
+                  style={[
+                    styles.rememberBox,
+                    rememberMe && styles.rememberBoxChecked,
+                  ]}
+                >
+                  {rememberMe ? (
+                    <Feather name="check" size={14} color="#fff" />
+                  ) : null}
+                </View>
+                <Text style={styles.rememberText}>Lembrar-me</Text>
+              </TouchableOpacity>
+
               {/* Login Button */}
               <TouchableOpacity
                 style={[styles.loginButton, loading && { opacity: 0.7 }]}
@@ -526,6 +618,32 @@ const styles = StyleSheet.create({
   },
   eyeIcon: {
     padding: 10,
+  },
+  rememberRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 4,
+    marginBottom: 6,
+  },
+  rememberBox: {
+    width: 20,
+    height: 20,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: "#f4b07e",
+    backgroundColor: "#fff7f2",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+  rememberBoxChecked: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  rememberText: {
+    fontSize: 14,
+    color: "#6b7280",
+    fontWeight: "500",
   },
   loginButton: {
     backgroundColor: colors.primary,

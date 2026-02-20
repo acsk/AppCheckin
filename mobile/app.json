@@ -40,7 +40,9 @@
       "backgroundColor": "#FFFFFF",
       "build": {
         "babel": {
-          "include": ["node_modules/react-native-web"]
+          "include": [
+            "node_modules/react-native-web"
+          ]
         }
       }
     },
@@ -57,7 +59,8 @@
             "backgroundColor": "#000000"
           }
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,
