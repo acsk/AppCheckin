@@ -1,6 +1,6 @@
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import AsyncStorage from "@/src/utils/storage";
-import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, AxiosResponse } from "axios";
+import axios, { AxiosError, AxiosInstance, AxiosResponse, InternalAxiosRequestConfig } from "axios";
 
 // Optional: notify app on 401 to redirect to login
 let onUnauthorizedCallback: (() => void) | null = null;
@@ -60,19 +60,26 @@ export const client: AxiosInstance = axios.create({
 });
 
 client.interceptors.request.use(
-  async (config: AxiosRequestConfig) => {
+  async (config: InternalAxiosRequestConfig) => {
     const dynamicHeaders = await getAuthHeaders();
-    config.headers = {
+    const headers = {
       ...(config.headers || {}),
       ...dynamicHeaders,
     } as any;
+    config.headers = headers;
+
+    if (typeof window !== "undefined") {
+      headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+      headers.Pragma = "no-cache";
+      headers.Expires = "0";
+    }
 
     // Ensure Content-Type only for requests with body (avoid adding on GET)
     const method = (config.method || "GET").toUpperCase();
     const hasBody = ["POST", "PUT", "PATCH", "DELETE"].includes(method);
     const isFormData = hasBody && config.data && (typeof FormData !== "undefined") && config.data instanceof FormData;
     if (hasBody && !isFormData) {
-      config.headers["Content-Type"] = config.headers["Content-Type"] || "application/json";
+      headers["Content-Type"] = headers["Content-Type"] || "application/json";
     }
 
     return config;

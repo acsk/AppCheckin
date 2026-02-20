@@ -1,6 +1,6 @@
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
-import Constants from "expo-constants";
 import AsyncStorage from "@/src/utils/storage";
+import Constants from "expo-constants";
 
 // Callback para notificar logout quando token é inválido
 let onUnauthorizedCallback = null;
@@ -90,6 +90,12 @@ const api = {
         ...config.headers,
       };
 
+      if (typeof window !== "undefined") {
+        headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+        headers.Pragma = "no-cache";
+        headers.Expires = "0";
+      }
+
       // Content-Type:
       // - Não enviar em GET/DELETE para evitar preflight CORS
       // - Enviar apenas em métodos com corpo (POST/PUT/PATCH) quando não for FormData
@@ -130,6 +136,10 @@ const api = {
         method,
         headers,
       };
+
+      if (typeof window !== "undefined") {
+        fetchConfig.cache = "no-store";
+      }
 
       // Adicionar body se houver dados
       if (data) {
