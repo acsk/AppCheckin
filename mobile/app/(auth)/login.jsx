@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -18,9 +18,12 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import PasswordRecoveryModal from "../../components/PasswordRecoveryModal";
 import { authService } from "../../src/services/authService";
 import { colors } from "../../src/theme/colors";
+import AsyncStorage from "../../src/utils/storage";
 
 export default function LoginScreen() {
   const router = useRouter();
+  const LOGIN_EMAIL_KEY = "@appcheckin:login_email";
+  const LOGIN_PASSWORD_KEY = "@appcheckin:login_password";
   const [email, setEmail] = useState(__DEV__ ? "andrecabrall@gmail.com" : "");
   const [senha, setSenha] = useState(__DEV__ ? "123456" : "");
   const [showPassword, setShowPassword] = useState(false);
@@ -31,6 +34,59 @@ export default function LoginScreen() {
   const [tenantOptions, setTenantOptions] = useState([]);
   const [pendingTenantLogin, setPendingTenantLogin] = useState(null);
   const [selectingTenantId, setSelectingTenantId] = useState(null);
+  const [credentialsHydrated, setCredentialsHydrated] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadSavedCredentials = async () => {
+      try {
+        const [savedEmail, savedPassword] = await Promise.all([
+          AsyncStorage.getItem(LOGIN_EMAIL_KEY),
+          AsyncStorage.getItem(LOGIN_PASSWORD_KEY),
+        ]);
+
+        if (!isMounted) return;
+
+        if (savedEmail) setEmail(savedEmail);
+        if (savedPassword) setSenha(savedPassword);
+      } catch (error) {
+        console.warn("⚠️ Erro ao carregar credenciais salvas:", error);
+      } finally {
+        if (isMounted) setCredentialsHydrated(true);
+      }
+    };
+
+    loadSavedCredentials();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!credentialsHydrated) return;
+
+    const persistCredentials = async () => {
+      try {
+        if (email?.trim()) {
+          await AsyncStorage.setItem(LOGIN_EMAIL_KEY, email.trim());
+        } else {
+          await AsyncStorage.removeItem(LOGIN_EMAIL_KEY);
+        }
+
+        if (senha?.trim()) {
+          await AsyncStorage.setItem(LOGIN_PASSWORD_KEY, senha);
+        } else {
+          await AsyncStorage.removeItem(LOGIN_PASSWORD_KEY);
+        }
+      } catch (error) {
+        console.warn("⚠️ Erro ao salvar credenciais:", error);
+      }
+    };
+
+    persistCredentials();
+  }, [email, senha, credentialsHydrated]);
 
   const handleLogin = async () => {
     // Proteção contra múltiplos cliques

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, FontAwesome } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import toast from 'react-hot-toast';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authService } from '../../services/authService';
 import styles from './styles';
 
@@ -31,10 +32,31 @@ export default function LoginScreen() {
   const [senha, setSenha] = useState(isLocalhost ? '123456' : '');
   const [loading, setLoading] = useState(false);
   const [secure, setSecure] = useState(true);
+  const [remember, setRemember] = useState(true);
   const [showTenantModal, setShowTenantModal] = useState(false);
   const [tenants, setTenants] = useState([]);
   const [user, setUser] = useState(null);
   const [selectingTenant, setSelectingTenant] = useState(false);
+
+  useEffect(() => {
+    const loadSavedCredentials = async () => {
+      try {
+        const saved = await AsyncStorage.getItem('@appcheckin:login_credentials');
+        if (saved) {
+          const data = JSON.parse(saved);
+          if (data?.email) setEmail(data.email);
+          if (data?.senha) setSenha(data.senha);
+          setRemember(true);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar credenciais salvas:', error);
+      }
+    };
+
+    if (!isLocalhost) {
+      loadSavedCredentials();
+    }
+  }, [isLocalhost]);
 
   const isDisabled = useMemo(() => email.trim().length === 0 || senha.trim().length === 0, [email, senha]);
 
@@ -85,6 +107,14 @@ export default function LoginScreen() {
         setTenants(response.tenants);
         setShowTenantModal(true);
       } else if (response.token) {
+        if (remember) {
+          await AsyncStorage.setItem(
+            '@appcheckin:login_credentials',
+            JSON.stringify({ email: email.trim(), senha: senha })
+          );
+        } else {
+          await AsyncStorage.removeItem('@appcheckin:login_credentials');
+        }
         // Login único, ir para dashboard
         console.log('🚀 Redirecionando para dashboard...');
         setTimeout(() => {
@@ -124,6 +154,14 @@ export default function LoginScreen() {
       
       if (response.token) {
         setShowTenantModal(false);
+        if (remember) {
+          await AsyncStorage.setItem(
+            '@appcheckin:login_credentials',
+            JSON.stringify({ email: email.trim(), senha: senha })
+          );
+        } else {
+          await AsyncStorage.removeItem('@appcheckin:login_credentials');
+        }
         console.log('🚀 Redirecionando para dashboard...');
         setTimeout(() => {
           console.log('⏱️ Executando router.replace("/dashboard/")');
@@ -197,6 +235,29 @@ export default function LoginScreen() {
                 <Feather name={secure ? 'eye-off' : 'eye'} size={18} color="rgba(255,255,255,0.7)" />
               </Pressable>
             </View>
+
+            <Pressable
+              onPress={() => setRemember((prev) => !prev)}
+              style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}
+            >
+              <View
+                style={{
+                  width: 18,
+                  height: 18,
+                  borderRadius: 4,
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,255,255,0.5)',
+                  backgroundColor: remember ? '#f97316' : 'transparent',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {remember && <Feather name="check" size={12} color="#fff" />}
+              </View>
+              <Text style={{ color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: '600' }}>
+                Manter e-mail e senha
+              </Text>
+            </Pressable>
 
             <TouchableOpacity
               activeOpacity={0.9}
