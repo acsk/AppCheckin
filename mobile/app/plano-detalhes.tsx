@@ -1,3 +1,4 @@
+import { useProtectedRoute } from "@/hooks/useProtectedRoute";
 import { getApiUrlRuntime } from "@/src/config/urls";
 import { authService } from "@/src/services/authService";
 import { colors } from "@/src/theme/colors";
@@ -76,6 +77,9 @@ interface ErrorModalData {
 export default function PlanoDetalhesScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
+
+  // Verificar autenticação - se não autenticado, redireciona
+  const { isLoading: isAuthChecking } = useProtectedRoute();
 
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [plano, setPlano] = useState<PlanoDetalhes | null>(null);

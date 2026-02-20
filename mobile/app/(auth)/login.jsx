@@ -25,6 +25,7 @@ export default function LoginScreen() {
   const router = useRouter();
   const LOGIN_EMAIL_KEY = "@appcheckin:login_email";
   const LOGIN_PASSWORD_KEY = "@appcheckin:login_password";
+  const LOGIN_PASSWORD_SECURE_KEY = "appcheckin.login_password";
   const LOGIN_REMEMBER_KEY = "@appcheckin:login_remember";
   const [email, setEmail] = useState(__DEV__ ? "andrecabrall@gmail.com" : "");
   const [senha, setSenha] = useState(__DEV__ ? "123456" : "");
@@ -40,12 +41,10 @@ export default function LoginScreen() {
   const [rememberMe, setRememberMe] = useState(true);
 
   const getPassword = async () => {
-    if (Platform.OS === "web") {
-      return await AsyncStorage.getItem(LOGIN_PASSWORD_KEY);
-    }
+    if (Platform.OS === "web") return null;
 
     try {
-      return await SecureStore.getItemAsync(LOGIN_PASSWORD_KEY);
+      return await SecureStore.getItemAsync(LOGIN_PASSWORD_SECURE_KEY);
     } catch (error) {
       console.warn("⚠️ Erro ao ler senha segura:", error);
       return null;
@@ -53,26 +52,20 @@ export default function LoginScreen() {
   };
 
   const setPassword = async (value) => {
-    if (Platform.OS === "web") {
-      await AsyncStorage.setItem(LOGIN_PASSWORD_KEY, value);
-      return;
-    }
+    if (Platform.OS === "web") return;
 
     try {
-      await SecureStore.setItemAsync(LOGIN_PASSWORD_KEY, value);
+      await SecureStore.setItemAsync(LOGIN_PASSWORD_SECURE_KEY, value);
     } catch (error) {
       console.warn("⚠️ Erro ao salvar senha segura:", error);
     }
   };
 
   const removePassword = async () => {
-    if (Platform.OS === "web") {
-      await AsyncStorage.removeItem(LOGIN_PASSWORD_KEY);
-      return;
-    }
+    if (Platform.OS === "web") return;
 
     try {
-      await SecureStore.deleteItemAsync(LOGIN_PASSWORD_KEY);
+      await SecureStore.deleteItemAsync(LOGIN_PASSWORD_SECURE_KEY);
     } catch (error) {
       console.warn("⚠️ Erro ao remover senha segura:", error);
     }
@@ -83,6 +76,9 @@ export default function LoginScreen() {
 
     const loadSavedCredentials = async () => {
       try {
+        // limpar legado: senha antiga no AsyncStorage
+        await AsyncStorage.removeItem(LOGIN_PASSWORD_KEY);
+
         const rememberValue = await AsyncStorage.getItem(LOGIN_REMEMBER_KEY);
         const rememberEnabled =
           rememberValue === null ? true : rememberValue === "true";

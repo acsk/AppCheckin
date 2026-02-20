@@ -1,3 +1,4 @@
+import { useProtectedRoute } from "@/hooks/useProtectedRoute";
 import { getApiUrlRuntime } from "@/src/config/urls";
 import { authService } from "@/src/services/authService";
 import { colors } from "@/src/theme/colors";
@@ -66,6 +67,22 @@ interface ApiResponse {
 
 export default function PlanosScreen() {
   const router = useRouter();
+
+  // Verificar autenticação - se não autenticado, redireciona
+  const { isLoading: isAuthChecking } = useProtectedRoute({
+    checkFn: async (token) => {
+      // Verificar se o usuário é admin
+      const user = await authService.getCurrentUser();
+      if (!user) return false;
+
+      const isAdmin = user.papel_id === 3 || user.papel_id === 4;
+      const hasAdminRole =
+        Array.isArray(user.papeis) &&
+        user.papeis.some((r: any) => r.id === 3 || r.id === 4);
+
+      return isAdmin || hasAdminRole;
+    },
+  });
 
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [planos, setPlanos] = useState<Plan[]>([]);

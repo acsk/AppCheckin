@@ -1,3 +1,4 @@
+import { useProtectedRoute } from "@/hooks/useProtectedRoute";
 import { getApiUrlRuntime } from "@/src/config/urls";
 import { authService } from "@/src/services/authService";
 import { colors } from "@/src/theme/colors";
@@ -109,6 +110,9 @@ interface ErrorModalData {
 
 export default function MinhasAssinaturasScreen() {
   const router = useRouter();
+
+  // Verificar autenticação - se não autenticado, redireciona
+  const { isLoading: isAuthChecking } = useProtectedRoute();
 
   const [assinaturas, setAssinaturas] = useState<Assinatura[]>([]);
   const [pacotes, setPacotes] = useState<PacoteContrato[]>([]);

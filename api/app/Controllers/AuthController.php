@@ -12,6 +12,7 @@ class AuthController
 {
     private Usuario $usuarioModel;
     private JWTService $jwtService;
+    private ?\PDO $db = null;
     private ?string $dbInitError = null;
 
     public function __construct()
@@ -19,6 +20,7 @@ class AuthController
         try {
             error_log('[AuthController::__construct] Iniciando...');
             $db = require __DIR__ . '/../../config/database.php';
+            $this->db = $db;
             error_log('[AuthController::__construct] DB loaded');
             $this->usuarioModel = new Usuario($db);
             error_log('[AuthController::__construct] Usuario model created');
@@ -185,6 +187,15 @@ class AuthController
     public function login(Request $request, Response $response): Response
     {
         try {
+            if ($this->dbInitError !== null || !isset($this->usuarioModel) || !$this->db) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'code' => 'DATABASE_CONNECTION_FAILED',
+                    'message' => 'Falha ao conectar ao banco de dados'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(503);
+            }
+
             // Parse body com fallback
             $data = $request->getParsedBody();
             if (!is_array($data)) {
@@ -193,7 +204,7 @@ class AuthController
                 $data = is_array($decoded) ? $decoded : [];
             }
 
-            $email = $data['email'] ?? null;
+            $email = isset($data['email']) ? mb_strtolower(trim((string) $data['email']), 'UTF-8') : null;
             $senha = $data['senha'] ?? null;
 
             if (empty($email) || empty($senha)) {
@@ -205,8 +216,7 @@ class AuthController
                 return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(422);
             }
 
-            // Database connection
-            $db = require __DIR__ . '/../../config/database.php';
+            $db = $this->db;
 
             // Usuário
             $usuario = $this->usuarioModel->findByEmailGlobal($email);
@@ -272,7 +282,15 @@ class AuthController
 
                 // Se usuário tem apenas um tenant, gera token imediatamente
                 if (count($tenants) === 1) {
-                    $tenantId = $tenants[0]['tenant']['id'];
+                    $tenantId = (int) ($tenants[0]['tenant']['id'] ?? $tenants[0]['tenant_id'] ?? 0);
+                    if ($tenantId <= 0) {
+                        $response->getBody()->write(json_encode([
+                            'type' => 'error',
+                            'code' => 'NO_TENANT_ACCESS',
+                            'message' => 'Vínculo de academia inválido para este usuário'
+                        ], JSON_UNESCAPED_UNICODE));
+                        return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(403);
+                    }
                     
                     // Buscar aluno_id se o usuário for aluno (papel_id = 1)
                     $alunoId = null;
@@ -317,6 +335,7 @@ class AuthController
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(200);
         } catch (\Throwable $e) {
             error_log('[AuthController::login] EXCEPTION: ' . $e->getMessage());
+            error_log('[AuthController::login] TRACE: ' . $e->getTraceAsString());
             $response->getBody()->write(json_encode([
                 'type' => 'error',
                 'code' => 'LOGIN_INTERNAL_ERROR',

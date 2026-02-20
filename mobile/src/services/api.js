@@ -192,7 +192,19 @@ const api = {
           responseText = responseText.substring(jsonStart);
         }
 
-        responseData = JSON.parse(responseText);
+        try {
+          responseData = JSON.parse(responseText);
+        } catch (parseError) {
+          responseData = { raw: responseText };
+          if (__DEV__) {
+            console.warn("⚠️ Falha ao parsear JSON da API:", {
+              endpoint,
+              status: response.status,
+              contentType,
+              preview: responseText?.slice(0, 500),
+            });
+          }
+        }
       } else {
         responseData = await response.text();
       }
@@ -260,6 +272,14 @@ const api = {
           `Erro HTTP ${response.status}`;
         const errorCode = responseData?.code;
 
+        if (__DEV__) {
+          console.warn("⚠️ API response não ok:", {
+            endpoint,
+            status: response.status,
+            responseData,
+          });
+        }
+
         throw {
           response: {
             status: response.status,
@@ -283,7 +303,13 @@ const api = {
       }
 
       // Erro de rede ou outro
-      console.error("❌ Erro na requisição:", error.message);
+      console.error("❌ Erro na requisição:", {
+        endpoint,
+        method,
+        message: error?.message,
+        name: error?.name,
+        stack: error?.stack,
+      });
       throw {
         message: error.message || "Erro de conexão",
         isNetworkError: true,
