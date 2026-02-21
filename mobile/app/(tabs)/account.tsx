@@ -4,16 +4,16 @@ import AuthService from "@/src/services/authService";
 import MobileService from "@/src/services/mobileService";
 import { colors } from "@/src/theme/colors";
 import {
-    DiaCheckin,
-    RankingItem,
-    RankingModalidade,
-    UserProfile,
+  DiaCheckin,
+  RankingItem,
+  RankingModalidade,
+  UserProfile,
 } from "@/src/types";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { getTokenTenantId, handleAuthError } from "@/src/utils/authHelpers";
 import {
-    compressImage,
-    logCompressionInfo,
+  compressImage,
+  logCompressionInfo,
 } from "@/src/utils/imageCompression";
 import AsyncStorage from "@/src/utils/storage";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -21,19 +21,19 @@ import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Animated,
-    Dimensions,
-    Image,
-    Modal,
-    Platform,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Dimensions,
+  Image,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -1564,33 +1564,31 @@ export default function AccountScreen() {
               </View>
             )}
 
-               <TouchableOpacity
-                style={styles.sidebarMenuItem}
-                onPress={async () => {
-                  try {
-                    // Verificar se existe token antes de navegar
-                    const token =
-                      await AsyncStorage.getItem("@appcheckin:token");
-                    if (!token) {
-                      console.warn(
-                        "⚠️ Token não encontrado - redirecionando para login",
-                      );
-                      router.replace("/(auth)/login");
-                      return;
-                    }
-                    closeSidebar();
-                    router.push("/planos");
-                  } catch (err) {
-                    console.error("❌ Erro ao navegar para planos:", err);
+            <TouchableOpacity
+              style={styles.sidebarMenuItem}
+              onPress={async () => {
+                try {
+                  // Verificar se existe token antes de navegar
+                  const token = await AsyncStorage.getItem("@appcheckin:token");
+                  if (!token) {
+                    console.warn(
+                      "⚠️ Token não encontrado - redirecionando para login",
+                    );
+                    router.replace("/(auth)/login");
+                    return;
                   }
-                }}
-              >
-                <View style={styles.sidebarMenuItemIcon}>
-                  <Feather name="shopping-cart" size={16} color="#fff" />
-                </View>
-                <Text style={styles.sidebarMenuItemText}>Planos</Text>
-              </TouchableOpacity>
-            
+                  closeSidebar();
+                  router.push("/planos");
+                } catch (err) {
+                  console.error("❌ Erro ao navegar para planos:", err);
+                }
+              }}
+            >
+              <View style={styles.sidebarMenuItemIcon}>
+                <Feather name="shopping-cart" size={16} color="#fff" />
+              </View>
+              <Text style={styles.sidebarMenuItemText}>Planos</Text>
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.sidebarMenuItem}

@@ -5,16 +5,16 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Animated,
-  Image,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  TextInput,
-  Text,
-  TouchableOpacity,
-  View,
+    Animated,
+    Image,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import AuthService from "../../src/services/authService";
@@ -99,8 +99,7 @@ export default function CheckinScreen() {
     : [];
   const hasRole = (roleId: number) =>
     currentRoleIds.includes(roleId) || currentUserPapelId === roleId;
-  const isProfessorOuAdmin =
-    hasRole(2) || hasRole(3) || hasRole(4);
+  const isProfessorOuAdmin = hasRole(2) || hasRole(3) || hasRole(4);
   const isAluno =
     hasRole(1) || currentAlunoId !== null || currentUserPapelId === null;
 
@@ -405,7 +404,10 @@ export default function CheckinScreen() {
     }
     const formattedDate = formatDateParam(date);
     const tenantIdForCache =
-      tenantIdOverride ?? currentTenant?.tenant?.id ?? currentTenant?.id ?? "default";
+      tenantIdOverride ??
+      currentTenant?.tenant?.id ??
+      currentTenant?.id ??
+      "default";
     const cacheKey = `@appcheckin:horarios_cache:${tenantIdForCache}:${formattedDate}`;
     try {
       const cachedStr = await AsyncStorage.getItem(cacheKey);
@@ -1683,7 +1685,8 @@ export default function CheckinScreen() {
                                     ) ||
                                     participants.some(
                                       (p) =>
-                                        Number(p.aluno_id) === Number(alunoId) &&
+                                        Number(p.aluno_id) ===
+                                          Number(alunoId) &&
                                         Number(p.checkins) > 0,
                                     );
                                   const photoUrl = getUserPhotoUrl(
@@ -1752,9 +1755,7 @@ export default function CheckinScreen() {
                                             id: alunoId || aluno.id,
                                           })
                                         }
-                                        disabled={
-                                          alreadyCheckedIn || isLoading
-                                        }
+                                        disabled={alreadyCheckedIn || isLoading}
                                       >
                                         <Text
                                           style={
@@ -1825,11 +1826,8 @@ export default function CheckinScreen() {
                                         alunoNome: normalizeUtf8(
                                           c.usuario_nome || "Aluno",
                                         ),
-                                        foto:
-                                          c.foto_caminho || alunoFoto || "",
-                                        presente: String(
-                                          c.presente ?? "",
-                                        ),
+                                        foto: c.foto_caminho || alunoFoto || "",
+                                        presente: String(c.presente ?? ""),
                                         presencaConfirmadaEm:
                                           c.presenca_confirmada_em || "",
                                         dataCheckin:
@@ -2116,7 +2114,8 @@ export default function CheckinScreen() {
                     !!displayName &&
                     displayName !== "Turma" &&
                     (!modalidadeNome ||
-                      displayName.toLowerCase() !== modalidadeNome.toLowerCase());
+                      displayName.toLowerCase() !==
+                        modalidadeNome.toLowerCase());
 
                   return (
                     <TouchableOpacity
@@ -2374,7 +2373,11 @@ export default function CheckinScreen() {
                     styles.modalIconContainerInfo,
                   ]}
                 >
-                  <Feather name="help-circle" size={48} color={colors.primary} />
+                  <Feather
+                    name="help-circle"
+                    size={48}
+                    color={colors.primary}
+                  />
                 </View>
                 <Text style={styles.modalTitle}>Confirmar check-in</Text>
                 <Text style={styles.modalMessage}>
