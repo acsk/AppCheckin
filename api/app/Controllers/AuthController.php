@@ -38,16 +38,17 @@ class AuthController
     #[OA\Post(
         path: "/auth/register",
         summary: "Registrar novo usuário",
-        description: "Cria um novo usuário no sistema e retorna o token JWT",
+        description: "Cria um novo usuário já vinculado a uma academia (tenant) como aluno e retorna o token JWT",
         tags: ["Autenticação"],
         requestBody: new OA\RequestBody(
             required: true,
             content: new OA\JsonContent(
-                required: ["nome", "email", "senha"],
+                required: ["nome", "email", "senha", "tenant_id"],
                 properties: [
                     new OA\Property(property: "nome", type: "string", example: "João Silva"),
                     new OA\Property(property: "email", type: "string", format: "email", example: "joao@email.com"),
-                    new OA\Property(property: "senha", type: "string", minLength: 6, example: "senha123")
+                    new OA\Property(property: "senha", type: "string", minLength: 6, example: "senha123"),
+                    new OA\Property(property: "tenant_id", type: "integer", example: 1, description: "ID da academia onde o usuário será cadastrado")
                 ]
             )
         ),
@@ -63,6 +64,7 @@ class AuthController
                     ]
                 )
             ),
+            new OA\Response(response: 400, description: "Tenant inválido"),
             new OA\Response(response: 422, description: "Erro de validação"),
             new OA\Response(response: 500, description: "Erro interno")
         ]
@@ -80,15 +82,32 @@ class AuthController
         }
 
         $data = $request->getParsedBody();
+        if (!is_array($data)) {
+            $data = [];
+        }
+        $tenantId = isset($data['tenant_id']) ? (int) $data['tenant_id'] : 0;
         
         // Validações
-        if (empty($data['nome']) || empty($data['email']) || empty($data['senha'])) {
+        if (empty($data['nome']) || empty($data['email']) || empty($data['senha']) || $tenantId <= 0) {
             $response->getBody()->write(json_encode([
                 'type' => 'error',
                 'code' => 'MISSING_FIELDS',
-                'message' => 'Nome, email e senha são obrigatórios'
+                'message' => 'Nome, email, senha e tenant_id são obrigatórios'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+        }
+
+        // Validar tenant
+        $stmtTenant = $this->db->prepare("SELECT id FROM tenants WHERE id = :tenant_id AND ativo = 1 LIMIT 1");
+        $stmtTenant->execute(['tenant_id' => $tenantId]);
+        $tenant = $stmtTenant->fetch(\PDO::FETCH_ASSOC);
+        if (!$tenant) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'code' => 'INVALID_TENANT',
+                'message' => 'Academia (tenant) inválida ou inativa'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
 
         // Verificar se email já existe
@@ -103,31 +122,44 @@ class AuthController
         }
 
         try {
-            // Criar usuário
-            $novoUsuario = $this->usuarioModel->create([
+            // Criar usuário e vincular ao tenant como aluno (papel_id = 1)
+            $usuarioId = $this->usuarioModel->create([
                 'nome' => $data['nome'],
                 'email' => $data['email'],
-                'senha' => $data['senha']
-            ]);
+                'senha' => $data['senha'],
+                'papel_id' => 1
+            ], $tenantId);
+
+            if (!$usuarioId) {
+                throw new \RuntimeException('Falha ao criar usuário');
+            }
+
+            $novoUsuario = $this->usuarioModel->findById((int) $usuarioId, $tenantId);
+            if (!$novoUsuario) {
+                throw new \RuntimeException('Usuário criado, mas não encontrado para retorno');
+            }
 
             // Gerar token
             $token = $this->jwtService->encode([
-                'user_id' => $novoUsuario['id'],
-                'email' => $novoUsuario['email']
+                'user_id' => (int) $novoUsuario['id'],
+                'email' => $novoUsuario['email'],
+                'tenant_id' => $tenantId
             ]);
 
             $response->getBody()->write(json_encode([
                 'message' => 'Usuário criado com sucesso',
                 'token' => $token,
                 'user' => [
-                    'id' => $novoUsuario['id'],
+                    'id' => (int) $novoUsuario['id'],
                     'nome' => $novoUsuario['nome'],
-                    'email' => $novoUsuario['email']
+                    'email' => $novoUsuario['email'],
+                    'tenant_id' => $tenantId,
+                    'papel_id' => 1
                 ]
-            ]));
+            ], JSON_UNESCAPED_UNICODE));
 
             return $response->withHeader('Content-Type', 'application/json')->withStatus(201);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             error_log('[AuthController::register] ERROR: ' . $e->getMessage());
             $response->getBody()->write(json_encode([
                 'type' => 'error',

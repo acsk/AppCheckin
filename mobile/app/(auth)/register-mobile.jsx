@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import urlsConfig from "../../src/config/urls";
 import { authService } from "../../src/services/authService";
 import { colors } from "../../src/theme/colors";
 
@@ -109,6 +110,10 @@ const isValidEmail = (value) => /\S+@\S+\.\S+/.test(value);
 export default function RegisterMobileScreen() {
   const router = useRouter();
   const [form, setForm] = useState(INITIAL_FORM);
+  const [selectedTenantId, setSelectedTenantId] = useState(null);
+  const [tenantOptions, setTenantOptions] = useState([]);
+  const [tenantOptionsLoading, setTenantOptionsLoading] = useState(false);
+  const [tenantDropdownOpen, setTenantDropdownOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
@@ -128,6 +133,139 @@ export default function RegisterMobileScreen() {
     }
   };
 
+  const selectedTenant = useMemo(
+    () =>
+      tenantOptions.find(
+        (tenant) => Number(tenant.id) === Number(selectedTenantId),
+      ) || null,
+    [tenantOptions, selectedTenantId],
+  );
+
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    if (typeof document === "undefined") return;
+
+    document.body?.setAttribute("data-recaptcha-visible", "true");
+
+    return () => {
+      document.body?.setAttribute("data-recaptcha-visible", "false");
+    };
+  }, []);
+
+  const ensureRecaptchaEnterpriseLoaded = async (siteKey) => {
+    if (Platform.OS !== "web") return;
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      throw new Error("reCAPTCHA indisponível fora do navegador");
+    }
+
+    const hasEnterprise = () =>
+      Boolean(
+        window.grecaptcha?.enterprise &&
+        typeof window.grecaptcha.enterprise.execute === "function",
+      );
+
+    if (hasEnterprise()) return;
+
+    const scriptSrc = `https://www.google.com/recaptcha/enterprise.js?render=${siteKey}`;
+    const existingScript = document.querySelector(`script[src="${scriptSrc}"]`);
+
+    await new Promise((resolve, reject) => {
+      let attempts = 0;
+      const maxAttempts = 120;
+
+      const checkReady = () => {
+        if (hasEnterprise()) {
+          resolve(true);
+          return;
+        }
+
+        attempts += 1;
+        if (attempts >= maxAttempts) {
+          reject(new Error("Timeout ao carregar reCAPTCHA"));
+          return;
+        }
+
+        setTimeout(checkReady, 100);
+      };
+
+      if (!existingScript) {
+        const script = document.createElement("script");
+        script.src = scriptSrc;
+        script.async = true;
+        script.defer = true;
+        script.onerror = () => {
+          reject(new Error("Falha ao carregar script do reCAPTCHA"));
+        };
+        document.head.appendChild(script);
+      }
+
+      checkReady();
+    });
+  };
+
+  const getRecaptchaToken = async () => {
+    if (Platform.OS !== "web") return null;
+
+    const siteKey = urlsConfig?.recaptcha?.siteKey;
+    if (!siteKey) {
+      throw new Error("Site key do reCAPTCHA não configurada");
+    }
+
+    await ensureRecaptchaEnterpriseLoaded(siteKey);
+
+    const enterprise = window.grecaptcha?.enterprise;
+    if (!enterprise || typeof enterprise.execute !== "function") {
+      throw new Error("reCAPTCHA indisponível no momento. Tente novamente.");
+    }
+
+    await new Promise((resolve) => enterprise.ready(resolve));
+    return enterprise.execute(siteKey, { action: "REGISTER" });
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadPublicTenants = async () => {
+      try {
+        setTenantOptionsLoading(true);
+        const response = await authService.getPublicTenants();
+        const tenantsRaw = Array.isArray(response?.data?.tenants)
+          ? response.data.tenants
+          : Array.isArray(response?.tenants)
+            ? response.tenants
+            : [];
+
+        const normalized = tenantsRaw
+          .map((tenant) => ({
+            id: Number(tenant?.id),
+            nome: tenant?.nome || "Academia",
+          }))
+          .filter((tenant) => Number.isFinite(tenant.id) && tenant.id > 0)
+          .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+
+        if (!isMounted) return;
+
+        setTenantOptions(normalized);
+      } catch (error) {
+        if (!isMounted) return;
+        setFormError(
+          error?.message ||
+            "Não foi possível carregar a lista de academias. Tente novamente.",
+        );
+      } finally {
+        if (isMounted) {
+          setTenantOptionsLoading(false);
+        }
+      }
+    };
+
+    loadPublicTenants();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const handleCpfChange = (value) => {
     handleChange("cpf", formatCpf(value));
   };
@@ -142,6 +280,10 @@ export default function RegisterMobileScreen() {
 
   const validateFields = () => {
     const errors = {};
+
+    if (!selectedTenantId) {
+      errors.tenant_id = "Selecione a academia";
+    }
 
     if (!form.nome.trim()) {
       errors.nome = "Informe o nome";
@@ -214,7 +356,7 @@ export default function RegisterMobileScreen() {
         cidade: data.localidade || prev.cidade,
         estado: data.estado || data.uf || prev.estado,
       }));
-    } catch (error) {
+    } catch {
       Alert.alert("Erro ao buscar CEP", "Não foi possível consultar o CEP.");
     } finally {
       setCepLoading(false);
@@ -241,6 +383,7 @@ export default function RegisterMobileScreen() {
       nome: form.nome.trim(),
       email: form.email.trim().toLowerCase(),
       cpf: cpfDigits,
+      tenant_id: Number(selectedTenantId),
     };
 
     // Converter data_nascimento de DD/MM/YYYY para YYYY-MM-DD
@@ -289,6 +432,14 @@ export default function RegisterMobileScreen() {
     return firstError || "";
   };
 
+  const handleGoBack = () => {
+    if (router.canGoBack?.()) {
+      router.back();
+      return;
+    }
+    router.replace("/(auth)/login");
+  };
+
   const handleRegister = async () => {
     if (loading) {
       return;
@@ -306,7 +457,11 @@ export default function RegisterMobileScreen() {
     setLoading(true);
 
     try {
+      const recaptchaToken = await getRecaptchaToken();
       const payload = buildPayload();
+      if (recaptchaToken) {
+        payload.recaptcha_token = recaptchaToken;
+      }
       const response = await authService.registerMobile(payload);
 
       if (response?.token) {
@@ -380,6 +535,11 @@ export default function RegisterMobileScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
+          <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
+            <Feather name="arrow-left" size={18} color={colors.primary} />
+            <Text style={styles.backButtonText}>Voltar</Text>
+          </TouchableOpacity>
+
           <View style={styles.logoContainer}>
             <View style={styles.logoCircle}>
               <Feather name="user-plus" size={56} color="#fff" />
@@ -396,6 +556,97 @@ export default function RegisterMobileScreen() {
                 <View style={styles.formError}>
                   <Feather name="alert-circle" size={18} color="#b91c1c" />
                   <Text style={styles.formErrorText}>{formError}</Text>
+                </View>
+              ) : null}
+
+              <View
+                style={[
+                  styles.inputWrapper,
+                  fieldErrors.tenant_id && styles.inputWrapperError,
+                ]}
+              >
+                <Feather
+                  name="home"
+                  size={20}
+                  color={colors.primary}
+                  style={styles.inputIcon}
+                />
+                <TouchableOpacity
+                  style={styles.dropdownTrigger}
+                  onPress={() => setTenantDropdownOpen((prev) => !prev)}
+                  disabled={loading || tenantOptionsLoading}
+                >
+                  <Text
+                    style={[
+                      styles.dropdownText,
+                      !selectedTenant && styles.dropdownPlaceholder,
+                    ]}
+                  >
+                    {tenantOptionsLoading
+                      ? "Carregando academias..."
+                      : selectedTenant?.nome || "Selecione a academia"}
+                  </Text>
+                  <Feather
+                    name={tenantDropdownOpen ? "chevron-up" : "chevron-down"}
+                    size={18}
+                    color={colors.primary}
+                  />
+                </TouchableOpacity>
+              </View>
+              {fieldErrors.tenant_id ? (
+                <Text style={styles.fieldErrorText}>
+                  {fieldErrors.tenant_id}
+                </Text>
+              ) : null}
+
+              {tenantDropdownOpen ? (
+                <View style={styles.dropdownMenu}>
+                  {tenantOptions.length === 0 ? (
+                    <Text style={styles.dropdownEmptyText}>
+                      Nenhuma academia disponível no momento
+                    </Text>
+                  ) : (
+                    tenantOptions.map((tenant) => {
+                      const isSelected =
+                        Number(selectedTenantId) === Number(tenant.id);
+
+                      return (
+                        <TouchableOpacity
+                          key={tenant.id}
+                          style={[
+                            styles.dropdownItem,
+                            isSelected && styles.dropdownItemSelected,
+                          ]}
+                          onPress={() => {
+                            setSelectedTenantId(tenant.id);
+                            setTenantDropdownOpen(false);
+                            if (fieldErrors.tenant_id) {
+                              setFieldErrors((prev) => ({
+                                ...prev,
+                                tenant_id: undefined,
+                              }));
+                            }
+                          }}
+                        >
+                          <Text
+                            style={[
+                              styles.dropdownItemText,
+                              isSelected && styles.dropdownItemTextSelected,
+                            ]}
+                          >
+                            {tenant.nome}
+                          </Text>
+                          {isSelected ? (
+                            <Feather
+                              name="check"
+                              size={16}
+                              color={colors.primary}
+                            />
+                          ) : null}
+                        </TouchableOpacity>
+                      );
+                    })
+                  )}
                 </View>
               ) : null}
 
@@ -769,6 +1020,24 @@ const styles = StyleSheet.create({
     paddingTop: 14,
     paddingBottom: 44,
   },
+  backButton: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "rgba(255,255,255,0.95)",
+    borderWidth: 1,
+    borderColor: "#f4e1d1",
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 10,
+  },
+  backButtonText: {
+    color: colors.primary,
+    fontSize: 14,
+    fontWeight: "700",
+  },
   logoContainer: {
     alignItems: "center",
     marginBottom: 18,
@@ -872,6 +1141,60 @@ const styles = StyleSheet.create({
     fontSize: 15,
     outlineStyle: "none",
     outlineWidth: 0,
+  },
+  dropdownTrigger: {
+    flex: 1,
+    minHeight: 22,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  dropdownText: {
+    flex: 1,
+    color: "#0f172a",
+    fontSize: 15,
+  },
+  dropdownPlaceholder: {
+    color: "#999",
+  },
+  dropdownMenu: {
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#efe7df",
+    marginTop: -4,
+    marginBottom: 12,
+    maxHeight: 220,
+    overflow: "hidden",
+  },
+  dropdownItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f3ece4",
+  },
+  dropdownItemSelected: {
+    backgroundColor: "#fff3ea",
+  },
+  dropdownItemText: {
+    flex: 1,
+    color: "#334155",
+    fontSize: 14,
+  },
+  dropdownItemTextSelected: {
+    color: colors.primary,
+    fontWeight: "700",
+  },
+  dropdownEmptyText: {
+    color: "#6b7280",
+    fontSize: 13,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
   },
   sectionTitleWrapper: {
     marginTop: 10,

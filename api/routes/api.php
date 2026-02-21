@@ -224,6 +224,33 @@ return function ($app) {
     
     // Rotas públicas
     $app->post('/auth/register', [AuthController::class, 'register']);
+    $app->get('/auth/tenants-public', function($request, $response) {
+        try {
+            $db = require __DIR__ . '/../config/database.php';
+            $stmt = $db->prepare("SELECT id, nome, slug, email, telefone FROM tenants WHERE ativo = 1 AND id <> 1 ORDER BY nome ASC");
+            $stmt->execute();
+            $tenants = $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'data' => [
+                    'tenants' => $tenants,
+                    'total' => count($tenants)
+                ]
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
+        } catch (\Throwable $e) {
+            error_log('[Route /auth/tenants-public] EXCEPTION: ' . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'type' => 'error',
+                'code' => 'TENANTS_PUBLIC_INTERNAL_ERROR',
+                'message' => 'Erro ao listar academias ativas'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    });
     
     // Webhook Mercado Pago (sem autenticação - MP precisa acessar)
     $app->post('/api/webhooks/mercadopago', [MercadoPagoWebhookController::class, 'processarWebhook']);

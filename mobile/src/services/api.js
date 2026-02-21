@@ -80,7 +80,9 @@ const api = {
       const shouldSkipAuth = Boolean(config?.skipAuth);
       const isAuthEndpoint =
         endpoint === "/auth/login" ||
+        endpoint === "/auth/register" ||
         endpoint === "/auth/register-mobile" ||
+        endpoint === "/auth/tenants-public" ||
         endpoint === "/auth/select-tenant" ||
         endpoint === "/auth/select-tenant-public";
 

@@ -119,6 +119,22 @@ export const authService = {
   },
 
   /**
+   * Lista tenants públicos ativos para cadastro
+   */
+  async getPublicTenants() {
+    try {
+      const response = await api.get("/auth/tenants-public", {
+        skipAuth: true,
+      });
+
+      return response.data;
+    } catch (error) {
+      const errorData = error.response?.data || error;
+      throw errorData;
+    }
+  },
+
+  /**
    * Cadastro público para mobile (cria usuário aluno e retorna token)
    */
   async registerMobile(payload) {

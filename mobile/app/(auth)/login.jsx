@@ -41,6 +41,17 @@ export default function LoginScreen() {
   const [credentialsHydrated, setCredentialsHydrated] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
 
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    if (typeof document === "undefined") return;
+
+    document.body?.setAttribute("data-recaptcha-visible", "true");
+
+    return () => {
+      document.body?.setAttribute("data-recaptcha-visible", "false");
+    };
+  }, []);
+
   const ensureRecaptchaEnterpriseLoaded = async (siteKey) => {
     if (Platform.OS !== "web") return;
     if (typeof window === "undefined" || typeof document === "undefined") {
