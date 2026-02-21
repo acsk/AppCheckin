@@ -41,6 +41,57 @@ export default function LoginScreen() {
   const [credentialsHydrated, setCredentialsHydrated] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
 
+  const ensureRecaptchaEnterpriseLoaded = async (siteKey) => {
+    if (Platform.OS !== "web") return;
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      throw new Error("reCAPTCHA indisponível fora do navegador");
+    }
+
+    const hasEnterprise = () =>
+      Boolean(
+        window.grecaptcha?.enterprise &&
+          typeof window.grecaptcha.enterprise.execute === "function",
+      );
+
+    if (hasEnterprise()) return;
+
+    const scriptSrc = `https://www.google.com/recaptcha/enterprise.js?render=${siteKey}`;
+    const existingScript = document.querySelector(`script[src="${scriptSrc}"]`);
+
+    await new Promise((resolve, reject) => {
+      let attempts = 0;
+      const maxAttempts = 120;
+
+      const checkReady = () => {
+        if (hasEnterprise()) {
+          resolve(true);
+          return;
+        }
+
+        attempts += 1;
+        if (attempts >= maxAttempts) {
+          reject(new Error("Timeout ao carregar reCAPTCHA"));
+          return;
+        }
+
+        setTimeout(checkReady, 100);
+      };
+
+      if (!existingScript) {
+        const script = document.createElement("script");
+        script.src = scriptSrc;
+        script.async = true;
+        script.defer = true;
+        script.onerror = () => {
+          reject(new Error("Falha ao carregar script do reCAPTCHA"));
+        };
+        document.head.appendChild(script);
+      }
+
+      checkReady();
+    });
+  };
+
   const getRecaptchaToken = async () => {
     if (Platform.OS !== "web") return null;
 
@@ -49,13 +100,11 @@ export default function LoginScreen() {
       throw new Error("Site key do reCAPTCHA não configurada");
     }
 
-    if (typeof window === "undefined") {
-      throw new Error("reCAPTCHA indisponível fora do navegador");
-    }
+    await ensureRecaptchaEnterpriseLoaded(siteKey);
 
     const enterprise = window.grecaptcha?.enterprise;
     if (!enterprise || typeof enterprise.execute !== "function") {
-      throw new Error("reCAPTCHA ainda não carregou. Tente novamente.");
+      throw new Error("reCAPTCHA indisponível no momento. Tente novamente.");
     }
 
     await new Promise((resolve) => enterprise.ready(resolve));
