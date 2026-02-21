@@ -65,6 +65,21 @@ interface ApiResponse {
   error?: string;
 }
 
+const isAdminUser = (user: any) => {
+  if (!user) return false;
+  const isAdmin = user.papel_id === 3 || user.papel_id === 4;
+  const hasAdminRole =
+    Array.isArray(user.papeis) &&
+    user.papeis.some((r: any) => r.id === 3 || r.id === 4);
+  return isAdmin || hasAdminRole;
+};
+
+const isDevPlanName = (nome?: string | null) =>
+  String(nome || "")
+    .trim()
+    .toLowerCase()
+    .includes("dev");
+
 export default function PlanosScreen() {
   const router = useRouter();
 
@@ -75,12 +90,7 @@ export default function PlanosScreen() {
       const user = await authService.getCurrentUser();
       if (!user) return false;
 
-      const isAdmin = user.papel_id === 3 || user.papel_id === 4;
-      const hasAdminRole =
-        Array.isArray(user.papeis) &&
-        user.papeis.some((r: any) => r.id === 3 || r.id === 4);
-
-      return isAdmin || hasAdminRole;
+      return isAdminUser(user);
     },
   });
 
@@ -171,12 +181,7 @@ export default function PlanosScreen() {
         }
 
         // Verificar se o usuário é admin (papel_id 3) ou super admin (papel_id 4)
-        const isAdmin = user.papel_id === 3 || user.papel_id === 4;
-        const hasAdminRole =
-          Array.isArray(user.papeis) &&
-          user.papeis.some((r: any) => r.id === 3 || r.id === 4);
-
-        if (isAdmin || hasAdminRole) {
+        if (isAdminUser(user)) {
           console.log("✅ Usuário tem permissão para acessar planos");
           setHasPermission(true);
         } else {
@@ -408,8 +413,14 @@ export default function PlanosScreen() {
       console.log("✅ Resposta da API:", JSON.stringify(data, null, 2));
 
       if (data.success && data.data?.planos) {
-        console.log("✅ Planos carregados:", data.data.planos.length);
-        setPlanos(data.data.planos);
+        const user = await authService.getCurrentUser();
+        const admin = isAdminUser(user);
+        const planosFiltrados = admin
+          ? data.data.planos
+          : data.data.planos.filter((plano) => !isDevPlanName(plano?.nome));
+
+        console.log("✅ Planos carregados:", planosFiltrados.length);
+        setPlanos(planosFiltrados);
       } else {
         console.warn("⚠️ Resposta sem planos:", data);
         throw new Error(data.error || "Falha ao carregar planos");

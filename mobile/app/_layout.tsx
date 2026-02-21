@@ -94,6 +94,29 @@ export default function RootLayout() {
   }, [segments, router]);
 
   useEffect(() => {
+    if (Platform.OS !== "web") return;
+    if (typeof document === "undefined") return;
+
+    const firstSegment = segments?.[0] || "";
+    const secondSegment = segments?.[1] || "";
+
+    const isLoginRoute =
+      (firstSegment === "(auth)" || firstSegment === "auth") &&
+      secondSegment === "login";
+
+    const isRegisterRoute =
+      (firstSegment === "(auth)" || firstSegment === "auth") &&
+      secondSegment === "register-mobile";
+
+    const shouldShowBadge = isLoginRoute || isRegisterRoute;
+
+    document.body?.setAttribute(
+      "data-recaptcha-visible",
+      shouldShowBadge ? "true" : "false",
+    );
+  }, [segments]);
+
+  useEffect(() => {
     // Configurar callback para tratar 401 globalmente
     setOnUnauthorized(async () => {
       console.log(

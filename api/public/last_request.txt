@@ -8485,3 +8485,6 @@
 [2026-02-21 00:57:18] GET /uploads/fotos/aluno_5_1770851154.jpg
 [2026-02-21 00:57:18] GET /uploads/fotos/aluno_72_1770826700.jpg
 [2026-02-21 00:57:19] GET /uploads/fotos/aluno_71_1770831730.jpg
+[2026-02-21 01:38:44] GET /uploads/fotos/aluno_72_1770826700.jpg
+[2026-02-21 01:38:45] OPTIONS /mobile/planos-disponiveis
+[2026-02-21 01:38:45] GET /mobile/planos-disponiveis

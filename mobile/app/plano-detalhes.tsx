@@ -823,6 +823,7 @@ export default function PlanoDetalhesScreen() {
     statusCodigo === "pendente" || statusNome.includes("pendente");
   const isPlanoAtivo = !!plano.is_plano_atual && !isPendente;
   const qrSize = Math.min(320, Math.round(screenWidth * 0.72));
+  const pixButtonTemporarilyHidden = true;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -1068,29 +1069,33 @@ export default function PlanoDetalhesScreen() {
               )}
             </TouchableOpacity>
 
-            {!!selectedCiclo && pixDisponivel && (
-              <TouchableOpacity
-                style={[
-                  styles.footerPixButton,
-                  pixLoading && styles.footerPixButtonLoading,
-                ]}
-                onPress={handlePagarPix}
-                disabled={pixLoading}
-                activeOpacity={0.8}
-              >
-                {pixLoading ? (
-                  <>
-                    <ActivityIndicator color="#fff" size="small" />
-                    <Text style={styles.footerButtonText}>Gerando PIX...</Text>
-                  </>
-                ) : (
-                  <>
-                    <Feather name="zap" size={18} color="#fff" />
-                    <Text style={styles.footerButtonText}>Pagar com PIX</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            )}
+            {!!selectedCiclo &&
+              pixDisponivel &&
+              !pixButtonTemporarilyHidden && (
+                <TouchableOpacity
+                  style={[
+                    styles.footerPixButton,
+                    pixLoading && styles.footerPixButtonLoading,
+                  ]}
+                  onPress={handlePagarPix}
+                  disabled={pixLoading}
+                  activeOpacity={0.8}
+                >
+                  {pixLoading ? (
+                    <>
+                      <ActivityIndicator color="#fff" size="small" />
+                      <Text style={styles.footerButtonText}>
+                        Gerando PIX...
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Feather name="zap" size={18} color="#fff" />
+                      <Text style={styles.footerButtonText}>Pagar com PIX</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
           </View>
         )}
       </View>

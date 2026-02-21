@@ -5281,7 +5281,14 @@ class MobileController
             $stmtPendente->execute([$alunoId, $tenantId, $plano['modalidade_id']]);
             $matriculaPendente = $stmtPendente->fetch(\PDO::FETCH_ASSOC) ?: null;
 
-            if ($matriculaPendente && $metodoPagamento === 'pix') {
+            $pendenciaMesmaEscolha = false;
+            if ($matriculaPendente) {
+                $planoPendenteId = (int) ($matriculaPendente['plano_id'] ?? 0);
+                $cicloPendenteId = !empty($matriculaPendente['plano_ciclo_id']) ? (int) $matriculaPendente['plano_ciclo_id'] : null;
+                $pendenciaMesmaEscolha = $planoPendenteId === $planoId && $cicloPendenteId === $planoCicloId;
+            }
+
+            if ($matriculaPendente && $metodoPagamento === 'pix' && $pendenciaMesmaEscolha) {
                 // Buscar assinatura pendente para recuperar payment_url/preference_id
                 $stmtAss = $this->db->prepare("
                     SELECT id, gateway_preference_id, payment_url, tipo_cobranca, status_gateway
@@ -5912,6 +5919,7 @@ class MobileController
                         $stmtUpdateAss = $this->db->prepare("
                             UPDATE assinaturas
                             SET gateway_id = ?,
+                                plano_id = ?,
                                 gateway_assinatura_id = ?,
                                 gateway_preference_id = ?,
                                 external_reference = ?,
@@ -5932,6 +5940,7 @@ class MobileController
                         ");
                         $stmtUpdateAss->execute([
                             $gatewayId,
+                            $planoIdMatricula,
                             $gatewayAssinaturaId,
                             $gatewayPreferenceId,
                             $externalReference,
