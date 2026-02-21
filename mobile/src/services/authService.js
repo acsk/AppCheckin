@@ -39,9 +39,14 @@ export const authService = {
   /**
    * Realiza login com email e senha
    */
-  async login(email, senha) {
+  async login(email, senha, recaptchaToken = null) {
     try {
-      const response = await api.post("/auth/login", { email, senha });
+      const payload = { email, senha };
+      if (recaptchaToken) {
+        payload.recaptcha_token = recaptchaToken;
+      }
+
+      const response = await api.post("/auth/login", payload);
 
       console.log("🔐 LOGIN RESPONSE COMPLETO:", JSON.stringify(response.data, null, 2));
       console.log("🔐 USER no login:", response.data.user);

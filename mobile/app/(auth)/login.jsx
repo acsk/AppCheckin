@@ -1,12 +1,13 @@
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
+import * as SecureStore from "expo-secure-store";
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
     ScrollView,
     StyleSheet,
     Text,
@@ -15,8 +16,8 @@ import {
     View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import * as SecureStore from "expo-secure-store";
 import PasswordRecoveryModal from "../../components/PasswordRecoveryModal";
+import urlsConfig from "../../src/config/urls";
 import { authService } from "../../src/services/authService";
 import { colors } from "../../src/theme/colors";
 import AsyncStorage from "../../src/utils/storage";
@@ -39,6 +40,27 @@ export default function LoginScreen() {
   const [selectingTenantId, setSelectingTenantId] = useState(null);
   const [credentialsHydrated, setCredentialsHydrated] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
+
+  const getRecaptchaToken = async () => {
+    if (Platform.OS !== "web") return null;
+
+    const siteKey = urlsConfig?.recaptcha?.siteKey;
+    if (!siteKey) {
+      throw new Error("Site key do reCAPTCHA não configurada");
+    }
+
+    if (typeof window === "undefined") {
+      throw new Error("reCAPTCHA indisponível fora do navegador");
+    }
+
+    const enterprise = window.grecaptcha?.enterprise;
+    if (!enterprise || typeof enterprise.execute !== "function") {
+      throw new Error("reCAPTCHA ainda não carregou. Tente novamente.");
+    }
+
+    await new Promise((resolve) => enterprise.ready(resolve));
+    return enterprise.execute(siteKey, { action: "LOGIN" });
+  };
 
   const getPassword = async () => {
     if (Platform.OS === "web") return null;
@@ -173,7 +195,8 @@ export default function LoginScreen() {
     setFormError("");
     try {
       console.log("🔐 Iniciando login para:", email);
-      const response = await authService.login(email, senha);
+      const recaptchaToken = await getRecaptchaToken();
+      const response = await authService.login(email, senha, recaptchaToken);
 
       // authService já retorna response.data e salva o token automaticamente
       if (response && response.token) {
@@ -446,9 +469,7 @@ export default function LoginScreen() {
       >
         <View style={styles.tenantModalOverlay}>
           <View style={styles.tenantModalCard}>
-            <Text style={styles.tenantModalTitle}>
-              Selecione a academia
-            </Text>
+            <Text style={styles.tenantModalTitle}>Selecione a academia</Text>
             <ScrollView
               contentContainerStyle={styles.tenantList}
               showsVerticalScrollIndicator={false}

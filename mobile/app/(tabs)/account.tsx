@@ -1564,8 +1564,7 @@ export default function AccountScreen() {
               </View>
             )}
 
-            {isUserAdmin && (
-              <TouchableOpacity
+               <TouchableOpacity
                 style={styles.sidebarMenuItem}
                 onPress={async () => {
                   try {
@@ -1591,7 +1590,7 @@ export default function AccountScreen() {
                 </View>
                 <Text style={styles.sidebarMenuItemText}>Planos</Text>
               </TouchableOpacity>
-            )}
+            
 
             <TouchableOpacity
               style={styles.sidebarMenuItem}
