@@ -464,15 +464,49 @@ class MercadoPagoWebhookV2Controller
             $result_mat_status = $stmt_mat_status->get_result();
             $matStatusRow = $result_mat_status->fetch_assoc();
             $matStatusId = $matStatusRow ? $matStatusRow['id'] : 2;
+
+            // Calcular vigência no momento do approved (webhook)
+            $duracaoDias = 30;
+            $duracaoMeses = 0;
+            $sqlDuracao = "
+                SELECT p.duracao_dias, pc.meses
+                FROM matriculas m
+                INNER JOIN planos p ON p.id = m.plano_id
+                LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+                WHERE m.id = ?
+                LIMIT 1
+            ";
+            $stmtDuracao = $this->db->prepare($sqlDuracao);
+            $stmtDuracao->bind_param("i", $id);
+            if ($stmtDuracao->execute()) {
+                $resDuracao = $stmtDuracao->get_result();
+                $duracaoRow = $resDuracao->fetch_assoc();
+                if ($duracaoRow) {
+                    $duracaoDias = max(1, (int) ($duracaoRow['duracao_dias'] ?? 30));
+                    $duracaoMeses = (int) ($duracaoRow['meses'] ?? 0);
+                }
+            }
+
+            $hoje = new \DateTimeImmutable(date('Y-m-d'));
+            if ($duracaoMeses > 0) {
+                $dataVencimento = $hoje->modify("+{$duracaoMeses} months")->format('Y-m-d');
+            } else {
+                $dataVencimento = $hoje->modify("+{$duracaoDias} days")->format('Y-m-d');
+            }
+            $dataInicio = $hoje->format('Y-m-d');
             
             $sql_mat_update = "
                 UPDATE matriculas 
-                SET status_id = ?, updated_at = NOW()
+                SET status_id = ?,
+                    data_inicio = ?,
+                    data_vencimento = ?,
+                    proxima_data_vencimento = ?,
+                    updated_at = NOW()
                 WHERE id = ?
             ";
             
             $stmt_mat_update = $this->db->prepare($sql_mat_update);
-            $stmt_mat_update->bind_param("ii", $matStatusId, $id);
+            $stmt_mat_update->bind_param("isssi", $matStatusId, $dataInicio, $dataVencimento, $dataVencimento, $id);
             
             if (!$stmt_mat_update->execute()) {
                 $this->log("❌ Erro ao atualizar matrícula: " . $stmt_mat_update->error);

@@ -1185,18 +1185,64 @@ class MercadoPagoWebhookController
      */
     private function ativarMatricula(int $matriculaId): void
     {
+        // Buscar dados da matrícula/plano para calcular vigência somente no approved
+        $stmtMatricula = $this->db->prepare("
+            SELECT m.id, m.status_id, m.plano_id, m.plano_ciclo_id, p.duracao_dias, pc.meses
+            FROM matriculas m
+            INNER JOIN planos p ON p.id = m.plano_id
+            LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+            WHERE m.id = ?
+            LIMIT 1
+        ");
+        $stmtMatricula->execute([$matriculaId]);
+        $matricula = $stmtMatricula->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$matricula) {
+            error_log("[Webhook MP] ⚠️ Matrícula #{$matriculaId} não encontrada para ativação");
+            return;
+        }
+
+        // Id do status ativa
+        $stmtStatusAtiva = $this->db->prepare("SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1");
+        $stmtStatusAtiva->execute();
+        $statusAtivaId = (int) ($stmtStatusAtiva->fetchColumn() ?: 1);
+
+        // Evitar reprocessamento de webhooks duplicados
+        if ((int) $matricula['status_id'] === $statusAtivaId) {
+            error_log("[Webhook MP] ℹ️ Matrícula #{$matriculaId} já ativa, ignorando atualização de vigência");
+            return;
+        }
+
+        $hoje = new \DateTimeImmutable(date('Y-m-d'));
+        $duracaoMeses = (int) ($matricula['meses'] ?? 0);
+
+        if ($duracaoMeses > 0) {
+            $dataVencimento = $hoje->modify("+{$duracaoMeses} months")->format('Y-m-d');
+        } else {
+            $duracaoDias = max(1, (int) ($matricula['duracao_dias'] ?? 30));
+            $dataVencimento = $hoje->modify("+{$duracaoDias} days")->format('Y-m-d');
+        }
+
         $stmtUpdate = $this->db->prepare("
             UPDATE matriculas
-            SET status_id = 1,
+            SET status_id = ?,
+                data_inicio = ?,
+                data_vencimento = ?,
+                proxima_data_vencimento = ?,
                 updated_at = NOW()
             WHERE id = ?
-            AND status_id IN (5, 2)
         ");
-        
-        $stmtUpdate->execute([$matriculaId]);
-        
+
+        $stmtUpdate->execute([
+            $statusAtivaId,
+            $hoje->format('Y-m-d'),
+            $dataVencimento,
+            $dataVencimento,
+            $matriculaId
+        ]);
+
         if ($stmtUpdate->rowCount() > 0) {
-            error_log("Matrícula #{$matriculaId} ativada após pagamento aprovado");
+            error_log("Matrícula #{$matriculaId} ativada após pagamento aprovado com vigência até {$dataVencimento}");
         }
     }
 
