@@ -50,7 +50,7 @@ export default function LoginScreen() {
     const hasEnterprise = () =>
       Boolean(
         window.grecaptcha?.enterprise &&
-          typeof window.grecaptcha.enterprise.execute === "function",
+        typeof window.grecaptcha.enterprise.execute === "function",
       );
 
     if (hasEnterprise()) return;
