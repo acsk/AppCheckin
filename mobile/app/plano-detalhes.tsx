@@ -7,17 +7,17 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Image,
-  Linking,
-  Modal,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  useWindowDimensions,
-  View,
+    ActivityIndicator,
+    Image,
+    Linking,
+    Modal,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    useWindowDimensions,
+    View,
 } from "react-native";
 
 interface Ciclo {
@@ -307,20 +307,8 @@ export default function PlanoDetalhesScreen() {
           return;
         }
 
-        // Verificar se o usuário é admin (papel_id 3) ou super admin (papel_id 4)
-        const isAdmin = user.papel_id === 3 || user.papel_id === 4;
-        const hasAdminRole =
-          Array.isArray(user.papeis) &&
-          user.papeis.some((r: any) => r.id === 3 || r.id === 4);
-
-        if (isAdmin || hasAdminRole) {
-          console.log("✅ Usuário tem permissão para acessar plano");
-          setHasPermission(true);
-        } else {
-          console.warn("❌ Usuário não tem permissão para acessar plano");
-          setHasPermission(false);
-          router.replace("/planos");
-        }
+        console.log("✅ Usuário autenticado com permissão para acessar plano");
+        setHasPermission(true);
       } catch (err) {
         console.error("❌ Erro ao verificar permissão:", err);
         setHasPermission(false);
