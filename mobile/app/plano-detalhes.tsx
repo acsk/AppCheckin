@@ -116,13 +116,6 @@ export default function PlanoDetalhesScreen() {
   const { width: screenWidth } = useWindowDimensions();
 
   const handleBack = () => {
-    if ("canGoBack" in router && typeof router.canGoBack === "function") {
-      if (router.canGoBack()) {
-        router.back();
-        return;
-      }
-    }
-
     router.replace("/planos");
   };
 
@@ -754,7 +747,7 @@ export default function PlanoDetalhesScreen() {
           </Text>
           <TouchableOpacity
             style={styles.retryButton}
-            onPress={() => router.back()}
+            onPress={handleBack}
           >
             <Feather name="arrow-left" size={18} color="#fff" />
             <Text style={styles.retryButtonText}>Voltar aos Planos</Text>
