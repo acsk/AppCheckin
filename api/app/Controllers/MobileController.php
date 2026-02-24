@@ -5447,14 +5447,17 @@ class MobileController
                                     'avulso'
                                 ]);
 
-                                // Criar primeiro pagamento da assinatura
+                                // Criar primeiro pagamento da assinatura como PENDENTE
                                 try {
                                     $stmtPagamento = $this->db->prepare("
                                         INSERT INTO pagamentos_plano
                                         (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento,
                                          data_pagamento, status_pagamento_id, forma_pagamento_id, tipo_baixa_id,
                                          observacoes, created_at, updated_at)
-                                        VALUES (?, ?, ?, ?, ?, ?, NOW(), 2, 9, 4, 'Assinatura recorrente - Primeiro pagamento', NOW(), NOW())
+                                        VALUES (?, ?, ?, ?, ?, ?, NULL,
+                                                (SELECT id FROM status_pagamento WHERE codigo = 'pendente' LIMIT 1),
+                                                NULL, NULL,
+                                                'Aguardando pagamento da assinatura', NOW(), NOW())
                                     ");
 
                                     $stmtPagamento->execute([
@@ -6011,14 +6014,17 @@ class MobileController
                         $assinaturaDbId = (int) $this->db->lastInsertId();
                         error_log("[MobileController::comprarPlano] ✅ {$tipoCobranca} salva no banco ID: {$assinaturaDbId}");
 
-                        // Criar primeiro pagamento da assinatura
+                        // Criar primeiro pagamento da assinatura como PENDENTE
                         try {
                             $stmtPagamento = $this->db->prepare("
                                 INSERT INTO pagamentos_plano
                                 (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento,
                                  data_pagamento, status_pagamento_id, forma_pagamento_id, tipo_baixa_id,
                                  observacoes, created_at, updated_at)
-                                VALUES (?, ?, ?, ?, ?, ?, NOW(), 2, 9, 4, 'Assinatura recorrente - Primeiro pagamento', NOW(), NOW())
+                                VALUES (?, ?, ?, ?, ?, ?, NULL,
+                                        (SELECT id FROM status_pagamento WHERE codigo = 'pendente' LIMIT 1),
+                                        NULL, NULL,
+                                        'Aguardando pagamento da assinatura', NOW(), NOW())
                             ");
 
                             $stmtPagamento->execute([

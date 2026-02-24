@@ -202,13 +202,16 @@ class AssinaturaController
                 
                 $assinaturaId = (int) $this->db->lastInsertId();
                 
-                // Criar primeiro pagamento como PAGO
+                // Criar primeiro pagamento como PENDENTE
                 $stmtPagamento = $this->db->prepare("
                     INSERT INTO pagamentos_plano
                     (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento,
                      data_pagamento, status_pagamento_id, forma_pagamento_id, tipo_baixa_id,
                      observacoes, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, NOW(), 2, 9, 4, 'Assinatura recorrente - Primeiro pagamento', NOW(), NOW())
+                    VALUES (?, ?, ?, ?, ?, ?, NULL,
+                            (SELECT id FROM status_pagamento WHERE codigo = 'pendente' LIMIT 1),
+                            NULL, NULL,
+                            'Aguardando pagamento da assinatura', NOW(), NOW())
                 ");
                 
                 $stmtPagamento->execute([
