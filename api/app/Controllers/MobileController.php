@@ -5454,10 +5454,17 @@ class MobileController
                                         (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento,
                                          data_pagamento, status_pagamento_id, forma_pagamento_id, tipo_baixa_id,
                                          observacoes, created_at, updated_at)
-                                        VALUES (?, ?, ?, ?, ?, ?, NULL,
-                                                1,
-                                                NULL, NULL,
-                                                'Aguardando pagamento da assinatura', NOW(), NOW())
+                                        SELECT ?, ?, ?, ?, ?, ?, NULL,
+                                               1,
+                                               NULL, NULL,
+                                               'Aguardando pagamento da assinatura', NOW(), NOW()
+                                        WHERE NOT EXISTS (
+                                            SELECT 1 FROM pagamentos_plano
+                                            WHERE tenant_id = ?
+                                              AND matricula_id = ?
+                                              AND status_pagamento_id = 1
+                                              AND data_pagamento IS NULL
+                                        )
                                     ");
 
                                     $stmtPagamento->execute([
@@ -5466,7 +5473,9 @@ class MobileController
                                         (int) $matriculaPendente['id'],
                                         (int) $matriculaPendente['plano_id'],
                                         (float) $matriculaPendente['valor'],
-                                        $matriculaPendente['proxima_data_vencimento'] ?? $matriculaPendente['data_vencimento'] ?? date('Y-m-d')
+                                        $matriculaPendente['proxima_data_vencimento'] ?? $matriculaPendente['data_vencimento'] ?? date('Y-m-d'),
+                                        $tenantId,
+                                        (int) $matriculaPendente['id']
                                     ]);
                                 } catch (\Exception $e) {
                                     error_log("[MobileController] ⚠️ Erro ao criar pagamento_plano: " . $e->getMessage());
@@ -5741,9 +5750,16 @@ class MobileController
                     INSERT INTO pagamentos_plano 
                     (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento, 
                      status_pagamento_id, observacoes, criado_por, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, 
-                            1,
-                            'Aguardando pagamento via Mercado Pago', ?, NOW(), NOW())
+                    SELECT ?, ?, ?, ?, ?, ?, 
+                           1,
+                           'Aguardando pagamento via Mercado Pago', ?, NOW(), NOW()
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM pagamentos_plano
+                        WHERE tenant_id = ?
+                          AND matricula_id = ?
+                          AND status_pagamento_id = 1
+                          AND data_pagamento IS NULL
+                    )
                 ");
                 
                 $stmtPagamento->execute([
@@ -5753,11 +5769,17 @@ class MobileController
                     $planoId,
                     $valorCompra,
                     $dataInicio,
-                    $userId
+                    $userId,
+                    $tenantId,
+                    $matriculaId
                 ]);
                 
-                $pagamentoId = (int) $this->db->lastInsertId();
-                error_log("[MobileController::comprarPlano] Pagamento pendente criado ID: {$pagamentoId}");
+                if ($stmtPagamento->rowCount() > 0) {
+                    $pagamentoId = (int) $this->db->lastInsertId();
+                    error_log("[MobileController::comprarPlano] Pagamento pendente criado ID: {$pagamentoId}");
+                } else {
+                    error_log("[MobileController::comprarPlano] Pagamento pendente já existente para matrícula {$matriculaId}, não duplicado.");
+                }
                 
             } catch (\Exception $e) {
                 error_log("[MobileController::comprarPlano] Erro ao criar pagamento_plano: " . $e->getMessage());
@@ -6021,10 +6043,17 @@ class MobileController
                                 (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento,
                                  data_pagamento, status_pagamento_id, forma_pagamento_id, tipo_baixa_id,
                                  observacoes, created_at, updated_at)
-                                VALUES (?, ?, ?, ?, ?, ?, NULL,
-                                        1,
-                                        NULL, NULL,
-                                        'Aguardando pagamento da assinatura', NOW(), NOW())
+                                SELECT ?, ?, ?, ?, ?, ?, NULL,
+                                       1,
+                                       NULL, NULL,
+                                       'Aguardando pagamento da assinatura', NOW(), NOW()
+                                WHERE NOT EXISTS (
+                                    SELECT 1 FROM pagamentos_plano
+                                    WHERE tenant_id = ?
+                                      AND matricula_id = ?
+                                      AND status_pagamento_id = 1
+                                      AND data_pagamento IS NULL
+                                )
                             ");
 
                             $stmtPagamento->execute([
@@ -6033,7 +6062,9 @@ class MobileController
                                 $matriculaId,
                                 $planoIdMatricula,
                                 $valorCompra,
-                                $proximaDataVencimento ? $proximaDataVencimento->format('Y-m-d') : date('Y-m-d')
+                                $proximaDataVencimento ? $proximaDataVencimento->format('Y-m-d') : date('Y-m-d'),
+                                $tenantId,
+                                $matriculaId
                             ]);
                         } catch (\Exception $e) {
                             error_log("[MobileController::comprarPlano] ⚠️ Erro ao criar pagamento_plano: " . $e->getMessage());
@@ -6621,7 +6652,14 @@ class MobileController
                                 (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento,
                                  data_pagamento, status_pagamento_id, forma_pagamento_id, tipo_baixa_id,
                                  observacoes, created_at, updated_at)
-                                VALUES (?, ?, ?, ?, ?, ?, NULL, 1, NULL, NULL, 'Aguardando pagamento da assinatura', NOW(), NOW())
+                                SELECT ?, ?, ?, ?, ?, ?, NULL, 1, NULL, NULL, 'Aguardando pagamento da assinatura', NOW(), NOW()
+                                WHERE NOT EXISTS (
+                                    SELECT 1 FROM pagamentos_plano
+                                    WHERE tenant_id = ?
+                                      AND matricula_id = ?
+                                      AND status_pagamento_id = 1
+                                      AND data_pagamento IS NULL
+                                )
                             ");
 
                             $stmtPagamento->execute([
@@ -6630,7 +6668,9 @@ class MobileController
                                 (int) $matricula['id'],
                                 (int) $matricula['plano_id'],
                                 (float) $matricula['valor'],
-                                $matricula['proxima_data_vencimento'] ?? date('Y-m-d')
+                                $matricula['proxima_data_vencimento'] ?? date('Y-m-d'),
+                                $tenantId,
+                                (int) $matricula['id']
                             ]);
                         } catch (\Exception $e) {
                             error_log("[MobileController::gerarPagamentoPix] ⚠️ Erro ao criar pagamento_plano: " . $e->getMessage());

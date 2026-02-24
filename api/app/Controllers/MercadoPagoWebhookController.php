@@ -56,92 +56,10 @@ class MercadoPagoWebhookController
      */
     public function processarWebhook(Request $request, Response $response): Response
     {
-        try {
-            $body = $request->getParsedBody();
-            
-            // Log da notificação
-            $this->logWebhook("=== WEBHOOK MERCADO PAGO ===");
-            $this->logWebhook("Body recebido: " . json_encode($body));
-            
-            // Validar se é notificação válida
-            if (!isset($body['type']) || !isset($body['data']['id'])) {
-                error_log("[Webhook MP] ❌ Notificação inválida - falta type ou data.id");
-                $response->getBody()->write(json_encode([
-                    'error' => 'Notificação inválida'
-                ]));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
-            }
-            
-            $type = $body['type'];
-            $dataId = $body['data']['id'];
-            
-            error_log("[Webhook MP] ✅ Tipo: {$type}, ID: {$dataId}");
-            
-            // Buscar tenant_id pela matrícula/pagamento (se disponível nos metadados)
-            // Por enquanto, usar credenciais globais (ENV) para processar webhook
-            $mercadoPagoService = $this->getMercadoPagoService();
-            
-            // Processar notificação baseado no tipo
-            error_log("[Webhook MP] Processando notificação tipo: {$type}...");
-            
-            $resultadoProcessamento = null;
-            
-            if ($type === 'subscription_preapproval' || $type === 'subscription' || $type === 'preapproval') {
-                // Notificação de assinatura (preapproval)
-                $assinatura = $mercadoPagoService->buscarAssinatura($dataId);
-                error_log("[Webhook MP] Assinatura processada: status=" . ($assinatura['status'] ?? 'N/A'));
-                
-                // Atualizar status da assinatura
-                $this->atualizarAssinatura($assinatura);
-                
-                $resultadoProcessamento = [
-                    'success' => true,
-                    'message' => 'Assinatura processada',
-                    'subscription_status' => $assinatura['status'] ?? null,
-                    'preapproval_id' => $assinatura['preapproval_id'] ?? $dataId
-                ];
-                
-                $response->getBody()->write(json_encode($resultadoProcessamento));
-            } else {
-                // Notificação de pagamento normal
-                $pagamento = $mercadoPagoService->processarNotificacao($body);
-                error_log("[Webhook MP] Pagamento processado: status=" . ($pagamento['status'] ?? 'N/A'));
-                
-                // Atualizar status no banco de dados
-                $this->atualizarPagamento($pagamento);
-                
-                $resultadoProcessamento = [
-                    'success' => true,
-                    'message' => 'Notificação processada',
-                    'payment_status' => $pagamento['status'] ?? null,
-                    'matricula_id' => $pagamento['metadata']['matricula_id'] ?? null
-                ];
-                
-                $response->getBody()->write(json_encode($resultadoProcessamento));
-            }
-            
-            // Salvar payload no banco para auditoria
-            $this->salvarWebhookPayload($body, $type, $dataId, 'sucesso', null, $resultadoProcessamento);
-            
-            error_log("[Webhook MP] ✅ Processamento concluído com sucesso");
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
-            
-        } catch (\Exception $e) {
-            error_log("[Webhook MP] ❌ ERRO: " . $e->getMessage());
-            error_log("[Webhook MP] Stack: " . $e->getTraceAsString());
-            
-            // Salvar payload com erro
-            $type = $body['type'] ?? 'unknown';
-            $dataId = $body['data']['id'] ?? null;
-            $this->salvarWebhookPayload($body, $type, $dataId, 'erro', $e->getMessage(), null);
-            
-            // Retornar 200 mesmo com erro para evitar reenvios
-            $response->getBody()->write(json_encode([
-                'success' => false,
-                'error' => $e->getMessage()
-            ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
-        }
+        $this->logWebhook("[Webhook MP V1] Delegando processamento para fluxo V2");
+
+        $v2Controller = new MercadoPagoWebhookV2Controller();
+        return $v2Controller->processar($request, $response);
     }
     
     /**
@@ -718,9 +636,9 @@ class MercadoPagoWebhookController
             $stmtBuscar = $this->db->prepare("
                 SELECT pp.id, pp.valor
                 FROM pagamentos_plano pp
-                INNER JOIN status_pagamento sp ON sp.id = pp.status_pagamento_id
                 WHERE pp.matricula_id = ?
-                AND sp.codigo IN ('pendente', 'aguardando')
+                AND pp.status_pagamento_id = 1
+                AND pp.data_pagamento IS NULL
                 ORDER BY pp.data_vencimento ASC
                 LIMIT 1
             ");
@@ -729,9 +647,10 @@ class MercadoPagoWebhookController
             
             // Verificar se já existe pagamento pago hoje para evitar duplicatas (webhook duplicado)
             $stmtDuplicata = $this->db->prepare("
-                SELECT pp.id FROM pagamentos_plano pp
-                INNER JOIN status_pagamento sp ON sp.id = pp.status_pagamento_id
-                WHERE pp.matricula_id = ? AND sp.codigo = 'pago' AND DATE(pp.data_pagamento) = CURDATE()
+                                SELECT pp.id FROM pagamentos_plano pp
+                                WHERE pp.matricula_id = ?
+                                    AND pp.status_pagamento_id = 2
+                                    AND DATE(pp.data_pagamento) = CURDATE()
                 LIMIT 1
             ");
             $stmtDuplicata->execute([$matriculaId]);
@@ -1303,9 +1222,9 @@ class MercadoPagoWebhookController
             $stmtBuscar = $this->db->prepare("
                 SELECT pp.id, pp.valor
                 FROM pagamentos_plano pp
-                INNER JOIN status_pagamento sp ON sp.id = pp.status_pagamento_id
                 WHERE pp.matricula_id = ?
-                AND sp.codigo IN ('pendente', 'aguardando')
+                AND pp.status_pagamento_id = 1
+                AND pp.data_pagamento IS NULL
                 ORDER BY pp.data_vencimento ASC
                 LIMIT 1
             ");
@@ -1314,9 +1233,10 @@ class MercadoPagoWebhookController
             
             // Verificar se já existe pagamento pago hoje para evitar duplicatas (webhook duplicado)
             $stmtDuplicata = $this->db->prepare("
-                SELECT pp.id FROM pagamentos_plano pp
-                INNER JOIN status_pagamento sp ON sp.id = pp.status_pagamento_id
-                WHERE pp.matricula_id = ? AND sp.codigo = 'pago' AND DATE(pp.data_pagamento) = CURDATE()
+                                SELECT pp.id FROM pagamentos_plano pp
+                                WHERE pp.matricula_id = ?
+                                    AND pp.status_pagamento_id = 2
+                                    AND DATE(pp.data_pagamento) = CURDATE()
                 LIMIT 1
             ");
             $stmtDuplicata->execute([$matriculaId]);

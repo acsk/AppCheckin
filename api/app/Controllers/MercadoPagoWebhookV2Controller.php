@@ -80,6 +80,12 @@ class MercadoPagoWebhookV2Controller
         } catch (\Exception $e) {
             $this->log("❌ ERRO: " . $e->getMessage());
             $this->log("Stack: " . $e->getTraceAsString());
+
+            $type = $body['type'] ?? 'unknown';
+            $dataId = isset($body['data']['id']) ? (string)$body['data']['id'] : null;
+            if (is_array($body)) {
+                $this->salvarWebhook($body, $type, $dataId, 'erro');
+            }
             
             $response->getBody()->write(json_encode(['success' => false, 'error' => $e->getMessage()]));
             return $response->withStatus(200)->withHeader('Content-Type', 'application/json');
@@ -165,12 +171,27 @@ class MercadoPagoWebhookV2Controller
         $id = $parts[1] ?? null;
         
         if ($type !== 'MAT' || !$id) {
+            if ($type === 'PAC' && $id) {
+                $paymentStatus = strtolower((string)($payment['status'] ?? ''));
+                if (in_array($paymentStatus, ['approved', 'authorized'], true)) {
+                    $this->ativarPacoteContrato((int)$id);
+                } else {
+                    $this->log("ℹ️  Webhook PAC recebido com status {$paymentStatus}, sem ativação");
+                }
+                return;
+            }
+
             $this->log("⚠️  Tipo desconhecido ou ID inválido: {$type}");
             return;
         }
         
         // Buscar matrícula
-        $sql = "SELECT m.id, m.tenant_id FROM matriculas m WHERE m.id = ? LIMIT 1";
+        $sql = "
+            SELECT m.id, m.tenant_id, m.aluno_id, m.plano_id, m.valor, m.proxima_data_vencimento
+            FROM matriculas m
+            WHERE m.id = ?
+            LIMIT 1
+        ";
         $stmt = $this->db->prepare($sql);
         $stmt->bind_param("i", $id);
         $stmt->execute();
@@ -183,71 +204,390 @@ class MercadoPagoWebhookV2Controller
         
         $matricula = $result->fetch_assoc();
         $this->log("✅ Matrícula encontrada: " . $matricula['id']);
-        
-        // Buscar assinatura para saber o plano e valor
-        $sql_ass = "
-            SELECT id, plano_id, valor, proxima_cobranca
-            FROM assinaturas
-            WHERE matricula_id = ? AND status_id = 1
-            LIMIT 1
-        ";
-        
-        $stmt_ass = $this->db->prepare($sql_ass);
-        $stmt_ass->bind_param("i", $matricula['id']);
-        $stmt_ass->execute();
-        $result_ass = $stmt_ass->get_result();
-        
-        if (!$result_ass || $result_ass->num_rows === 0) {
-            $this->log("⚠️  Nenhuma assinatura ativa encontrada para matrícula");
-            return;
+
+        // Persistir rastreabilidade em pagamentos_mercadopago
+        $this->sincronizarPagamentoMercadoPago($payment, $matricula);
+
+        $paymentStatus = strtolower((string)($payment['status'] ?? ''));
+        $isAprovado = in_array($paymentStatus, ['approved', 'authorized'], true);
+        $statusPagamentoId = $isAprovado ? 2 : 1;
+        $dataPagamento = $isAprovado
+            ? date('Y-m-d H:i:s', strtotime((string)($payment['date_approved'] ?? 'now')))
+            : null;
+        $observacao = "Webhook MP - Payment ID: " . ($payment['id'] ?? 'N/A') . " - Status: " . ($paymentStatus ?: 'desconhecido');
+
+        // Primeiro tenta baixar um pagamento pendente existente da matrícula
+        if ($isAprovado) {
+            $sql_update = "
+                UPDATE pagamentos_plano
+                SET status_pagamento_id = 2,
+                    data_pagamento = COALESCE(data_pagamento, ?),
+                    observacoes = ?,
+                    updated_at = NOW()
+                WHERE tenant_id = ?
+                  AND matricula_id = ?
+                                    AND status_pagamento_id = 1
+                                    AND data_pagamento IS NULL
+                                ORDER BY data_vencimento ASC, id ASC
+                LIMIT 1
+            ";
+
+            $stmt_update = $this->db->prepare($sql_update);
+            $stmt_update->bind_param(
+                "ssii",
+                $dataPagamento,
+                $observacao,
+                $matricula['tenant_id'],
+                $matricula['id']
+            );
+
+            if ($stmt_update->execute() && $stmt_update->affected_rows > 0) {
+                $this->log("✅ Pagamento pendente baixado como PAGO via webhook.");
+                $this->ativarMatricula((int)$matricula['id']);
+                $this->atualizarAssinaturaAvulsaPorPagamento((int)$matricula['id'], $payment);
+                return;
+            }
         }
-        
-        $assinatura = $result_ass->fetch_assoc();
-        
-        // Verificar se já existe pagamento recente
-        $sql_check = "
-            SELECT id FROM pagamentos_plano
-            WHERE matricula_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
-            LIMIT 1
-        ";
-        
-        $stmt_check = $this->db->prepare($sql_check);
-        $stmt_check->bind_param("i", $matricula['id']);
-        $stmt_check->execute();
-        $result_check = $stmt_check->get_result();
-        
-        if ($result_check && $result_check->num_rows > 0) {
-            $this->log("⚠️  Pagamento recente já existe");
-            return;
-        }
-        
-        // Criar pagamento_plano
-        $this->log("💾 Criando pagamento_plano...");
-        
+
+        // Se não havia pendente para atualizar, cria um registro com o status do webhook
+        $this->log("💾 Criando pagamento_plano a partir do webhook...");
+
+        $valorPagamento = isset($payment['transaction_amount'])
+            ? (float)$payment['transaction_amount']
+            : (float)($matricula['valor'] ?? 0);
+        $dataVencimento = $matricula['proxima_data_vencimento'] ?? date('Y-m-d');
+
         $sql_insert = "
             INSERT INTO pagamentos_plano (
-                tenant_id, matricula_id, plano_id, valor, data_vencimento,
-                status_pagamento_id, observacoes, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, 1, ?, NOW(), NOW())
+                tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento,
+                data_pagamento, status_pagamento_id, observacoes, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
         ";
-        
+
         $stmt_insert = $this->db->prepare($sql_insert);
-        $obs = "Pago via webhook MP - Payment ID: " . $payment['id'];
-        
         $stmt_insert->bind_param(
-            "iiidss",
+            "iiiidssis",
             $matricula['tenant_id'],
+            $matricula['aluno_id'],
             $matricula['id'],
-            $assinatura['plano_id'],
-            $assinatura['valor'],
-            $assinatura['proxima_cobranca'],
-            $obs
+            $matricula['plano_id'],
+            $valorPagamento,
+            $dataVencimento,
+            $dataPagamento,
+            $statusPagamentoId,
+            $observacao
         );
-        
+
         if ($stmt_insert->execute()) {
-            $this->log("✅ Pagamento criado com sucesso!");
+            $this->log("✅ Pagamento registrado via webhook com status_id={$statusPagamentoId}");
+            if ($isAprovado) {
+                $this->ativarMatricula((int)$matricula['id']);
+                $this->atualizarAssinaturaAvulsaPorPagamento((int)$matricula['id'], $payment);
+            } elseif (in_array($paymentStatus, ['cancelled', 'refunded', 'charged_back'], true)) {
+                $this->cancelarMatricula((int)$matricula['id']);
+                $this->cancelarAssinaturaAvulsaPorPagamento((int)$matricula['id'], $paymentStatus);
+            }
         } else {
-            $this->log("❌ Erro ao criar pagamento: " . $stmt_insert->error);
+            $this->log("❌ Erro ao registrar pagamento via webhook: " . $stmt_insert->error);
+        }
+    }
+
+    private function sincronizarPagamentoMercadoPago(array $payment, array $matricula): void
+    {
+        try {
+            $paymentId = (string)($payment['id'] ?? '');
+            if ($paymentId === '') {
+                return;
+            }
+
+            $metadata = is_array($payment['metadata'] ?? null) ? $payment['metadata'] : [];
+
+            $sqlBusca = "SELECT id FROM pagamentos_mercadopago WHERE payment_id = ? LIMIT 1";
+            $stmtBusca = $this->db->prepare($sqlBusca);
+            $stmtBusca->bind_param("s", $paymentId);
+            $stmtBusca->execute();
+            $resBusca = $stmtBusca->get_result();
+            $existe = $resBusca ? $resBusca->fetch_assoc() : null;
+
+            $status = (string)($payment['status'] ?? '');
+            $statusDetail = (string)($payment['status_detail'] ?? '');
+            $transactionAmount = (float)($payment['transaction_amount'] ?? 0);
+            $paymentMethod = (string)($payment['payment_method_id'] ?? '');
+            $paymentType = (string)($payment['payment_type_id'] ?? '');
+            $installments = (int)($payment['installments'] ?? 0);
+            $dateApproved = !empty($payment['date_approved']) ? date('Y-m-d H:i:s', strtotime((string)$payment['date_approved'])) : null;
+            $dateCreated = !empty($payment['date_created']) ? date('Y-m-d H:i:s', strtotime((string)$payment['date_created'])) : date('Y-m-d H:i:s');
+            $externalReference = (string)($payment['external_reference'] ?? '');
+
+            if ($existe) {
+                $sqlUpdate = "
+                    UPDATE pagamentos_mercadopago
+                    SET status = ?,
+                        status_detail = ?,
+                        transaction_amount = ?,
+                        payment_method_id = ?,
+                        installments = ?,
+                        date_approved = ?,
+                        updated_at = NOW()
+                    WHERE id = ?
+                ";
+                $stmtUpdate = $this->db->prepare($sqlUpdate);
+                $stmtUpdate->bind_param(
+                    "ssdsisi",
+                    $status,
+                    $statusDetail,
+                    $transactionAmount,
+                    $paymentMethod,
+                    $installments,
+                    $dateApproved,
+                    $existe['id']
+                );
+                $stmtUpdate->execute();
+                return;
+            }
+
+            $tenantId = (int)($matricula['tenant_id'] ?? 0);
+            $matriculaId = (int)($matricula['id'] ?? 0);
+            $alunoId = isset($metadata['aluno_id']) ? (int)$metadata['aluno_id'] : (int)($matricula['aluno_id'] ?? 0);
+            $usuarioId = isset($metadata['usuario_id']) ? (int)$metadata['usuario_id'] : null;
+
+            $sqlInsert = "
+                INSERT INTO pagamentos_mercadopago (
+                    tenant_id, matricula_id, aluno_id, usuario_id,
+                    payment_id, external_reference, status, status_detail,
+                    transaction_amount, payment_method_id, payment_type_id,
+                    installments, date_approved, date_created, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+            ";
+            $stmtInsert = $this->db->prepare($sqlInsert);
+            $stmtInsert->bind_param(
+                "iiiissssdsisss",
+                $tenantId,
+                $matriculaId,
+                $alunoId,
+                $usuarioId,
+                $paymentId,
+                $externalReference,
+                $status,
+                $statusDetail,
+                $transactionAmount,
+                $paymentMethod,
+                $paymentType,
+                $installments,
+                $dateApproved,
+                $dateCreated
+            );
+            $stmtInsert->execute();
+        } catch (\Exception $e) {
+            $this->log("⚠️ Erro ao sincronizar pagamentos_mercadopago: " . $e->getMessage());
+        }
+    }
+
+    private function ativarMatricula(int $matriculaId): void
+    {
+        try {
+            $sql = "SELECT id, status_id, plano_id, plano_ciclo_id FROM matriculas WHERE id = ? LIMIT 1";
+            $stmt = $this->db->prepare($sql);
+            $stmt->bind_param("i", $matriculaId);
+            $stmt->execute();
+            $res = $stmt->get_result();
+            $mat = $res ? $res->fetch_assoc() : null;
+            if (!$mat) {
+                return;
+            }
+
+            $stmtStatusAtiva = $this->db->prepare("SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1");
+            $stmtStatusAtiva->execute();
+            $resStatusAtiva = $stmtStatusAtiva->get_result();
+            $rowStatusAtiva = $resStatusAtiva ? $resStatusAtiva->fetch_assoc() : null;
+            $statusAtivaId = (int)($rowStatusAtiva['id'] ?? 1);
+
+            if ((int)$mat['status_id'] === $statusAtivaId) {
+                return;
+            }
+
+            $sqlDuracao = "
+                SELECT p.duracao_dias, pc.meses
+                FROM matriculas m
+                INNER JOIN planos p ON p.id = m.plano_id
+                LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+                WHERE m.id = ?
+                LIMIT 1
+            ";
+            $stmtDuracao = $this->db->prepare($sqlDuracao);
+            $stmtDuracao->bind_param("i", $matriculaId);
+            $stmtDuracao->execute();
+            $resDuracao = $stmtDuracao->get_result();
+            $duracao = $resDuracao ? $resDuracao->fetch_assoc() : null;
+
+            $hoje = new \DateTimeImmutable(date('Y-m-d'));
+            $meses = (int)($duracao['meses'] ?? 0);
+            if ($meses > 0) {
+                $vencimento = $hoje->modify("+{$meses} months")->format('Y-m-d');
+            } else {
+                $dias = max(1, (int)($duracao['duracao_dias'] ?? 30));
+                $vencimento = $hoje->modify("+{$dias} days")->format('Y-m-d');
+            }
+
+            $dataInicio = $hoje->format('Y-m-d');
+            $sqlUpdate = "
+                UPDATE matriculas
+                SET status_id = ?,
+                    data_inicio = ?,
+                    data_vencimento = ?,
+                    proxima_data_vencimento = ?,
+                    updated_at = NOW()
+                WHERE id = ?
+            ";
+            $stmtUpdate = $this->db->prepare($sqlUpdate);
+            $stmtUpdate->bind_param("isssi", $statusAtivaId, $dataInicio, $vencimento, $vencimento, $matriculaId);
+            $stmtUpdate->execute();
+        } catch (\Exception $e) {
+            $this->log("⚠️ Erro ao ativar matrícula: " . $e->getMessage());
+        }
+    }
+
+    private function cancelarMatricula(int $matriculaId): void
+    {
+        try {
+            $stmtStatus = $this->db->prepare("SELECT id FROM status_matricula WHERE codigo = 'cancelada' LIMIT 1");
+            $stmtStatus->execute();
+            $resStatus = $stmtStatus->get_result();
+            $rowStatus = $resStatus ? $resStatus->fetch_assoc() : null;
+            $statusCanceladaId = (int)($rowStatus['id'] ?? 0);
+            if ($statusCanceladaId <= 0) {
+                return;
+            }
+
+            $sql = "
+                UPDATE matriculas
+                SET status_id = ?, updated_at = NOW()
+                WHERE id = ?
+                  AND status_id IN (
+                    SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'pendente', 'vencida')
+                  )
+            ";
+            $stmt = $this->db->prepare($sql);
+            $stmt->bind_param("ii", $statusCanceladaId, $matriculaId);
+            $stmt->execute();
+        } catch (\Exception $e) {
+            $this->log("⚠️ Erro ao cancelar matrícula: " . $e->getMessage());
+        }
+    }
+
+    private function atualizarAssinaturaAvulsaPorPagamento(int $matriculaId, array $payment): void
+    {
+        try {
+            $sqlBusca = "
+                SELECT a.id, a.tipo_cobranca
+                FROM assinaturas a
+                WHERE a.matricula_id = ?
+                ORDER BY a.id DESC
+                LIMIT 1
+            ";
+            $stmtBusca = $this->db->prepare($sqlBusca);
+            $stmtBusca->bind_param("i", $matriculaId);
+            $stmtBusca->execute();
+            $resBusca = $stmtBusca->get_result();
+            $assinatura = $resBusca ? $resBusca->fetch_assoc() : null;
+            if (!$assinatura) {
+                return;
+            }
+
+            $statusCodigo = ($assinatura['tipo_cobranca'] ?? '') === 'avulso' ? 'paga' : 'ativa';
+            $stmtStatus = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = ? LIMIT 1");
+            $stmtStatus->bind_param("s", $statusCodigo);
+            $stmtStatus->execute();
+            $resStatus = $stmtStatus->get_result();
+            $rowStatus = $resStatus ? $resStatus->fetch_assoc() : null;
+            $statusId = (int)($rowStatus['id'] ?? 0);
+            if ($statusId <= 0) {
+                $fallback = 'ativa';
+                $stmtStatus2 = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = ? LIMIT 1");
+                $stmtStatus2->bind_param("s", $fallback);
+                $stmtStatus2->execute();
+                $resStatus2 = $stmtStatus2->get_result();
+                $rowStatus2 = $resStatus2 ? $resStatus2->fetch_assoc() : null;
+                $statusId = (int)($rowStatus2['id'] ?? 1);
+            }
+
+            $dateApproved = !empty($payment['date_approved']) ? date('Y-m-d H:i:s', strtotime((string)$payment['date_approved'])) : date('Y-m-d H:i:s');
+            $sqlUpdate = "
+                UPDATE assinaturas
+                SET status_id = ?,
+                    status_gateway = 'approved',
+                    ultima_cobranca = ?,
+                    atualizado_em = NOW()
+                WHERE id = ?
+            ";
+            $stmtUpdate = $this->db->prepare($sqlUpdate);
+            $stmtUpdate->bind_param("isi", $statusId, $dateApproved, $assinatura['id']);
+            $stmtUpdate->execute();
+        } catch (\Exception $e) {
+            $this->log("⚠️ Erro ao atualizar assinatura por pagamento: " . $e->getMessage());
+        }
+    }
+
+    private function cancelarAssinaturaAvulsaPorPagamento(int $matriculaId, string $gatewayStatus): void
+    {
+        try {
+            $sqlBusca = "
+                SELECT a.id, a.tipo_cobranca
+                FROM assinaturas a
+                WHERE a.matricula_id = ?
+                ORDER BY a.id DESC
+                LIMIT 1
+            ";
+            $stmtBusca = $this->db->prepare($sqlBusca);
+            $stmtBusca->bind_param("i", $matriculaId);
+            $stmtBusca->execute();
+            $resBusca = $stmtBusca->get_result();
+            $assinatura = $resBusca ? $resBusca->fetch_assoc() : null;
+            if (!$assinatura || (($assinatura['tipo_cobranca'] ?? '') !== 'avulso')) {
+                return;
+            }
+
+            $cancelada = 'cancelada';
+            $stmtStatus = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = ? LIMIT 1");
+            $stmtStatus->bind_param("s", $cancelada);
+            $stmtStatus->execute();
+            $resStatus = $stmtStatus->get_result();
+            $rowStatus = $resStatus ? $resStatus->fetch_assoc() : null;
+            $statusId = (int)($rowStatus['id'] ?? 0);
+            if ($statusId <= 0) {
+                return;
+            }
+
+            $sqlUpdate = "
+                UPDATE assinaturas
+                SET status_id = ?,
+                    status_gateway = ?,
+                    atualizado_em = NOW()
+                WHERE id = ?
+            ";
+            $stmtUpdate = $this->db->prepare($sqlUpdate);
+            $stmtUpdate->bind_param("isi", $statusId, $gatewayStatus, $assinatura['id']);
+            $stmtUpdate->execute();
+        } catch (\Exception $e) {
+            $this->log("⚠️ Erro ao cancelar assinatura por pagamento: " . $e->getMessage());
+        }
+    }
+
+    private function ativarPacoteContrato(int $contratoId): void
+    {
+        try {
+            $sql = "UPDATE pacote_contratos SET status = 'ativo' WHERE id = ?";
+            $stmt = $this->db->prepare($sql);
+            $stmt->bind_param("i", $contratoId);
+            $stmt->execute();
+
+            if ($stmt->affected_rows > 0) {
+                $this->log("✅ Contrato de pacote #{$contratoId} ativado via V2");
+            } else {
+                $this->log("ℹ️ Contrato de pacote #{$contratoId} não alterado (já ativo ou não encontrado)");
+            }
+        } catch (\Exception $e) {
+            $this->log("⚠️ Erro ao ativar pacote #{$contratoId}: " . $e->getMessage());
         }
     }
     

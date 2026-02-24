@@ -208,10 +208,17 @@ class AssinaturaController
                     (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento,
                      data_pagamento, status_pagamento_id, forma_pagamento_id, tipo_baixa_id,
                      observacoes, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, NULL,
-                            1,
-                            NULL, NULL,
-                            'Aguardando pagamento da assinatura', NOW(), NOW())
+                    SELECT ?, ?, ?, ?, ?, ?, NULL,
+                           1,
+                           NULL, NULL,
+                           'Aguardando pagamento da assinatura', NOW(), NOW()
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM pagamentos_plano
+                        WHERE tenant_id = ?
+                          AND matricula_id = ?
+                          AND status_pagamento_id = 1
+                          AND data_pagamento IS NULL
+                    )
                 ");
                 
                 $stmtPagamento->execute([
@@ -220,7 +227,9 @@ class AssinaturaController
                     $matriculaId,
                     $ciclo['plano_id'],
                     $ciclo['valor'],
-                    $dataInicio
+                    $dataInicio,
+                    $tenantId,
+                    $matriculaId
                 ]);
                 
                 $this->db->commit();
