@@ -5742,7 +5742,7 @@ class MobileController
                     (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento, 
                      status_pagamento_id, observacoes, criado_por, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, 
-                            (SELECT id FROM status_pagamento WHERE codigo = 'pendente' LIMIT 1), 
+                            1,
                             'Aguardando pagamento via Mercado Pago', ?, NOW(), NOW())
                 ");
                 
@@ -6614,14 +6614,14 @@ class MobileController
                             'avulso'
                         ]);
 
-                        // Criar primeiro pagamento da assinatura
+                        // Criar primeiro pagamento da assinatura como AGUARDANDO
                         try {
                             $stmtPagamento = $this->db->prepare("
                                 INSERT INTO pagamentos_plano
                                 (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento,
                                  data_pagamento, status_pagamento_id, forma_pagamento_id, tipo_baixa_id,
                                  observacoes, created_at, updated_at)
-                                VALUES (?, ?, ?, ?, ?, ?, NOW(), 2, 9, 4, 'Assinatura recorrente - Primeiro pagamento', NOW(), NOW())
+                                VALUES (?, ?, ?, ?, ?, ?, NULL, 1, NULL, NULL, 'Aguardando pagamento da assinatura', NOW(), NOW())
                             ");
 
                             $stmtPagamento->execute([
