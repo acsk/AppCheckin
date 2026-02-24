@@ -7,17 +7,17 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  FlatList,
-  Image,
-  Linking,
-  Modal,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    FlatList,
+    Image,
+    Linking,
+    Modal,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 // NOVO ARQUIVO - SEM CÓDIGO ANTIGO
@@ -84,15 +84,7 @@ export default function PlanosScreen() {
   const router = useRouter();
 
   // Verificar autenticação - se não autenticado, redireciona
-  const { isLoading: isAuthChecking } = useProtectedRoute({
-    checkFn: async (token) => {
-      // Verificar se o usuário é admin
-      const user = await authService.getCurrentUser();
-      if (!user) return false;
-
-      return isAdminUser(user);
-    },
-  });
+  const { isLoading: isAuthChecking } = useProtectedRoute();
 
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [planos, setPlanos] = useState<Plan[]>([]);
@@ -180,14 +172,8 @@ export default function PlanosScreen() {
           return;
         }
 
-        // Verificar se o usuário é admin (papel_id 3) ou super admin (papel_id 4)
-        if (isAdminUser(user)) {
-          console.log("✅ Usuário tem permissão para acessar planos");
-          setHasPermission(true);
-        } else {
-          console.warn("❌ Usuário não tem permissão para acessar planos");
-          setHasPermission(false);
-        }
+        console.log("✅ Usuário autenticado com permissão para acessar planos");
+        setHasPermission(true);
       } catch (err) {
         console.error("❌ Erro ao verificar permissão:", err);
         setHasPermission(false);
@@ -1112,7 +1098,7 @@ export default function PlanosScreen() {
               },
             ]}
           >
-            Apenas administradores podem acessar esta página.
+            Não foi possível validar sua sessão. Faça login novamente.
           </Text>
           <TouchableOpacity
             style={[
