@@ -209,7 +209,7 @@ class AssinaturaController
                      data_pagamento, status_pagamento_id, forma_pagamento_id, tipo_baixa_id,
                      observacoes, created_at, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, NULL,
-                            (SELECT id FROM status_pagamento WHERE codigo = 'pendente' LIMIT 1),
+                            1,
                             NULL, NULL,
                             'Aguardando pagamento da assinatura', NOW(), NOW())
                 ");
