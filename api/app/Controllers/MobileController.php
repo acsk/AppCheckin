@@ -4936,8 +4936,16 @@ class MobileController
             $matriculaAtiva = null;
             if ($userId) {
                 $stmtMat = $this->db->prepare("
-                    SELECT m.id, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento, 
-                           m.valor, sm.nome as status, sm.codigo as status_codigo
+                          SELECT m.id, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento, 
+                              m.valor, sm.nome as status, sm.codigo as status_codigo,
+                              (
+                               SELECT a.status_gateway
+                               FROM assinaturas a
+                               WHERE a.matricula_id = m.id
+                                 AND a.tenant_id = m.tenant_id
+                               ORDER BY a.id DESC
+                               LIMIT 1
+                              ) as assinatura_status_gateway
                     FROM matriculas m
                     INNER JOIN alunos a ON a.id = m.aluno_id
                     INNER JOIN status_matricula sm ON sm.id = m.status_id
@@ -4955,39 +4963,22 @@ class MobileController
                 ]);
                 $mat = $stmtMat->fetch(\PDO::FETCH_ASSOC);
                 if ($mat) {
-                    // Auto-reconciliação: se matrícula está pendente mas já possui pagamento baixado,
-                    // promover para ativa para manter consistência no app.
-                    if (($mat['status_codigo'] ?? '') === 'pendente') {
-                        $stmtPago = $this->db->prepare("\n                            SELECT COUNT(*)\n                            FROM pagamentos_plano pp\n                            LEFT JOIN status_pagamento sp ON sp.id = pp.status_pagamento_id\n                            WHERE pp.tenant_id = :tenant_id\n                              AND pp.matricula_id = :matricula_id\n                              AND (pp.data_pagamento IS NOT NULL OR sp.codigo IN ('pago', 'baixado'))\n                        ");
-                        $stmtPago->execute([
-                            'tenant_id' => $tenantId,
-                            'matricula_id' => $mat['id'],
-                        ]);
+                    $statusCodigoExibicao = $mat['status_codigo'];
+                    $statusExibicao = $mat['status'];
+                    $assinaturaGateway = strtolower((string)($mat['assinatura_status_gateway'] ?? ''));
 
-                        $temPagamentoBaixado = (int)$stmtPago->fetchColumn() > 0;
-                        if ($temPagamentoBaixado) {
-                            $stmtStatusAtiva = $this->db->prepare("SELECT id, nome, codigo FROM status_matricula WHERE codigo = 'ativa' LIMIT 1");
-                            $stmtStatusAtiva->execute();
-                            $statusAtiva = $stmtStatusAtiva->fetch(\PDO::FETCH_ASSOC);
-
-                            if ($statusAtiva && !empty($statusAtiva['id'])) {
-                                $stmtAtualizaMatricula = $this->db->prepare("\n                                    UPDATE matriculas\n                                    SET status_id = :status_id,\n                                        data_inicio = COALESCE(data_inicio, CURDATE()),\n                                        updated_at = NOW()\n                                    WHERE id = :matricula_id\n                                      AND tenant_id = :tenant_id\n                                ");
-                                $stmtAtualizaMatricula->execute([
-                                    'status_id' => (int)$statusAtiva['id'],
-                                    'matricula_id' => (int)$mat['id'],
-                                    'tenant_id' => (int)$tenantId,
-                                ]);
-
-                                $mat['status'] = $statusAtiva['nome'];
-                                $mat['status_codigo'] = $statusAtiva['codigo'];
-                            }
-                        }
+                    if (in_array($assinaturaGateway, ['approved', 'authorized'], true)) {
+                        $statusCodigoExibicao = 'ativa';
+                        $statusExibicao = 'Ativa';
+                    } elseif ($assinaturaGateway === 'pending') {
+                        $statusCodigoExibicao = 'pendente';
+                        $statusExibicao = 'Pendente';
                     }
 
                     $matriculaAtiva = [
                         'id' => (int)$mat['id'],
-                        'status' => $mat['status'],
-                        'status_codigo' => $mat['status_codigo'],
+                        'status' => $statusExibicao,
+                        'status_codigo' => $statusCodigoExibicao,
                         'data_inicio' => $mat['data_inicio'],
                         'data_vencimento' => $mat['data_vencimento'] ?? $mat['proxima_data_vencimento'],
                         'valor' => (float)$mat['valor'],

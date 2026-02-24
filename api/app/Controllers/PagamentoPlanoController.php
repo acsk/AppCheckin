@@ -331,44 +331,8 @@ class PagamentoPlanoController
             }
 
             // Após baixa, garantir consistência da assinatura vinculada (approved/ativa)
-            $stmtStatusAssinaturaAtiva = $db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'ativa' LIMIT 1");
-            $stmtStatusAssinaturaAtiva->execute();
-            $statusAssinaturaAtiva = $stmtStatusAssinaturaAtiva->fetch(\PDO::FETCH_ASSOC);
-
-            if ($statusAssinaturaAtiva && isset($statusAssinaturaAtiva['id'])) {
-                $stmtAssinatura = $db->prepare("
-                    SELECT id, status_gateway, status_id
-                    FROM assinaturas
-                    WHERE tenant_id = ? AND matricula_id = ?
-                    ORDER BY id DESC
-                    LIMIT 1
-                ");
-                $stmtAssinatura->execute([
-                    (int)$tenantId,
-                    (int)$pagamento['matricula_id']
-                ]);
-                $assinatura = $stmtAssinatura->fetch(\PDO::FETCH_ASSOC);
-
-                if ($assinatura) {
-                    $statusGatewayAtual = strtolower((string)($assinatura['status_gateway'] ?? ''));
-                    $statusAssinaturaAtual = (int)($assinatura['status_id'] ?? 0);
-                    $statusAssinaturaAtivaId = (int)$statusAssinaturaAtiva['id'];
-
-                    if ($statusGatewayAtual !== 'approved' || $statusAssinaturaAtual !== $statusAssinaturaAtivaId) {
-                        $stmtAtualizarAssinatura = $db->prepare("
-                            UPDATE assinaturas
-                            SET status_gateway = 'approved',
-                                status_id = ?,
-                                atualizado_em = NOW()
-                            WHERE id = ?
-                        ");
-                        $stmtAtualizarAssinatura->execute([
-                            $statusAssinaturaAtivaId,
-                            (int)$assinatura['id']
-                        ]);
-                    }
-                }
-            }
+                // Não forçar assinatura para approved aqui.
+                // A confirmação de assinatura deve vir exclusivamente do webhook do gateway.
             
             // Buscar informações do plano para calcular próximo vencimento
             $plano = $planoModel->findById($pagamento['plano_id']);

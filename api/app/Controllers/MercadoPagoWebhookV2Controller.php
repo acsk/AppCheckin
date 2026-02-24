@@ -74,15 +74,15 @@ class MercadoPagoWebhookV2Controller
             // Salvar webhook no banco
             $this->salvarWebhook($body, $type, $dataId, 'sucesso');
             
-            return $response->withStatus(200)->withHeader('Content-Type', 'application/json')
-                ->write(json_encode(['success' => true]));
+            $response->getBody()->write(json_encode(['success' => true]));
+            return $response->withStatus(200)->withHeader('Content-Type', 'application/json');
                 
         } catch (\Exception $e) {
             $this->log("❌ ERRO: " . $e->getMessage());
             $this->log("Stack: " . $e->getTraceAsString());
             
-            return $response->withStatus(200)->withHeader('Content-Type', 'application/json')
-                ->write(json_encode(['success' => false, 'error' => $e->getMessage()]));
+            $response->getBody()->write(json_encode(['success' => false, 'error' => $e->getMessage()]));
+            return $response->withStatus(200)->withHeader('Content-Type', 'application/json');
         }
     }
     
@@ -95,7 +95,8 @@ class MercadoPagoWebhookV2Controller
         
         try {
             $client = new PaymentClient();
-            $payment = $client->get($paymentId);
+            $paymentRaw = $client->get($paymentId);
+            $payment = $this->normalizarRecursoMercadoPago($paymentRaw);
             
             $this->log("✅ Payment encontrado");
             $this->log("   Status: " . $payment['status']);
@@ -124,7 +125,8 @@ class MercadoPagoWebhookV2Controller
         
         try {
             $client = new PreApprovalClient();
-            $preapproval = $client->get($preapprovalId);
+            $preapprovalRaw = $client->get($preapprovalId);
+            $preapproval = $this->normalizarRecursoMercadoPago($preapprovalRaw);
             
             $this->log("✅ Preapproval encontrado");
             $this->log("   Status: " . $preapproval['status']);
@@ -276,15 +278,41 @@ class MercadoPagoWebhookV2Controller
             return;
         }
         
-        // Atualizar status_gateway na assinatura
-        $status = $preapproval['status'] ?? 'unknown';
-        
-        $sql = "UPDATE assinaturas SET status_gateway = ? WHERE matricula_id = ? LIMIT 1";
-        $stmt = $this->db->prepare($sql);
-        $stmt->bind_param("si", $status, $id);
-        
+        // Atualizar status_gateway e status_id na assinatura (fonte: webhook)
+        $status = strtolower((string)($preapproval['status'] ?? 'unknown'));
+
+        $statusCodigo = match ($status) {
+            'approved', 'authorized' => 'ativa',
+            'pending' => 'pendente',
+            'paused' => 'pausada',
+            'cancelled', 'cancelled_by_user', 'refunded', 'charged_back' => 'cancelada',
+            default => null,
+        };
+
+        $statusId = null;
+        if ($statusCodigo !== null) {
+            $sqlStatus = "SELECT id FROM assinatura_status WHERE codigo = ? LIMIT 1";
+            $stmtStatus = $this->db->prepare($sqlStatus);
+            $stmtStatus->bind_param("s", $statusCodigo);
+            if ($stmtStatus->execute()) {
+                $resStatus = $stmtStatus->get_result();
+                $statusRow = $resStatus ? $resStatus->fetch_assoc() : null;
+                $statusId = $statusRow ? (int)$statusRow['id'] : null;
+            }
+        }
+
+        if ($statusId !== null) {
+            $sql = "UPDATE assinaturas SET status_gateway = ?, status_id = ?, atualizado_em = NOW() WHERE matricula_id = ? LIMIT 1";
+            $stmt = $this->db->prepare($sql);
+            $stmt->bind_param("sii", $status, $statusId, $id);
+        } else {
+            $sql = "UPDATE assinaturas SET status_gateway = ?, atualizado_em = NOW() WHERE matricula_id = ? LIMIT 1";
+            $stmt = $this->db->prepare($sql);
+            $stmt->bind_param("si", $status, $id);
+        }
+
         if ($stmt->execute()) {
-            $this->log("✅ Assinatura atualizada: status = {$status}");
+            $this->log("✅ Assinatura atualizada: status_gateway = {$status}" . ($statusCodigo ? ", status = {$statusCodigo}" : ""));
         }
     }
     
@@ -326,13 +354,13 @@ class MercadoPagoWebhookV2Controller
             $externalRef = $body['external_reference'] ?? null;
             
             if (!$externalRef) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'external_reference é obrigatório'
+                ]));
                 return $response
                     ->withStatus(400)
-                    ->withHeader('Content-Type', 'application/json')
-                    ->write(json_encode([
-                        'success' => false,
-                        'error' => 'external_reference é obrigatório'
-                    ]));
+                    ->withHeader('Content-Type', 'application/json');
             }
             
             $this->log("=== VALIDAÇÃO FORÇADA DE ASSINATURA ===");
@@ -341,26 +369,26 @@ class MercadoPagoWebhookV2Controller
             // Extrair tipo e ID
             $parts = explode('-', $externalRef);
             if (count($parts) < 2) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Formato inválido: MAT-{id}-{timestamp}'
+                ]));
                 return $response
                     ->withStatus(400)
-                    ->withHeader('Content-Type', 'application/json')
-                    ->write(json_encode([
-                        'success' => false,
-                        'error' => 'Formato inválido: MAT-{id}-{timestamp}'
-                    ]));
+                    ->withHeader('Content-Type', 'application/json');
             }
             
             $type = $parts[0];
             $id = (int)$parts[1];
             
             if ($type !== 'MAT') {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Apenas MAT (matrícula) é suportado'
+                ]));
                 return $response
                     ->withStatus(400)
-                    ->withHeader('Content-Type', 'application/json')
-                    ->write(json_encode([
-                        'success' => false,
-                        'error' => 'Apenas MAT (matrícula) é suportado'
-                    ]));
+                    ->withHeader('Content-Type', 'application/json');
             }
             
             // Buscar matrícula
@@ -371,13 +399,13 @@ class MercadoPagoWebhookV2Controller
             $result = $stmt->get_result();
             
             if (!$result || $result->num_rows === 0) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => "Matrícula {$id} não encontrada"
+                ]));
                 return $response
                     ->withStatus(404)
-                    ->withHeader('Content-Type', 'application/json')
-                    ->write(json_encode([
-                        'success' => false,
-                        'error' => "Matrícula {$id} não encontrada"
-                    ]));
+                    ->withHeader('Content-Type', 'application/json');
             }
             
             $matricula = $result->fetch_assoc();
@@ -398,13 +426,13 @@ class MercadoPagoWebhookV2Controller
             $result_ass = $stmt_ass->get_result();
             
             if (!$result_ass || $result_ass->num_rows === 0) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Nenhuma assinatura encontrada para esta matrícula'
+                ]));
                 return $response
                     ->withStatus(404)
-                    ->withHeader('Content-Type', 'application/json')
-                    ->write(json_encode([
-                        'success' => false,
-                        'error' => 'Nenhuma assinatura encontrada para esta matrícula'
-                    ]));
+                    ->withHeader('Content-Type', 'application/json');
             }
             
             $assinatura = $result_ass->fetch_assoc();
@@ -412,14 +440,14 @@ class MercadoPagoWebhookV2Controller
             
             // Se já está approved, não faz nada
             if ($assinatura['status_gateway'] === 'approved') {
+                $response->getBody()->write(json_encode([
+                    'success' => true,
+                    'message' => 'Assinatura já está em status approved',
+                    'status' => 'approved'
+                ]));
                 return $response
                     ->withStatus(200)
-                    ->withHeader('Content-Type', 'application/json')
-                    ->write(json_encode([
-                        'success' => true,
-                        'message' => 'Assinatura já está em status approved',
-                        'status' => 'approved'
-                    ]));
+                    ->withHeader('Content-Type', 'application/json');
             }
             
             // Agora processa como validação forçada
@@ -446,13 +474,13 @@ class MercadoPagoWebhookV2Controller
             
             if (!$stmt_update->execute()) {
                 $this->log("❌ Erro ao atualizar assinatura: " . $stmt_update->error);
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Erro ao atualizar assinatura no banco'
+                ]));
                 return $response
                     ->withStatus(500)
-                    ->withHeader('Content-Type', 'application/json')
-                    ->write(json_encode([
-                        'success' => false,
-                        'error' => 'Erro ao atualizar assinatura no banco'
-                    ]));
+                    ->withHeader('Content-Type', 'application/json');
             }
             
             $this->log("✅ Assinatura atualizada para 'approved'");
@@ -514,27 +542,27 @@ class MercadoPagoWebhookV2Controller
                 $this->log("✅ Matrícula atualizada para 'ativa'");
             }
             
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'message' => 'Assinatura validada e recuperada com sucesso',
+                'matricula_id' => (int)$id,
+                'assinatura_id' => (int)$assinatura['id'],
+                'status' => 'approved'
+            ]));
             return $response
                 ->withStatus(200)
-                ->withHeader('Content-Type', 'application/json')
-                ->write(json_encode([
-                    'success' => true,
-                    'message' => 'Assinatura validada e recuperada com sucesso',
-                    'matricula_id' => (int)$id,
-                    'assinatura_id' => (int)$assinatura['id'],
-                    'status' => 'approved'
-                ]));
+                ->withHeader('Content-Type', 'application/json');
             
         } catch (\Exception $e) {
             $this->log("❌ ERRO: " . $e->getMessage());
             
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => $e->getMessage()
+            ]));
             return $response
                 ->withStatus(500)
-                ->withHeader('Content-Type', 'application/json')
-                ->write(json_encode([
-                    'success' => false,
-                    'error' => $e->getMessage()
-                ]));
+                ->withHeader('Content-Type', 'application/json');
         }
     }
 
@@ -548,5 +576,27 @@ class MercadoPagoWebhookV2Controller
         
         file_put_contents($this->logFile, $fullMessage . "\n", FILE_APPEND | LOCK_EX);
         error_log($message);
+    }
+
+    /**
+     * Normaliza recursos do SDK do Mercado Pago para array associativo
+     */
+    private function normalizarRecursoMercadoPago($resource): array
+    {
+        if (is_array($resource)) {
+            return $resource;
+        }
+
+        if (is_object($resource)) {
+            $json = json_encode($resource);
+            if ($json !== false) {
+                $decoded = json_decode($json, true);
+                if (is_array($decoded)) {
+                    return $decoded;
+                }
+            }
+        }
+
+        return [];
     }
 }

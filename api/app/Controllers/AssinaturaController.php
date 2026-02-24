@@ -410,7 +410,6 @@ class AssinaturaController
                 $stmtStatusCancelada = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'cancelada' LIMIT 1");
                 $stmtStatusCancelada->execute();
                 $statusCanceladaId = (int) ($stmtStatusCancelada->fetchColumn() ?: 0);
-
                 if ($statusCanceladaId > 0) {
                     $stmtReconcilia = $this->db->prepare("
                         UPDATE assinaturas a
@@ -429,47 +428,24 @@ class AssinaturaController
                     $stmtReconcilia->execute([$statusCanceladaId, $alunoId, $tenantId, $statusCanceladaId]);
                 }
 
-                // Reconciliar assinaturas pendentes quando já há pagamento baixado/pago na matrícula
-                $stmtStatusAtiva = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'ativa' LIMIT 1");
-                $stmtStatusAtiva->execute();
-                $statusAtivaId = (int) ($stmtStatusAtiva->fetchColumn() ?: 0);
-
-                if ($statusAtivaId > 0) {
-                    $stmtReconciliaAprovadas = $this->db->prepare("
-                        UPDATE assinaturas a
-                        INNER JOIN assinatura_status s ON s.id = a.status_id
-                        SET a.status_id = ?,
-                            a.status_gateway = 'approved',
-                            a.atualizado_em = NOW()
-                        WHERE a.aluno_id = ?
-                          AND a.tenant_id = ?
-                          AND s.codigo = 'pendente'
-                          AND EXISTS (
-                              SELECT 1
-                              FROM pagamentos_plano pp
-                              WHERE pp.tenant_id = a.tenant_id
-                                AND pp.matricula_id = a.matricula_id
-                                AND pp.data_pagamento IS NOT NULL
-                          )
-                    ");
-                    $stmtReconciliaAprovadas->execute([$statusAtivaId, $alunoId, $tenantId]);
-                }
             } catch (\Exception $e) {
                 error_log("[minhasAssinaturas] Erro ao reconciliar assinaturas: " . $e->getMessage());
             }
             
             $stmt = $this->db->prepare("
-                SELECT a.id, a.status_id, a.valor, a.data_inicio, a.data_fim, a.proxima_cobranca,
+                  SELECT a.id, a.status_id, a.valor, a.data_inicio, a.data_fim, a.proxima_cobranca,
                        a.ultima_cobranca, a.gateway_assinatura_id as mp_preapproval_id,
                        a.gateway_preference_id, a.external_reference, a.payment_url, a.tipo_cobranca,
-                       a.status_gateway,
+                      a.status_gateway, a.cancelado_por_id,
                        s.codigo as status_codigo, s.nome as status_nome, s.cor as status_cor,
+                      ct.codigo as cancelado_por_codigo, ct.nome as cancelado_por_nome,
                        f.nome as ciclo_nome, f.meses as ciclo_meses,
                        g.nome as gateway_nome,
                        p.nome as plano_nome,
                        mo.nome as modalidade_nome
                 FROM assinaturas a
                 LEFT JOIN assinatura_status s ON s.id = a.status_id
+                  LEFT JOIN assinatura_cancelamento_tipos ct ON ct.id = a.cancelado_por_id
                 LEFT JOIN assinatura_frequencias f ON f.id = a.frequencia_id
                 LEFT JOIN assinatura_gateways g ON g.id = a.gateway_id
                 LEFT JOIN planos p ON p.id = a.plano_id
@@ -485,6 +461,20 @@ class AssinaturaController
             $assinaturas = [];
             foreach ($rows as $row) {
                 $statusCodigo = $row['status_codigo'] ?? $row['status_gateway'] ?? 'pendente';
+                $statusNome = $row['status_nome'] ?? $this->getStatusLabel($row['status_gateway'] ?? 'pendente');
+                $statusCor = $row['status_cor'] ?? '#FFA500';
+
+                $canceladoPorId = isset($row['cancelado_por_id']) ? (int)$row['cancelado_por_id'] : 0;
+                $canceladoPorCodigo = strtolower((string)($row['cancelado_por_codigo'] ?? ''));
+                $foiCanceladaPeloUsuario = $canceladoPorId === 1 || $canceladoPorCodigo === 'usuario';
+
+                // Regra de precedência: se foi cancelada pelo usuário, sempre refletir como cancelada.
+                if ($foiCanceladaPeloUsuario) {
+                    $statusCodigo = 'cancelada';
+                    $statusNome = $row['cancelado_por_nome'] ?: 'Cancelado pelo Usuário';
+                    $statusCor = '#DC2626';
+                }
+
                 $isPendente = in_array($statusCodigo, ['pendente', 'pending']);
                 $tipoCobranca = $row['tipo_cobranca'] ?? 'recorrente';
                 
@@ -493,8 +483,13 @@ class AssinaturaController
                     'status' => [
                         'id' => (int)$row['status_id'],
                         'codigo' => $statusCodigo,
-                        'nome' => $row['status_nome'] ?? $this->getStatusLabel($row['status_gateway'] ?? 'pendente'),
-                        'cor' => $row['status_cor'] ?? '#FFA500'
+                        'nome' => $statusNome,
+                        'cor' => $statusCor
+                    ],
+                    'cancelamento' => [
+                        'cancelado_por_id' => $canceladoPorId ?: null,
+                        'cancelado_por_codigo' => $row['cancelado_por_codigo'] ?? null,
+                        'cancelado_por_nome' => $row['cancelado_por_nome'] ?? null,
                     ],
                     'valor' => (float)$row['valor'],
                     'tipo_cobranca' => $tipoCobranca,
@@ -663,9 +658,9 @@ class AssinaturaController
     {
         return match($status) {
             'pendente', 'pending' => 'Pendente',
-            'ativa', 'authorized' => 'Ativa',
+            'ativa', 'authorized', 'approved' => 'Ativa',
             'pausada', 'paused' => 'Pausada',
-            'cancelada', 'cancelled' => 'Cancelada',
+            'cancelada', 'cancelled', 'refunded', 'charged_back' => 'Cancelada',
             'expirada', 'finished' => 'Expirada',
             default => ucfirst($status)
         };
