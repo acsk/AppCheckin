@@ -105,7 +105,10 @@ export default function TabLayout() {
       <Tabs.Screen
         name="planos"
         options={{
-          href: null,
+          title: "Planos",
+          tabBarIcon: ({ color, size }) => (
+            <Feather name="shopping-cart" size={size + 6} color={color} />
+          ),
           headerShown: false,
         }}
       />
