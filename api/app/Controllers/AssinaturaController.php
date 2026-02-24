@@ -428,6 +428,32 @@ class AssinaturaController
                     ");
                     $stmtReconcilia->execute([$statusCanceladaId, $alunoId, $tenantId, $statusCanceladaId]);
                 }
+
+                // Reconciliar assinaturas pendentes quando já há pagamento baixado/pago na matrícula
+                $stmtStatusAtiva = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'ativa' LIMIT 1");
+                $stmtStatusAtiva->execute();
+                $statusAtivaId = (int) ($stmtStatusAtiva->fetchColumn() ?: 0);
+
+                if ($statusAtivaId > 0) {
+                    $stmtReconciliaAprovadas = $this->db->prepare("
+                        UPDATE assinaturas a
+                        INNER JOIN assinatura_status s ON s.id = a.status_id
+                        SET a.status_id = ?,
+                            a.status_gateway = 'approved',
+                            a.atualizado_em = NOW()
+                        WHERE a.aluno_id = ?
+                          AND a.tenant_id = ?
+                          AND s.codigo = 'pendente'
+                          AND EXISTS (
+                              SELECT 1
+                              FROM pagamentos_plano pp
+                              WHERE pp.tenant_id = a.tenant_id
+                                AND pp.matricula_id = a.matricula_id
+                                AND pp.data_pagamento IS NOT NULL
+                          )
+                    ");
+                    $stmtReconciliaAprovadas->execute([$statusAtivaId, $alunoId, $tenantId]);
+                }
             } catch (\Exception $e) {
                 error_log("[minhasAssinaturas] Erro ao reconciliar assinaturas: " . $e->getMessage());
             }

@@ -4955,6 +4955,35 @@ class MobileController
                 ]);
                 $mat = $stmtMat->fetch(\PDO::FETCH_ASSOC);
                 if ($mat) {
+                    // Auto-reconciliação: se matrícula está pendente mas já possui pagamento baixado,
+                    // promover para ativa para manter consistência no app.
+                    if (($mat['status_codigo'] ?? '') === 'pendente') {
+                        $stmtPago = $this->db->prepare("\n                            SELECT COUNT(*)\n                            FROM pagamentos_plano pp\n                            LEFT JOIN status_pagamento sp ON sp.id = pp.status_pagamento_id\n                            WHERE pp.tenant_id = :tenant_id\n                              AND pp.matricula_id = :matricula_id\n                              AND (pp.data_pagamento IS NOT NULL OR sp.codigo IN ('pago', 'baixado'))\n                        ");
+                        $stmtPago->execute([
+                            'tenant_id' => $tenantId,
+                            'matricula_id' => $mat['id'],
+                        ]);
+
+                        $temPagamentoBaixado = (int)$stmtPago->fetchColumn() > 0;
+                        if ($temPagamentoBaixado) {
+                            $stmtStatusAtiva = $this->db->prepare("SELECT id, nome, codigo FROM status_matricula WHERE codigo = 'ativa' LIMIT 1");
+                            $stmtStatusAtiva->execute();
+                            $statusAtiva = $stmtStatusAtiva->fetch(\PDO::FETCH_ASSOC);
+
+                            if ($statusAtiva && !empty($statusAtiva['id'])) {
+                                $stmtAtualizaMatricula = $this->db->prepare("\n                                    UPDATE matriculas\n                                    SET status_id = :status_id,\n                                        data_inicio = COALESCE(data_inicio, CURDATE()),\n                                        updated_at = NOW()\n                                    WHERE id = :matricula_id\n                                      AND tenant_id = :tenant_id\n                                ");
+                                $stmtAtualizaMatricula->execute([
+                                    'status_id' => (int)$statusAtiva['id'],
+                                    'matricula_id' => (int)$mat['id'],
+                                    'tenant_id' => (int)$tenantId,
+                                ]);
+
+                                $mat['status'] = $statusAtiva['nome'];
+                                $mat['status_codigo'] = $statusAtiva['codigo'];
+                            }
+                        }
+                    }
+
                     $matriculaAtiva = [
                         'id' => (int)$mat['id'],
                         'status' => $mat['status'],

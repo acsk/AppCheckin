@@ -745,10 +745,7 @@ export default function PlanoDetalhesScreen() {
           <Text style={styles.errorMessage}>
             {error || "Plano não encontrado"}
           </Text>
-          <TouchableOpacity
-            style={styles.retryButton}
-            onPress={handleBack}
-          >
+          <TouchableOpacity style={styles.retryButton} onPress={handleBack}>
             <Feather name="arrow-left" size={18} color="#fff" />
             <Text style={styles.retryButtonText}>Voltar aos Planos</Text>
           </TouchableOpacity>

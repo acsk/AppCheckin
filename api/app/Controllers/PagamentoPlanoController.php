@@ -311,23 +311,63 @@ class PagamentoPlanoController
                 1 // tipo_baixa_id = 1 (Manual)
             );
             
-            // Verificar se é o PRIMEIRO pagamento da matrícula (está em status PENDENTE)
-            // Se for, liberar a matrícula (mudar para ATIVA)
-            $stmtMatricula = $db->prepare("SELECT status FROM matriculas WHERE id = ?");
-            $stmtMatricula->execute([$pagamento['matricula_id']]);
-            $matricula = $stmtMatricula->fetch(\PDO::FETCH_ASSOC);
-            
-            if ($matricula && $matricula['status'] === 'pendente') {
-                // Primeira parcela foi paga - liberar a matrícula e atualizar status_id
-                $stmtAtualizar = $db->prepare("
-                    UPDATE matriculas 
-                    SET 
-                        status = 'ativa',
-                        status_id = (SELECT sm.id FROM status_matricula sm WHERE sm.codigo = 'ativa' AND sm.ativo = TRUE),
+            // Após baixa, garantir consistência da matrícula (status ativa)
+            $stmtStatusMatriculaAtiva = $db->prepare("SELECT id FROM status_matricula WHERE codigo = 'ativa' AND ativo = TRUE LIMIT 1");
+            $stmtStatusMatriculaAtiva->execute();
+            $statusMatriculaAtiva = $stmtStatusMatriculaAtiva->fetch(\PDO::FETCH_ASSOC);
+
+            if ($statusMatriculaAtiva && isset($statusMatriculaAtiva['id'])) {
+                $stmtAtualizarMatricula = $db->prepare("
+                    UPDATE matriculas
+                    SET status_id = ?,
+                        data_inicio = COALESCE(data_inicio, CURDATE()),
                         updated_at = NOW()
                     WHERE id = ?
                 ");
-                $stmtAtualizar->execute([$pagamento['matricula_id']]);
+                $stmtAtualizarMatricula->execute([
+                    (int)$statusMatriculaAtiva['id'],
+                    (int)$pagamento['matricula_id']
+                ]);
+            }
+
+            // Após baixa, garantir consistência da assinatura vinculada (approved/ativa)
+            $stmtStatusAssinaturaAtiva = $db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'ativa' LIMIT 1");
+            $stmtStatusAssinaturaAtiva->execute();
+            $statusAssinaturaAtiva = $stmtStatusAssinaturaAtiva->fetch(\PDO::FETCH_ASSOC);
+
+            if ($statusAssinaturaAtiva && isset($statusAssinaturaAtiva['id'])) {
+                $stmtAssinatura = $db->prepare("
+                    SELECT id, status_gateway, status_id
+                    FROM assinaturas
+                    WHERE tenant_id = ? AND matricula_id = ?
+                    ORDER BY id DESC
+                    LIMIT 1
+                ");
+                $stmtAssinatura->execute([
+                    (int)$tenantId,
+                    (int)$pagamento['matricula_id']
+                ]);
+                $assinatura = $stmtAssinatura->fetch(\PDO::FETCH_ASSOC);
+
+                if ($assinatura) {
+                    $statusGatewayAtual = strtolower((string)($assinatura['status_gateway'] ?? ''));
+                    $statusAssinaturaAtual = (int)($assinatura['status_id'] ?? 0);
+                    $statusAssinaturaAtivaId = (int)$statusAssinaturaAtiva['id'];
+
+                    if ($statusGatewayAtual !== 'approved' || $statusAssinaturaAtual !== $statusAssinaturaAtivaId) {
+                        $stmtAtualizarAssinatura = $db->prepare("
+                            UPDATE assinaturas
+                            SET status_gateway = 'approved',
+                                status_id = ?,
+                                atualizado_em = NOW()
+                            WHERE id = ?
+                        ");
+                        $stmtAtualizarAssinatura->execute([
+                            $statusAssinaturaAtivaId,
+                            (int)$assinatura['id']
+                        ]);
+                    }
+                }
             }
             
             // Buscar informações do plano para calcular próximo vencimento
