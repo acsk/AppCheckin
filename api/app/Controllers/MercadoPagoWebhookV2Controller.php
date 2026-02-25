@@ -9,6 +9,7 @@ namespace App\Controllers;
 
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use App\Services\MercadoPagoService;
 use MercadoPago\Client\Payment\PaymentClient;
 use MercadoPago\Client\PreApproval\PreApprovalClient;
 use MercadoPago\MercadoPagoConfig;
@@ -100,9 +101,19 @@ class MercadoPagoWebhookV2Controller
         $this->log("📋 Processando PAYMENT: {$paymentId}");
         
         try {
-            $client = new PaymentClient();
-            $paymentRaw = $client->get($paymentId);
-            $payment = $this->normalizarRecursoMercadoPago($paymentRaw);
+            $payment = null;
+
+            try {
+                $client = new PaymentClient();
+                $paymentRaw = $client->get($paymentId);
+                $payment = $this->normalizarRecursoMercadoPago($paymentRaw);
+            } catch (\Exception $sdkException) {
+                $this->log("⚠️ SDK PaymentClient falhou para {$paymentId}: " . $sdkException->getMessage());
+                $this->log("🔁 Tentando fallback via MercadoPagoService...");
+
+                $legacyService = new MercadoPagoService();
+                $payment = $legacyService->buscarPagamento($paymentId);
+            }
             
             $this->log("✅ Payment encontrado");
             $this->log("   Status: " . $payment['status']);

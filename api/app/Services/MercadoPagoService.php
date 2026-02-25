@@ -408,28 +408,80 @@ class MercadoPagoService
     {
         $paymentId = (string) $paymentId;
         $this->validarCredenciais();
-        
-        $response = $this->fazerRequisicao('GET', "/v1/payments/{$paymentId}");
-        
-        return [
-            'id' => $response['id'],
-            'status' => $response['status'], // approved, pending, rejected, cancelled, refunded
-            'status_detail' => $response['status_detail'],
-            'external_reference' => $response['external_reference'] ?? null,
-            'preference_id' => $response['preference_id'] ?? null, // ID da preferência (para pagamentos avulsos)
-            'metadata' => $response['metadata'] ?? [],
-            'transaction_amount' => $response['transaction_amount'],
-            'date_approved' => $response['date_approved'] ?? null,
-            'date_created' => $response['date_created'],
-            'payer' => [
-                'email' => $response['payer']['email'] ?? null,
-                'identification' => $response['payer']['identification'] ?? null
-            ],
-            'payment_method_id' => $response['payment_method_id'],
-            'payment_type_id' => $response['payment_type_id'],
-            'installments' => $response['installments'] ?? 1,
-            'raw' => $response
-        ];
+
+        try {
+            $response = $this->fazerRequisicao('GET', "/v1/payments/{$paymentId}");
+
+            return [
+                'id' => $response['id'],
+                'status' => $response['status'], // approved, pending, rejected, cancelled, refunded
+                'status_detail' => $response['status_detail'],
+                'external_reference' => $response['external_reference'] ?? null,
+                'preference_id' => $response['preference_id'] ?? null, // ID da preferência (para pagamentos avulsos)
+                'metadata' => $response['metadata'] ?? [],
+                'transaction_amount' => $response['transaction_amount'],
+                'date_approved' => $response['date_approved'] ?? null,
+                'date_created' => $response['date_created'],
+                'payer' => [
+                    'email' => $response['payer']['email'] ?? null,
+                    'identification' => $response['payer']['identification'] ?? null
+                ],
+                'payment_method_id' => $response['payment_method_id'],
+                'payment_type_id' => $response['payment_type_id'],
+                'installments' => $response['installments'] ?? 1,
+                'raw' => $response
+            ];
+        } catch (\Exception $e) {
+            // Fallback para eventos de assinatura recorrente (subscription_authorized_payment)
+            if (!str_contains($e->getMessage(), '[404]')) {
+                throw $e;
+            }
+
+            error_log("[MercadoPagoService] ⚠️ /v1/payments/{$paymentId} retornou 404, tentando /authorized_payments/{id}");
+
+            $authorized = $this->fazerRequisicao('GET', "/authorized_payments/{$paymentId}");
+
+            $externalReference = $authorized['external_reference'] ?? null;
+            $metadata = is_array($authorized['metadata'] ?? null) ? $authorized['metadata'] : [];
+
+            // Quando vier apenas preapproval_id, buscar assinatura para recuperar external_reference
+            $preapprovalId = $authorized['preapproval_id'] ?? null;
+            if (!$externalReference && !empty($preapprovalId)) {
+                try {
+                    $assinatura = $this->buscarAssinatura((string)$preapprovalId);
+                    $externalReference = $assinatura['external_reference'] ?? $externalReference;
+
+                    if (is_array($assinatura['metadata'] ?? null)) {
+                        $metadata = array_merge($metadata, $assinatura['metadata']);
+                    }
+                } catch (\Exception $fallbackException) {
+                    error_log("[MercadoPagoService] ⚠️ Não foi possível recuperar external_reference pelo preapproval_id {$preapprovalId}: " . $fallbackException->getMessage());
+                }
+            }
+
+            $statusRaw = strtolower((string)($authorized['status'] ?? 'authorized'));
+            $statusNormalized = $statusRaw === 'authorized' ? 'approved' : $statusRaw;
+
+            return [
+                'id' => (string)($authorized['id'] ?? $paymentId),
+                'status' => $statusNormalized,
+                'status_detail' => $authorized['status_detail'] ?? ($authorized['reason'] ?? null),
+                'external_reference' => $externalReference,
+                'preference_id' => $authorized['preference_id'] ?? null,
+                'metadata' => $metadata,
+                'transaction_amount' => (float)($authorized['transaction_amount'] ?? ($authorized['amount'] ?? 0)),
+                'date_approved' => $authorized['date_approved'] ?? ($authorized['last_modified'] ?? null),
+                'date_created' => $authorized['date_created'] ?? date('c'),
+                'payer' => [
+                    'email' => $authorized['payer']['email'] ?? null,
+                    'identification' => $authorized['payer']['identification'] ?? null
+                ],
+                'payment_method_id' => $authorized['payment_method_id'] ?? ($authorized['payment_method']['id'] ?? 'account_money'),
+                'payment_type_id' => $authorized['payment_type_id'] ?? ($authorized['payment_type'] ?? 'account_money'),
+                'installments' => (int)($authorized['installments'] ?? 1),
+                'raw' => $authorized
+            ];
+        }
     }
     
     /**
