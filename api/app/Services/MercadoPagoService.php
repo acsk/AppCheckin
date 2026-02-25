@@ -252,8 +252,18 @@ class MercadoPagoService
             ],
             'auto_return' => 'approved',
             'payment_methods' => [
-                // Para assinaturas, aceitar APENAS cartão de crédito
-                'excluded_payment_types' => !empty($data['apenas_cartao']) ? [
+                // Filtrar métodos de pagamento conforme flags
+                'excluded_payment_types' => !empty($data['apenas_pix']) ? [
+                    // Apenas PIX: excluir TUDO exceto bank_transfer (PIX)
+                    ['id' => 'credit_card'],      // Cartão de crédito
+                    ['id' => 'debit_card'],        // Cartão de débito
+                    ['id' => 'ticket'],            // Boleto
+                    ['id' => 'atm'],               // Caixa eletrônico
+                    ['id' => 'prepaid_card'],      // Cartão pré-pago
+                    ['id' => 'digital_currency'],  // Moeda digital
+                    ['id' => 'digital_wallet']     // Carteira digital
+                ] : (!empty($data['apenas_cartao']) ? [
+                    // Apenas cartão de crédito: excluir tudo exceto credit_card
                     ['id' => 'ticket'],        // Boleto
                     ['id' => 'bank_transfer'], // PIX/Transferência
                     ['id' => 'atm'],           // Caixa eletrônico
@@ -261,7 +271,7 @@ class MercadoPagoService
                     ['id' => 'prepaid_card'],  // Cartão pré-pago
                     ['id' => 'digital_currency'], // Moeda digital
                     ['id' => 'digital_wallet']    // Carteira digital
-                ] : [],
+                ] : []),
                 'installments' => (int) ($data['max_parcelas'] ?? 12)
             ],
             'statement_descriptor' => substr($data['academia_nome'] ?? 'ACADEMIA', 0, 22)

@@ -490,6 +490,7 @@ export default function PlanoDetalhesScreen() {
           plano_id: plano.id,
           plano_ciclo_id: selectedCiclo.id,
           metodo_pagamento: "checkout",
+          
         }),
       });
 
