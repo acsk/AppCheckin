@@ -1,0 +1,108 @@
+{
+    "pref_cf510db4d611d0248ba9d556": {
+        "id": "pref_cf510db4d611d0248ba9d556",
+        "payment_id": "pay_42acded18ed66537c7da34bc",
+        "gateway_assinatura_id": "2f4b644a664969c78671b78efdba91b5",
+        "external_reference": "MAT-001-123456",
+        "pacote_contrato_id": "42",
+        "items": [
+            {
+                "title": "Plano Premium",
+                "quantity": 1,
+                "unit_price": 149.9
+            }
+        ],
+        "amount": 149.9,
+        "currency": "BRL",
+        "payer": {
+            "name": "André Cabral",
+            "email": "andre@teste.com",
+            "document": null
+        },
+        "description": "Plano Premium Mensal",
+        "notification_url": null,
+        "back_urls": {
+            "success": "http:\/\/localhost:8080\/pagamento\/sucesso",
+            "failure": "http:\/\/localhost:8080\/pagamento\/falha",
+            "pending": "http:\/\/localhost:8080\/pagamento\/pendente"
+        },
+        "auto_return": "approved",
+        "metadata": [],
+        "installments": 1,
+        "payment_url": "http:\/\/localhost:8085\/checkout\/pay_42acded18ed66537c7da34bc",
+        "sandbox_init_point": "http:\/\/localhost:8085\/checkout\/pay_42acded18ed66537c7da34bc",
+        "init_point": "http:\/\/localhost:8085\/checkout\/pay_42acded18ed66537c7da34bc",
+        "status": "pending_payment",
+        "created_at": "2026-02-25T19:05:17.000+00:00"
+    },
+    "pref_6161242992679d99b4c29316": {
+        "id": "pref_6161242992679d99b4c29316",
+        "payment_id": "pay_69cf73ae94881929da00c74a",
+        "gateway_assinatura_id": "ad239c0b81d1903fc6516330371fb0ac",
+        "external_reference": "MAT-184",
+        "pacote_contrato_id": null,
+        "items": [
+            {
+                "title": "Plano DEV - Mensal",
+                "quantity": 1,
+                "unit_price": 1.1
+            }
+        ],
+        "amount": 1.1,
+        "currency": "BRL",
+        "payer": {
+            "name": "André Cabral",
+            "email": "andre@teste.com",
+            "document": null
+        },
+        "description": "Plano DEV - Mensal",
+        "notification_url": null,
+        "back_urls": {
+            "success": null,
+            "failure": null,
+            "pending": null
+        },
+        "auto_return": "approved",
+        "metadata": [],
+        "installments": 1,
+        "payment_url": "http:\/\/localhost:8085\/checkout\/pay_69cf73ae94881929da00c74a",
+        "sandbox_init_point": "http:\/\/localhost:8085\/checkout\/pay_69cf73ae94881929da00c74a",
+        "init_point": "http:\/\/localhost:8085\/checkout\/pay_69cf73ae94881929da00c74a",
+        "status": "pending_payment",
+        "created_at": "2026-02-25T19:10:35.000+00:00"
+    },
+    "pref_9957a522ebdbaa2f1f817d36": {
+        "id": "pref_9957a522ebdbaa2f1f817d36",
+        "payment_id": "pay_94b4767e664aec880c882ab7",
+        "gateway_assinatura_id": "a0240f23ea50d6875781133728e738ec",
+        "external_reference": null,
+        "pacote_contrato_id": null,
+        "items": [
+            {
+                "title": "Plano",
+                "unit_price": 99.9,
+                "quantity": 1
+            }
+        ],
+        "amount": 99.9,
+        "currency": "BRL",
+        "payer": {
+            "name": null,
+            "email": "teste@test.com",
+            "document": null
+        },
+        "description": "Plano",
+        "notification_url": null,
+        "back_urls": {
+            "success": "http:\/\/meuapp.com\/ok"
+        },
+        "auto_return": "approved",
+        "metadata": [],
+        "installments": 1,
+        "payment_url": "http:\/\/localhost:8085\/checkout\/pay_94b4767e664aec880c882ab7",
+        "sandbox_init_point": "http:\/\/localhost:8085\/checkout\/pay_94b4767e664aec880c882ab7",
+        "init_point": "http:\/\/localhost:8085\/checkout\/pay_94b4767e664aec880c882ab7",
+        "status": "pending_payment",
+        "created_at": "2026-02-25T19:39:42.000+00:00"
+    }
+}

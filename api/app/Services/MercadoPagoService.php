@@ -49,7 +49,14 @@ class MercadoPagoService
     public function __construct(?int $tenantId = null)
     {
         $this->tenantId = $tenantId;
-        $this->baseUrl = 'https://api.mercadopago.com';
+        
+        // Em ambiente local, usar fake API do Mercado Pago
+        $fakeApiUrl = $_ENV['MP_FAKE_API_URL'] ?? $_SERVER['MP_FAKE_API_URL'] ?? null;
+        $this->baseUrl = $fakeApiUrl ?: 'https://api.mercadopago.com';
+        
+        if ($fakeApiUrl) {
+            error_log("[MercadoPagoService] 🧪 Usando FAKE API: {$fakeApiUrl}");
+        }
         
         // Inicializar URLs de callback
         $apiUrl = $_ENV['API_URL'] ?? $_SERVER['API_URL'] ?? 'https://api.appcheckin.com.br';

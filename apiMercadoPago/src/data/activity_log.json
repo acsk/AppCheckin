@@ -1,0 +1,528 @@
+[
+    {
+        "id": "log_4b1eeaefe4e6d8a62fd2f5c1",
+        "type": "webhook.registered",
+        "data": {
+            "webhook_id": "wh_1eea693dac88923a557d28de",
+            "url": "http:\/\/host.docker.internal:8080\/api\/webhooks\/mercadopago"
+        },
+        "timestamp": "2026-02-25T18:16:45.000+00:00"
+    },
+    {
+        "id": "log_a64802af8e9fe37ffca9da2c",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "pay_08650d9c9c8d4d415b1c1101",
+            "status": "approved",
+            "amount": 49.9
+        },
+        "timestamp": "2026-02-25T18:33:03.000+00:00"
+    },
+    {
+        "id": "log_c5628314969de9d52f0217b9",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "pay_51daedace83feeb3855515c1",
+            "status": "approved",
+            "amount": 150
+        },
+        "timestamp": "2026-02-25T18:34:36.000+00:00"
+    },
+    {
+        "id": "log_5f7478802b6290907177cb0d",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "pay_f6cc16a6f32d0a116518d76e",
+            "status": "rejected",
+            "amount": 218.11
+        },
+        "timestamp": "2026-02-25T18:34:43.000+00:00"
+    },
+    {
+        "id": "log_9ff5d09ba86aad02211e1fc4",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "pay_ecafce5854af8ce151bdfb1a",
+            "status": "pending",
+            "amount": 318.34
+        },
+        "timestamp": "2026-02-25T18:34:53.000+00:00"
+    },
+    {
+        "id": "log_21466d732f800f0b45f79cae",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "pay_ee8afa208e042742fd33dd60",
+            "status": "in_process",
+            "amount": 278.93
+        },
+        "timestamp": "2026-02-25T18:35:06.000+00:00"
+    },
+    {
+        "id": "log_51f5b900344566a148083d8f",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "pay_aee4763c993a2e2879421d36",
+            "status": "approved",
+            "amount": 150
+        },
+        "timestamp": "2026-02-25T18:35:12.000+00:00"
+    },
+    {
+        "id": "log_2138575f3c00713ee2db7071",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "pay_0b360fca38523b3ef637f4a2",
+            "status": "rejected",
+            "amount": 806.99
+        },
+        "timestamp": "2026-02-25T18:35:23.000+00:00"
+    },
+    {
+        "id": "log_f18234386e3a7be28a03310b",
+        "type": "webhook.registered",
+        "data": {
+            "webhook_id": "wh_572e41b3b4ffaa49498a59ee",
+            "url": "http:\/\/host.docker.internal:8080\/api\/webhooks\/mercadopago"
+        },
+        "timestamp": "2026-02-25T18:55:05.000+00:00"
+    },
+    {
+        "id": "log_49abeea775a44d7e2a858449",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "pay_1ef8c6cd97238ed1fe9d3e5d",
+            "status": "approved",
+            "amount": 99.9
+        },
+        "timestamp": "2026-02-25T18:56:25.000+00:00"
+    },
+    {
+        "id": "log_10a338f29f158018cc2b63ad",
+        "type": "preference.created",
+        "data": {
+            "preference_id": "pref_cf510db4d611d0248ba9d556",
+            "payment_id": "pay_42acded18ed66537c7da34bc",
+            "amount": 149.9
+        },
+        "timestamp": "2026-02-25T19:05:17.000+00:00"
+    },
+    {
+        "id": "log_dd9f0b1fc61301047e43fd46",
+        "type": "preference.created",
+        "data": {
+            "preference_id": "pref_6161242992679d99b4c29316",
+            "payment_id": "pay_69cf73ae94881929da00c74a",
+            "amount": 1.1
+        },
+        "timestamp": "2026-02-25T19:10:35.000+00:00"
+    },
+    {
+        "id": "log_924452fbe7e2a1de5eddcdfd",
+        "type": "preapproval.created",
+        "data": {
+            "preapproval_id": "0e1e6978cb0141de82625fb7853328aa",
+            "reason": "Plano Mensal Premium",
+            "amount": 99.9,
+            "status": "authorized"
+        },
+        "timestamp": "2026-02-25T19:16:46.000+00:00"
+    },
+    {
+        "id": "log_0e73a7d846349f3ae7783ca4",
+        "type": "preapproval.created",
+        "data": {
+            "preapproval_id": "4f2118d6e2e41b944cd8938a65eface8",
+            "reason": "Plano Mensal",
+            "amount": 99.9,
+            "status": "authorized"
+        },
+        "timestamp": "2026-02-25T19:17:12.000+00:00"
+    },
+    {
+        "id": "log_b5aeb898cfac2e354eff5bf6",
+        "type": "preapproval.created",
+        "data": {
+            "preapproval_id": "0b73fa7077afd38520180e55d0376056",
+            "reason": "Plano Mensal",
+            "amount": 99.9,
+            "status": "authorized"
+        },
+        "timestamp": "2026-02-25T19:17:30.000+00:00"
+    },
+    {
+        "id": "log_bfffd78be7e4979793febdf7",
+        "type": "preapproval.created",
+        "data": {
+            "preapproval_id": "5a7f60073cfb9081242103c19ab335ef",
+            "reason": "Plano Mensal",
+            "amount": 99.9,
+            "status": "authorized"
+        },
+        "timestamp": "2026-02-25T19:17:54.000+00:00"
+    },
+    {
+        "id": "log_7c4436915186d3c1d4a3165e",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "pay_7bef25ddaaa2a06fa448357f",
+            "status": "approved",
+            "amount": 99.9
+        },
+        "timestamp": "2026-02-25T19:32:54.000+00:00"
+    },
+    {
+        "id": "log_69ab989d95035d85ee2aeb7b",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "pay_20d501db648702a34c7b4274",
+            "status": "approved",
+            "amount": 100
+        },
+        "timestamp": "2026-02-25T19:36:55.000+00:00"
+    },
+    {
+        "id": "log_1965c60e35d421b5b2540d40",
+        "type": "preference.created",
+        "data": {
+            "preference_id": "pref_9957a522ebdbaa2f1f817d36",
+            "payment_id": "pay_94b4767e664aec880c882ab7",
+            "amount": 99.9
+        },
+        "timestamp": "2026-02-25T19:39:42.000+00:00"
+    },
+    {
+        "id": "log_150d21f6eaba2b652b3aaf8c",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "pay_f932ba26e1b27beb97edf0fb",
+            "status": "approved",
+            "amount": 100
+        },
+        "timestamp": "2026-02-25T19:39:42.000+00:00"
+    },
+    {
+        "id": "log_75233b438a413a4896d1640b",
+        "type": "preapproval_plan.created",
+        "data": {
+            "plan_id": "5c265834b3fbb3b55cab7dfe8f729440",
+            "reason": "Plano Premium"
+        },
+        "timestamp": "2026-02-25T19:40:06.000+00:00"
+    },
+    {
+        "id": "log_8ea655611023c8de47eaa4a6",
+        "type": "preapproval.created",
+        "data": {
+            "preapproval_id": "2249171dbfa81ad1dda0e66b9f2d70e8",
+            "reason": "Plano Mensal",
+            "amount": 49.9,
+            "status": "authorized"
+        },
+        "timestamp": "2026-02-25T19:40:29.000+00:00"
+    },
+    {
+        "id": "log_8475060b828870d976249a6b",
+        "type": "preapproval.created",
+        "data": {
+            "preapproval_id": "58f39c6d95bd20c00eb6422c8024f6f7",
+            "reason": "Test",
+            "amount": 29.9,
+            "status": "authorized"
+        },
+        "timestamp": "2026-02-25T19:40:29.000+00:00"
+    },
+    {
+        "id": "log_dc5aa1b2c27520d508b7405e",
+        "type": "preapproval.updated",
+        "data": {
+            "preapproval_id": "58f39c6d95bd20c00eb6422c8024f6f7",
+            "status": "paused"
+        },
+        "timestamp": "2026-02-25T19:40:29.000+00:00"
+    },
+    {
+        "id": "log_df85762173452958141e8199",
+        "type": "preapproval_plan.created",
+        "data": {
+            "plan_id": "e1dbeb03f350ad297d7129a196f84fbf",
+            "reason": "3x por Semana - Aqua Masters"
+        },
+        "timestamp": "2026-02-25T19:43:31.000+00:00"
+    },
+    {
+        "id": "log_28d863301472707b37372138",
+        "type": "preapproval.created",
+        "data": {
+            "preapproval_id": "c19dfb01dcf332f91e69b7e908a0f82f",
+            "reason": "3x por Semana - Aqua Masters",
+            "amount": 1,
+            "status": "pending"
+        },
+        "timestamp": "2026-02-25T19:43:31.000+00:00"
+    },
+    {
+        "id": "log_b94f2bd5ea8b519b5f13a514",
+        "type": "preapproval.created",
+        "data": {
+            "preapproval_id": "1021a07dc6bd300351f37caa8a601ae7",
+            "reason": "Plano Teste",
+            "amount": 49.9,
+            "status": "authorized"
+        },
+        "timestamp": "2026-02-25T19:47:19.000+00:00"
+    },
+    {
+        "id": "log_5aae426b05c9aabbf58f8372",
+        "type": "preapproval_plan.created",
+        "data": {
+            "plan_id": "4c3c045a2e137e5f735eaae008c6fb1d",
+            "reason": "3x por Semana - Aqua Masters"
+        },
+        "timestamp": "2026-02-25T19:48:21.000+00:00"
+    },
+    {
+        "id": "log_f9234c955db0281c068f2f2d",
+        "type": "preapproval.created",
+        "data": {
+            "preapproval_id": "57c266bd285e937ff03814b2e346a352",
+            "reason": "3x por Semana - Aqua Masters",
+            "amount": 1,
+            "status": "pending"
+        },
+        "timestamp": "2026-02-25T19:48:21.000+00:00"
+    },
+    {
+        "id": "log_a15c477f37a39e7c0d338bd9",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "pay_e1fa1ea9e88e9b32b20e00e9",
+            "status": "approved",
+            "amount": 1
+        },
+        "timestamp": "2026-02-25T19:54:31.000+00:00"
+    },
+    {
+        "id": "log_76dec4314467e9f6f1ab4957",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "pay_614700b80fa68d6e6d9bbc15",
+            "status": "approved",
+            "amount": 1
+        },
+        "timestamp": "2026-02-25T19:54:31.000+00:00"
+    },
+    {
+        "id": "log_f0428c459d9843513a988756",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "pay_8a7e7edf8722defc596f4ec1",
+            "status": "approved",
+            "amount": 99.9
+        },
+        "timestamp": "2026-02-25T19:55:01.000+00:00"
+    },
+    {
+        "id": "log_612d11ee84cc747bbcf34361",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "pay_31da7a54c685faaa89573bd3",
+            "status": "approved",
+            "amount": 1
+        },
+        "timestamp": "2026-02-25T19:56:21.000+00:00"
+    },
+    {
+        "id": "log_76624ed059457640bf622f45",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "pay_ab5cb0f318be755a9a6fa407",
+            "status": "approved",
+            "amount": 1
+        },
+        "timestamp": "2026-02-25T19:56:22.000+00:00"
+    },
+    {
+        "id": "log_5b616c1258e99347457371c7",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "pay_716bba72ae93ed1e1860f525",
+            "status": "approved",
+            "amount": 99.9
+        },
+        "timestamp": "2026-02-25T20:04:51.000+00:00"
+    },
+    {
+        "id": "log_16333004950a4e980d4d113d",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "pay_b428c312d2eaa3e2f3bb065d",
+            "status": "approved",
+            "amount": 1
+        },
+        "timestamp": "2026-02-25T20:05:46.000+00:00"
+    },
+    {
+        "id": "log_3be9bfb5e3f3bd2d0ff3db7b",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "pay_870e9167116daac8cdd7b9fc",
+            "status": "approved",
+            "amount": 1
+        },
+        "timestamp": "2026-02-25T20:05:47.000+00:00"
+    },
+    {
+        "id": "log_e7307d2c0776ff1625f24343",
+        "type": "webhook.registered",
+        "data": {
+            "webhook_id": "wh_fc0c0aa6b0f05d3e691ad1fb",
+            "url": "http:\/\/localhost:8080\/api\/webhooks\/mercadopago"
+        },
+        "timestamp": "2026-02-25T20:08:01.000+00:00"
+    },
+    {
+        "id": "log_81ddce4f1725e5ea8e842559",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "pay_2a69e9bf8cab29618ee4a087",
+            "status": "pending",
+            "amount": 99.9
+        },
+        "timestamp": "2026-02-25T20:10:14.000+00:00"
+    },
+    {
+        "id": "log_e1a9ace0ddc957b42a3ba953",
+        "type": "payment.pix_confirmed",
+        "data": {
+            "payment_id": "pay_2a69e9bf8cab29618ee4a087",
+            "amount": 99.9
+        },
+        "timestamp": "2026-02-25T20:10:15.000+00:00"
+    },
+    {
+        "id": "log_decc908a875bf3a0a5fcfe95",
+        "type": "webhook.registered",
+        "data": {
+            "webhook_id": "wh_5ec29b6db2e2b18732c42274",
+            "url": "http:\/\/host.docker.internal:8080\/api\/webhooks\/mercadopago"
+        },
+        "timestamp": "2026-02-25T20:10:52.000+00:00"
+    },
+    {
+        "id": "log_92bff879bc7a5a954c9eda24",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "pay_2f0785e1c527692c95416f8b",
+            "status": "pending",
+            "amount": 1
+        },
+        "timestamp": "2026-02-25T20:11:16.000+00:00"
+    },
+    {
+        "id": "log_b83f33a4f9ea970c39307948",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "pay_f46ff1d9d9d45a9013aa9525",
+            "status": "pending",
+            "amount": 1
+        },
+        "timestamp": "2026-02-25T20:11:17.000+00:00"
+    },
+    {
+        "id": "log_2296e80260bd2f5eb1cc2d72",
+        "type": "payment.pix_confirmed",
+        "data": {
+            "payment_id": "pay_f46ff1d9d9d45a9013aa9525",
+            "amount": 1
+        },
+        "timestamp": "2026-02-25T20:11:29.000+00:00"
+    },
+    {
+        "id": "log_ee9dddeeb4f3a0f7301489eb",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "283031792682",
+            "status": "pending",
+            "amount": 1
+        },
+        "timestamp": "2026-02-25T20:24:46.000+00:00"
+    },
+    {
+        "id": "log_c35b7bf2e9d41a95fbe33026",
+        "type": "payment.pix_confirmed",
+        "data": {
+            "payment_id": "283031792682",
+            "amount": 1
+        },
+        "timestamp": "2026-02-25T20:25:05.000+00:00"
+    },
+    {
+        "id": "log_1deea8ba6318d9f880d103dc",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "115758967638",
+            "status": "pending",
+            "amount": 1
+        },
+        "timestamp": "2026-02-25T20:28:30.000+00:00"
+    },
+    {
+        "id": "log_fb91d4b1a627d66eaad51fa2",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "121095533313",
+            "status": "pending",
+            "amount": 1
+        },
+        "timestamp": "2026-02-25T20:28:32.000+00:00"
+    },
+    {
+        "id": "log_0669dd194565af0df1753c58",
+        "type": "payment.pix_confirmed",
+        "data": {
+            "payment_id": "121095533313",
+            "amount": 1
+        },
+        "timestamp": "2026-02-25T20:28:47.000+00:00"
+    },
+    {
+        "id": "log_b761daa8482b1bdafb664e14",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "106256904099",
+            "status": "pending",
+            "amount": 1
+        },
+        "timestamp": "2026-02-25T20:33:23.000+00:00"
+    },
+    {
+        "id": "log_4450bc7e870239e4e7d144ed",
+        "type": "preapproval_plan.created",
+        "data": {
+            "plan_id": "0aa916a50698dbde69610d49993410f9",
+            "reason": "3x por Semana - Aqua Masters"
+        },
+        "timestamp": "2026-02-25T23:15:41.000+00:00"
+    },
+    {
+        "id": "log_66f12906aa2b299bfbd7feed",
+        "type": "preapproval.created",
+        "data": {
+            "preapproval_id": "128884469251",
+            "reason": "3x por Semana - Aqua Masters",
+            "amount": 1,
+            "status": "pending"
+        },
+        "timestamp": "2026-02-25T23:15:41.000+00:00"
+    },
+    {
+        "id": "log_1daa723203ef5101e29acdf9",
+        "type": "payment.pix_confirmed",
+        "data": {
+            "payment_id": "106256904099",
+            "amount": 1
+        },
+        "timestamp": "2026-02-25T23:17:46.000+00:00"
+    }
+]

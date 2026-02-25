@@ -1,0 +1,51 @@
+{
+    "128884469251": {
+        "id": "128884469251",
+        "preapproval_plan_id": null,
+        "payer_id": 966661100,
+        "payer_email": "andrecabrall@gmail.com",
+        "back_url": "https:\/\/mobile.appcheckin.com.br\/pagamento\/sucesso",
+        "collector_id": 334775883,
+        "application_id": 7376599279,
+        "status": "pending",
+        "reason": "3x por Semana - Aqua Masters",
+        "external_reference": "MAT-187-1772061341",
+        "date_created": "2026-02-25T23:15:41.000-04:00",
+        "last_modified": "2026-02-25T23:15:41.000-04:00",
+        "init_point": "http:\/\/localhost:8085\/subscription\/checkout\/128884469251",
+        "sandbox_init_point": "http:\/\/localhost:8085\/subscription\/checkout\/128884469251",
+        "auto_recurring": {
+            "frequency": 1,
+            "frequency_type": "months",
+            "transaction_amount": 1,
+            "currency_id": "BRL",
+            "start_date": "2026-02-25T23:15:41.000-04:00",
+            "end_date": "2027-02-25T23:15:41.000-04:00",
+            "repetitions": null,
+            "free_trial": null
+        },
+        "payment_method_id": null,
+        "first_invoice_offset": null,
+        "subscription_id": "128884469251",
+        "notification_url": null,
+        "metadata": {
+            "tenant_id": 2,
+            "matricula_id": 187,
+            "aluno_id": 72,
+            "usuario_id": 3,
+            "tipo": "matricula"
+        },
+        "live_mode": false,
+        "next_payment_date": "2026-03-25T23:15:41.000-04:00",
+        "summarized": {
+            "quotas": null,
+            "charged_quantity": 0,
+            "pending_charge_quantity": null,
+            "charged_amount": 0,
+            "pending_charge_amount": null,
+            "semaphore": "green",
+            "last_charged_date": null,
+            "last_charged_amount": null
+        }
+    }
+}

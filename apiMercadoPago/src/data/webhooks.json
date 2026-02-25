@@ -1,0 +1,10 @@
+{
+    "wh_main": {
+        "id": "wh_main",
+        "url": "http://host.docker.internal:8080/api/webhooks/mercadopago",
+        "events": ["*"],
+        "active": true,
+        "description": "Webhook Mercado Pago - App",
+        "created_at": "2026-02-25T18:16:44.000+00:00"
+    }
+}

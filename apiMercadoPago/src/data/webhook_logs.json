@@ -1,0 +1,35 @@
+[
+    {
+        "id": "whl_4b6d2192f3f957d4d612066f",
+        "url": "http:\/\/host.docker.internal:8080\/api\/webhooks\/mercadopago",
+        "event": "payment.created",
+        "payment_id": "106256904099",
+        "http_status": 200,
+        "success": true,
+        "error": null,
+        "response_body": "{\"success\":false,\"error\":\"SQLSTATE[23000]: Integrity constraint violation: 1048 Column 'tenant_id' cannot be null\"}",
+        "sent_at": "2026-02-25T20:33:24.000+00:00"
+    },
+    {
+        "id": "whl_2a5a2a2f31394566d34c0925",
+        "url": "http:\/\/host.docker.internal:8080\/api\/webhooks\/mercadopago",
+        "event": "subscription_preapproval",
+        "resource_id": "128884469251",
+        "http_status": 200,
+        "success": true,
+        "error": null,
+        "response_body": "{\"success\":true,\"message\":\"Webhook processado com sucesso (V1)\"}",
+        "sent_at": "2026-02-25T23:15:41.000+00:00"
+    },
+    {
+        "id": "whl_3653432e4ad92748ddb920d5",
+        "url": "http:\/\/host.docker.internal:8080\/api\/webhooks\/mercadopago",
+        "event": "payment.updated",
+        "payment_id": "106256904099",
+        "http_status": 200,
+        "success": true,
+        "error": null,
+        "response_body": "{\"success\":false,\"error\":\"SQLSTATE[23000]: Integrity constraint violation: 1048 Column 'tenant_id' cannot be null\"}",
+        "sent_at": "2026-02-25T23:17:46.000+00:00"
+    }
+]
