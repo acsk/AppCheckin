@@ -466,16 +466,21 @@ class MercadoPagoWebhookController
                                 new OA\Property(
                                     property: "pagamentos_plano",
                                     type: "array",
-                                    description: "Mensalidades/parcelas (só preenchida quando pagamento é approved)",
+                                    description: "Mensalidades/parcelas (buscadas por matricula_id extraído do external_reference)",
                                     items: new OA\Items(
                                         properties: [
                                             new OA\Property(property: "id", type: "integer"),
                                             new OA\Property(property: "matricula_id", type: "integer"),
+                                            new OA\Property(property: "aluno_id", type: "integer"),
+                                            new OA\Property(property: "plano_id", type: "integer"),
                                             new OA\Property(property: "valor", type: "number", format: "float"),
                                             new OA\Property(property: "status_pagamento_id", type: "integer", description: "1=Aguardando, 2=Pago, 3=Atrasado"),
                                             new OA\Property(property: "data_pagamento", type: "string", format: "date-time", nullable: true),
                                             new OA\Property(property: "data_vencimento", type: "string", format: "date"),
-                                            new OA\Property(property: "external_reference", type: "string")
+                                            new OA\Property(property: "forma_pagamento_id", type: "integer", nullable: true),
+                                            new OA\Property(property: "tipo_baixa_id", type: "integer", nullable: true),
+                                            new OA\Property(property: "observacoes", type: "string", nullable: true),
+                                            new OA\Property(property: "created_at", type: "string", format: "date-time")
                                         ]
                                     )
                                 ),
@@ -559,22 +564,32 @@ class MercadoPagoWebhookController
             $mercadoPagoService = $this->getMercadoPagoService($tenantId);
             $resultado = $mercadoPagoService->buscarPagamentosPorExternalReference($externalReference);
 
+            // Extrair matricula_id do external_reference (MAT-{id}-timestamp)
+            $matriculaIdRef = null;
+            if (preg_match('/MAT-(\d+)/', $externalReference, $mRef)) {
+                $matriculaIdRef = (int) $mRef[1];
+            }
+
             // Buscar dados locais: pagamentos_plano (mensalidades)
+            // Nota: pagamentos_plano não tem external_reference, busca por matricula_id
             $dadosPagamentosPlano = [];
-            try {
-                $stmt = $this->db->prepare("
-                    SELECT pp.id, pp.matricula_id, pp.valor, pp.status_pagamento_id,
-                           pp.data_pagamento, pp.data_vencimento, pp.payment_id_mp, pp.preference_id,
-                           pp.forma_pagamento_id, pp.external_reference, pp.observacoes,
-                           pp.created_at, pp.updated_at
-                    FROM pagamentos_plano pp
-                    WHERE pp.external_reference = ? AND pp.tenant_id = ?
-                    ORDER BY pp.created_at DESC
-                ");
-                $stmt->execute([$externalReference, $tenantId]);
-                $dadosPagamentosPlano = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            } catch (\Exception $e) {
-                error_log("[consultarCobrancas] Erro ao buscar pagamentos_plano: " . $e->getMessage());
+            if ($matriculaIdRef) {
+                try {
+                    $stmt = $this->db->prepare("
+                        SELECT pp.id, pp.matricula_id, pp.aluno_id, pp.plano_id,
+                               pp.valor, pp.status_pagamento_id,
+                               pp.data_pagamento, pp.data_vencimento,
+                               pp.forma_pagamento_id, pp.tipo_baixa_id,
+                               pp.observacoes, pp.created_at, pp.updated_at
+                        FROM pagamentos_plano pp
+                        WHERE pp.matricula_id = ? AND pp.tenant_id = ?
+                        ORDER BY pp.created_at DESC
+                    ");
+                    $stmt->execute([$matriculaIdRef, $tenantId]);
+                    $dadosPagamentosPlano = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+                } catch (\Exception $e) {
+                    error_log("[consultarCobrancas] Erro ao buscar pagamentos_plano: " . $e->getMessage());
+                }
             }
 
             // Buscar dados locais: pagamentos_mercadopago (registro espelho do MP)
