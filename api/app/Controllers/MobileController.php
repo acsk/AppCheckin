@@ -5232,12 +5232,6 @@ class MobileController
                 ]));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
-            
-            // Ciclos sem recorrência: forçar PIX como método de pagamento
-            if (!$isRecorrente && $metodoPagamento !== 'pix') {
-                $metodoPagamento = 'pix';
-                error_log("[MobileController::comprarPlano] Ciclo sem recorrência: forçando método para PIX");
-            }
 
             // Verificar se valor é maior que zero
             if ($valorCompra <= 0) {

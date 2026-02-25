@@ -1334,6 +1334,11 @@ class MercadoPagoWebhookController
             error_log("[Webhook MP] ⚠️ Pagamento {$pagamento['status']} - matriculaId: {$matriculaIdInt}");
             $this->cancelarMatricula($matriculaIdInt);
             $this->atualizarAssinaturaAvulsaCancelada($matriculaIdInt, $pagamento);
+        } elseif ($pagamento['status'] === 'rejected') {
+            // Pagamento rejeitado: atualizar assinatura para status rejeitado
+            $matriculaIdInt = (int) $matriculaId;
+            error_log("[Webhook MP] ❌ Pagamento REJEITADO - matriculaId: {$matriculaIdInt}, motivo: " . ($pagamento['status_detail'] ?? 'N/A'));
+            $this->atualizarAssinaturaRejeitada($matriculaIdInt, $pagamento);
         }
     }
 
@@ -1525,6 +1530,114 @@ class MercadoPagoWebhookController
             }
         } catch (\Exception $e) {
             error_log("[Webhook MP] ⚠️ Erro ao cancelar assinatura avulsa: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Atualizar assinatura para rejeitada após pagamento rejected
+     */
+    private function atualizarAssinaturaRejeitada(int $matriculaId, array $pagamento): void
+    {
+        try {
+            $preferenceId = $pagamento['preference_id'] ?? null;
+            
+            // Buscar assinatura pela matrícula OU pelo preference_id
+            $stmtBuscar = $this->db->prepare("
+                SELECT a.id, a.tipo_cobranca, a.gateway_preference_id, a.status_id,
+                       a.matricula_id,
+                       s.codigo as status_atual
+                FROM assinaturas a
+                LEFT JOIN assinatura_status s ON s.id = a.status_id
+                WHERE a.matricula_id = ? 
+                   OR (a.gateway_preference_id = ? AND ? IS NOT NULL)
+                LIMIT 1
+            ");
+            $stmtBuscar->execute([$matriculaId, $preferenceId, $preferenceId]);
+            $assinatura = $stmtBuscar->fetch(\PDO::FETCH_ASSOC);
+            
+            if (!$assinatura) {
+                error_log("[Webhook MP] ⚠️ Nenhuma assinatura encontrada para rejeição: matrícula #{$matriculaId}, preference_id={$preferenceId}");
+                return;
+            }
+            
+            // Se já está ativa/paga, não rebaixar para rejeitada (pagamento posterior pode ter sido aprovado)
+            if (in_array($assinatura['status_atual'], ['ativa', 'paga'])) {
+                error_log("[Webhook MP] ℹ️ Assinatura #{$assinatura['id']} já está {$assinatura['status_atual']}, não rebaixando para rejeitada");
+                return;
+            }
+            
+            // Buscar ID do status 'rejeitada' (ou criar fallback para 'cancelada')
+            $stmtStatus = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'rejeitada'");
+            $stmtStatus->execute();
+            $statusId = $stmtStatus->fetchColumn();
+            
+            // Se não existe 'rejeitada', usar 'cancelada'
+            if (!$statusId) {
+                $stmtStatus2 = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'cancelada'");
+                $stmtStatus2->execute();
+                $statusId = $stmtStatus2->fetchColumn();
+                error_log("[Webhook MP] ⚠️ Status 'rejeitada' não encontrado, usando 'cancelada' (id={$statusId})");
+            }
+            
+            if (!$statusId) {
+                error_log("[Webhook MP] ❌ Nenhum status de rejeição encontrado, abortando");
+                return;
+            }
+            
+            $statusDetail = $pagamento['status_detail'] ?? 'rejected';
+            
+            $stmtUpdate = $this->db->prepare("
+                UPDATE assinaturas
+                SET status_id = ?,
+                    status_gateway = ?,
+                    atualizado_em = NOW()
+                WHERE id = ?
+            ");
+            $stmtUpdate->execute([
+                $statusId,
+                "rejected:{$statusDetail}",
+                $assinatura['id']
+            ]);
+            
+            if ($stmtUpdate->rowCount() > 0) {
+                error_log("[Webhook MP] ✅ Assinatura #{$assinatura['id']} marcada como rejeitada (motivo: {$statusDetail})");
+            }
+            
+            // Também atualizar pagamentos_plano para refletir rejeição
+            try {
+                $stmtPagPlano = $this->db->prepare("
+                    SELECT id, status_pagamento_id FROM pagamentos_plano
+                    WHERE matricula_id = ? AND data_pagamento IS NULL
+                    ORDER BY data_vencimento ASC
+                    LIMIT 1
+                ");
+                $stmtPagPlano->execute([$matriculaId]);
+                $pagPlano = $stmtPagPlano->fetch(\PDO::FETCH_ASSOC);
+                
+                if ($pagPlano) {
+                    // Buscar status "rejeitado" ou "cancelado" na tabela status_pagamento
+                    $stmtStatusPag = $this->db->prepare("SELECT id FROM status_pagamento WHERE nome LIKE '%rejeitad%' OR nome LIKE '%cancelad%' LIMIT 1");
+                    $stmtStatusPag->execute();
+                    $statusPagId = $stmtStatusPag->fetchColumn();
+                    
+                    if ($statusPagId) {
+                        $stmtUpdatePag = $this->db->prepare("
+                            UPDATE pagamentos_plano 
+                            SET status_pagamento_id = ?, 
+                                observacoes = CONCAT(COALESCE(observacoes, ''), ' | Rejeitado MP: ', ?),
+                                updated_at = NOW()
+                            WHERE id = ?
+                        ");
+                        $stmtUpdatePag->execute([$statusPagId, $statusDetail, $pagPlano['id']]);
+                        error_log("[Webhook MP] ✅ pagamentos_plano #{$pagPlano['id']} atualizado para rejeitado");
+                    }
+                }
+            } catch (\Exception $e) {
+                error_log("[Webhook MP] ⚠️ Erro ao atualizar pagamentos_plano: " . $e->getMessage());
+            }
+            
+        } catch (\Exception $e) {
+            error_log("[Webhook MP] ⚠️ Erro ao rejeitar assinatura: " . $e->getMessage());
         }
     }
     
