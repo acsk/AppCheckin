@@ -22,6 +22,7 @@ const MENU = [
   { label: 'Alunos', path: '/alunos', icon: 'users', roles: [3, 4] },
   { label: 'Matrículas', path: '/matriculas', icon: 'user-check', roles: [3, 4] },
   { label: 'Vencimentos', path: '/matriculas/vencimentos', icon: 'clock', roles: [3, 4] },
+  { label: 'Assinaturas', path: '/assinaturas', icon: 'repeat', roles: [3, 4] },
   { label: 'Planos', path: '/planos', icon: 'package', roles: [3, 4] },
   { label: 'Pacotes', path: '/pacotes', icon: 'archive', roles: [3, 4] },
   { label: 'Modalidades', path: '/modalidades', icon: 'activity', roles: [3, 4] },

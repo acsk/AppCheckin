@@ -5,6 +5,7 @@ namespace App\Controllers;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Services\MercadoPagoService;
+use OpenApi\Attributes as OA;
 
 /**
  * Controller para gerenciar assinaturas recorrentes do MercadoPago
@@ -666,6 +667,195 @@ class AssinaturaController
         }
     }
     
+    /**
+     * Listar todas as assinaturas do tenant (visão Admin)
+     * GET /admin/assinaturas
+     */
+    #[OA\Get(
+        path: "/admin/assinaturas",
+        summary: "Listar assinaturas do tenant (Admin)",
+        description: "Retorna todas as assinaturas do tenant com dados do aluno, plano, status e gateway. Suporta filtros por status, tipo de cobrança e busca por nome do aluno. Paginado.",
+        tags: ["Admin - Assinaturas"],
+        security: [["bearerAuth" => []]],
+        parameters: [
+            new OA\Parameter(name: "status", in: "query", description: "Filtrar por código de status (ativa, pendente, cancelada, pausada, expirada)", required: false, schema: new OA\Schema(type: "string")),
+            new OA\Parameter(name: "tipo_cobranca", in: "query", description: "Filtrar por tipo de cobrança (recorrente, avulso)", required: false, schema: new OA\Schema(type: "string")),
+            new OA\Parameter(name: "busca", in: "query", description: "Buscar por nome do aluno", required: false, schema: new OA\Schema(type: "string")),
+            new OA\Parameter(name: "page", in: "query", description: "Página (default: 1)", required: false, schema: new OA\Schema(type: "integer", default: 1)),
+            new OA\Parameter(name: "per_page", in: "query", description: "Itens por página (default: 20, max: 100)", required: false, schema: new OA\Schema(type: "integer", default: 20))
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Lista de assinaturas",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "success", type: "boolean", example: true),
+                        new OA\Property(property: "total", type: "integer"),
+                        new OA\Property(property: "page", type: "integer"),
+                        new OA\Property(property: "per_page", type: "integer"),
+                        new OA\Property(property: "total_pages", type: "integer"),
+                        new OA\Property(
+                            property: "assinaturas",
+                            type: "array",
+                            items: new OA\Items(
+                                properties: [
+                                    new OA\Property(property: "id", type: "integer"),
+                                    new OA\Property(property: "aluno_id", type: "integer"),
+                                    new OA\Property(property: "aluno_nome", type: "string"),
+                                    new OA\Property(property: "valor", type: "number", format: "float"),
+                                    new OA\Property(property: "tipo_cobranca", type: "string"),
+                                    new OA\Property(property: "status_codigo", type: "string"),
+                                    new OA\Property(property: "status_nome", type: "string"),
+                                    new OA\Property(property: "status_gateway", type: "string"),
+                                    new OA\Property(property: "plano_nome", type: "string"),
+                                    new OA\Property(property: "modalidade_nome", type: "string"),
+                                    new OA\Property(property: "data_inicio", type: "string", format: "date"),
+                                    new OA\Property(property: "proxima_cobranca", type: "string", format: "date", nullable: true),
+                                    new OA\Property(property: "external_reference", type: "string", nullable: true),
+                                    new OA\Property(property: "mp_preapproval_id", type: "string", nullable: true),
+                                    new OA\Property(property: "criado_em", type: "string", format: "date-time")
+                                ]
+                            )
+                        )
+                    ]
+                )
+            )
+        ]
+    )]
+    public function listarAssinaturasAdmin(Request $request, Response $response): Response
+    {
+        try {
+            $tenantId = $request->getAttribute('tenantId');
+            $params = $request->getQueryParams();
+
+            // Paginação
+            $page = max(1, (int)($params['page'] ?? 1));
+            $perPage = min(100, max(1, (int)($params['per_page'] ?? 20)));
+            $offset = ($page - 1) * $perPage;
+
+            // Filtros
+            $statusFiltro = trim($params['status'] ?? '');
+            $tipoCobranca = trim($params['tipo_cobranca'] ?? '');
+            $busca = trim($params['busca'] ?? '');
+
+            // Construir WHERE
+            $where = "WHERE a.tenant_id = ?";
+            $binds = [$tenantId];
+
+            if ($statusFiltro !== '') {
+                $where .= " AND s.codigo = ?";
+                $binds[] = $statusFiltro;
+            }
+
+            if ($tipoCobranca !== '') {
+                $where .= " AND a.tipo_cobranca = ?";
+                $binds[] = $tipoCobranca;
+            }
+
+            if ($busca !== '') {
+                $where .= " AND (al.nome LIKE ? OR u.nome LIKE ?)";
+                $binds[] = "%{$busca}%";
+                $binds[] = "%{$busca}%";
+            }
+
+            // Total
+            $stmtCount = $this->db->prepare("
+                SELECT COUNT(*) FROM assinaturas a
+                LEFT JOIN assinatura_status s ON s.id = a.status_id
+                LEFT JOIN alunos al ON al.id = a.aluno_id
+                LEFT JOIN usuarios u ON u.id = al.usuario_id
+                {$where}
+            ");
+            $stmtCount->execute($binds);
+            $total = (int)$stmtCount->fetchColumn();
+
+            // Dados
+            $stmt = $this->db->prepare("
+                SELECT a.id, a.aluno_id, a.matricula_id, a.valor, a.tipo_cobranca,
+                       a.data_inicio, a.data_fim, a.proxima_cobranca, a.ultima_cobranca,
+                       a.gateway_assinatura_id as mp_preapproval_id,
+                       a.external_reference, a.payment_url, a.status_gateway,
+                       a.criado_em,
+                       s.codigo as status_codigo, s.nome as status_nome, s.cor as status_cor,
+                       f.nome as ciclo_nome, f.meses as ciclo_meses,
+                       g.nome as gateway_nome,
+                       p.nome as plano_nome,
+                       mo.nome as modalidade_nome,
+                       COALESCE(al.nome, u.nome) as aluno_nome,
+                       u.email as aluno_email
+                FROM assinaturas a
+                LEFT JOIN assinatura_status s ON s.id = a.status_id
+                LEFT JOIN assinatura_frequencias f ON f.id = a.frequencia_id
+                LEFT JOIN assinatura_gateways g ON g.id = a.gateway_id
+                LEFT JOIN planos p ON p.id = a.plano_id
+                LEFT JOIN modalidades mo ON mo.id = p.modalidade_id
+                LEFT JOIN alunos al ON al.id = a.aluno_id
+                LEFT JOIN usuarios u ON u.id = al.usuario_id
+                {$where}
+                ORDER BY a.criado_em DESC
+                LIMIT {$perPage} OFFSET {$offset}
+            ");
+            $stmt->execute($binds);
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            $assinaturas = array_map(function ($row) {
+                return [
+                    'id' => (int)$row['id'],
+                    'aluno_id' => (int)$row['aluno_id'],
+                    'aluno_nome' => $row['aluno_nome'] ?? '',
+                    'aluno_email' => $row['aluno_email'] ?? '',
+                    'matricula_id' => $row['matricula_id'] ? (int)$row['matricula_id'] : null,
+                    'valor' => (float)$row['valor'],
+                    'tipo_cobranca' => $row['tipo_cobranca'] ?? 'recorrente',
+                    'status' => [
+                        'codigo' => $row['status_codigo'] ?? $row['status_gateway'] ?? 'pendente',
+                        'nome' => $row['status_nome'] ?? $this->getStatusLabel($row['status_gateway'] ?? 'pendente'),
+                        'cor' => $row['status_cor'] ?? '#FFA500'
+                    ],
+                    'status_gateway' => $row['status_gateway'],
+                    'plano_nome' => $row['plano_nome'] ?? '',
+                    'modalidade_nome' => $row['modalidade_nome'] ?? '',
+                    'ciclo' => [
+                        'nome' => $row['ciclo_nome'] ?? 'Mensal',
+                        'meses' => (int)($row['ciclo_meses'] ?? 1)
+                    ],
+                    'gateway' => $row['gateway_nome'] ?? 'Mercado Pago',
+                    'data_inicio' => $row['data_inicio'],
+                    'data_fim' => $row['data_fim'],
+                    'proxima_cobranca' => $row['proxima_cobranca'],
+                    'ultima_cobranca' => $row['ultima_cobranca'],
+                    'external_reference' => $row['external_reference'],
+                    'mp_preapproval_id' => $row['mp_preapproval_id'],
+                    'payment_url' => $row['payment_url'],
+                    'criado_em' => $row['criado_em']
+                ];
+            }, $rows);
+
+            $totalPages = (int)ceil($total / $perPage);
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'total' => $total,
+                'page' => $page,
+                'per_page' => $perPage,
+                'total_pages' => $totalPages,
+                'assinaturas' => $assinaturas
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json');
+
+        } catch (\Exception $e) {
+            error_log("[AssinaturaController::listarAssinaturasAdmin] Erro: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao listar assinaturas',
+                'detail' => $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
     private function getStatusLabel(string $status): string
     {
         return match($status) {

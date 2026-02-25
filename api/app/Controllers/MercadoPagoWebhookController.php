@@ -355,8 +355,9 @@ class MercadoPagoWebhookController
     #[OA\Get(
         path: "/api/webhooks/mercadopago/cobrancas",
         summary: "Consultar cobranças por external_reference",
-        description: "Busca pagamentos na API do Mercado Pago e em 3 tabelas locais: pagamentos_plano (mensalidades), pagamentos_mercadopago (espelho do MP) e webhook_payloads_mercadopago (auditoria de webhooks recebidos). Endpoint público, sem autenticação.",
+        description: "Busca pagamentos na API do Mercado Pago e em 3 tabelas locais: pagamentos_plano (mensalidades), pagamentos_mercadopago (espelho do MP) e webhook_payloads_mercadopago (auditoria de webhooks recebidos). Requer autenticação Admin.",
         tags: ["Webhook - Cobranças"],
+        security: [["bearerAuth" => []]],
         parameters: [
             new OA\Parameter(
                 name: "external_reference",
@@ -497,6 +498,7 @@ class MercadoPagoWebhookController
     public function consultarCobrancas(Request $request, Response $response): Response
     {
         try {
+            $tenantId = $request->getAttribute('tenantId');
             $params = $request->getQueryParams();
             $externalReference = trim($params['external_reference'] ?? '');
 
@@ -520,10 +522,10 @@ class MercadoPagoWebhookController
                            pp.forma_pagamento_id, pp.external_reference, pp.observacoes,
                            pp.created_at, pp.updated_at
                     FROM pagamentos_plano pp
-                    WHERE pp.external_reference = ?
+                    WHERE pp.external_reference = ? AND pp.tenant_id = ?
                     ORDER BY pp.created_at DESC
                 ");
-                $stmt->execute([$externalReference]);
+                $stmt->execute([$externalReference, $tenantId]);
                 $dadosPagamentosPlano = $stmt->fetchAll(\PDO::FETCH_ASSOC);
             } catch (\Exception $e) {
                 error_log("[consultarCobrancas] Erro ao buscar pagamentos_plano: " . $e->getMessage());
@@ -541,10 +543,10 @@ class MercadoPagoWebhookController
                            pm.payer_email, pm.payer_identification_type, pm.payer_identification_number,
                            pm.created_at, pm.updated_at
                     FROM pagamentos_mercadopago pm
-                    WHERE pm.external_reference = ?
+                    WHERE pm.external_reference = ? AND pm.tenant_id = ?
                     ORDER BY pm.created_at DESC
                 ");
-                $stmt2->execute([$externalReference]);
+                $stmt2->execute([$externalReference, $tenantId]);
                 $dadosPagamentosMp = $stmt2->fetchAll(\PDO::FETCH_ASSOC);
             } catch (\Exception $e) {
                 error_log("[consultarCobrancas] Erro ao buscar pagamentos_mercadopago: " . $e->getMessage());
@@ -559,12 +561,12 @@ class MercadoPagoWebhookController
                     FROM webhook_payloads_mercadopago wp
                     WHERE wp.external_reference = ?
                        OR wp.payment_id IN (
-                           SELECT pm2.payment_id FROM pagamentos_mercadopago pm2 WHERE pm2.external_reference = ?
+                           SELECT pm2.payment_id FROM pagamentos_mercadopago pm2 WHERE pm2.external_reference = ? AND pm2.tenant_id = ?
                        )
                     ORDER BY wp.created_at DESC
                     LIMIT 20
                 ");
-                $stmt3->execute([$externalReference, $externalReference]);
+                $stmt3->execute([$externalReference, $externalReference, $tenantId]);
                 $dadosWebhooks = $stmt3->fetchAll(\PDO::FETCH_ASSOC);
             } catch (\Exception $e) {
                 error_log("[consultarCobrancas] Erro ao buscar webhook_payloads: " . $e->getMessage());

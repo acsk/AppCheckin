@@ -51,6 +51,18 @@ const mercadoPagoService = {
       throw prepararErro(error.response?.data || error);
     }
   },
+
+  async consultarCobrancas(externalReference) {
+    try {
+      const response = await api.get('/api/webhooks/mercadopago/cobrancas', {
+        params: { external_reference: externalReference }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao consultar cobranças MP:', error.response?.data || error.message);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
 };
 
 export default mercadoPagoService;

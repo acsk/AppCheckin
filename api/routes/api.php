@@ -268,8 +268,7 @@ return function ($app) {
     $app->get('/api/webhooks/mercadopago/test', [MercadoPagoWebhookController::class, 'simularWebhook']);
     
     // Consultar cobranças no MP por external_reference (protegido por Admin)
-    // Consultar cobranças no MP por external_reference (público - sem autenticação)
-    $app->get('/api/webhooks/mercadopago/cobrancas', [MercadoPagoWebhookController::class, 'consultarCobrancas']);
+    $app->get('/api/webhooks/mercadopago/cobrancas', [MercadoPagoWebhookController::class, 'consultarCobrancas'])->add(AdminMiddleware::class)->add(AuthMiddleware::class);
 
     // Endpoints de Debug para Webhook MP (protegidos por Admin)
     $app->get('/api/webhooks/mercadopago/list', [MercadoPagoWebhookController::class, 'listarWebhooks'])->add(AdminMiddleware::class)->add(AuthMiddleware::class);
@@ -1047,6 +1046,9 @@ return function ($app) {
         $group->post('/planos/{plano_id}/ciclos/gerar', [PlanoCicloController::class, 'gerarCiclosAutomaticos']);
         $group->put('/planos/{plano_id}/ciclos/{id}', [PlanoCicloController::class, 'atualizar']);
         $group->delete('/planos/{plano_id}/ciclos/{id}', [PlanoCicloController::class, 'excluir']);
+        
+        // Assinaturas (listagem Admin)
+        $group->get('/assinaturas', [AssinaturaController::class, 'listarAssinaturasAdmin']);
         
         // Dias e Horários (Admin)
         $group->delete('/dias/{id}/horarios', [DiaController::class, 'deletarHorariosDoDia']);

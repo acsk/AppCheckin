@@ -3,16 +3,16 @@ import { prepararErro } from '../utils/errorHandler';
 
 const assinaturaService = {
   /**
-   * Listar todas as assinaturas ativas da academia
-   * Integrada com matrículas (usa dados da matrícula)
+   * Listar assinaturas do tenant (Admin)
    */
   async listar(filtros = {}) {
     try {
-      const params = {
-        status: filtros.status || 'ativa',
-        incluir_matriculas: filtros.incluir_matriculas !== false, // Por padrão, inclui dados de matrículas
-        ...filtros
-      };
+      const params = {};
+      if (filtros.status) params.status = filtros.status;
+      if (filtros.tipo_cobranca) params.tipo_cobranca = filtros.tipo_cobranca;
+      if (filtros.busca) params.busca = filtros.busca;
+      if (filtros.page) params.page = filtros.page;
+      if (filtros.per_page) params.per_page = filtros.per_page;
       const response = await api.get('/admin/assinaturas', { params });
       return response.data;
     } catch (error) {
@@ -23,15 +23,15 @@ const assinaturaService = {
 
   /**
    * Listar todas as assinaturas de todas as academias (SuperAdmin)
-   * Integrada com matrículas
    */
   async listarTodas(tenantId = null, filtros = {}) {
     try {
-      const params = {
-        status: filtros.status || 'ativa',
-        incluir_matriculas: filtros.incluir_matriculas !== false,
-        ...filtros
-      };
+      const params = {};
+      if (filtros.status) params.status = filtros.status;
+      if (filtros.tipo_cobranca) params.tipo_cobranca = filtros.tipo_cobranca;
+      if (filtros.busca) params.busca = filtros.busca;
+      if (filtros.page) params.page = filtros.page;
+      if (filtros.per_page) params.per_page = filtros.per_page;
       if (tenantId) params.tenant_id = tenantId;
 
       const response = await api.get('/superadmin/assinaturas', { params });
@@ -172,7 +172,14 @@ const assinaturaService = {
 
   /**
    * Listar histórico de assinaturas de um aluno
-   */prepararErro(error.response?.data || error);
+   */
+  async listarHistoricoAluno(alunoId) {
+    try {
+      const response = await api.get(`/admin/alunos/${alunoId}/assinaturas`);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao listar histórico de assinaturas:', error.response?.data || error.message);
+      throw prepararErro(error.response?.data || error);
     }
   },
 
@@ -214,14 +221,7 @@ const assinaturaService = {
       return response.data;
     } catch (error) {
       console.error('❌ Erro ao listar sem matrícula:', error.response?.data || error.message);
-      throw prepararErro(error.response?.data || error)
-  async listarHistoricoAluno(alunoId) {
-    try {
-      const response = await api.get(`/admin/alunos/${alunoId}/assinaturas`);
-      return response.data;
-    } catch (error) {
-      console.error('❌ Erro ao listar histórico de assinaturas:', error.response?.data || error.message);
-      throw error.response?.data || { error: 'Erro ao listar histórico de assinaturas' };
+      throw prepararErro(error.response?.data || error);
     }
   },
 
