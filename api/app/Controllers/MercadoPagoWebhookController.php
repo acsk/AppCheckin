@@ -56,10 +56,92 @@ class MercadoPagoWebhookController
      */
     public function processarWebhook(Request $request, Response $response): Response
     {
-        $this->logWebhook("[Webhook MP V1] Delegando processamento para fluxo V2");
+        $body = $request->getParsedBody();
+        if (!is_array($body)) {
+            $raw = (string) $request->getBody();
+            $decoded = json_decode($raw, true);
+            $body = is_array($decoded) ? $decoded : [];
+        }
 
-        $v2Controller = new MercadoPagoWebhookV2Controller();
-        return $v2Controller->processar($request, $response);
+        $queryParams = $request->getQueryParams();
+
+        $type = $body['type']
+            ?? $body['topic']
+            ?? $queryParams['type']
+            ?? $queryParams['topic']
+            ?? null;
+
+        $dataIdRaw = $body['data']['id']
+            ?? $body['id']
+            ?? $queryParams['id']
+            ?? null;
+
+        $dataId = null;
+        if ($dataIdRaw !== null && $dataIdRaw !== '') {
+            $dataIdString = (string) $dataIdRaw;
+            if (preg_match('/\/(\d+)(?:\?.*)?$/', $dataIdString, $matches)) {
+                $dataId = (int) $matches[1];
+            } elseif (ctype_digit($dataIdString)) {
+                $dataId = (int) $dataIdString;
+            }
+        }
+
+        if ($type === null || $dataId === null) {
+            $this->logWebhook("[Webhook MP V1] Notificação inválida: faltando type/topic ou id/data.id");
+            $this->salvarWebhookPayload($body, (string)($type ?? 'unknown'), null, 'erro', 'Notificação inválida');
+
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Notificação inválida'
+            ]));
+
+            return $response
+                ->withHeader('Content-Type', 'application/json')
+                ->withStatus(400);
+        }
+
+        $normalizedBody = $body;
+        $normalizedBody['type'] = $type;
+        $normalizedBody['data']['id'] = $dataId;
+
+        try {
+            $this->logWebhook("[Webhook MP V1] Processando type={$type}, id={$dataId}");
+
+            $mercadoPagoService = $this->getMercadoPagoService();
+
+            if (in_array($type, ['payment', 'authorized_payment', 'subscription_authorized_payment'], true)) {
+                $pagamento = $mercadoPagoService->buscarPagamento((string)$dataId);
+                $this->atualizarPagamento($pagamento);
+            } elseif (in_array($type, ['subscription_preapproval', 'subscription', 'preapproval'], true)) {
+                $assinatura = $mercadoPagoService->buscarAssinatura((string)$dataId);
+                $this->atualizarAssinatura($assinatura);
+            } else {
+                $this->logWebhook("[Webhook MP V1] Tipo ignorado: {$type}");
+            }
+
+            $this->salvarWebhookPayload($normalizedBody, $type, $dataId, 'sucesso');
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'message' => 'Webhook processado com sucesso (V1)'
+            ]));
+
+            return $response
+                ->withHeader('Content-Type', 'application/json')
+                ->withStatus(200);
+        } catch (\Throwable $e) {
+            $this->logWebhook("[Webhook MP V1] Erro ao processar webhook: " . $e->getMessage());
+            $this->salvarWebhookPayload($normalizedBody, $type, $dataId, 'erro', $e->getMessage());
+
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => $e->getMessage()
+            ]));
+
+            return $response
+                ->withHeader('Content-Type', 'application/json')
+                ->withStatus(200);
+        }
     }
     
     /**
