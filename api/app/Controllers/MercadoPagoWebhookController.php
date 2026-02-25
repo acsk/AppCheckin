@@ -631,32 +631,39 @@ class MercadoPagoWebhookController
             
             // Usar valor da assinatura ou valor do ciclo ou valor do plano
             $valor = $assinatura['transaction_amount'] ?? $matricula['valor_ciclo'] ?? $matricula['valor_plano'];
+            $dataPagamento = !empty($assinatura['date_approved'])
+                ? date('Y-m-d H:i:s', strtotime((string)$assinatura['date_approved']))
+                : date('Y-m-d H:i:s');
+            $assinaturaRef = (string)($assinatura['preapproval_id'] ?? 'N/A');
             
             // Buscar o pagamento pendente mais antigo da matrícula (status 1 = Aguardando)
             $stmtBuscar = $this->db->prepare("
                 SELECT pp.id, pp.valor
                 FROM pagamentos_plano pp
                 WHERE pp.matricula_id = ?
-                AND pp.status_pagamento_id = 1
+                AND pp.status_pagamento_id IN (1, 3)
                 AND pp.data_pagamento IS NULL
                 ORDER BY pp.data_vencimento ASC
                 LIMIT 1
             ");
             $stmtBuscar->execute([$matriculaId]);
             $pagamentoPendente = $stmtBuscar->fetch(\PDO::FETCH_ASSOC);
-            
-            // Verificar se já existe pagamento pago hoje para evitar duplicatas (webhook duplicado)
-            $stmtDuplicata = $this->db->prepare("
-                                SELECT pp.id FROM pagamentos_plano pp
-                                WHERE pp.matricula_id = ?
-                                    AND pp.status_pagamento_id = 2
-                                    AND DATE(pp.data_pagamento) = CURDATE()
-                LIMIT 1
-            ");
-            $stmtDuplicata->execute([$matriculaId]);
-            if ($stmtDuplicata->fetch()) {
-                error_log("[Webhook MP] ⚠️ Pagamento assinatura já processado hoje para matrícula #{$matriculaId}, ignorando duplicata");
-                return;
+
+            if (!$pagamentoPendente) {
+                $stmtJaProcessado = $this->db->prepare("
+                    SELECT pp.id
+                    FROM pagamentos_plano pp
+                    WHERE pp.matricula_id = ?
+                      AND pp.status_pagamento_id = 2
+                      AND pp.observacoes LIKE ?
+                    LIMIT 1
+                ");
+                $patternAssinatura = '%ID: ' . $assinaturaRef . '%';
+                $stmtJaProcessado->execute([$matriculaId, $patternAssinatura]);
+                if ($stmtJaProcessado->fetch()) {
+                    error_log("[Webhook MP] ℹ️ Assinatura {$assinaturaRef} já processada para matrícula #{$matriculaId}, ignorando reprocessamento");
+                    return;
+                }
             }
             
             // Para assinaturas, forma de pagamento é sempre cartão de crédito (ID 9)
@@ -669,15 +676,15 @@ class MercadoPagoWebhookController
                 $stmtUpdate = $this->db->prepare("
                     UPDATE pagamentos_plano
                     SET status_pagamento_id = 2,
-                        data_pagamento = NOW(),
+                        data_pagamento = ?,
                         forma_pagamento_id = ?,
-                        tipo_baixa_id = 2,
+                        tipo_baixa_id = 4,
                         observacoes = CONCAT(IFNULL(observacoes, ''), ' | Pago via Assinatura MP - ID: " . ($assinatura['preapproval_id'] ?? 'N/A') . "'),
                         updated_at = NOW()
                     WHERE id = ?
                 ");
                 
-                $stmtUpdate->execute([$formaPagamentoId, $pagamentoPendente['id']]);
+                $stmtUpdate->execute([$dataPagamento, $formaPagamentoId, $pagamentoPendente['id']]);
                 
                 if ($stmtUpdate->rowCount() > 0) {
                     error_log("[Webhook MP] ✅ Pagamento #{$pagamentoPendente['id']} atualizado para PAGO (Assinatura)");
@@ -694,9 +701,9 @@ class MercadoPagoWebhookController
                         observacoes, tipo_baixa_id, created_at, updated_at
                     ) VALUES (
                         ?, ?, ?, ?,
-                        ?, CURDATE(), NOW(),
+                        ?, CURDATE(), ?,
                         2, ?,
-                        ?, 2, NOW(), NOW()
+                        ?, 4, NOW(), NOW()
                     )
                 ");
                 
@@ -706,6 +713,7 @@ class MercadoPagoWebhookController
                     $matriculaId,
                     $matricula['plano_id'],
                     $valor,
+                    $dataPagamento,
                     $formaPagamentoId,
                     'Pago via Assinatura MP - ID: ' . ($assinatura['preapproval_id'] ?? 'N/A')
                 ]);
@@ -1202,6 +1210,10 @@ class MercadoPagoWebhookController
     {
         try {
             error_log("[Webhook MP] Iniciando baixa de pagamento para matrícula #{$matriculaId}");
+            $paymentId = (string)($pagamento['id'] ?? '');
+            $dateApproved = !empty($pagamento['date_approved'])
+                ? date('Y-m-d H:i:s', strtotime((string)$pagamento['date_approved']))
+                : date('Y-m-d H:i:s');
             
             // Buscar dados da matrícula para obter tenant_id, aluno_id, plano_id
             $stmtMatricula = $this->db->prepare("
@@ -1217,33 +1229,38 @@ class MercadoPagoWebhookController
                 error_log("[Webhook MP] ❌ Matrícula #{$matriculaId} não encontrada");
                 return;
             }
+
+            // Idempotência por payment_id (evita reprocessar o mesmo pagamento)
+            if ($paymentId !== '') {
+                $stmtIdempotencia = $this->db->prepare("
+                    SELECT pp.id
+                    FROM pagamentos_plano pp
+                    WHERE pp.matricula_id = ?
+                      AND pp.status_pagamento_id = 2
+                      AND pp.observacoes LIKE ?
+                    LIMIT 1
+                ");
+                $patternPaymentId = '%ID: ' . $paymentId . '%';
+                $stmtIdempotencia->execute([$matriculaId, $patternPaymentId]);
+
+                if ($stmtIdempotencia->fetch()) {
+                    error_log("[Webhook MP] ℹ️ Pagamento MP #{$paymentId} já baixado anteriormente, ignorando reprocessamento");
+                    return;
+                }
+            }
             
             // Buscar o pagamento pendente mais antigo da matrícula
             $stmtBuscar = $this->db->prepare("
                 SELECT pp.id, pp.valor
                 FROM pagamentos_plano pp
                 WHERE pp.matricula_id = ?
-                AND pp.status_pagamento_id = 1
+                AND pp.status_pagamento_id IN (1, 3)
                 AND pp.data_pagamento IS NULL
                 ORDER BY pp.data_vencimento ASC
                 LIMIT 1
             ");
             $stmtBuscar->execute([$matriculaId]);
             $pagamentoPendente = $stmtBuscar->fetch(\PDO::FETCH_ASSOC);
-            
-            // Verificar se já existe pagamento pago hoje para evitar duplicatas (webhook duplicado)
-            $stmtDuplicata = $this->db->prepare("
-                                SELECT pp.id FROM pagamentos_plano pp
-                                WHERE pp.matricula_id = ?
-                                    AND pp.status_pagamento_id = 2
-                                    AND DATE(pp.data_pagamento) = CURDATE()
-                LIMIT 1
-            ");
-            $stmtDuplicata->execute([$matriculaId]);
-            if ($stmtDuplicata->fetch()) {
-                error_log("[Webhook MP] ⚠️ Pagamento já processado hoje para matrícula #{$matriculaId}, ignorando duplicata");
-                return;
-            }
             
             // Buscar forma de pagamento (PIX, cartão, etc)
             $formaPagamentoId = $this->obterFormaPagamentoId($pagamento['payment_method_id'] ?? 'pix');
@@ -1255,15 +1272,16 @@ class MercadoPagoWebhookController
                 $stmtUpdate = $this->db->prepare("
                     UPDATE pagamentos_plano
                     SET status_pagamento_id = 2,
-                        data_pagamento = NOW(),
+                        data_pagamento = ?,
                         forma_pagamento_id = ?,
-                        tipo_baixa_id = 2,
+                        tipo_baixa_id = 4,
                         observacoes = CONCAT(IFNULL(observacoes, ''), ' | Pago via Mercado Pago - ID: " . $pagamento['id'] . "'),
                         updated_at = NOW()
                     WHERE id = ?
                 ");
                 
                 $stmtUpdate->execute([
+                    $dateApproved,
                     $formaPagamentoId,
                     $pagamentoPendente['id']
                 ]);
@@ -1283,9 +1301,9 @@ class MercadoPagoWebhookController
                         observacoes, tipo_baixa_id, created_at, updated_at
                     ) VALUES (
                         ?, ?, ?, ?,
-                        ?, CURDATE(), NOW(),
+                        ?, CURDATE(), ?,
                         2, ?,
-                        ?, 2, NOW(), NOW()
+                        ?, 4, NOW(), NOW()
                     )
                 ");
                 
@@ -1295,6 +1313,7 @@ class MercadoPagoWebhookController
                     $matriculaId,
                     $matricula['plano_id'],
                     $pagamento['transaction_amount'],
+                    $dateApproved,
                     $formaPagamentoId,
                     'Pago via Mercado Pago - ID: ' . $pagamento['id']
                 ]);
