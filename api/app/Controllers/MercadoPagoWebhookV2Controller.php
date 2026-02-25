@@ -339,18 +339,21 @@ class MercadoPagoWebhookV2Controller
                         payment_method_id = ?,
                         installments = ?,
                         date_approved = ?,
+                        payer_email = COALESCE(?, payer_email),
                         updated_at = NOW()
                     WHERE id = ?
                 ";
+                $payerEmail = (string)($payment['payer']['email'] ?? '');
                 $stmtUpdate = $this->db->prepare($sqlUpdate);
                 $stmtUpdate->bind_param(
-                    "ssdsisi",
+                    "ssdsissi",
                     $status,
                     $statusDetail,
                     $transactionAmount,
                     $paymentMethod,
                     $installments,
                     $dateApproved,
+                    $payerEmail,
                     $existe['id']
                 );
                 $stmtUpdate->execute();
@@ -367,12 +370,17 @@ class MercadoPagoWebhookV2Controller
                     tenant_id, matricula_id, aluno_id, usuario_id,
                     payment_id, external_reference, status, status_detail,
                     transaction_amount, payment_method_id, payment_type_id,
-                    installments, date_approved, date_created, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                    installments, date_approved, date_created,
+                    payer_email, payer_identification_type, payer_identification_number,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
             ";
+            $payerEmail = (string)($payment['payer']['email'] ?? '');
+            $payerIdType = (string)($payment['payer']['identification']['type'] ?? '');
+            $payerIdNumber = (string)($payment['payer']['identification']['number'] ?? '');
             $stmtInsert = $this->db->prepare($sqlInsert);
             $stmtInsert->bind_param(
-                "iiiissssdsisss",
+                "iiiissssdssisssss",
                 $tenantId,
                 $matriculaId,
                 $alunoId,
@@ -386,7 +394,10 @@ class MercadoPagoWebhookV2Controller
                 $paymentType,
                 $installments,
                 $dateApproved,
-                $dateCreated
+                $dateCreated,
+                $payerEmail,
+                $payerIdType,
+                $payerIdNumber
             );
             $stmtInsert->execute();
         } catch (\Exception $e) {

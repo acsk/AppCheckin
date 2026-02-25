@@ -348,6 +348,251 @@ class MercadoPagoWebhookController
     }
     
     /**
+     * Consultar cobranças no Mercado Pago por external_reference
+     * 
+     * GET /api/webhooks/mercadopago/cobrancas?external_reference=MAT-158-1771524282
+     */
+    #[OA\Get(
+        path: "/api/webhooks/mercadopago/cobrancas",
+        summary: "Consultar cobranças por external_reference",
+        description: "Busca pagamentos na API do Mercado Pago e em 3 tabelas locais: pagamentos_plano (mensalidades), pagamentos_mercadopago (espelho do MP) e webhook_payloads_mercadopago (auditoria de webhooks recebidos). Endpoint público, sem autenticação.",
+        tags: ["Webhook - Cobranças"],
+        parameters: [
+            new OA\Parameter(
+                name: "external_reference",
+                in: "query",
+                description: "Referência externa do pagamento. Formato: MAT-{matricula_id}-{timestamp} ou PAC-{contrato_id}-{timestamp}",
+                required: true,
+                schema: new OA\Schema(type: "string", example: "MAT-158-1771524282")
+            )
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Cobranças encontradas",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "success", type: "boolean", example: true),
+                        new OA\Property(property: "external_reference", type: "string", example: "MAT-158-1771524282"),
+                        new OA\Property(
+                            property: "mercadopago",
+                            type: "object",
+                            description: "Dados vindos diretamente da API do Mercado Pago",
+                            properties: [
+                                new OA\Property(property: "total", type: "integer", example: 1),
+                                new OA\Property(
+                                    property: "pagamentos",
+                                    type: "array",
+                                    items: new OA\Items(
+                                        properties: [
+                                            new OA\Property(property: "id", type: "integer", example: 146225815559),
+                                            new OA\Property(property: "status", type: "string", example: "rejected", description: "approved, rejected, pending, refunded, cancelled, charged_back"),
+                                            new OA\Property(property: "status_detail", type: "string", example: "cc_rejected_high_risk"),
+                                            new OA\Property(property: "external_reference", type: "string", example: "MAT-158-1771524282"),
+                                            new OA\Property(property: "transaction_amount", type: "number", format: "float", example: 70),
+                                            new OA\Property(property: "currency_id", type: "string", example: "BRL"),
+                                            new OA\Property(property: "payment_method_id", type: "string", example: "visa"),
+                                            new OA\Property(property: "payment_type_id", type: "string", example: "credit_card"),
+                                            new OA\Property(property: "installments", type: "integer", example: 1),
+                                            new OA\Property(property: "date_created", type: "string", format: "date-time"),
+                                            new OA\Property(property: "date_approved", type: "string", format: "date-time", nullable: true),
+                                            new OA\Property(property: "date_last_updated", type: "string", format: "date-time", nullable: true),
+                                            new OA\Property(
+                                                property: "payer",
+                                                type: "object",
+                                                properties: [
+                                                    new OA\Property(property: "email", type: "string", example: "aluno@email.com", nullable: true),
+                                                    new OA\Property(property: "id", type: "string", example: "1870951865", nullable: true)
+                                                ]
+                                            ),
+                                            new OA\Property(property: "metadata", type: "object")
+                                        ]
+                                    )
+                                )
+                            ]
+                        ),
+                        new OA\Property(
+                            property: "local",
+                            type: "object",
+                            description: "Dados encontrados nas tabelas locais do banco de dados",
+                            properties: [
+                                new OA\Property(
+                                    property: "pagamentos_plano",
+                                    type: "array",
+                                    description: "Mensalidades/parcelas (só preenchida quando pagamento é approved)",
+                                    items: new OA\Items(
+                                        properties: [
+                                            new OA\Property(property: "id", type: "integer"),
+                                            new OA\Property(property: "matricula_id", type: "integer"),
+                                            new OA\Property(property: "valor", type: "number", format: "float"),
+                                            new OA\Property(property: "status_pagamento_id", type: "integer", description: "1=Aguardando, 2=Pago, 3=Atrasado"),
+                                            new OA\Property(property: "data_pagamento", type: "string", format: "date-time", nullable: true),
+                                            new OA\Property(property: "data_vencimento", type: "string", format: "date"),
+                                            new OA\Property(property: "external_reference", type: "string")
+                                        ]
+                                    )
+                                ),
+                                new OA\Property(
+                                    property: "pagamentos_mercadopago",
+                                    type: "array",
+                                    description: "Espelho dos pagamentos do MP (gravada para qualquer status: approved, rejected, pending, etc.)",
+                                    items: new OA\Items(
+                                        properties: [
+                                            new OA\Property(property: "id", type: "integer"),
+                                            new OA\Property(property: "payment_id", type: "string"),
+                                            new OA\Property(property: "matricula_id", type: "integer"),
+                                            new OA\Property(property: "status", type: "string", example: "rejected"),
+                                            new OA\Property(property: "status_detail", type: "string", example: "cc_rejected_high_risk"),
+                                            new OA\Property(property: "transaction_amount", type: "number", format: "float"),
+                                            new OA\Property(property: "payment_method_id", type: "string"),
+                                            new OA\Property(property: "payer_email", type: "string", nullable: true),
+                                            new OA\Property(property: "date_approved", type: "string", format: "date-time", nullable: true),
+                                            new OA\Property(property: "created_at", type: "string", format: "date-time")
+                                        ]
+                                    )
+                                ),
+                                new OA\Property(
+                                    property: "webhook_payloads",
+                                    type: "array",
+                                    description: "Log de webhooks recebidos do MP (auditoria)",
+                                    items: new OA\Items(
+                                        properties: [
+                                            new OA\Property(property: "id", type: "integer"),
+                                            new OA\Property(property: "tipo", type: "string", example: "payment"),
+                                            new OA\Property(property: "data_id", type: "integer"),
+                                            new OA\Property(property: "payment_id", type: "integer", nullable: true),
+                                            new OA\Property(property: "status", type: "string", example: "sucesso"),
+                                            new OA\Property(property: "erro_processamento", type: "string", nullable: true),
+                                            new OA\Property(property: "created_at", type: "string", format: "date-time")
+                                        ]
+                                    )
+                                )
+                            ]
+                        )
+                    ]
+                )
+            ),
+            new OA\Response(
+                response: 400,
+                description: "Parâmetro external_reference ausente",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "success", type: "boolean", example: false),
+                        new OA\Property(property: "error", type: "string", example: "O parâmetro external_reference é obrigatório")
+                    ]
+                )
+            ),
+            new OA\Response(
+                response: 500,
+                description: "Erro ao consultar cobranças",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "success", type: "boolean", example: false),
+                        new OA\Property(property: "error", type: "string")
+                    ]
+                )
+            )
+        ]
+    )]
+    public function consultarCobrancas(Request $request, Response $response): Response
+    {
+        try {
+            $params = $request->getQueryParams();
+            $externalReference = trim($params['external_reference'] ?? '');
+
+            if (empty($externalReference)) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'O parâmetro external_reference é obrigatório'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            $mercadoPagoService = $this->getMercadoPagoService();
+            $resultado = $mercadoPagoService->buscarPagamentosPorExternalReference($externalReference);
+
+            // Buscar dados locais: pagamentos_plano (mensalidades)
+            $dadosPagamentosPlano = [];
+            try {
+                $stmt = $this->db->prepare("
+                    SELECT pp.id, pp.matricula_id, pp.valor, pp.status_pagamento_id,
+                           pp.data_pagamento, pp.data_vencimento, pp.payment_id_mp, pp.preference_id,
+                           pp.forma_pagamento_id, pp.external_reference, pp.observacoes,
+                           pp.created_at, pp.updated_at
+                    FROM pagamentos_plano pp
+                    WHERE pp.external_reference = ?
+                    ORDER BY pp.created_at DESC
+                ");
+                $stmt->execute([$externalReference]);
+                $dadosPagamentosPlano = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            } catch (\Exception $e) {
+                error_log("[consultarCobrancas] Erro ao buscar pagamentos_plano: " . $e->getMessage());
+            }
+
+            // Buscar dados locais: pagamentos_mercadopago (registro espelho do MP)
+            $dadosPagamentosMp = [];
+            try {
+                $stmt2 = $this->db->prepare("
+                    SELECT pm.id, pm.tenant_id, pm.matricula_id, pm.aluno_id, pm.usuario_id,
+                           pm.payment_id, pm.external_reference, pm.preference_id,
+                           pm.status, pm.status_detail, pm.transaction_amount,
+                           pm.payment_method_id, pm.payment_type_id, pm.installments,
+                           pm.date_approved, pm.date_created,
+                           pm.payer_email, pm.payer_identification_type, pm.payer_identification_number,
+                           pm.created_at, pm.updated_at
+                    FROM pagamentos_mercadopago pm
+                    WHERE pm.external_reference = ?
+                    ORDER BY pm.created_at DESC
+                ");
+                $stmt2->execute([$externalReference]);
+                $dadosPagamentosMp = $stmt2->fetchAll(\PDO::FETCH_ASSOC);
+            } catch (\Exception $e) {
+                error_log("[consultarCobrancas] Erro ao buscar pagamentos_mercadopago: " . $e->getMessage());
+            }
+
+            // Buscar dados locais: webhook_payloads_mercadopago (auditoria de webhooks recebidos)
+            $dadosWebhooks = [];
+            try {
+                $stmt3 = $this->db->prepare("
+                    SELECT wp.id, wp.tipo, wp.data_id, wp.payment_id, wp.preapproval_id,
+                           wp.status, wp.erro_processamento, wp.created_at
+                    FROM webhook_payloads_mercadopago wp
+                    WHERE wp.external_reference = ?
+                       OR wp.payment_id IN (
+                           SELECT pm2.payment_id FROM pagamentos_mercadopago pm2 WHERE pm2.external_reference = ?
+                       )
+                    ORDER BY wp.created_at DESC
+                    LIMIT 20
+                ");
+                $stmt3->execute([$externalReference, $externalReference]);
+                $dadosWebhooks = $stmt3->fetchAll(\PDO::FETCH_ASSOC);
+            } catch (\Exception $e) {
+                error_log("[consultarCobrancas] Erro ao buscar webhook_payloads: " . $e->getMessage());
+            }
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'external_reference' => $externalReference,
+                'mercadopago' => $resultado,
+                'local' => [
+                    'pagamentos_plano' => $dadosPagamentosPlano,
+                    'pagamentos_mercadopago' => $dadosPagamentosMp,
+                    'webhook_payloads' => $dadosWebhooks
+                ]
+            ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json');
+
+        } catch (\Exception $e) {
+            error_log("[consultarCobrancas] Erro: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
      * Debug: Buscar pagamento direto da API do MP
      * 
      * GET /api/webhooks/mercadopago/payment/{paymentId}
@@ -924,10 +1169,10 @@ class MercadoPagoWebhookController
         // Buscar ou criar registro de pagamento
         $stmtBuscar = $this->db->prepare("
             SELECT id FROM pagamentos_mercadopago 
-            WHERE payment_id = ? OR matricula_id = ?
+            WHERE payment_id = ?
             LIMIT 1
         ");
-        $stmtBuscar->execute([$pagamento['id'], $matriculaId]);
+        $stmtBuscar->execute([$pagamento['id']]);
         $pagamentoExiste = $stmtBuscar->fetch(\PDO::FETCH_ASSOC);
         
         if ($pagamentoExiste) {
@@ -938,8 +1183,10 @@ class MercadoPagoWebhookController
                     status_detail = ?,
                     transaction_amount = ?,
                     payment_method_id = ?,
+                    payment_type_id = ?,
                     installments = ?,
                     date_approved = ?,
+                    payer_email = COALESCE(?, payer_email),
                     updated_at = NOW()
                 WHERE id = ?
             ");
@@ -949,8 +1196,10 @@ class MercadoPagoWebhookController
                 $pagamento['status_detail'],
                 $pagamento['transaction_amount'],
                 $pagamento['payment_method_id'],
+                $pagamento['payment_type_id'] ?? null,
                 $pagamento['installments'],
                 $pagamento['date_approved'],
+                $pagamento['payer']['email'] ?? null,
                 $pagamentoExiste['id']
             ]);
         } else {
@@ -958,10 +1207,12 @@ class MercadoPagoWebhookController
             $stmtInsert = $this->db->prepare("
                 INSERT INTO pagamentos_mercadopago (
                     tenant_id, matricula_id, aluno_id, usuario_id,
-                    payment_id, external_reference, status, status_detail,
+                    payment_id, external_reference, preference_id, status, status_detail,
                     transaction_amount, payment_method_id, payment_type_id,
-                    installments, date_approved, date_created, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+                    installments, date_approved, date_created,
+                    payer_email, payer_identification_type, payer_identification_number,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
             ");
             
             $stmtInsert->execute([
@@ -971,6 +1222,7 @@ class MercadoPagoWebhookController
                 $metadata['usuario_id'] ?? null,
                 $pagamento['id'],
                 $externalReference,
+                $pagamento['preference_id'] ?? null,
                 $pagamento['status'],
                 $pagamento['status_detail'],
                 $pagamento['transaction_amount'],
@@ -978,7 +1230,10 @@ class MercadoPagoWebhookController
                 $pagamento['payment_type_id'],
                 $pagamento['installments'],
                 $pagamento['date_approved'],
-                $pagamento['date_created']
+                $pagamento['date_created'],
+                $pagamento['payer']['email'] ?? null,
+                $pagamento['payer']['identification']['type'] ?? null,
+                $pagamento['payer']['identification']['number'] ?? null
             ]);
         }
         

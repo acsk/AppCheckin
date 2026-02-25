@@ -1006,6 +1006,52 @@ class MercadoPagoService
     }
     
     /**
+     * Buscar pagamentos por external_reference na API do Mercado Pago
+     * 
+     * @param string $externalReference External reference (ex: MAT-158-1771524282)
+     * @return array Lista de pagamentos encontrados
+     */
+    public function buscarPagamentosPorExternalReference(string $externalReference): array
+    {
+        $this->validarCredenciais();
+
+        $query = http_build_query([
+            'external_reference' => $externalReference,
+            'sort' => 'date_created',
+            'criteria' => 'desc'
+        ]);
+
+        $response = $this->fazerRequisicao('GET', '/v1/payments/search?' . $query);
+
+        $results = $response['results'] ?? [];
+
+        return [
+            'total' => (int) ($response['paging']['total'] ?? count($results)),
+            'pagamentos' => array_map(function ($p) {
+                return [
+                    'id' => $p['id'] ?? null,
+                    'status' => $p['status'] ?? null,
+                    'status_detail' => $p['status_detail'] ?? null,
+                    'external_reference' => $p['external_reference'] ?? null,
+                    'transaction_amount' => $p['transaction_amount'] ?? null,
+                    'currency_id' => $p['currency_id'] ?? 'BRL',
+                    'payment_method_id' => $p['payment_method_id'] ?? null,
+                    'payment_type_id' => $p['payment_type_id'] ?? null,
+                    'installments' => $p['installments'] ?? 1,
+                    'date_created' => $p['date_created'] ?? null,
+                    'date_approved' => $p['date_approved'] ?? null,
+                    'date_last_updated' => $p['date_last_updated'] ?? null,
+                    'payer' => [
+                        'email' => $p['payer']['email'] ?? null,
+                        'id' => $p['payer']['id'] ?? null,
+                    ],
+                    'metadata' => $p['metadata'] ?? [],
+                ];
+            }, $results)
+        ];
+    }
+
+    /**
      * Pausar assinatura
      * 
      * @param string $preapprovalId ID da assinatura no MP

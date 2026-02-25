@@ -267,6 +267,10 @@ return function ($app) {
     // Exemplo: GET /api/webhooks/mercadopago/test?external_reference=MAT-1-1708&status=approved&payment_type=credit_card
     $app->get('/api/webhooks/mercadopago/test', [MercadoPagoWebhookController::class, 'simularWebhook']);
     
+    // Consultar cobranças no MP por external_reference (protegido por Admin)
+    // Consultar cobranças no MP por external_reference (público - sem autenticação)
+    $app->get('/api/webhooks/mercadopago/cobrancas', [MercadoPagoWebhookController::class, 'consultarCobrancas']);
+
     // Endpoints de Debug para Webhook MP (protegidos por Admin)
     $app->get('/api/webhooks/mercadopago/list', [MercadoPagoWebhookController::class, 'listarWebhooks'])->add(AdminMiddleware::class)->add(AuthMiddleware::class);
     $app->get('/api/webhooks/mercadopago/show/{id}', [MercadoPagoWebhookController::class, 'mostrarWebhook'])->add(AdminMiddleware::class)->add(AuthMiddleware::class);
