@@ -4679,7 +4679,7 @@ class MobileController
                         'pix_disponivel' => !(bool)$ciclo['permite_recorrencia'],
                         'metodos_pagamento' => (bool)$ciclo['permite_recorrencia']
                             ? ['checkout']
-                            : ['checkout', 'pix'],
+                            : ['pix'],
                         'economia' => $economiaPercentual > 0 
                             ? 'Economize ' . $economiaPercentual . '%'
                             : null,
@@ -4887,7 +4887,7 @@ class MobileController
                     'pix_disponivel' => !(bool)$c['permite_recorrencia'],
                     'metodos_pagamento' => (bool)$c['permite_recorrencia']
                         ? ['checkout']
-                        : ['checkout', 'pix'],
+                        : ['pix'],
                     'economia' => $economiaPercentual > 0
                         ? 'Economize ' . $economiaPercentual . '%'
                         : null,
@@ -5231,6 +5231,12 @@ class MobileController
                     'message' => 'Pagamento PIX não está disponível para planos recorrentes'
                 ]));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+            
+            // Ciclos sem recorrência: forçar PIX como método de pagamento
+            if (!$isRecorrente && $metodoPagamento !== 'pix') {
+                $metodoPagamento = 'pix';
+                error_log("[MobileController::comprarPlano] Ciclo sem recorrência: forçando método para PIX");
             }
 
             // Verificar se valor é maior que zero

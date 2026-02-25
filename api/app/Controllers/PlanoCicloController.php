@@ -410,6 +410,13 @@ class PlanoCicloController
             $cicloId = (int) $args['id'];
             $data = $request->getParsedBody();
             
+            // Garantir que $data seja array (PUT com body vazio ou parsing falho)
+            if (!is_array($data)) {
+                $raw = (string) $request->getBody();
+                $decoded = json_decode($raw, true);
+                $data = is_array($decoded) ? $decoded : [];
+            }
+            
             error_log("[PlanoCicloController::atualizar] tenantId={$tenantId}, planoId={$planoId}, cicloId={$cicloId}");
             error_log("[PlanoCicloController::atualizar] data=" . json_encode($data));
             
@@ -433,44 +440,51 @@ class PlanoCicloController
             
             // Calcular desconto se valor foi alterado
             $valor = isset($data['valor']) ? (float) $data['valor'] : (float) $ciclo['valor'];
-            $meses = (int) ($ciclo['tipo_meses'] ?? 1); // Meses vem da assinatura_frequencia, default 1
+            $meses = (int) ($ciclo['tipo_meses'] ?? 1);
+            if ($meses < 1) $meses = 1; // Segurança contra divisão por zero na coluna GENERATED
             $valorMensalBase = (float) ($ciclo['plano_valor'] ?? 0);
             $valorTotalSemDesconto = $valorMensalBase * $meses;
             $descontoPercentual = $valorTotalSemDesconto > 0 
                 ? round((($valorTotalSemDesconto - $valor) / $valorTotalSemDesconto) * 100, 2)
                 : 0;
+            // Limitar ao range de DECIMAL(5,2): -999.99 a 999.99
+            $descontoPercentual = max(-999.99, min(999.99, $descontoPercentual));
             
             // Atualizar (não permite mudar assinatura_frequencia, apenas valor e flags)
             $stmt = $this->db->prepare("
                 UPDATE plano_ciclos
-                SET valor = COALESCE(?, valor),
+                SET valor = ?,
                     desconto_percentual = ?,
-                    permite_recorrencia = COALESCE(?, permite_recorrencia),
-                    permite_reposicao = COALESCE(?, permite_reposicao),
-                    ativo = COALESCE(?, ativo),
+                    permite_recorrencia = ?,
+                    permite_reposicao = ?,
+                    ativo = ?,
                     updated_at = NOW()
-                WHERE id = ?
+                WHERE id = ? AND tenant_id = ?
             ");
             
             $stmt->execute([
-                isset($data['valor']) ? (float) $data['valor'] : null,
+                $valor,
                 $descontoPercentual,
-                isset($data['permite_recorrencia']) ? (int) $data['permite_recorrencia'] : null,
-                isset($data['permite_reposicao']) ? (int) $data['permite_reposicao'] : null,
-                isset($data['ativo']) ? (int) $data['ativo'] : null,
-                $cicloId
+                isset($data['permite_recorrencia']) ? (int) $data['permite_recorrencia'] : (int) $ciclo['permite_recorrencia'],
+                isset($data['permite_reposicao']) ? (int) $data['permite_reposicao'] : (int) $ciclo['permite_reposicao'],
+                isset($data['ativo']) ? (int) $data['ativo'] : (int) $ciclo['ativo'],
+                $cicloId,
+                $tenantId
             ]);
             
             $response->getBody()->write(json_encode([
                 'success' => true,
-                'message' => 'Ciclo atualizado com sucesso'
+                'message' => 'Ciclo atualizado com sucesso',
+                'desconto_percentual' => $descontoPercentual
             ]));
             
             return $response->withHeader('Content-Type', 'application/json');
             
         } catch (\Exception $e) {
-            error_log("Erro ao atualizar ciclo: " . $e->getMessage());
-            $response->getBody()->write(json_encode(['error' => 'Erro interno']));
+            error_log("Erro ao atualizar ciclo: " . $e->getMessage() . " | trace: " . $e->getTraceAsString());
+            $response->getBody()->write(json_encode([
+                'error' => 'Erro ao atualizar ciclo: ' . $e->getMessage()
+            ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
     }
