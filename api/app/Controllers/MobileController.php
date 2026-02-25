@@ -3906,7 +3906,6 @@ class MobileController
                 'max_parcelas' => 12,
                 'academia_nome' => $academiaNome,
                 'apenas_cartao' => $permiteRecorrencia, // Recorrentes só com cartão
-                'apenas_pix' => !$permiteRecorrencia, // Avulsos só com PIX
                 'metadata_extra' => [
                     'tipo' => 'pacote',
                     'pacote_contrato_id' => (int) $contratoId
@@ -5829,9 +5828,7 @@ class MobileController
                     'max_parcelas' => 12,
                     'academia_nome' => $academiaNome,
                     // Assinatura recorrente aceita APENAS cartão (preapproval)
-                    'apenas_cartao' => $isRecorrente,
-                    // Pagamento avulso aceita APENAS PIX
-                    'apenas_pix' => !$isRecorrente
+                    'apenas_cartao' => $isRecorrente
                 ];
 
                 error_log("[MobileController::comprarPlano] Ciclo: {$cicloNome}, Meses: {$duracaoMeses}, Recorrente: " . ($isRecorrente ? 'SIM' : 'NÃO'));
