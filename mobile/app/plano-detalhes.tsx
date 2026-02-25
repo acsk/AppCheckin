@@ -1053,8 +1053,6 @@ export default function PlanoDetalhesScreen() {
                 </>
               )}
             </TouchableOpacity>
-
-
           </View>
         )}
       </View>
