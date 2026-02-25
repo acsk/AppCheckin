@@ -1214,9 +1214,15 @@ class MercadoPagoWebhookController
         }
 
         // Id do status ativa
-        $stmtStatusAtiva = $this->db->prepare("SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1");
+        $stmtStatusAtiva = $this->db->prepare("SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'ativo') LIMIT 1");
         $stmtStatusAtiva->execute();
-        $statusAtivaId = (int) ($stmtStatusAtiva->fetchColumn() ?: 1);
+        $statusAtivaId = $stmtStatusAtiva->fetchColumn();
+
+        if (!$statusAtivaId) {
+            error_log("[Webhook MP] ❌ Status de matrícula 'ativa/ativo' não encontrado. Matrícula #{$matriculaId} não foi ativada");
+            return;
+        }
+        $statusAtivaId = (int) $statusAtivaId;
 
         // Evitar reprocessamento de webhooks duplicados
         if ((int) $matricula['status_id'] === $statusAtivaId) {
