@@ -572,17 +572,18 @@ class MercadoPagoWebhookController
 
             // Buscar dados locais: pagamentos_plano (mensalidades)
             // Nota: pagamentos_plano não tem external_reference, busca por matricula_id
+            // Busca por tenant_id OU tenant_id NULL (para não perder registros com tenant_id faltando)
             $dadosPagamentosPlano = [];
             if ($matriculaIdRef) {
                 try {
                     $stmt = $this->db->prepare("
-                        SELECT pp.id, pp.matricula_id, pp.aluno_id, pp.plano_id,
+                        SELECT pp.id, pp.tenant_id, pp.matricula_id, pp.aluno_id, pp.plano_id,
                                pp.valor, pp.status_pagamento_id,
                                pp.data_pagamento, pp.data_vencimento,
                                pp.forma_pagamento_id, pp.tipo_baixa_id,
                                pp.observacoes, pp.created_at, pp.updated_at
                         FROM pagamentos_plano pp
-                        WHERE pp.matricula_id = ? AND pp.tenant_id = ?
+                        WHERE pp.matricula_id = ? AND (pp.tenant_id = ? OR pp.tenant_id IS NULL)
                         ORDER BY pp.created_at DESC
                     ");
                     $stmt->execute([$matriculaIdRef, $tenantId]);
