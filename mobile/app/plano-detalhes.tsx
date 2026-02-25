@@ -7,17 +7,17 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Image,
-    Linking,
-    Modal,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    useWindowDimensions,
-    View,
+  ActivityIndicator,
+  Image,
+  Linking,
+  Modal,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  useWindowDimensions,
+  View,
 } from "react-native";
 
 interface Ciclo {
@@ -772,6 +772,10 @@ export default function PlanoDetalhesScreen() {
   const checkoutDisponivel = metodosPagamento.includes("checkout");
   const pixDisponivel =
     metodosPagamento.includes("pix") || selectedCiclo?.pix_disponivel === true;
+  const canCheckout = !!selectedCiclo && checkoutDisponivel;
+  const canPix = !!selectedCiclo && pixDisponivel;
+  const canBuy =
+    !!selectedCiclo && !comprando && !pixLoading && (canCheckout || canPix);
   const statusCodigoRaw =
     plano.status_codigo ||
     (typeof plano.status === "string" ? plano.status : plano.status?.codigo) ||
@@ -801,8 +805,6 @@ export default function PlanoDetalhesScreen() {
     statusCodigo === "pendente" || statusNome.includes("pendente");
   const isPlanoAtivo = !!plano.is_plano_atual && !isPendente;
   const qrSize = Math.min(320, Math.round(screenWidth * 0.72));
-  const pixButtonTemporarilyHidden = true;
-
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
@@ -1021,59 +1023,60 @@ export default function PlanoDetalhesScreen() {
             <TouchableOpacity
               style={[
                 styles.footerButton,
-                (!selectedCiclo || comprando || !checkoutDisponivel) &&
-                  styles.footerButtonDisabled,
+                !canBuy && styles.footerButtonDisabled,
               ]}
-              onPress={handleContratar}
-              disabled={!selectedCiclo || comprando || !checkoutDisponivel}
+              onPress={canCheckout ? handleContratar : handlePagarPix}
+              disabled={!canBuy}
               activeOpacity={0.8}
             >
-              {comprando ? (
+              {comprando || pixLoading ? (
                 <>
                   <ActivityIndicator color="#fff" size="small" />
                   <Text style={styles.footerButtonText}>Processando...</Text>
                 </>
               ) : (
                 <>
-                  <Feather name="shopping-cart" size={18} color="#fff" />
+                  <Feather
+                    name={canCheckout ? "shopping-cart" : "zap"}
+                    size={18}
+                    color="#fff"
+                  />
                   <Text style={styles.footerButtonText}>
                     {selectedCiclo
-                      ? checkoutDisponivel
+                      ? canCheckout
                         ? `Contratar por ${selectedCiclo.valor_formatado}`
-                        : "Checkout indisponível"
+                        : canPix
+                          ? `Pagar com PIX • ${selectedCiclo.valor_formatado}`
+                          : "Pagamento indisponível"
                       : "Escolha um ciclo"}
                   </Text>
                 </>
               )}
             </TouchableOpacity>
 
-            {!!selectedCiclo &&
-              pixDisponivel &&
-              !pixButtonTemporarilyHidden && (
-                <TouchableOpacity
-                  style={[
-                    styles.footerPixButton,
-                    pixLoading && styles.footerPixButtonLoading,
-                  ]}
-                  onPress={handlePagarPix}
-                  disabled={pixLoading}
-                  activeOpacity={0.8}
-                >
-                  {pixLoading ? (
-                    <>
-                      <ActivityIndicator color="#fff" size="small" />
-                      <Text style={styles.footerButtonText}>
-                        Gerando PIX...
-                      </Text>
-                    </>
-                  ) : (
-                    <>
-                      <Feather name="zap" size={18} color="#fff" />
-                      <Text style={styles.footerButtonText}>Pagar com PIX</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              )}
+            {!!selectedCiclo && pixDisponivel && !canCheckout && (
+              <TouchableOpacity
+                style={[
+                  styles.footerPixButton,
+                  pixLoading && styles.footerPixButtonLoading,
+                ]}
+                onPress={handlePagarPix}
+                disabled={pixLoading}
+                activeOpacity={0.8}
+              >
+                {pixLoading ? (
+                  <>
+                    <ActivityIndicator color="#fff" size="small" />
+                    <Text style={styles.footerButtonText}>Gerando PIX...</Text>
+                  </>
+                ) : (
+                  <>
+                    <Feather name="zap" size={18} color="#fff" />
+                    <Text style={styles.footerButtonText}>Pagar com PIX</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
           </View>
         )}
       </View>
