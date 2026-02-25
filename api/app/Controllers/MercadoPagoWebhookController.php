@@ -235,7 +235,7 @@ class MercadoPagoWebhookController
             
             // Reprocessar
             $mercadoPagoService = $this->getMercadoPagoService();
-            if ($payload['type'] === 'payment') {
+            if (in_array($payload['type'], ['payment', 'authorized_payment', 'subscription_authorized_payment'], true)) {
                 $pagamento = $mercadoPagoService->buscarPagamento($payload['data']['id']);
                 $this->atualizarPagamento($pagamento);
             } elseif (in_array($payload['type'], ['subscription_preapproval', 'subscription', 'preapproval'])) {

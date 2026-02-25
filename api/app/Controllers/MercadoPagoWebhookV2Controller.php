@@ -59,7 +59,7 @@ class MercadoPagoWebhookV2Controller
             $this->log("✅ Tipo: {$type}, ID: {$dataId}");
             
             // ===== PROCESSAR PAYMENT =====
-            if ($type === 'payment') {
+            if (in_array($type, ['payment', 'authorized_payment', 'subscription_authorized_payment'], true)) {
                 $this->processarPayment($dataId);
             }
             // ===== PROCESSAR SUBSCRIPTION/PREAPPROVAL =====
