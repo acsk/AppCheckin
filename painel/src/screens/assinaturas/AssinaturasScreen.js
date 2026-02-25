@@ -53,6 +53,11 @@ const formatDateTime = (date) => {
   return parsed.toLocaleString('pt-BR');
 };
 
+const getProximaCobrancaLabel = (assinatura) => {
+  const data = assinatura?.proxima_cobranca || assinatura?.data_fim;
+  return formatDate(data);
+};
+
 const getStatusColor = (codigo) => {
   switch ((codigo || '').toLowerCase()) {
     case 'ativa':
@@ -412,7 +417,7 @@ export default function AssinaturasScreen() {
                         ) : null}
                       </View>
                       <Text className="text-[11px] text-slate-400">
-                        Próx. cobrança: {formatDate(assinatura.proxima_cobranca)}
+                        Próx. cobrança: {getProximaCobrancaLabel(assinatura)}
                       </Text>
                     </View>
 
@@ -422,6 +427,7 @@ export default function AssinaturasScreen() {
                           <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-1">Dados da assinatura</Text>
                           <Text className="text-xs text-slate-600">Tipo: {assinatura.tipo_cobranca || '-'}</Text>
                           <Text className="text-xs text-slate-600">Início: {formatDate(assinatura.data_inicio)}</Text>
+                          <Text className="text-xs text-slate-600">Fim: {formatDate(assinatura.data_fim)}</Text>
                           <Text className="text-xs text-slate-600">Criado: {formatDateTime(assinatura.criado_em)}</Text>
                           <Text className="text-xs text-slate-600">External ref: {assinatura.external_reference || '-'}</Text>
                           <Text className="text-xs text-slate-600">MP preapproval: {assinatura.mp_preapproval_id || '-'}</Text>
@@ -437,6 +443,10 @@ export default function AssinaturasScreen() {
                           <Text className="text-[11px] text-slate-400">Aluno</Text>
                           <Text className="text-xs font-semibold text-slate-700">{assinatura.aluno_nome || '-'}</Text>
                           <Text className="text-xs text-slate-500">{assinatura.aluno_email || '-'}</Text>
+                        </View>
+                        <View className="items-end">
+                          <Text className="text-[11px] text-slate-400">Próx. cobrança</Text>
+                          <Text className="text-xs font-semibold text-slate-700">{getProximaCobrancaLabel(assinatura)}</Text>
                         </View>
                         <TouchableOpacity
                           className={`flex-row items-center gap-2 rounded-lg px-3 py-2 ${assinatura.external_reference ? 'bg-orange-500' : 'bg-slate-200'}`}
