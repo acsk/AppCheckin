@@ -107,19 +107,57 @@ class MercadoPagoWebhookController
         try {
             $this->logWebhook("[Webhook MP V1] Processando type={$type}, id={$dataId}");
 
+            // Primeiro, buscar pagamento com credenciais padrão (ENV) para obter external_reference
             $mercadoPagoService = $this->getMercadoPagoService();
+            
+            // Variáveis para enriquecer o webhook payload
+            $webhookTenantId = null;
+            $webhookExternalRef = null;
 
             if (in_array($type, ['payment', 'authorized_payment', 'subscription_authorized_payment'], true)) {
                 $pagamento = $mercadoPagoService->buscarPagamento((string)$dataId);
+                
+                // Extrair tenant_id da matrícula via external_reference
+                $extRef = $pagamento['external_reference'] ?? '';
+                $webhookExternalRef = $extRef;
+                $matIdForTenant = null;
+                
+                if (preg_match('/MAT-(\d+)/', $extRef, $mTenant)) {
+                    $matIdForTenant = (int) $mTenant[1];
+                } elseif (preg_match('/PAC-(\d+)/', $extRef, $mTenant)) {
+                    // Para pacotes, buscar tenant do contrato
+                    $stmtPacTenant = $this->db->prepare("SELECT tenant_id FROM pacote_contratos WHERE id = ? LIMIT 1");
+                    $stmtPacTenant->execute([(int) $mTenant[1]]);
+                    $webhookTenantId = $stmtPacTenant->fetchColumn() ?: null;
+                }
+                
+                if ($matIdForTenant && !$webhookTenantId) {
+                    $stmtTenant = $this->db->prepare("SELECT tenant_id FROM matriculas WHERE id = ? LIMIT 1");
+                    $stmtTenant->execute([$matIdForTenant]);
+                    $webhookTenantId = $stmtTenant->fetchColumn() ?: null;
+                }
+                
+                // Re-instanciar com tenant correto para garantir credenciais certas
+                if ($webhookTenantId) {
+                    $mercadoPagoService = $this->getMercadoPagoService((int)$webhookTenantId);
+                    // Re-buscar pagamento com credenciais do tenant (pode ser necessário)
+                    try {
+                        $pagamento = $mercadoPagoService->buscarPagamento((string)$dataId);
+                    } catch (\Throwable $e2) {
+                        $this->logWebhook("[Webhook MP V1] Aviso: falha ao re-buscar com tenant {$webhookTenantId}, usando dados anteriores: " . $e2->getMessage());
+                    }
+                }
+                
                 $this->atualizarPagamento($pagamento);
             } elseif (in_array($type, ['subscription_preapproval', 'subscription', 'preapproval'], true)) {
                 $assinatura = $mercadoPagoService->buscarAssinatura((string)$dataId);
+                $webhookExternalRef = $assinatura['external_reference'] ?? null;
                 $this->atualizarAssinatura($assinatura);
             } else {
                 $this->logWebhook("[Webhook MP V1] Tipo ignorado: {$type}");
             }
 
-            $this->salvarWebhookPayload($normalizedBody, $type, $dataId, 'sucesso');
+            $this->salvarWebhookPayload($normalizedBody, $type, $dataId, 'sucesso', null, null, $webhookTenantId, $webhookExternalRef);
 
             $response->getBody()->write(json_encode([
                 'success' => true,
@@ -131,7 +169,7 @@ class MercadoPagoWebhookController
                 ->withStatus(200);
         } catch (\Throwable $e) {
             $this->logWebhook("[Webhook MP V1] Erro ao processar webhook: " . $e->getMessage());
-            $this->salvarWebhookPayload($normalizedBody, $type, $dataId, 'erro', $e->getMessage());
+            $this->salvarWebhookPayload($normalizedBody, $type, $dataId, 'erro', $e->getMessage(), null, $webhookTenantId ?? null, $webhookExternalRef ?? null);
 
             $response->getBody()->write(json_encode([
                 'success' => false,
@@ -153,21 +191,21 @@ class MercadoPagoWebhookController
         ?int $dataId, 
         string $statusProcessamento, 
         ?string $erroProcessamento = null,
-        ?array $resultadoProcessamento = null
+        ?array $resultadoProcessamento = null,
+        ?int $resolvedTenantId = null,
+        ?string $resolvedExternalReference = null
     ): void
     {
         try {
-            // Extrair informações do body
-            $externalReference = null;
+            // Usar dados já resolvidos pelo processarWebhook (se disponíveis)
+            $externalReference = $resolvedExternalReference;
             $paymentId = null;
             $preapprovalId = null;
-            $tenantId = null;
+            $tenantId = $resolvedTenantId;
             
             // Se é notificação de pagamento
             if ($tipo === 'payment') {
                 $paymentId = $dataId;
-                // Tentar extrair external_reference do body (pode estar em metadata)
-                // Será preenchido via query que buscará os dados completos do MP
             } 
             // Se é notificação de assinatura
             elseif (in_array($tipo, ['subscription_preapproval', 'subscription', 'preapproval'])) {
@@ -315,8 +353,16 @@ class MercadoPagoWebhookController
             
             $payload = json_decode($resultado['payload'], true);
             
+            // Determinar tenant_id a partir do webhook salvo ou do request
+            $reprocessTenantId = $request->getAttribute('tenantId');
+            if (!$reprocessTenantId) {
+                $stmtReprTenant = $this->db->prepare("SELECT tenant_id FROM webhook_payloads_mercadopago WHERE id = ? LIMIT 1");
+                $stmtReprTenant->execute([$id]);
+                $reprocessTenantId = $stmtReprTenant->fetchColumn() ?: null;
+            }
+            
             // Reprocessar
-            $mercadoPagoService = $this->getMercadoPagoService();
+            $mercadoPagoService = $this->getMercadoPagoService($reprocessTenantId ? (int)$reprocessTenantId : null);
             if (in_array($payload['type'], ['payment', 'authorized_payment', 'subscription_authorized_payment'], true)) {
                 $pagamento = $mercadoPagoService->buscarPagamento($payload['data']['id']);
                 $this->atualizarPagamento($pagamento);
@@ -510,7 +556,7 @@ class MercadoPagoWebhookController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
 
-            $mercadoPagoService = $this->getMercadoPagoService();
+            $mercadoPagoService = $this->getMercadoPagoService($tenantId);
             $resultado = $mercadoPagoService->buscarPagamentosPorExternalReference($externalReference);
 
             // Buscar dados locais: pagamentos_plano (mensalidades)
@@ -603,7 +649,8 @@ class MercadoPagoWebhookController
     {
         try {
             $paymentId = (string)($args['paymentId'] ?? '');
-            $mercadoPagoService = $this->getMercadoPagoService();
+            $tenantId = $request->getAttribute('tenantId');
+            $mercadoPagoService = $this->getMercadoPagoService($tenantId ? (int)$tenantId : null);
             $pagamento = $mercadoPagoService->buscarPagamento($paymentId);
             
             $response->getBody()->write(json_encode([
@@ -632,7 +679,8 @@ class MercadoPagoWebhookController
             $paymentId = (string)($args['paymentId'] ?? '');
             error_log("[Webhook MP] 🔄 Reprocessando pagamento #{$paymentId}...");
             
-            $mercadoPagoService = $this->getMercadoPagoService();
+            $tenantId = $request->getAttribute('tenantId');
+            $mercadoPagoService = $this->getMercadoPagoService($tenantId ? (int)$tenantId : null);
             $pagamento = $mercadoPagoService->buscarPagamento($paymentId);
             
             error_log("[Webhook MP] 💾 Dados do pagamento: " . json_encode($pagamento));
@@ -683,7 +731,8 @@ class MercadoPagoWebhookController
             
             // Se tem payment_id, buscar no MP
             if ($paymentId) {
-                $mercadoPagoService = $this->getMercadoPagoService();
+                $debugTenantId = $request->getAttribute('tenantId');
+                $mercadoPagoService = $this->getMercadoPagoService($debugTenantId ? (int)$debugTenantId : null);
                 $pagamento = $mercadoPagoService->buscarPagamento($paymentId);
                 $result['pagamento_mp'] = $pagamento;
                 
@@ -1217,11 +1266,26 @@ class MercadoPagoWebhookController
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
             ");
             
+            // Buscar tenant_id e aluno_id da matrícula (metadata pode estar vazio em pagamentos avulsos)
+            $tenantIdForInsert = $metadata['tenant_id'] ?? null;
+            $alunoIdForInsert = $metadata['aluno_id'] ?? null;
+            $usuarioIdForInsert = $metadata['usuario_id'] ?? null;
+            
+            if (!$tenantIdForInsert || !$alunoIdForInsert) {
+                $stmtMatInfo = $this->db->prepare("SELECT tenant_id, aluno_id FROM matriculas WHERE id = ? LIMIT 1");
+                $stmtMatInfo->execute([$matriculaId]);
+                $matInfo = $stmtMatInfo->fetch(\PDO::FETCH_ASSOC);
+                if ($matInfo) {
+                    $tenantIdForInsert = $tenantIdForInsert ?: ($matInfo['tenant_id'] ?? null);
+                    $alunoIdForInsert = $alunoIdForInsert ?: ($matInfo['aluno_id'] ?? null);
+                }
+            }
+            
             $stmtInsert->execute([
-                $metadata['tenant_id'] ?? null,
+                $tenantIdForInsert,
                 $matriculaId,
-                $metadata['aluno_id'] ?? null,
-                $metadata['usuario_id'] ?? null,
+                $alunoIdForInsert,
+                $usuarioIdForInsert,
                 $pagamento['id'],
                 $externalReference,
                 $pagamento['preference_id'] ?? null,
