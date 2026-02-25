@@ -1054,29 +1054,7 @@ export default function PlanoDetalhesScreen() {
               )}
             </TouchableOpacity>
 
-            {!!selectedCiclo && pixDisponivel && !canCheckout && (
-              <TouchableOpacity
-                style={[
-                  styles.footerPixButton,
-                  pixLoading && styles.footerPixButtonLoading,
-                ]}
-                onPress={handlePagarPix}
-                disabled={pixLoading}
-                activeOpacity={0.8}
-              >
-                {pixLoading ? (
-                  <>
-                    <ActivityIndicator color="#fff" size="small" />
-                    <Text style={styles.footerButtonText}>Gerando PIX...</Text>
-                  </>
-                ) : (
-                  <>
-                    <Feather name="zap" size={18} color="#fff" />
-                    <Text style={styles.footerButtonText}>Pagar com PIX</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            )}
+
           </View>
         )}
       </View>
