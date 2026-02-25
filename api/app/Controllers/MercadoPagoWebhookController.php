@@ -175,10 +175,10 @@ class MercadoPagoWebhookController
      * 
      * GET /api/webhooks/mercadopago/show/{id}
      */
-    public function mostrarWebhook(Request $request, Response $response, $id): Response
+    public function mostrarWebhook(Request $request, Response $response, array $args): Response
     {
         try {
-            $id = (int) $id;
+            $id = (int)($args['id'] ?? 0);
             $stmt = $this->db->prepare("SELECT * FROM webhook_payloads_mercadopago WHERE id = ? LIMIT 1");
             $stmt->execute([$id]);
             $webhook = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -215,10 +215,10 @@ class MercadoPagoWebhookController
      * 
      * POST /api/webhooks/mercadopago/reprocess/{id}
      */
-    public function reprocessarWebhook(Request $request, Response $response, $id): Response
+    public function reprocessarWebhook(Request $request, Response $response, array $args): Response
     {
         try {
-            $id = (int) $id;
+            $id = (int)($args['id'] ?? 0);
             $stmt = $this->db->prepare("SELECT payload FROM webhook_payloads_mercadopago WHERE id = ? LIMIT 1");
             $stmt->execute([$id]);
             $resultado = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -270,9 +270,10 @@ class MercadoPagoWebhookController
      * 
      * GET /api/webhooks/mercadopago/payment/{paymentId}
      */
-    public function buscarPagamentoDebug(Request $request, Response $response, $paymentId): Response
+    public function buscarPagamentoDebug(Request $request, Response $response, array $args): Response
     {
         try {
+            $paymentId = (string)($args['paymentId'] ?? '');
             $mercadoPagoService = $this->getMercadoPagoService();
             $pagamento = $mercadoPagoService->buscarPagamento($paymentId);
             
@@ -296,9 +297,10 @@ class MercadoPagoWebhookController
      * 
      * POST /api/webhooks/mercadopago/payment/{paymentId}/reprocess
      */
-    public function reprocessarPagamento(Request $request, Response $response, $paymentId): Response
+    public function reprocessarPagamento(Request $request, Response $response, array $args): Response
     {
         try {
+            $paymentId = (string)($args['paymentId'] ?? '');
             error_log("[Webhook MP] 🔄 Reprocessando pagamento #{$paymentId}...");
             
             $mercadoPagoService = $this->getMercadoPagoService();
