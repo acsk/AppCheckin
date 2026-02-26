@@ -660,5 +660,41 @@
             "subscription_id": "722635346864"
         },
         "timestamp": "2026-02-25T23:48:53.000+00:00"
+    },
+    {
+        "id": "log_fa535d4fb18e72601116c98d",
+        "type": "recurring.charge",
+        "data": {
+            "preapproval_id": "722635346864",
+            "payment_id": 74748757228,
+            "amount": 1,
+            "status": "approved",
+            "external_reference": "MAT-189-1772063327"
+        },
+        "timestamp": "2026-02-26T00:10:37.000+00:00"
+    },
+    {
+        "id": "log_9535f7d646141335ab939e5c",
+        "type": "recurring.charge",
+        "data": {
+            "preapproval_id": "722635346864",
+            "payment_id": 60088982616,
+            "amount": 1,
+            "status": "approved",
+            "external_reference": "MAT-189-1772063327"
+        },
+        "timestamp": "2026-02-26T00:14:34.000+00:00"
+    },
+    {
+        "id": "log_5cb36836808eb83188739315",
+        "type": "recurring.charge",
+        "data": {
+            "preapproval_id": "722635346864",
+            "payment_id": 21731464234,
+            "amount": 1,
+            "status": "approved",
+            "external_reference": "MAT-189-1772063327"
+        },
+        "timestamp": "2026-02-26T00:33:08.000+00:00"
     }
 ]

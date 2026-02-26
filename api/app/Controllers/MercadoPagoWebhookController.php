@@ -972,6 +972,16 @@ class MercadoPagoWebhookController
             $sqlUpdate = "UPDATE assinaturas SET status_id = ?, status_gateway = ?, atualizado_em = NOW()";
             $paramsUpdate = [$statusId, $status];
             
+            // Atualizar proxima_cobranca e ultima_cobranca com dados do MP
+            $nextPaymentDate = $assinatura['next_payment_date'] ?? ($assinatura['raw']['next_payment_date'] ?? null);
+            if ($nextPaymentDate) {
+                $sqlUpdate .= ", proxima_cobranca = ?";
+                $paramsUpdate[] = date('Y-m-d', strtotime($nextPaymentDate));
+            }
+            if ($status === 'approved' || $status === 'authorized') {
+                $sqlUpdate .= ", ultima_cobranca = CURDATE()";
+            }
+            
             if ($pacoteContratoId) {
                 $sqlUpdate .= ", pacote_contrato_id = ?";
                 $paramsUpdate[] = $pacoteContratoId;
@@ -1032,6 +1042,10 @@ class MercadoPagoWebhookController
                 : date('Y-m-d H:i:s');
             $assinaturaRef = (string)($assinatura['preapproval_id'] ?? 'N/A');
             
+            // Calcular data de vencimento baseada na frequência da assinatura
+            $dataVencimento = $this->calcularDataVencimentoAssinatura($matriculaId, $assinatura);
+            error_log("[Webhook MP] 📅 Data de vencimento calculada: {$dataVencimento}");
+            
             // Buscar o pagamento pendente mais antigo da matrícula (status 1 = Aguardando)
             $stmtBuscar = $this->db->prepare("
                 SELECT pp.id, pp.valor
@@ -1076,11 +1090,12 @@ class MercadoPagoWebhookController
                         forma_pagamento_id = ?,
                         tipo_baixa_id = 4,
                         observacoes = ?,
+                        data_vencimento = COALESCE(NULLIF(?, ''), data_vencimento),
                         updated_at = NOW()
                     WHERE id = ?
                 ");
                 
-                $stmtUpdate->execute([$dataPagamento, $formaPagamentoId, 'Pago via Assinatura MP - ID: ' . ($assinatura['preapproval_id'] ?? 'N/A'), $pagamentoPendente['id']]);
+                $stmtUpdate->execute([$dataPagamento, $formaPagamentoId, 'Pago via Assinatura MP - ID: ' . ($assinatura['preapproval_id'] ?? 'N/A'), $dataVencimento, $pagamentoPendente['id']]);
                 
                 if ($stmtUpdate->rowCount() > 0) {
                     error_log("[Webhook MP] ✅ Pagamento #{$pagamentoPendente['id']} atualizado para PAGO (Assinatura)");
@@ -1097,7 +1112,7 @@ class MercadoPagoWebhookController
                         observacoes, tipo_baixa_id, created_at, updated_at
                     ) VALUES (
                         ?, ?, ?, ?,
-                        ?, CURDATE(), ?,
+                        ?, ?, ?,
                         2, ?,
                         ?, 4, NOW(), NOW()
                     )
@@ -1109,6 +1124,7 @@ class MercadoPagoWebhookController
                     $matriculaId,
                     $matricula['plano_id'],
                     $valor,
+                    $dataVencimento,
                     $dataPagamento,
                     $formaPagamentoId,
                     'Pago via Assinatura MP - ID: ' . ($assinatura['preapproval_id'] ?? 'N/A')
@@ -1122,6 +1138,95 @@ class MercadoPagoWebhookController
             error_log("[Webhook MP] ❌ Erro ao baixar pagamento_plano (assinatura): " . $e->getMessage());
             error_log("[Webhook MP] Stack: " . $e->getTraceAsString());
         }
+    }
+    
+    /**
+     * Calcular data de vencimento correta para pagamento de assinatura recorrente.
+     * 
+     * Lógica de prioridade:
+     * 1. Se a assinatura tem next_payment_date do MP → usa como referência do PRÓXIMO ciclo,
+     *    e calcula a data do ciclo ATUAL subtraindo a frequência
+     * 2. Se não, calcula baseado no último pagamento + frequência da assinatura
+     * 3. Fallback: data de hoje
+     */
+    private function calcularDataVencimentoAssinatura(int $matriculaId, array $assinatura): string
+    {
+        try {
+            // Extrair frequência da assinatura (ex: 1 month, 3 months, 30 days)
+            $autoRecurring = $assinatura['auto_recurring'] ?? [];
+            $frequency = (int) ($autoRecurring['frequency'] ?? 1);
+            $frequencyType = $autoRecurring['frequency_type'] ?? 'months';
+            
+            error_log("[Webhook MP] 📅 Calculando vencimento - frequency={$frequency}, type={$frequencyType}");
+            error_log("[Webhook MP] 📅 next_payment_date=" . ($assinatura['next_payment_date'] ?? 'N/A'));
+            
+            // OPÇÃO 1: Usar next_payment_date do MP para calcular data do ciclo ATUAL
+            // next_payment_date é a data da PRÓXIMA cobrança, então a atual = next - frequência
+            if (!empty($assinatura['next_payment_date'])) {
+                $nextPayment = new \DateTime($assinatura['next_payment_date']);
+                
+                // A data do vencimento do ciclo ATUAL = next_payment_date - 1 ciclo de frequência
+                $intervalSpec = $frequencyType === 'months' 
+                    ? "P{$frequency}M" 
+                    : "P{$frequency}D";
+                $currentCycleDate = clone $nextPayment;
+                $currentCycleDate->sub(new \DateInterval($intervalSpec));
+                
+                error_log("[Webhook MP] 📅 Vencimento calculado via next_payment_date: " . $currentCycleDate->format('Y-m-d'));
+                return $currentCycleDate->format('Y-m-d');
+            }
+            
+            // OPÇÃO 2: Calcular baseado no último pagamento registrado
+            $stmtUltimo = $this->db->prepare("
+                SELECT pp.data_vencimento
+                FROM pagamentos_plano pp
+                WHERE pp.matricula_id = ?
+                AND pp.status_pagamento_id = 2
+                ORDER BY pp.data_vencimento DESC
+                LIMIT 1
+            ");
+            $stmtUltimo->execute([$matriculaId]);
+            $ultimoVencimento = $stmtUltimo->fetchColumn();
+            
+            if ($ultimoVencimento) {
+                $ultimaData = new \DateTime($ultimoVencimento);
+                $intervalSpec = $frequencyType === 'months' 
+                    ? "P{$frequency}M" 
+                    : "P{$frequency}D";
+                $ultimaData->add(new \DateInterval($intervalSpec));
+                
+                error_log("[Webhook MP] 📅 Vencimento calculado via último pagamento: " . $ultimaData->format('Y-m-d'));
+                return $ultimaData->format('Y-m-d');
+            }
+            
+            // OPÇÃO 3: Buscar data_inicio ou proxima_data_vencimento da matrícula
+            $stmtMat = $this->db->prepare("
+                SELECT data_inicio, proxima_data_vencimento, data_vencimento, dia_vencimento
+                FROM matriculas
+                WHERE id = ?
+            ");
+            $stmtMat->execute([$matriculaId]);
+            $mat = $stmtMat->fetch(\PDO::FETCH_ASSOC);
+            
+            if ($mat) {
+                // Usar proxima_data_vencimento se existir
+                if (!empty($mat['proxima_data_vencimento'])) {
+                    error_log("[Webhook MP] 📅 Vencimento via matrícula.proxima_data_vencimento: " . $mat['proxima_data_vencimento']);
+                    return $mat['proxima_data_vencimento'];
+                }
+                if (!empty($mat['data_inicio'])) {
+                    error_log("[Webhook MP] 📅 Vencimento via matrícula.data_inicio: " . $mat['data_inicio']);
+                    return $mat['data_inicio'];
+                }
+            }
+            
+        } catch (\Exception $e) {
+            error_log("[Webhook MP] ⚠️ Erro ao calcular data de vencimento: " . $e->getMessage());
+        }
+        
+        // Fallback: hoje
+        error_log("[Webhook MP] 📅 Vencimento fallback: " . date('Y-m-d'));
+        return date('Y-m-d');
     }
     
     /**

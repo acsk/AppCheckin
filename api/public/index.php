@@ -74,7 +74,9 @@ $app->add(function ($request, $handler) {
 // Middleware de parsing de JSONN
 $app->addBodyParsingMiddleware();
 
-// Middleware de erro
+// Routing middleware (obrigatório no Slim 4 para resolução de rotas)
+$app->addRoutingMiddleware();
+
 // Middleware de erro com resposta JSON
 $errorMiddleware = $app->addErrorMiddleware(true, true, true);
 $errorMiddleware->setDefaultErrorHandler(function (
@@ -85,12 +87,33 @@ $errorMiddleware->setDefaultErrorHandler(function (
     bool $logErrorDetails
 ) use ($app) {
     // Log básico
-    error_log('[ErrorMiddleware] ' . $exception->getMessage());
+    error_log('[ErrorMiddleware] ' . get_class($exception) . ': ' . $exception->getMessage());
 
+    // Usar status HTTP correto para exceções HTTP do Slim
     $status = 500;
+    $message = 'Erro interno no servidor';
+    if ($exception instanceof \Slim\Exception\HttpNotFoundException) {
+        $status = 404;
+        $message = 'Rota não encontrada';
+    } elseif ($exception instanceof \Slim\Exception\HttpMethodNotAllowedException) {
+        $status = 405;
+        $message = 'Método não permitido';
+    } elseif ($exception instanceof \Slim\Exception\HttpUnauthorizedException) {
+        $status = 401;
+        $message = 'Não autorizado';
+    } elseif ($exception instanceof \Slim\Exception\HttpForbiddenException) {
+        $status = 403;
+        $message = 'Acesso negado';
+    } elseif ($exception instanceof \Slim\Exception\HttpBadRequestException) {
+        $status = 400;
+        $message = 'Requisição inválida';
+    } elseif (method_exists($exception, 'getCode') && $exception->getCode() >= 400 && $exception->getCode() < 600) {
+        $status = $exception->getCode();
+    }
+
     $payload = [
         'status' => 'error',
-        'message' => 'Erro interno no servidor',
+        'message' => $message,
     ];
 
     // Quando possível, retornar detalhes úteis (apenas se habilitado)

@@ -232,5 +232,179 @@
                 }
             ]
         }
+    },
+    "74748757228": {
+        "id": 74748757228,
+        "date_created": "2026-02-26T00:10:37.000+00:00",
+        "date_approved": "2026-02-26T00:10:37.000+00:00",
+        "date_last_updated": "2026-02-26T00:10:37.000+00:00",
+        "money_release_date": "2026-03-12T00:10:37.000+00:00",
+        "subscription_id": "722635346864",
+        "preapproval_id": "722635346864",
+        "issuer_id": "295",
+        "payment_method_id": "account_money",
+        "payment_type_id": "account_money",
+        "status": "approved",
+        "status_detail": "accredited",
+        "currency_id": "BRL",
+        "description": "3x por Semana - Aqua Masters (recorrência automática)",
+        "collector_id": 228133523,
+        "payer": {
+            "id": 908548500,
+            "email": "andrecabrall@gmail.com",
+            "identification": {
+                "type": "CPF",
+                "number": "00000000000"
+            },
+            "type": "customer"
+        },
+        "transaction_amount": 1,
+        "transaction_amount_refunded": 0,
+        "coupon_amount": 0,
+        "transaction_details": {
+            "net_received_amount": 0.96,
+            "total_paid_amount": 1,
+            "overpaid_amount": 0,
+            "installment_amount": 1
+        },
+        "installments": 1,
+        "captured": true,
+        "live_mode": false,
+        "external_reference": "MAT-189-1772063327",
+        "metadata": {
+            "tenant_id": 2,
+            "matricula_id": 189,
+            "aluno_id": 72,
+            "usuario_id": 3,
+            "tipo": "matricula",
+            "preapproval_id": "722635346864",
+            "recurring_charge": true
+        },
+        "additional_info": {
+            "items": [
+                {
+                    "id": "722635346864",
+                    "title": "3x por Semana - Aqua Masters",
+                    "quantity": "1",
+                    "unit_price": "1"
+                }
+            ]
+        }
+    },
+    "60088982616": {
+        "id": 60088982616,
+        "date_created": "2026-02-26T00:14:34.000+00:00",
+        "date_approved": "2026-02-26T00:14:34.000+00:00",
+        "date_last_updated": "2026-02-26T00:14:34.000+00:00",
+        "money_release_date": "2026-03-12T00:14:34.000+00:00",
+        "subscription_id": "722635346864",
+        "preapproval_id": "722635346864",
+        "issuer_id": "237",
+        "payment_method_id": "account_money",
+        "payment_type_id": "account_money",
+        "status": "approved",
+        "status_detail": "accredited",
+        "currency_id": "BRL",
+        "description": "3x por Semana - Aqua Masters (recorrência automática)",
+        "collector_id": 228133523,
+        "payer": {
+            "id": 908548500,
+            "email": "andrecabrall@gmail.com",
+            "identification": {
+                "type": "CPF",
+                "number": "00000000000"
+            },
+            "type": "customer"
+        },
+        "transaction_amount": 1,
+        "transaction_amount_refunded": 0,
+        "coupon_amount": 0,
+        "transaction_details": {
+            "net_received_amount": 0.96,
+            "total_paid_amount": 1,
+            "overpaid_amount": 0,
+            "installment_amount": 1
+        },
+        "installments": 1,
+        "captured": true,
+        "live_mode": false,
+        "external_reference": "MAT-189-1772063327",
+        "metadata": {
+            "tenant_id": 2,
+            "matricula_id": 189,
+            "aluno_id": 72,
+            "usuario_id": 3,
+            "tipo": "matricula",
+            "preapproval_id": "722635346864",
+            "recurring_charge": true
+        },
+        "additional_info": {
+            "items": [
+                {
+                    "id": "722635346864",
+                    "title": "3x por Semana - Aqua Masters",
+                    "quantity": "1",
+                    "unit_price": "1"
+                }
+            ]
+        }
+    },
+    "21731464234": {
+        "id": 21731464234,
+        "date_created": "2026-02-26T00:33:08.000+00:00",
+        "date_approved": "2026-02-26T00:33:08.000+00:00",
+        "date_last_updated": "2026-02-26T00:33:08.000+00:00",
+        "money_release_date": "2026-03-12T00:33:08.000+00:00",
+        "subscription_id": "722635346864",
+        "preapproval_id": "722635346864",
+        "issuer_id": "847",
+        "payment_method_id": "account_money",
+        "payment_type_id": "account_money",
+        "status": "approved",
+        "status_detail": "accredited",
+        "currency_id": "BRL",
+        "description": "3x por Semana - Aqua Masters (recorrência automática)",
+        "collector_id": 228133523,
+        "payer": {
+            "id": 908548500,
+            "email": "andrecabrall@gmail.com",
+            "identification": {
+                "type": "CPF",
+                "number": "00000000000"
+            },
+            "type": "customer"
+        },
+        "transaction_amount": 1,
+        "transaction_amount_refunded": 0,
+        "coupon_amount": 0,
+        "transaction_details": {
+            "net_received_amount": 0.96,
+            "total_paid_amount": 1,
+            "overpaid_amount": 0,
+            "installment_amount": 1
+        },
+        "installments": 1,
+        "captured": true,
+        "live_mode": false,
+        "external_reference": "MAT-189-1772063327",
+        "metadata": {
+            "tenant_id": 2,
+            "matricula_id": 189,
+            "aluno_id": 72,
+            "usuario_id": 3,
+            "tipo": "matricula",
+            "preapproval_id": "722635346864",
+            "recurring_charge": true
+        },
+        "additional_info": {
+            "items": [
+                {
+                    "id": "722635346864",
+                    "title": "3x por Semana - Aqua Masters",
+                    "quantity": "1",
+                    "unit_price": "1"
+                }
+            ]
+        }
     }
 }

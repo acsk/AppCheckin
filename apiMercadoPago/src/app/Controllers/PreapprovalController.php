@@ -366,10 +366,15 @@ class PreapprovalController
         $preapproval['summarized']['last_charged_date'] = $status === 'approved' ? $now : $preapproval['summarized']['last_charged_date'];
         $preapproval['summarized']['last_charged_amount'] = $status === 'approved' ? $amount : $preapproval['summarized']['last_charged_amount'];
 
-        // Calcular próximo pagamento
+        // Calcular próximo pagamento baseado na data de vencimento atual (não em "agora")
         $freq = $autoRecurring['frequency'];
         $freqType = $autoRecurring['frequency_type'];
-        $preapproval['next_payment_date'] = date('Y-m-d\TH:i:s.000-04:00', strtotime("+{$freq} {$freqType}"));
+        $currentNextDate = $preapproval['next_payment_date'] ?? $now;
+        $baseTimestamp = strtotime($currentNextDate);
+        if ($baseTimestamp === false) {
+            $baseTimestamp = time();
+        }
+        $preapproval['next_payment_date'] = date('Y-m-d\TH:i:s.000-04:00', strtotime("+{$freq} {$freqType}", $baseTimestamp));
         $preapproval['last_modified'] = date('Y-m-d\TH:i:s.000-04:00');
 
         $preapprovals[$id] = $preapproval;
@@ -623,10 +628,15 @@ class PreapprovalController
         $preapproval['summarized']['last_charged_date'] = $status === 'approved' ? $now : $preapproval['summarized']['last_charged_date'];
         $preapproval['summarized']['last_charged_amount'] = $status === 'approved' ? $amount : $preapproval['summarized']['last_charged_amount'];
 
-        // Calcular próximo pagamento
+        // Calcular próximo pagamento baseado na data de vencimento atual (não em "agora")
         $freq = $autoRecurring['frequency'];
         $freqType = $autoRecurring['frequency_type'];
-        $preapproval['next_payment_date'] = date('Y-m-d\TH:i:s.000-04:00', strtotime("+{$freq} {$freqType}"));
+        $currentNextDate = $preapproval['next_payment_date'] ?? $now;
+        $baseTimestamp = strtotime($currentNextDate);
+        if ($baseTimestamp === false) {
+            $baseTimestamp = time();
+        }
+        $preapproval['next_payment_date'] = date('Y-m-d\TH:i:s.000-04:00', strtotime("+{$freq} {$freqType}", $baseTimestamp));
         $preapproval['last_modified'] = date('Y-m-d\TH:i:s.000-04:00');
 
         $preapprovals[$preapprovalId] = $preapproval;

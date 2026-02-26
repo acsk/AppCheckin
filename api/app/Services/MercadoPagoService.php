@@ -1010,6 +1010,8 @@ class MercadoPagoService
             'transaction_amount' => $data['auto_recurring']['transaction_amount'] ?? 0,
             'date_approved' => $data['date_created'] ?? null,
             'date_created' => $data['date_created'] ?? null,
+            'next_payment_date' => $data['next_payment_date'] ?? null,
+            'auto_recurring' => $data['auto_recurring'] ?? [],
             'payer' => [
                 'email' => $data['payer_email'] ?? null,
                 'id' => $data['payer_id'] ?? null

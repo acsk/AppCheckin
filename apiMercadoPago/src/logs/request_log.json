@@ -1518,5 +1518,255 @@
             "content_type": "",
             "authorization": ""
         }
+    },
+    {
+        "time": "2026-02-26 00:07:20",
+        "method": "GET",
+        "uri": "\/api\/recurring\/search",
+        "query": "external_reference=MAT-189-1772063327",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:10:04",
+        "method": "GET",
+        "uri": "\/recurring",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:10:25",
+        "method": "GET",
+        "uri": "\/api\/recurring\/search",
+        "query": "external_reference=MAT-189-1772063327",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:10:25",
+        "method": "GET",
+        "uri": "\/api\/webhook-logs",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:10:37",
+        "method": "POST",
+        "uri": "\/api\/recurring\/charge",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:10:37",
+        "method": "GET",
+        "uri": "\/v1\/payments\/74748757228",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:10:37",
+        "method": "GET",
+        "uri": "\/v1\/payments\/74748757228",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:10:37",
+        "method": "GET",
+        "uri": "\/api\/webhook-logs",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:13:13",
+        "method": "GET",
+        "uri": "\/v1\/payments\/search",
+        "query": "external_reference=MAT-189-1772063327&sort=date_created&criteria=desc",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:14:20",
+        "method": "GET",
+        "uri": "\/api\/recurring\/search",
+        "query": "external_reference=MAT-189-1772063327",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:14:20",
+        "method": "GET",
+        "uri": "\/api\/webhook-logs",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:14:26",
+        "method": "GET",
+        "uri": "\/recurring",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:14:28",
+        "method": "GET",
+        "uri": "\/api\/recurring\/search",
+        "query": "external_reference=MAT-189-1772063327",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:14:28",
+        "method": "GET",
+        "uri": "\/api\/webhook-logs",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:14:34",
+        "method": "POST",
+        "uri": "\/api\/recurring\/charge",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:14:34",
+        "method": "GET",
+        "uri": "\/v1\/payments\/60088982616",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:14:34",
+        "method": "GET",
+        "uri": "\/v1\/payments\/60088982616",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:14:34",
+        "method": "GET",
+        "uri": "\/api\/webhook-logs",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:32:14",
+        "method": "GET",
+        "uri": "\/recurring",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:32:16",
+        "method": "GET",
+        "uri": "\/api\/recurring\/search",
+        "query": "external_reference=MAT-189-1772063327",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:32:17",
+        "method": "GET",
+        "uri": "\/api\/webhook-logs",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:33:08",
+        "method": "POST",
+        "uri": "\/api\/recurring\/charge",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:33:09",
+        "method": "GET",
+        "uri": "\/v1\/payments\/21731464234",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:33:09",
+        "method": "GET",
+        "uri": "\/v1\/payments\/21731464234",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:33:09",
+        "method": "GET",
+        "uri": "\/api\/webhook-logs",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
     }
 ]
