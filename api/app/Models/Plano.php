@@ -34,7 +34,37 @@ class Plano
         $stmt = $this->db->prepare($sql);
         $stmt->execute([$this->tenantId]);
         
-        return $stmt->fetchAll();
+        $planos = $stmt->fetchAll();
+
+        // Buscar ciclos de cada plano
+        if (!empty($planos)) {
+            $planoIds = array_column($planos, 'id');
+            $placeholders = implode(',', array_fill(0, count($planoIds), '?'));
+            
+            $sqlCiclos = "SELECT pc.*, af.codigo as frequencia_codigo, af.nome as frequencia_nome, af.meses as frequencia_meses
+                          FROM plano_ciclos pc
+                          LEFT JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
+                          WHERE pc.plano_id IN ({$placeholders}) AND pc.tenant_id = ? AND pc.ativo = 1
+                          ORDER BY pc.meses ASC";
+            
+            $stmtCiclos = $this->db->prepare($sqlCiclos);
+            $stmtCiclos->execute(array_merge($planoIds, [$this->tenantId]));
+            $ciclos = $stmtCiclos->fetchAll();
+
+            // Agrupar ciclos por plano_id
+            $ciclosPorPlano = [];
+            foreach ($ciclos as $ciclo) {
+                $ciclosPorPlano[$ciclo['plano_id']][] = $ciclo;
+            }
+
+            // Adicionar ciclos a cada plano
+            foreach ($planos as &$plano) {
+                $plano['ciclos'] = $ciclosPorPlano[$plano['id']] ?? [];
+            }
+            unset($plano);
+        }
+
+        return $planos;
     }
 
     /**

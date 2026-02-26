@@ -34,11 +34,14 @@ export default function FormMatriculaScreen() {
   
   const [modalidades, setModalidades] = useState([]);
   const [planosDisponiveis, setPlanosDisponiveis] = useState([]);
+  const [ciclosDisponiveis, setCiclosDisponiveis] = useState([]);
+  const [loadingCiclos, setLoadingCiclos] = useState(false);
 
   const [formData, setFormData] = useState({
     usuario_id: '',
     modalidade_id: '',
     plano_id: '',
+    plano_ciclo_id: '',
   });
 
   useEffect(() => {
@@ -62,9 +65,42 @@ export default function FormMatriculaScreen() {
       carregarPlanos(formData.modalidade_id);
     } else {
       setPlanosDisponiveis([]);
-      setFormData((prev) => ({ ...prev, plano_id: '' }));
+      setCiclosDisponiveis([]);
+      setFormData((prev) => ({ ...prev, plano_id: '', plano_ciclo_id: '' }));
     }
   }, [formData.modalidade_id]);
+
+  useEffect(() => {
+    if (!formData.plano_id) {
+      setCiclosDisponiveis([]);
+      setFormData((prev) => ({ ...prev, plano_ciclo_id: '' }));
+      return;
+    }
+
+    const planoSelecionado = planosDisponiveis.find(
+      (plano) => plano.id === parseInt(formData.plano_id)
+    );
+
+    if (planoSelecionado?.ciclos?.length) {
+      const ciclosOrdenados = [...planoSelecionado.ciclos].sort((a, b) => a.meses - b.meses);
+      setCiclosDisponiveis(ciclosOrdenados);
+      setFormData((prev) => {
+        const cicloAtualValido = ciclosOrdenados.some(
+          (ciclo) => ciclo.id.toString() === prev.plano_ciclo_id
+        );
+        return {
+          ...prev,
+          plano_ciclo_id:
+            cicloAtualValido || ciclosOrdenados.length !== 1
+              ? prev.plano_ciclo_id
+              : ciclosOrdenados[0].id.toString(),
+        };
+      });
+      return;
+    }
+
+    carregarCiclos(formData.plano_id);
+  }, [formData.plano_id, planosDisponiveis]);
 
   const carregarDados = async () => {
     setLoading(true);
@@ -135,6 +171,28 @@ export default function FormMatriculaScreen() {
     }
   };
 
+  const carregarCiclos = async (planoId) => {
+    try {
+      setLoadingCiclos(true);
+      setCiclosDisponiveis([]);
+      const response = await planoService.listarCiclos(planoId);
+      const lista = Array.isArray(response)
+        ? response
+        : response?.ciclos || response?.data?.ciclos || [];
+      const ciclosOrdenados = lista.slice().sort((a, b) => a.meses - b.meses);
+      setCiclosDisponiveis(ciclosOrdenados);
+      setFormData((prev) => ({
+        ...prev,
+        plano_ciclo_id: ciclosOrdenados.length === 1 ? ciclosOrdenados[0].id.toString() : '',
+      }));
+    } catch (error) {
+      console.error('❌ Erro ao carregar ciclos:', error);
+      setCiclosDisponiveis([]);
+    } finally {
+      setLoadingCiclos(false);
+    }
+  };
+
   const selecionarAluno = (alunoId) => {
     setFormData((prev) => ({ ...prev, usuario_id: alunoId.toString() }));
     setErrors((prev) => ({ ...prev, usuario_id: undefined }));
@@ -170,6 +228,9 @@ export default function FormMatriculaScreen() {
     if (!formData.plano_id) {
       newErrors.plano_id = 'Selecione um plano';
     }
+    if (!formData.plano_ciclo_id) {
+      newErrors.plano_ciclo_id = 'Selecione um ciclo de pagamento';
+    }
 
     // Se houver erros, mostrar e não prosseguir
     if (Object.keys(newErrors).length > 0) {
@@ -191,6 +252,7 @@ export default function FormMatriculaScreen() {
       const payload = {
         usuario_id: parseInt(formData.usuario_id),
         plano_id: parseInt(formData.plano_id),
+        plano_ciclo_id: parseInt(formData.plano_ciclo_id),
       };
       console.log('📤 Payload:', payload);
       
@@ -255,6 +317,13 @@ export default function FormMatriculaScreen() {
       style: 'currency',
       currency: 'BRL',
     }).format(value || 0);
+  };
+
+  const getCicloLabel = (ciclo) => {
+    if (!ciclo) return '-';
+    const meses = Number(ciclo.meses || 0);
+    const frequencia = ciclo.frequencia_nome || ciclo.nome || 'Ciclo';
+    return `${frequencia} • ${meses} ${meses === 1 ? 'mês' : 'meses'}`;
   };
 
   if (loading) {
@@ -446,34 +515,63 @@ export default function FormMatriculaScreen() {
             {/* Planos - Botões Card */}
             {formData.modalidade_id && (
               <View className="mb-5">
-                <Text className="mb-2 text-sm font-semibold text-slate-700">Plano *</Text>
+                <View className="mb-3 flex-row items-center justify-between">
+                  <Text className="text-sm font-semibold text-slate-700">Plano *</Text>
+                  <Text className="text-xs text-slate-500">Escolha um plano</Text>
+                </View>
                 {planosDisponiveis.length > 0 ? (
                   <>
-                    <View className="flex-row flex-wrap gap-3">
+                    <View className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <View className="flex-row flex-wrap gap-3">
                       {planosDisponiveis.map((plano) => (
                         <Pressable
                           key={plano.id}
-                          className={`min-w-[200px] flex-1 rounded-xl border-2 p-4 ${formData.plano_id === plano.id.toString() ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200 bg-white'} ${errors.plano_id && !formData.plano_id ? 'border-rose-300' : ''}`}
-                          style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                          className={`min-w-[190px] flex-1 rounded-2xl border p-4 shadow-sm ${
+                            formData.plano_id === plano.id.toString()
+                              ? 'border-emerald-400 bg-emerald-50/70'
+                              : 'border-slate-200 bg-white'
+                          } ${errors.plano_id && !formData.plano_id ? 'border-rose-300' : ''}`}
+                          style={({ pressed }) => [
+                            { flexBasis: 210, flexGrow: 1, minHeight: 150 },
+                            pressed && { opacity: 0.85 }
+                          ]}
                           onPress={() => {
-                            setFormData((prev) => ({ ...prev, plano_id: plano.id.toString() }));
-                            setErrors((prev) => ({ ...prev, plano_id: undefined }));
+                            setFormData((prev) => ({
+                              ...prev,
+                              plano_id: plano.id.toString(),
+                              plano_ciclo_id: '',
+                            }));
+                            setErrors((prev) => ({ ...prev, plano_id: undefined, plano_ciclo_id: undefined }));
                           }}
                         >
                           <View className="flex-row items-center justify-between">
-                            <Text className={`text-[15px] font-semibold ${formData.plano_id === plano.id.toString() ? 'text-emerald-700' : 'text-slate-800'}`}>
+                            <Text
+                              className={`text-[14px] font-semibold ${
+                                formData.plano_id === plano.id.toString()
+                                  ? 'text-emerald-700'
+                                  : 'text-slate-800'
+                              }`}
+                            >
                               {plano.nome}
                             </Text>
                             {formData.plano_id === plano.id.toString() && (
-                              <Feather name="check-circle" size={20} color="#10b981" />
+                              <View className="h-6 w-6 items-center justify-center rounded-full bg-emerald-100">
+                                <Feather name="check" size={14} color="#10b981" />
+                              </View>
                             )}
                           </View>
                           
-                          <Text className={`mt-2 text-xl font-bold ${formData.plano_id === plano.id.toString() ? 'text-emerald-600' : 'text-slate-700'}`}>
+                          <Text
+                            className={`mt-2 text-lg font-bold ${
+                              formData.plano_id === plano.id.toString()
+                                ? 'text-emerald-600'
+                                : 'text-slate-700'
+                            }`}
+                          >
                             {formatCurrency(plano.valor)}
                           </Text>
 
-                          <View className="mt-3 gap-2">
+                          <View className="mt-3 gap-2 border-t border-slate-100 pt-3">
                             <View className="flex-row items-center gap-2">
                               <Feather name="calendar" size={14} color="#94a3b8" />
                               <Text className="text-xs text-slate-500">
@@ -489,6 +587,7 @@ export default function FormMatriculaScreen() {
                           </View>
                         </Pressable>
                       ))}
+                      </View>
                     </View>
                     {errors.plano_id && (
                       <View className="mt-2 flex-row items-center gap-2">
@@ -502,6 +601,98 @@ export default function FormMatriculaScreen() {
                     <Feather name="alert-circle" size={32} color="#d1d5db" />
                     <Text className="mt-3 text-sm text-slate-400">
                       Nenhum plano disponível para esta modalidade
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Ciclos do Plano */}
+            {formData.plano_id && (
+              <View className="mb-5">
+                <View className="mb-3 flex-row items-center justify-between">
+                  <Text className="text-sm font-semibold text-slate-700">Ciclo de Pagamento *</Text>
+                  <Text className="text-xs text-slate-500">Selecione o ciclo</Text>
+                </View>
+                {loadingCiclos ? (
+                  <View className="items-center rounded-lg border border-slate-200 bg-slate-50 px-6 py-6">
+                    <ActivityIndicator size="small" color="#f97316" />
+                    <Text className="mt-2 text-xs text-slate-500">Carregando ciclos...</Text>
+                  </View>
+                ) : ciclosDisponiveis.length > 0 ? (
+                  <>
+                    <View className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <View className="flex-row flex-wrap gap-3">
+                        {ciclosDisponiveis.map((ciclo) => {
+                          const cicloSelecionado = formData.plano_ciclo_id === ciclo.id.toString();
+                          const desconto = Number(ciclo.desconto_percentual || 0);
+                          return (
+                            <Pressable
+                              key={ciclo.id}
+                              className={`min-w-[190px] flex-1 rounded-2xl border p-4 shadow-sm ${
+                                cicloSelecionado ? 'border-emerald-400 bg-emerald-50/70' : 'border-slate-200 bg-white'
+                              } ${errors.plano_ciclo_id && !formData.plano_ciclo_id ? 'border-rose-300' : ''}`}
+                              style={({ pressed }) => [
+                                { flexBasis: 210, flexGrow: 1, minHeight: 130 },
+                                pressed && { opacity: 0.85 }
+                              ]}
+                              onPress={() => {
+                                setFormData((prev) => ({ ...prev, plano_ciclo_id: ciclo.id.toString() }));
+                                setErrors((prev) => ({ ...prev, plano_ciclo_id: undefined }));
+                              }}
+                            >
+                              <View className="flex-row items-center justify-between">
+                                <Text
+                                  className={`text-[14px] font-semibold ${
+                                    cicloSelecionado ? 'text-emerald-700' : 'text-slate-800'
+                                  }`}
+                                >
+                                  {getCicloLabel(ciclo)}
+                                </Text>
+                                {cicloSelecionado && (
+                                  <View className="h-6 w-6 items-center justify-center rounded-full bg-emerald-100">
+                                    <Feather name="check" size={14} color="#10b981" />
+                                  </View>
+                                )}
+                              </View>
+
+                              <Text
+                                className={`mt-2 text-lg font-bold ${
+                                  cicloSelecionado ? 'text-emerald-600' : 'text-slate-700'
+                                }`}
+                              >
+                                {formatCurrency(ciclo.valor)}
+                              </Text>
+
+                              <View className="mt-2 gap-1 border-t border-slate-100 pt-3">
+                                {!!desconto && (
+                                  <Text className="text-xs text-emerald-600">
+                                    {desconto > 0 ? `${desconto}% de desconto` : `${desconto}% de ajuste`}
+                                  </Text>
+                                )}
+                                {ciclo.permite_recorrencia ? (
+                                  <Text className="text-xs text-slate-500">Permite recorrência</Text>
+                                ) : (
+                                  <Text className="text-xs text-slate-500">Pagamento avulso</Text>
+                                )}
+                              </View>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </View>
+                    {errors.plano_ciclo_id && (
+                      <View className="mt-2 flex-row items-center gap-2">
+                        <Feather name="alert-circle" size={14} color="#ef4444" />
+                        <Text className="text-xs font-medium text-rose-500">{errors.plano_ciclo_id}</Text>
+                      </View>
+                    )}
+                  </>
+                ) : (
+                  <View className="items-center rounded-lg border border-slate-200 bg-slate-50 px-6 py-6">
+                    <Feather name="alert-circle" size={28} color="#d1d5db" />
+                    <Text className="mt-2 text-sm text-slate-400">
+                      Nenhum ciclo disponível para este plano
                     </Text>
                   </View>
                 )}
@@ -556,82 +747,115 @@ export default function FormMatriculaScreen() {
       >
         <View className="flex-1 items-center justify-center bg-black/40 px-4">
           <View className="w-full max-w-lg rounded-2xl bg-white shadow-xl">
-            <View className="items-center border-b border-slate-200 px-6 py-5">
-              <View className="mb-3 h-14 w-14 items-center justify-center rounded-full bg-orange-100">
-                <Feather name="check-circle" size={28} color="#f97316" />
+            <View className="items-center border-b border-slate-200 px-6 py-4">
+              <View className="mb-2 h-10 w-10 items-center justify-center rounded-full bg-orange-100">
+                <Feather name="check-circle" size={20} color="#f97316" />
               </View>
-              <Text className="text-lg font-semibold text-slate-800">Confirmar Matrícula</Text>
-              <Text className="text-sm text-slate-500">
+              <Text className="text-base font-semibold text-slate-800">Confirmar Matrícula</Text>
+              <Text className="text-xs text-slate-500">
                 Revise os dados antes de confirmar
               </Text>
             </View>
 
-            <View className="max-h-[420px] px-6 py-5">
+            <View className="px-6 py-4">
               {/* Dados do Aluno */}
-              <View className="mb-5">
-                <Text className="mb-2 text-[11px] font-semibold uppercase text-slate-500">Aluno</Text>
+              <View className="mb-4">
+                <Text className="mb-1 text-[10px] font-semibold uppercase text-slate-400">Aluno</Text>
                 {alunos
                   .filter((a) => a.id === parseInt(formData.usuario_id))
                   .map((aluno) => (
                     <View key={aluno.id} className="flex-row items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                      <View className="h-10 w-10 items-center justify-center rounded-full bg-orange-100">
-                        <Feather name="user" size={18} color="#f97316" />
+                      <View className="h-9 w-9 items-center justify-center rounded-full bg-orange-100">
+                        <Feather name="user" size={16} color="#f97316" />
                       </View>
                       <View className="flex-1">
-                        <Text className="text-sm font-semibold text-slate-800">{aluno.nome}</Text>
-                        <Text className="text-xs text-slate-500">{aluno.email}</Text>
+                        <Text className="text-[13px] font-semibold text-slate-800">{aluno.nome}</Text>
+                        <Text className="text-[11px] text-slate-500">{aluno.email}</Text>
                       </View>
                     </View>
                   ))}
               </View>
 
               {/* Dados da Modalidade */}
-              <View className="mb-5">
-                <Text className="mb-2 text-[11px] font-semibold uppercase text-slate-500">Modalidade</Text>
+              <View className="mb-4">
+                <Text className="mb-1 text-[10px] font-semibold uppercase text-slate-400">Modalidade</Text>
                 {modalidades
                   .filter((m) => m.id === parseInt(formData.modalidade_id))
                   .map((modalidade) => (
                     <View key={modalidade.id} className="flex-row items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                      <View className="h-10 w-10 items-center justify-center rounded-full" style={{ backgroundColor: modalidade.cor || '#f97316' }}>
+                      <View className="h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: modalidade.cor || '#f97316' }}>
                         <MaterialCommunityIcons
                           name={modalidade.icone || 'dumbbell'}
-                          size={20}
+                          size={18}
                           color="#fff"
                         />
                       </View>
                       <View className="flex-1">
-                        <Text className="text-sm font-semibold text-slate-800">{modalidade.nome}</Text>
+                        <Text className="text-[13px] font-semibold text-slate-800">{modalidade.nome}</Text>
                       </View>
                     </View>
                   ))}
               </View>
 
               {/* Dados do Plano */}
-              <View>
-                <Text className="mb-2 text-[11px] font-semibold uppercase text-slate-500">Plano Selecionado</Text>
+              <View className="mb-4">
+                <Text className="mb-1 text-[10px] font-semibold uppercase text-slate-400">Plano Selecionado</Text>
                 {planosDisponiveis
                   .filter((p) => p.id === parseInt(formData.plano_id))
                   .map((plano) => (
-                    <View key={plano.id} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                      <View className="flex-row items-center justify-between">
-                        <Text className="text-sm font-semibold text-slate-800">{plano.nome}</Text>
-                        <Text className="text-base font-bold text-slate-700">
+                    <View key={plano.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <View className="flex-row flex-wrap items-center justify-between gap-2">
+                        <Text className="text-[13px] font-semibold text-slate-800">{plano.nome}</Text>
+                        <Text className="text-sm font-bold text-slate-700">
                           {formatCurrency(plano.valor)}
                         </Text>
                       </View>
-                      <View className="mt-3 gap-2">
-                        <View className="flex-row items-center gap-2">
-                          <Feather name="calendar" size={14} color="#94a3b8" />
-                          <Text className="text-xs text-slate-500">
+                      <View className="mt-2 flex-row flex-wrap gap-2">
+                        <View className="flex-row items-center gap-2 rounded-full bg-white px-2.5 py-1">
+                          <Feather name="calendar" size={11} color="#94a3b8" />
+                          <Text className="text-[11px] text-slate-500">
                             {plano.checkins_semanais}x por semana
                           </Text>
                         </View>
-                        <View className="flex-row items-center gap-2">
-                          <Feather name="clock" size={14} color="#94a3b8" />
-                          <Text className="text-xs text-slate-500">
-                            {plano.duracao_dias} dias de duração
+                        <View className="flex-row items-center gap-2 rounded-full bg-white px-2.5 py-1">
+                          <Feather name="clock" size={11} color="#94a3b8" />
+                          <Text className="text-[11px] text-slate-500">
+                            {plano.duracao_dias} dias
                           </Text>
                         </View>
+                      </View>
+                    </View>
+                  ))}
+              </View>
+
+              {/* Dados do Ciclo */}
+              <View>
+                <Text className="mb-1 text-[10px] font-semibold uppercase text-slate-400">Ciclo Selecionado</Text>
+                {ciclosDisponiveis
+                  .filter((c) => c.id === parseInt(formData.plano_ciclo_id))
+                  .map((ciclo) => (
+                    <View key={ciclo.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <View className="flex-row flex-wrap items-center justify-between gap-2">
+                        <Text className="text-[13px] font-semibold text-slate-800">{getCicloLabel(ciclo)}</Text>
+                        <Text className="text-sm font-bold text-slate-700">
+                          {formatCurrency(ciclo.valor)}
+                        </Text>
+                      </View>
+                      <View className="mt-2 flex-row flex-wrap gap-2">
+                        <View className="rounded-full bg-white px-2.5 py-1">
+                          <Text className="text-[11px] text-slate-500">
+                            {ciclo.permite_recorrencia ? 'Permite recorrência' : 'Pagamento avulso'}
+                          </Text>
+                        </View>
+                        {!!Number(ciclo.desconto_percentual || 0) && (
+                          <View className="rounded-full bg-emerald-50 px-2.5 py-1">
+                            <Text className="text-[11px] text-emerald-600">
+                              {Number(ciclo.desconto_percentual) > 0
+                                ? `${Number(ciclo.desconto_percentual)}% de desconto`
+                                : `${Number(ciclo.desconto_percentual)}% de ajuste`}
+                            </Text>
+                          </View>
+                        )}
                       </View>
                     </View>
                   ))}

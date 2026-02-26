@@ -6,12 +6,74 @@ use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use App\Models\Usuario;
 use App\Models\Plano;
+use OpenApi\Attributes as OA;
 
+/**
+ * MatriculaController
+ * 
+ * CRUD completo para gestão de matrículas de alunos.
+ * Controla criação, listagem, cancelamento, exclusão e pagamentos.
+ * 
+ * Rotas:
+ * - POST   /admin/matriculas                              - Criar nova matrícula
+ * - GET    /admin/matriculas                              - Listar matrículas
+ * - GET    /admin/matriculas/{id}                         - Buscar matrícula por ID
+ * - GET    /admin/matriculas/{id}/pagamentos              - Buscar pagamentos da matrícula
+ * - GET    /admin/matriculas/{id}/delete-preview          - Prévia de exclusão
+ * - DELETE /admin/matriculas/{id}                         - Deletar matrícula
+ * - POST   /admin/matriculas/{id}/cancelar                - Cancelar matrícula
+ * - POST   /admin/matriculas/contas/{id}/baixa            - Dar baixa em pagamento
+ * - PUT    /admin/matriculas/{id}/proxima-data-vencimento - Atualizar data de vencimento
+ * - GET    /admin/matriculas/vencimentos/hoje             - Vencimentos do dia
+ * - GET    /admin/matriculas/vencimentos/proximos         - Próximos vencimentos
+ */
 class MatriculaController
 {
     /**
      * Criar nova matrícula
      */
+    #[OA\Post(
+        path: "/admin/matriculas",
+        summary: "Criar nova matrícula",
+        description: "Cria uma matrícula para um aluno em um plano. Se já existir matrícula vencida na mesma modalidade, ela é reutilizada (UPDATE). Aceita opcionalmente um plano_ciclo_id para definir valor e duração do ciclo de cobrança.",
+        tags: ["Matrículas"],
+        security: [["bearerAuth" => []]],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ["plano_id", "dia_vencimento"],
+                properties: [
+                    new OA\Property(property: "usuario_id", type: "integer", description: "ID do usuário (usado para buscar o aluno)"),
+                    new OA\Property(property: "aluno_id", type: "integer", description: "ID do aluno (alternativa ao usuario_id)"),
+                    new OA\Property(property: "plano_id", type: "integer", description: "ID do plano"),
+                    new OA\Property(property: "plano_ciclo_id", type: "integer", nullable: true, description: "ID do ciclo do plano (define valor e duração). Se não informado, usa valores do plano base."),
+                    new OA\Property(property: "dia_vencimento", type: "integer", description: "Dia do mês para vencimento (1-31)"),
+                    new OA\Property(property: "valor", type: "number", format: "float", nullable: true, description: "Valor da matrícula (se não informado, usa o valor do ciclo ou plano)"),
+                    new OA\Property(property: "data_inicio", type: "string", format: "date", nullable: true, description: "Data de início (padrão: hoje)"),
+                    new OA\Property(property: "observacoes", type: "string", nullable: true, description: "Observações sobre a matrícula"),
+                    new OA\Property(property: "motivo", type: "string", nullable: true, description: "Motivo da matrícula (nova, renovacao, troca_plano)")
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(
+                response: 201,
+                description: "Matrícula criada com sucesso",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "message", type: "string", example: "Matrícula realizada com sucesso"),
+                        new OA\Property(property: "matricula", type: "object"),
+                        new OA\Property(property: "pagamentos", type: "array", items: new OA\Items(type: "object")),
+                        new OA\Property(property: "total_pagamentos", type: "number"),
+                        new OA\Property(property: "info", type: "string", example: "Acesso garantido até 25/03/2026")
+                    ]
+                )
+            ),
+            new OA\Response(response: 400, description: "Dados inválidos ou aluno já possui matrícula ativa na modalidade"),
+            new OA\Response(response: 404, description: "Plano, ciclo ou usuário não encontrado"),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
     public function criar(Request $request, Response $response): Response
     {
         $tenantId = $request->getAttribute('tenantId', 1);
@@ -138,17 +200,51 @@ class MatriculaController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
         }
 
+        // Buscar plano_ciclo se informado
+        $planoCicloId = !empty($data['plano_ciclo_id']) ? (int) $data['plano_ciclo_id'] : null;
+        $planoCiclo = null;
+        
+        if ($planoCicloId) {
+            $stmtCiclo = $db->prepare("
+                SELECT pc.*, af.codigo as frequencia_codigo, af.nome as frequencia_nome, af.meses as frequencia_meses
+                FROM plano_ciclos pc
+                LEFT JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
+                WHERE pc.id = ? AND pc.plano_id = ? AND pc.tenant_id = ? AND pc.ativo = 1
+            ");
+            $stmtCiclo->execute([$planoCicloId, $planoId, $tenantId]);
+            $planoCiclo = $stmtCiclo->fetch();
+            
+            if (!$planoCiclo) {
+                $response->getBody()->write(json_encode(['error' => 'Ciclo de plano não encontrado ou inativo']));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+        }
+
         // Verificar se o plano tem valor 0 (teste) e configurar automaticamente
         $periodoTeste = 0;
         $dataInicioCobranca = null;
-        $valorMatricula = $data['valor'] ?? $plano['valor'];
         
-        // Calcular próxima data de vencimento (data_inicio + duracao_dias)
+        // Se tem ciclo selecionado, usar valor e duração do ciclo
+        if ($planoCiclo) {
+            $valorMatricula = $data['valor'] ?? $planoCiclo['valor'];
+            $mesesCiclo = (int) ($planoCiclo['meses'] ?? $planoCiclo['frequencia_meses'] ?? 1);
+            $duracaoDias = $mesesCiclo * 30; // aproximação em dias
+        } else {
+            $valorMatricula = $data['valor'] ?? $plano['valor'];
+            $duracaoDias = (int) $plano['duracao_dias'];
+        }
+        
+        // Calcular próxima data de vencimento (data_inicio + duracao)
         $dataInicio = !empty($data['data_inicio']) ? $data['data_inicio'] : date('Y-m-d');
         $dataInicioObj = new \DateTime($dataInicio);
-        $duracaoDias = (int) $plano['duracao_dias'];
         $proximaDataVencimento = clone $dataInicioObj;
-        $proximaDataVencimento->modify("+{$duracaoDias} days");
+        
+        if ($planoCiclo) {
+            $mesesCiclo = (int) ($planoCiclo['meses'] ?? $planoCiclo['frequencia_meses'] ?? 1);
+            $proximaDataVencimento->modify("+{$mesesCiclo} months");
+        } else {
+            $proximaDataVencimento->modify("+{$duracaoDias} days");
+        }
         
         if ($plano['valor'] == 0) {
             // Plano teste: marcar como período teste e definir data de início de cobrança
@@ -263,8 +359,8 @@ class MatriculaController
         // Determinar datas e motivo
         $dataMatricula = date('Y-m-d');
         $dataInicio = $data['data_inicio'] ?? $dataMatricula;
-        $dataVencimento = date('Y-m-d', strtotime($dataInicio . " +{$plano['duracao_dias']} days"));
-        $valor = $data['valor'] ?? $plano['valor'];
+        $dataVencimento = date('Y-m-d', strtotime($dataInicio . " +{$duracaoDias} days"));
+        $valor = $valorMatricula;
         $motivo = $data['motivo'] ?? 'nova';
         $matriculaAnteriorId = null;
         $planoAnteriorId = null;
@@ -347,6 +443,7 @@ class MatriculaController
             $stmtUpdateMatricula = $db->prepare("
                 UPDATE matriculas
                 SET plano_id = ?,
+                    plano_ciclo_id = ?,
                     data_matricula = ?,
                     data_inicio = ?,
                     data_vencimento = ?,
@@ -365,6 +462,7 @@ class MatriculaController
             ");
             $stmtUpdateMatricula->execute([
                 $planoId,
+                $planoCicloId,
                 $dataMatricula,
                 $dataInicio,
                 $dataVencimento,
@@ -387,16 +485,17 @@ class MatriculaController
             // - PENDENTE se for paga (primeira parcela precisa ser paga)
             $stmtInsert = $db->prepare("
                 INSERT INTO matriculas 
-                (tenant_id, aluno_id, plano_id, data_matricula, data_inicio, data_vencimento, 
+                (tenant_id, aluno_id, plano_id, plano_ciclo_id, data_matricula, data_inicio, data_vencimento, 
                  valor, status_id, motivo_id, matricula_anterior_id, plano_anterior_id, observacoes, criado_por,
                  dia_vencimento, periodo_teste, data_inicio_cobranca, proxima_data_vencimento)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             
             $stmtInsert->execute([
                 $tenantId,
                 $alunoId,
                 $planoId,
+                $planoCicloId,
                 $dataMatricula,
                 $dataInicio,
                 $dataVencimento,
@@ -466,7 +565,7 @@ class MatriculaController
                     $alunoId,
                     $matriculaId,
                     $planoId,
-                    $valor,
+                    $valorMatricula,
                     $dataInicio, // primeiro pagamento vence na data de início
                     $adminId
                 ]);
@@ -534,6 +633,76 @@ class MatriculaController
     /**
      * Listar matrículas
      */
+    #[OA\Get(
+        path: "/admin/matriculas",
+        summary: "Listar matrículas",
+        description: "Retorna lista de matrículas do tenant. Suporta paginação, filtro por aluno e por status.",
+        tags: ["Matrículas"],
+        parameters: [
+            new OA\Parameter(
+                name: "aluno_id",
+                description: "Filtrar por ID do aluno",
+                in: "query",
+                schema: new OA\Schema(type: "integer")
+            ),
+            new OA\Parameter(
+                name: "status",
+                description: "Filtrar por status (ativa, pendente, vencida, cancelada, finalizada)",
+                in: "query",
+                schema: new OA\Schema(type: "string", enum: ["ativa", "pendente", "vencida", "cancelada", "finalizada"])
+            ),
+            new OA\Parameter(
+                name: "incluir_inativos",
+                description: "Incluir alunos inativos (true/false)",
+                in: "query",
+                schema: new OA\Schema(type: "string", enum: ["true", "false"], default: "false")
+            ),
+            new OA\Parameter(
+                name: "pagina",
+                description: "Número da página (ativa paginação)",
+                in: "query",
+                schema: new OA\Schema(type: "integer", default: 1)
+            ),
+            new OA\Parameter(
+                name: "por_pagina",
+                description: "Registros por página",
+                in: "query",
+                schema: new OA\Schema(type: "integer", default: 50)
+            )
+        ],
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Lista de matrículas",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "matriculas", type: "array", items: new OA\Items(
+                            properties: [
+                                new OA\Property(property: "id", type: "integer"),
+                                new OA\Property(property: "aluno_id", type: "integer"),
+                                new OA\Property(property: "usuario_nome", type: "string"),
+                                new OA\Property(property: "usuario_email", type: "string"),
+                                new OA\Property(property: "plano_id", type: "integer"),
+                                new OA\Property(property: "plano_nome", type: "string"),
+                                new OA\Property(property: "valor", type: "number"),
+                                new OA\Property(property: "data_inicio", type: "string", format: "date"),
+                                new OA\Property(property: "proxima_data_vencimento", type: "string", format: "date"),
+                                new OA\Property(property: "status_codigo", type: "string"),
+                                new OA\Property(property: "status_nome", type: "string"),
+                                new OA\Property(property: "modalidade_nome", type: "string", nullable: true)
+                            ]
+                        )),
+                        new OA\Property(property: "total", type: "integer"),
+                        new OA\Property(property: "pagina", type: "integer", description: "Presente apenas com paginação"),
+                        new OA\Property(property: "por_pagina", type: "integer", description: "Presente apenas com paginação"),
+                        new OA\Property(property: "total_paginas", type: "integer", description: "Presente apenas com paginação")
+                    ]
+                )
+            ),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
     public function listar(Request $request, Response $response): Response
     {
         $tenantId = $request->getAttribute('tenantId', 1);
@@ -636,6 +805,37 @@ class MatriculaController
     /**
      * Buscar matrícula por ID
      */
+    #[OA\Get(
+        path: "/admin/matriculas/{id}",
+        summary: "Buscar matrícula por ID",
+        description: "Retorna dados completos de uma matrícula, incluindo informações do aluno, plano, modalidade e lista de pagamentos.",
+        tags: ["Matrículas"],
+        parameters: [
+            new OA\Parameter(
+                name: "id",
+                description: "ID da matrícula",
+                in: "path",
+                required: true,
+                schema: new OA\Schema(type: "integer")
+            )
+        ],
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Dados da matrícula",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "matricula", type: "object", description: "Dados completos da matrícula com plano, aluno e modalidade"),
+                        new OA\Property(property: "pagamentos", type: "array", items: new OA\Items(type: "object")),
+                        new OA\Property(property: "total", type: "number", description: "Soma dos valores dos pagamentos")
+                    ]
+                )
+            ),
+            new OA\Response(response: 404, description: "Matrícula não encontrada"),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
     public function buscar(Request $request, Response $response, array $args): Response
     {
         $matriculaId = (int) $args['id'];
@@ -660,7 +860,17 @@ class MatriculaController
                 modalidade.cor as modalidade_cor,
                 sm.codigo as status_codigo,
                 sm.nome as status_nome,
-                admin_criou.nome as criado_por_nome
+                admin_criou.nome as criado_por_nome,
+                pc.id as ciclo_id,
+                pc.meses as ciclo_meses,
+                pc.valor as ciclo_valor,
+                pc.valor_mensal_equivalente as ciclo_valor_mensal_equivalente,
+                pc.desconto_percentual as ciclo_desconto_percentual,
+                pc.permite_recorrencia as ciclo_permite_recorrencia,
+                pc.ativo as ciclo_ativo,
+                af.id as ciclo_frequencia_id,
+                af.codigo as ciclo_frequencia_codigo,
+                af.nome as ciclo_frequencia_nome
             FROM matriculas m
             INNER JOIN alunos a ON m.aluno_id = a.id
             INNER JOIN usuarios u ON a.usuario_id = u.id
@@ -668,6 +878,8 @@ class MatriculaController
             INNER JOIN status_matricula sm ON sm.id = m.status_id
             LEFT JOIN modalidades modalidade ON p.modalidade_id = modalidade.id
             LEFT JOIN usuarios admin_criou ON m.criado_por = admin_criou.id
+            LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+            LEFT JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
             WHERE m.id = ? AND m.tenant_id = ?
         ";
         
@@ -679,6 +891,40 @@ class MatriculaController
             $response->getBody()->write(json_encode(['error' => 'Matrícula não encontrada']));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
         }
+
+        // Montar objeto plano_ciclo se existir
+        if ($matricula['plano_ciclo_id']) {
+            $matricula['plano_ciclo'] = [
+                'id' => (int) $matricula['ciclo_id'],
+                'meses' => $matricula['ciclo_meses'] !== null ? (int) $matricula['ciclo_meses'] : null,
+                'valor' => $matricula['ciclo_valor'],
+                'valor_mensal_equivalente' => $matricula['ciclo_valor_mensal_equivalente'],
+                'desconto_percentual' => $matricula['ciclo_desconto_percentual'],
+                'permite_recorrencia' => $matricula['ciclo_permite_recorrencia'] !== null ? (bool) $matricula['ciclo_permite_recorrencia'] : null,
+                'ativo' => $matricula['ciclo_ativo'] !== null ? (bool) $matricula['ciclo_ativo'] : null,
+                'frequencia' => $matricula['ciclo_frequencia_id'] ? [
+                    'id' => (int) $matricula['ciclo_frequencia_id'],
+                    'codigo' => $matricula['ciclo_frequencia_codigo'],
+                    'nome' => $matricula['ciclo_frequencia_nome'],
+                ] : null,
+            ];
+        } else {
+            $matricula['plano_ciclo'] = null;
+        }
+
+        // Limpar campos auxiliares do ciclo do objeto principal
+        unset(
+            $matricula['ciclo_id'],
+            $matricula['ciclo_meses'],
+            $matricula['ciclo_valor'],
+            $matricula['ciclo_valor_mensal_equivalente'],
+            $matricula['ciclo_desconto_percentual'],
+            $matricula['ciclo_permite_recorrencia'],
+            $matricula['ciclo_ativo'],
+            $matricula['ciclo_frequencia_id'],
+            $matricula['ciclo_frequencia_codigo'],
+            $matricula['ciclo_frequencia_nome']
+        );
 
         // Buscar pagamentos da matrícula
         $stmtPagamentos = $db->prepare("
@@ -773,6 +1019,47 @@ class MatriculaController
     /**
      * Buscar pagamentos de uma matrícula
      */
+    #[OA\Get(
+        path: "/admin/matriculas/{id}/pagamentos",
+        summary: "Buscar pagamentos da matrícula",
+        description: "Retorna todos os pagamentos vinculados a uma matrícula, com detalhes de status, forma de pagamento e responsáveis.",
+        tags: ["Matrículas"],
+        parameters: [
+            new OA\Parameter(
+                name: "id",
+                description: "ID da matrícula",
+                in: "path",
+                required: true,
+                schema: new OA\Schema(type: "integer")
+            )
+        ],
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Lista de pagamentos",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "pagamentos", type: "array", items: new OA\Items(
+                            properties: [
+                                new OA\Property(property: "id", type: "integer"),
+                                new OA\Property(property: "valor", type: "number"),
+                                new OA\Property(property: "data_vencimento", type: "string", format: "date"),
+                                new OA\Property(property: "data_pagamento", type: "string", format: "date", nullable: true),
+                                new OA\Property(property: "status_pagamento_nome", type: "string"),
+                                new OA\Property(property: "forma_pagamento_nome", type: "string", nullable: true),
+                                new OA\Property(property: "aluno_nome", type: "string"),
+                                new OA\Property(property: "plano_nome", type: "string")
+                            ]
+                        )),
+                        new OA\Property(property: "total", type: "integer")
+                    ]
+                )
+            ),
+            new OA\Response(response: 404, description: "Matrícula não encontrada"),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
     public function buscarPagamentos(Request $request, Response $response, array $args): Response
     {
         $matriculaId = (int) $args['id'];
@@ -826,6 +1113,46 @@ class MatriculaController
     /**
      * Cancelar matrícula
      */
+    #[OA\Post(
+        path: "/admin/matriculas/{id}/cancelar",
+        summary: "Cancelar matrícula",
+        description: "Cancela uma matrícula ativa ou pendente. Remove o plano do usuário e registra o motivo do cancelamento.",
+        tags: ["Matrículas"],
+        parameters: [
+            new OA\Parameter(
+                name: "id",
+                description: "ID da matrícula",
+                in: "path",
+                required: true,
+                schema: new OA\Schema(type: "integer")
+            )
+        ],
+        security: [["bearerAuth" => []]],
+        requestBody: new OA\RequestBody(
+            content: new OA\JsonContent(
+                properties: [
+                    new OA\Property(property: "motivo_cancelamento", type: "string", nullable: true, description: "Motivo do cancelamento", example: "Aluno solicitou cancelamento")
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Matrícula cancelada",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "message", type: "string", example: "Matrícula cancelada com sucesso"),
+                        new OA\Property(property: "matricula", type: "object"),
+                        new OA\Property(property: "pagamentos", type: "array", items: new OA\Items(type: "object")),
+                        new OA\Property(property: "total", type: "number")
+                    ]
+                )
+            ),
+            new OA\Response(response: 400, description: "Matrícula já está cancelada"),
+            new OA\Response(response: 404, description: "Matrícula não encontrada"),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
     public function cancelar(Request $request, Response $response, array $args): Response
     {
         $matriculaId = (int) $args['id'];
@@ -926,6 +1253,53 @@ class MatriculaController
     /**
      * Prévia completa de exclusão da matrícula
      */
+    #[OA\Get(
+        path: "/admin/matriculas/{id}/delete-preview",
+        summary: "Prévia de exclusão da matrícula",
+        description: "Retorna um resumo completo de todos os dados que serão afetados pela exclusão: matrícula, pagamentos, assinaturas e registros no MercadoPago. Use antes de confirmar a exclusão.",
+        tags: ["Matrículas"],
+        parameters: [
+            new OA\Parameter(
+                name: "id",
+                description: "ID da matrícula",
+                in: "path",
+                required: true,
+                schema: new OA\Schema(type: "integer")
+            )
+        ],
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Prévia da exclusão com resumo de impacto",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "resumo", type: "object", properties: [
+                            new OA\Property(property: "matricula_id", type: "integer"),
+                            new OA\Property(property: "aluno_id", type: "integer"),
+                            new OA\Property(property: "status", type: "string"),
+                            new OA\Property(property: "total_pagamentos_plano", type: "integer"),
+                            new OA\Property(property: "total_pagamentos_provedor", type: "integer"),
+                            new OA\Property(property: "total_assinaturas", type: "integer"),
+                            new OA\Property(property: "total_assinaturas_mercadopago", type: "integer"),
+                            new OA\Property(property: "valor_total_pagamentos_plano", type: "number"),
+                            new OA\Property(property: "valor_total_pagamentos_provedor", type: "number"),
+                            new OA\Property(property: "impacto", type: "object")
+                        ]),
+                        new OA\Property(property: "matricula", type: "object"),
+                        new OA\Property(property: "aluno", type: "object"),
+                        new OA\Property(property: "plano", type: "object"),
+                        new OA\Property(property: "pagamentos_plano", type: "array", items: new OA\Items(type: "object")),
+                        new OA\Property(property: "assinaturas", type: "array", items: new OA\Items(type: "object")),
+                        new OA\Property(property: "assinaturas_mercadopago", type: "array", items: new OA\Items(type: "object")),
+                        new OA\Property(property: "pagamentos_mercadopago", type: "array", items: new OA\Items(type: "object"))
+                    ]
+                )
+            ),
+            new OA\Response(response: 404, description: "Matrícula não encontrada"),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
     public function deletePreview(Request $request, Response $response, array $args): Response
     {
         $matriculaId = (int) $args['id'];
@@ -1212,6 +1586,37 @@ class MatriculaController
     /**
      * Deletar matrícula (hard delete)
      */
+    #[OA\Delete(
+        path: "/admin/matriculas/{id}",
+        summary: "Deletar matrícula",
+        description: "Exclui permanentemente uma matrícula e todos os registros vinculados: pagamentos do plano, pagamentos MercadoPago, assinaturas MercadoPago. Desvincula assinaturas genéricas. Use delete-preview antes para ver o impacto.",
+        tags: ["Matrículas"],
+        parameters: [
+            new OA\Parameter(
+                name: "id",
+                description: "ID da matrícula",
+                in: "path",
+                required: true,
+                schema: new OA\Schema(type: "integer")
+            )
+        ],
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Matrícula deletada",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "message", type: "string", example: "Matrícula deletada com sucesso"),
+                        new OA\Property(property: "matricula_id", type: "integer")
+                    ]
+                )
+            ),
+            new OA\Response(response: 404, description: "Matrícula não encontrada"),
+            new OA\Response(response: 500, description: "Erro ao deletar matrícula"),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
     public function delete(Request $request, Response $response, array $args): Response
     {
         $matriculaId = (int) $args['id'];
@@ -1303,6 +1708,52 @@ class MatriculaController
     /**
      * Dar baixa em pagamento de plano (marcar como pago)
      */
+    #[OA\Post(
+        path: "/admin/matriculas/contas/{id}/baixa",
+        summary: "Dar baixa em pagamento",
+        description: "Marca um pagamento como pago (status 2). Ativa a matrícula se estava pendente. Cria automaticamente a próxima parcela com base na duração do plano.",
+        tags: ["Matrículas"],
+        parameters: [
+            new OA\Parameter(
+                name: "id",
+                description: "ID do pagamento (pagamentos_plano)",
+                in: "path",
+                required: true,
+                schema: new OA\Schema(type: "integer")
+            )
+        ],
+        security: [["bearerAuth" => []]],
+        requestBody: new OA\RequestBody(
+            content: new OA\JsonContent(
+                properties: [
+                    new OA\Property(property: "data_pagamento", type: "string", format: "date", nullable: true, description: "Data do pagamento (padrão: hoje)"),
+                    new OA\Property(property: "forma_pagamento_id", type: "integer", nullable: true, description: "ID da forma de pagamento"),
+                    new OA\Property(property: "observacoes", type: "string", nullable: true, description: "Observações sobre o pagamento")
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Baixa realizada",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "message", type: "string", example: "Baixa realizada com sucesso"),
+                        new OA\Property(property: "pagamento", type: "object", description: "Pagamento atualizado"),
+                        new OA\Property(property: "proxima_parcela", type: "object", nullable: true, description: "Próxima parcela gerada automaticamente", properties: [
+                            new OA\Property(property: "id", type: "integer"),
+                            new OA\Property(property: "data_vencimento", type: "string", format: "date"),
+                            new OA\Property(property: "valor", type: "number"),
+                            new OA\Property(property: "status", type: "string", example: "Aguardando")
+                        ])
+                    ]
+                )
+            ),
+            new OA\Response(response: 400, description: "Pagamento já está pago"),
+            new OA\Response(response: 404, description: "Pagamento não encontrado"),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
     public function darBaixaConta(Request $request, Response $response, array $args): Response
     {
         $tenantId = $request->getAttribute('tenantId', 1);
@@ -1312,12 +1763,15 @@ class MatriculaController
         
         $pagamentoId = (int) ($args['id'] ?? 0);
         
-        // Buscar pagamento com informações do plano
+        // Buscar pagamento com informações do plano e ciclo
         $stmt = $db->prepare("
-            SELECT pp.*, m.plano_id, p.duracao_dias
+            SELECT pp.*, m.plano_id, m.plano_ciclo_id, p.duracao_dias,
+                   pc.meses as ciclo_meses, af.meses as frequencia_meses
             FROM pagamentos_plano pp
             INNER JOIN matriculas m ON pp.matricula_id = m.id
             INNER JOIN planos p ON pp.plano_id = p.id
+            LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+            LEFT JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
             WHERE pp.id = ? AND pp.tenant_id = ?
         ");
         $stmt->execute([$pagamentoId, $tenantId]);
@@ -1375,9 +1829,18 @@ class MatriculaController
         
         // Criar próxima parcela automaticamente
         try {
-            $duracaoDias = (int) $pagamento['duracao_dias']; // 30, 60, 90, etc
             $dataVencimentoAtual = new \DateTime($pagamento['data_vencimento']);
-            $proximoVencimento = $dataVencimentoAtual->add(new \DateInterval("P{$duracaoDias}D"));
+            
+            // Se matrícula tem ciclo, usar meses do ciclo; senão, usar duracao_dias do plano
+            $mesesCiclo = $pagamento['ciclo_meses'] ?? $pagamento['frequencia_meses'] ?? null;
+            if ($mesesCiclo) {
+                $proximoVencimento = clone $dataVencimentoAtual;
+                $proximoVencimento->modify("+{$mesesCiclo} months");
+            } else {
+                $duracaoDias = (int) $pagamento['duracao_dias'];
+                $proximoVencimento = clone $dataVencimentoAtual;
+                $proximoVencimento->add(new \DateInterval("P{$duracaoDias}D"));
+            }
             
             $stmtProxima = $db->prepare("
                 INSERT INTO pagamentos_plano (
@@ -1453,6 +1916,52 @@ class MatriculaController
     /**
      * Atualizar próxima data de vencimento de uma matrícula
      */
+    #[OA\Put(
+        path: "/admin/matriculas/{id}/proxima-data-vencimento",
+        summary: "Atualizar data de vencimento",
+        description: "Atualiza a próxima data de vencimento de uma matrícula. O status é ajustado automaticamente: se a nova data for passada, status muda para 'vencida'; se for futura e status não era 'ativa', muda para 'ativa'.",
+        tags: ["Matrículas"],
+        parameters: [
+            new OA\Parameter(
+                name: "id",
+                description: "ID da matrícula",
+                in: "path",
+                required: true,
+                schema: new OA\Schema(type: "integer")
+            )
+        ],
+        security: [["bearerAuth" => []]],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ["proxima_data_vencimento"],
+                properties: [
+                    new OA\Property(property: "proxima_data_vencimento", type: "string", format: "date", description: "Nova data de vencimento (YYYY-MM-DD)", example: "2026-03-15")
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Data atualizada",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "message", type: "string", example: "Data de vencimento atualizada com sucesso"),
+                        new OA\Property(property: "matricula_id", type: "integer"),
+                        new OA\Property(property: "proxima_data_vencimento_anterior", type: "string", format: "date"),
+                        new OA\Property(property: "proxima_data_vencimento_nova", type: "string", format: "date"),
+                        new OA\Property(property: "status_anterior", type: "string"),
+                        new OA\Property(property: "status_atual", type: "string"),
+                        new OA\Property(property: "status_nome", type: "string")
+                    ]
+                )
+            ),
+            new OA\Response(response: 404, description: "Matrícula não encontrada"),
+            new OA\Response(response: 422, description: "Data inválida ou não informada"),
+            new OA\Response(response: 500, description: "Erro ao atualizar"),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
     public function atualizarProximaDataVencimento(Request $request, Response $response, array $args): Response
     {
         $db = require __DIR__ . '/../../config/database.php';
@@ -1574,6 +2083,40 @@ class MatriculaController
     /**
      * Listar matrículas com vencimento hoje (para notificações)
      */
+    #[OA\Get(
+        path: "/admin/matriculas/vencimentos/hoje",
+        summary: "Vencimentos do dia",
+        description: "Retorna lista de matrículas ativas com vencimento na data de hoje. Útil para notificações e alertas do painel.",
+        tags: ["Matrículas"],
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Lista de vencimentos",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "vencimentos", type: "array", items: new OA\Items(
+                            properties: [
+                                new OA\Property(property: "id", type: "integer"),
+                                new OA\Property(property: "aluno_id", type: "integer"),
+                                new OA\Property(property: "aluno_nome", type: "string"),
+                                new OA\Property(property: "aluno_email", type: "string"),
+                                new OA\Property(property: "aluno_telefone", type: "string", nullable: true),
+                                new OA\Property(property: "plano_nome", type: "string"),
+                                new OA\Property(property: "valor", type: "number"),
+                                new OA\Property(property: "proxima_data_vencimento", type: "string", format: "date"),
+                                new OA\Property(property: "status_codigo", type: "string"),
+                                new OA\Property(property: "status_nome", type: "string")
+                            ]
+                        )),
+                        new OA\Property(property: "total", type: "integer"),
+                        new OA\Property(property: "data", type: "string", format: "date")
+                    ]
+                )
+            ),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
     public function vencimentosHoje(Request $request, Response $response): Response
     {
         $db = require __DIR__ . '/../../config/database.php';
@@ -1626,6 +2169,53 @@ class MatriculaController
     /**
      * Listar próximos vencimentos (próximos N dias)
      */
+    #[OA\Get(
+        path: "/admin/matriculas/vencimentos/proximos",
+        summary: "Próximos vencimentos",
+        description: "Retorna matrículas ativas com vencimento nos próximos N dias (padrão 7). Inclui a quantidade de dias restantes para cada uma.",
+        tags: ["Matrículas"],
+        parameters: [
+            new OA\Parameter(
+                name: "dias",
+                description: "Número de dias a considerar (padrão: 7)",
+                in: "query",
+                schema: new OA\Schema(type: "integer", default: 7)
+            )
+        ],
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Lista de próximos vencimentos",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "vencimentos", type: "array", items: new OA\Items(
+                            properties: [
+                                new OA\Property(property: "id", type: "integer"),
+                                new OA\Property(property: "aluno_id", type: "integer"),
+                                new OA\Property(property: "aluno_nome", type: "string"),
+                                new OA\Property(property: "aluno_email", type: "string"),
+                                new OA\Property(property: "aluno_telefone", type: "string", nullable: true),
+                                new OA\Property(property: "plano_nome", type: "string"),
+                                new OA\Property(property: "valor", type: "number"),
+                                new OA\Property(property: "proxima_data_vencimento", type: "string", format: "date"),
+                                new OA\Property(property: "dias_restantes", type: "integer"),
+                                new OA\Property(property: "status_codigo", type: "string"),
+                                new OA\Property(property: "status_nome", type: "string")
+                            ]
+                        )),
+                        new OA\Property(property: "total", type: "integer"),
+                        new OA\Property(property: "periodo", type: "object", properties: [
+                            new OA\Property(property: "inicio", type: "string", format: "date"),
+                            new OA\Property(property: "fim", type: "string", format: "date"),
+                            new OA\Property(property: "dias", type: "integer")
+                        ])
+                    ]
+                )
+            ),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
     public function proximosVencimentos(Request $request, Response $response): Response
     {
         $db = require __DIR__ . '/../../config/database.php';

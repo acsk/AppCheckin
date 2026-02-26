@@ -299,6 +299,18 @@ export default function MatriculaDetalheScreen() {
     }).format(value || 0);
   };
 
+  const getCicloInfo = () => {
+    const ciclo = matricula?.plano_ciclo;
+    if (!ciclo) return null;
+    const frequencia = ciclo.frequencia?.nome || ciclo.frequencia_nome || ciclo.frequencia?.codigo || 'Ciclo';
+    const meses = Number(ciclo.meses || ciclo.frequencia_meses || 0);
+    return {
+      ciclo,
+      frequencia,
+      meses,
+    };
+  };
+
   const isVencido = (dataVencimento) => {
     if (!dataVencimento) return false;
     const [year, month, day] = dataVencimento.split('-');
@@ -394,6 +406,7 @@ export default function MatriculaDetalheScreen() {
   };
 
   const resumo = calcularResumo();
+  const cicloInfo = getCicloInfo();
 
   return (
     <LayoutBase title={`Matrícula #${matricula.id}`}>
@@ -498,9 +511,49 @@ export default function MatriculaDetalheScreen() {
               </View>
             </View>
 
+            {/* Informações do Ciclo (quando existir) */}
+            {cicloInfo && (
+              <View className="border-b border-slate-100 bg-slate-50 px-5 py-4">
+                <View className="mb-3 flex-row items-center justify-between">
+                  <Text className="text-[11px] font-semibold uppercase text-slate-500">Ciclo do Plano</Text>
+                  <View className="rounded-full bg-slate-200 px-2 py-0.5">
+                    <Text className="text-[10px] font-semibold text-slate-600">
+                      {cicloInfo.frequencia}
+                      {cicloInfo.meses ? ` • ${cicloInfo.meses} ${cicloInfo.meses === 1 ? 'mês' : 'meses'}` : ''}
+                    </Text>
+                  </View>
+                </View>
+
+                <View className="flex-row flex-wrap gap-3">
+                  <View className="min-w-[150px] flex-1 rounded-lg border border-slate-200 bg-white px-4 py-3">
+                    <Text className="text-[10px] font-semibold uppercase text-slate-400">Valor do Ciclo</Text>
+                    <Text className="mt-1 text-sm font-semibold text-slate-700">
+                      {formatCurrency(cicloInfo.ciclo.valor)}
+                    </Text>
+                  </View>
+
+                  <View className="min-w-[150px] flex-1 rounded-lg border border-slate-200 bg-white px-4 py-3">
+                    <Text className="text-[10px] font-semibold uppercase text-slate-400">Valor Mensal Equiv.</Text>
+                    <Text className="mt-1 text-sm font-semibold text-slate-700">
+                      {formatCurrency(cicloInfo.ciclo.valor_mensal_equivalente)}
+                    </Text>
+                  </View>
+
+                  <View className="min-w-[150px] flex-1 rounded-lg border border-slate-200 bg-white px-4 py-3">
+                    <Text className="text-[10px] font-semibold uppercase text-slate-400">Próximo Vencimento</Text>
+                    <Text className="mt-1 text-sm font-semibold text-slate-700">
+                      {formatDate(matricula.proxima_data_vencimento || matricula.data_vencimento)}
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            )}
+
             {/* Footer com Valor */}
             <View className="flex-row items-center justify-between bg-emerald-100 px-5 py-4">
-              <Text className="text-xs font-semibold text-emerald-800">Valor Mensal</Text>
+              <Text className="text-xs font-semibold text-emerald-800">
+                {cicloInfo ? 'Valor do Ciclo' : 'Valor Mensal'}
+              </Text>
               <Text className="text-lg font-extrabold text-emerald-800">{formatCurrency(matricula.valor)}</Text>
             </View>
 

@@ -388,5 +388,35 @@
             "content_type": "",
             "authorization": ""
         }
+    },
+    {
+        "time": "2026-02-26 11:26:20",
+        "method": "GET",
+        "uri": "\/purchases",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 11:26:20",
+        "method": "GET",
+        "uri": "\/.well-known\/appspecific\/com.chrome.devtools.json",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 11:26:20",
+        "method": "GET",
+        "uri": "\/api\/purchases",
+        "query": "limit=100",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
     }
 ]
