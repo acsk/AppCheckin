@@ -818,19 +818,27 @@ class AdminController
             $stmtBenef->execute([$contratoId]);
             $beneficiarios = $stmtBenef->fetchAll(\PDO::FETCH_ASSOC);
 
-            // Montar lista COMPLETA
+            // Montar lista COMPLETA (deduplicada - pagante pode estar nos beneficiários)
             $todasAsMatriculas = [];
+            $alunosJaAdicionados = [];
+
             if ($pagante_aluno_id) {
                 $todasAsMatriculas[] = [
                     'id' => 'pagante_' . $pagante_usuario_id,
                     'aluno_id' => $pagante_aluno_id,
                     'tipo' => 'pagante'
                 ];
+                $alunosJaAdicionados[$pagante_aluno_id] = true;
             }
             
             foreach ($beneficiarios as $b) {
+                // Pular se o beneficiário já foi adicionado como pagante
+                if (isset($alunosJaAdicionados[(int) $b['aluno_id']])) {
+                    continue;
+                }
                 $b['tipo'] = 'beneficiario';
                 $todasAsMatriculas[] = $b;
+                $alunosJaAdicionados[(int) $b['aluno_id']] = true;
             }
 
             if (empty($todasAsMatriculas)) {

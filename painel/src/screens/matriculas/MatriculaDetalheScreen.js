@@ -32,6 +32,7 @@ export default function MatriculaDetalheScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [modalConfirmVisible, setModalConfirmVisible] = useState(false);
   const [pagamentoSelecionado, setPagamentoSelecionado] = useState(null);
+  const [modalConfirmBaixaVisible, setModalConfirmBaixaVisible] = useState(false);
   const [ajustePlano, setAjustePlano] = useState(null);
   const [modalEditarVencimento, setModalEditarVencimento] = useState(false);
   const [novaDataVencimento, setNovaDataVencimento] = useState('');
@@ -83,7 +84,7 @@ export default function MatriculaDetalheScreen() {
     console.log('🔍 Pagamento selecionado:', pagamento);
     console.log('📍 ID do pagamento:', pagamento.id || pagamento.pagamento_id || pagamento.conta_id);
     setPagamentoSelecionado(pagamento);
-    setModalVisible(true);
+    setModalConfirmBaixaVisible(true);
   };
 
   const handleBaixaSuccess = () => {
@@ -801,6 +802,63 @@ export default function MatriculaDetalheScreen() {
         pagamento={pagamentoSelecionado}
         onSuccess={handleBaixaSuccess}
       />
+
+      {/* Modal de confirmação para baixa */}
+      <Modal
+        visible={modalConfirmBaixaVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setModalConfirmBaixaVisible(false)}
+      >
+        <View className="flex-1 items-center justify-center bg-black/40 px-4">
+          <View className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+            <View className="items-center border-b border-slate-200 px-6 py-5">
+              <View className="mb-3 h-14 w-14 items-center justify-center rounded-full bg-amber-100">
+                <Feather name="alert-circle" size={28} color="#f59e0b" />
+              </View>
+              <Text className="text-lg font-bold text-slate-800">Confirmar baixa</Text>
+              <Text className="text-sm text-slate-500">Tem certeza que deseja dar baixa neste pagamento?</Text>
+            </View>
+
+            <View className="px-6 py-4">
+              <View className="rounded-lg bg-slate-50 px-4 py-3">
+                <Text className="text-xs text-slate-500">Parcela</Text>
+                <Text className="text-sm font-semibold text-slate-700">
+                  #{pagamentoSelecionado?.id || pagamentoSelecionado?.pagamento_id || pagamentoSelecionado?.conta_id || '-'}
+                </Text>
+                <Text className="mt-2 text-xs text-slate-500">Valor</Text>
+                <Text className="text-sm font-semibold text-slate-700">
+                  {formatCurrency(pagamentoSelecionado?.valor)}
+                </Text>
+                <Text className="mt-2 text-xs text-slate-500">Vencimento</Text>
+                <Text className="text-sm font-semibold text-slate-700">
+                  {formatDate(pagamentoSelecionado?.data_vencimento)}
+                </Text>
+              </View>
+            </View>
+
+            <View className="flex-row gap-3 border-t border-slate-200 px-6 py-4">
+              <Pressable
+                onPress={() => setModalConfirmBaixaVisible(false)}
+                className="flex-1 items-center justify-center rounded-lg bg-slate-200 py-3"
+                style={({ pressed }) => [pressed && { opacity: 0.7 }]}
+              >
+                <Text className="text-sm font-semibold text-slate-700">Cancelar</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setModalConfirmBaixaVisible(false);
+                  setModalVisible(true);
+                }}
+                className="flex-1 items-center justify-center rounded-lg bg-orange-500 py-3"
+                style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+              >
+                <Text className="text-sm font-semibold text-white">Sim, dar baixa</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Modal de Baixa do Pacote */}
       <Modal
