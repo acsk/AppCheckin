@@ -1058,5 +1058,465 @@
             "content_type": "application\/json",
             "authorization": ""
         }
+    },
+    {
+        "time": "2026-02-25 23:29:36",
+        "method": "GET",
+        "uri": "\/",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:29:36",
+        "method": "GET",
+        "uri": "\/api\/payments",
+        "query": "limit=200",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:29:36",
+        "method": "GET",
+        "uri": "\/api\/webhook-logs",
+        "query": "limit=10",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:29:47",
+        "method": "GET",
+        "uri": "\/api\/payments",
+        "query": "limit=20",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:29:58",
+        "method": "GET",
+        "uri": "\/api\/payments",
+        "query": "limit=200",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:29:58",
+        "method": "GET",
+        "uri": "\/api\/webhook-logs",
+        "query": "limit=10",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:30:23",
+        "method": "GET",
+        "uri": "\/api\/payments",
+        "query": "limit=100",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:30:30",
+        "method": "GET",
+        "uri": "\/api\/payments",
+        "query": "limit=100",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:30:31",
+        "method": "GET",
+        "uri": "\/api\/payments",
+        "query": "limit=100",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:30:31",
+        "method": "GET",
+        "uri": "\/api\/payments",
+        "query": "limit=100",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:30:35",
+        "method": "GET",
+        "uri": "\/api\/payments",
+        "query": "limit=200",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:30:35",
+        "method": "GET",
+        "uri": "\/api\/webhook-logs",
+        "query": "limit=10",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:31:24",
+        "method": "POST",
+        "uri": "\/preapproval_plan",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:31:24",
+        "method": "POST",
+        "uri": "\/preapproval",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:31:24",
+        "method": "GET",
+        "uri": "\/preapproval\/963915984113",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:31:27",
+        "method": "GET",
+        "uri": "\/subscription\/checkout\/963915984113",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:33:39",
+        "method": "POST",
+        "uri": "\/api\/preapproval\/963915984113\/pay",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:33:40",
+        "method": "GET",
+        "uri": "\/v1\/payments\/78533688539",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:33:40",
+        "method": "GET",
+        "uri": "\/v1\/payments\/78533688539",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:37:14",
+        "method": "GET",
+        "uri": "\/v1\/payments\/search",
+        "query": "external_reference=MAT-187-1772062284&sort=date_created&criteria=desc",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:40:20",
+        "method": "POST",
+        "uri": "\/preapproval_plan",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:40:20",
+        "method": "POST",
+        "uri": "\/preapproval",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:40:20",
+        "method": "GET",
+        "uri": "\/preapproval\/541232201170",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:40:23",
+        "method": "GET",
+        "uri": "\/subscription\/checkout\/541232201170",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:40:25",
+        "method": "POST",
+        "uri": "\/api\/preapproval\/541232201170\/pay",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:40:26",
+        "method": "GET",
+        "uri": "\/v1\/payments\/91047148918",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:40:26",
+        "method": "GET",
+        "uri": "\/v1\/payments\/91047148918",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:41:28",
+        "method": "POST",
+        "uri": "\/preapproval_plan",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:41:28",
+        "method": "POST",
+        "uri": "\/preapproval",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:41:28",
+        "method": "GET",
+        "uri": "\/preapproval\/204625991719",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:41:32",
+        "method": "GET",
+        "uri": "\/subscription\/checkout\/204625991719",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:48:28",
+        "method": "POST",
+        "uri": "\/preapproval_plan",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:48:28",
+        "method": "POST",
+        "uri": "\/preapproval",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:48:29",
+        "method": "GET",
+        "uri": "\/preapproval\/507570543491",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:48:33",
+        "method": "GET",
+        "uri": "\/subscription\/checkout\/507570543491",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:48:47",
+        "method": "POST",
+        "uri": "\/preapproval_plan",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:48:47",
+        "method": "POST",
+        "uri": "\/preapproval",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:48:47",
+        "method": "GET",
+        "uri": "\/preapproval\/722635346864",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:48:50",
+        "method": "GET",
+        "uri": "\/subscription\/checkout\/722635346864",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:48:53",
+        "method": "POST",
+        "uri": "\/api\/preapproval\/722635346864\/pay",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:48:53",
+        "method": "GET",
+        "uri": "\/v1\/payments\/36160594718",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-25 23:48:53",
+        "method": "GET",
+        "uri": "\/v1\/payments\/36160594718",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:05:55",
+        "method": "GET",
+        "uri": "\/recurring",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:06:12",
+        "method": "GET",
+        "uri": "\/recurring",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:06:29",
+        "method": "GET",
+        "uri": "\/recurring",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-02-26 00:06:52",
+        "method": "GET",
+        "uri": "\/recurring",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
     }
 ]

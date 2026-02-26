@@ -468,6 +468,194 @@ class PreapprovalController
     }
 
     // ============================================================
+    // Recorrência — buscar por external_reference e gerar cobrança
+    // ============================================================
+
+    /**
+     * GET /api/recurring/search?external_reference=MAT-XXX
+     * Busca assinatura pelo external_reference
+     */
+    public function searchByExternalReference(): void
+    {
+        $extRef = $_GET['external_reference'] ?? '';
+        if (empty($extRef)) {
+            jsonResponse(['error' => 'Parâmetro "external_reference" é obrigatório.'], 422);
+            return;
+        }
+
+        $preapprovals = readJsonFile('preapprovals.json');
+        $found = null;
+
+        foreach ($preapprovals as $p) {
+            if (($p['external_reference'] ?? '') === $extRef) {
+                $found = $p;
+                break;
+            }
+        }
+
+        if (!$found) {
+            jsonResponse(['error' => 'Nenhuma assinatura encontrada com external_reference: ' . $extRef], 404);
+            return;
+        }
+
+        jsonResponse(['subscription' => $found]);
+    }
+
+    /**
+     * POST /api/recurring/charge
+     * Gera cobrança recorrente e despacha webhook.
+     * Body: { preapproval_id, _simulate_status, payment_method_id }
+     */
+    public function chargeRecurring(): void
+    {
+        $input = getJsonInput();
+        $preapprovalId = $input['preapproval_id'] ?? '';
+
+        if (empty($preapprovalId)) {
+            jsonResponse(['error' => 'Campo "preapproval_id" é obrigatório.'], 422);
+            return;
+        }
+
+        $preapprovals = readJsonFile('preapprovals.json');
+
+        if (!isset($preapprovals[$preapprovalId])) {
+            jsonResponse(['error' => 'Assinatura não encontrada.'], 404);
+            return;
+        }
+
+        $preapproval = $preapprovals[$preapprovalId];
+
+        // Auto-upgrade pending → authorized
+        if ($preapproval['status'] === 'pending') {
+            $preapproval['status'] = 'authorized';
+        }
+
+        // Resolver status do pagamento
+        $simulateStatus = $input['_simulate_status'] ?? 'approved';
+        $status = in_array($simulateStatus, [
+            'approved', 'rejected', 'pending', 'in_process', 'cancelled', 'error',
+        ]) ? $simulateStatus : 'approved';
+
+        $autoRecurring = $preapproval['auto_recurring'];
+        $amount = round((float) ($autoRecurring['transaction_amount']), 2);
+        $now = date('Y-m-d\TH:i:s.vP');
+        $paymentId = random_int(10000000000, 99999999999);
+
+        $statusDetail = match ($status) {
+            'approved' => 'accredited',
+            'rejected' => 'cc_rejected_insufficient_amount',
+            'pending' => 'pending_waiting_payment',
+            'in_process' => 'pending_review_manual',
+            'cancelled' => 'expired',
+            'error' => 'internal_server_error',
+            default => 'unknown',
+        };
+
+        $paymentMethodId = $input['payment_method_id'] ?? 'account_money';
+        $paymentTypeMap = [
+            'visa' => 'credit_card', 'master' => 'credit_card', 'elo' => 'credit_card',
+            'amex' => 'credit_card', 'hipercard' => 'credit_card',
+            'pix' => 'bank_transfer', 'account_money' => 'account_money',
+        ];
+
+        $payment = [
+            'id' => $paymentId,
+            'date_created' => $now,
+            'date_approved' => $status === 'approved' ? $now : null,
+            'date_last_updated' => $now,
+            'money_release_date' => $status === 'approved' ? date('Y-m-d\TH:i:s.vP', strtotime('+14 days')) : null,
+            'subscription_id' => $preapproval['id'],
+            'preapproval_id' => $preapproval['id'],
+            'issuer_id' => (string) random_int(1, 999),
+            'payment_method_id' => $paymentMethodId,
+            'payment_type_id' => $paymentTypeMap[$paymentMethodId] ?? 'credit_card',
+            'status' => $status,
+            'status_detail' => $statusDetail,
+            'currency_id' => $autoRecurring['currency_id'] ?? 'BRL',
+            'description' => $preapproval['reason'] . ' (recorrência automática)',
+            'collector_id' => $preapproval['collector_id'],
+            'payer' => [
+                'id' => $preapproval['payer_id'],
+                'email' => $preapproval['payer_email'],
+                'identification' => ['type' => 'CPF', 'number' => '00000000000'],
+                'type' => 'customer',
+            ],
+            'transaction_amount' => $amount,
+            'transaction_amount_refunded' => 0,
+            'coupon_amount' => 0,
+            'transaction_details' => [
+                'net_received_amount' => round($amount * 0.955, 2),
+                'total_paid_amount' => $amount,
+                'overpaid_amount' => 0,
+                'installment_amount' => $amount,
+            ],
+            'installments' => 1,
+            'captured' => $status === 'approved',
+            'live_mode' => false,
+            'external_reference' => $preapproval['external_reference'],
+            'metadata' => array_merge($preapproval['metadata'] ?? [], [
+                'preapproval_id' => $preapproval['id'],
+                'recurring_charge' => true,
+            ]),
+            'additional_info' => [
+                'items' => [[
+                    'id' => $preapproval['id'],
+                    'title' => $preapproval['reason'],
+                    'quantity' => '1',
+                    'unit_price' => (string) $amount,
+                ]],
+            ],
+        ];
+
+        // Salvar pagamento
+        $payments = readJsonFile('payments.json');
+        $payments[(string) $paymentId] = $payment;
+        writeJsonFile('payments.json', $payments);
+
+        // Atualizar summarized da assinatura
+        $preapproval['summarized']['charged_quantity'] += ($status === 'approved' ? 1 : 0);
+        $preapproval['summarized']['charged_amount'] += ($status === 'approved' ? $amount : 0);
+        if ($preapproval['summarized']['pending_charge_quantity'] !== null) {
+            $preapproval['summarized']['pending_charge_quantity'] = max(
+                0, $preapproval['summarized']['pending_charge_quantity'] - 1
+            );
+        }
+        $preapproval['summarized']['last_charged_date'] = $status === 'approved' ? $now : $preapproval['summarized']['last_charged_date'];
+        $preapproval['summarized']['last_charged_amount'] = $status === 'approved' ? $amount : $preapproval['summarized']['last_charged_amount'];
+
+        // Calcular próximo pagamento
+        $freq = $autoRecurring['frequency'];
+        $freqType = $autoRecurring['frequency_type'];
+        $preapproval['next_payment_date'] = date('Y-m-d\TH:i:s.000-04:00', strtotime("+{$freq} {$freqType}"));
+        $preapproval['last_modified'] = date('Y-m-d\TH:i:s.000-04:00');
+
+        $preapprovals[$preapprovalId] = $preapproval;
+        writeJsonFile('preapprovals.json', $preapprovals);
+
+        logActivity('recurring.charge', [
+            'preapproval_id' => $preapprovalId,
+            'payment_id' => $paymentId,
+            'amount' => $amount,
+            'status' => $status,
+            'external_reference' => $preapproval['external_reference'],
+        ]);
+
+        // Disparar webhook do pagamento
+        $this->dispatchWebhook('payment', $payment);
+
+        // Pegar último log do webhook para retornar ao frontend
+        $webhookLogs = readJsonFile('webhook_logs.json');
+        $lastLog = !empty($webhookLogs) ? end($webhookLogs) : null;
+
+        jsonResponse([
+            'payment' => $payment,
+            'subscription' => $preapproval,
+            'webhook_sent' => $lastLog && $lastLog['resource_id'] === (string) $paymentId,
+            'webhook_log' => $lastLog,
+        ], 201);
+    }
+
+    // ============================================================
     // Métodos privados
     // ============================================================
 

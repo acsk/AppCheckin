@@ -353,6 +353,28 @@ if ($uri === '/' || $uri === '/dashboard') {
     exit;
 }
 
+// --- Recurring Charges Page (simula baixas automáticas recorrentes) ---
+if ($uri === '/recurring' || $uri === '/recurring/') {
+    require_once __DIR__ . '/app/Views/recurring.php';
+    exit;
+}
+
+// --- API Recurring: Search by external_reference ---
+if (preg_match('#^/api/recurring/search/?$#', $uri) && $method === 'GET') {
+    require_once __DIR__ . '/app/Controllers/PreapprovalController.php';
+    $controller = new Controllers\PreapprovalController();
+    $controller->searchByExternalReference();
+    exit;
+}
+
+// --- API Recurring: Charge (gerar cobrança e enviar webhook) ---
+if (preg_match('#^/api/recurring/charge/?$#', $uri) && $method === 'POST') {
+    require_once __DIR__ . '/app/Controllers/PreapprovalController.php';
+    $controller = new Controllers\PreapprovalController();
+    $controller->chargeRecurring();
+    exit;
+}
+
 // --- Checkout Page (simula página de pagamento do gateway) ---
 if (preg_match('#^/checkout/([a-zA-Z0-9_-]+)/?$#', $uri, $matches)) {
     require_once __DIR__ . '/app/Views/checkout.php';

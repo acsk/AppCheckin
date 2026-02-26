@@ -1075,12 +1075,12 @@ class MercadoPagoWebhookController
                         data_pagamento = ?,
                         forma_pagamento_id = ?,
                         tipo_baixa_id = 4,
-                        observacoes = CONCAT(IFNULL(observacoes, ''), ' | Pago via Assinatura MP - ID: " . ($assinatura['preapproval_id'] ?? 'N/A') . "'),
+                        observacoes = ?,
                         updated_at = NOW()
                     WHERE id = ?
                 ");
                 
-                $stmtUpdate->execute([$dataPagamento, $formaPagamentoId, $pagamentoPendente['id']]);
+                $stmtUpdate->execute([$dataPagamento, $formaPagamentoId, 'Pago via Assinatura MP - ID: ' . ($assinatura['preapproval_id'] ?? 'N/A'), $pagamentoPendente['id']]);
                 
                 if ($stmtUpdate->rowCount() > 0) {
                     error_log("[Webhook MP] ✅ Pagamento #{$pagamentoPendente['id']} atualizado para PAGO (Assinatura)");
@@ -1815,7 +1815,7 @@ class MercadoPagoWebhookController
                         data_pagamento = ?,
                         forma_pagamento_id = ?,
                         tipo_baixa_id = 4,
-                        observacoes = CONCAT(IFNULL(observacoes, ''), ' | Pago via Mercado Pago - ID: " . $pagamento['id'] . "'),
+                        observacoes = ?,
                         updated_at = NOW()
                     WHERE id = ?
                 ");
@@ -1823,6 +1823,7 @@ class MercadoPagoWebhookController
                 $stmtUpdate->execute([
                     $dateApproved,
                     $formaPagamentoId,
+                    'Pago via Mercado Pago - ID: ' . $pagamento['id'],
                     $pagamentoPendente['id']
                 ]);
                 

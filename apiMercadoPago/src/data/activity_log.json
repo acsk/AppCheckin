@@ -524,5 +524,141 @@
             "amount": 1
         },
         "timestamp": "2026-02-25T23:17:46.000+00:00"
+    },
+    {
+        "id": "log_b54358ea9600197de323415a",
+        "type": "preapproval_plan.created",
+        "data": {
+            "plan_id": "e4ed9ec4d373cf407b4e46e4adc7383c",
+            "reason": "3x por Semana - Aqua Masters"
+        },
+        "timestamp": "2026-02-25T23:31:24.000+00:00"
+    },
+    {
+        "id": "log_1ba3ded45cd48020fef6d207",
+        "type": "preapproval.created",
+        "data": {
+            "preapproval_id": "963915984113",
+            "reason": "3x por Semana - Aqua Masters",
+            "amount": 1,
+            "status": "pending"
+        },
+        "timestamp": "2026-02-25T23:31:24.000+00:00"
+    },
+    {
+        "id": "log_3deb29566714f76bdfa45856",
+        "type": "preapproval.payment_generated",
+        "data": {
+            "preapproval_id": "963915984113",
+            "payment_id": 78533688539,
+            "amount": 1,
+            "status": "approved",
+            "subscription_id": "963915984113"
+        },
+        "timestamp": "2026-02-25T23:33:39.000+00:00"
+    },
+    {
+        "id": "log_e059be53873cd7e1f4c0d0c0",
+        "type": "preapproval_plan.created",
+        "data": {
+            "plan_id": "9e6ccf8a646317332bfb42fa202f3f64",
+            "reason": "3x por Semana - Aqua Masters"
+        },
+        "timestamp": "2026-02-25T23:40:20.000+00:00"
+    },
+    {
+        "id": "log_8d325af13917b7dc708f3fa9",
+        "type": "preapproval.created",
+        "data": {
+            "preapproval_id": "541232201170",
+            "reason": "3x por Semana - Aqua Masters",
+            "amount": 1,
+            "status": "pending"
+        },
+        "timestamp": "2026-02-25T23:40:20.000+00:00"
+    },
+    {
+        "id": "log_a25717986e24005d31365394",
+        "type": "preapproval.payment_generated",
+        "data": {
+            "preapproval_id": "541232201170",
+            "payment_id": 91047148918,
+            "amount": 1,
+            "status": "approved",
+            "subscription_id": "541232201170"
+        },
+        "timestamp": "2026-02-25T23:40:25.000+00:00"
+    },
+    {
+        "id": "log_4428322fa8ef6ac3431eeace",
+        "type": "preapproval_plan.created",
+        "data": {
+            "plan_id": "715e4d295629cc70bc484faf7208e16e",
+            "reason": "3x por Semana - Aqua Masters"
+        },
+        "timestamp": "2026-02-25T23:41:28.000+00:00"
+    },
+    {
+        "id": "log_90d1f561dcc5ff4870ea0645",
+        "type": "preapproval.created",
+        "data": {
+            "preapproval_id": "204625991719",
+            "reason": "3x por Semana - Aqua Masters",
+            "amount": 1,
+            "status": "pending"
+        },
+        "timestamp": "2026-02-25T23:41:28.000+00:00"
+    },
+    {
+        "id": "log_4f83c5986653b6065e791c7a",
+        "type": "preapproval_plan.created",
+        "data": {
+            "plan_id": "9e360bd8dfae60ae60eec733cba242b0",
+            "reason": "3x por Semana - Aqua Masters"
+        },
+        "timestamp": "2026-02-25T23:48:28.000+00:00"
+    },
+    {
+        "id": "log_2c1a872e20501259bfaed19d",
+        "type": "preapproval.created",
+        "data": {
+            "preapproval_id": "507570543491",
+            "reason": "3x por Semana - Aqua Masters",
+            "amount": 1,
+            "status": "pending"
+        },
+        "timestamp": "2026-02-25T23:48:28.000+00:00"
+    },
+    {
+        "id": "log_284bf29c24da05c1220bc933",
+        "type": "preapproval_plan.created",
+        "data": {
+            "plan_id": "ca246f94733a6c0f5baab4a24d63f258",
+            "reason": "3x por Semana - Aqua Masters"
+        },
+        "timestamp": "2026-02-25T23:48:47.000+00:00"
+    },
+    {
+        "id": "log_689043735b8e91fe5286436a",
+        "type": "preapproval.created",
+        "data": {
+            "preapproval_id": "722635346864",
+            "reason": "3x por Semana - Aqua Masters",
+            "amount": 1,
+            "status": "pending"
+        },
+        "timestamp": "2026-02-25T23:48:47.000+00:00"
+    },
+    {
+        "id": "log_36b457951bc0b53f4afb5cdc",
+        "type": "preapproval.payment_generated",
+        "data": {
+            "preapproval_id": "722635346864",
+            "payment_id": 36160594718,
+            "amount": 1,
+            "status": "approved",
+            "subscription_id": "722635346864"
+        },
+        "timestamp": "2026-02-25T23:48:53.000+00:00"
     }
 ]

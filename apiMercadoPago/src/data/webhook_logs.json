@@ -31,5 +31,93 @@
         "error": null,
         "response_body": "{\"success\":false,\"error\":\"SQLSTATE[23000]: Integrity constraint violation: 1048 Column 'tenant_id' cannot be null\"}",
         "sent_at": "2026-02-25T23:17:46.000+00:00"
+    },
+    {
+        "id": "whl_f193aadbb34d9da9980d9bed",
+        "url": "http:\/\/host.docker.internal:8080\/api\/webhooks\/mercadopago",
+        "event": "subscription_preapproval",
+        "resource_id": "963915984113",
+        "http_status": 200,
+        "success": true,
+        "error": null,
+        "response_body": "{\"success\":true,\"message\":\"Webhook processado com sucesso (V1)\"}",
+        "sent_at": "2026-02-25T23:31:24.000+00:00"
+    },
+    {
+        "id": "whl_8979657d67aecc3d7008021a",
+        "url": "http:\/\/host.docker.internal:8080\/api\/webhooks\/mercadopago",
+        "event": "payment",
+        "resource_id": "78533688539",
+        "http_status": 200,
+        "success": true,
+        "error": null,
+        "response_body": "{\"success\":true,\"message\":\"Webhook processado com sucesso (V1)\"}",
+        "sent_at": "2026-02-25T23:33:40.000+00:00"
+    },
+    {
+        "id": "whl_6cf22e1ad5f91ad39c762da7",
+        "url": "http:\/\/host.docker.internal:8080\/api\/webhooks\/mercadopago",
+        "event": "subscription_preapproval",
+        "resource_id": "541232201170",
+        "http_status": 200,
+        "success": true,
+        "error": null,
+        "response_body": "{\"success\":true,\"message\":\"Webhook processado com sucesso (V1)\"}",
+        "sent_at": "2026-02-25T23:40:20.000+00:00"
+    },
+    {
+        "id": "whl_cae272b66da01c30efe77f93",
+        "url": "http:\/\/host.docker.internal:8080\/api\/webhooks\/mercadopago",
+        "event": "payment",
+        "resource_id": "91047148918",
+        "http_status": 200,
+        "success": true,
+        "error": null,
+        "response_body": "{\"success\":true,\"message\":\"Webhook processado com sucesso (V1)\"}",
+        "sent_at": "2026-02-25T23:40:26.000+00:00"
+    },
+    {
+        "id": "whl_ace5337935f54a57a3c16f97",
+        "url": "http:\/\/host.docker.internal:8080\/api\/webhooks\/mercadopago",
+        "event": "subscription_preapproval",
+        "resource_id": "204625991719",
+        "http_status": 200,
+        "success": true,
+        "error": null,
+        "response_body": "{\"success\":true,\"message\":\"Webhook processado com sucesso (V1)\"}",
+        "sent_at": "2026-02-25T23:41:28.000+00:00"
+    },
+    {
+        "id": "whl_1b396bc14d99f7c9c524a51a",
+        "url": "http:\/\/host.docker.internal:8080\/api\/webhooks\/mercadopago",
+        "event": "subscription_preapproval",
+        "resource_id": "507570543491",
+        "http_status": 200,
+        "success": true,
+        "error": null,
+        "response_body": "{\"success\":true,\"message\":\"Webhook processado com sucesso (V1)\"}",
+        "sent_at": "2026-02-25T23:48:29.000+00:00"
+    },
+    {
+        "id": "whl_e9b0251a821a3bd03781ae0c",
+        "url": "http:\/\/host.docker.internal:8080\/api\/webhooks\/mercadopago",
+        "event": "subscription_preapproval",
+        "resource_id": "722635346864",
+        "http_status": 200,
+        "success": true,
+        "error": null,
+        "response_body": "{\"success\":true,\"message\":\"Webhook processado com sucesso (V1)\"}",
+        "sent_at": "2026-02-25T23:48:47.000+00:00"
+    },
+    {
+        "id": "whl_023cd5b5eb1a60350081eb07",
+        "url": "http:\/\/host.docker.internal:8080\/api\/webhooks\/mercadopago",
+        "event": "payment",
+        "resource_id": "36160594718",
+        "http_status": 200,
+        "success": true,
+        "error": null,
+        "response_body": "{\"success\":true,\"message\":\"Webhook processado com sucesso (V1)\"}",
+        "sent_at": "2026-02-25T23:48:53.000+00:00"
     }
 ]
