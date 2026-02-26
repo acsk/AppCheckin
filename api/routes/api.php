@@ -1075,6 +1075,7 @@ return function ($app) {
         $group->delete('/matriculas/{id}', [MatriculaController::class, 'delete']);
         $group->post('/matriculas/{id}/cancelar', [MatriculaController::class, 'cancelar']);
         $group->post('/matriculas/contas/{id}/baixa', [MatriculaController::class, 'darBaixaConta']);
+        $group->post('/matriculas/pacote-contrato/{contratoId}/baixa', [MatriculaController::class, 'darBaixaPacote']);
         
         // Matrículas - Gerenciamento de Vencimentos
         $group->put('/matriculas/{id}/proxima-data-vencimento', [MatriculaController::class, 'atualizarProximaDataVencimento']);

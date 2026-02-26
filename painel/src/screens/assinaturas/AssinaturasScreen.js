@@ -23,6 +23,7 @@ const STATUS_OPTIONS = [
   { value: 'cancelada', label: 'Cancelada' },
   { value: 'pausada', label: 'Pausada' },
   { value: 'expirada', label: 'Expirada' },
+  { value: 'paga', label: 'Paga' },
 ];
 
 const TIPO_COBRANCA_OPTIONS = [

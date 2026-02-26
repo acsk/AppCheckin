@@ -17,8 +17,10 @@ import { Picker } from '@react-native-picker/picker';
 import LayoutBase from '../../components/LayoutBase';
 import { matriculaService } from '../../services/matriculaService';
 import usuarioService from '../../services/usuarioService';
+import alunoService from '../../services/alunoService';
 import modalidadeService from '../../services/modalidadeService';
 import planoService from '../../services/planoService';
+import pacoteService from '../../services/pacoteService';
 
 export default function FormMatriculaScreen() {
   const router = useRouter();
@@ -36,12 +38,19 @@ export default function FormMatriculaScreen() {
   const [planosDisponiveis, setPlanosDisponiveis] = useState([]);
   const [ciclosDisponiveis, setCiclosDisponiveis] = useState([]);
   const [loadingCiclos, setLoadingCiclos] = useState(false);
+  const [pacotesDisponiveis, setPacotesDisponiveis] = useState([]);
+  const [loadingPacotes, setLoadingPacotes] = useState(false);
+  const [alunosBasico, setAlunosBasico] = useState([]);
+  const [tipoMatricula, setTipoMatricula] = useState('plano');
+  const [searchDependentes, setSearchDependentes] = useState('');
 
   const [formData, setFormData] = useState({
     usuario_id: '',
     modalidade_id: '',
     plano_id: '',
     plano_ciclo_id: '',
+    pacote_id: '',
+    dependentes: [],
   });
 
   useEffect(() => {
@@ -105,9 +114,11 @@ export default function FormMatriculaScreen() {
   const carregarDados = async () => {
     setLoading(true);
     try {
-      const [usuariosData, modalidadesData] = await Promise.all([
+      const [usuariosData, modalidadesData, alunosBasicoData, pacotesData] = await Promise.all([
         usuarioService.listar(),
         modalidadeService.listar(),
+        alunoService.listarBasico(),
+        pacoteService.listar(),
       ]);
 
       console.log('📊 Usuários recebidos:', usuariosData);
@@ -137,6 +148,18 @@ export default function FormMatriculaScreen() {
       
       console.log('🏋️ Modalidades:', modalidades);
       setModalidades(modalidades);
+
+      const alunosBasicoLista = Array.isArray(alunosBasicoData?.alunos)
+        ? alunosBasicoData.alunos
+        : Array.isArray(alunosBasicoData)
+        ? alunosBasicoData
+        : [];
+      setAlunosBasico(alunosBasicoLista);
+
+      const pacotesLista = Array.isArray(pacotesData)
+        ? pacotesData
+        : pacotesData?.pacotes || pacotesData?.data?.pacotes || [];
+      setPacotesDisponiveis(pacotesLista);
     } catch (error) {
       console.error('❌ Erro ao carregar dados:', error);
       showAlert('Erro', 'Não foi possível carregar os dados');
@@ -168,6 +191,22 @@ export default function FormMatriculaScreen() {
     } catch (error) {
       console.error('❌ Erro ao carregar planos:', error);
       setPlanosDisponiveis([]);
+    }
+  };
+
+  const carregarPacotes = async () => {
+    try {
+      setLoadingPacotes(true);
+      const response = await pacoteService.listar();
+      const lista = Array.isArray(response)
+        ? response
+        : response?.pacotes || response?.data?.pacotes || [];
+      setPacotesDisponiveis(lista);
+    } catch (error) {
+      console.error('❌ Erro ao carregar pacotes:', error);
+      setPacotesDisponiveis([]);
+    } finally {
+      setLoadingPacotes(false);
     }
   };
 
@@ -222,14 +261,20 @@ export default function FormMatriculaScreen() {
       newErrors.usuario_id = 'Selecione um aluno';
     }
 
-    if (!formData.modalidade_id) {
-      newErrors.modalidade_id = 'Selecione uma modalidade';
-    }
-    if (!formData.plano_id) {
-      newErrors.plano_id = 'Selecione um plano';
-    }
-    if (!formData.plano_ciclo_id) {
-      newErrors.plano_ciclo_id = 'Selecione um ciclo de pagamento';
+    if (tipoMatricula === 'plano') {
+      if (!formData.modalidade_id) {
+        newErrors.modalidade_id = 'Selecione uma modalidade';
+      }
+      if (!formData.plano_id) {
+        newErrors.plano_id = 'Selecione um plano';
+      }
+      if (!formData.plano_ciclo_id) {
+        newErrors.plano_ciclo_id = 'Selecione um ciclo de pagamento';
+      }
+    } else {
+      if (!formData.pacote_id) {
+        newErrors.pacote_id = 'Selecione um pacote';
+      }
     }
 
     // Se houver erros, mostrar e não prosseguir
@@ -249,11 +294,20 @@ export default function FormMatriculaScreen() {
     console.log('🚀 Iniciando criação de matrícula...');
     setSaving(true);
     try {
-      const payload = {
-        usuario_id: parseInt(formData.usuario_id),
-        plano_id: parseInt(formData.plano_id),
-        plano_ciclo_id: parseInt(formData.plano_ciclo_id),
-      };
+      const payload =
+        tipoMatricula === 'pacote'
+          ? {
+              ...(alunoBasicoSelecionado?.id
+                ? { aluno_id: parseInt(alunoBasicoSelecionado.id) }
+                : { usuario_id: parseInt(formData.usuario_id) }),
+              pacote_id: parseInt(formData.pacote_id),
+              dependentes: formData.dependentes.map((id) => parseInt(id)),
+            }
+          : {
+              usuario_id: parseInt(formData.usuario_id),
+              plano_id: parseInt(formData.plano_id),
+              plano_ciclo_id: parseInt(formData.plano_ciclo_id),
+            };
       console.log('📤 Payload:', payload);
       
       const result = await matriculaService.criar(payload);
@@ -319,6 +373,44 @@ export default function FormMatriculaScreen() {
     }).format(value || 0);
   };
 
+  const pacoteSelecionado = pacotesDisponiveis.find(
+    (pacote) => pacote.id === parseInt(formData.pacote_id)
+  );
+  const alunoBasicoSelecionado = alunosBasico.find(
+    (aluno) => aluno?.usuario_id?.toString() === formData.usuario_id
+  );
+  const totalBeneficiariosPermitidos = Number(pacoteSelecionado?.qtd_beneficiarios || 0);
+  const maxDependentes = Math.max(totalBeneficiariosPermitidos - 1, 0);
+
+  const dependentesFiltrados = alunosBasico
+    .filter((aluno) => aluno?.usuario_id?.toString() !== formData.usuario_id)
+    .filter((aluno) => {
+      if (!searchDependentes.trim()) return true;
+      const termo = searchDependentes.trim().toLowerCase();
+      return (
+        aluno.nome?.toLowerCase().includes(termo) ||
+        aluno.email?.toLowerCase().includes(termo)
+      );
+    });
+
+  const toggleDependente = (alunoId) => {
+    setFormData((prev) => {
+      const existe = prev.dependentes.includes(alunoId.toString());
+      if (!existe && totalBeneficiariosPermitidos > 0 && prev.dependentes.length >= maxDependentes) {
+        showToast(
+          `Limite do pacote: ${totalBeneficiariosPermitidos} pessoa(s). Você pode selecionar no máximo ${maxDependentes} dependente(s).`
+        );
+        return prev;
+      }
+      return {
+        ...prev,
+        dependentes: existe
+          ? prev.dependentes.filter((id) => id !== alunoId.toString())
+          : [...prev.dependentes, alunoId.toString()],
+      };
+    });
+  };
+
   const getCicloLabel = (ciclo) => {
     if (!ciclo) return '-';
     const meses = Number(ciclo.meses || 0);
@@ -338,7 +430,7 @@ export default function FormMatriculaScreen() {
   }
 
   return (
-    <LayoutBase title="Nova Matrícula" subtitle="Matricular aluno em um plano">
+    <LayoutBase title="Nova Matrícula" subtitle="Matricular aluno em um plano ou pacote">
       <ScrollView className="flex-1 bg-slate-50" showsVerticalScrollIndicator={false}>
         <View className="px-6 py-6">
           <View className="mb-4">
@@ -459,61 +551,120 @@ export default function FormMatriculaScreen() {
               )}
             </View>
 
-            {/* Modalidade */}
+            {/* Tipo de Matrícula */}
             <View className="mb-5">
-              <Text className="mb-2 text-sm font-semibold text-slate-700">Modalidade *</Text>
-              <View className={`overflow-hidden rounded-lg border ${errors.modalidade_id ? 'border-rose-400' : 'border-slate-200'} bg-white`}>
-                <Picker
-                  selectedValue={formData.modalidade_id}
-                  onValueChange={(value) => {
-                    setFormData((prev) => ({ ...prev, modalidade_id: value, plano_id: '' }));
-                    setErrors((prev) => ({ ...prev, modalidade_id: undefined }));
+              <Text className="mb-2 text-sm font-semibold text-slate-700">Tipo de Matrícula</Text>
+              <View className="flex-row gap-2">
+                <Pressable
+                  onPress={() => {
+                    setTipoMatricula('plano');
+                    setFormData((prev) => ({
+                      ...prev,
+                      pacote_id: '',
+                      dependentes: [],
+                    }));
                   }}
-                  style={{ height: 50 }}
+                  className={`flex-1 rounded-lg border px-4 py-3 ${
+                    tipoMatricula === 'plano'
+                      ? 'border-emerald-400 bg-emerald-50'
+                      : 'border-slate-200 bg-white'
+                  }`}
                 >
-                  <Picker.Item label="Selecione uma modalidade" value="" />
-                  {modalidades
-                    .filter((m) => m.ativo)
-                    .map((modalidade) => (
-                      <Picker.Item
-                        key={modalidade.id}
-                        label={modalidade.nome}
-                        value={modalidade.id.toString()}
-                      />
-                    ))}
-                </Picker>
+                  <Text
+                    className={`text-center text-sm font-semibold ${
+                      tipoMatricula === 'plano' ? 'text-emerald-700' : 'text-slate-700'
+                    }`}
+                  >
+                    Plano
+                  </Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    setTipoMatricula('pacote');
+                    setFormData((prev) => ({
+                      ...prev,
+                      modalidade_id: '',
+                      plano_id: '',
+                      plano_ciclo_id: '',
+                    }));
+                    if (pacotesDisponiveis.length === 0) {
+                      carregarPacotes();
+                    }
+                  }}
+                  className={`flex-1 rounded-lg border px-4 py-3 ${
+                    tipoMatricula === 'pacote'
+                      ? 'border-emerald-400 bg-emerald-50'
+                      : 'border-slate-200 bg-white'
+                  }`}
+                >
+                  <Text
+                    className={`text-center text-sm font-semibold ${
+                      tipoMatricula === 'pacote' ? 'text-emerald-700' : 'text-slate-700'
+                    }`}
+                  >
+                    Pacote
+                  </Text>
+                </Pressable>
               </View>
-              {errors.modalidade_id && (
-                <View className="mt-2 flex-row items-center gap-2">
-                  <Feather name="alert-circle" size={14} color="#ef4444" />
-                  <Text className="text-xs font-medium text-rose-500">{errors.modalidade_id}</Text>
-                </View>
-              )}
-              {formData.modalidade_id && (
-                <View className="mt-3">
-                  {modalidades
-                    .filter((m) => m.id === parseInt(formData.modalidade_id))
-                    .map((m) => (
-                      <View key={m.id} className="flex-row items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                        <View
-                          className="h-10 w-10 items-center justify-center rounded-full"
-                          style={{ backgroundColor: m.cor || '#f97316' }}
-                        >
-                          <MaterialCommunityIcons
-                            name={m.icone || 'dumbbell'}
-                            size={20}
-                            color="#fff"
-                          />
-                        </View>
-                        <Text className="text-sm font-semibold text-slate-800">{m.nome}</Text>
-                      </View>
-                    ))}
-                </View>
-              )}
             </View>
 
+            {/* Modalidade */}
+            {tipoMatricula === 'plano' && (
+              <View className="mb-5">
+                <Text className="mb-2 text-sm font-semibold text-slate-700">Modalidade *</Text>
+                <View className={`overflow-hidden rounded-lg border ${errors.modalidade_id ? 'border-rose-400' : 'border-slate-200'} bg-white`}>
+                  <Picker
+                    selectedValue={formData.modalidade_id}
+                    onValueChange={(value) => {
+                      setFormData((prev) => ({ ...prev, modalidade_id: value, plano_id: '' }));
+                      setErrors((prev) => ({ ...prev, modalidade_id: undefined }));
+                    }}
+                    style={{ height: 50 }}
+                  >
+                    <Picker.Item label="Selecione uma modalidade" value="" />
+                    {modalidades
+                      .filter((m) => m.ativo)
+                      .map((modalidade) => (
+                        <Picker.Item
+                          key={modalidade.id}
+                          label={modalidade.nome}
+                          value={modalidade.id.toString()}
+                        />
+                      ))}
+                  </Picker>
+                </View>
+                {errors.modalidade_id && (
+                  <View className="mt-2 flex-row items-center gap-2">
+                    <Feather name="alert-circle" size={14} color="#ef4444" />
+                    <Text className="text-xs font-medium text-rose-500">{errors.modalidade_id}</Text>
+                  </View>
+                )}
+                {formData.modalidade_id && (
+                  <View className="mt-3">
+                    {modalidades
+                      .filter((m) => m.id === parseInt(formData.modalidade_id))
+                      .map((m) => (
+                        <View key={m.id} className="flex-row items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <View
+                            className="h-10 w-10 items-center justify-center rounded-full"
+                            style={{ backgroundColor: m.cor || '#f97316' }}
+                          >
+                            <MaterialCommunityIcons
+                              name={m.icone || 'dumbbell'}
+                              size={20}
+                              color="#fff"
+                            />
+                          </View>
+                          <Text className="text-sm font-semibold text-slate-800">{m.nome}</Text>
+                        </View>
+                      ))}
+                  </View>
+                )}
+              </View>
+            )}
+
             {/* Planos - Botões Card */}
-            {formData.modalidade_id && (
+            {tipoMatricula === 'plano' && formData.modalidade_id && (
               <View className="mb-5">
                 <View className="mb-3 flex-row items-center justify-between">
                   <Text className="text-sm font-semibold text-slate-700">Plano *</Text>
@@ -608,7 +759,7 @@ export default function FormMatriculaScreen() {
             )}
 
             {/* Ciclos do Plano */}
-            {formData.plano_id && (
+            {tipoMatricula === 'plano' && formData.plano_id && (
               <View className="mb-5">
                 <View className="mb-3 flex-row items-center justify-between">
                   <Text className="text-sm font-semibold text-slate-700">Ciclo de Pagamento *</Text>
@@ -699,12 +850,154 @@ export default function FormMatriculaScreen() {
               </View>
             )}
 
-            {!formData.modalidade_id && (
+            {tipoMatricula === 'plano' && !formData.modalidade_id && (
               <View className="mt-2 flex-row items-center gap-3 rounded-lg border border-orange-100 bg-orange-50 px-4 py-3">
                 <Feather name="info" size={16} color="#f97316" />
                 <Text className="flex-1 text-sm text-orange-700">
                   Selecione uma modalidade para ver os planos disponíveis
                 </Text>
+              </View>
+            )}
+
+            {/* Pacotes */}
+            {tipoMatricula === 'pacote' && (
+              <View className="mb-5">
+                <View className="mb-2 flex-row items-center justify-between">
+                  <Text className="text-sm font-semibold text-slate-700">Pacote *</Text>
+                  {loadingPacotes && <ActivityIndicator size="small" color="#f97316" />}
+                </View>
+                {pacotesDisponiveis.length > 0 ? (
+                  <View className="flex-row flex-wrap gap-3">
+                    {pacotesDisponiveis.map((pacote) => {
+                      const selected = formData.pacote_id === pacote.id.toString();
+                      return (
+                        <Pressable
+                          key={pacote.id}
+                          className={`min-w-[200px] flex-1 rounded-xl border-2 p-4 ${
+                            selected ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200 bg-white'
+                          } ${errors.pacote_id && !formData.pacote_id ? 'border-rose-300' : ''}`}
+                          style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                          onPress={() => {
+                            setFormData((prev) => ({ ...prev, pacote_id: pacote.id.toString() }));
+                            setErrors((prev) => ({ ...prev, pacote_id: undefined }));
+                          }}
+                        >
+                          <View className="flex-row items-center justify-between">
+                            <Text className={`text-[15px] font-semibold ${selected ? 'text-emerald-700' : 'text-slate-800'}`}>
+                              {pacote.nome}
+                            </Text>
+                            {selected && <Feather name="check-circle" size={18} color="#10b981" />}
+                          </View>
+                          <Text className={`mt-2 text-lg font-bold ${selected ? 'text-emerald-600' : 'text-slate-700'}`}>
+                            {formatCurrency(pacote.valor_total)}
+                          </Text>
+                          <View className="mt-3 gap-1">
+                            <Text className="text-xs text-slate-500">
+                              Beneficiários: {pacote.qtd_beneficiarios || 0}
+                            </Text>
+                            {!!pacote.plano_nome && (
+                              <Text className="text-xs text-slate-500">Plano: {pacote.plano_nome}</Text>
+                            )}
+                          </View>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : (
+                  <View className="items-center rounded-lg border border-slate-200 bg-slate-50 px-6 py-8">
+                    <Feather name="alert-circle" size={28} color="#d1d5db" />
+                    <Text className="mt-3 text-sm text-slate-400">Nenhum pacote disponível</Text>
+                  </View>
+                )}
+                {errors.pacote_id && (
+                  <View className="mt-2 flex-row items-center gap-2">
+                    <Feather name="alert-circle" size={14} color="#ef4444" />
+                    <Text className="text-xs font-medium text-rose-500">{errors.pacote_id}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Dependentes */}
+            {tipoMatricula === 'pacote' && formData.pacote_id && (
+              <View className="mb-5">
+                <View className="mb-2 flex-row items-center justify-between">
+                  <Text className="text-sm font-semibold text-slate-700">Dependentes (opcional)</Text>
+                  {pacoteSelecionado?.qtd_beneficiarios ? (
+                    <Text className="text-xs text-slate-500">
+                      Dependentes: {formData.dependentes.length}/{maxDependentes} • Total: {formData.dependentes.length + 1}/{totalBeneficiariosPermitidos}
+                    </Text>
+                  ) : null}
+                </View>
+                <TextInput
+                  className="mb-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                  placeholder="Buscar dependente..."
+                  value={searchDependentes}
+                  onChangeText={setSearchDependentes}
+                />
+                <View
+                  className="rounded-lg border border-slate-200 bg-white"
+                  style={{ maxHeight: 220 }}
+                >
+                  <ScrollView nestedScrollEnabled>
+                    {dependentesFiltrados.length > 0 ? (
+                      dependentesFiltrados.map((aluno) => {
+                        const selected = formData.dependentes.includes(aluno.id.toString());
+                        return (
+                          <Pressable
+                            key={aluno.id}
+                            className="flex-row items-center justify-between border-b border-slate-100 px-3 py-2.5"
+                            style={({ pressed }) => [
+                              pressed && { backgroundColor: '#f8fafc' },
+                              selected && { backgroundColor: '#ecfdf5' },
+                            ]}
+                            onPress={() => toggleDependente(aluno.id)}
+                          >
+                            <View className="flex-1">
+                              <Text className="text-sm font-semibold text-slate-800">{aluno.nome}</Text>
+                              <Text className="text-xs text-slate-500">{aluno.email}</Text>
+                            </View>
+                            {selected ? (
+                              <Feather name="check-circle" size={18} color="#10b981" />
+                            ) : (
+                              <Feather name="circle" size={18} color="#cbd5f5" />
+                            )}
+                          </Pressable>
+                        );
+                      })
+                    ) : (
+                      <View className="items-center px-4 py-6">
+                        <Text className="text-xs text-slate-400">Nenhum aluno encontrado</Text>
+                      </View>
+                    )}
+                  </ScrollView>
+                </View>
+
+                <View className="mt-3">
+                  <Text className="mb-2 text-xs font-semibold text-slate-500">Selecionados</Text>
+                  {formData.dependentes.length === 0 ? (
+                    <Text className="text-xs text-slate-400">Nenhum dependente selecionado</Text>
+                  ) : (
+                    <View className="flex-row flex-wrap gap-2">
+                      {alunosBasico
+                        .filter((aluno) => formData.dependentes.includes(aluno.id.toString()))
+                        .map((aluno) => (
+                          <View
+                            key={aluno.id}
+                            className="flex-row items-center gap-2 rounded-full bg-slate-100 px-3 py-1"
+                          >
+                            <Text className="text-xs text-slate-700">{aluno.nome}</Text>
+                            <Pressable
+                              onPress={() => toggleDependente(aluno.id)}
+                              className="h-5 w-5 items-center justify-center rounded-full bg-white"
+                            >
+                              <Feather name="x" size={12} color="#ef4444" />
+                            </Pressable>
+                          </View>
+                        ))}
+                    </View>
+                  )}
+                </View>
               </View>
             )}
 
@@ -776,90 +1069,141 @@ export default function FormMatriculaScreen() {
                   ))}
               </View>
 
-              {/* Dados da Modalidade */}
-              <View className="mb-4">
-                <Text className="mb-1 text-[10px] font-semibold uppercase text-slate-400">Modalidade</Text>
-                {modalidades
-                  .filter((m) => m.id === parseInt(formData.modalidade_id))
-                  .map((modalidade) => (
-                    <View key={modalidade.id} className="flex-row items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                      <View className="h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: modalidade.cor || '#f97316' }}>
-                        <MaterialCommunityIcons
-                          name={modalidade.icone || 'dumbbell'}
-                          size={18}
-                          color="#fff"
-                        />
-                      </View>
-                      <View className="flex-1">
-                        <Text className="text-[13px] font-semibold text-slate-800">{modalidade.nome}</Text>
-                      </View>
-                    </View>
-                  ))}
-              </View>
-
-              {/* Dados do Plano */}
-              <View className="mb-4">
-                <Text className="mb-1 text-[10px] font-semibold uppercase text-slate-400">Plano Selecionado</Text>
-                {planosDisponiveis
-                  .filter((p) => p.id === parseInt(formData.plano_id))
-                  .map((plano) => (
-                    <View key={plano.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                      <View className="flex-row flex-wrap items-center justify-between gap-2">
-                        <Text className="text-[13px] font-semibold text-slate-800">{plano.nome}</Text>
-                        <Text className="text-sm font-bold text-slate-700">
-                          {formatCurrency(plano.valor)}
-                        </Text>
-                      </View>
-                      <View className="mt-2 flex-row flex-wrap gap-2">
-                        <View className="flex-row items-center gap-2 rounded-full bg-white px-2.5 py-1">
-                          <Feather name="calendar" size={11} color="#94a3b8" />
-                          <Text className="text-[11px] text-slate-500">
-                            {plano.checkins_semanais}x por semana
-                          </Text>
+              {tipoMatricula === 'plano' && (
+                <>
+                  {/* Dados da Modalidade */}
+                  <View className="mb-4">
+                    <Text className="mb-1 text-[10px] font-semibold uppercase text-slate-400">Modalidade</Text>
+                    {modalidades
+                      .filter((m) => m.id === parseInt(formData.modalidade_id))
+                      .map((modalidade) => (
+                        <View key={modalidade.id} className="flex-row items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <View className="h-9 w-9 items-center justify-center rounded-full" style={{ backgroundColor: modalidade.cor || '#f97316' }}>
+                            <MaterialCommunityIcons
+                              name={modalidade.icone || 'dumbbell'}
+                              size={18}
+                              color="#fff"
+                            />
+                          </View>
+                          <View className="flex-1">
+                            <Text className="text-[13px] font-semibold text-slate-800">{modalidade.nome}</Text>
+                          </View>
                         </View>
-                        <View className="flex-row items-center gap-2 rounded-full bg-white px-2.5 py-1">
-                          <Feather name="clock" size={11} color="#94a3b8" />
-                          <Text className="text-[11px] text-slate-500">
-                            {plano.duracao_dias} dias
-                          </Text>
-                        </View>
-                      </View>
-                    </View>
-                  ))}
-              </View>
+                      ))}
+                  </View>
 
-              {/* Dados do Ciclo */}
-              <View>
-                <Text className="mb-1 text-[10px] font-semibold uppercase text-slate-400">Ciclo Selecionado</Text>
-                {ciclosDisponiveis
-                  .filter((c) => c.id === parseInt(formData.plano_ciclo_id))
-                  .map((ciclo) => (
-                    <View key={ciclo.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  {/* Dados do Plano */}
+                  <View className="mb-4">
+                    <Text className="mb-1 text-[10px] font-semibold uppercase text-slate-400">Plano Selecionado</Text>
+                    {planosDisponiveis
+                      .filter((p) => p.id === parseInt(formData.plano_id))
+                      .map((plano) => (
+                        <View key={plano.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <View className="flex-row flex-wrap items-center justify-between gap-2">
+                            <Text className="text-[13px] font-semibold text-slate-800">{plano.nome}</Text>
+                            <Text className="text-sm font-bold text-slate-700">
+                              {formatCurrency(plano.valor)}
+                            </Text>
+                          </View>
+                          <View className="mt-2 flex-row flex-wrap gap-2">
+                            <View className="flex-row items-center gap-2 rounded-full bg-white px-2.5 py-1">
+                              <Feather name="calendar" size={11} color="#94a3b8" />
+                              <Text className="text-[11px] text-slate-500">
+                                {plano.checkins_semanais}x por semana
+                              </Text>
+                            </View>
+                            <View className="flex-row items-center gap-2 rounded-full bg-white px-2.5 py-1">
+                              <Feather name="clock" size={11} color="#94a3b8" />
+                              <Text className="text-[11px] text-slate-500">
+                                {plano.duracao_dias} dias
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                      ))}
+                  </View>
+
+                  {/* Dados do Ciclo */}
+                  <View>
+                    <Text className="mb-1 text-[10px] font-semibold uppercase text-slate-400">Ciclo Selecionado</Text>
+                    {ciclosDisponiveis
+                      .filter((c) => c.id === parseInt(formData.plano_ciclo_id))
+                      .map((ciclo) => (
+                        <View key={ciclo.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <View className="flex-row flex-wrap items-center justify-between gap-2">
+                            <Text className="text-[13px] font-semibold text-slate-800">{getCicloLabel(ciclo)}</Text>
+                            <Text className="text-sm font-bold text-slate-700">
+                              {formatCurrency(ciclo.valor)}
+                            </Text>
+                          </View>
+                          <View className="mt-2 flex-row flex-wrap gap-2">
+                            <View className="rounded-full bg-white px-2.5 py-1">
+                              <Text className="text-[11px] text-slate-500">
+                                {ciclo.permite_recorrencia ? 'Permite recorrência' : 'Pagamento avulso'}
+                              </Text>
+                            </View>
+                            {!!Number(ciclo.desconto_percentual || 0) && (
+                              <View className="rounded-full bg-emerald-50 px-2.5 py-1">
+                                <Text className="text-[11px] text-emerald-600">
+                                  {Number(ciclo.desconto_percentual) > 0
+                                    ? `${Number(ciclo.desconto_percentual)}% de desconto`
+                                    : `${Number(ciclo.desconto_percentual)}% de ajuste`}
+                                </Text>
+                              </View>
+                            )}
+                          </View>
+                        </View>
+                      ))}
+                  </View>
+                </>
+              )}
+
+              {tipoMatricula === 'pacote' && pacoteSelecionado && (
+                <>
+                  <View className="mb-4">
+                    <Text className="mb-1 text-[10px] font-semibold uppercase text-slate-400">Pacote Selecionado</Text>
+                    <View className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                       <View className="flex-row flex-wrap items-center justify-between gap-2">
-                        <Text className="text-[13px] font-semibold text-slate-800">{getCicloLabel(ciclo)}</Text>
+                        <Text className="text-[13px] font-semibold text-slate-800">{pacoteSelecionado.nome}</Text>
                         <Text className="text-sm font-bold text-slate-700">
-                          {formatCurrency(ciclo.valor)}
+                          {formatCurrency(pacoteSelecionado.valor_total)}
                         </Text>
                       </View>
                       <View className="mt-2 flex-row flex-wrap gap-2">
                         <View className="rounded-full bg-white px-2.5 py-1">
                           <Text className="text-[11px] text-slate-500">
-                            {ciclo.permite_recorrencia ? 'Permite recorrência' : 'Pagamento avulso'}
+                            Beneficiários: {pacoteSelecionado.qtd_beneficiarios || 0}
                           </Text>
                         </View>
-                        {!!Number(ciclo.desconto_percentual || 0) && (
-                          <View className="rounded-full bg-emerald-50 px-2.5 py-1">
-                            <Text className="text-[11px] text-emerald-600">
-                              {Number(ciclo.desconto_percentual) > 0
-                                ? `${Number(ciclo.desconto_percentual)}% de desconto`
-                                : `${Number(ciclo.desconto_percentual)}% de ajuste`}
+                        {!!pacoteSelecionado.plano_nome && (
+                          <View className="rounded-full bg-white px-2.5 py-1">
+                            <Text className="text-[11px] text-slate-500">
+                              Plano: {pacoteSelecionado.plano_nome}
                             </Text>
                           </View>
                         )}
                       </View>
                     </View>
-                  ))}
-              </View>
+                  </View>
+
+                  <View>
+                    <Text className="mb-1 text-[10px] font-semibold uppercase text-slate-400">Dependentes</Text>
+                    <View className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      {formData.dependentes.length === 0 ? (
+                        <Text className="text-xs text-slate-500">Nenhum dependente selecionado</Text>
+                      ) : (
+                        alunosBasico
+                          .filter((aluno) => formData.dependentes.includes(aluno.id.toString()))
+                          .map((aluno) => (
+                            <Text key={aluno.id} className="text-xs text-slate-600">
+                              • {aluno.nome}
+                            </Text>
+                          ))
+                      )}
+                    </View>
+                  </View>
+                </>
+              )}
             </View>
 
             <View className="flex-row gap-3 border-t border-slate-200 px-6 py-4">

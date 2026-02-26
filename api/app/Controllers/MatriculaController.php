@@ -679,12 +679,14 @@ class MatriculaController
         }
 
         // 2. Montar lista de beneficiários (pagante + dependentes)
+        // qtd_beneficiarios do pacote = total de pessoas (pagante + dependentes)
         $beneficiariosIds = array_unique(array_merge([$alunoId], $dependentesIds));
         $totalBeneficiarios = count($beneficiariosIds);
+        $limiteTotal = (int) $pacote['qtd_beneficiarios'] + 1; // +1 porque o pagante não conta no limite
 
-        if ($totalBeneficiarios > (int) $pacote['qtd_beneficiarios']) {
+        if ($totalBeneficiarios > $limiteTotal) {
             $response->getBody()->write(json_encode([
-                'error' => "Quantidade de beneficiários ({$totalBeneficiarios}) excede o limite do pacote ({$pacote['qtd_beneficiarios']})"
+                'error' => "Quantidade total de pessoas ({$totalBeneficiarios}) excede o limite do pacote ({$limiteTotal}: 1 pagante + {$pacote['qtd_beneficiarios']} beneficiário(s))"
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
@@ -714,7 +716,10 @@ class MatriculaController
         $valorTotal = (float) $pacote['valor_total'];
         $valorRateado = round($valorTotal / $totalBeneficiarios, 2);
         $planoId = (int) $pacote['plano_id'];
-        $planoCicloId = !empty($pacote['plano_ciclo_id']) ? (int) $pacote['plano_ciclo_id'] : null;
+        // Só usar plano_ciclo_id se o ciclo realmente existe (ciclo_meses vem do LEFT JOIN)
+        $planoCicloId = (!empty($pacote['plano_ciclo_id']) && !empty($pacote['ciclo_meses']))
+            ? (int) $pacote['plano_ciclo_id']
+            : null;
 
         $dataInicioObj = new \DateTime($dataInicio);
         $proximaDataVencimento = clone $dataInicioObj;
@@ -2226,6 +2231,216 @@ class MatriculaController
             'proxima_parcela' => $proximaParcela ?? null
         ]));
         return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * Dar baixa em todas as matrículas de um pacote/contrato de uma vez
+     */
+    #[OA\Post(
+        path: "/admin/matriculas/pacote-contrato/{contratoId}/baixa",
+        summary: "Dar baixa em pacote (todas as matrículas)",
+        description: "Marca como pago todos os pagamentos pendentes do pacote, ativa todas as matrículas e gera as próximas parcelas automaticamente.",
+        tags: ["Matrículas"],
+        parameters: [
+            new OA\Parameter(name: "contratoId", in: "path", required: true, schema: new OA\Schema(type: "integer"))
+        ],
+        security: [["bearerAuth" => []]],
+        requestBody: new OA\RequestBody(
+            content: new OA\JsonContent(
+                properties: [
+                    new OA\Property(property: "data_pagamento", type: "string", format: "date", example: "2026-02-26"),
+                    new OA\Property(property: "forma_pagamento_id", type: "integer", example: 2),
+                    new OA\Property(property: "observacoes", type: "string", example: "Pago via PIX")
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(response: 200, description: "Baixa realizada em todas as matrículas do pacote"),
+            new OA\Response(response: 404, description: "Contrato não encontrado"),
+            new OA\Response(response: 400, description: "Nenhum pagamento pendente")
+        ]
+    )]
+    public function darBaixaPacote(Request $request, Response $response, array $args): Response
+    {
+        $tenantId = $request->getAttribute('tenantId', 1);
+        $adminId = $request->getAttribute('userId', null);
+        $data = $request->getParsedBody() ?? [];
+        $db = require __DIR__ . '/../../config/database.php';
+
+        $contratoId = (int) ($args['contratoId'] ?? 0);
+
+        // 1. Buscar contrato
+        $stmtContrato = $db->prepare("
+            SELECT pc.*, p.nome as pacote_nome, p.plano_id, p.plano_ciclo_id
+            FROM pacote_contratos pc
+            INNER JOIN pacotes p ON p.id = pc.pacote_id
+            WHERE pc.id = ? AND pc.tenant_id = ?
+            LIMIT 1
+        ");
+        $stmtContrato->execute([$contratoId, $tenantId]);
+        $contrato = $stmtContrato->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$contrato) {
+            $response->getBody()->write(json_encode(['error' => 'Contrato de pacote não encontrado'], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        // 2. Buscar pagamentos pendentes do contrato
+        $stmtPagamentos = $db->prepare("
+            SELECT pp.*, m.plano_ciclo_id, p.duracao_dias,
+                   pc2.meses as ciclo_meses, af.meses as frequencia_meses,
+                   a.nome as aluno_nome
+            FROM pagamentos_plano pp
+            INNER JOIN matriculas m ON pp.matricula_id = m.id
+            INNER JOIN planos p ON pp.plano_id = p.id
+            INNER JOIN alunos a ON pp.aluno_id = a.id
+            LEFT JOIN plano_ciclos pc2 ON pc2.id = m.plano_ciclo_id
+            LEFT JOIN assinatura_frequencias af ON af.id = pc2.assinatura_frequencia_id
+            WHERE pp.pacote_contrato_id = ? AND pp.tenant_id = ? AND pp.status_pagamento_id != 2
+            ORDER BY pp.id
+        ");
+        $stmtPagamentos->execute([$contratoId, $tenantId]);
+        $pagamentos = $stmtPagamentos->fetchAll(\PDO::FETCH_ASSOC);
+
+        if (empty($pagamentos)) {
+            $response->getBody()->write(json_encode(['error' => 'Nenhum pagamento pendente para este pacote'], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
+
+        $dataPagamento = $data['data_pagamento'] ?? date('Y-m-d');
+        $formaPagamentoId = $data['forma_pagamento_id'] ?? null;
+        $observacoes = $data['observacoes'] ?? null;
+
+        $db->beginTransaction();
+        try {
+            $matriculasAtivadas = [];
+            $proximasParcelas = [];
+
+            foreach ($pagamentos as $pagamento) {
+                // Marcar pagamento como pago
+                $stmtUpdate = $db->prepare("
+                    UPDATE pagamentos_plano
+                    SET status_pagamento_id = 2,
+                        data_pagamento = ?,
+                        forma_pagamento_id = ?,
+                        observacoes = ?,
+                        baixado_por = ?,
+                        tipo_baixa_id = 1,
+                        updated_at = NOW()
+                    WHERE id = ?
+                ");
+                $stmtUpdate->execute([
+                    $dataPagamento,
+                    $formaPagamentoId,
+                    $observacoes,
+                    $adminId,
+                    $pagamento['id']
+                ]);
+
+                // Ativar matrícula se pendente
+                $stmtMatricula = $db->prepare("
+                    UPDATE matriculas
+                    SET status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1),
+                        updated_at = NOW()
+                    WHERE id = ?
+                    AND status_id IN (
+                        SELECT id FROM status_matricula WHERE codigo IN ('pendente', 'vencida')
+                    )
+                ");
+                $stmtMatricula->execute([$pagamento['matricula_id']]);
+
+                $matriculasAtivadas[] = [
+                    'matricula_id' => (int) $pagamento['matricula_id'],
+                    'aluno_id' => (int) $pagamento['aluno_id'],
+                    'aluno_nome' => $pagamento['aluno_nome'],
+                    'valor' => (float) $pagamento['valor']
+                ];
+
+                // Gerar próxima parcela
+                try {
+                    $dataVencimentoAtual = new \DateTime($pagamento['data_vencimento']);
+                    $mesesCiclo = $pagamento['ciclo_meses'] ?? $pagamento['frequencia_meses'] ?? null;
+
+                    if ($mesesCiclo) {
+                        $proximoVencimento = clone $dataVencimentoAtual;
+                        $proximoVencimento->modify("+{$mesesCiclo} months");
+                    } else {
+                        $duracaoDias = max(1, (int) ($pagamento['duracao_dias'] ?? 30));
+                        $proximoVencimento = clone $dataVencimentoAtual;
+                        $proximoVencimento->add(new \DateInterval("P{$duracaoDias}D"));
+                    }
+
+                    $stmtProxima = $db->prepare("
+                        INSERT INTO pagamentos_plano (
+                            tenant_id, aluno_id, matricula_id, plano_id, valor,
+                            data_vencimento, status_pagamento_id, pacote_contrato_id,
+                            observacoes, criado_por, created_at, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, 'Parcela gerada automaticamente', ?, NOW(), NOW())
+                    ");
+                    $stmtProxima->execute([
+                        $pagamento['tenant_id'],
+                        $pagamento['aluno_id'],
+                        $pagamento['matricula_id'],
+                        $pagamento['plano_id'],
+                        $pagamento['valor'],
+                        $proximoVencimento->format('Y-m-d'),
+                        $contratoId,
+                        $adminId
+                    ]);
+
+                    $proximasParcelas[] = [
+                        'id' => (int) $db->lastInsertId(),
+                        'aluno_nome' => $pagamento['aluno_nome'],
+                        'data_vencimento' => $proximoVencimento->format('Y-m-d'),
+                        'valor' => (float) $pagamento['valor']
+                    ];
+
+                    // Atualizar próxima data de vencimento na matrícula
+                    $stmtUpdMat = $db->prepare("
+                        UPDATE matriculas SET proxima_data_vencimento = ?, updated_at = NOW() WHERE id = ?
+                    ");
+                    $stmtUpdMat->execute([$proximoVencimento->format('Y-m-d'), $pagamento['matricula_id']]);
+
+                } catch (\Exception $e) {
+                    error_log("[darBaixaPacote] Erro ao gerar próxima parcela para matrícula {$pagamento['matricula_id']}: " . $e->getMessage());
+                }
+            }
+
+            // Atualizar contrato para ativo
+            $stmtUpdContrato = $db->prepare("
+                UPDATE pacote_contratos SET status = 'ativo', updated_at = NOW() WHERE id = ? AND tenant_id = ?
+            ");
+            $stmtUpdContrato->execute([$contratoId, $tenantId]);
+
+            // Atualizar beneficiários para ativo
+            $stmtUpdBen = $db->prepare("
+                UPDATE pacote_beneficiarios SET status = 'ativo', updated_at = NOW() WHERE pacote_contrato_id = ? AND tenant_id = ?
+            ");
+            $stmtUpdBen->execute([$contratoId, $tenantId]);
+
+            $db->commit();
+
+            $valorTotal = array_sum(array_column($matriculasAtivadas, 'valor'));
+
+            $response->getBody()->write(json_encode([
+                'message' => 'Baixa do pacote realizada com sucesso',
+                'pacote' => $contrato['pacote_nome'],
+                'contrato_id' => $contratoId,
+                'valor_total' => $valorTotal,
+                'matriculas_ativadas' => $matriculasAtivadas,
+                'proximas_parcelas' => $proximasParcelas,
+                'total_beneficiarios' => count($matriculasAtivadas)
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json');
+
+        } catch (\Exception $e) {
+            $db->rollBack();
+            error_log("[MatriculaController::darBaixaPacote] Erro: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'error' => 'Erro ao dar baixa no pacote: ' . $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
     }
 
     private function usuariosTemColunasPlano(\PDO $db): bool

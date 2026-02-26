@@ -36,6 +36,8 @@ export default function MatriculaDetalheScreen() {
   const [modalEditarVencimento, setModalEditarVencimento] = useState(false);
   const [novaDataVencimento, setNovaDataVencimento] = useState('');
   const [salvandoData, setSalvandoData] = useState(false);
+  const [modalBaixaPacoteVisible, setModalBaixaPacoteVisible] = useState(false);
+  const [baixaPacoteLoading, setBaixaPacoteLoading] = useState(false);
   const [errorModal, setErrorModal] = useState({ visible: false, title: '', message: '' });
 
   useEffect(() => {
@@ -89,6 +91,22 @@ export default function MatriculaDetalheScreen() {
     setPagamentoSelecionado(null);
     showToast('Pagamento confirmado! Próximo pagamento gerado automaticamente.');
     carregarDados();
+  };
+
+  const handleConfirmarBaixaPacote = async () => {
+    if (!matricula?.pacote_contrato_id) return;
+    try {
+      setBaixaPacoteLoading(true);
+      const response = await matriculaService.baixarPacoteContrato(matricula.pacote_contrato_id);
+      showToast(response?.message || 'Baixa do pacote realizada com sucesso!');
+      setModalBaixaPacoteVisible(false);
+      await carregarDados();
+    } catch (error) {
+      const mensagem = obterMensagemErro(error, 'Não foi possível baixar o pacote');
+      showAlert('Erro', mensagem);
+    } finally {
+      setBaixaPacoteLoading(false);
+    }
   };
 
   const handleAbrirModalEditarVencimento = () => {
@@ -393,17 +411,13 @@ export default function MatriculaDetalheScreen() {
     if (statusId === 3) return true;
     return statusId === 1 && isVencido(p.data_vencimento);
   });
+  const isPacote = Boolean(matricula?.pacote_contrato_id);
   const isPagamentoPendente = (pagamento) => {
     const statusId = Number(pagamento.status_pagamento_id);
     if (statusId === 3) return true;
     return statusId === 1 && isVencido(pagamento.data_vencimento);
   };
-  const isPagamentoBaixavel = (pagamento) => {
-    const statusId = Number(pagamento.status_pagamento_id);
-    if (statusId === 3) return true;
-    if (statusId === 1) return isVencimentoAtingido(pagamento.data_vencimento);
-    return false;
-  };
+  const isPagamentoBaixavel = (pagamento) => !pagamento?.data_pagamento;
 
   const resumo = calcularResumo();
   const cicloInfo = getCicloInfo();
@@ -558,7 +572,7 @@ export default function MatriculaDetalheScreen() {
             </View>
 
             {/* Botão Editar Data de Vencimento (somente quando não há valor) */}
-            {!(matricula?.valor > 0) && (
+            {!(matricula?.valor > 0) && !isPacote && (
               <View className="border-t border-slate-100 px-5 py-3">
                 <Pressable
                   onPress={handleAbrirModalEditarVencimento}
@@ -567,6 +581,19 @@ export default function MatriculaDetalheScreen() {
                 >
                   <Feather name="calendar" size={16} color="#fff" />
                   <Text className="text-sm font-semibold text-white">Alterar Data de Vencimento</Text>
+                </Pressable>
+              </View>
+            )}
+
+            {isPacote && Number(matricula.status_id) === 5 && (
+              <View className="border-t border-slate-100 px-5 py-3">
+                <Pressable
+                  onPress={() => setModalBaixaPacoteVisible(true)}
+                  className="flex-row items-center justify-center gap-2 rounded-lg bg-emerald-600 py-3"
+                  style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                >
+                  <Feather name="check-circle" size={16} color="#fff" />
+                  <Text className="text-sm font-semibold text-white">Dar baixa do pacote</Text>
                 </Pressable>
               </View>
             )}
@@ -774,6 +801,55 @@ export default function MatriculaDetalheScreen() {
         pagamento={pagamentoSelecionado}
         onSuccess={handleBaixaSuccess}
       />
+
+      {/* Modal de Baixa do Pacote */}
+      <Modal
+        visible={modalBaixaPacoteVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setModalBaixaPacoteVisible(false)}
+      >
+        <View className="flex-1 items-center justify-center bg-black/40 px-4">
+          <View className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+            <View className="items-center border-b border-slate-200 px-6 py-5">
+              <View className="mb-3 h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
+                <Feather name="check-circle" size={28} color="#10b981" />
+              </View>
+              <Text className="text-lg font-bold text-slate-800">Baixar Pacote</Text>
+              <Text className="text-sm text-slate-500">Confirme a baixa do pacote pendente</Text>
+            </View>
+
+            <View className="px-6 py-5">
+              <Text className="text-center text-sm leading-6 text-slate-600">
+                Esta ação confirma o pagamento do pacote e libera as matrículas vinculadas.
+              </Text>
+            </View>
+
+            <View className="flex-row gap-3 border-t border-slate-200 px-6 py-4">
+              <Pressable
+                onPress={() => setModalBaixaPacoteVisible(false)}
+                disabled={baixaPacoteLoading}
+                className="flex-1 items-center justify-center rounded-lg bg-slate-200 py-3"
+                style={({ pressed }) => [pressed && { opacity: 0.7 }]}
+              >
+                <Text className="text-sm font-semibold text-slate-700">Cancelar</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleConfirmarBaixaPacote}
+                disabled={baixaPacoteLoading}
+                className="flex-1 items-center justify-center rounded-lg bg-emerald-600 py-3"
+                style={({ pressed }) => [pressed && { opacity: 0.8 }, baixaPacoteLoading && { opacity: 0.6 }]}
+              >
+                {baixaPacoteLoading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text className="text-sm font-semibold text-white">Confirmar baixa</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Modal de Editar Data de Vencimento */}
       <Modal

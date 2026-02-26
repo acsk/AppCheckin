@@ -109,6 +109,16 @@ export const matriculaService = {
     }
   },
 
+  async baixarPacoteContrato(contratoId) {
+    try {
+      const response = await api.post(`/admin/matriculas/pacote-contrato/${contratoId}/baixa`);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao baixar pacote do contrato:', error);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
   async listarVencimentosHoje() {
     try {
       const response = await api.get('/admin/matriculas/vencimentos/hoje');
