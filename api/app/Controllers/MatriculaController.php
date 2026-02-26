@@ -34,19 +34,21 @@ class MatriculaController
      */
     #[OA\Post(
         path: "/admin/matriculas",
-        summary: "Criar nova matrícula",
-        description: "Cria uma matrícula para um aluno em um plano. Se já existir matrícula vencida na mesma modalidade, ela é reutilizada (UPDATE). Aceita opcionalmente um plano_ciclo_id para definir valor e duração do ciclo de cobrança.",
+        summary: "Criar nova matrícula (individual ou pacote)",
+        description: "Cria uma matrícula individual para um aluno, ou múltiplas matrículas via pacote.\n\n**Matrícula individual:** envie plano_id + dia_vencimento.\n**Matrícula via pacote:** envie pacote_id + dia_vencimento + dependentes[]. O aluno informado (aluno_id/usuario_id) é o pagante. O plano, ciclo e valor vêm do pacote. Cada beneficiário (pagante + dependentes) recebe uma matrícula com valor rateado.",
         tags: ["Matrículas"],
         security: [["bearerAuth" => []]],
         requestBody: new OA\RequestBody(
             required: true,
             content: new OA\JsonContent(
-                required: ["plano_id", "dia_vencimento"],
+                required: ["dia_vencimento"],
                 properties: [
                     new OA\Property(property: "usuario_id", type: "integer", description: "ID do usuário (usado para buscar o aluno)"),
                     new OA\Property(property: "aluno_id", type: "integer", description: "ID do aluno (alternativa ao usuario_id)"),
-                    new OA\Property(property: "plano_id", type: "integer", description: "ID do plano"),
+                    new OA\Property(property: "plano_id", type: "integer", description: "ID do plano (obrigatório para matrícula individual)"),
                     new OA\Property(property: "plano_ciclo_id", type: "integer", nullable: true, description: "ID do ciclo do plano (define valor e duração). Se não informado, usa valores do plano base."),
+                    new OA\Property(property: "pacote_id", type: "integer", nullable: true, description: "ID do pacote. Quando informado, cria matrículas para o pagante + dependentes com valor rateado. plano_id e valor são ignorados (vêm do pacote)."),
+                    new OA\Property(property: "dependentes", type: "array", items: new OA\Items(type: "integer"), nullable: true, description: "Array de aluno_ids dos dependentes (apenas para pacote). O pagante é incluído automaticamente."),
                     new OA\Property(property: "dia_vencimento", type: "integer", description: "Dia do mês para vencimento (1-31)"),
                     new OA\Property(property: "valor", type: "number", format: "float", nullable: true, description: "Valor da matrícula (se não informado, usa o valor do ciclo ou plano)"),
                     new OA\Property(property: "data_inicio", type: "string", format: "date", nullable: true, description: "Data de início (padrão: hoje)"),
@@ -58,19 +60,21 @@ class MatriculaController
         responses: [
             new OA\Response(
                 response: 201,
-                description: "Matrícula criada com sucesso",
+                description: "Matrícula(s) criada(s) com sucesso",
                 content: new OA\JsonContent(
                     properties: [
                         new OA\Property(property: "message", type: "string", example: "Matrícula realizada com sucesso"),
-                        new OA\Property(property: "matricula", type: "object"),
+                        new OA\Property(property: "matricula", type: "object", description: "Matrícula criada (individual) ou null (pacote)"),
                         new OA\Property(property: "pagamentos", type: "array", items: new OA\Items(type: "object")),
                         new OA\Property(property: "total_pagamentos", type: "number"),
-                        new OA\Property(property: "info", type: "string", example: "Acesso garantido até 25/03/2026")
+                        new OA\Property(property: "info", type: "string", example: "Acesso garantido até 25/03/2026"),
+                        new OA\Property(property: "pacote_contrato_id", type: "integer", nullable: true, description: "ID do contrato de pacote (apenas para pacote)"),
+                        new OA\Property(property: "matriculas", type: "array", items: new OA\Items(type: "object"), description: "Lista de matrículas criadas (apenas para pacote)")
                     ]
                 )
             ),
-            new OA\Response(response: 400, description: "Dados inválidos ou aluno já possui matrícula ativa na modalidade"),
-            new OA\Response(response: 404, description: "Plano, ciclo ou usuário não encontrado"),
+            new OA\Response(response: 400, description: "Dados inválidos, aluno já possui matrícula ativa na modalidade, ou limite de beneficiários excedido"),
+            new OA\Response(response: 404, description: "Plano, ciclo, pacote ou usuário não encontrado"),
             new OA\Response(response: 401, description: "Não autorizado")
         ]
     )]
@@ -91,8 +95,8 @@ class MatriculaController
             $errors[] = 'Aluno é obrigatório (envie aluno_id ou usuario_id)';
         }
         
-        if (empty($data['plano_id'])) {
-            $errors[] = 'Plano é obrigatório';
+        if (empty($data['plano_id']) && empty($data['pacote_id'])) {
+            $errors[] = 'Plano ou Pacote é obrigatório (envie plano_id ou pacote_id)';
         }
 
         // Validar dia_vencimento (opcional, mas se informado deve ser entre 1 e 31)
@@ -130,6 +134,12 @@ class MatriculaController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
             }
             $alunoId = $alunoRow['id'];
+        }
+
+        // === BRANCH: PACOTE ===
+        // Se pacote_id foi informado, delegar para método específico de pacote
+        if (!empty($data['pacote_id'])) {
+            return $this->criarMatriculaPacote($request, $response, $db, $tenantId, $adminId, $alunoId, $usuarioId, $data);
         }
 
         $planoId = $data['plano_id'];
@@ -628,6 +638,330 @@ class MatriculaController
                 : "Acesso garantido até " . $proximaDataVencimento->format('d/m/Y')
         ], JSON_UNESCAPED_UNICODE));
         return $response->withHeader('Content-Type', 'application/json')->withStatus(201);
+    }
+
+    /**
+     * Criar matrículas via pacote (pagante + dependentes)
+     * Método privado chamado pelo criar() quando pacote_id é informado
+     */
+    private function criarMatriculaPacote(
+        Request $request,
+        Response $response,
+        \PDO $db,
+        int $tenantId,
+        ?int $adminId,
+        int $alunoId,
+        int $usuarioId,
+        array $data
+    ): Response {
+        $pacoteId = (int) $data['pacote_id'];
+        $dependentesIds = isset($data['dependentes']) ? array_map('intval', (array) $data['dependentes']) : [];
+        $diaVencimento = (int) ($data['dia_vencimento'] ?? 10);
+        $observacoes = $data['observacoes'] ?? null;
+        $dataInicio = !empty($data['data_inicio']) ? $data['data_inicio'] : date('Y-m-d');
+
+        // 1. Buscar pacote
+        $stmtPacote = $db->prepare("
+            SELECT p.*, pl.duracao_dias, pl.modalidade_id, pl.nome as plano_nome,
+                   pc2.meses as ciclo_meses, pc2.valor as ciclo_valor
+            FROM pacotes p
+            INNER JOIN planos pl ON pl.id = p.plano_id
+            LEFT JOIN plano_ciclos pc2 ON pc2.id = p.plano_ciclo_id
+            WHERE p.id = ? AND p.tenant_id = ? AND p.ativo = 1
+            LIMIT 1
+        ");
+        $stmtPacote->execute([$pacoteId, $tenantId]);
+        $pacote = $stmtPacote->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$pacote) {
+            $response->getBody()->write(json_encode(['error' => 'Pacote não encontrado ou inativo'], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        // 2. Montar lista de beneficiários (pagante + dependentes)
+        $beneficiariosIds = array_unique(array_merge([$alunoId], $dependentesIds));
+        $totalBeneficiarios = count($beneficiariosIds);
+
+        if ($totalBeneficiarios > (int) $pacote['qtd_beneficiarios']) {
+            $response->getBody()->write(json_encode([
+                'error' => "Quantidade de beneficiários ({$totalBeneficiarios}) excede o limite do pacote ({$pacote['qtd_beneficiarios']})"
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
+
+        // 3. Validar que todos os dependentes existem como alunos no tenant
+        if (!empty($dependentesIds)) {
+            $placeholders = implode(',', array_fill(0, count($dependentesIds), '?'));
+            $stmtValidaDeps = $db->prepare("
+                SELECT a.id
+                FROM alunos a
+                INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = a.usuario_id AND tup.tenant_id = ? AND tup.ativo = 1
+                WHERE a.id IN ({$placeholders})
+            ");
+            $stmtValidaDeps->execute(array_merge([$tenantId], $dependentesIds));
+            $depsEncontrados = $stmtValidaDeps->fetchAll(\PDO::FETCH_COLUMN);
+
+            $depsNaoEncontrados = array_diff($dependentesIds, $depsEncontrados);
+            if (!empty($depsNaoEncontrados)) {
+                $response->getBody()->write(json_encode([
+                    'error' => 'Dependentes não encontrados: ' . implode(', ', $depsNaoEncontrados)
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+        }
+
+        // 4. Calcular valores e datas
+        $valorTotal = (float) $pacote['valor_total'];
+        $valorRateado = round($valorTotal / $totalBeneficiarios, 2);
+        $planoId = (int) $pacote['plano_id'];
+        $planoCicloId = !empty($pacote['plano_ciclo_id']) ? (int) $pacote['plano_ciclo_id'] : null;
+
+        $dataInicioObj = new \DateTime($dataInicio);
+        $proximaDataVencimento = clone $dataInicioObj;
+
+        if (!empty($pacote['ciclo_meses']) && (int) $pacote['ciclo_meses'] > 0) {
+            $mesesCiclo = (int) $pacote['ciclo_meses'];
+            $proximaDataVencimento->modify("+{$mesesCiclo} months");
+            $duracaoDias = $mesesCiclo * 30;
+        } else {
+            $duracaoDias = max(1, (int) ($pacote['duracao_dias'] ?? 30));
+            $proximaDataVencimento->modify("+{$duracaoDias} days");
+        }
+
+        $dataVencimento = $proximaDataVencimento->format('Y-m-d');
+
+        // 5. Buscar IDs de status e motivo
+        $stmtStatus = $db->prepare("SELECT id FROM status_matricula WHERE codigo = 'pendente'");
+        $stmtStatus->execute();
+        $statusId = (int) ($stmtStatus->fetchColumn() ?: 5);
+
+        $stmtMotivo = $db->prepare("SELECT id FROM motivo_matricula WHERE codigo = 'nova'");
+        $stmtMotivo->execute();
+        $motivoId = (int) ($stmtMotivo->fetchColumn() ?: 1);
+
+        // 6. Iniciar transação
+        $db->beginTransaction();
+        try {
+            // 6.1 Criar contrato de pacote
+            $stmtContrato = $db->prepare("
+                INSERT INTO pacote_contratos
+                (tenant_id, pacote_id, pagante_usuario_id, status, valor_total, data_inicio, data_fim, created_at, updated_at)
+                VALUES (?, ?, ?, 'pendente', ?, ?, ?, NOW(), NOW())
+            ");
+            $stmtContrato->execute([
+                $tenantId,
+                $pacoteId,
+                $usuarioId,
+                $valorTotal,
+                $dataInicio,
+                $dataVencimento
+            ]);
+            $contratoId = (int) $db->lastInsertId();
+
+            // 6.2 Criar matrícula + beneficiário + pagamento para cada beneficiário
+            $matriculasCriadas = [];
+            $pagamentosCriados = [];
+
+            foreach ($beneficiariosIds as $benAlunoId) {
+                // Verificar se já existe matrícula ativa na mesma modalidade
+                $stmtAtiva = $db->prepare("
+                    SELECT m.id FROM matriculas m
+                    INNER JOIN planos p ON p.id = m.plano_id
+                    INNER JOIN status_matricula sm ON sm.id = m.status_id
+                    WHERE m.aluno_id = ? AND m.tenant_id = ? AND sm.codigo = 'ativa'
+                      AND p.modalidade_id = ? AND m.proxima_data_vencimento >= CURDATE()
+                    LIMIT 1
+                ");
+                $stmtAtiva->execute([$benAlunoId, $tenantId, $pacote['modalidade_id']]);
+                if ($stmtAtiva->fetchColumn()) {
+                    // Buscar nome do aluno para mensagem
+                    $stmtNome = $db->prepare("SELECT nome FROM alunos WHERE id = ? LIMIT 1");
+                    $stmtNome->execute([$benAlunoId]);
+                    $nomeAluno = $stmtNome->fetchColumn() ?: "ID {$benAlunoId}";
+                    $db->rollBack();
+                    $response->getBody()->write(json_encode([
+                        'error' => "Aluno {$nomeAluno} já possui matrícula ativa na modalidade deste pacote"
+                    ], JSON_UNESCAPED_UNICODE));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                }
+
+                // Verificar se existe matrícula vencida para reutilizar
+                $stmtVencida = $db->prepare("
+                    SELECT m.id, m.plano_id, sm.codigo as status_codigo
+                    FROM matriculas m
+                    INNER JOIN planos p ON p.id = m.plano_id
+                    INNER JOIN status_matricula sm ON sm.id = m.status_id
+                    WHERE m.aluno_id = ? AND m.tenant_id = ? AND p.modalidade_id = ?
+                      AND (sm.codigo = 'vencida' OR m.proxima_data_vencimento < CURDATE())
+                    ORDER BY m.updated_at DESC, m.id DESC
+                    LIMIT 1
+                ");
+                $stmtVencida->execute([$benAlunoId, $tenantId, $pacote['modalidade_id']]);
+                $matVencida = $stmtVencida->fetch(\PDO::FETCH_ASSOC);
+
+                if ($matVencida) {
+                    // Reutilizar matrícula existente
+                    $matriculaId = (int) $matVencida['id'];
+                    $stmtUpdateMat = $db->prepare("
+                        UPDATE matriculas
+                        SET plano_id = ?,
+                            plano_ciclo_id = ?,
+                            pacote_contrato_id = ?,
+                            data_matricula = ?,
+                            data_inicio = ?,
+                            data_vencimento = ?,
+                            valor = ?,
+                            valor_rateado = ?,
+                            status_id = ?,
+                            motivo_id = ?,
+                            plano_anterior_id = ?,
+                            observacoes = ?,
+                            criado_por = ?,
+                            dia_vencimento = ?,
+                            proxima_data_vencimento = ?,
+                            updated_at = NOW()
+                        WHERE id = ? AND tenant_id = ?
+                    ");
+                    $stmtUpdateMat->execute([
+                        $planoId,
+                        $planoCicloId,
+                        $contratoId,
+                        date('Y-m-d'),
+                        $dataInicio,
+                        $dataVencimento,
+                        $valorRateado,
+                        $valorRateado,
+                        $statusId,
+                        $motivoId,
+                        (int) $matVencida['plano_id'],
+                        $observacoes,
+                        $adminId,
+                        $diaVencimento,
+                        $dataVencimento,
+                        $matriculaId,
+                        $tenantId
+                    ]);
+                } else {
+                    // Criar nova matrícula
+                    $stmtInsertMat = $db->prepare("
+                        INSERT INTO matriculas
+                        (tenant_id, aluno_id, plano_id, plano_ciclo_id, pacote_contrato_id,
+                         data_matricula, data_inicio, data_vencimento, valor, valor_rateado,
+                         status_id, motivo_id, observacoes, criado_por,
+                         dia_vencimento, proxima_data_vencimento, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                    ");
+                    $stmtInsertMat->execute([
+                        $tenantId,
+                        $benAlunoId,
+                        $planoId,
+                        $planoCicloId,
+                        $contratoId,
+                        date('Y-m-d'),
+                        $dataInicio,
+                        $dataVencimento,
+                        $valorRateado,
+                        $valorRateado,
+                        $statusId,
+                        $motivoId,
+                        $observacoes,
+                        $adminId,
+                        $diaVencimento,
+                        $dataVencimento
+                    ]);
+                    $matriculaId = (int) $db->lastInsertId();
+                }
+
+                // Criar beneficiário no pacote
+                $stmtBen = $db->prepare("
+                    INSERT INTO pacote_beneficiarios
+                    (tenant_id, pacote_contrato_id, aluno_id, matricula_id, valor_rateado, status, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, 'pendente', NOW(), NOW())
+                ");
+                $stmtBen->execute([$tenantId, $contratoId, $benAlunoId, $matriculaId, $valorRateado]);
+
+                // Criar primeiro pagamento
+                $stmtPag = $db->prepare("
+                    INSERT INTO pagamentos_plano
+                    (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento,
+                     status_pagamento_id, pacote_contrato_id, observacoes, criado_por, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, NOW(), NOW())
+                ");
+                $stmtPag->execute([
+                    $tenantId,
+                    $benAlunoId,
+                    $matriculaId,
+                    $planoId,
+                    $valorRateado,
+                    $dataInicio,
+                    $contratoId,
+                    'Pagamento pacote - rateado',
+                    $adminId
+                ]);
+
+                // Buscar nome do aluno
+                $stmtNomeAluno = $db->prepare("SELECT a.nome FROM alunos a WHERE a.id = ? LIMIT 1");
+                $stmtNomeAluno->execute([$benAlunoId]);
+                $nomeAluno = $stmtNomeAluno->fetchColumn() ?: '';
+
+                $matriculasCriadas[] = [
+                    'matricula_id' => $matriculaId,
+                    'aluno_id' => $benAlunoId,
+                    'aluno_nome' => $nomeAluno,
+                    'valor_rateado' => $valorRateado,
+                    'is_pagante' => ($benAlunoId === $alunoId),
+                    'reutilizada' => (bool) $matVencida
+                ];
+            }
+
+            // Registrar no histórico
+            $stmtHistorico = $db->prepare("
+                INSERT INTO historico_planos
+                (usuario_id, plano_novo_id, data_inicio, data_vencimento, valor_pago, motivo, observacoes, criado_por)
+                VALUES (?, ?, ?, ?, ?, 'nova', ?, ?)
+            ");
+            $stmtHistorico->execute([
+                $usuarioId,
+                $planoId,
+                $dataInicio,
+                $dataVencimento,
+                $valorTotal,
+                "Pacote: {$pacote['nome']} ({$totalBeneficiarios} beneficiários)",
+                $adminId
+            ]);
+
+            $db->commit();
+
+            error_log("[MatriculaController] ✅ Pacote #{$pacoteId} contratado: contrato #{$contratoId}, {$totalBeneficiarios} matrícula(s) criada(s)");
+
+            $response->getBody()->write(json_encode([
+                'message' => "Pacote contratado com sucesso - {$totalBeneficiarios} matrícula(s) criada(s)",
+                'pacote_contrato_id' => $contratoId,
+                'pacote' => [
+                    'id' => $pacoteId,
+                    'nome' => $pacote['nome'],
+                    'valor_total' => $valorTotal,
+                    'valor_rateado' => $valorRateado,
+                    'plano_nome' => $pacote['plano_nome'],
+                    'qtd_beneficiarios' => $totalBeneficiarios
+                ],
+                'matriculas' => $matriculasCriadas,
+                'data_inicio' => $dataInicio,
+                'data_vencimento' => $dataVencimento,
+                'info' => "Pacote ativo até " . $proximaDataVencimento->format('d/m/Y')
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(201);
+
+        } catch (\Exception $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            error_log("[MatriculaController::criarMatriculaPacote] ❌ Erro: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'error' => 'Erro ao criar matrícula de pacote: ' . $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
     }
 
     /**

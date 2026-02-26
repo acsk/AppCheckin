@@ -264,11 +264,6 @@ export default function AssinaturasScreen() {
   return (
     <LayoutBase title="Assinaturas" subtitle="Lista de assinaturas do tenant">
       <ScrollView className="flex-1">
-        <View className="px-5 pt-4 pb-2">
-          <Text className="text-lg font-semibold text-slate-800">Assinaturas</Text>
-          <Text className="text-xs text-slate-500">Gerencie assinaturas, filtros e cobranças</Text>
-        </View>
-
         <View className="px-5 pb-4">
           {isSuperAdmin && (
             <View className="mb-4">
@@ -303,49 +298,13 @@ export default function AssinaturasScreen() {
           )}
 
           <View className="rounded-xl border border-slate-200 bg-white p-3">
-            <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">Filtros</Text>
-            <View className="flex-row flex-wrap gap-2 mb-2">
-              {STATUS_OPTIONS.map((status) => {
-                const selected = statusFilter === status.value;
-                return (
-                  <TouchableOpacity
-                    key={status.value || 'todos'}
-                    className={`rounded-full px-2.5 py-1 ${selected ? 'bg-orange-500' : 'bg-slate-100'}`}
-                    onPress={() => setStatusFilter(status.value)}
-                  >
-                    <Text className={`text-[11px] font-semibold ${selected ? 'text-white' : 'text-slate-600'}`}>
-                      {status.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <View className="flex-row flex-wrap gap-2 mb-2">
-              {TIPO_COBRANCA_OPTIONS.map((tipo) => {
-                const selected = tipoCobrancaFilter === tipo.value;
-                return (
-                  <TouchableOpacity
-                    key={tipo.value || 'todos'}
-                    className={`rounded-full px-2.5 py-1 ${selected ? 'bg-slate-900' : 'bg-slate-100'}`}
-                    onPress={() => setTipoCobrancaFilter(tipo.value)}
-                  >
-                    <Text className={`text-[11px] font-semibold ${selected ? 'text-white' : 'text-slate-600'}`}>
-                      {tipo.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <TextInput
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
-              placeholder="Buscar por aluno"
-              value={searchText}
-              onChangeText={setSearchText}
-            />
-
-            <View className="flex-row gap-2 mt-2">
+            <View className="flex-row items-center gap-2">
+              <TextInput
+                className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
+                placeholder="Buscar por aluno"
+                value={searchText}
+                onChangeText={setSearchText}
+              />
               <TouchableOpacity
                 className="flex-row items-center justify-center gap-2 rounded-lg bg-orange-500 px-3 py-2"
                 onPress={handlePesquisar}
@@ -360,6 +319,38 @@ export default function AssinaturasScreen() {
                 <Feather name="x" size={14} color="#64748b" />
                 <Text className="text-sm font-semibold text-slate-600">Limpar</Text>
               </TouchableOpacity>
+            </View>
+
+            <Text className="mt-3 text-[11px] font-bold uppercase tracking-widest text-slate-400">Filtros</Text>
+            <View className="mt-2 flex-row flex-wrap gap-2">
+              {STATUS_OPTIONS.map((status) => {
+                const selected = statusFilter === status.value;
+                return (
+                  <TouchableOpacity
+                    key={status.value || 'todos'}
+                    className={`rounded-full px-2.5 py-1 ${selected ? 'bg-orange-500' : 'bg-slate-100'}`}
+                    onPress={() => setStatusFilter(status.value)}
+                  >
+                    <Text className={`text-[11px] font-semibold ${selected ? 'text-white' : 'text-slate-600'}`}>
+                      {status.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+              {TIPO_COBRANCA_OPTIONS.map((tipo) => {
+                const selected = tipoCobrancaFilter === tipo.value;
+                return (
+                  <TouchableOpacity
+                    key={`tipo-${tipo.value || 'todos'}`}
+                    className={`rounded-full px-2.5 py-1 ${selected ? 'bg-slate-900' : 'bg-slate-100'}`}
+                    onPress={() => setTipoCobrancaFilter(tipo.value)}
+                  >
+                    <Text className={`text-[11px] font-semibold ${selected ? 'text-white' : 'text-slate-600'}`}>
+                      {tipo.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
         </View>
