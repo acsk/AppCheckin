@@ -603,6 +603,12 @@ class AssinaturaController
     /**
      * Verificar se há assinatura aprovada hoje (para PIX/redirecionamento)
      * GET /mobile/assinaturas/aprovadas-hoje?matricula_id=123
+     * 
+     * Fluxo:
+     * 1. Verifica localmente se assinatura já está aprovada
+     * 2. Se não, verifica se matrícula já está ativa (webhook processou)
+     * 3. Se não, consulta a API do Mercado Pago pelo external_reference
+     *    e processa o pagamento se estiver aprovado (fallback para quando webhook falha)
      */
     public function aprovadasHoje(Request $request, Response $response): Response
     {
@@ -620,6 +626,9 @@ class AssinaturaController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
 
+            error_log("[aprovadasHoje] Verificando matrícula #{$matriculaId} para usuário #{$usuarioId}, tenant #{$tenantId}");
+
+            // PASSO 1: Verificar se assinatura já está aprovada localmente
             $stmt = $this->db->prepare("
                 SELECT a.id, a.matricula_id, a.tipo_cobranca, a.status_gateway,
                        a.ultima_cobranca, a.atualizado_em, a.external_reference, a.payment_url,
@@ -631,31 +640,187 @@ class AssinaturaController
                   AND al.usuario_id = ?
                   AND a.matricula_id = ?
                   AND (a.status_gateway = 'approved' OR s.codigo IN ('ativa', 'paga'))
-                  AND DATE(COALESCE(a.ultima_cobranca, a.atualizado_em, a.criado_em)) = CURDATE()
                 ORDER BY a.atualizado_em DESC
                 LIMIT 1
             ");
             $stmt->execute([$tenantId, $usuarioId, $matriculaId]);
             $assinatura = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-            $response->getBody()->write(json_encode([
-                'success' => true,
-                'approved' => (bool)$assinatura,
-                'data' => $assinatura ? [
-                    'assinatura_id' => (int)$assinatura['id'],
-                    'matricula_id' => (int)$assinatura['matricula_id'],
-                    'status_gateway' => $assinatura['status_gateway'] ?? null,
-                    'status_codigo' => $assinatura['status_codigo'] ?? null,
-                    'status_nome' => $assinatura['status_nome'] ?? null,
-                    'tipo_cobranca' => $assinatura['tipo_cobranca'] ?? null,
-                    'ultima_cobranca' => $assinatura['ultima_cobranca'],
-                    'atualizado_em' => $assinatura['atualizado_em'],
-                    'external_reference' => $assinatura['external_reference'] ?? null,
-                    'payment_url' => $assinatura['payment_url'] ?? null
-                ] : null
-            ], JSON_UNESCAPED_UNICODE));
+            if ($assinatura) {
+                error_log("[aprovadasHoje] ✅ Assinatura #{$assinatura['id']} já aprovada localmente");
+                return $this->responderAprovada($response, $assinatura);
+            }
 
-            return $response->withHeader('Content-Type', 'application/json');
+            // PASSO 2: Verificar se a matrícula já está ativa (webhook pode ter processado via pagamento direto)
+            $stmtMat = $this->db->prepare("
+                SELECT m.id, sm.codigo as status_codigo
+                FROM matriculas m
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
+                INNER JOIN alunos al ON al.id = m.aluno_id
+                WHERE m.id = ? AND al.usuario_id = ? AND m.tenant_id = ?
+            ");
+            $stmtMat->execute([$matriculaId, $usuarioId, $tenantId]);
+            $matricula = $stmtMat->fetch(\PDO::FETCH_ASSOC);
+
+            if ($matricula && $matricula['status_codigo'] === 'ativa') {
+                error_log("[aprovadasHoje] ✅ Matrícula #{$matriculaId} já está ativa");
+                $response->getBody()->write(json_encode([
+                    'success' => true,
+                    'approved' => true,
+                    'data' => [
+                        'matricula_id' => $matriculaId,
+                        'status_gateway' => 'approved',
+                        'status_codigo' => 'ativa',
+                        'status_nome' => 'Ativa',
+                        'fonte' => 'matricula_ativa'
+                    ]
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json');
+            }
+
+            // PASSO 3: Buscar assinatura pendente para obter external_reference
+            $stmtPendente = $this->db->prepare("
+                SELECT a.id, a.external_reference, a.tipo_cobranca, a.status_gateway,
+                       a.ultima_cobranca, a.atualizado_em, a.payment_url,
+                       s.codigo as status_codigo, s.nome as status_nome
+                FROM assinaturas a
+                INNER JOIN alunos al ON al.id = a.aluno_id
+                LEFT JOIN assinatura_status s ON s.id = a.status_id
+                WHERE a.tenant_id = ?
+                  AND al.usuario_id = ?
+                  AND a.matricula_id = ?
+                ORDER BY a.criado_em DESC
+                LIMIT 1
+            ");
+            $stmtPendente->execute([$tenantId, $usuarioId, $matriculaId]);
+            $assinaturaPendente = $stmtPendente->fetch(\PDO::FETCH_ASSOC);
+
+            $externalReference = $assinaturaPendente['external_reference'] ?? null;
+
+            // Se não tem assinatura, tentar construir external_reference pelo padrão MAT-{id}
+            if (!$externalReference) {
+                // Buscar pela tabela pagamentos_plano que pode ter o external_reference
+                $stmtRef = $this->db->prepare("
+                    SELECT pm.external_reference
+                    FROM pagamentos_mercadopago pm
+                    WHERE pm.matricula_id = ?
+                    ORDER BY pm.created_at DESC
+                    LIMIT 1
+                ");
+                $stmtRef->execute([$matriculaId]);
+                $externalReference = $stmtRef->fetchColumn() ?: null;
+            }
+
+            if (!$externalReference) {
+                error_log("[aprovadasHoje] ⚠️ Sem external_reference para matrícula #{$matriculaId}, não é possível consultar MP");
+                $response->getBody()->write(json_encode([
+                    'success' => true,
+                    'approved' => false,
+                    'data' => $assinaturaPendente ? [
+                        'assinatura_id' => (int)$assinaturaPendente['id'],
+                        'matricula_id' => $matriculaId,
+                        'status_gateway' => $assinaturaPendente['status_gateway'] ?? 'pending',
+                        'status_codigo' => $assinaturaPendente['status_codigo'] ?? 'pendente',
+                        'status_nome' => $assinaturaPendente['status_nome'] ?? 'Pendente',
+                    ] : null
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json');
+            }
+
+            // PASSO 4: Consultar API do Mercado Pago pelo external_reference
+            error_log("[aprovadasHoje] 🔍 Consultando MP por external_reference: {$externalReference}");
+
+            try {
+                $mercadoPagoService = new MercadoPagoService($tenantId);
+                $resultado = $mercadoPagoService->buscarPagamentosPorExternalReference($externalReference);
+                $pagamentos = $resultado['pagamentos'] ?? [];
+
+                // Procurar pagamento aprovado
+                $pagamentoAprovado = null;
+                foreach ($pagamentos as $p) {
+                    if (($p['status'] ?? '') === 'approved') {
+                        $pagamentoAprovado = $p;
+                        break;
+                    }
+                }
+
+                if ($pagamentoAprovado) {
+                    error_log("[aprovadasHoje] ✅ Pagamento aprovado encontrado no MP: #{$pagamentoAprovado['id']}. Processando...");
+
+                    // Processar o pagamento como se fosse um webhook (ativar matrícula, baixar pagamento, etc.)
+                    $this->processarPagamentoAprovadoMP($matriculaId, $pagamentoAprovado, $tenantId, $externalReference);
+
+                    // Re-buscar assinatura atualizada
+                    $stmtAtualizada = $this->db->prepare("
+                        SELECT a.id, a.matricula_id, a.tipo_cobranca, a.status_gateway,
+                               a.ultima_cobranca, a.atualizado_em, a.external_reference, a.payment_url,
+                               s.codigo as status_codigo, s.nome as status_nome
+                        FROM assinaturas a
+                        INNER JOIN alunos al ON al.id = a.aluno_id
+                        LEFT JOIN assinatura_status s ON s.id = a.status_id
+                        WHERE a.tenant_id = ?
+                          AND al.usuario_id = ?
+                          AND a.matricula_id = ?
+                        ORDER BY a.atualizado_em DESC
+                        LIMIT 1
+                    ");
+                    $stmtAtualizada->execute([$tenantId, $usuarioId, $matriculaId]);
+                    $assinaturaAtualizada = $stmtAtualizada->fetch(\PDO::FETCH_ASSOC);
+
+                    if ($assinaturaAtualizada) {
+                        return $this->responderAprovada($response, $assinaturaAtualizada);
+                    }
+
+                    // Mesmo se assinatura não atualizou, a matrícula foi ativada
+                    $response->getBody()->write(json_encode([
+                        'success' => true,
+                        'approved' => true,
+                        'data' => [
+                            'matricula_id' => $matriculaId,
+                            'status_gateway' => 'approved',
+                            'status_codigo' => 'paga',
+                            'status_nome' => 'Paga',
+                            'fonte' => 'mercadopago_api'
+                        ]
+                    ], JSON_UNESCAPED_UNICODE));
+                    return $response->withHeader('Content-Type', 'application/json');
+                }
+
+                // Pagamento no MP mas não aprovado ainda
+                $statusMP = !empty($pagamentos) ? ($pagamentos[0]['status'] ?? 'pending') : 'not_found';
+                error_log("[aprovadasHoje] ⏳ Pagamento no MP com status: {$statusMP}");
+
+                $response->getBody()->write(json_encode([
+                    'success' => true,
+                    'approved' => false,
+                    'data' => $assinaturaPendente ? [
+                        'assinatura_id' => (int)$assinaturaPendente['id'],
+                        'matricula_id' => $matriculaId,
+                        'status_gateway' => $statusMP,
+                        'status_codigo' => $assinaturaPendente['status_codigo'] ?? 'pendente',
+                        'status_nome' => $assinaturaPendente['status_nome'] ?? 'Pendente',
+                        'external_reference' => $externalReference
+                    ] : null
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json');
+
+            } catch (\Exception $eMp) {
+                error_log("[aprovadasHoje] ⚠️ Erro ao consultar MP: " . $eMp->getMessage());
+                // Não falhar o endpoint — retornar dados locais que temos
+                $response->getBody()->write(json_encode([
+                    'success' => true,
+                    'approved' => false,
+                    'data' => $assinaturaPendente ? [
+                        'assinatura_id' => (int)$assinaturaPendente['id'],
+                        'matricula_id' => $matriculaId,
+                        'status_gateway' => $assinaturaPendente['status_gateway'] ?? 'pending',
+                        'status_codigo' => $assinaturaPendente['status_codigo'] ?? 'pendente',
+                        'status_nome' => $assinaturaPendente['status_nome'] ?? 'Pendente',
+                    ] : null
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json');
+            }
+
         } catch (\Exception $e) {
             error_log("[AssinaturaController::aprovadasHoje] Erro: " . $e->getMessage());
             $response->getBody()->write(json_encode([
@@ -664,6 +829,220 @@ class AssinaturaController
                 'detail' => $e->getMessage()
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * Responder com dados de assinatura aprovada
+     */
+    private function responderAprovada(Response $response, array $assinatura): Response
+    {
+        $response->getBody()->write(json_encode([
+            'success' => true,
+            'approved' => true,
+            'data' => [
+                'assinatura_id' => (int)$assinatura['id'],
+                'matricula_id' => (int)($assinatura['matricula_id'] ?? 0),
+                'status_gateway' => $assinatura['status_gateway'] ?? 'approved',
+                'status_codigo' => $assinatura['status_codigo'] ?? 'paga',
+                'status_nome' => $assinatura['status_nome'] ?? 'Paga',
+                'tipo_cobranca' => $assinatura['tipo_cobranca'] ?? null,
+                'ultima_cobranca' => $assinatura['ultima_cobranca'] ?? null,
+                'atualizado_em' => $assinatura['atualizado_em'] ?? null,
+                'external_reference' => $assinatura['external_reference'] ?? null,
+                'payment_url' => $assinatura['payment_url'] ?? null
+            ]
+        ], JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * Processar pagamento aprovado detectado via consulta ao MP (fallback quando webhook não chegou)
+     * Replica a lógica essencial do MercadoPagoWebhookController::atualizarPagamento
+     */
+    private function processarPagamentoAprovadoMP(int $matriculaId, array $pagamento, int $tenantId, string $externalReference): void
+    {
+        try {
+            error_log("[aprovadasHoje] 🔄 Processando pagamento #{$pagamento['id']} para matrícula #{$matriculaId}");
+
+            // Verificar se já foi processado (evitar duplicidade)
+            $stmtJa = $this->db->prepare("
+                SELECT id FROM pagamentos_mercadopago WHERE payment_id = ? LIMIT 1
+            ");
+            $stmtJa->execute([$pagamento['id']]);
+            if ($stmtJa->fetch()) {
+                error_log("[aprovadasHoje] ℹ️ Pagamento #{$pagamento['id']} já registrado em pagamentos_mercadopago");
+                // Verificar se matrícula está ativa, se não, ativar
+                $this->ativarMatriculaSeNecessario($matriculaId);
+                $this->baixarPagamentoPlanoSeNecessario($matriculaId, $pagamento);
+                return;
+            }
+
+            // Buscar dados da matrícula
+            $stmtMat = $this->db->prepare("
+                SELECT m.tenant_id, m.aluno_id, m.plano_id
+                FROM matriculas m WHERE m.id = ?
+            ");
+            $stmtMat->execute([$matriculaId]);
+            $mat = $stmtMat->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$mat) {
+                error_log("[aprovadasHoje] ❌ Matrícula #{$matriculaId} não encontrada");
+                return;
+            }
+
+            // Inserir em pagamentos_mercadopago (registro espelho do MP)
+            $stmtInsert = $this->db->prepare("
+                INSERT INTO pagamentos_mercadopago (
+                    tenant_id, matricula_id, aluno_id, usuario_id,
+                    payment_id, external_reference, status, status_detail,
+                    transaction_amount, payment_method_id, payment_type_id,
+                    installments, date_approved, date_created,
+                    payer_email, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+            ");
+
+            $stmtInsert->execute([
+                $mat['tenant_id'],
+                $matriculaId,
+                $mat['aluno_id'],
+                $pagamento['metadata']['usuario_id'] ?? null,
+                $pagamento['id'],
+                $externalReference,
+                $pagamento['status'],
+                $pagamento['status_detail'] ?? null,
+                $pagamento['transaction_amount'],
+                $pagamento['payment_method_id'] ?? null,
+                $pagamento['payment_type_id'] ?? null,
+                $pagamento['installments'] ?? 1,
+                $pagamento['date_approved'] ?? null,
+                $pagamento['date_created'] ?? null,
+                $pagamento['payer']['email'] ?? null
+            ]);
+
+            error_log("[aprovadasHoje] ✅ Registro criado em pagamentos_mercadopago");
+
+            // Ativar matrícula
+            $this->ativarMatriculaSeNecessario($matriculaId);
+
+            // Baixar pagamento_plano
+            $this->baixarPagamentoPlanoSeNecessario($matriculaId, $pagamento);
+
+            // Atualizar assinatura para aprovada
+            $this->atualizarAssinaturaParaAprovada($matriculaId, $pagamento);
+
+            error_log("[aprovadasHoje] ✅ Processamento completo para matrícula #{$matriculaId}");
+
+        } catch (\Exception $e) {
+            error_log("[aprovadasHoje] ❌ Erro ao processar pagamento: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Ativar matrícula se ainda não está ativa
+     */
+    private function ativarMatriculaSeNecessario(int $matriculaId): void
+    {
+        $stmt = $this->db->prepare("
+            UPDATE matriculas
+            SET status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1),
+                updated_at = NOW()
+            WHERE id = ?
+              AND status_id != (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1)
+        ");
+        $stmt->execute([$matriculaId]);
+
+        if ($stmt->rowCount() > 0) {
+            error_log("[aprovadasHoje] ✅ Matrícula #{$matriculaId} ativada");
+        }
+    }
+
+    /**
+     * Baixar pagamento_plano pendente se existir
+     */
+    private function baixarPagamentoPlanoSeNecessario(int $matriculaId, array $pagamento): void
+    {
+        $dataPagamento = !empty($pagamento['date_approved'])
+            ? date('Y-m-d H:i:s', strtotime((string)$pagamento['date_approved']))
+            : date('Y-m-d H:i:s');
+
+        // Determinar forma_pagamento_id baseado no payment_type_id do MP
+        $paymentType = $pagamento['payment_type_id'] ?? $pagamento['payment_method_id'] ?? '';
+        $formaPagamentoId = match(true) {
+            str_contains($paymentType, 'credit') => 9,   // Cartão de crédito
+            str_contains($paymentType, 'debit') => 10,   // Cartão de débito
+            $paymentType === 'bank_transfer' || str_contains($paymentType, 'pix') => 8, // PIX
+            default => 8 // Default PIX
+        };
+
+        // Buscar pagamento pendente
+        $stmtBuscar = $this->db->prepare("
+            SELECT id FROM pagamentos_plano
+            WHERE matricula_id = ?
+              AND status_pagamento_id IN (1, 3)
+              AND data_pagamento IS NULL
+            ORDER BY data_vencimento ASC
+            LIMIT 1
+        ");
+        $stmtBuscar->execute([$matriculaId]);
+        $pendente = $stmtBuscar->fetch(\PDO::FETCH_ASSOC);
+
+        if ($pendente) {
+            $paymentId = $pagamento['id'] ?? 'N/A';
+            $stmtUpdate = $this->db->prepare("
+                UPDATE pagamentos_plano
+                SET status_pagamento_id = 2,
+                    data_pagamento = ?,
+                    forma_pagamento_id = ?,
+                    tipo_baixa_id = 4,
+                    observacoes = ?,
+                    updated_at = NOW()
+                WHERE id = ?
+            ");
+            $stmtUpdate->execute([
+                $dataPagamento,
+                $formaPagamentoId,
+                "Pago via Mercado Pago - Payment #{$paymentId} (detectado via polling)",
+                $pendente['id']
+            ]);
+
+            if ($stmtUpdate->rowCount() > 0) {
+                error_log("[aprovadasHoje] ✅ Pagamento #{$pendente['id']} baixado como PAGO");
+            }
+        } else {
+            error_log("[aprovadasHoje] ℹ️ Nenhum pagamento pendente para matrícula #{$matriculaId}");
+        }
+    }
+
+    /**
+     * Atualizar assinatura para status aprovado
+     */
+    private function atualizarAssinaturaParaAprovada(int $matriculaId, array $pagamento): void
+    {
+        // Buscar status 'paga' ou 'ativa'
+        $stmtStatus = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'paga' LIMIT 1");
+        $stmtStatus->execute();
+        $statusId = $stmtStatus->fetchColumn();
+
+        if (!$statusId) {
+            $stmtStatus = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'ativa' LIMIT 1");
+            $stmtStatus->execute();
+            $statusId = $stmtStatus->fetchColumn() ?: 2;
+        }
+
+        $stmt = $this->db->prepare("
+            UPDATE assinaturas
+            SET status_id = ?,
+                status_gateway = 'approved',
+                ultima_cobranca = CURDATE(),
+                atualizado_em = NOW()
+            WHERE matricula_id = ?
+              AND status_gateway != 'approved'
+        ");
+        $stmt->execute([$statusId, $matriculaId]);
+
+        if ($stmt->rowCount() > 0) {
+            error_log("[aprovadasHoje] ✅ Assinatura da matrícula #{$matriculaId} atualizada para aprovada");
         }
     }
     
