@@ -29,4 +29,18 @@ export interface UserProfile {
     total_checkins: number;
     total_participantes: number;
   }[];
+  plano?: {
+    id?: number;
+    nome?: string;
+    valor?: number;
+    matricula_id?: number;
+    data_inicio?: string;
+    data_fim?: string;
+    vinculo_status?: string;
+    matricula_status?: {
+      codigo: string;
+      nome: string;
+      cor: string;
+    };
+  };
 }

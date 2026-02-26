@@ -367,22 +367,41 @@ class MobileController
         }
 
         try {
-            // Buscar plano através da matrícula mais recente ativa
+            // Buscar plano através da matrícula mais recente (ativa, pendente ou vencida)
             $sql = "SELECT p.id, p.nome, p.valor, p.duracao_dias, p.descricao,
-                           m.data_inicio, m.data_vencimento as data_fim, sm.codigo as vinculo_status
+                           m.id as matricula_id, m.data_inicio, m.data_vencimento as data_fim, 
+                           m.proxima_data_vencimento,
+                           sm.id as status_id, sm.codigo as vinculo_status, sm.nome as status_nome
                     FROM matriculas m
                     INNER JOIN planos p ON m.plano_id = p.id
                     INNER JOIN alunos a ON a.id = m.aluno_id
                     INNER JOIN status_matricula sm ON sm.id = m.status_id
                     WHERE a.usuario_id = :user_id 
                     AND m.tenant_id = :tenant_id
-                    AND sm.codigo IN ('ativa', 'pendente')
-                    ORDER BY m.data_vencimento DESC
+                    AND sm.codigo IN ('ativa', 'pendente', 'vencida')
+                    ORDER BY FIELD(sm.codigo, 'ativa', 'pendente', 'vencida'), m.data_vencimento DESC
                     LIMIT 1";
             
             $stmt = $this->db->prepare($sql);
             $stmt->execute(['user_id' => $userId, 'tenant_id' => $tenantId]);
             $plano = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if ($plano) {
+                // Definir cor do status para a badge no mobile
+                $coresStatus = [
+                    'ativa' => '#28A745',
+                    'pendente' => '#FFA500',
+                    'vencida' => '#DC3545',
+                    'cancelada' => '#6C757D',
+                    'suspensa' => '#6C757D',
+                ];
+                $plano['matricula_status'] = [
+                    'codigo' => $plano['vinculo_status'],
+                    'nome' => $plano['status_nome'],
+                    'cor' => $coresStatus[$plano['vinculo_status']] ?? '#6C757D',
+                ];
+                unset($plano['status_id'], $plano['status_nome']);
+            }
 
             return $plano ?: null;
         } catch (\Exception $e) {

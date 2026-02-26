@@ -4,16 +4,16 @@ import AuthService from "@/src/services/authService";
 import MobileService from "@/src/services/mobileService";
 import { colors } from "@/src/theme/colors";
 import {
-  DiaCheckin,
-  RankingItem,
-  RankingModalidade,
-  UserProfile,
+    DiaCheckin,
+    RankingItem,
+    RankingModalidade,
+    UserProfile,
 } from "@/src/types";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { getTokenTenantId, handleAuthError } from "@/src/utils/authHelpers";
 import {
-  compressImage,
-  logCompressionInfo,
+    compressImage,
+    logCompressionInfo,
 } from "@/src/utils/imageCompression";
 import AsyncStorage from "@/src/utils/storage";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
@@ -21,19 +21,19 @@ import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  Dimensions,
-  Image,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Animated,
+    Dimensions,
+    Image,
+    Modal,
+    Platform,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -1046,6 +1046,21 @@ export default function AccountScreen() {
                   </Text>
                 )}
               </View>
+              {userProfile?.plano?.matricula_status?.nome ? (
+                <View
+                  style={[
+                    styles.matriculaStatusBadge,
+                    {
+                      backgroundColor:
+                        userProfile.plano.matricula_status.cor || "#6C757D",
+                    },
+                  ]}
+                >
+                  <Text style={styles.matriculaStatusBadgeText}>
+                    {userProfile.plano.matricula_status.nome}
+                  </Text>
+                </View>
+              ) : null}
             </View>
             <View style={styles.headerUserInfo}>
               <Text style={styles.headerUserName}>
@@ -1755,7 +1770,6 @@ const styles = StyleSheet.create({
     width: 84,
     height: 84,
     borderRadius: 42,
-    overflow: "hidden",
   },
   headerPhotoContainer: {
     width: 84,
@@ -1788,6 +1802,39 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.45)",
     justifyContent: "center",
     alignItems: "center",
+  },
+  matriculaStatusBadge: {
+    position: "absolute",
+    bottom: -6,
+    left: 0,
+    right: 0,
+    alignSelf: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    zIndex: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 4,
+      },
+      web: {
+        boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+      },
+    }),
+  },
+  matriculaStatusBadgeText: {
+    color: "#fff",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.5,
   },
   sidebarOverlay: {
     flex: 1,

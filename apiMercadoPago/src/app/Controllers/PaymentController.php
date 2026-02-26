@@ -406,8 +406,11 @@ class PaymentController
             $filtered = array_filter($filtered, fn($p) => $p['payment_method'] === $method);
         }
 
-        // Ordenar por data decrescente
-        usort($filtered, fn($a, $b) => strcmp($b['created_at'], $a['created_at']));
+        // Ordenar por data decrescente (suporta created_at e date_created)
+        usort($filtered, fn($a, $b) => strcmp(
+            $b['created_at'] ?? $b['date_created'] ?? '',
+            $a['created_at'] ?? $a['date_created'] ?? ''
+        ));
 
         $total = count($filtered);
         $filtered = array_slice($filtered, $offset, $limit);
@@ -561,6 +564,85 @@ class PaymentController
         $payment['updated_at'] = date('Y-m-d\TH:i:s.vP');
 
         writeJsonFile('payments.json', $payments);
+
+        // Auto-criar preapproval (assinatura) para pagamentos PIX com external_reference de matrícula
+        // Isso permite que o /recurring encontre a assinatura e simule cobranças recorrentes
+        $extRef = $payment['external_reference'] ?? '';
+        $assinaturaId = $payment['gateway_assinatura_id'] ?? null;
+        if ($extRef && $assinaturaId && str_starts_with($extRef, 'MAT-')) {
+            $preapprovals = readJsonFile('preapprovals.json');
+            // Só criar se ainda não existir
+            $alreadyExists = false;
+            foreach ($preapprovals as $p) {
+                if (($p['external_reference'] ?? '') === $extRef) {
+                    $alreadyExists = true;
+                    break;
+                }
+            }
+            if (!$alreadyExists) {
+                $metadata = $payment['metadata'] ?? [];
+                $amount = $payment['transaction_amount'] ?? $payment['amount'] ?? 0;
+                $now = date('Y-m-d\TH:i:s.000-04:00');
+                $preapproval = [
+                    'id' => $assinaturaId,
+                    'preapproval_plan_id' => null,
+                    'payer_id' => $payment['payer']['id'] ?? random_int(100000000, 999999999),
+                    'payer_email' => $payment['payer']['email'] ?? '',
+                    'back_url' => $payment['notification_url'] ?? '',
+                    'collector_id' => random_int(100000000, 999999999),
+                    'application_id' => random_int(1000000000, 9999999999),
+                    'status' => 'authorized',
+                    'reason' => $payment['description'] ?? 'Assinatura PIX',
+                    'external_reference' => $extRef,
+                    'date_created' => $now,
+                    'last_modified' => $now,
+                    'init_point' => '',
+                    'sandbox_init_point' => '',
+                    'auto_recurring' => [
+                        'frequency' => 1,
+                        'frequency_type' => 'months',
+                        'transaction_amount' => round((float) $amount, 2),
+                        'currency_id' => $payment['currency_id'] ?? 'BRL',
+                        'start_date' => $now,
+                        'end_date' => date('Y-m-d\TH:i:s.000-04:00', strtotime('+1 year')),
+                        'repetitions' => null,
+                        'free_trial' => null,
+                    ],
+                    'payment_method_id' => 'pix',
+                    'first_invoice_offset' => null,
+                    'subscription_id' => $assinaturaId,
+                    'notification_url' => $payment['notification_url'] ?? null,
+                    'metadata' => $metadata,
+                    'live_mode' => false,
+                    'next_payment_date' => date('Y-m-d\TH:i:s.000-04:00', strtotime('+1 month')),
+                    'summarized' => [
+                        'quotas' => null,
+                        'charged_quantity' => 1,
+                        'pending_charge_quantity' => null,
+                        'charged_amount' => round((float) $amount, 2),
+                        'pending_charge_amount' => null,
+                        'semaphore' => 'green',
+                        'last_charged_date' => $now,
+                        'last_charged_amount' => round((float) $amount, 2),
+                    ],
+                ];
+                $preapprovals[$assinaturaId] = $preapproval;
+                writeJsonFile('preapprovals.json', $preapprovals);
+
+                // Vincular o subscription_id no pagamento
+                $payment['subscription_id'] = $assinaturaId;
+                $payment['preapproval_id'] = $assinaturaId;
+                $payments[$id] = $payment;
+                writeJsonFile('payments.json', $payments);
+
+                logActivity('preapproval.auto_created_from_pix', [
+                    'preapproval_id' => $assinaturaId,
+                    'payment_id' => $id,
+                    'external_reference' => $extRef,
+                    'amount' => $amount,
+                ]);
+            }
+        }
 
         logActivity('payment.pix_confirmed', [
             'payment_id' => $id,
@@ -861,6 +943,57 @@ class PaymentController
 
         $webhookLogs = array_slice($webhookLogs, -200);
         writeJsonFile('webhook_logs.json', $webhookLogs);
+    }
+
+    /**
+     * GET /api/purchases - Listar compras avulsas (pagamentos SEM subscription_id)
+     * Suporta filtros: ?external_reference=MAT-190&status=approved
+     */
+    public function listPurchases(): void
+    {
+        $payments = readJsonFile('payments.json');
+
+        // Filtrar apenas pagamentos avulsos (sem subscription_id)
+        $filtered = array_filter(array_values($payments), function ($p) {
+            $subId = $p['subscription_id'] ?? null;
+            return empty($subId) || $subId === null || $subId === 'null';
+        });
+
+        // Filtros opcionais
+        $extRef = $_GET['external_reference'] ?? null;
+        $status = $_GET['status'] ?? null;
+        $method = $_GET['payment_method'] ?? null;
+
+        if ($extRef) {
+            $filtered = array_filter($filtered, fn($p) => ($p['external_reference'] ?? '') === $extRef);
+        }
+        if ($status) {
+            $filtered = array_filter($filtered, fn($p) => ($p['status'] ?? '') === $status);
+        }
+        if ($method) {
+            $filtered = array_filter($filtered, fn($p) =>
+                ($p['payment_method'] ?? $p['payment_method_id'] ?? '') === $method
+            );
+        }
+
+        // Ordenar por data decrescente
+        $filtered = array_values($filtered);
+        usort($filtered, fn($a, $b) => strcmp(
+            $b['created_at'] ?? $b['date_created'] ?? '',
+            $a['created_at'] ?? $a['date_created'] ?? ''
+        ));
+
+        $limit = (int) ($_GET['limit'] ?? 50);
+        $offset = (int) ($_GET['offset'] ?? 0);
+        $total = count($filtered);
+        $filtered = array_slice($filtered, $offset, $limit);
+
+        jsonResponse([
+            'data' => array_values($filtered),
+            'total' => $total,
+            'limit' => $limit,
+            'offset' => $offset,
+        ]);
     }
 
     /**

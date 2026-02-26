@@ -252,12 +252,14 @@ try {
             
             // 7. Reativar matrículas que foram regularizadas
             // Só reativa se NÃO houver assinatura cancelada/pausada associada
+            // E se a proxima_data_vencimento NÃO expirou
             $sqlReativar = "
                 UPDATE matriculas m
                 SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1),
                     m.updated_at = NOW()
                 WHERE m.tenant_id = :tenant_id 
                 AND m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'vencida' LIMIT 1)
+                AND (m.proxima_data_vencimento IS NULL OR m.proxima_data_vencimento >= CURDATE())
                 AND NOT EXISTS (
                     SELECT 1 FROM pagamentos_plano pp
                     WHERE pp.matricula_id = m.id

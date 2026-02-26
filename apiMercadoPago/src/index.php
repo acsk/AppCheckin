@@ -353,6 +353,20 @@ if ($uri === '/' || $uri === '/dashboard') {
     exit;
 }
 
+// --- Purchases Page (compras avulsas / PIX / checkout sem assinatura) ---
+if ($uri === '/purchases' || $uri === '/purchases/') {
+    require_once __DIR__ . '/app/Views/purchases.php';
+    exit;
+}
+
+// --- API Purchases: List avulso purchases ---
+if (preg_match('#^/api/purchases/?$#', $uri) && $method === 'GET') {
+    require_once __DIR__ . '/app/Controllers/PaymentController.php';
+    $controller = new Controllers\PaymentController();
+    $controller->listPurchases();
+    exit;
+}
+
 // --- Recurring Charges Page (simula baixas automáticas recorrentes) ---
 if ($uri === '/recurring' || $uri === '/recurring/') {
     require_once __DIR__ . '/app/Views/recurring.php';

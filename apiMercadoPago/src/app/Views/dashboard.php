@@ -350,6 +350,7 @@
         Payment Gateway Simulator
     </h1>
     <div style="display: flex; gap: 0.75rem; align-items: center;">
+        <a href="/purchases" style="color: #a6adc8; text-decoration: none; padding: 0.4rem 0.8rem; background: #313244; border-radius: 0.5rem; font-size: 0.85rem; transition: all 0.2s;">🛒 Compras Avulsas</a>
         <a href="/recurring" style="color: #a6adc8; text-decoration: none; padding: 0.4rem 0.8rem; background: #313244; border-radius: 0.5rem; font-size: 0.85rem; transition: all 0.2s;">🔄 Baixas Recorrentes</a>
         <span class="badge">v1.0</span>
     </div>
