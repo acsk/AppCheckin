@@ -265,8 +265,8 @@ export default function AssinaturasScreen() {
     <LayoutBase title="Assinaturas" subtitle="Lista de assinaturas do tenant">
       <ScrollView className="flex-1">
         <View className="px-5 pt-4 pb-2">
-          <Text className="text-base font-semibold text-slate-800">Assinaturas</Text>
-          <Text className="text-[11px] text-slate-500">Gerencie assinaturas, filtros e cobranças</Text>
+          <Text className="text-lg font-semibold text-slate-800">Assinaturas</Text>
+          <Text className="text-xs text-slate-500">Gerencie assinaturas, filtros e cobranças</Text>
         </View>
 
         <View className="px-5 pb-4">
@@ -303,7 +303,7 @@ export default function AssinaturasScreen() {
           )}
 
           <View className="rounded-xl border border-slate-200 bg-white p-3">
-            <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Filtros</Text>
+            <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">Filtros</Text>
             <View className="flex-row flex-wrap gap-2 mb-2">
               {STATUS_OPTIONS.map((status) => {
                 const selected = statusFilter === status.value;
@@ -313,7 +313,7 @@ export default function AssinaturasScreen() {
                     className={`rounded-full px-2.5 py-1 ${selected ? 'bg-orange-500' : 'bg-slate-100'}`}
                     onPress={() => setStatusFilter(status.value)}
                   >
-                    <Text className={`text-[10px] font-semibold ${selected ? 'text-white' : 'text-slate-600'}`}>
+                    <Text className={`text-[11px] font-semibold ${selected ? 'text-white' : 'text-slate-600'}`}>
                       {status.label}
                     </Text>
                   </TouchableOpacity>
@@ -330,7 +330,7 @@ export default function AssinaturasScreen() {
                     className={`rounded-full px-2.5 py-1 ${selected ? 'bg-slate-900' : 'bg-slate-100'}`}
                     onPress={() => setTipoCobrancaFilter(tipo.value)}
                   >
-                    <Text className={`text-[10px] font-semibold ${selected ? 'text-white' : 'text-slate-600'}`}>
+                    <Text className={`text-[11px] font-semibold ${selected ? 'text-white' : 'text-slate-600'}`}>
                       {tipo.label}
                     </Text>
                   </TouchableOpacity>
@@ -339,7 +339,7 @@ export default function AssinaturasScreen() {
             </View>
 
             <TextInput
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12px] text-slate-700"
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700"
               placeholder="Buscar por aluno"
               value={searchText}
               onChangeText={setSearchText}
@@ -351,14 +351,14 @@ export default function AssinaturasScreen() {
                 onPress={handlePesquisar}
               >
                 <Feather name="search" size={14} color="#fff" />
-                <Text className="text-xs font-semibold text-white">Buscar</Text>
+                <Text className="text-sm font-semibold text-white">Buscar</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 className="flex-row items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2"
                 onPress={handleClearFilters}
               >
                 <Feather name="x" size={14} color="#64748b" />
-                <Text className="text-xs font-semibold text-slate-600">Limpar</Text>
+                <Text className="text-sm font-semibold text-slate-600">Limpar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -366,8 +366,8 @@ export default function AssinaturasScreen() {
 
         <View className="px-5 pb-6">
           <View className="flex-row items-center justify-between mb-2">
-            <Text className="text-[13px] font-semibold text-slate-700">Resultado</Text>
-            <Text className="text-[11px] text-slate-400">Total: {total}</Text>
+            <Text className="text-sm font-semibold text-slate-700">Resultado</Text>
+            <Text className="text-xs text-slate-400">Total: {total}</Text>
           </View>
 
           {loading ? (
@@ -391,14 +391,14 @@ export default function AssinaturasScreen() {
                   >
                     <View className="flex-row items-start justify-between">
                       <View className="flex-1">
-                        <Text className="text-[13px] font-semibold text-slate-800">{assinatura.aluno_nome || '-'}</Text>
-                        <Text className="text-[11px] text-slate-500">
+                        <Text className="text-sm font-semibold text-slate-800">{assinatura.aluno_nome || '-'}</Text>
+                        <Text className="text-xs text-slate-500">
                           {assinatura.plano_nome || '-'} {assinatura.modalidade_nome ? `• ${assinatura.modalidade_nome}` : ''}
                         </Text>
                       </View>
                       <View className="items-end">
-                        <Text className="text-[13px] font-semibold text-orange-500">{formatCurrency(assinatura.valor)}</Text>
-                        <Text className="text-[10px] text-slate-400">{assinatura.tipo_cobranca || '-'}</Text>
+                        <Text className="text-sm font-semibold text-orange-500">{formatCurrency(assinatura.valor)}</Text>
+                        <Text className="text-[11px] text-slate-400">{assinatura.tipo_cobranca || '-'}</Text>
                       </View>
                     </View>
 
@@ -408,49 +408,49 @@ export default function AssinaturasScreen() {
                           className="rounded-full px-2 py-0.5"
                           style={{ backgroundColor: `${statusInfo.cor}20` }}
                         >
-                          <Text className="text-[10px] font-semibold" style={{ color: statusInfo.cor }}>
+                          <Text className="text-[11px] font-semibold" style={{ color: statusInfo.cor }}>
                             {statusInfo.nome}
                           </Text>
                         </View>
                         {assinatura.status_gateway ? (
-                          <Text className="text-[10px] text-slate-400">Gateway: {assinatura.status_gateway}</Text>
+                          <Text className="text-[11px] text-slate-400">Gateway: {assinatura.status_gateway}</Text>
                         ) : null}
                       </View>
-                      <Text className="text-[10px] text-slate-400">
+                      <Text className="text-[11px] text-slate-400">
                         Próx. cobrança: {getProximaCobrancaLabel(assinatura)}
                       </Text>
                     </View>
 
                     <View className="mt-3 rounded-lg border border-slate-100 bg-slate-50 p-2">
-                      <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Dados da assinatura</Text>
+                      <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-400 mb-2">Dados da assinatura</Text>
                       <View className="flex-row flex-wrap gap-2">
                         <View className="min-w-[140px] flex-1 rounded-md bg-white px-2 py-1.5">
-                          <Text className="text-[10px] text-slate-400">Tipo</Text>
-                          <Text className="text-[11px] font-semibold text-slate-700">{assinatura.tipo_cobranca || '-'}</Text>
+                          <Text className="text-[11px] text-slate-400">Tipo</Text>
+                          <Text className="text-xs font-semibold text-slate-700">{assinatura.tipo_cobranca || '-'}</Text>
                         </View>
                         <View className="min-w-[140px] flex-1 rounded-md bg-white px-2 py-1.5">
-                          <Text className="text-[10px] text-slate-400">Início</Text>
-                          <Text className="text-[11px] font-semibold text-slate-700">{formatDate(assinatura.data_inicio)}</Text>
+                          <Text className="text-[11px] text-slate-400">Início</Text>
+                          <Text className="text-xs font-semibold text-slate-700">{formatDate(assinatura.data_inicio)}</Text>
                         </View>
                         <View className="min-w-[140px] flex-1 rounded-md bg-white px-2 py-1.5">
-                          <Text className="text-[10px] text-slate-400">Fim</Text>
-                          <Text className="text-[11px] font-semibold text-slate-700">{formatDate(assinatura.data_fim)}</Text>
+                          <Text className="text-[11px] text-slate-400">Fim</Text>
+                          <Text className="text-xs font-semibold text-slate-700">{formatDate(assinatura.data_fim)}</Text>
                         </View>
                         <View className="min-w-[140px] flex-1 rounded-md bg-white px-2 py-1.5">
-                          <Text className="text-[10px] text-slate-400">Criado</Text>
-                          <Text className="text-[11px] font-semibold text-slate-700">{formatDateTime(assinatura.criado_em)}</Text>
+                          <Text className="text-[11px] text-slate-400">Criado</Text>
+                          <Text className="text-xs font-semibold text-slate-700">{formatDateTime(assinatura.criado_em)}</Text>
                         </View>
                         <View className="min-w-[180px] flex-1 rounded-md bg-white px-2 py-1.5">
-                          <Text className="text-[10px] text-slate-400">External ref</Text>
-                          <Text className="text-[11px] font-semibold text-slate-700">{assinatura.external_reference || '-'}</Text>
+                          <Text className="text-[11px] text-slate-400">External ref</Text>
+                          <Text className="text-xs font-semibold text-slate-700">{assinatura.external_reference || '-'}</Text>
                         </View>
                         <View className="min-w-[180px] flex-1 rounded-md bg-white px-2 py-1.5">
-                          <Text className="text-[10px] text-slate-400">MP preapproval</Text>
-                          <Text className="text-[11px] font-semibold text-slate-700">{assinatura.mp_preapproval_id || '-'}</Text>
+                          <Text className="text-[11px] text-slate-400">MP preapproval</Text>
+                          <Text className="text-xs font-semibold text-slate-700">{assinatura.mp_preapproval_id || '-'}</Text>
                         </View>
                         <View className="min-w-[140px] flex-1 rounded-md bg-white px-2 py-1.5">
-                          <Text className="text-[10px] text-slate-400">Status gateway</Text>
-                          <Text className="text-[11px] font-semibold text-slate-700">{assinatura.status_gateway || '-'}</Text>
+                          <Text className="text-[11px] text-slate-400">Status gateway</Text>
+                          <Text className="text-xs font-semibold text-slate-700">{assinatura.status_gateway || '-'}</Text>
                         </View>
                       </View>
 
@@ -465,7 +465,7 @@ export default function AssinaturasScreen() {
                           ) : (
                             <>
                               <Feather name="search" size={12} color={assinatura.external_reference ? '#fff' : '#94a3b8'} />
-                              <Text className={`text-[11px] font-semibold ${assinatura.external_reference ? 'text-white' : 'text-slate-500'}`}>
+                              <Text className={`text-xs font-semibold ${assinatura.external_reference ? 'text-white' : 'text-slate-500'}`}>
                                 Cobranças
                               </Text>
                             </>
