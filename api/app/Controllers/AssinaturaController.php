@@ -1243,6 +1243,7 @@ class AssinaturaController
             'pausada', 'paused' => 'Pausada',
             'cancelada', 'cancelled', 'refunded', 'charged_back' => 'Cancelada',
             'expirada', 'finished' => 'Expirada',
+            'vencida' => 'Vencida',
             default => ucfirst($status)
         };
     }

@@ -696,5 +696,34 @@
             "external_reference": "MAT-189-1772063327"
         },
         "timestamp": "2026-02-26T00:33:08.000+00:00"
+    },
+    {
+        "id": "log_063e66654fd95a212c216139",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "513057915823",
+            "status": "pending",
+            "amount": 1
+        },
+        "timestamp": "2026-02-26T01:28:31.000+00:00"
+    },
+    {
+        "id": "log_63b111abfae683665b8a35f5",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "212753610944",
+            "status": "pending",
+            "amount": 1
+        },
+        "timestamp": "2026-02-26T01:28:32.000+00:00"
+    },
+    {
+        "id": "log_e8817093af049d08de0821d9",
+        "type": "payment.pix_confirmed",
+        "data": {
+            "payment_id": "212753610944",
+            "amount": 1
+        },
+        "timestamp": "2026-02-26T01:28:38.000+00:00"
     }
 ]

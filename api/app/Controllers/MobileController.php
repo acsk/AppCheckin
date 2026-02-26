@@ -4897,42 +4897,7 @@ class MobileController
                 ];
             }, $ciclosRaw);
 
-            // 3. Buscar resumo de disponibilidade de turmas
-            $disponibilidade = null;
-            // if ($plano['modalidade_id']) {
-            //     $stmtDisp = $this->db->prepare("
-            //         SELECT 
-            //             COUNT(DISTINCT t.id) as total_turmas,
-            //             COUNT(DISTINCT CONCAT(t.horario_inicio, '-', t.horario_fim)) as horarios_distintos,
-            //             SUM(t.limite_alunos) as total_vagas,
-            //             SUM((SELECT COUNT(*) FROM inscricoes_turmas it
-            //                  WHERE it.turma_id = t.id AND it.ativo = 1 AND it.status = 'ativa')) as vagas_ocupadas
-            //         FROM turmas t
-            //         WHERE t.tenant_id = :tenant_id
-            //         AND t.modalidade_id = :modalidade_id
-            //         AND t.ativo = 1
-            //     ");
-            //     $stmtDisp->execute([
-            //         'tenant_id' => $tenantId,
-            //         'modalidade_id' => $plano['modalidade_id']
-            //     ]);
-            //     $disp = $stmtDisp->fetch(\PDO::FETCH_ASSOC);
-                
-            //     if ($disp && $disp['total_turmas'] > 0) {
-            //         $totalVagas = (int)$disp['total_vagas'];
-            //         $vagasOcupadas = (int)$disp['vagas_ocupadas'];
-            //         $vagasDisponiveis = max(0, $totalVagas - $vagasOcupadas);
-                    
-            //         $disponibilidade = [
-            //             'total_turmas' => (int)$disp['total_turmas'],
-            //             'horarios_disponiveis' => (int)$disp['horarios_distintos'],
-            //             'vagas_disponiveis' => $vagasDisponiveis,
-            //             'total_vagas' => $totalVagas,
-            //         ];
-            //     }
-            // }
-
-            // 4. Verificar se o usuário já tem matrícula ativa neste plano
+                     // 4. Verificar se o usuário já tem matrícula ativa neste plano
             $matriculaAtiva = null;
             if ($userId) {
                 $stmtMat = $this->db->prepare("

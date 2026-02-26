@@ -211,7 +211,6 @@ try {
                 WHERE m.tenant_id = :tenant_id
                 AND ast.codigo = 'cancelada'
                 AND m.status_id IN (SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'vencida'))
-                LIMIT 500
             ";
             $stmt = $db->prepare($sqlSincAssCanceladas);
             $stmt->execute(['tenant_id' => $tenant['id']]);
@@ -229,14 +228,13 @@ try {
                 WHERE m.tenant_id = :tenant_id
                 AND ast.codigo = 'pausada'
                 AND m.status_id IN (SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'vencida'))
-                LIMIT 500
             ";
             $stmt = $db->prepare($sqlSincAssPausadas);
             $stmt->execute(['tenant_id' => $tenant['id']]);
             $sincPausadas = $stmt->rowCount();
             logMessage("  ✓ Matrículas sincronizadas (assinatura pausada): {$sincPausadas}\n", $quiet);
             
-            // 6. Sincronizar matrículas com assinaturas expiradas
+            // 6. Sincronizar matrículas com assinaturas expiradas/vencidas
             $sqlSincAssExpiradas = "
                 UPDATE matriculas m
                 INNER JOIN assinaturas a ON a.matricula_id = m.id AND a.tenant_id = m.tenant_id
@@ -244,14 +242,13 @@ try {
                 SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'vencida' LIMIT 1),
                     m.updated_at = NOW()
                 WHERE m.tenant_id = :tenant_id
-                AND ast.codigo = 'expirada'
+                AND ast.codigo IN ('expirada', 'vencida')
                 AND m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1)
-                LIMIT 500
             ";
             $stmt = $db->prepare($sqlSincAssExpiradas);
             $stmt->execute(['tenant_id' => $tenant['id']]);
             $sincExpiradas = $stmt->rowCount();
-            logMessage("  ✓ Matrículas sincronizadas (assinatura expirada): {$sincExpiradas}\n", $quiet);
+            logMessage("  ✓ Matrículas sincronizadas (assinatura expirada/vencida): {$sincExpiradas}\n", $quiet);
             
             // 7. Reativar matrículas que foram regularizadas
             // Só reativa se NÃO houver assinatura cancelada/pausada associada
@@ -272,7 +269,7 @@ try {
                     INNER JOIN assinatura_status ast ON ast.id = a.status_id
                     WHERE a.matricula_id = m.id
                     AND a.tenant_id = m.tenant_id
-                    AND ast.codigo IN ('cancelada', 'pausada', 'expirada')
+                    AND ast.codigo IN ('cancelada', 'pausada', 'expirada', 'vencida')
                 )
                 LIMIT 500
             ";
