@@ -9546,3 +9546,5 @@
 [2026-02-26 16:37:25] GET /admin/matriculas/193/pagamentos
 [2026-02-26 16:38:01] OPTIONS /admin/matriculas?pagina=1&por_pagina=50&incluir_inativos=true
 [2026-02-26 16:38:01] GET /admin/matriculas?pagina=1&por_pagina=50&incluir_inativos=true
+[2026-02-26 17:43:24] OPTIONS /admin/assinaturas?page=1&per_page=20
+[2026-02-26 17:43:24] GET /admin/assinaturas?page=1&per_page=20
