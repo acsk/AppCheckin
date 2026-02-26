@@ -5359,11 +5359,18 @@ class MobileController
 
                         if ($paymentUrlPix && $paymentIdPix) {
                             if ($assinaturaPendente) {
+                                // Buscar metodo_pagamento_id para PIX
+                                $stmtMetodoPix = $this->db->prepare("SELECT id FROM metodos_pagamento WHERE codigo = 'pix'");
+                                $stmtMetodoPix->execute();
+                                $metodoPagamentoIdPix = $stmtMetodoPix->fetchColumn() ?: null;
+
                                 $stmtUpdateAss = $this->db->prepare("
                                     UPDATE assinaturas
                                     SET gateway_preference_id = ?,
                                         external_reference = ?,
                                         payment_url = ?,
+                                        metodo_pagamento_id = ?,
+                                        tipo_cobranca = 'avulso',
                                         status_gateway = 'pending',
                                         atualizado_em = NOW()
                                     WHERE id = ? AND tenant_id = ?
@@ -5372,6 +5379,7 @@ class MobileController
                                     (string) $paymentIdPix,
                                     $externalReference,
                                     $paymentUrlPix,
+                                    $metodoPagamentoIdPix,
                                     (int) $assinaturaPendente['id'],
                                     $tenantId
                                 ]);
