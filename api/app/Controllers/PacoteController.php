@@ -519,4 +519,113 @@ class PacoteController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
     }
+
+    /**
+     * Excluir contrato de pacote com deleção em cascata (admin)
+     * DELETE /admin/pacotes/contratos/{contratoId}
+     *
+     * Remove em ordem:
+     *   1. pagamentos_plano vinculados ao contrato
+     *   2. matriculas vinculadas ao contrato (CASCADE remove pagamentos_mercadopago, assinaturas, matriculas_historico)
+     *   3. pacote_beneficiarios do contrato
+     *   4. pacote_contratos (o próprio contrato)
+     */
+    public function excluirContrato(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $tenantId = (int) $request->getAttribute('tenantId');
+            $contratoId = (int) ($args['contratoId'] ?? 0);
+
+            if ($contratoId <= 0) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'contratoId inválido'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Verificar se o contrato existe e pertence ao tenant
+            $stmtContrato = $this->db->prepare("
+                SELECT pc.id, pc.status, pc.pagante_usuario_id,
+                       p.nome as pacote_nome
+                FROM pacote_contratos pc
+                INNER JOIN pacotes p ON p.id = pc.pacote_id
+                WHERE pc.id = ? AND pc.tenant_id = ?
+                LIMIT 1
+            ");
+            $stmtContrato->execute([$contratoId, $tenantId]);
+            $contrato = $stmtContrato->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$contrato) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'Contrato não encontrado'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            $this->db->beginTransaction();
+
+            // 1. Deletar pagamentos_plano vinculados ao contrato
+            $stmtDelPag = $this->db->prepare("
+                DELETE FROM pagamentos_plano
+                WHERE pacote_contrato_id = ? AND tenant_id = ?
+            ");
+            $stmtDelPag->execute([$contratoId, $tenantId]);
+            $pagamentosRemovidos = $stmtDelPag->rowCount();
+
+            // 2. Deletar matrículas vinculadas ao contrato
+            //    (ON DELETE CASCADE remove automaticamente: pagamentos_mercadopago, assinaturas, matriculas_historico)
+            $stmtDelMat = $this->db->prepare("
+                DELETE FROM matriculas
+                WHERE pacote_contrato_id = ? AND tenant_id = ?
+            ");
+            $stmtDelMat->execute([$contratoId, $tenantId]);
+            $matriculasRemovidas = $stmtDelMat->rowCount();
+
+            // 3. Deletar beneficiários do contrato
+            $stmtDelBen = $this->db->prepare("
+                DELETE FROM pacote_beneficiarios
+                WHERE pacote_contrato_id = ? AND tenant_id = ?
+            ");
+            $stmtDelBen->execute([$contratoId, $tenantId]);
+            $beneficiariosRemovidos = $stmtDelBen->rowCount();
+
+            // 4. Deletar o próprio contrato
+            $stmtDelContrato = $this->db->prepare("
+                DELETE FROM pacote_contratos
+                WHERE id = ? AND tenant_id = ?
+            ");
+            $stmtDelContrato->execute([$contratoId, $tenantId]);
+
+            $this->db->commit();
+
+            error_log("[PacoteController::excluirContrato] Contrato #{$contratoId} excluído em cascata: "
+                . "{$pagamentosRemovidos} pagamentos, {$matriculasRemovidas} matrículas, "
+                . "{$beneficiariosRemovidos} beneficiários removidos");
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'message' => 'Contrato excluído com sucesso',
+                'detalhes' => [
+                    'contrato_id' => $contratoId,
+                    'pacote_nome' => $contrato['pacote_nome'],
+                    'pagamentos_removidos' => $pagamentosRemovidos,
+                    'matriculas_removidas' => $matriculasRemovidas,
+                    'beneficiarios_removidos' => $beneficiariosRemovidos,
+                ]
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            error_log("[PacoteController::excluirContrato] Erro: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'message' => 'Erro ao excluir contrato do pacote'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
 }

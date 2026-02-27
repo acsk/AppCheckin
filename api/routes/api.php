@@ -1101,6 +1101,7 @@ return function ($app) {
         $group->post('/pacotes/{pacoteId}/contratar', [PacoteController::class, 'contratar']);
         $group->post('/pacotes/contratos/{contratoId}/beneficiarios', [PacoteController::class, 'definirBeneficiarios']);
         $group->post('/pacotes/contratos/{contratoId}/confirmar-pagamento', [PacoteController::class, 'confirmarPagamento']);
+        $group->delete('/pacotes/contratos/{contratoId}', [PacoteController::class, 'excluirContrato']);
         
         // Contratos de Pacotes (admin - painel) - filtro por status
         $group->get('/pacote-contratos', [AdminController::class, 'listarContratosPackage']);

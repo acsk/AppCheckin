@@ -64,6 +64,7 @@ export default function PacotesScreen() {
   const [modalCalcular, setModalCalcular] = useState(false);
   const [pacoteSimular, setPacoteSimular] = useState(null);
   const [modalExcluir, setModalExcluir] = useState({ visible: false, pacote: null });
+  const [modalExcluirContrato, setModalExcluirContrato] = useState({ visible: false, contrato: null });
   const [isEditando, setIsEditando] = useState(false);
   const [pacoteEditandoId, setPacoteEditandoId] = useState(null);
   const [salvando, setSalvando] = useState(false);
@@ -471,6 +472,26 @@ export default function PacotesScreen() {
     }
   };
 
+  const confirmarExcluirContrato = async () => {
+    if (!modalExcluirContrato.contrato) return;
+    try {
+      setSalvando(true);
+      const contratoId =
+        modalExcluirContrato.contrato?.contrato_id ||
+        modalExcluirContrato.contrato?.contrato?.contrato_id;
+      await pacoteService.excluirContrato(contratoId);
+      showSuccess('Contrato excluído com sucesso');
+      setModalExcluirContrato({ visible: false, contrato: null });
+      carregarContratos('pendente');
+      carregarContratos('ativo');
+    } catch (error) {
+      console.error('Erro ao excluir contrato:', error);
+      showError(error.error || 'Não foi possível excluir o contrato');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
   return (
     <LayoutBase title="Pacotes" subtitle="Gerenciar pacotes e contratos">
       <ScrollView className="flex-1">
@@ -747,6 +768,7 @@ export default function PacotesScreen() {
                   <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 120 }}>Benef.</Text>
                   <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 140 }}>Valor</Text>
                   <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 140 }}>Criado</Text>
+                  <Text className="text-[10px] font-bold uppercase tracking-widest text-slate-500" style={{ width: 90, textAlign: 'right' }}>Ações</Text>
                 </View>
                 {pendentesFiltrados.map((item) => (
                   <View key={item.contrato_id} className="flex-row items-center border-b border-slate-100 px-4 py-2">
@@ -756,6 +778,14 @@ export default function PacotesScreen() {
                     <Text className="text-[12px] text-slate-600" style={{ width: 120 }}>{item.beneficiarios_adicionados}/{item.qtd_beneficiarios}</Text>
                     <Text className="text-[12px] text-slate-600" style={{ width: 140 }}>{formatCurrency(item.valor_total)}</Text>
                     <Text className="text-[12px] text-slate-600" style={{ width: 140 }}>{item.created_at || '-'}</Text>
+                    <View style={{ width: 90 }} className="flex-row items-center justify-end gap-2">
+                      <TouchableOpacity
+                        className="h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white"
+                        onPress={() => setModalExcluirContrato({ visible: true, contrato: item })}
+                      >
+                        <Feather name="trash-2" size={14} color="#ef4444" />
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 ))}
               </View>
@@ -815,6 +845,12 @@ export default function PacotesScreen() {
                             ) : (
                               <Text className="text-[11px] font-semibold text-slate-700">Gerar</Text>
                             )}
+                          </TouchableOpacity>
+                          <TouchableOpacity
+                            className="h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white"
+                            onPress={() => setModalExcluirContrato({ visible: true, contrato: item })}
+                          >
+                            <Feather name="trash-2" size={14} color="#ef4444" />
                           </TouchableOpacity>
                         </View>
                       </View>
@@ -1078,6 +1114,17 @@ export default function PacotesScreen() {
         cancelText="Cancelar"
         onCancel={() => setModalExcluir({ visible: false, pacote: null })}
         onConfirm={confirmarExcluirPacote}
+        type="danger"
+      />
+
+      <ConfirmModal
+        visible={modalExcluirContrato.visible}
+        title="Excluir Contrato"
+        message={`Confirma excluir o contrato #${modalExcluirContrato.contrato?.contrato_id || modalExcluirContrato.contrato?.contrato?.contrato_id || ''}?`}
+        confirmText="Excluir"
+        cancelText="Cancelar"
+        onCancel={() => setModalExcluirContrato({ visible: false, contrato: null })}
+        onConfirm={confirmarExcluirContrato}
         type="danger"
       />
 

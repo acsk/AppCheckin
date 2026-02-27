@@ -2033,7 +2033,7 @@ class MatriculaController
         $db = require __DIR__ . '/../../config/database.php';
 
         $stmt = $db->prepare("
-            SELECT m.id, m.aluno_id
+            SELECT m.id, m.aluno_id, m.pacote_contrato_id
             FROM matriculas m
             WHERE m.id = ? AND m.tenant_id = ?
         ");
@@ -2043,6 +2043,17 @@ class MatriculaController
         if (!$matricula) {
             $response->getBody()->write(json_encode(['error' => 'Matrícula não encontrada']));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        // Impedir exclusão direta de matrícula que faz parte de um pacote
+        if (!empty($matricula['pacote_contrato_id'])) {
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Não é possível excluir esta matrícula diretamente pois ela faz parte de um pacote',
+                'message' => 'Para excluir, utilize a exclusão do contrato do pacote, que remove todas as matrículas vinculadas',
+                'pacote_contrato_id' => (int) $matricula['pacote_contrato_id']
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
         }
 
         try {

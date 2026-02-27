@@ -959,7 +959,7 @@ export default function FormMatriculaScreen() {
                           <Pressable
                             key={aluno.id}
                             className={`flex-row items-center justify-between border-b border-slate-100 px-3 py-2.5 ${
-                              selected ? 'bg-emerald-50' : ''
+                              selected ? 'bg-emerald-50 border-2 border-emerald-400 rounded-md' : ''
                             }`}
                             style={({ pressed }) => [
                               pressed && { backgroundColor: '#f8fafc' },
@@ -968,7 +968,13 @@ export default function FormMatriculaScreen() {
                             onPress={() => toggleDependente(aluno.id)}
                           >
                             <View className="flex-1">
-                              <Text className="text-sm font-semibold text-slate-800">{aluno.nome}</Text>
+                              <Text
+                                className={`text-sm font-semibold ${
+                                  selected ? 'text-emerald-700 font-bold' : 'text-slate-800'
+                                }`}
+                              >
+                                {aluno.nome}
+                              </Text>
                               <Text className="text-xs text-slate-500">{aluno.email}</Text>
                             </View>
                             {selected ? (
@@ -1000,14 +1006,14 @@ export default function FormMatriculaScreen() {
                         .map((aluno) => (
                           <View
                             key={aluno.id}
-                            className="flex-row items-center gap-2 rounded-full bg-slate-100 px-3 py-1"
+                            className="flex-row items-center gap-2 rounded-full bg-emerald-600 px-3 py-1"
                           >
-                            <Text className="text-xs text-slate-700">{aluno.nome}</Text>
+                            <Text className="text-xs font-semibold text-white">{aluno.nome}</Text>
                             <Pressable
                               onPress={() => toggleDependente(aluno.id)}
-                              className="h-5 w-5 items-center justify-center rounded-full bg-white"
+                              className="h-5 w-5 items-center justify-center rounded-full bg-emerald-100"
                             >
-                              <Feather name="x" size={12} color="#ef4444" />
+                              <Feather name="x" size={12} color="#065f46" />
                             </Pressable>
                           </View>
                         ))}

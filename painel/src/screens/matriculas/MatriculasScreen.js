@@ -40,6 +40,7 @@ export default function MatriculasScreen() {
     data: null,
     error: null,
     matricula: null,
+    pacoteContratoId: null,
   });
   const [deleting, setDeleting] = useState(false);
   const statusEffectRef = useRef(false);
@@ -218,6 +219,7 @@ export default function MatriculasScreen() {
       data: null,
       error: null,
       matricula: null,
+      pacoteContratoId: null,
     });
   };
 
@@ -237,16 +239,29 @@ export default function MatriculasScreen() {
         data: null,
         error: null,
         matricula: null,
+        pacoteContratoId: null,
       });
       await carregarMatriculas({ pagina, busca: serverSearchTerm, force: true });
     } catch (error) {
       console.error('Erro ao excluir:', error);
-      const mensagemErro =
-        error.mensagemLimpa ||
-        error.message ||
-        error.error ||
+      const contratoPacoteId =
+        error?.pacote_contrato_id ||
+        error?.response?.data?.pacote_contrato_id;
+      const rawMensagemErro =
+        error?.mensagemLimpa ||
+        error?.message ||
+        error?.error ||
+        error?.response?.data?.error ||
         'Não foi possível excluir a matrícula';
-      showAlert('Erro', mensagemErro);
+      const mensagemErro = String(rawMensagemErro)
+        .replace(/DELETE\s+\/admin\/pacotes\/contratos\/\{contratoId\}/gi, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+      setDeletePreview((prev) => ({
+        ...prev,
+        error: mensagemErro,
+        pacoteContratoId: contratoPacoteId || null,
+      }));
     } finally {
       setDeleting(false);
     }
@@ -337,6 +352,10 @@ export default function MatriculasScreen() {
       return resumo.map((item) => String(item)).join('\n');
     }
     if (typeof resumo === 'object') {
+      if (resumo.impacto) {
+        const { impacto, ...resto } = resumo;
+        return formatResumo(resto);
+      }
       if (resumo.message || resumo.mensagem) {
         return resumo.message || resumo.mensagem;
       }
@@ -365,6 +384,7 @@ export default function MatriculasScreen() {
 
   const renderPreviewRow = (label, value) => {
     if (value === null || value === undefined || value === '') return null;
+    if (label === 'Impacto' || label === 'impacto') return null;
     return (
       <View style={styles.previewRow}>
         <Text style={styles.previewLabel}>{label}</Text>
@@ -558,6 +578,8 @@ export default function MatriculasScreen() {
   const previewPlano = previewData?.plano || {};
   const previewModalidade = previewPlano?.modalidade || {};
   const previewMatricula = previewData?.matricula || {};
+  const previewPacoteContratoId =
+    previewMatricula?.pacote_contrato_id || deletePreview.pacoteContratoId;
   const previewStatus =
     previewMatricula.status_nome ||
     (previewMatricula.status_id ? getStatusLabel(previewMatricula.status_id) : undefined);
@@ -591,10 +613,31 @@ export default function MatriculasScreen() {
             <ActivityIndicator size="large" color="#f97316" />
             <Text style={styles.previewStateText}>Carregando prévia...</Text>
           </View>
-        ) : deletePreview.error ? (
+        ) : deletePreview.error || previewPacoteContratoId ? (
           <View style={styles.previewState}>
-            <Feather name="alert-circle" size={22} color="#ef4444" />
-            <Text style={styles.previewErrorText}>{deletePreview.error}</Text>
+            <View style={styles.previewErrorBadge}>
+              <Feather name="alert-triangle" size={26} color="#ef4444" />
+            </View>
+            <Text style={styles.previewErrorTitle}>Matrícula vinculada a pacote</Text>
+            <Text style={styles.previewErrorText}>
+              {deletePreview.error ||
+                'Não é possível excluir esta matrícula diretamente. Exclua pelo módulo de pacotes.'}
+            </Text>
+            {previewPacoteContratoId ? (
+              <Pressable
+                onPress={() => router.push('/pacotes')}
+                style={({ pressed }) => [
+                  styles.previewButton,
+                  styles.previewButtonSecondary,
+                  { marginTop: 14 },
+                  pressed && { opacity: 0.8 },
+                ]}
+              >
+                <Text style={styles.previewButtonSecondaryText}>
+                  Ir para Pacotes (Contrato #{previewPacoteContratoId})
+                </Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : (
           <ScrollView
@@ -695,23 +738,25 @@ export default function MatriculasScreen() {
           >
             <Text style={styles.previewButtonSecondaryText}>Cancelar</Text>
           </Pressable>
-          <Pressable
-            onPress={handleConfirmDelete}
-            disabled={deletePreview.loading || deleting || deletePreview.error}
-            style={({ pressed }) => [
-              styles.previewButton,
-              styles.previewButtonDanger,
-              (deletePreview.loading || deleting || deletePreview.error) &&
-                styles.previewButtonDisabled,
-              pressed && { opacity: 0.9 },
-            ]}
-          >
-            {deleting ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <Text style={styles.previewButtonDangerText}>Confirmar exclusão</Text>
-            )}
-          </Pressable>
+          {!deletePreview.error && !previewPacoteContratoId && (
+            <Pressable
+              onPress={handleConfirmDelete}
+              disabled={deletePreview.loading || deleting || deletePreview.error}
+              style={({ pressed }) => [
+                styles.previewButton,
+                styles.previewButtonDanger,
+                (deletePreview.loading || deleting || deletePreview.error) &&
+                  styles.previewButtonDisabled,
+                pressed && { opacity: 0.9 },
+              ]}
+            >
+              {deleting ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.previewButtonDangerText}>Confirmar exclusão</Text>
+              )}
+            </Pressable>
+          )}
         </View>
       </View>
     </View>
@@ -1381,7 +1426,23 @@ const styles = StyleSheet.create({
   },
   previewErrorText: {
     fontSize: 13,
-    color: '#ef4444',
+    color: '#b91c1c',
     textAlign: 'center',
+    lineHeight: 18,
+    maxWidth: 420,
+  },
+  previewErrorTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#b91c1c',
+    textAlign: 'center',
+  },
+  previewErrorBadge: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#fee2e2',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

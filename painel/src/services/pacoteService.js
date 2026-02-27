@@ -135,6 +135,19 @@ const pacoteService = {
       throw prepararErro(error.response?.data || error);
     }
   },
+
+  /**
+   * Excluir contrato de pacote
+   */
+  async excluirContrato(contratoId) {
+    try {
+      const response = await api.delete(`/admin/pacotes/contratos/${contratoId}`);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao excluir contrato:', error.response?.data || error.message);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
 };
 
 export default pacoteService;
