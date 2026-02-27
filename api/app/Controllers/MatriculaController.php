@@ -2594,132 +2594,155 @@ class MatriculaController
     )]
     public function atualizarProximaDataVencimento(Request $request, Response $response, array $args): Response
     {
-        $db = require __DIR__ . '/../../config/database.php';
-        $tenantId = $request->getAttribute('tenantId');
-        $matriculaId = $args['id'];
-        $data = $request->getParsedBody();
+        try {
+            $db = require __DIR__ . '/../../config/database.php';
+            $tenantId = (int) ($request->getAttribute('tenantId') ?? 0);
+            $matriculaId = (int) ($args['id'] ?? 0);
 
-        // Validar se a data foi enviada
-        if (empty($data['proxima_data_vencimento'])) {
-            $response->getBody()->write(json_encode([
-                'error' => 'Data de vencimento é obrigatória'
-            ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
-        }
-
-        // Validar formato da data
-        $dataVencimento = $data['proxima_data_vencimento'];
-        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataVencimento)) {
-            $response->getBody()->write(json_encode([
-                'error' => 'Formato de data inválido. Use YYYY-MM-DD'
-            ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
-        }
-
-        // Verificar se a matrícula existe e pertence ao tenant
-        $stmt = $db->prepare("
-            SELECT m.id, m.aluno_id, m.plano_id, m.proxima_data_vencimento, m.data_vencimento, m.status_id,
-                   sm.codigo as status_codigo,
-                   COALESCE(p.periodo_teste, 0) as periodo_teste
-            FROM matriculas m
-            INNER JOIN status_matricula sm ON sm.id = m.status_id
-            LEFT JOIN planos p ON p.id = m.plano_id
-            WHERE m.id = :id AND m.tenant_id = :tenant_id
-        ");
-        $stmt->execute([
-            'id' => $matriculaId,
-            'tenant_id' => $tenantId
-        ]);
-        $matricula = $stmt->fetch(\PDO::FETCH_ASSOC);
-
-        if (!$matricula) {
-            $response->getBody()->write(json_encode([
-                'error' => 'Matrícula não encontrada'
-            ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
-        }
-
-        // Determinar o novo status baseado na data
-        $hoje = date('Y-m-d');
-        $novoStatusCodigo = null;
-        
-        if ($dataVencimento < $hoje) {
-            // Data vencida → status "vencida"
-            $novoStatusCodigo = 'vencida';
-        } elseif ($dataVencimento >= $hoje && $matricula['status_codigo'] !== 'ativa') {
-            // Data válida e status NÃO é ativa → mudar para "ativa" (ex: pendente → ativa)
-            $novoStatusCodigo = 'ativa';
-        }
-
-        // Se plano é gratuito (periodo_teste = 1), atualizar data_vencimento junto
-        $atualizarDataVencimento = !empty($matricula['periodo_teste']);
-
-        // Atualizar a data e o status (se necessário)
-        if ($novoStatusCodigo) {
-            $sql = "UPDATE matriculas SET proxima_data_vencimento = :proxima_data_vencimento";
-            if ($atualizarDataVencimento) {
-                $sql .= ", data_vencimento = :data_vencimento";
+            if ($tenantId <= 0) {
+                $response->getBody()->write(json_encode([
+                    'error' => 'Tenant não informado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
-            $sql .= ", status_id = (SELECT id FROM status_matricula WHERE codigo = :status_codigo LIMIT 1), updated_at = NOW() WHERE id = :id AND tenant_id = :tenant_id";
 
-            $stmtUpdate = $db->prepare($sql);
-            $params = [
-                'proxima_data_vencimento' => $dataVencimento,
-                'status_codigo' => $novoStatusCodigo,
-                'id' => $matriculaId,
-                'tenant_id' => $tenantId
-            ];
-            if ($atualizarDataVencimento) {
-                $params['data_vencimento'] = $dataVencimento;
+            if ($matriculaId <= 0) {
+                $response->getBody()->write(json_encode([
+                    'error' => 'ID da matrícula inválido'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
             }
-            $resultado = $stmtUpdate->execute($params);
-        } else {
-            // Atualizar apenas a data
-            $sql = "UPDATE matriculas SET proxima_data_vencimento = :proxima_data_vencimento";
-            if ($atualizarDataVencimento) {
-                $sql .= ", data_vencimento = :data_vencimento";
-            }
-            $sql .= ", updated_at = NOW() WHERE id = :id AND tenant_id = :tenant_id";
 
-            $stmtUpdate = $db->prepare($sql);
-            $params = [
-                'proxima_data_vencimento' => $dataVencimento,
-                'id' => $matriculaId,
-                'tenant_id' => $tenantId
-            ];
-            if ($atualizarDataVencimento) {
-                $params['data_vencimento'] = $dataVencimento;
+            $data = $request->getParsedBody();
+            if (!is_array($data)) {
+                $rawBody = (string) $request->getBody();
+                $decoded = json_decode($rawBody, true);
+                $data = is_array($decoded) ? $decoded : [];
             }
-            $resultado = $stmtUpdate->execute($params);
-        }
 
-        if ($resultado) {
-            // Buscar o novo status atualizado
-            $stmtStatus = $db->prepare("
-                SELECT sm.codigo as status_codigo, sm.nome as status_nome
+            // Validar se a data foi enviada
+            if (empty($data['proxima_data_vencimento'])) {
+                $response->getBody()->write(json_encode([
+                    'error' => 'Data de vencimento é obrigatória'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+            }
+
+            // Validar formato da data
+            $dataVencimento = trim((string) $data['proxima_data_vencimento']);
+            $dataObj = \DateTime::createFromFormat('Y-m-d', $dataVencimento);
+            if (!$dataObj || $dataObj->format('Y-m-d') !== $dataVencimento) {
+                $response->getBody()->write(json_encode([
+                    'error' => 'Formato de data inválido. Use YYYY-MM-DD'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+            }
+
+            // Verificar se a matrícula existe e pertence ao tenant
+            $stmt = $db->prepare("
+                SELECT m.id, m.aluno_id, m.plano_id, m.proxima_data_vencimento, m.data_vencimento, m.status_id,
+                       sm.codigo as status_codigo,
+                       COALESCE(p.periodo_teste, 0) as periodo_teste
                 FROM matriculas m
                 INNER JOIN status_matricula sm ON sm.id = m.status_id
-                WHERE m.id = :id
+                LEFT JOIN planos p ON p.id = m.plano_id
+                WHERE m.id = :id AND m.tenant_id = :tenant_id
             ");
-            $stmtStatus->execute(['id' => $matriculaId]);
-            $statusAtualizado = $stmtStatus->fetch(\PDO::FETCH_ASSOC);
-            
-            $response->getBody()->write(json_encode([
-                'message' => 'Data de vencimento atualizada com sucesso',
-                'matricula_id' => $matriculaId,
-                'proxima_data_vencimento_anterior' => $matricula['proxima_data_vencimento'],
-                'proxima_data_vencimento_nova' => $dataVencimento,
-                'status_anterior' => $matricula['status_codigo'],
-                'status_atual' => $statusAtualizado['status_codigo'] ?? $matricula['status_codigo'],
-                'status_nome' => $statusAtualizado['status_nome'] ?? null
-            ]));
-            return $response->withHeader('Content-Type', 'application/json');
-        }
+            $stmt->execute([
+                'id' => $matriculaId,
+                'tenant_id' => $tenantId
+            ]);
+            $matricula = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-        $response->getBody()->write(json_encode([
-            'error' => 'Erro ao atualizar data de vencimento'
-        ]));
-        return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+            if (!$matricula) {
+                $response->getBody()->write(json_encode([
+                    'error' => 'Matrícula não encontrada'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            // Determinar o novo status baseado na data
+            $hoje = date('Y-m-d');
+            $novoStatusCodigo = null;
+
+            if ($dataVencimento < $hoje) {
+                $novoStatusCodigo = 'vencida';
+            } elseif ($dataVencimento >= $hoje && $matricula['status_codigo'] !== 'ativa') {
+                $novoStatusCodigo = 'ativa';
+            }
+
+            $atualizarDataVencimento = !empty($matricula['periodo_teste']);
+
+            if ($novoStatusCodigo) {
+                $sql = "UPDATE matriculas SET proxima_data_vencimento = :proxima_data_vencimento";
+                if ($atualizarDataVencimento) {
+                    $sql .= ", data_vencimento = :data_vencimento";
+                }
+                $sql .= ", status_id = (SELECT id FROM status_matricula WHERE codigo = :status_codigo LIMIT 1), updated_at = NOW() WHERE id = :id AND tenant_id = :tenant_id";
+
+                $stmtUpdate = $db->prepare($sql);
+                $params = [
+                    'proxima_data_vencimento' => $dataVencimento,
+                    'status_codigo' => $novoStatusCodigo,
+                    'id' => $matriculaId,
+                    'tenant_id' => $tenantId
+                ];
+                if ($atualizarDataVencimento) {
+                    $params['data_vencimento'] = $dataVencimento;
+                }
+                $resultado = $stmtUpdate->execute($params);
+            } else {
+                $sql = "UPDATE matriculas SET proxima_data_vencimento = :proxima_data_vencimento";
+                if ($atualizarDataVencimento) {
+                    $sql .= ", data_vencimento = :data_vencimento";
+                }
+                $sql .= ", updated_at = NOW() WHERE id = :id AND tenant_id = :tenant_id";
+
+                $stmtUpdate = $db->prepare($sql);
+                $params = [
+                    'proxima_data_vencimento' => $dataVencimento,
+                    'id' => $matriculaId,
+                    'tenant_id' => $tenantId
+                ];
+                if ($atualizarDataVencimento) {
+                    $params['data_vencimento'] = $dataVencimento;
+                }
+                $resultado = $stmtUpdate->execute($params);
+            }
+
+            if ($resultado) {
+                $stmtStatus = $db->prepare("
+                    SELECT sm.codigo as status_codigo, sm.nome as status_nome
+                    FROM matriculas m
+                    INNER JOIN status_matricula sm ON sm.id = m.status_id
+                    WHERE m.id = :id
+                ");
+                $stmtStatus->execute(['id' => $matriculaId]);
+                $statusAtualizado = $stmtStatus->fetch(\PDO::FETCH_ASSOC);
+
+                $response->getBody()->write(json_encode([
+                    'message' => 'Data de vencimento atualizada com sucesso',
+                    'matricula_id' => $matriculaId,
+                    'proxima_data_vencimento_anterior' => $matricula['proxima_data_vencimento'],
+                    'proxima_data_vencimento_nova' => $dataVencimento,
+                    'status_anterior' => $matricula['status_codigo'],
+                    'status_atual' => $statusAtualizado['status_codigo'] ?? $matricula['status_codigo'],
+                    'status_nome' => $statusAtualizado['status_nome'] ?? null
+                ]));
+                return $response->withHeader('Content-Type', 'application/json');
+            }
+
+            $response->getBody()->write(json_encode([
+                'error' => 'Erro ao atualizar data de vencimento'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        } catch (\Throwable $e) {
+            error_log('[MatriculaController::atualizarProximaDataVencimento] Erro: ' . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'error' => 'Erro interno ao atualizar data de vencimento'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
     }
 
     /**
