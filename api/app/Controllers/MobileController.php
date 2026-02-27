@@ -7016,6 +7016,60 @@ class MobileController
             ]);
             $debug['matriculas_recentes'] = $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
 
+            if (!empty($userId)) {
+                $stmtAlunosUsuarioTenant = $this->db->prepare("
+                    SELECT a.id as aluno_id, a.usuario_id
+                    FROM alunos a
+                    INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = a.usuario_id
+                    WHERE a.usuario_id = :usuario_id
+                      AND tup.tenant_id = :tenant_id
+                      AND tup.papel_id = 1
+                      AND tup.ativo = 1
+                    ORDER BY a.id ASC
+                ");
+                $stmtAlunosUsuarioTenant->execute([
+                    'usuario_id' => $userId,
+                    'tenant_id' => $tenantId
+                ]);
+                $debug['alunos_usuario_no_tenant'] = $stmtAlunosUsuarioTenant->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+
+                $stmtTotalUsuarioTenant = $this->db->prepare("
+                    SELECT COUNT(*)
+                    FROM matriculas m
+                    INNER JOIN alunos a ON a.id = m.aluno_id
+                    WHERE a.usuario_id = :usuario_id
+                      AND m.tenant_id = :tenant_id
+                ");
+                $stmtTotalUsuarioTenant->execute([
+                    'usuario_id' => $userId,
+                    'tenant_id' => $tenantId
+                ]);
+                $debug['total_matriculas_usuario_tenant'] = (int)$stmtTotalUsuarioTenant->fetchColumn();
+
+                $stmtOutrosTenants = $this->db->prepare("
+                    SELECT m.tenant_id, COUNT(*) as total
+                    FROM matriculas m
+                    INNER JOIN alunos a ON a.id = m.aluno_id
+                    WHERE a.usuario_id = :usuario_id
+                      AND m.tenant_id <> :tenant_id
+                    GROUP BY m.tenant_id
+                    ORDER BY total DESC, m.tenant_id ASC
+                ");
+                $stmtOutrosTenants->execute([
+                    'usuario_id' => $userId,
+                    'tenant_id' => $tenantId
+                ]);
+                $debug['matriculas_usuario_outros_tenants'] = $stmtOutrosTenants->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+
+                if ($debug['total_matriculas_aluno_tenant'] === 0 && $debug['total_matriculas_usuario_tenant'] > 0) {
+                    $debug['diagnostico'] = 'Usuário possui matrícula no tenant, mas em aluno_id diferente do informado na requisição';
+                } elseif ($debug['total_matriculas_aluno_tenant'] === 0 && !empty($debug['matriculas_usuario_outros_tenants'])) {
+                    $debug['diagnostico'] = 'Usuário possui matrícula em outro(s) tenant(s), mas não no tenant atual';
+                } elseif ($debug['total_matriculas_aluno_tenant'] === 0) {
+                    $debug['diagnostico'] = 'Não há matrícula para este aluno/usuário no tenant atual';
+                }
+            }
+
             $stmtStatus = $this->db->prepare("
                 SELECT id, codigo, nome, permite_checkin, ativo
                 FROM status_matricula
