@@ -1448,35 +1448,283 @@ class MercadoPagoWebhookController
     }
 
     /**
-     * Ativar contrato de pacote e gerar matrículas rateadas
-     */
-    /**
-     * Ativar contrato de pacote - SIMPLES
-     * Apenas atualiza status para 'ativo'
+     * Ativar contrato de pacote com baixa completa (criar matrículas + pagamentos + ativação)
+     * Replica a lógica de PacoteController::confirmarPagamento() + MatriculaController::darBaixaPacote()
      */
     private function ativarPacoteContrato(int $contratoId, array $pagamento): void
     {
         try {
-            error_log("[Webhook MP] 🎯 Atualizando status do contrato #{$contratoId} para 'ativo'");
-            
-            // SIMPLES: apenas UPDATE
-            $stmt = $this->db->prepare("
-                UPDATE pacote_contratos
-                SET status = 'ativo'
-                WHERE id = ?
+            error_log("[Webhook MP] 🎯 Iniciando baixa completa do contrato #{$contratoId}");
+
+            // 1. Buscar contrato com dados do pacote
+            $stmtContrato = $this->db->prepare("
+                SELECT pc.*, p.plano_id, p.plano_ciclo_id, p.valor_total, p.qtd_beneficiarios, p.nome as pacote_nome
+                FROM pacote_contratos pc
+                INNER JOIN pacotes p ON p.id = pc.pacote_id
+                WHERE pc.id = ?
+                LIMIT 1
             ");
-            
-            $stmt->execute([$contratoId]);
-            $rowsAffected = $stmt->rowCount();
-            
-            if ($rowsAffected > 0) {
-                error_log("[Webhook MP] ✅ Contrato #{$contratoId} atualizado para status 'ativo'");
-            } else {
-                error_log("[Webhook MP] ⚠️ Contrato #{$contratoId} não encontrado ou já estava ativo");
+            $stmtContrato->execute([$contratoId]);
+            $contrato = $stmtContrato->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$contrato) {
+                error_log("[Webhook MP] ❌ Contrato #{$contratoId} não encontrado");
+                return;
             }
-            
+
+            $tenantId = (int) $contrato['tenant_id'];
+            error_log("[Webhook MP] 📋 Contrato: {$contrato['pacote_nome']}, tenant={$tenantId}, status_atual={$contrato['status']}");
+
+            // 2. Buscar beneficiários
+            $stmtBenef = $this->db->prepare("
+                SELECT pb.id, pb.aluno_id, pb.matricula_id
+                FROM pacote_beneficiarios pb
+                WHERE pb.pacote_contrato_id = ? AND pb.tenant_id = ?
+            ");
+            $stmtBenef->execute([$contratoId, $tenantId]);
+            $beneficiarios = $stmtBenef->fetchAll(\PDO::FETCH_ASSOC);
+
+            if (empty($beneficiarios)) {
+                error_log("[Webhook MP] ⚠️ Nenhum beneficiário para contrato #{$contratoId}");
+                // Mesmo sem beneficiários, atualizar status do contrato
+                $this->db->prepare("UPDATE pacote_contratos SET status = 'ativo', updated_at = NOW() WHERE id = ?")->execute([$contratoId]);
+                return;
+            }
+
+            $valorTotal = (float) $contrato['valor_total'];
+            $valorRateado = $valorTotal / max(1, count($beneficiarios));
+
+            // 3. Calcular datas (ciclo do pacote ou duração do plano)
+            $dataInicio = date('Y-m-d');
+            $dataFim = null;
+            $mesesCiclo = null;
+            $duracaoDias = 30;
+
+            if (!empty($contrato['plano_ciclo_id'])) {
+                $stmtCiclo = $this->db->prepare("
+                    SELECT pc2.meses, af.meses as frequencia_meses
+                    FROM plano_ciclos pc2
+                    LEFT JOIN assinatura_frequencias af ON af.id = pc2.assinatura_frequencia_id
+                    WHERE pc2.id = ? AND pc2.tenant_id = ?
+                    LIMIT 1
+                ");
+                $stmtCiclo->execute([(int) $contrato['plano_ciclo_id'], $tenantId]);
+                $ciclo = $stmtCiclo->fetch(\PDO::FETCH_ASSOC);
+                if ($ciclo) {
+                    $mesesCiclo = (int) ($ciclo['meses'] ?: $ciclo['frequencia_meses'] ?: 0);
+                    if ($mesesCiclo > 0) {
+                        $dataFim = date('Y-m-d', strtotime("+{$mesesCiclo} months"));
+                    }
+                }
+            }
+
+            if (!$dataFim) {
+                $stmtPlano = $this->db->prepare("SELECT duracao_dias FROM planos WHERE id = ? AND tenant_id = ? LIMIT 1");
+                $stmtPlano->execute([(int) $contrato['plano_id'], $tenantId]);
+                $duracaoDias = max(1, (int) ($stmtPlano->fetchColumn() ?: 30));
+                $dataFim = date('Y-m-d', strtotime("+{$duracaoDias} days"));
+            }
+
+            // 4. Buscar IDs de status
+            $stmtStatusAtiva = $this->db->prepare("SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1");
+            $stmtStatusAtiva->execute();
+            $statusAtivaId = (int) ($stmtStatusAtiva->fetchColumn() ?: 1);
+
+            $stmtMotivo = $this->db->prepare("SELECT id FROM motivo_matricula WHERE codigo = 'nova' LIMIT 1");
+            $stmtMotivo->execute();
+            $motivoId = (int) ($stmtMotivo->fetchColumn() ?: 1);
+
+            $stmtStatusPago = $this->db->prepare("SELECT id FROM status_pagamento WHERE codigo IN ('aprovado', 'pago') LIMIT 1");
+            $stmtStatusPago->execute();
+            $statusPagoId = (int) ($stmtStatusPago->fetchColumn() ?: 2);
+
+            // Buscar forma de pagamento pelo método do MP
+            $formaPagamentoId = null;
+            $metodoPagamento = $pagamento['payment_method_id'] ?? null;
+            if ($metodoPagamento) {
+                $stmtForma = $this->db->prepare("SELECT id FROM formas_pagamento WHERE codigo = ? AND tenant_id = ? LIMIT 1");
+                $stmtForma->execute([$metodoPagamento, $tenantId]);
+                $formaPagamentoId = $stmtForma->fetchColumn() ?: null;
+            }
+
+            $dataPagamento = !empty($pagamento['date_approved'])
+                ? date('Y-m-d', strtotime((string) $pagamento['date_approved']))
+                : date('Y-m-d');
+
+            $this->db->beginTransaction();
+
+            $matriculasProcessadas = 0;
+
+            foreach ($beneficiarios as $ben) {
+                $alunoId = (int) $ben['aluno_id'];
+                $matriculaId = !empty($ben['matricula_id']) ? (int) $ben['matricula_id'] : null;
+
+                // 5a. Verificar se matrícula já existe
+                if ($matriculaId) {
+                    $stmtCheckMat = $this->db->prepare("SELECT id FROM matriculas WHERE id = ? LIMIT 1");
+                    $stmtCheckMat->execute([$matriculaId]);
+                    if (!$stmtCheckMat->fetchColumn()) {
+                        $matriculaId = null; // Matrícula referenciada não existe mais
+                    }
+                }
+
+                // Se não existe matrícula, verificar se já tem uma pelo contrato+aluno
+                if (!$matriculaId) {
+                    $stmtExist = $this->db->prepare("
+                        SELECT id FROM matriculas
+                        WHERE pacote_contrato_id = ? AND aluno_id = ? AND tenant_id = ?
+                        LIMIT 1
+                    ");
+                    $stmtExist->execute([$contratoId, $alunoId, $tenantId]);
+                    $matriculaId = (int) ($stmtExist->fetchColumn() ?: 0) ?: null;
+                }
+
+                // 5b. Criar matrícula se necessário
+                if (!$matriculaId) {
+                    error_log("[Webhook MP] 📝 Criando matrícula para aluno #{$alunoId} no contrato #{$contratoId}");
+
+                    $planoCicloId = !empty($contrato['plano_ciclo_id']) ? (int) $contrato['plano_ciclo_id'] : null;
+                    // Validar que plano_ciclo_id existe
+                    if ($planoCicloId) {
+                        $stmtCheckCiclo = $this->db->prepare("SELECT id FROM plano_ciclos WHERE id = ? LIMIT 1");
+                        $stmtCheckCiclo->execute([$planoCicloId]);
+                        if (!$stmtCheckCiclo->fetchColumn()) {
+                            $planoCicloId = null;
+                        }
+                    }
+
+                    $stmtMat = $this->db->prepare("
+                        INSERT INTO matriculas
+                        (tenant_id, aluno_id, plano_id, plano_ciclo_id, tipo_cobranca,
+                         data_matricula, data_inicio, data_vencimento, valor, valor_rateado,
+                         status_id, motivo_id, proxima_data_vencimento, pacote_contrato_id, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, 'avulso', ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                    ");
+                    $stmtMat->execute([
+                        $tenantId,
+                        $alunoId,
+                        (int) $contrato['plano_id'],
+                        $planoCicloId,
+                        $dataInicio,
+                        $dataInicio,
+                        $dataFim,
+                        $valorRateado,
+                        $valorRateado,
+                        $statusAtivaId,
+                        $motivoId,
+                        $dataFim,
+                        $contratoId
+                    ]);
+                    $matriculaId = (int) $this->db->lastInsertId();
+                    error_log("[Webhook MP] ✅ Matrícula #{$matriculaId} criada para aluno #{$alunoId}");
+
+                    // Atualizar beneficiário com matricula_id
+                    $stmtUpdBen = $this->db->prepare("
+                        UPDATE pacote_beneficiarios
+                        SET matricula_id = ?, valor_rateado = ?, status = 'ativo', updated_at = NOW()
+                        WHERE id = ? AND tenant_id = ?
+                    ");
+                    $stmtUpdBen->execute([$matriculaId, $valorRateado, (int) $ben['id'], $tenantId]);
+                } else {
+                    // Matrícula já existe - ativar se pendente/vencida
+                    $this->db->prepare("
+                        UPDATE matriculas
+                        SET status_id = ?, proxima_data_vencimento = ?, updated_at = NOW()
+                        WHERE id = ? AND status_id IN (
+                            SELECT id FROM status_matricula WHERE codigo IN ('pendente', 'vencida')
+                        )
+                    ")->execute([$statusAtivaId, $dataFim, $matriculaId]);
+
+                    // Atualizar beneficiário
+                    $this->db->prepare("
+                        UPDATE pacote_beneficiarios SET status = 'ativo', updated_at = NOW() WHERE id = ? AND tenant_id = ?
+                    ")->execute([(int) $ben['id'], $tenantId]);
+                }
+
+                // 6. Processar pagamentos_plano
+                // Verificar se já existe pagamento pendente
+                $stmtPagExist = $this->db->prepare("
+                    SELECT id FROM pagamentos_plano
+                    WHERE pacote_contrato_id = ? AND aluno_id = ? AND tenant_id = ? AND status_pagamento_id != ?
+                    ORDER BY id ASC LIMIT 1
+                ");
+                $stmtPagExist->execute([$contratoId, $alunoId, $tenantId, $statusPagoId]);
+                $pagPendenteId = $stmtPagExist->fetchColumn();
+
+                if ($pagPendenteId) {
+                    // Marcar pagamento existente como pago
+                    $this->db->prepare("
+                        UPDATE pagamentos_plano
+                        SET status_pagamento_id = ?, data_pagamento = ?, forma_pagamento_id = ?,
+                            observacoes = 'Pago via MercadoPago (webhook)', tipo_baixa_id = 2, updated_at = NOW()
+                        WHERE id = ?
+                    ")->execute([$statusPagoId, $dataPagamento, $formaPagamentoId, $pagPendenteId]);
+                    error_log("[Webhook MP] ✅ Pagamento #{$pagPendenteId} marcado como pago");
+                } else {
+                    // Criar pagamento já como pago
+                    $this->db->prepare("
+                        INSERT INTO pagamentos_plano
+                        (tenant_id, aluno_id, matricula_id, plano_id, valor,
+                         data_vencimento, data_pagamento, status_pagamento_id, forma_pagamento_id,
+                         pacote_contrato_id, observacoes, tipo_baixa_id, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'Pago via MercadoPago (webhook)', 2, NOW(), NOW())
+                    ")->execute([
+                        $tenantId, $alunoId, $matriculaId, (int) $contrato['plano_id'],
+                        $valorRateado, $dataInicio, $dataPagamento, $statusPagoId,
+                        $formaPagamentoId, $contratoId
+                    ]);
+                    error_log("[Webhook MP] ✅ Pagamento criado (já pago) para aluno #{$alunoId}");
+                }
+
+                // 7. Gerar próxima parcela
+                try {
+                    $proximoVencimento = null;
+                    if ($mesesCiclo && $mesesCiclo > 0) {
+                        $proximoVencimento = date('Y-m-d', strtotime("+{$mesesCiclo} months", strtotime($dataFim)));
+                    } else {
+                        $proximoVencimento = date('Y-m-d', strtotime("+{$duracaoDias} days", strtotime($dataFim)));
+                    }
+
+                    $this->db->prepare("
+                        INSERT INTO pagamentos_plano
+                        (tenant_id, aluno_id, matricula_id, plano_id, valor,
+                         data_vencimento, status_pagamento_id, pacote_contrato_id,
+                         observacoes, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, 1, ?, 'Parcela gerada automaticamente (webhook)', NOW(), NOW())
+                    ")->execute([
+                        $tenantId, $alunoId, $matriculaId, (int) $contrato['plano_id'],
+                        $valorRateado, $proximoVencimento, $contratoId
+                    ]);
+
+                    // Atualizar próxima data na matrícula
+                    $this->db->prepare("
+                        UPDATE matriculas SET proxima_data_vencimento = ?, updated_at = NOW() WHERE id = ?
+                    ")->execute([$proximoVencimento, $matriculaId]);
+
+                    error_log("[Webhook MP] 📅 Próxima parcela gerada: {$proximoVencimento} para aluno #{$alunoId}");
+                } catch (\Exception $e) {
+                    error_log("[Webhook MP] ⚠️ Erro ao gerar próxima parcela para aluno #{$alunoId}: " . $e->getMessage());
+                }
+
+                $matriculasProcessadas++;
+            }
+
+            // 8. Atualizar contrato para ativo
+            $this->db->prepare("
+                UPDATE pacote_contratos
+                SET status = 'ativo', data_inicio = COALESCE(data_inicio, ?), data_fim = COALESCE(data_fim, ?), updated_at = NOW()
+                WHERE id = ? AND tenant_id = ?
+            ")->execute([$dataInicio, $dataFim, $contratoId, $tenantId]);
+
+            $this->db->commit();
+
+            error_log("[Webhook MP] ✅ Baixa completa do contrato #{$contratoId}: {$matriculasProcessadas} matrículas processadas, " . count($beneficiarios) . " beneficiários ativados");
+
         } catch (\Exception $e) {
-            error_log("[Webhook MP] ❌ Erro ao atualizar contrato: " . $e->getMessage());
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+            error_log("[Webhook MP] ❌ Erro na baixa do contrato #{$contratoId}: " . $e->getMessage());
             error_log("[Webhook MP] Stack: " . $e->getTraceAsString());
         }
     }

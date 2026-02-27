@@ -2618,10 +2618,12 @@ class MatriculaController
 
         // Verificar se a matrícula existe e pertence ao tenant
         $stmt = $db->prepare("
-            SELECT m.id, m.aluno_id, m.plano_id, m.proxima_data_vencimento, m.status_id,
-                   sm.codigo as status_codigo
+            SELECT m.id, m.aluno_id, m.plano_id, m.proxima_data_vencimento, m.data_vencimento, m.status_id,
+                   sm.codigo as status_codigo,
+                   COALESCE(p.periodo_teste, 0) as periodo_teste
             FROM matriculas m
             INNER JOIN status_matricula sm ON sm.id = m.status_id
+            LEFT JOIN planos p ON p.id = m.plano_id
             WHERE m.id = :id AND m.tenant_id = :tenant_id
         ");
         $stmt->execute([
@@ -2649,36 +2651,46 @@ class MatriculaController
             $novoStatusCodigo = 'ativa';
         }
 
+        // Se plano é gratuito (periodo_teste = 1), atualizar data_vencimento junto
+        $atualizarDataVencimento = !empty($matricula['periodo_teste']);
+
         // Atualizar a data e o status (se necessário)
         if ($novoStatusCodigo) {
-            $stmtUpdate = $db->prepare("
-                UPDATE matriculas
-                SET proxima_data_vencimento = :proxima_data_vencimento,
-                    status_id = (SELECT id FROM status_matricula WHERE codigo = :status_codigo LIMIT 1),
-                    updated_at = NOW()
-                WHERE id = :id AND tenant_id = :tenant_id
-            ");
-            
-            $resultado = $stmtUpdate->execute([
+            $sql = "UPDATE matriculas SET proxima_data_vencimento = :proxima_data_vencimento";
+            if ($atualizarDataVencimento) {
+                $sql .= ", data_vencimento = :data_vencimento";
+            }
+            $sql .= ", status_id = (SELECT id FROM status_matricula WHERE codigo = :status_codigo LIMIT 1), updated_at = NOW() WHERE id = :id AND tenant_id = :tenant_id";
+
+            $stmtUpdate = $db->prepare($sql);
+            $params = [
                 'proxima_data_vencimento' => $dataVencimento,
                 'status_codigo' => $novoStatusCodigo,
                 'id' => $matriculaId,
                 'tenant_id' => $tenantId
-            ]);
+            ];
+            if ($atualizarDataVencimento) {
+                $params['data_vencimento'] = $dataVencimento;
+            }
+            $resultado = $stmtUpdate->execute($params);
         } else {
             // Atualizar apenas a data
-            $stmtUpdate = $db->prepare("
-                UPDATE matriculas
-                SET proxima_data_vencimento = :proxima_data_vencimento,
-                    updated_at = NOW()
-                WHERE id = :id AND tenant_id = :tenant_id
-            ");
-            
-            $resultado = $stmtUpdate->execute([
+            $sql = "UPDATE matriculas SET proxima_data_vencimento = :proxima_data_vencimento";
+            if ($atualizarDataVencimento) {
+                $sql .= ", data_vencimento = :data_vencimento";
+            }
+            $sql .= ", updated_at = NOW() WHERE id = :id AND tenant_id = :tenant_id";
+
+            $stmtUpdate = $db->prepare($sql);
+            $params = [
                 'proxima_data_vencimento' => $dataVencimento,
                 'id' => $matriculaId,
                 'tenant_id' => $tenantId
-            ]);
+            ];
+            if ($atualizarDataVencimento) {
+                $params['data_vencimento'] = $dataVencimento;
+            }
+            $resultado = $stmtUpdate->execute($params);
         }
 
         if ($resultado) {

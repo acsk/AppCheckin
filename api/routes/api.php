@@ -913,6 +913,7 @@ return function ($app) {
         $group->get('/matriculas/{matriculaId}', [MobileController::class, 'detalheMatricula']);
 
         // Pacotes (pagante)
+        $group->get('/pacotes/contratos', [MobileController::class, 'meusPacotes']);
         $group->get('/pacotes/pendentes', [MobileController::class, 'pacotesPendentes']);
         $group->post('/pacotes/contratos/{contratoId}/pagar', [MobileController::class, 'pagarPacote']);
         

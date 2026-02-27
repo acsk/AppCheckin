@@ -3839,6 +3839,112 @@ class MobileController
     }
 
     /**
+     * Listar todos os contratos de pacote do usuário (pagante ou beneficiário)
+     * GET /mobile/pacotes/contratos
+     * Query params: ?status=pendente|ativo|cancelado (opcional, sem filtro = todos)
+     */
+    public function meusPacotes(Request $request, Response $response): Response
+    {
+        try {
+            $tenantId = (int) $request->getAttribute('tenantId');
+            $userId = (int) $request->getAttribute('userId');
+            $queryParams = $request->getQueryParams();
+            $statusFiltro = $queryParams['status'] ?? null;
+
+            // Buscar aluno_id do usuário
+            $stmtAluno = $this->db->prepare("SELECT id FROM alunos WHERE usuario_id = ? AND tenant_id = ? LIMIT 1");
+            $stmtAluno->execute([$userId, $tenantId]);
+            $alunoId = (int) ($stmtAluno->fetchColumn() ?: 0);
+
+            // Buscar contratos onde o usuário é pagante OU beneficiário
+            $sql = "
+                SELECT DISTINCT pc.id as contrato_id, pc.status, pc.valor_total,
+                       pc.data_inicio, pc.data_fim, pc.payment_url, pc.payment_preference_id,
+                       pc.pagante_usuario_id, pc.created_at,
+                       p.nome as pacote_nome, p.plano_id, p.qtd_beneficiarios,
+                       pl.nome as plano_nome,
+                       u_pagante.nome as pagante_nome,
+                       CASE WHEN pc.pagante_usuario_id = ? THEN 1 ELSE 0 END as sou_pagante
+                FROM pacote_contratos pc
+                INNER JOIN pacotes p ON p.id = pc.pacote_id
+                LEFT JOIN planos pl ON pl.id = p.plano_id
+                LEFT JOIN usuarios u_pagante ON u_pagante.id = pc.pagante_usuario_id
+                LEFT JOIN pacote_beneficiarios pb ON pb.pacote_contrato_id = pc.id AND pb.tenant_id = pc.tenant_id
+                WHERE pc.tenant_id = ?
+                  AND (pc.pagante_usuario_id = ? OR pb.aluno_id = ?)
+            ";
+            $params = [$userId, $tenantId, $userId, $alunoId];
+
+            if ($statusFiltro && in_array($statusFiltro, ['pendente', 'ativo', 'cancelado'])) {
+                $sql .= " AND pc.status = ?";
+                $params[] = $statusFiltro;
+            }
+
+            $sql .= " ORDER BY pc.created_at DESC";
+
+            $stmt = $this->db->prepare($sql);
+            $stmt->execute($params);
+            $contratos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Enriquecer cada contrato com beneficiários e matrículas
+            foreach ($contratos as &$contrato) {
+                $cId = (int) $contrato['contrato_id'];
+
+                // Buscar beneficiários
+                $stmtBen = $this->db->prepare("
+                    SELECT pb.id, pb.aluno_id, pb.status, pb.valor_rateado,
+                           a.nome as aluno_nome,
+                           m.id as matricula_id,
+                           sm.nome as matricula_status
+                    FROM pacote_beneficiarios pb
+                    INNER JOIN alunos a ON a.id = pb.aluno_id
+                    LEFT JOIN matriculas m ON m.id = pb.matricula_id
+                    LEFT JOIN status_matricula sm ON sm.id = m.status_id
+                    WHERE pb.pacote_contrato_id = ? AND pb.tenant_id = ?
+                ");
+                $stmtBen->execute([$cId, $tenantId]);
+                $contrato['beneficiarios'] = $stmtBen->fetchAll(\PDO::FETCH_ASSOC);
+
+                // Buscar pagamentos pendentes
+                $stmtPag = $this->db->prepare("
+                    SELECT pp.id, pp.valor, pp.data_vencimento, pp.data_pagamento,
+                           sp.nome as status_pagamento,
+                           a.nome as aluno_nome
+                    FROM pagamentos_plano pp
+                    INNER JOIN alunos a ON a.id = pp.aluno_id
+                    LEFT JOIN status_pagamento sp ON sp.id = pp.status_pagamento_id
+                    WHERE pp.pacote_contrato_id = ? AND pp.tenant_id = ?
+                    ORDER BY pp.data_vencimento ASC
+                    LIMIT 20
+                ");
+                $stmtPag->execute([$cId, $tenantId]);
+                $contrato['pagamentos'] = $stmtPag->fetchAll(\PDO::FETCH_ASSOC);
+
+                // Formatação
+                $contrato['contrato_id'] = (int) $contrato['contrato_id'];
+                $contrato['valor_total'] = (float) ($contrato['valor_total'] ?? 0);
+                $contrato['sou_pagante'] = (bool) $contrato['sou_pagante'];
+                $contrato['qtd_beneficiarios'] = (int) ($contrato['qtd_beneficiarios'] ?? 0);
+            }
+            unset($contrato);
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'contratos' => $contratos,
+                'total' => count($contratos)
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            error_log("[MobileController::meusPacotes] Erro: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'message' => 'Erro ao listar contratos de pacote'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
      * Listar pacotes pendentes do pagante
      * GET /mobile/pacotes/pendentes
      */
