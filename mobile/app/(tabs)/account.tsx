@@ -1461,21 +1461,6 @@ export default function AccountScreen() {
               >
                 <Feather name="camera" size={28} color="#fff" />
               </TouchableOpacity>
-              {userProfile?.plano?.matricula_status?.nome ? (
-                <View
-                  style={[
-                    styles.sidebarMatriculaBadge,
-                    {
-                      backgroundColor:
-                        userProfile.plano.matricula_status.cor || "#6C757D",
-                    },
-                  ]}
-                >
-                  <Text style={styles.sidebarMatriculaBadgeText}>
-                    {userProfile.plano.matricula_status.nome}
-                  </Text>
-                </View>
-              ) : null}
             </View>
             <View style={styles.sidebarHeaderInfo}>
               <Text style={styles.sidebarUserName}>{userProfile.nome}</Text>
