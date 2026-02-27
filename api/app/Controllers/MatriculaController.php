@@ -2640,9 +2640,9 @@ class MatriculaController
 
             // Verificar se a matrícula existe e pertence ao tenant
             $stmt = $db->prepare("
-                SELECT m.id, m.aluno_id, m.plano_id, m.proxima_data_vencimento, m.data_vencimento, m.status_id,
-                       sm.codigo as status_codigo,
-                       COALESCE(p.periodo_teste, 0) as periodo_teste
+                  SELECT m.id, m.aluno_id, m.plano_id, m.proxima_data_vencimento, m.data_vencimento, m.status_id,
+                      sm.codigo as status_codigo,
+                      COALESCE(m.periodo_teste, 0) as periodo_teste
                 FROM matriculas m
                 INNER JOIN status_matricula sm ON sm.id = m.status_id
                 LEFT JOIN planos p ON p.id = m.plano_id
