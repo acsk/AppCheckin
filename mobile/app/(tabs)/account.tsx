@@ -1479,46 +1479,51 @@ export default function AccountScreen() {
             </View>
             <View style={styles.sidebarHeaderInfo}>
               <Text style={styles.sidebarUserName}>{userProfile.nome}</Text>
-              {userProfile?.plano?.vencimento?.texto ? (
-                <View
-                  style={[
-                    styles.sidebarPlanStatusRow,
-                    {
-                      backgroundColor:
-                        (userProfile.plano.vencimento.dias_restantes ?? 0) < 0
-                          ? "rgba(220, 53, 69, 0.15)"
-                          : "rgba(40, 167, 69, 0.15)",
-                    },
-                  ]}
-                >
-                  <Feather
-                    name={
-                      (userProfile.plano.vencimento.dias_restantes ?? 0) < 0
-                        ? "alert-circle"
-                        : "clock"
-                    }
-                    size={13}
-                    color={
-                      (userProfile.plano.vencimento.dias_restantes ?? 0) < 0
-                        ? "#DC3545"
-                        : "#28A745"
-                    }
-                  />
-                  <Text
-                    style={[
-                      styles.sidebarPlanStatusText,
-                      {
-                        color:
-                          (userProfile.plano.vencimento.dias_restantes ?? 0) < 0
-                            ? "#DC3545"
-                            : "#28A745",
-                      },
-                    ]}
-                  >
-                    {(userProfile.plano.vencimento.dias_restantes ?? 0) < 0
-                      ? "BLOQUEADO"
-                      : userProfile.plano.vencimento.texto}
-                  </Text>
+              {userProfile?.plano ? (
+                <View style={styles.sidebarPlanInfoContainer}>
+                  {userProfile.plano.matricula_status?.nome ? (
+                    <View
+                      style={[
+                        styles.sidebarStatusBadgeInline,
+                        {
+                          backgroundColor:
+                            userProfile.plano.matricula_status.cor || "#6C757D",
+                        },
+                      ]}
+                    >
+                      <Feather
+                        name={
+                          userProfile.plano.matricula_status.codigo === "ativa"
+                            ? "check-circle"
+                            : userProfile.plano.matricula_status.codigo === "pendente"
+                              ? "clock"
+                              : "alert-circle"
+                        }
+                        size={11}
+                        color="#fff"
+                      />
+                      <Text style={styles.sidebarStatusBadgeInlineText}>
+                        {userProfile.plano.matricula_status.nome}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {userProfile.plano.vencimento?.texto ? (
+                    <Text
+                      style={[
+                        styles.sidebarVencimentoText,
+                        {
+                          color:
+                            (userProfile.plano.vencimento.dias_restantes ?? 0) < 0
+                              ? "#FF6B6B"
+                              : "rgba(255,255,255,0.8)",
+                        },
+                      ]}
+                    >
+                      {(userProfile.plano.vencimento.dias_restantes ?? 0) < 0
+                        ? "BLOQUEADO"
+                        : userProfile.plano.vencimento.texto}
+                    </Text>
+                  ) : null}
                 </View>
               ) : null}
             </View>
@@ -1931,20 +1936,31 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#fff",
   },
-  sidebarPlanStatusRow: {
+  sidebarPlanInfoContainer: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 5,
+    gap: 8,
     marginTop: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    alignSelf: "flex-start",
+    flexWrap: "wrap",
   },
-  sidebarPlanStatusText: {
+  sidebarStatusBadgeInline: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+  },
+  sidebarStatusBadgeInlineText: {
+    color: "#fff",
     fontSize: 11,
-    fontWeight: "700",
+    fontWeight: "800",
     letterSpacing: 0.3,
+  },
+  sidebarVencimentoText: {
+    fontSize: 11,
+    fontWeight: "600",
+    letterSpacing: 0.2,
   },
   sidebarCloseButton: {
     width: 32,
