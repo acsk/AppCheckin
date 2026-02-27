@@ -1209,7 +1209,17 @@ class MatriculaController
                 pc.ativo as ciclo_ativo,
                 af.id as ciclo_frequencia_id,
                 af.codigo as ciclo_frequencia_codigo,
-                af.nome as ciclo_frequencia_nome
+                af.nome as ciclo_frequencia_nome,
+                pct.id as contrato_id,
+                pct.status as contrato_status,
+                pct.data_inicio as contrato_data_inicio,
+                pct.data_fim as contrato_data_fim,
+                pct.valor_total as contrato_valor_total,
+                pct.pagante_usuario_id as contrato_pagante_usuario_id,
+                paq.id as pacote_id,
+                paq.nome as pacote_nome,
+                paq.qtd_beneficiarios as pacote_qtd_beneficiarios,
+                paq.valor_total as pacote_valor_total
             FROM matriculas m
             INNER JOIN alunos a ON m.aluno_id = a.id
             INNER JOIN usuarios u ON a.usuario_id = u.id
@@ -1219,6 +1229,8 @@ class MatriculaController
             LEFT JOIN usuarios admin_criou ON m.criado_por = admin_criou.id
             LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
             LEFT JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
+            LEFT JOIN pacote_contratos pct ON pct.id = m.pacote_contrato_id
+            LEFT JOIN pacotes paq ON paq.id = pct.pacote_id
             WHERE m.id = ? AND m.tenant_id = ?
         ";
         
@@ -1251,7 +1263,52 @@ class MatriculaController
             $matricula['plano_ciclo'] = null;
         }
 
-        // Limpar campos auxiliares do ciclo do objeto principal
+        // Montar objeto pacote se existir
+        if ($matricula['pacote_contrato_id']) {
+            // Buscar beneficiários do contrato
+            $stmtBeneficiarios = $db->prepare("
+                SELECT pb.aluno_id, pb.valor_rateado, pb.status,
+                       al.nome as aluno_nome,
+                       CASE WHEN al.usuario_id = ? THEN 1 ELSE 0 END as is_pagante
+                FROM pacote_beneficiarios pb
+                INNER JOIN alunos al ON al.id = pb.aluno_id
+                WHERE pb.pacote_contrato_id = ? AND pb.tenant_id = ?
+                ORDER BY is_pagante DESC, al.nome ASC
+            ");
+            $stmtBeneficiarios->execute([
+                $matricula['contrato_pagante_usuario_id'] ?? 0,
+                $matricula['pacote_contrato_id'],
+                $tenantId
+            ]);
+            $beneficiarios = $stmtBeneficiarios->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Buscar nome do pagante
+            $nomePagante = null;
+            if (!empty($matricula['contrato_pagante_usuario_id'])) {
+                $stmtPagante = $db->prepare("SELECT nome FROM usuarios WHERE id = ? LIMIT 1");
+                $stmtPagante->execute([$matricula['contrato_pagante_usuario_id']]);
+                $nomePagante = $stmtPagante->fetchColumn() ?: null;
+            }
+
+            $matricula['pacote'] = [
+                'pacote_id' => $matricula['pacote_id'] ? (int) $matricula['pacote_id'] : null,
+                'pacote_nome' => $matricula['pacote_nome'],
+                'pacote_valor_total' => $matricula['pacote_valor_total'] ? (float) $matricula['pacote_valor_total'] : null,
+                'pacote_qtd_beneficiarios' => $matricula['pacote_qtd_beneficiarios'] ? (int) $matricula['pacote_qtd_beneficiarios'] : null,
+                'contrato_id' => (int) $matricula['contrato_id'],
+                'contrato_status' => $matricula['contrato_status'],
+                'contrato_data_inicio' => $matricula['contrato_data_inicio'],
+                'contrato_data_fim' => $matricula['contrato_data_fim'],
+                'contrato_valor_total' => $matricula['contrato_valor_total'] ? (float) $matricula['contrato_valor_total'] : null,
+                'pagante_usuario_id' => $matricula['contrato_pagante_usuario_id'] ? (int) $matricula['contrato_pagante_usuario_id'] : null,
+                'pagante_nome' => $nomePagante,
+                'beneficiarios' => $beneficiarios,
+            ];
+        } else {
+            $matricula['pacote'] = null;
+        }
+
+        // Limpar campos auxiliares do ciclo e pacote do objeto principal
         unset(
             $matricula['ciclo_id'],
             $matricula['ciclo_meses'],
@@ -1262,22 +1319,35 @@ class MatriculaController
             $matricula['ciclo_ativo'],
             $matricula['ciclo_frequencia_id'],
             $matricula['ciclo_frequencia_codigo'],
-            $matricula['ciclo_frequencia_nome']
+            $matricula['ciclo_frequencia_nome'],
+            $matricula['contrato_id'],
+            $matricula['contrato_status'],
+            $matricula['contrato_data_inicio'],
+            $matricula['contrato_data_fim'],
+            $matricula['contrato_valor_total'],
+            $matricula['contrato_pagante_usuario_id'],
+            $matricula['pacote_id'],
+            $matricula['pacote_nome'],
+            $matricula['pacote_qtd_beneficiarios'],
+            $matricula['pacote_valor_total']
         );
 
         // Buscar pagamentos da matrícula
         $stmtPagamentos = $db->prepare("
             SELECT 
-                id,
-                CAST(valor AS DECIMAL(10,2)) as valor,
-                data_vencimento,
-                data_pagamento,
-                status_pagamento_id,
-                (SELECT nome FROM status_pagamento WHERE id = status_pagamento_id) as status,
-                observacoes
-            FROM pagamentos_plano
-            WHERE matricula_id = ?
-            ORDER BY data_vencimento ASC
+                pp.id,
+                CAST(pp.valor AS DECIMAL(10,2)) as valor,
+                pp.data_vencimento,
+                pp.data_pagamento,
+                pp.status_pagamento_id,
+                (SELECT nome FROM status_pagamento WHERE id = pp.status_pagamento_id) as status,
+                pp.forma_pagamento_id,
+                fp.nome as forma_pagamento_nome,
+                pp.observacoes
+            FROM pagamentos_plano pp
+            LEFT JOIN formas_pagamento fp ON fp.id = pp.forma_pagamento_id
+            WHERE pp.matricula_id = ?
+            ORDER BY pp.data_vencimento ASC
         ");
         $stmtPagamentos->execute([$matriculaId]);
         $matricula['pagamentos'] = $stmtPagamentos->fetchAll() ?? [];

@@ -370,12 +370,18 @@ class MobileController
             // Buscar plano através da matrícula mais recente (ativa, pendente ou vencida)
             $sql = "SELECT p.id, p.nome, p.valor, p.duracao_dias, p.descricao,
                            m.id as matricula_id, m.data_inicio, m.data_vencimento as data_fim, 
-                           m.proxima_data_vencimento,
-                           sm.id as status_id, sm.codigo as vinculo_status, sm.nome as status_nome
+                           m.proxima_data_vencimento, m.plano_ciclo_id, m.pacote_contrato_id,
+                           sm.id as status_id, sm.codigo as vinculo_status, sm.nome as status_nome,
+                           pc.meses as ciclo_meses, pc.valor as ciclo_valor,
+                           af.nome as ciclo_frequencia_nome, af.codigo as ciclo_frequencia_codigo,
+                           mod.nome as modalidade_nome, mod.icone as modalidade_icone, mod.cor as modalidade_cor
                     FROM matriculas m
                     INNER JOIN planos p ON m.plano_id = p.id
                     INNER JOIN alunos a ON a.id = m.aluno_id
                     INNER JOIN status_matricula sm ON sm.id = m.status_id
+                    LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+                    LEFT JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
+                    LEFT JOIN modalidades mod ON mod.id = p.modalidade_id
                     WHERE a.usuario_id = :user_id 
                     AND m.tenant_id = :tenant_id
                     AND sm.codigo IN ('ativa', 'pendente', 'vencida')
@@ -400,7 +406,69 @@ class MobileController
                     'nome' => $plano['status_nome'],
                     'cor' => $coresStatus[$plano['vinculo_status']] ?? '#6C757D',
                 ];
-                unset($plano['status_id'], $plano['status_nome']);
+
+                // Calcular duração e vencimento
+                $dataFim = $plano['proxima_data_vencimento'] ?? $plano['data_fim'] ?? null;
+                $diasRestantes = null;
+                $vencimentoTexto = null;
+
+                if ($dataFim) {
+                    $hoje = new \DateTime(date('Y-m-d'));
+                    $vencimento = new \DateTime($dataFim);
+                    $diff = $hoje->diff($vencimento);
+                    $diasRestantes = $diff->invert ? -$diff->days : $diff->days;
+
+                    if ($diasRestantes < 0) {
+                        $vencimentoTexto = 'Vencido há ' . abs($diasRestantes) . ' dia(s)';
+                    } elseif ($diasRestantes === 0) {
+                        $vencimentoTexto = 'Vence hoje';
+                    } elseif ($diasRestantes < 30) {
+                        $vencimentoTexto = "Vence em {$diasRestantes} dia(s)";
+                    } else {
+                        $meses = (int) floor($diasRestantes / 30);
+                        $diasExtras = $diasRestantes % 30;
+                        if ($diasExtras > 0) {
+                            $vencimentoTexto = "{$meses} mês(es) e {$diasExtras} dia(s)";
+                        } else {
+                            $vencimentoTexto = "{$meses} mês(es)";
+                        }
+                    }
+                }
+
+                // Ciclo de pagamento
+                $plano['ciclo'] = null;
+                if ($plano['plano_ciclo_id']) {
+                    $plano['ciclo'] = [
+                        'meses' => $plano['ciclo_meses'] ? (int) $plano['ciclo_meses'] : null,
+                        'valor' => $plano['ciclo_valor'] ? (float) $plano['ciclo_valor'] : null,
+                        'frequencia' => $plano['ciclo_frequencia_nome'],
+                        'frequencia_codigo' => $plano['ciclo_frequencia_codigo'],
+                    ];
+                }
+
+                // Modalidade
+                $plano['modalidade'] = null;
+                if ($plano['modalidade_nome']) {
+                    $plano['modalidade'] = [
+                        'nome' => $plano['modalidade_nome'],
+                        'icone' => $plano['modalidade_icone'],
+                        'cor' => $plano['modalidade_cor'],
+                    ];
+                }
+
+                $plano['vencimento'] = [
+                    'data' => $dataFim,
+                    'dias_restantes' => $diasRestantes,
+                    'texto' => $vencimentoTexto,
+                ];
+
+                // Limpar campos auxiliares
+                unset(
+                    $plano['status_id'], $plano['status_nome'],
+                    $plano['ciclo_meses'], $plano['ciclo_valor'],
+                    $plano['ciclo_frequencia_nome'], $plano['ciclo_frequencia_codigo'],
+                    $plano['modalidade_nome'], $plano['modalidade_icone'], $plano['modalidade_cor']
+                );
             }
 
             return $plano ?: null;

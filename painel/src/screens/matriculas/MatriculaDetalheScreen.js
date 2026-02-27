@@ -299,6 +299,27 @@ export default function MatriculaDetalheScreen() {
     return diffDias >= 0 && diffDias <= 3;
   };
 
+  const isJanelaBaixaPacote = (dateString) => {
+    if (!dateString) return false;
+    const [year, month, day] = dateString.split('-');
+    const vencimento = new Date(year, month - 1, day);
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    vencimento.setHours(0, 0, 0, 0);
+    const diffDias = Math.ceil((vencimento.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+    return diffDias <= 3;
+  };
+
+  const isDataDiferenteHoje = (dateString) => {
+    if (!dateString) return false;
+    const [year, month, day] = dateString.split('-');
+    const data = new Date(year, month - 1, day);
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    data.setHours(0, 0, 0, 0);
+    return data.getTime() !== hoje.getTime();
+  };
+
   const formatDateTime = (dateTimeString) => {
     if (!dateTimeString) return '-';
     try {
@@ -428,7 +449,7 @@ export default function MatriculaDetalheScreen() {
       <ScrollView className="flex-1 bg-slate-100">
         <View className={`mx-auto w-full ${isDesktop ? 'max-w-6xl px-6 py-6' : 'px-4 py-5'}`}>
           {/* Header */}
-          <View className="mb-6 rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 shadow-md">
+          <View className="mb-5 rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 shadow-md">
             <Pressable
               className="flex-row items-center gap-2"
               style={({ pressed }) => [pressed && { opacity: 0.7 }]}
@@ -438,56 +459,168 @@ export default function MatriculaDetalheScreen() {
               <Text className="text-sm font-semibold text-slate-500">Voltar</Text>
             </Pressable>
             
-            <View className="mt-4 flex-row items-center justify-between border-t border-orange-100 pt-4">
-              <View>
-                <Text className="text-lg font-semibold text-slate-900">{matricula.usuario_nome}</Text>
-                <Text className="text-xs text-slate-600">
+            <View className="mt-3 flex-row items-center justify-between border-t border-orange-100 pt-3">
+              <View className="flex-1">
+                <View className="flex-row items-center gap-2">
+                  <Text className="text-base font-semibold text-slate-900">{matricula.usuario_nome}</Text>
+                  <View
+                    className="rounded-full px-2.5 py-0.5"
+                    style={{ backgroundColor: getStatusColor(matricula.status_id) }}
+                  >
+                    <Text className="text-[10px] font-bold tracking-wide text-white">
+                      {getStatusLabel(matricula.status_id)}
+                    </Text>
+                  </View>
+                </View>
+                <Text className="text-[11px] text-slate-600">
                   Contrato #{matricula.id} • {matricula.modalidade_nome} - {matricula.plano_nome}
                 </Text>
               </View>
-              <View
-                className="self-start rounded-full px-3 py-1"
-                style={{ backgroundColor: getStatusColor(matricula.status_id) }}
-              >
-                <Text className="text-[11px] font-bold tracking-wide text-white">
-                  {getStatusLabel(matricula.status_id)}
-                </Text>
-              </View>
             </View>
+
+            {isPacote && (
+              <View className="mt-4 flex-row items-center gap-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-6 py-5">
+                <View className="h-14 w-14 items-center justify-center rounded-full bg-emerald-100">
+                  <Feather name="package" size={24} color="#10b981" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-[17px] font-bold text-emerald-700">Matrícula vinculada a pacote</Text>
+                  <Text className="text-[13px] text-emerald-600">
+                    O pagamento e a baixa são gerenciados no módulo de pacotes.
+                  </Text>
+                </View>
+              </View>
+            )}
           </View>
 
+          {isPacote && matricula?.pacote && (
+            <View className="mb-5 overflow-hidden rounded-2xl border border-emerald-100 bg-white shadow-sm">
+              <View className="flex-row items-center justify-between border-b border-emerald-100 bg-emerald-50 px-5 py-3">
+                <View className="flex-row items-center gap-3">
+                  <View className="h-9 w-9 items-center justify-center rounded-full bg-emerald-100">
+                    <Feather name="package" size={18} color="#10b981" />
+                  </View>
+                  <View>
+                    <Text className="text-sm font-semibold text-emerald-800">Detalhes do Pacote</Text>
+                    <Text className="text-[11px] text-emerald-600">
+                      Contrato #{matricula.pacote.contrato_id} • {matricula.pacote.contrato_status || '-'}
+                    </Text>
+                  </View>
+                </View>
+                <View className="rounded-full bg-emerald-200 px-2.5 py-0.5">
+                  <Text className="text-[10px] font-semibold text-emerald-800">
+                    {matricula.pacote.pacote_qtd_beneficiarios || 0} benef.
+                  </Text>
+                </View>
+              </View>
+
+              <View className="px-5 py-4">
+                <Text className="text-[12px] font-semibold text-slate-800">
+                  {matricula.pacote.pacote_nome}
+                </Text>
+                <Text className="mt-1 text-[11px] text-slate-500">
+                  Vigência: {formatDate(matricula.pacote.contrato_data_inicio)} • {formatDate(matricula.pacote.contrato_data_fim)}
+                </Text>
+
+                <View className="mt-3 flex-row flex-wrap gap-3">
+                  <View className="min-w-[150px] flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <Text className="text-[10px] uppercase text-slate-400">Duração</Text>
+                    <Text className="text-sm font-semibold text-slate-700">
+                      {matricula.pacote.contrato_data_inicio && matricula.pacote.contrato_data_fim
+                        ? `${Math.max(
+                            1,
+                            Math.round(
+                              (new Date(matricula.pacote.contrato_data_fim).getTime() -
+                                new Date(matricula.pacote.contrato_data_inicio).getTime()) /
+                                (1000 * 60 * 60 * 24)
+                            ) + 1
+                          )} dias`
+                        : '-'}
+                    </Text>
+                  </View>
+                  <View className="min-w-[150px] flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <Text className="text-[10px] uppercase text-slate-400">Valor total</Text>
+                    <Text className="text-sm font-semibold text-slate-700">
+                      {formatCurrency(matricula.pacote.contrato_valor_total || matricula.pacote.pacote_valor_total)}
+                    </Text>
+                  </View>
+                  <View className="min-w-[150px] flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <Text className="text-[10px] uppercase text-slate-400">Valor rateado</Text>
+                    <Text className="text-sm font-semibold text-slate-700">
+                      {formatCurrency(matricula.valor_rateado)}
+                    </Text>
+                  </View>
+                  <View className="min-w-[150px] flex-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
+                    <Text className="text-[10px] uppercase text-slate-400">Pagante</Text>
+                    <Text className="text-sm font-semibold text-slate-700">
+                      {matricula.pacote.pagante_nome || '-'}
+                    </Text>
+                  </View>
+                </View>
+
+                {Array.isArray(matricula.pacote.beneficiarios) && matricula.pacote.beneficiarios.length > 0 && (
+                  <View className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                    <Text className="mb-2 text-[10px] font-semibold uppercase text-slate-400">
+                      Beneficiários
+                    </Text>
+                    {matricula.pacote.beneficiarios.map((beneficiario, idx) => (
+                      <View key={`${beneficiario.aluno_id}-${idx}`} className="flex-row items-center justify-between py-1">
+                        <View className="flex-1">
+                          <Text className="text-[12px] font-semibold text-slate-700">
+                            {beneficiario.aluno_nome || '-'}
+                          </Text>
+                          <Text className="text-[10px] text-slate-500">
+                            {beneficiario.is_pagante ? 'Pagante' : 'Dependente'} • {beneficiario.status || '-'}
+                          </Text>
+                        </View>
+                        <Text className="text-[11px] font-semibold text-slate-700">
+                          {formatCurrency(beneficiario.valor_rateado)}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                <View className="mt-4">
+                  <Pressable
+                    onPress={() => setModalBaixaPacoteVisible(true)}
+                    className="flex-row items-center justify-center gap-2 rounded-lg bg-emerald-600 py-3"
+                    style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                  >
+                    <Feather name="check-circle" size={16} color="#fff" />
+                    <Text className="text-sm font-semibold text-white">Dar baixa do pacote</Text>
+                  </Pressable>
+                </View>
+              </View>
+            </View>
+          )}
+
           {/* Card com informações da matrícula - Design Compacto */}
-          <View className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-md">
+          <View className="mb-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             {/* Header do Card */}
-            <View className="flex-row items-center justify-between border-b border-slate-100 bg-slate-50 px-5 py-4">
+            <View className="flex-row items-center justify-between border-b border-slate-100 bg-slate-50 px-5 py-3">
               <View className="flex-1 flex-row items-center gap-3">
                 {matricula.modalidade_icone && (
                   <View
-                    className="h-11 w-11 items-center justify-center rounded-2xl shadow-sm"
+                    className="h-10 w-10 items-center justify-center rounded-2xl shadow-sm"
                     style={{ backgroundColor: matricula.modalidade_cor || '#f97316' }}
                   >
                     <MaterialCommunityIcons
                       name={matricula.modalidade_icone}
-                      size={24}
+                      size={22}
                       color="#fff"
                     />
                   </View>
                 )}
                 <View className="flex-1">
-                  <Text className="text-[15px] font-semibold text-slate-800">{matricula.modalidade_nome}</Text>
-                  <Text className="text-xs text-slate-500">{matricula.plano_nome} • Matrícula #{matricula.id}</Text>
+                  <Text className="text-[14px] font-semibold text-slate-800">{matricula.modalidade_nome}</Text>
+                  <Text className="text-[11px] text-slate-500">{matricula.plano_nome} • Matrícula #{matricula.id}</Text>
                 </View>
-              </View>
-              <View
-                className="self-start rounded-full px-3 py-1"
-                style={{ backgroundColor: getStatusColor(matricula.status_id) }}
-              >
-                <Text className="text-[11px] font-bold tracking-wide text-white">{getStatusLabel(matricula.status_id)}</Text>
               </View>
             </View>
 
             {/* Grid de Informações Compacto */}
-            <View className="flex-row items-center border-b border-slate-100 bg-white px-4 py-4">
+            <View className="flex-row items-center border-b border-slate-100 bg-white px-4 py-3">
               <View className="flex-1 items-center gap-1">
                 <Feather name="calendar" size={16} color="#f97316" />
                 <Text className="text-[10px] font-semibold uppercase text-slate-400">Início</Text>
@@ -565,7 +698,7 @@ export default function MatriculaDetalheScreen() {
             )}
 
             {/* Footer com Valor */}
-            <View className="flex-row items-center justify-between bg-emerald-100 px-5 py-4">
+            <View className="flex-row items-center justify-between bg-emerald-100 px-5 py-3">
               <Text className="text-xs font-semibold text-emerald-800">
                 {cicloInfo ? 'Valor do Ciclo' : 'Valor Mensal'}
               </Text>
@@ -586,18 +719,6 @@ export default function MatriculaDetalheScreen() {
               </View>
             )}
 
-            {isPacote && Number(matricula.status_id) === 5 && (
-              <View className="border-t border-slate-100 px-5 py-3">
-                <Pressable
-                  onPress={() => setModalBaixaPacoteVisible(true)}
-                  className="flex-row items-center justify-center gap-2 rounded-lg bg-emerald-600 py-3"
-                  style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                >
-                  <Feather name="check-circle" size={16} color="#fff" />
-                  <Text className="text-sm font-semibold text-white">Dar baixa do pacote</Text>
-                </Pressable>
-              </View>
-            )}
           </View>
 
           {/* Faturas (todas as parcelas em uma tabela única) */}
@@ -703,7 +824,7 @@ export default function MatriculaDetalheScreen() {
                           </View>
                         </View>
                         <View style={{ flex: 1, alignItems: 'center' }}>
-                          {baixavel ? (
+                          {(!isPacote && baixavel) ? (
                             <Pressable
                               className="rounded-lg bg-orange-500 px-3 py-1.5"
                               style={({ pressed }) => [pressed && { opacity: 0.8 }]}
@@ -881,6 +1002,51 @@ export default function MatriculaDetalheScreen() {
               <Text className="text-center text-sm leading-6 text-slate-600">
                 Esta ação confirma o pagamento do pacote e libera as matrículas vinculadas.
               </Text>
+
+              {isDataDiferenteHoje(matricula?.proxima_data_vencimento || matricula?.data_vencimento) && (
+                <View className="mt-4 flex-row items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                  <Feather name="alert-triangle" size={18} color="#f59e0b" />
+                  <View className="flex-1">
+                    <Text className="text-sm font-semibold text-amber-700">Atenção: data diferente de hoje</Text>
+                    <Text className="text-[12px] text-amber-700">
+                      O vencimento está em {formatDate(matricula?.proxima_data_vencimento || matricula?.data_vencimento)}.
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              <View className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                <Text className="text-xs text-slate-500">Valor total a baixar</Text>
+                <Text className="text-base font-bold text-slate-800">
+                  {formatCurrency(matricula?.pacote?.contrato_valor_total || matricula?.pacote?.pacote_valor_total)}
+                </Text>
+              </View>
+
+              {Array.isArray(matricula?.pacote?.beneficiarios) && matricula.pacote.beneficiarios.length > 0 && (
+                <View className="mt-4">
+                  <Text className="mb-2 text-xs font-semibold text-slate-500">Beneficiários afetados</Text>
+                  <View className="rounded-lg border border-slate-200 bg-white">
+                    {matricula.pacote.beneficiarios.map((beneficiario, idx) => (
+                      <View
+                        key={`${beneficiario.aluno_id}-${idx}`}
+                        className="flex-row items-center justify-between border-b border-slate-100 px-4 py-3"
+                      >
+                        <View className="flex-1">
+                          <Text className="text-sm font-semibold text-slate-700">
+                            {beneficiario.aluno_nome || '-'}
+                          </Text>
+                          <Text className="text-[11px] text-slate-500">
+                            {beneficiario.is_pagante ? 'Pagante' : 'Dependente'} • {beneficiario.status || '-'}
+                          </Text>
+                        </View>
+                        <Text className="text-sm font-semibold text-slate-700">
+                          {formatCurrency(beneficiario.valor_rateado)}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
             </View>
 
             <View className="flex-row gap-3 border-t border-slate-200 px-6 py-4">

@@ -1460,6 +1460,48 @@ export default function AccountScreen() {
             </View>
             <View style={styles.sidebarHeaderInfo}>
               <Text style={styles.sidebarUserName}>{userProfile.nome}</Text>
+              {userProfile?.plano?.vencimento?.texto ? (
+                <View
+                  style={[
+                    styles.sidebarPlanStatusRow,
+                    {
+                      backgroundColor:
+                        (userProfile.plano.vencimento.dias_restantes ?? 0) < 0
+                          ? "rgba(220, 53, 69, 0.15)"
+                          : "rgba(40, 167, 69, 0.15)",
+                    },
+                  ]}
+                >
+                  <Feather
+                    name={
+                      (userProfile.plano.vencimento.dias_restantes ?? 0) < 0
+                        ? "alert-circle"
+                        : "clock"
+                    }
+                    size={13}
+                    color={
+                      (userProfile.plano.vencimento.dias_restantes ?? 0) < 0
+                        ? "#DC3545"
+                        : "#28A745"
+                    }
+                  />
+                  <Text
+                    style={[
+                      styles.sidebarPlanStatusText,
+                      {
+                        color:
+                          (userProfile.plano.vencimento.dias_restantes ?? 0) < 0
+                            ? "#DC3545"
+                            : "#28A745",
+                      },
+                    ]}
+                  >
+                    {(userProfile.plano.vencimento.dias_restantes ?? 0) < 0
+                      ? "BLOQUEADO"
+                      : userProfile.plano.vencimento.texto}
+                  </Text>
+                </View>
+              ) : null}
             </View>
             <TouchableOpacity
               style={styles.sidebarCloseButton}
@@ -1865,6 +1907,21 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "800",
     color: "#fff",
+  },
+  sidebarPlanStatusRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    alignSelf: "flex-start",
+  },
+  sidebarPlanStatusText: {
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 0.3,
   },
   sidebarCloseButton: {
     width: 32,

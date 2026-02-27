@@ -275,6 +275,9 @@ export default function FormMatriculaScreen() {
       if (!formData.pacote_id) {
         newErrors.pacote_id = 'Selecione um pacote';
       }
+      if (maxDependentes > 0 && formData.dependentes.length === 0) {
+        newErrors.dependentes = 'Selecione ao menos 1 dependente';
+      }
     }
 
     // Se houver erros, mostrar e não prosseguir
@@ -379,8 +382,7 @@ export default function FormMatriculaScreen() {
   const alunoBasicoSelecionado = alunosBasico.find(
     (aluno) => aluno?.usuario_id?.toString() === formData.usuario_id
   );
-  const totalBeneficiariosPermitidos = Number(pacoteSelecionado?.qtd_beneficiarios || 0);
-  const maxDependentes = Math.max(totalBeneficiariosPermitidos - 1, 0);
+  const maxDependentes = Number(pacoteSelecionado?.qtd_beneficiarios || 0);
 
   const dependentesFiltrados = alunosBasico
     .filter((aluno) => aluno?.usuario_id?.toString() !== formData.usuario_id)
@@ -396,9 +398,9 @@ export default function FormMatriculaScreen() {
   const toggleDependente = (alunoId) => {
     setFormData((prev) => {
       const existe = prev.dependentes.includes(alunoId.toString());
-      if (!existe && totalBeneficiariosPermitidos > 0 && prev.dependentes.length >= maxDependentes) {
+      if (!existe && maxDependentes > 0 && prev.dependentes.length >= maxDependentes) {
         showToast(
-          `Limite do pacote: ${totalBeneficiariosPermitidos} pessoa(s). Você pode selecionar no máximo ${maxDependentes} dependente(s).`
+          `Limite do pacote: ${maxDependentes} dependente(s).`
         );
         return prev;
       }
@@ -925,7 +927,7 @@ export default function FormMatriculaScreen() {
                   <Text className="text-sm font-semibold text-slate-700">Dependentes (opcional)</Text>
                   {pacoteSelecionado?.qtd_beneficiarios ? (
                     <Text className="text-xs text-slate-500">
-                      Dependentes: {formData.dependentes.length}/{maxDependentes} • Total: {formData.dependentes.length + 1}/{totalBeneficiariosPermitidos}
+                      Dependentes: {formData.dependentes.length}/{maxDependentes}
                     </Text>
                   ) : null}
                 </View>
@@ -995,6 +997,12 @@ export default function FormMatriculaScreen() {
                             </Pressable>
                           </View>
                         ))}
+                    </View>
+                  )}
+                  {errors.dependentes && (
+                    <View className="mt-2 flex-row items-center gap-2">
+                      <Feather name="alert-circle" size={12} color="#ef4444" />
+                      <Text className="text-xs font-medium text-rose-500">{errors.dependentes}</Text>
                     </View>
                   )}
                 </View>

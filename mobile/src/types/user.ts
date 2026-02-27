@@ -42,5 +42,21 @@ export interface UserProfile {
       nome: string;
       cor: string;
     };
+    vencimento?: {
+      data?: string | null;
+      dias_restantes?: number | null;
+      texto?: string | null;
+    };
+    ciclo?: {
+      meses?: number | null;
+      valor?: number | null;
+      frequencia?: string | null;
+      frequencia_codigo?: string | null;
+    } | null;
+    modalidade?: {
+      nome?: string;
+      icone?: string;
+      cor?: string;
+    } | null;
   };
 }
