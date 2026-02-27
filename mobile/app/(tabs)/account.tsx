@@ -1495,7 +1495,8 @@ export default function AccountScreen() {
                         name={
                           userProfile.plano.matricula_status.codigo === "ativa"
                             ? "check-circle"
-                            : userProfile.plano.matricula_status.codigo === "pendente"
+                            : userProfile.plano.matricula_status.codigo ===
+                                "pendente"
                               ? "clock"
                               : "alert-circle"
                         }
@@ -1513,7 +1514,8 @@ export default function AccountScreen() {
                         styles.sidebarVencimentoText,
                         {
                           color:
-                            (userProfile.plano.vencimento.dias_restantes ?? 0) < 0
+                            (userProfile.plano.vencimento.dias_restantes ?? 0) <
+                            0
                               ? "#FF6B6B"
                               : "rgba(255,255,255,0.8)",
                         },
