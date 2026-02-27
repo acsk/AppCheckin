@@ -566,12 +566,17 @@ export default function FormMatriculaScreen() {
                       dependentes: [],
                     }));
                   }}
-                  className={`flex-1 rounded-lg border px-4 py-3 ${
+                  className={`flex-1 flex-row items-center justify-center gap-2 rounded-lg border px-4 py-3 ${
                     tipoMatricula === 'plano'
-                      ? 'border-emerald-400 bg-emerald-50'
+                      ? 'border-emerald-400 bg-emerald-50 shadow-sm'
                       : 'border-slate-200 bg-white'
                   }`}
                 >
+                  <Feather
+                    name="clipboard"
+                    size={16}
+                    color={tipoMatricula === 'plano' ? '#059669' : '#475569'}
+                  />
                   <Text
                     className={`text-center text-sm font-semibold ${
                       tipoMatricula === 'plano' ? 'text-emerald-700' : 'text-slate-700'
@@ -593,12 +598,17 @@ export default function FormMatriculaScreen() {
                       carregarPacotes();
                     }
                   }}
-                  className={`flex-1 rounded-lg border px-4 py-3 ${
+                  className={`flex-1 flex-row items-center justify-center gap-2 rounded-lg border px-4 py-3 ${
                     tipoMatricula === 'pacote'
-                      ? 'border-emerald-400 bg-emerald-50'
+                      ? 'border-emerald-400 bg-emerald-50 shadow-sm'
                       : 'border-slate-200 bg-white'
                   }`}
                 >
+                  <Feather
+                    name="package"
+                    size={16}
+                    color={tipoMatricula === 'pacote' ? '#059669' : '#475569'}
+                  />
                   <Text
                     className={`text-center text-sm font-semibold ${
                       tipoMatricula === 'pacote' ? 'text-emerald-700' : 'text-slate-700'
@@ -948,7 +958,9 @@ export default function FormMatriculaScreen() {
                         return (
                           <Pressable
                             key={aluno.id}
-                            className="flex-row items-center justify-between border-b border-slate-100 px-3 py-2.5"
+                            className={`flex-row items-center justify-between border-b border-slate-100 px-3 py-2.5 ${
+                              selected ? 'bg-emerald-50' : ''
+                            }`}
                             style={({ pressed }) => [
                               pressed && { backgroundColor: '#f8fafc' },
                               selected && { backgroundColor: '#ecfdf5' },
@@ -960,7 +972,9 @@ export default function FormMatriculaScreen() {
                               <Text className="text-xs text-slate-500">{aluno.email}</Text>
                             </View>
                             {selected ? (
-                              <Feather name="check-circle" size={18} color="#10b981" />
+                              <View className="h-7 w-7 items-center justify-center rounded-full bg-emerald-100">
+                                <Feather name="check" size={14} color="#10b981" />
+                              </View>
                             ) : (
                               <Feather name="circle" size={18} color="#cbd5f5" />
                             )}
