@@ -2673,17 +2673,31 @@ class MatriculaController
 
             $atualizarDataVencimento = !empty($matricula['periodo_teste']);
 
+            $novoStatusId = null;
+            if ($novoStatusCodigo) {
+                $stmtStatusId = $db->prepare("SELECT id FROM status_matricula WHERE codigo = :codigo LIMIT 1");
+                $stmtStatusId->execute(['codigo' => $novoStatusCodigo]);
+                $novoStatusId = $stmtStatusId->fetchColumn();
+
+                if (!$novoStatusId) {
+                    $response->getBody()->write(json_encode([
+                        'error' => "Status '{$novoStatusCodigo}' não encontrado em status_matricula"
+                    ]));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+                }
+            }
+
             if ($novoStatusCodigo) {
                 $sql = "UPDATE matriculas SET proxima_data_vencimento = :proxima_data_vencimento";
                 if ($atualizarDataVencimento) {
                     $sql .= ", data_vencimento = :data_vencimento";
                 }
-                $sql .= ", status_id = (SELECT id FROM status_matricula WHERE codigo = :status_codigo LIMIT 1), updated_at = NOW() WHERE id = :id AND tenant_id = :tenant_id";
+                $sql .= ", status_id = :status_id, updated_at = NOW() WHERE id = :id AND tenant_id = :tenant_id";
 
                 $stmtUpdate = $db->prepare($sql);
                 $params = [
                     'proxima_data_vencimento' => $dataVencimento,
-                    'status_codigo' => $novoStatusCodigo,
+                    'status_id' => $novoStatusId,
                     'id' => $matriculaId,
                     'tenant_id' => $tenantId
                 ];
@@ -2738,9 +2752,20 @@ class MatriculaController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         } catch (\Throwable $e) {
             error_log('[MatriculaController::atualizarProximaDataVencimento] Erro: ' . $e->getMessage());
-            $response->getBody()->write(json_encode([
+            $appEnv = strtolower((string) ($_ENV['APP_ENV'] ?? $_SERVER['APP_ENV'] ?? 'production'));
+            $mostrarDetalhe = $appEnv !== 'production';
+
+            $payload = [
                 'error' => 'Erro interno ao atualizar data de vencimento'
-            ]));
+            ];
+
+            if ($mostrarDetalhe) {
+                $payload['detalhe'] = $e->getMessage();
+                $payload['arquivo'] = basename((string) $e->getFile());
+                $payload['linha'] = (int) $e->getLine();
+            }
+
+            $response->getBody()->write(json_encode($payload));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
     }
