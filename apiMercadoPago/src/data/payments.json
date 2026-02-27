@@ -1090,5 +1090,146 @@
         },
         "live_mode": false,
         "point_of_interaction": null
+    },
+    "739648744916": {
+        "id": "739648744916",
+        "date_created": "2026-02-27T14:09:04.000+00:00",
+        "date_approved": null,
+        "date_last_updated": "2026-02-27T14:09:04.000+00:00",
+        "money_release_date": null,
+        "subscription_id": null,
+        "gateway_assinatura_id": "551657135852",
+        "pacote_contrato_id": null,
+        "gateway_preference_id": "530660740118",
+        "external_reference": "MAT-203-1772201344",
+        "payment_url": "http:\/\/localhost:8085\/checkout\/739648744916",
+        "issuer_id": "208",
+        "payment_method_id": "pix",
+        "payment_type_id": "pix",
+        "status": "pending",
+        "status_detail": "pending_waiting_transfer",
+        "currency_id": "BRL",
+        "transaction_amount": 1,
+        "transaction_details": {
+            "net_received_amount": 0.96,
+            "total_paid_amount": 1,
+            "overpaid_amount": 0,
+            "installment_amount": 1
+        },
+        "payment_method": "pix",
+        "card": null,
+        "payer": {
+            "id": 257921380,
+            "email": "andrecabrall@gmail.com",
+            "identification": {
+                "type": "CPF",
+                "number": "05809498426"
+            },
+            "first_name": "ANDRE",
+            "last_name": "CABRAL SILVA",
+            "type": "customer"
+        },
+        "description": "DEV (Mensal) - Natação",
+        "notification_url": "https:\/\/api.appcheckin.com.br\/api\/webhooks\/mercadopago",
+        "metadata": {
+            "tenant_id": 3,
+            "matricula_id": 203,
+            "aluno_id": 72,
+            "usuario_id": 3,
+            "tipo": "matricula_pix",
+            "email_real": "andrecabrall@gmail.com"
+        },
+        "installments": 1,
+        "captured": false,
+        "live_mode": false,
+        "point_of_interaction": {
+            "type": "PIX",
+            "business_info": {
+                "unit": "online_payments",
+                "sub_unit": "checkout_pro"
+            },
+            "transaction_data": {
+                "qr_code": "00020126580014br.gov.bcb.pix01365463fd2d43501020bdc14e1b6862d8775204000053039865802BR5925SIMULADOR GATEWAY6009SAO PAULO62070503***6304501D",
+                "qr_code_base64": "iVBORw0KGgoAAAANSUhEUgAAASwAAAEsCAYAAAB5fY51AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAc...(simulado)",
+                "ticket_url": "http:\/\/localhost:8085\/pix\/739648744916",
+                "bank_transfer_id": 407343,
+                "financial_institution": null
+            }
+        },
+        "refunded": false,
+        "refund_amount": 0,
+        "created_at": "2026-02-27T14:09:04.000+00:00",
+        "updated_at": "2026-02-27T14:09:04.000+00:00"
+    },
+    "283585590232": {
+        "id": "283585590232",
+        "date_created": "2026-02-27T14:09:05.000+00:00",
+        "date_approved": "2026-02-27T14:09:10.000+00:00",
+        "date_last_updated": "2026-02-27T14:09:10.000+00:00",
+        "money_release_date": "2026-03-13T14:09:10.000+00:00",
+        "subscription_id": "899906939013",
+        "gateway_assinatura_id": "899906939013",
+        "pacote_contrato_id": null,
+        "gateway_preference_id": "960661247561",
+        "external_reference": "MAT-203-1772201345",
+        "payment_url": "http:\/\/localhost:8085\/checkout\/283585590232",
+        "issuer_id": "191",
+        "payment_method_id": "pix",
+        "payment_type_id": "pix",
+        "status": "approved",
+        "status_detail": "accredited",
+        "currency_id": "BRL",
+        "transaction_amount": 1,
+        "transaction_details": {
+            "net_received_amount": 0.96,
+            "total_paid_amount": 1,
+            "overpaid_amount": 0,
+            "installment_amount": 1
+        },
+        "payment_method": "pix",
+        "card": null,
+        "payer": {
+            "id": 220511093,
+            "email": "andrecabrall@gmail.com",
+            "identification": {
+                "type": "CPF",
+                "number": "05809498426"
+            },
+            "first_name": "ANDRE",
+            "last_name": "CABRAL SILVA",
+            "type": "customer"
+        },
+        "description": "DEV - Natação",
+        "notification_url": "https:\/\/api.appcheckin.com.br\/api\/webhooks\/mercadopago",
+        "metadata": {
+            "tenant_id": 3,
+            "matricula_id": 203,
+            "aluno_id": 72,
+            "usuario_id": 3,
+            "tipo": "matricula_pix",
+            "email_real": "andrecabrall@gmail.com"
+        },
+        "installments": 1,
+        "captured": true,
+        "live_mode": false,
+        "point_of_interaction": {
+            "type": "PIX",
+            "business_info": {
+                "unit": "online_payments",
+                "sub_unit": "checkout_pro"
+            },
+            "transaction_data": {
+                "qr_code": "00020126580014br.gov.bcb.pix01369d8f86178a6bc624b9516b7962fd78fe5204000053039865802BR5925SIMULADOR GATEWAY6009SAO PAULO62070503***6304A664",
+                "qr_code_base64": "iVBORw0KGgoAAAANSUhEUgAAASwAAAEsCAYAAAB5fY51AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAc...(simulado)",
+                "ticket_url": "http:\/\/localhost:8085\/pix\/283585590232",
+                "bank_transfer_id": 228940,
+                "financial_institution": null
+            }
+        },
+        "refunded": false,
+        "refund_amount": 0,
+        "created_at": "2026-02-27T14:09:05.000+00:00",
+        "updated_at": "2026-02-27T14:09:10.000+00:00",
+        "preapproval_id": "899906939013"
     }
 }

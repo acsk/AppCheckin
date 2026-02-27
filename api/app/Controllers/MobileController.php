@@ -1658,6 +1658,13 @@ class MobileController
                     $errorResponse['error'] = 'Aluno não possui matrícula ativa';
                 }
 
+                $errorResponse['debug'] = $this->montarDebugSemMatricula(
+                    (int)$tenantId,
+                    $alunoId,
+                    $usuarioId,
+                    'checkin_manual'
+                );
+
                 $response->getBody()->write(json_encode($errorResponse));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
             }
@@ -1914,6 +1921,13 @@ class MobileController
                 } else {
                     $errorResponse['error'] = 'Você não possui matrícula ativa';
                 }
+
+                $errorResponse['debug'] = $this->montarDebugSemMatricula(
+                    (int)$tenantId,
+                    (int)($aluno['id'] ?? 0),
+                    (int)$userId,
+                    'checkin'
+                );
 
                 $response->getBody()->write(json_encode($errorResponse));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
@@ -6957,5 +6971,63 @@ class MobileController
             error_log("[MobileController] Erro ao atualizar status matrículas: " . $e->getMessage());
             // Não lançar exceção para não bloquear o fluxo
         }
+    }
+
+    /**
+     * Monta diagnóstico para respostas SEM_MATRICULA no mobile/checkin
+     */
+    private function montarDebugSemMatricula(int $tenantId, ?int $alunoId, ?int $userId, string $origem): array
+    {
+        $debug = [
+            'origem' => $origem,
+            'tenant_id' => $tenantId,
+            'aluno_id' => $alunoId,
+            'usuario_id' => $userId,
+            'data_hoje' => date('Y-m-d')
+        ];
+
+        if (empty($alunoId)) {
+            $debug['warning'] = 'aluno_id não identificado para diagnóstico detalhado';
+            return $debug;
+        }
+
+        try {
+            $stmtTotal = $this->db->prepare("SELECT COUNT(*) FROM matriculas WHERE tenant_id = :tenant_id AND aluno_id = :aluno_id");
+            $stmtTotal->execute([
+                'tenant_id' => $tenantId,
+                'aluno_id' => $alunoId
+            ]);
+            $debug['total_matriculas_aluno_tenant'] = (int)$stmtTotal->fetchColumn();
+
+            $stmt = $this->db->prepare("
+                SELECT m.id, m.status_id, m.proxima_data_vencimento, m.periodo_teste, m.created_at,
+                       sm.codigo as status_codigo, sm.nome as status_nome,
+                       sm.permite_checkin, sm.ativo as status_ativo
+                FROM matriculas m
+                LEFT JOIN status_matricula sm ON sm.id = m.status_id
+                WHERE m.tenant_id = :tenant_id
+                  AND m.aluno_id = :aluno_id
+                ORDER BY m.created_at DESC
+                LIMIT 5
+            ");
+            $stmt->execute([
+                'tenant_id' => $tenantId,
+                'aluno_id' => $alunoId
+            ]);
+            $debug['matriculas_recentes'] = $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+
+            $stmtStatus = $this->db->prepare("
+                SELECT id, codigo, nome, permite_checkin, ativo
+                FROM status_matricula
+                WHERE permite_checkin = 1 AND ativo = 1
+                ORDER BY id ASC
+            ");
+            $stmtStatus->execute();
+            $debug['status_que_permitem_checkin'] = $stmtStatus->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+        } catch (\Throwable $e) {
+            $debug['debug_error'] = $e->getMessage();
+        }
+
+        return $debug;
     }
 }

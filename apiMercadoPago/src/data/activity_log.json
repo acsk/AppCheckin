@@ -871,5 +871,45 @@
             "payment_method": "credit_card"
         },
         "timestamp": "2026-02-27T14:02:29.000+00:00"
+    },
+    {
+        "id": "log_6aa3b19509be41a056758867",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "739648744916",
+            "status": "pending",
+            "amount": 1
+        },
+        "timestamp": "2026-02-27T14:09:04.000+00:00"
+    },
+    {
+        "id": "log_3b36f713f7b082df46d4dbd1",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "283585590232",
+            "status": "pending",
+            "amount": 1
+        },
+        "timestamp": "2026-02-27T14:09:05.000+00:00"
+    },
+    {
+        "id": "log_bf1b9f4fa2b5b35aec893d02",
+        "type": "preapproval.auto_created_from_pix",
+        "data": {
+            "preapproval_id": "899906939013",
+            "payment_id": "283585590232",
+            "external_reference": "MAT-203-1772201345",
+            "amount": 1
+        },
+        "timestamp": "2026-02-27T14:09:10.000+00:00"
+    },
+    {
+        "id": "log_6e7e3d745d00f5a529e77e49",
+        "type": "payment.pix_confirmed",
+        "data": {
+            "payment_id": "283585590232",
+            "amount": 1
+        },
+        "timestamp": "2026-02-27T14:09:10.000+00:00"
     }
 ]

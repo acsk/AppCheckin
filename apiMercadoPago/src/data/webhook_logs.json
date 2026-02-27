@@ -460,5 +460,71 @@
         "error": null,
         "response_body": "{\"success\":false,\"error\":\"Erro Mercado Pago [404]: The Authorized Payment with id  127622888957  does not exist\"}",
         "sent_at": "2026-02-27T14:02:30.000+00:00"
+    },
+    {
+        "id": "whl_79ae6d6a3df63890b7eb636d",
+        "url": "http:\/\/host.docker.internal:8080\/api\/webhooks\/mercadopago",
+        "event": "payment.created",
+        "payment_id": "739648744916",
+        "http_status": 200,
+        "success": true,
+        "error": null,
+        "response_body": "{\"success\":true,\"message\":\"Webhook processado com sucesso (V1)\"}",
+        "sent_at": "2026-02-27T14:09:04.000+00:00"
+    },
+    {
+        "id": "whl_2a9f2fec18721ac81d2150f0",
+        "url": "https:\/\/api.appcheckin.com.br\/api\/webhooks\/mercadopago",
+        "event": "payment.created",
+        "payment_id": "739648744916",
+        "http_status": 200,
+        "success": true,
+        "error": null,
+        "response_body": "{\"success\":false,\"error\":\"Erro Mercado Pago [404]: The Authorized Payment with id  739648744916  does not exist\"}",
+        "sent_at": "2026-02-27T14:09:05.000+00:00"
+    },
+    {
+        "id": "whl_60a8d5581d39f88c30fa8aad",
+        "url": "http:\/\/host.docker.internal:8080\/api\/webhooks\/mercadopago",
+        "event": "payment.created",
+        "payment_id": "283585590232",
+        "http_status": 200,
+        "success": true,
+        "error": null,
+        "response_body": "{\"success\":true,\"message\":\"Webhook processado com sucesso (V1)\"}",
+        "sent_at": "2026-02-27T14:09:05.000+00:00"
+    },
+    {
+        "id": "whl_14ab20639b9a227583965fff",
+        "url": "https:\/\/api.appcheckin.com.br\/api\/webhooks\/mercadopago",
+        "event": "payment.created",
+        "payment_id": "283585590232",
+        "http_status": 200,
+        "success": true,
+        "error": null,
+        "response_body": "{\"success\":false,\"error\":\"Erro Mercado Pago [404]: The Authorized Payment with id  283585590232  does not exist\"}",
+        "sent_at": "2026-02-27T14:09:06.000+00:00"
+    },
+    {
+        "id": "whl_e3caecfa70d1693fc46036f0",
+        "url": "http:\/\/host.docker.internal:8080\/api\/webhooks\/mercadopago",
+        "event": "payment.updated",
+        "payment_id": "283585590232",
+        "http_status": 200,
+        "success": true,
+        "error": null,
+        "response_body": "{\"success\":true,\"message\":\"Webhook processado com sucesso (V1)\"}",
+        "sent_at": "2026-02-27T14:09:10.000+00:00"
+    },
+    {
+        "id": "whl_0806e460ab32036768f43cef",
+        "url": "https:\/\/api.appcheckin.com.br\/api\/webhooks\/mercadopago",
+        "event": "payment.updated",
+        "payment_id": "283585590232",
+        "http_status": 200,
+        "success": true,
+        "error": null,
+        "response_body": "{\"success\":false,\"error\":\"Erro Mercado Pago [404]: The Authorized Payment with id  283585590232  does not exist\"}",
+        "sent_at": "2026-02-27T14:09:12.000+00:00"
     }
 ]
