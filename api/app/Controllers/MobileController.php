@@ -374,14 +374,14 @@ class MobileController
                            sm.id as status_id, sm.codigo as vinculo_status, sm.nome as status_nome,
                            pc.meses as ciclo_meses, pc.valor as ciclo_valor,
                            af.nome as ciclo_frequencia_nome, af.codigo as ciclo_frequencia_codigo,
-                           mod.nome as modalidade_nome, mod.icone as modalidade_icone, mod.cor as modalidade_cor
+                           moda.nome as modalidade_nome, moda.icone as modalidade_icone, moda.cor as modalidade_cor
                     FROM matriculas m
                     INNER JOIN planos p ON m.plano_id = p.id
                     INNER JOIN alunos a ON a.id = m.aluno_id
                     INNER JOIN status_matricula sm ON sm.id = m.status_id
                     LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
                     LEFT JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
-                    LEFT JOIN modalidades mod ON mod.id = p.modalidade_id
+                    LEFT JOIN modalidades moda ON moda.id = p.modalidade_id
                     WHERE a.usuario_id = :user_id 
                     AND m.tenant_id = :tenant_id
                     AND sm.codigo IN ('ativa', 'pendente', 'vencida')

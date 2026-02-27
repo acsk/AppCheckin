@@ -300,6 +300,10 @@ export default function AccountScreen() {
           "✅ [loadUserProfileMemo] Perfil carregado com sucesso:",
           profileData.data?.nome,
         );
+        console.log(
+          "📋 [loadUserProfileMemo] Plano recebido:",
+          JSON.stringify(profileData.data?.plano, null, 2),
+        );
         if (profileData.data?.foto_caminho) {
           const fullPhotoUrl = apiUrl + profileData.data.foto_caminho;
           console.log("🖼️ URL COMPLETA DA FOTO:", fullPhotoUrl);
@@ -1457,6 +1461,21 @@ export default function AccountScreen() {
               >
                 <Feather name="camera" size={28} color="#fff" />
               </TouchableOpacity>
+              {userProfile?.plano?.matricula_status?.nome ? (
+                <View
+                  style={[
+                    styles.sidebarMatriculaBadge,
+                    {
+                      backgroundColor:
+                        userProfile.plano.matricula_status.cor || "#6C757D",
+                    },
+                  ]}
+                >
+                  <Text style={styles.sidebarMatriculaBadgeText}>
+                    {userProfile.plano.matricula_status.nome}
+                  </Text>
+                </View>
+              ) : null}
             </View>
             <View style={styles.sidebarHeaderInfo}>
               <Text style={styles.sidebarUserName}>{userProfile.nome}</Text>
@@ -1812,6 +1831,8 @@ const styles = StyleSheet.create({
     width: 84,
     height: 84,
     borderRadius: 42,
+    marginBottom: 12,
+    overflow: "visible",
   },
   headerPhotoContainer: {
     width: 84,
@@ -1847,16 +1868,17 @@ const styles = StyleSheet.create({
   },
   matriculaStatusBadge: {
     position: "absolute",
-    bottom: -6,
-    left: 0,
-    right: 0,
+    bottom: -10,
     alignSelf: "center",
-    paddingHorizontal: 8,
+    left: -6,
+    right: -6,
+    paddingHorizontal: 6,
     paddingVertical: 3,
     borderRadius: 10,
     zIndex: 10,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "visible",
     ...Platform.select({
       ios: {
         shadowColor: "#000",
@@ -1877,6 +1899,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 0.5,
+    textAlign: "center",
   },
   sidebarOverlay: {
     flex: 1,
@@ -1947,6 +1970,8 @@ const styles = StyleSheet.create({
     width: 128,
     height: 128,
     borderRadius: 64,
+    marginBottom: 16,
+    overflow: "visible",
   },
   sidebarPhotoImage: {
     width: "100%",
@@ -1965,6 +1990,40 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderWidth: 1,
     borderColor: "rgba(255,255,255,0.7)",
+  },
+  sidebarMatriculaBadge: {
+    position: "absolute",
+    bottom: -14,
+    left: -10,
+    right: -10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    zIndex: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "visible",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 5,
+      },
+      web: {
+        boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+      },
+    }),
+  },
+  sidebarMatriculaBadgeText: {
+    color: "#fff",
+    fontSize: 13,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+    textAlign: "center",
   },
   sidebarPhotoInitials: {
     fontSize: 44,
