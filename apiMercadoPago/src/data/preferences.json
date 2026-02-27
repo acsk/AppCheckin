@@ -104,5 +104,201 @@
         "init_point": "http:\/\/localhost:8085\/checkout\/pay_94b4767e664aec880c882ab7",
         "status": "pending_payment",
         "created_at": "2026-02-25T19:39:42.000+00:00"
+    },
+    "445835036318": {
+        "id": "445835036318",
+        "payment_id": "453246467285",
+        "gateway_assinatura_id": "420632404360",
+        "external_reference": "PAC-12-1772198978",
+        "pacote_contrato_id": null,
+        "items": [
+            {
+                "id": "PACOTE_12",
+                "title": "Plano Família I 1x Quad",
+                "description": "Pacote: Plano Família I 1x Quad",
+                "picture_url": null,
+                "category_id": "services",
+                "quantity": 1,
+                "currency_id": "BRL",
+                "unit_price": 360
+            }
+        ],
+        "amount": 360,
+        "currency": "BRL",
+        "payer": {
+            "name": "ANDRE CABRAL SILVA",
+            "email": "andrecabrall@gmail.com",
+            "document": null
+        },
+        "description": "Plano Família I 1x Quad",
+        "notification_url": "https:\/\/api.appcheckin.com.br\/api\/webhooks\/mercadopago",
+        "back_urls": {
+            "success": "https:\/\/mobile.appcheckin.com.br\/pagamento\/sucesso",
+            "failure": "https:\/\/mobile.appcheckin.com.br\/pagamento\/falha",
+            "pending": "https:\/\/mobile.appcheckin.com.br\/pagamento\/pendente"
+        },
+        "auto_return": "approved",
+        "metadata": {
+            "tenant_id": 3,
+            "matricula_id": null,
+            "aluno_id": null,
+            "usuario_id": 3,
+            "tipo": "pacote",
+            "email_real": "andrecabrall@gmail.com",
+            "pacote_contrato_id": 12
+        },
+        "installments": 1,
+        "payment_url": "http:\/\/localhost:8085\/checkout\/453246467285",
+        "sandbox_init_point": "http:\/\/localhost:8085\/checkout\/453246467285",
+        "init_point": "http:\/\/localhost:8085\/checkout\/453246467285",
+        "status": "pending_payment",
+        "created_at": "2026-02-27T13:29:38.000+00:00"
+    },
+    "286627750776": {
+        "id": "286627750776",
+        "payment_id": "198817238772",
+        "gateway_assinatura_id": "213161908940",
+        "external_reference": "PAC-12-1772199728",
+        "pacote_contrato_id": null,
+        "items": [
+            {
+                "id": "PACOTE_12",
+                "title": "Plano Família I 1x Quad",
+                "description": "Pacote: Plano Família I 1x Quad",
+                "picture_url": null,
+                "category_id": "services",
+                "quantity": 1,
+                "currency_id": "BRL",
+                "unit_price": 360
+            }
+        ],
+        "amount": 360,
+        "currency": "BRL",
+        "payer": {
+            "name": "ANDRE CABRAL SILVA",
+            "email": "andrecabrall@gmail.com",
+            "document": null
+        },
+        "description": "Plano Família I 1x Quad",
+        "notification_url": "https:\/\/api.appcheckin.com.br\/api\/webhooks\/mercadopago",
+        "back_urls": {
+            "success": "https:\/\/mobile.appcheckin.com.br\/pagamento\/sucesso",
+            "failure": "https:\/\/mobile.appcheckin.com.br\/pagamento\/falha",
+            "pending": "https:\/\/mobile.appcheckin.com.br\/pagamento\/pendente"
+        },
+        "auto_return": "approved",
+        "metadata": {
+            "tenant_id": 3,
+            "matricula_id": null,
+            "aluno_id": null,
+            "usuario_id": 3,
+            "tipo": "pacote",
+            "email_real": "andrecabrall@gmail.com",
+            "pacote_contrato_id": 12
+        },
+        "installments": 1,
+        "payment_url": "http:\/\/localhost:8085\/checkout\/198817238772",
+        "sandbox_init_point": "http:\/\/localhost:8085\/checkout\/198817238772",
+        "init_point": "http:\/\/localhost:8085\/checkout\/198817238772",
+        "status": "pending_payment",
+        "created_at": "2026-02-27T13:42:08.000+00:00"
+    },
+    "939346206509": {
+        "id": "939346206509",
+        "payment_id": "288662629126",
+        "gateway_assinatura_id": "877927523052",
+        "external_reference": "PAC-12-1772200905",
+        "pacote_contrato_id": null,
+        "items": [
+            {
+                "id": "PACOTE_12",
+                "title": "Plano Família I 1x Quad",
+                "description": "Pacote: Plano Família I 1x Quad",
+                "picture_url": null,
+                "category_id": "services",
+                "quantity": 1,
+                "currency_id": "BRL",
+                "unit_price": 360
+            }
+        ],
+        "amount": 360,
+        "currency": "BRL",
+        "payer": {
+            "name": "ANDRE CABRAL SILVA",
+            "email": "andrecabrall@gmail.com",
+            "document": null
+        },
+        "description": "Plano Família I 1x Quad",
+        "notification_url": "https:\/\/api.appcheckin.com.br\/api\/webhooks\/mercadopago",
+        "back_urls": {
+            "success": "https:\/\/mobile.appcheckin.com.br\/pagamento\/sucesso",
+            "failure": "https:\/\/mobile.appcheckin.com.br\/pagamento\/falha",
+            "pending": "https:\/\/mobile.appcheckin.com.br\/pagamento\/pendente"
+        },
+        "auto_return": "approved",
+        "metadata": {
+            "tenant_id": 3,
+            "matricula_id": null,
+            "aluno_id": null,
+            "usuario_id": 3,
+            "tipo": "pacote",
+            "email_real": "andrecabrall@gmail.com",
+            "pacote_contrato_id": 12
+        },
+        "installments": 1,
+        "payment_url": "http:\/\/localhost:8085\/checkout\/288662629126",
+        "sandbox_init_point": "http:\/\/localhost:8085\/checkout\/288662629126",
+        "init_point": "http:\/\/localhost:8085\/checkout\/288662629126",
+        "status": "pending_payment",
+        "created_at": "2026-02-27T14:01:45.000+00:00"
+    },
+    "982645489904": {
+        "id": "982645489904",
+        "payment_id": "127622888957",
+        "gateway_assinatura_id": "962303672902",
+        "external_reference": "PAC-12-1772200944",
+        "pacote_contrato_id": null,
+        "items": [
+            {
+                "id": "PACOTE_12",
+                "title": "Plano Família I 1x Quad",
+                "description": "Pacote: Plano Família I 1x Quad",
+                "picture_url": null,
+                "category_id": "services",
+                "quantity": 1,
+                "currency_id": "BRL",
+                "unit_price": 360
+            }
+        ],
+        "amount": 360,
+        "currency": "BRL",
+        "payer": {
+            "name": "ANDRE CABRAL SILVA",
+            "email": "andrecabrall@gmail.com",
+            "document": null
+        },
+        "description": "Plano Família I 1x Quad",
+        "notification_url": "https:\/\/api.appcheckin.com.br\/api\/webhooks\/mercadopago",
+        "back_urls": {
+            "success": "https:\/\/mobile.appcheckin.com.br\/pagamento\/sucesso",
+            "failure": "https:\/\/mobile.appcheckin.com.br\/pagamento\/falha",
+            "pending": "https:\/\/mobile.appcheckin.com.br\/pagamento\/pendente"
+        },
+        "auto_return": "approved",
+        "metadata": {
+            "tenant_id": 3,
+            "matricula_id": null,
+            "aluno_id": null,
+            "usuario_id": 3,
+            "tipo": "pacote",
+            "email_real": "andrecabrall@gmail.com",
+            "pacote_contrato_id": 12
+        },
+        "installments": 1,
+        "payment_url": "http:\/\/localhost:8085\/checkout\/127622888957",
+        "sandbox_init_point": "http:\/\/localhost:8085\/checkout\/127622888957",
+        "init_point": "http:\/\/localhost:8085\/checkout\/127622888957",
+        "status": "pending_payment",
+        "created_at": "2026-02-27T14:02:24.000+00:00"
     }
 }

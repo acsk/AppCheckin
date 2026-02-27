@@ -429,31 +429,20 @@ class MercadoPagoService
         try {
             $response = $this->fazerRequisicao('GET', "/v1/payments/{$paymentId}");
 
-            return [
-                'id' => $response['id'],
-                'status' => $response['status'], // approved, pending, rejected, cancelled, refunded
-                'status_detail' => $response['status_detail'],
-                'external_reference' => $response['external_reference'] ?? null,
-                'preference_id' => $response['preference_id'] ?? null, // ID da preferência (para pagamentos avulsos)
-                'metadata' => $response['metadata'] ?? [],
-                'transaction_amount' => $response['transaction_amount'],
-                'date_approved' => $response['date_approved'] ?? null,
-                'date_created' => $response['date_created'],
-                'payer' => [
-                    'email' => $response['payer']['email'] ?? null,
-                    'identification' => $response['payer']['identification'] ?? null
-                ],
-                'payment_method_id' => $response['payment_method_id'],
-                'payment_type_id' => $response['payment_type_id'],
-                'installments' => $response['installments'] ?? 1,
-                'raw' => $response
-            ];
+            return $this->normalizarRespostaPagamento($response, $paymentId);
         } catch (\Exception $e) {
-            // Fallback para eventos de assinatura recorrente (subscription_authorized_payment)
             if (!str_contains($e->getMessage(), '[404]')) {
                 throw $e;
             }
 
+            // Fallback local para simulador (evita consultar API real para IDs fake)
+            $simulador = $this->buscarPagamentoNoSimuladorLocal($paymentId);
+            if ($simulador !== null) {
+                error_log("[MercadoPagoService] ✅ Pagamento {$paymentId} encontrado no simulador local");
+                return $this->normalizarRespostaPagamento($simulador, $paymentId);
+            }
+
+            // Fallback para eventos de assinatura recorrente (subscription_authorized_payment)
             error_log("[MercadoPagoService] ⚠️ /v1/payments/{$paymentId} retornou 404, tentando /authorized_payments/{id}");
 
             $authorized = $this->fazerRequisicao('GET', "/authorized_payments/{$paymentId}");
@@ -499,6 +488,127 @@ class MercadoPagoService
                 'raw' => $authorized
             ];
         }
+    }
+
+    /**
+     * Normalizar payload de pagamento para formato interno
+     */
+    private function normalizarRespostaPagamento(array $response, string $paymentId): array
+    {
+        return [
+            'id' => $response['id'] ?? $paymentId,
+            'status' => $response['status'] ?? 'pending',
+            'status_detail' => $response['status_detail'] ?? null,
+            'external_reference' => $response['external_reference'] ?? null,
+            'preference_id' => $response['preference_id'] ?? null,
+            'metadata' => is_array($response['metadata'] ?? null) ? $response['metadata'] : [],
+            'transaction_amount' => (float)($response['transaction_amount'] ?? $response['amount'] ?? 0),
+            'date_approved' => $response['date_approved'] ?? null,
+            'date_created' => $response['date_created'] ?? date('c'),
+            'payer' => [
+                'email' => $response['payer']['email'] ?? null,
+                'identification' => $response['payer']['identification'] ?? null
+            ],
+            'payment_method_id' => $response['payment_method_id'] ?? null,
+            'payment_type_id' => $response['payment_type_id'] ?? null,
+            'installments' => (int)($response['installments'] ?? 1),
+            'raw' => $response
+        ];
+    }
+
+    /**
+     * Em ambiente local/dev, tenta buscar pagamento no simulador antes de falhar o webhook.
+     */
+    private function buscarPagamentoNoSimuladorLocal(string $paymentId): ?array
+    {
+        if (!$this->isAppEnvLocal()) {
+            return null;
+        }
+
+        error_log("[MercadoPagoService] 🧪 Tentando fallback local para payment_id={$paymentId}");
+
+        foreach ($this->getSimuladorBaseUrls() as $baseUrl) {
+            $baseUrl = rtrim($baseUrl, '/');
+
+            foreach (["/v1/payments/{$paymentId}", "/api/payments/{$paymentId}"] as $path) {
+                $url = $baseUrl . $path;
+                $result = $this->fazerRequisicaoDireta($url);
+
+                if ($result !== null) {
+                    error_log("[MercadoPagoService] 🧪 Fallback simulador OK: {$url}");
+                    return $result;
+                }
+            }
+        }
+
+        error_log("[MercadoPagoService] ⚠️ Fallback local sem sucesso para payment_id={$paymentId}");
+
+        return null;
+    }
+
+    /**
+     * Detecta APP_ENV local/development
+     */
+    private function isAppEnvLocal(): bool
+    {
+        $appEnv = strtolower((string)($_ENV['APP_ENV'] ?? $_SERVER['APP_ENV'] ?? 'production'));
+        return in_array($appEnv, ['local', 'development', 'dev', 'test'], true);
+    }
+
+    /**
+     * URLs candidatas para simulador do MP em dev local
+     */
+    private function getSimuladorBaseUrls(): array
+    {
+        $urls = [];
+
+        $configured = $_ENV['MP_FAKE_API_URL'] ?? $_SERVER['MP_FAKE_API_URL'] ?? null;
+        if (!empty($configured)) {
+            $urls[] = (string)$configured;
+        }
+
+        $urls[] = 'http://host.docker.internal:8085';
+        $urls[] = 'http://localhost:8085';
+
+        return array_values(array_unique(array_filter($urls)));
+    }
+
+    /**
+     * Requisição simples para fallback do simulador local (timeout curto)
+     */
+    private function fazerRequisicaoDireta(string $url): ?array
+    {
+        error_log("[MercadoPagoService] 🔎 Fallback GET: {$url}");
+
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 4);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+            'Authorization: Bearer ' . $this->accessToken,
+            'Content-Type: application/json'
+        ]);
+
+        $body = curl_exec($ch);
+        $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        error_log("[MercadoPagoService] 🔎 Fallback HTTP {$httpCode} para {$url}");
+        if ($curlError !== '') {
+            error_log("[MercadoPagoService] ⚠️ Fallback cURL erro em {$url}: {$curlError}");
+        }
+        if (is_string($body)) {
+            error_log("[MercadoPagoService] 🔎 Fallback resposta bruta: {$body}");
+        }
+
+        if ($body === false || $httpCode < 200 || $httpCode >= 300) {
+            return null;
+        }
+
+        $decoded = json_decode((string)$body, true);
+        return is_array($decoded) ? $decoded : null;
     }
     
     /**

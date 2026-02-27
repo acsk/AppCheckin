@@ -1612,16 +1612,16 @@ class MobileController
                 SELECT m.id, m.proxima_data_vencimento, m.periodo_teste,
                        sm.codigo as status_codigo, sm.nome as status_nome
                 FROM matriculas m
-                INNER JOIN alunos a ON a.id = m.aluno_id
                 INNER JOIN status_matricula sm ON sm.id = m.status_id
-                WHERE a.usuario_id = :usuario_id
+                WHERE m.aluno_id = :aluno_id
                 AND m.tenant_id = :tenant_id
-                AND sm.codigo = 'ativa'
+                AND sm.permite_checkin = 1
+                AND sm.ativo = 1
                 ORDER BY m.created_at DESC
                 LIMIT 1
             ");
             $stmtMatricula->execute([
-                'usuario_id' => $usuarioId,
+                'aluno_id' => $alunoId,
                 'tenant_id' => $tenantId
             ]);
             $matricula = $stmtMatricula->fetch(\PDO::FETCH_ASSOC);
@@ -1631,16 +1631,15 @@ class MobileController
                 $stmtVencida = $this->db->prepare("
                     SELECT m.id, m.proxima_data_vencimento, sm.codigo as status_codigo, sm.nome as status_nome
                     FROM matriculas m
-                    INNER JOIN alunos a ON a.id = m.aluno_id
                     INNER JOIN status_matricula sm ON sm.id = m.status_id
-                    WHERE a.usuario_id = :usuario_id
+                    WHERE m.aluno_id = :aluno_id
                     AND m.tenant_id = :tenant_id
                     AND m.proxima_data_vencimento IS NOT NULL
                     ORDER BY m.proxima_data_vencimento DESC
                     LIMIT 1
                 ");
                 $stmtVencida->execute([
-                    'usuario_id' => $usuarioId,
+                    'aluno_id' => $alunoId,
                     'tenant_id' => $tenantId
                 ]);
                 $matriculaVencida = $stmtVencida->fetch(\PDO::FETCH_ASSOC);
@@ -1869,17 +1868,17 @@ class MobileController
                 SELECT m.id, m.proxima_data_vencimento, m.periodo_teste,
                        sm.codigo as status_codigo, sm.nome as status_nome
                 FROM matriculas m
-                INNER JOIN alunos a ON a.id = m.aluno_id
                 INNER JOIN status_matricula sm ON sm.id = m.status_id
-                WHERE a.usuario_id = :usuario_id
+                WHERE m.aluno_id = :aluno_id
                 AND m.tenant_id = :tenant_id
-                AND sm.codigo = 'ativa'
+                AND sm.permite_checkin = 1
+                AND sm.ativo = 1
                 ORDER BY m.created_at DESC
                 LIMIT 1
             ");
             
             $stmtMatricula->execute([
-                'usuario_id' => $userId,
+                'aluno_id' => (int) ($aluno['id'] ?? 0),
                 'tenant_id' => $tenantId
             ]);
             $matricula = $stmtMatricula->fetch(\PDO::FETCH_ASSOC);
@@ -1889,16 +1888,15 @@ class MobileController
                 $stmtVencida = $this->db->prepare("
                     SELECT m.id, m.proxima_data_vencimento, sm.codigo as status_codigo, sm.nome as status_nome
                     FROM matriculas m
-                    INNER JOIN alunos a ON a.id = m.aluno_id
                     INNER JOIN status_matricula sm ON sm.id = m.status_id
-                    WHERE a.usuario_id = :usuario_id
+                    WHERE m.aluno_id = :aluno_id
                     AND m.tenant_id = :tenant_id
                     AND m.proxima_data_vencimento IS NOT NULL
                     ORDER BY m.proxima_data_vencimento DESC
                     LIMIT 1
                 ");
                 $stmtVencida->execute([
-                    'usuario_id' => $userId,
+                    'aluno_id' => (int) ($aluno['id'] ?? 0),
                     'tenant_id' => $tenantId
                 ]);
                 $matriculaVencida = $stmtVencida->fetch(\PDO::FETCH_ASSOC);
@@ -6914,7 +6912,8 @@ class MobileController
                 INNER JOIN status_matricula sm ON sm.id = m.status_id
                 WHERE a.usuario_id = :usuario_id
                 AND m.tenant_id = :tenant_id
-                AND sm.codigo = 'ativa'
+                AND sm.permite_checkin = 1
+                AND sm.ativo = 1
                 AND m.proxima_data_vencimento < :hoje2
             ");
             

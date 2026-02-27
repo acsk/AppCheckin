@@ -791,5 +791,85 @@
             "payment_id": "734318865947"
         },
         "timestamp": "2026-02-26T03:18:30.000+00:00"
+    },
+    {
+        "id": "log_def924f50f53f1e865fa174e",
+        "type": "preference.created",
+        "data": {
+            "preference_id": "445835036318",
+            "payment_id": "453246467285",
+            "amount": 360
+        },
+        "timestamp": "2026-02-27T13:29:38.000+00:00"
+    },
+    {
+        "id": "log_f9bdabd690f7d7036772f8a7",
+        "type": "payment.checkout_completed",
+        "data": {
+            "payment_id": "453246467285",
+            "status": "approved",
+            "payment_method": "credit_card"
+        },
+        "timestamp": "2026-02-27T13:29:46.000+00:00"
+    },
+    {
+        "id": "log_5a64da8604490c31b09e4d4e",
+        "type": "preference.created",
+        "data": {
+            "preference_id": "286627750776",
+            "payment_id": "198817238772",
+            "amount": 360
+        },
+        "timestamp": "2026-02-27T13:42:08.000+00:00"
+    },
+    {
+        "id": "log_a2d4410dfc387811f2f897e8",
+        "type": "payment.checkout_completed",
+        "data": {
+            "payment_id": "198817238772",
+            "status": "approved",
+            "payment_method": "credit_card"
+        },
+        "timestamp": "2026-02-27T13:42:13.000+00:00"
+    },
+    {
+        "id": "log_d16e6f2795a695ca90b1bf71",
+        "type": "preference.created",
+        "data": {
+            "preference_id": "939346206509",
+            "payment_id": "288662629126",
+            "amount": 360
+        },
+        "timestamp": "2026-02-27T14:01:45.000+00:00"
+    },
+    {
+        "id": "log_4faae4b0ffd9ce40c274723f",
+        "type": "payment.checkout_completed",
+        "data": {
+            "payment_id": "288662629126",
+            "status": "approved",
+            "payment_method": "credit_card"
+        },
+        "timestamp": "2026-02-27T14:01:47.000+00:00"
+    },
+    {
+        "id": "log_6bf52ca4aa883f888e499a15",
+        "type": "preference.created",
+        "data": {
+            "preference_id": "982645489904",
+            "payment_id": "127622888957",
+            "amount": 360
+        },
+        "timestamp": "2026-02-27T14:02:24.000+00:00"
+    },
+    {
+        "id": "log_477e4a020f72e4be3bf45e4d",
+        "type": "payment.checkout_completed",
+        "data": {
+            "payment_id": "127622888957",
+            "status": "approved",
+            "payment_method": "credit_card"
+        },
+        "timestamp": "2026-02-27T14:02:29.000+00:00"
     }
 ]
