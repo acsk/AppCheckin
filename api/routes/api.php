@@ -420,9 +420,11 @@ return function ($app) {
                 'telefone' => $telefone,
                 'whatsapp' => $whatsapp,
                 'ativo' => 1,
+                'papel_id' => 1, // papel aluno
             ], $endereco);
 
-            $usuarioId = $usuarioModel->create($payload, null);
+            // Passar tenantId para criar usuário e associar ao tenant
+            $usuarioId = $usuarioModel->create($payload, $tenantId);
 
             if (!$usuarioId) {
                 $payload = [
@@ -447,7 +449,7 @@ return function ($app) {
             $token = $jwtService->encode([
                 'user_id' => $usuarioId,
                 'email' => $emailNorm,
-                'tenant_id' => null, // pode ser null
+                'tenant_id' => $tenantId, // associado ao tenant se fornecido
                 'aluno_id' => $alunoId
             ]);
 
@@ -461,7 +463,7 @@ return function ($app) {
                     $emailNorm,
                     $nome,
                     $cpfLimpo,
-                    null, // tenant_id
+                    $tenantId, // tenant_id do cadastro
                     $usuarioId
                 );
             } catch (\Exception $e) {
@@ -480,6 +482,7 @@ return function ($app) {
                     'whatsapp' => $whatsapp,
                     'cpf' => $cpfLimpo,
                     'data_nascimento' => $dataNascimento,
+                    'tenant_id' => $tenantId,
                 ],
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(201);
