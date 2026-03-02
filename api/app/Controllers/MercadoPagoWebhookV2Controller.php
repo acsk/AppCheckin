@@ -598,16 +598,72 @@ class MercadoPagoWebhookV2Controller
     private function ativarPacoteContrato(int $contratoId): void
     {
         try {
-            $sql = "UPDATE pacote_contratos SET status = 'ativo' WHERE id = ?";
-            $stmt = $this->db->prepare($sql);
-            $stmt->bind_param("i", $contratoId);
-            $stmt->execute();
+            $this->log("🎯 Iniciando ativação completa do contrato #{$contratoId}");
 
-            if ($stmt->affected_rows > 0) {
-                $this->log("✅ Contrato de pacote #{$contratoId} ativado via V2");
-            } else {
-                $this->log("ℹ️ Contrato de pacote #{$contratoId} não alterado (já ativo ou não encontrado)");
+            // 1. Buscar contrato
+            $sqlContrato = "SELECT id, tenant_id, pacote_id, status FROM pacote_contratos WHERE id = ? LIMIT 1";
+            $stmtContrato = $this->db->prepare($sqlContrato);
+            $stmtContrato->bind_param("i", $contratoId);
+            $stmtContrato->execute();
+            $resContrato = $stmtContrato->get_result();
+            $contrato = $resContrato ? $resContrato->fetch_assoc() : null;
+
+            if (!$contrato) {
+                $this->log("❌ Contrato #{$contratoId} não encontrado");
+                return;
             }
+
+            $tenantId = (int) $contrato['tenant_id'];
+
+            // 2. Atualizar contrato para 'ativo'
+            $sqlUpdateContrato = "UPDATE pacote_contratos SET status = 'ativo', updated_at = NOW() WHERE id = ?";
+            $stmtUpdateContrato = $this->db->prepare($sqlUpdateContrato);
+            $stmtUpdateContrato->bind_param("i", $contratoId);
+            $stmtUpdateContrato->execute();
+
+            if ($stmtUpdateContrato->affected_rows > 0) {
+                $this->log("✅ Contrato #{$contratoId} -> ativo");
+            }
+
+            // 3. Buscar status 'ativa' para matrículas
+            $sqlStatusAtiva = "SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1";
+            $stmtStatusAtiva = $this->db->prepare($sqlStatusAtiva);
+            $stmtStatusAtiva->execute();
+            $resStatusAtiva = $stmtStatusAtiva->get_result();
+            $rowStatusAtiva = $resStatusAtiva ? $resStatusAtiva->fetch_assoc() : null;
+            $statusAtivaId = (int) ($rowStatusAtiva['id'] ?? 6);
+
+            // 4. Atualizar matrículas do pacote
+            $sqlUpdateMat = "UPDATE matriculas SET status_id = ?, updated_at = NOW() WHERE pacote_contrato_id = ?";
+            $stmtUpdateMat = $this->db->prepare($sqlUpdateMat);
+            $stmtUpdateMat->bind_param("ii", $statusAtivaId, $contratoId);
+            $stmtUpdateMat->execute();
+            $matriculasAtualizadas = $stmtUpdateMat->affected_rows;
+            $this->log("✅ {$matriculasAtualizadas} matrículas ativadas");
+
+            // 5. Atualizar beneficiários
+            $sqlUpdateBen = "UPDATE pacote_beneficiarios SET status = 'ativo', updated_at = NOW() WHERE pacote_contrato_id = ?";
+            $stmtUpdateBen = $this->db->prepare($sqlUpdateBen);
+            $stmtUpdateBen->bind_param("i", $contratoId);
+            $stmtUpdateBen->execute();
+            $this->log("✅ Beneficiários atualizados");
+
+            // 6. Atualizar assinaturas do pacote
+            $sqlStatusAssAtiva = "SELECT id FROM assinatura_status WHERE codigo = 'ativa' LIMIT 1";
+            $stmtStatusAssAtiva = $this->db->prepare($sqlStatusAssAtiva);
+            $stmtStatusAssAtiva->execute();
+            $resStatusAssAtiva = $stmtStatusAssAtiva->get_result();
+            $rowStatusAssAtiva = $resStatusAssAtiva ? $resStatusAssAtiva->fetch_assoc() : null;
+            $statusAssAtivaId = (int) ($rowStatusAssAtiva['id'] ?? 6);
+
+            $sqlUpdateAss = "UPDATE assinaturas SET status_id = ?, status_gateway = 'approved', atualizado_em = NOW() WHERE pacote_contrato_id = ?";
+            $stmtUpdateAss = $this->db->prepare($sqlUpdateAss);
+            $stmtUpdateAss->bind_param("ii", $statusAssAtivaId, $contratoId);
+            $stmtUpdateAss->execute();
+            $this->log("✅ Assinaturas do pacote atualizadas");
+
+            $this->log("🎉 Pacote #{$contratoId} ativado completamente via V2");
+
         } catch (\Exception $e) {
             $this->log("⚠️ Erro ao ativar pacote #{$contratoId}: " . $e->getMessage());
         }

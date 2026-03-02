@@ -1051,5 +1051,245 @@
             "payment_method": "credit_card"
         },
         "timestamp": "2026-02-28T18:13:34.000+00:00"
+    },
+    {
+        "id": "log_502901a2dd6536fc863793c2",
+        "type": "preference.created",
+        "data": {
+            "preference_id": "842132783572",
+            "payment_id": "444847784306",
+            "amount": 360
+        },
+        "timestamp": "2026-03-02T13:22:20.000+00:00"
+    },
+    {
+        "id": "log_5c0cec659ded49b4b59cad59",
+        "type": "payment.checkout_completed",
+        "data": {
+            "payment_id": "444847784306",
+            "status": "approved",
+            "payment_method": "credit_card"
+        },
+        "timestamp": "2026-03-02T13:22:22.000+00:00"
+    },
+    {
+        "id": "log_5666cfcae40bebc3d2ca6c3d",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "612768489554",
+            "status": "pending",
+            "amount": 70
+        },
+        "timestamp": "2026-03-02T13:27:06.000+00:00"
+    },
+    {
+        "id": "log_8a7ab88c098a9f261a41bb49",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "410166837594",
+            "status": "pending",
+            "amount": 70
+        },
+        "timestamp": "2026-03-02T13:27:07.000+00:00"
+    },
+    {
+        "id": "log_ba3e23544b872a27c6033cdb",
+        "type": "preapproval.auto_created_from_pix",
+        "data": {
+            "preapproval_id": "249375997812",
+            "payment_id": "410166837594",
+            "external_reference": "MAT-210-1772458027",
+            "amount": 70
+        },
+        "timestamp": "2026-03-02T13:27:11.000+00:00"
+    },
+    {
+        "id": "log_d86453a7523a75892e53d5f9",
+        "type": "payment.pix_confirmed",
+        "data": {
+            "payment_id": "410166837594",
+            "amount": 70
+        },
+        "timestamp": "2026-03-02T13:27:11.000+00:00"
+    },
+    {
+        "id": "log_6651225cd0633ba422ddd7b5",
+        "type": "preference.created",
+        "data": {
+            "preference_id": "512347197961",
+            "payment_id": "495152819593",
+            "amount": 360
+        },
+        "timestamp": "2026-03-02T13:45:40.000+00:00"
+    },
+    {
+        "id": "log_1c7b70891a0f455951ac3c68",
+        "type": "payment.checkout_completed",
+        "data": {
+            "payment_id": "495152819593",
+            "status": "approved",
+            "payment_method": "credit_card"
+        },
+        "timestamp": "2026-03-02T13:45:42.000+00:00"
+    },
+    {
+        "id": "log_6904b6cf6c0bcdcd0c3d019f",
+        "type": "preference.created",
+        "data": {
+            "preference_id": "471849434287",
+            "payment_id": "205662138039",
+            "amount": 360
+        },
+        "timestamp": "2026-03-02T14:25:12.000+00:00"
+    },
+    {
+        "id": "log_75efeaaf8121ca7a394e3530",
+        "type": "payment.checkout_completed",
+        "data": {
+            "payment_id": "205662138039",
+            "status": "approved",
+            "payment_method": "credit_card"
+        },
+        "timestamp": "2026-03-02T14:25:14.000+00:00"
+    },
+    {
+        "id": "log_193366f8d25e6d62b7ecd8c8",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "581350645882",
+            "status": "pending",
+            "amount": 120
+        },
+        "timestamp": "2026-03-02T14:45:13.000+00:00"
+    },
+    {
+        "id": "log_969157c6e2a53387fcaac9f0",
+        "type": "payment.created",
+        "data": {
+            "payment_id": "114021588685",
+            "status": "pending",
+            "amount": 120
+        },
+        "timestamp": "2026-03-02T14:45:15.000+00:00"
+    },
+    {
+        "id": "log_289028678f32c8dec223edf3",
+        "type": "preapproval.auto_created_from_pix",
+        "data": {
+            "preapproval_id": "834569149349",
+            "payment_id": "114021588685",
+            "external_reference": "MAT-213-1772462715",
+            "amount": 120
+        },
+        "timestamp": "2026-03-02T14:45:21.000+00:00"
+    },
+    {
+        "id": "log_d07e308d39587bbe05d7abda",
+        "type": "payment.pix_confirmed",
+        "data": {
+            "payment_id": "114021588685",
+            "amount": 120
+        },
+        "timestamp": "2026-03-02T14:45:21.000+00:00"
+    },
+    {
+        "id": "log_f44fa31ecf4e1283ed76bea6",
+        "type": "preference.created",
+        "data": {
+            "preference_id": "571786356964",
+            "payment_id": "593206489198",
+            "amount": 360
+        },
+        "timestamp": "2026-03-02T14:53:32.000+00:00"
+    },
+    {
+        "id": "log_a8f130f72ec6bf09af251012",
+        "type": "preference.created",
+        "data": {
+            "preference_id": "525368718063",
+            "payment_id": "791457601111",
+            "amount": 360
+        },
+        "timestamp": "2026-03-02T16:39:37.000+00:00"
+    },
+    {
+        "id": "log_e6dfae6526ea84252ae60e4a",
+        "type": "payment.checkout_completed",
+        "data": {
+            "payment_id": "791457601111",
+            "status": "approved",
+            "payment_method": "credit_card"
+        },
+        "timestamp": "2026-03-02T16:39:39.000+00:00"
+    },
+    {
+        "id": "log_3f82b75c2c8aeee90bf9521e",
+        "type": "preference.created",
+        "data": {
+            "preference_id": "279682273833",
+            "payment_id": "785162217515",
+            "amount": 360
+        },
+        "timestamp": "2026-03-02T16:41:19.000+00:00"
+    },
+    {
+        "id": "log_982c194edfb213765b7bfd8e",
+        "type": "payment.checkout_completed",
+        "data": {
+            "payment_id": "785162217515",
+            "status": "approved",
+            "payment_method": "credit_card"
+        },
+        "timestamp": "2026-03-02T16:41:21.000+00:00"
+    },
+    {
+        "id": "log_3667d501c03e35ec3f747c86",
+        "type": "preference.created",
+        "data": {
+            "preference_id": "924678957225",
+            "payment_id": "884957138447",
+            "amount": 360
+        },
+        "timestamp": "2026-03-02T17:20:30.000+00:00"
+    },
+    {
+        "id": "log_a9c7c7df906075e324b9413b",
+        "type": "payment.checkout_completed",
+        "data": {
+            "payment_id": "884957138447",
+            "status": "approved",
+            "payment_method": "credit_card"
+        },
+        "timestamp": "2026-03-02T17:20:31.000+00:00"
+    },
+    {
+        "id": "log_041c7d047cff64cc79e74d93",
+        "type": "preference.created",
+        "data": {
+            "preference_id": "213009994138",
+            "payment_id": "505899815217",
+            "amount": 360
+        },
+        "timestamp": "2026-03-02T17:24:49.000+00:00"
+    },
+    {
+        "id": "log_3e8af440df1dab472ebfa954",
+        "type": "payment.checkout_completed",
+        "data": {
+            "payment_id": "505899815217",
+            "status": "approved",
+            "payment_method": "credit_card"
+        },
+        "timestamp": "2026-03-02T17:24:50.000+00:00"
+    },
+    {
+        "id": "log_33dbca88df59fe15ace7de2c",
+        "type": "preference.created",
+        "data": {
+            "preference_id": "211076373710",
+            "payment_id": "277639107037",
+            "amount": 360
+        },
+        "timestamp": "2026-03-02T18:04:25.000+00:00"
     }
 ]

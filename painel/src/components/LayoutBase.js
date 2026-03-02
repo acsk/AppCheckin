@@ -126,6 +126,7 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
   };
 
   const nome = usuarioInfo?.nome || 'Usuário';
+  const canAccessParametros = usuarioInfo?.papel_id === 4 || usuarioInfo?.papel_id === 3;
 
   const renderSidebarContent = (isMobileDrawer = false) => (
     <View className="flex-1">
@@ -293,6 +294,15 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
               {usuarioInfo?.papel_id === 4 ? 'Super Admin' : usuarioInfo?.papel_id === 3 ? 'Admin' : 'Usuário'}
             </Text>
           </View>
+          {canAccessParametros && (
+            <TouchableOpacity
+              className="h-9 w-9 items-center justify-center rounded-lg bg-slate-100"
+              onPress={() => router.push('/parametros')}
+              activeOpacity={0.7}
+            >
+              <Feather name="settings" size={16} color="#64748b" />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity 
             className="h-9 w-9 items-center justify-center rounded-lg bg-red-50"
             onPress={handleLogout}
@@ -414,7 +424,17 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
                 <Pressable className="rounded-md bg-slate-100 px-2 py-1" onPress={handleLogout}>
                   <Feather name="log-out" size={14} color="#f97316" />
                 </Pressable>
-                <Text className={`text-xs font-semibold text-slate-800 ${isTablet ? 'hidden' : ''}`}>{nome}</Text>
+                <View className="flex-row items-center gap-2">
+                  <Text className={`text-xs font-semibold text-slate-800 ${isTablet ? 'hidden' : ''}`}>{nome}</Text>
+                  {canAccessParametros && (
+                    <Pressable
+                      className="rounded-md bg-slate-100 px-2 py-1"
+                      onPress={() => router.push('/parametros')}
+                    >
+                      <Feather name="settings" size={14} color="#64748b" />
+                    </Pressable>
+                  )}
+                </View>
               </>
             )}
             <TouchableOpacity 

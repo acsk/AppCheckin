@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Parametro;
 use Exception;
 use PDO;
 
@@ -186,6 +187,93 @@ class MercadoPagoService
     }
     
     /**
+     * Obtém os métodos de pagamento excluídos baseado nos parâmetros do sistema
+     * 
+     * Lê os parâmetros:
+     * - habilitar_pix (boolean)
+     * - habilitar_cartao_credito (boolean)
+     * - habilitar_cartao_debito (boolean)
+     * - habilitar_boleto (boolean)
+     * 
+     * @param int|null $tenantId ID do tenant
+     * @return array Lista de tipos de pagamento a excluir
+     */
+    private function getExcludedPaymentTypes(?int $tenantId = null): array
+    {
+        $excluded = [];
+        
+        // Se não tem tenant, permitir todos
+        $effectiveTenantId = $tenantId ?? $this->tenantId;
+        if (!$effectiveTenantId) {
+            error_log("[MercadoPagoService] ⚠️ Sem tenant_id - permitindo todos os métodos de pagamento");
+            return [];
+        }
+        
+        try {
+            // Inicializar DB se necessário
+            if (!$this->db) {
+                $this->db = require __DIR__ . '/../../config/database.php';
+            }
+            
+            $parametro = new Parametro($this->db);
+            
+            // Verificar quais métodos estão DESABILITADOS
+            $habilitarPix = $parametro->isEnabled($effectiveTenantId, 'habilitar_pix');
+            $habilitarCartaoCredito = $parametro->isEnabled($effectiveTenantId, 'habilitar_cartao_credito');
+            $habilitarCartaoDebito = $parametro->isEnabled($effectiveTenantId, 'habilitar_cartao_debito');
+            $habilitarBoleto = $parametro->isEnabled($effectiveTenantId, 'habilitar_boleto');
+            
+            error_log("[MercadoPagoService] 💳 Parâmetros de pagamento tenant #{$effectiveTenantId}:");
+            error_log("[MercadoPagoService] - PIX: " . ($habilitarPix ? '✅' : '❌'));
+            error_log("[MercadoPagoService] - Cartão Crédito: " . ($habilitarCartaoCredito ? '✅' : '❌'));
+            error_log("[MercadoPagoService] - Cartão Débito: " . ($habilitarCartaoDebito ? '✅' : '❌'));
+            error_log("[MercadoPagoService] - Boleto: " . ($habilitarBoleto ? '✅' : '❌'));
+            
+            // PIX = bank_transfer no Mercado Pago
+            if (!$habilitarPix) {
+                $excluded[] = ['id' => 'bank_transfer'];
+            }
+            
+            // Cartão de crédito
+            if (!$habilitarCartaoCredito) {
+                $excluded[] = ['id' => 'credit_card'];
+            }
+            
+            // Cartão de débito
+            if (!$habilitarCartaoDebito) {
+                $excluded[] = ['id' => 'debit_card'];
+            }
+            
+            // Boleto
+            if (!$habilitarBoleto) {
+                $excluded[] = ['id' => 'ticket'];
+            }
+            
+            // Sempre excluir métodos que não usamos
+            $excluded[] = ['id' => 'atm'];              // Caixa eletrônico
+            $excluded[] = ['id' => 'prepaid_card'];     // Cartão pré-pago
+            $excluded[] = ['id' => 'digital_currency']; // Moeda digital
+            $excluded[] = ['id' => 'digital_wallet'];   // Carteira digital (exceto MP)
+            
+            error_log("[MercadoPagoService] 🚫 Métodos excluídos: " . json_encode(array_column($excluded, 'id')));
+            
+        } catch (\Exception $e) {
+            error_log("[MercadoPagoService] ⚠️ Erro ao ler parâmetros: " . $e->getMessage());
+            // Em caso de erro, permitir PIX e cartão de crédito (default seguro)
+            $excluded = [
+                ['id' => 'ticket'],
+                ['id' => 'debit_card'],
+                ['id' => 'atm'],
+                ['id' => 'prepaid_card'],
+                ['id' => 'digital_currency'],
+                ['id' => 'digital_wallet']
+            ];
+        }
+        
+        return $excluded;
+    }
+    
+    /**
      * Criar preferência de pagamento para matrícula
      * 
      * @param array $data Dados da matrícula e aluno
@@ -259,26 +347,8 @@ class MercadoPagoService
             ],
             'auto_return' => 'approved',
             'payment_methods' => [
-                // Filtrar métodos de pagamento conforme flags
-                'excluded_payment_types' => !empty($data['apenas_pix']) ? [
-                    // Apenas PIX: excluir TUDO exceto bank_transfer (PIX)
-                    ['id' => 'credit_card'],      // Cartão de crédito
-                    ['id' => 'debit_card'],        // Cartão de débito
-                    ['id' => 'ticket'],            // Boleto
-                    ['id' => 'atm'],               // Caixa eletrônico
-                    ['id' => 'prepaid_card'],      // Cartão pré-pago
-                    ['id' => 'digital_currency'],  // Moeda digital
-                    ['id' => 'digital_wallet']     // Carteira digital
-                ] : (!empty($data['apenas_cartao']) ? [
-                    // Apenas cartão de crédito: excluir tudo exceto credit_card
-                    ['id' => 'ticket'],        // Boleto
-                    ['id' => 'bank_transfer'], // PIX/Transferência
-                    ['id' => 'atm'],           // Caixa eletrônico
-                    ['id' => 'debit_card'],    // Cartão de débito
-                    ['id' => 'prepaid_card'],  // Cartão pré-pago
-                    ['id' => 'digital_currency'], // Moeda digital
-                    ['id' => 'digital_wallet']    // Carteira digital
-                ] : []),
+                // Filtrar métodos de pagamento baseado nos parâmetros do sistema
+                'excluded_payment_types' => $this->getExcludedPaymentTypes($data['tenant_id'] ?? null),
                 'installments' => (int) ($data['max_parcelas'] ?? 12)
             ],
             'statement_descriptor' => substr($data['academia_nome'] ?? 'ACADEMIA', 0, 22)
@@ -318,6 +388,24 @@ class MercadoPagoService
     public function criarPagamentoPix(array $data): array
     {
         $this->validarCredenciais();
+
+        // Verificar se PIX está habilitado nos parâmetros
+        $tenantId = $data['tenant_id'] ?? null;
+        if ($tenantId && $this->db) {
+            $parametroModel = new Parametro($this->db);
+            if (!$parametroModel->isEnabled($tenantId, 'habilitar_pix')) {
+                error_log("[MercadoPagoService] criarPagamentoPix: PIX desabilitado para tenant {$tenantId}");
+                throw new Exception('Pagamento via PIX não está disponível no momento.');
+            }
+        } elseif ($tenantId) {
+            // Se não tem conexão ainda, carregar para verificar parâmetro
+            $db = require __DIR__ . '/../../config/database.php';
+            $parametroModel = new Parametro($db);
+            if (!$parametroModel->isEnabled($tenantId, 'habilitar_pix')) {
+                error_log("[MercadoPagoService] criarPagamentoPix: PIX desabilitado para tenant {$tenantId}");
+                throw new Exception('Pagamento via PIX não está disponível no momento.');
+            }
+        }
 
         $cpf = isset($data['aluno_cpf']) ? preg_replace('/[^0-9]/', '', $data['aluno_cpf']) : '';
         if (strlen($cpf) !== 11) {
@@ -773,6 +861,17 @@ class MercadoPagoService
     public function criarPreferenciaAssinatura(array $data, int $duracaoMeses = 1): array
     {
         $this->validarCredenciais();
+        
+        // Assinaturas recorrentes exigem cartão de crédito
+        $tenantId = $data['tenant_id'] ?? null;
+        if ($tenantId) {
+            $db = $this->db ?? require __DIR__ . '/../../config/database.php';
+            $parametroModel = new Parametro($db);
+            if (!$parametroModel->isEnabled($tenantId, 'habilitar_cartao_credito')) {
+                error_log("[MercadoPagoService] criarPreferenciaAssinatura: Cartão de crédito desabilitado para tenant {$tenantId}");
+                throw new Exception('Assinaturas recorrentes não estão disponíveis no momento (requer cartão de crédito habilitado).');
+            }
+        }
         
         // Criar assinatura via preapproval (sem fallback para preservar o comportamento correto)
         return $this->tentarCriarPreapproval($data, $duracaoMeses);

@@ -1693,5 +1693,855 @@
         },
         "live_mode": false,
         "point_of_interaction": null
+    },
+    "444847784306": {
+        "id": "444847784306",
+        "gateway_assinatura_id": "578233367862",
+        "pacote_contrato_id": null,
+        "gateway_preference_id": "842132783572",
+        "external_reference": "PAC-14-1772457740",
+        "payment_url": "http:\/\/localhost:8085\/checkout\/444847784306",
+        "status": "approved",
+        "status_detail": "accredited",
+        "amount": 360,
+        "currency": "BRL",
+        "payment_method": "credit_card",
+        "card": null,
+        "payer": {
+            "name": "ANDRE CABRAL SILVA",
+            "email": "andrecabrall@gmail.com",
+            "document": ""
+        },
+        "description": "Plano Família I 1x Quad",
+        "notification_url": "https:\/\/api.appcheckin.com.br\/api\/webhooks\/mercadopago",
+        "metadata": {
+            "tenant_id": 3,
+            "matricula_id": null,
+            "aluno_id": null,
+            "usuario_id": 3,
+            "tipo": "pacote",
+            "email_real": "andrecabrall@gmail.com",
+            "pacote_contrato_id": 14
+        },
+        "installments": 1,
+        "items": [
+            {
+                "id": "PACOTE_14",
+                "title": "Plano Família I 1x Quad",
+                "description": "Pacote: Plano Família I 1x Quad",
+                "picture_url": null,
+                "category_id": "services",
+                "quantity": 1,
+                "currency_id": "BRL",
+                "unit_price": 360
+            }
+        ],
+        "back_urls": {
+            "success": "https:\/\/mobile.appcheckin.com.br\/pagamento\/sucesso",
+            "failure": "https:\/\/mobile.appcheckin.com.br\/pagamento\/falha",
+            "pending": "https:\/\/mobile.appcheckin.com.br\/pagamento\/pendente"
+        },
+        "captured": true,
+        "refunded": false,
+        "refund_amount": 0,
+        "created_at": "2026-03-02T13:22:20.000+00:00",
+        "updated_at": "2026-03-02T13:22:22.000+00:00",
+        "payment_method_id": "visa",
+        "payment_type_id": "credit_card",
+        "date_approved": "2026-03-02T13:22:22.000+00:00",
+        "date_last_updated": "2026-03-02T13:22:22.000+00:00",
+        "transaction_amount": 360,
+        "transaction_details": {
+            "net_received_amount": 343.8,
+            "total_paid_amount": 360,
+            "overpaid_amount": 0,
+            "installment_amount": 360
+        },
+        "live_mode": false,
+        "point_of_interaction": null
+    },
+    "612768489554": {
+        "id": "612768489554",
+        "date_created": "2026-03-02T13:27:06.000+00:00",
+        "date_approved": null,
+        "date_last_updated": "2026-03-02T13:27:06.000+00:00",
+        "money_release_date": null,
+        "subscription_id": null,
+        "gateway_assinatura_id": "860954458550",
+        "pacote_contrato_id": null,
+        "gateway_preference_id": "696399611826",
+        "external_reference": "MAT-210-1772458026",
+        "payment_url": "http:\/\/localhost:8085\/checkout\/612768489554",
+        "issuer_id": "102",
+        "payment_method_id": "pix",
+        "payment_type_id": "pix",
+        "status": "pending",
+        "status_detail": "pending_waiting_transfer",
+        "currency_id": "BRL",
+        "transaction_amount": 70,
+        "transaction_details": {
+            "net_received_amount": 66.85,
+            "total_paid_amount": 70,
+            "overpaid_amount": 0,
+            "installment_amount": 70
+        },
+        "payment_method": "pix",
+        "card": null,
+        "payer": {
+            "id": 602632212,
+            "email": "andrecabrall@gmail.com",
+            "identification": {
+                "type": "CPF",
+                "number": "05809498426"
+            },
+            "first_name": "ANDRE",
+            "last_name": "CABRAL SILVA",
+            "type": "customer"
+        },
+        "description": "1x por Semana (Mensal) - Natação",
+        "notification_url": "https:\/\/api.appcheckin.com.br\/api\/webhooks\/mercadopago",
+        "metadata": {
+            "tenant_id": 3,
+            "matricula_id": 210,
+            "aluno_id": 72,
+            "usuario_id": 3,
+            "tipo": "matricula_pix",
+            "email_real": "andrecabrall@gmail.com"
+        },
+        "installments": 1,
+        "captured": false,
+        "live_mode": false,
+        "point_of_interaction": {
+            "type": "PIX",
+            "business_info": {
+                "unit": "online_payments",
+                "sub_unit": "checkout_pro"
+            },
+            "transaction_data": {
+                "qr_code": "00020126580014br.gov.bcb.pix0136af9cb6d5893bc4f2faa3da99104c38155204000053039865802BR5925SIMULADOR GATEWAY6009SAO PAULO62070503***63046BC4",
+                "qr_code_base64": "iVBORw0KGgoAAAANSUhEUgAAASwAAAEsCAYAAAB5fY51AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAc...(simulado)",
+                "ticket_url": "http:\/\/localhost:8085\/pix\/612768489554",
+                "bank_transfer_id": 707452,
+                "financial_institution": null
+            }
+        },
+        "refunded": false,
+        "refund_amount": 0,
+        "created_at": "2026-03-02T13:27:06.000+00:00",
+        "updated_at": "2026-03-02T13:27:06.000+00:00"
+    },
+    "410166837594": {
+        "id": "410166837594",
+        "date_created": "2026-03-02T13:27:07.000+00:00",
+        "date_approved": "2026-03-02T13:27:11.000+00:00",
+        "date_last_updated": "2026-03-02T13:27:11.000+00:00",
+        "money_release_date": "2026-03-16T13:27:11.000+00:00",
+        "subscription_id": "249375997812",
+        "gateway_assinatura_id": "249375997812",
+        "pacote_contrato_id": null,
+        "gateway_preference_id": "881865937774",
+        "external_reference": "MAT-210-1772458027",
+        "payment_url": "http:\/\/localhost:8085\/checkout\/410166837594",
+        "issuer_id": "219",
+        "payment_method_id": "pix",
+        "payment_type_id": "pix",
+        "status": "approved",
+        "status_detail": "accredited",
+        "currency_id": "BRL",
+        "transaction_amount": 70,
+        "transaction_details": {
+            "net_received_amount": 66.85,
+            "total_paid_amount": 70,
+            "overpaid_amount": 0,
+            "installment_amount": 70
+        },
+        "payment_method": "pix",
+        "card": null,
+        "payer": {
+            "id": 241417797,
+            "email": "andrecabrall@gmail.com",
+            "identification": {
+                "type": "CPF",
+                "number": "05809498426"
+            },
+            "first_name": "ANDRE",
+            "last_name": "CABRAL SILVA",
+            "type": "customer"
+        },
+        "description": "1x por Semana - Natação",
+        "notification_url": "https:\/\/api.appcheckin.com.br\/api\/webhooks\/mercadopago",
+        "metadata": {
+            "tenant_id": 3,
+            "matricula_id": 210,
+            "aluno_id": 72,
+            "usuario_id": 3,
+            "tipo": "matricula_pix",
+            "email_real": "andrecabrall@gmail.com"
+        },
+        "installments": 1,
+        "captured": true,
+        "live_mode": false,
+        "point_of_interaction": {
+            "type": "PIX",
+            "business_info": {
+                "unit": "online_payments",
+                "sub_unit": "checkout_pro"
+            },
+            "transaction_data": {
+                "qr_code": "00020126580014br.gov.bcb.pix013660889ec7e9aa7d5fa97a6bf05ee4dd595204000053039865802BR5925SIMULADOR GATEWAY6009SAO PAULO62070503***63048338",
+                "qr_code_base64": "iVBORw0KGgoAAAANSUhEUgAAASwAAAEsCAYAAAB5fY51AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAc...(simulado)",
+                "ticket_url": "http:\/\/localhost:8085\/pix\/410166837594",
+                "bank_transfer_id": 762223,
+                "financial_institution": null
+            }
+        },
+        "refunded": false,
+        "refund_amount": 0,
+        "created_at": "2026-03-02T13:27:07.000+00:00",
+        "updated_at": "2026-03-02T13:27:11.000+00:00",
+        "preapproval_id": "249375997812"
+    },
+    "495152819593": {
+        "id": "495152819593",
+        "gateway_assinatura_id": "478411194511",
+        "pacote_contrato_id": null,
+        "gateway_preference_id": "512347197961",
+        "external_reference": "PAC-14-1772459140",
+        "payment_url": "http:\/\/localhost:8085\/checkout\/495152819593",
+        "status": "approved",
+        "status_detail": "accredited",
+        "amount": 360,
+        "currency": "BRL",
+        "payment_method": "credit_card",
+        "card": null,
+        "payer": {
+            "name": "ANDRE CABRAL SILVA",
+            "email": "andrecabrall@gmail.com",
+            "document": ""
+        },
+        "description": "Plano Família I 1x Quad",
+        "notification_url": "https:\/\/api.appcheckin.com.br\/api\/webhooks\/mercadopago",
+        "metadata": {
+            "tenant_id": 3,
+            "matricula_id": null,
+            "aluno_id": null,
+            "usuario_id": 3,
+            "tipo": "pacote",
+            "email_real": "andrecabrall@gmail.com",
+            "pacote_contrato_id": 14
+        },
+        "installments": 1,
+        "items": [
+            {
+                "id": "PACOTE_14",
+                "title": "Plano Família I 1x Quad",
+                "description": "Pacote: Plano Família I 1x Quad",
+                "picture_url": null,
+                "category_id": "services",
+                "quantity": 1,
+                "currency_id": "BRL",
+                "unit_price": 360
+            }
+        ],
+        "back_urls": {
+            "success": "https:\/\/mobile.appcheckin.com.br\/pagamento\/sucesso",
+            "failure": "https:\/\/mobile.appcheckin.com.br\/pagamento\/falha",
+            "pending": "https:\/\/mobile.appcheckin.com.br\/pagamento\/pendente"
+        },
+        "captured": true,
+        "refunded": false,
+        "refund_amount": 0,
+        "created_at": "2026-03-02T13:45:40.000+00:00",
+        "updated_at": "2026-03-02T13:45:42.000+00:00",
+        "payment_method_id": "visa",
+        "payment_type_id": "credit_card",
+        "date_approved": "2026-03-02T13:45:42.000+00:00",
+        "date_last_updated": "2026-03-02T13:45:42.000+00:00",
+        "transaction_amount": 360,
+        "transaction_details": {
+            "net_received_amount": 343.8,
+            "total_paid_amount": 360,
+            "overpaid_amount": 0,
+            "installment_amount": 360
+        },
+        "live_mode": false,
+        "point_of_interaction": null
+    },
+    "205662138039": {
+        "id": "205662138039",
+        "gateway_assinatura_id": "278087646191",
+        "pacote_contrato_id": null,
+        "gateway_preference_id": "471849434287",
+        "external_reference": "PAC-15-1772461512",
+        "payment_url": "http:\/\/localhost:8085\/checkout\/205662138039",
+        "status": "approved",
+        "status_detail": "accredited",
+        "amount": 360,
+        "currency": "BRL",
+        "payment_method": "credit_card",
+        "card": null,
+        "payer": {
+            "name": "ANDRE CABRAL SILVA",
+            "email": "andrecabrall@gmail.com",
+            "document": ""
+        },
+        "description": "Plano Família I 1x Quad",
+        "notification_url": "https:\/\/api.appcheckin.com.br\/api\/webhooks\/mercadopago",
+        "metadata": {
+            "tenant_id": 3,
+            "matricula_id": null,
+            "aluno_id": null,
+            "usuario_id": 3,
+            "tipo": "pacote",
+            "email_real": "andrecabrall@gmail.com",
+            "pacote_contrato_id": 15
+        },
+        "installments": 1,
+        "items": [
+            {
+                "id": "PACOTE_15",
+                "title": "Plano Família I 1x Quad",
+                "description": "Pacote: Plano Família I 1x Quad",
+                "picture_url": null,
+                "category_id": "services",
+                "quantity": 1,
+                "currency_id": "BRL",
+                "unit_price": 360
+            }
+        ],
+        "back_urls": {
+            "success": "https:\/\/mobile.appcheckin.com.br\/pagamento\/sucesso",
+            "failure": "https:\/\/mobile.appcheckin.com.br\/pagamento\/falha",
+            "pending": "https:\/\/mobile.appcheckin.com.br\/pagamento\/pendente"
+        },
+        "captured": true,
+        "refunded": false,
+        "refund_amount": 0,
+        "created_at": "2026-03-02T14:25:12.000+00:00",
+        "updated_at": "2026-03-02T14:25:14.000+00:00",
+        "payment_method_id": "visa",
+        "payment_type_id": "credit_card",
+        "date_approved": "2026-03-02T14:25:14.000+00:00",
+        "date_last_updated": "2026-03-02T14:25:14.000+00:00",
+        "transaction_amount": 360,
+        "transaction_details": {
+            "net_received_amount": 343.8,
+            "total_paid_amount": 360,
+            "overpaid_amount": 0,
+            "installment_amount": 360
+        },
+        "live_mode": false,
+        "point_of_interaction": null
+    },
+    "581350645882": {
+        "id": "581350645882",
+        "date_created": "2026-03-02T14:45:13.000+00:00",
+        "date_approved": null,
+        "date_last_updated": "2026-03-02T14:45:13.000+00:00",
+        "money_release_date": null,
+        "subscription_id": null,
+        "gateway_assinatura_id": "557766151283",
+        "pacote_contrato_id": null,
+        "gateway_preference_id": "111107492296",
+        "external_reference": "MAT-213-1772462713",
+        "payment_url": "http:\/\/localhost:8085\/checkout\/581350645882",
+        "issuer_id": "497",
+        "payment_method_id": "pix",
+        "payment_type_id": "pix",
+        "status": "pending",
+        "status_detail": "pending_waiting_transfer",
+        "currency_id": "BRL",
+        "transaction_amount": 120,
+        "transaction_details": {
+            "net_received_amount": 114.6,
+            "total_paid_amount": 120,
+            "overpaid_amount": 0,
+            "installment_amount": 120
+        },
+        "payment_method": "pix",
+        "card": null,
+        "payer": {
+            "id": 292013812,
+            "email": "andrecabrall@gmail.com",
+            "identification": {
+                "type": "CPF",
+                "number": "05809498426"
+            },
+            "first_name": "ANDRE",
+            "last_name": "CABRAL SILVA",
+            "type": "customer"
+        },
+        "description": "1x por Semana (Bimestral) - Natação",
+        "notification_url": "https:\/\/api.appcheckin.com.br\/api\/webhooks\/mercadopago",
+        "metadata": {
+            "tenant_id": 3,
+            "matricula_id": 213,
+            "aluno_id": 72,
+            "usuario_id": 3,
+            "tipo": "matricula_pix",
+            "email_real": "andrecabrall@gmail.com"
+        },
+        "installments": 1,
+        "captured": false,
+        "live_mode": false,
+        "point_of_interaction": {
+            "type": "PIX",
+            "business_info": {
+                "unit": "online_payments",
+                "sub_unit": "checkout_pro"
+            },
+            "transaction_data": {
+                "qr_code": "00020126580014br.gov.bcb.pix0136de45b3c76626b4d866de21cddeb5be945204000053039865802BR5925SIMULADOR GATEWAY6009SAO PAULO62070503***6304B43F",
+                "qr_code_base64": "iVBORw0KGgoAAAANSUhEUgAAASwAAAEsCAYAAAB5fY51AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAc...(simulado)",
+                "ticket_url": "http:\/\/localhost:8085\/pix\/581350645882",
+                "bank_transfer_id": 472997,
+                "financial_institution": null
+            }
+        },
+        "refunded": false,
+        "refund_amount": 0,
+        "created_at": "2026-03-02T14:45:13.000+00:00",
+        "updated_at": "2026-03-02T14:45:13.000+00:00"
+    },
+    "114021588685": {
+        "id": "114021588685",
+        "date_created": "2026-03-02T14:45:15.000+00:00",
+        "date_approved": "2026-03-02T14:45:21.000+00:00",
+        "date_last_updated": "2026-03-02T14:45:21.000+00:00",
+        "money_release_date": "2026-03-16T14:45:21.000+00:00",
+        "subscription_id": "834569149349",
+        "gateway_assinatura_id": "834569149349",
+        "pacote_contrato_id": null,
+        "gateway_preference_id": "876661051069",
+        "external_reference": "MAT-213-1772462715",
+        "payment_url": "http:\/\/localhost:8085\/checkout\/114021588685",
+        "issuer_id": "911",
+        "payment_method_id": "pix",
+        "payment_type_id": "pix",
+        "status": "approved",
+        "status_detail": "accredited",
+        "currency_id": "BRL",
+        "transaction_amount": 120,
+        "transaction_details": {
+            "net_received_amount": 114.6,
+            "total_paid_amount": 120,
+            "overpaid_amount": 0,
+            "installment_amount": 120
+        },
+        "payment_method": "pix",
+        "card": null,
+        "payer": {
+            "id": 594840820,
+            "email": "andrecabrall@gmail.com",
+            "identification": {
+                "type": "CPF",
+                "number": "05809498426"
+            },
+            "first_name": "ANDRE",
+            "last_name": "CABRAL SILVA",
+            "type": "customer"
+        },
+        "description": "1x por Semana - Natação",
+        "notification_url": "https:\/\/api.appcheckin.com.br\/api\/webhooks\/mercadopago",
+        "metadata": {
+            "tenant_id": 3,
+            "matricula_id": 213,
+            "aluno_id": 72,
+            "usuario_id": 3,
+            "tipo": "matricula_pix",
+            "email_real": "andrecabrall@gmail.com"
+        },
+        "installments": 1,
+        "captured": true,
+        "live_mode": false,
+        "point_of_interaction": {
+            "type": "PIX",
+            "business_info": {
+                "unit": "online_payments",
+                "sub_unit": "checkout_pro"
+            },
+            "transaction_data": {
+                "qr_code": "00020126580014br.gov.bcb.pix0136749a7a8880bd8145b3e33c49565b9ecd5204000053039865802BR5925SIMULADOR GATEWAY6009SAO PAULO62070503***63045F13",
+                "qr_code_base64": "iVBORw0KGgoAAAANSUhEUgAAASwAAAEsCAYAAAB5fY51AAAAAXNSR0IArs4c6QAAAARnQU1BAACxjwv8YQUAAAAJcEhZcwAADsMAAA7DAc...(simulado)",
+                "ticket_url": "http:\/\/localhost:8085\/pix\/114021588685",
+                "bank_transfer_id": 759336,
+                "financial_institution": null
+            }
+        },
+        "refunded": false,
+        "refund_amount": 0,
+        "created_at": "2026-03-02T14:45:15.000+00:00",
+        "updated_at": "2026-03-02T14:45:21.000+00:00",
+        "preapproval_id": "834569149349"
+    },
+    "593206489198": {
+        "id": "593206489198",
+        "gateway_assinatura_id": "147294192996",
+        "pacote_contrato_id": null,
+        "gateway_preference_id": "571786356964",
+        "external_reference": "PAC-15-1772463212",
+        "payment_url": "http:\/\/localhost:8085\/checkout\/593206489198",
+        "status": "pending",
+        "status_detail": "waiting_checkout",
+        "amount": 360,
+        "currency": "BRL",
+        "payment_method": null,
+        "card": null,
+        "payer": {
+            "name": "ANDRE CABRAL SILVA",
+            "email": "andrecabrall@gmail.com",
+            "document": null
+        },
+        "description": "Plano Família I 1x Quad",
+        "notification_url": "https:\/\/api.appcheckin.com.br\/api\/webhooks\/mercadopago",
+        "metadata": {
+            "tenant_id": 3,
+            "matricula_id": null,
+            "aluno_id": null,
+            "usuario_id": 3,
+            "tipo": "pacote",
+            "email_real": "andrecabrall@gmail.com",
+            "pacote_contrato_id": 15
+        },
+        "installments": 1,
+        "items": [
+            {
+                "id": "PACOTE_15",
+                "title": "Plano Família I 1x Quad",
+                "description": "Pacote: Plano Família I 1x Quad",
+                "picture_url": null,
+                "category_id": "services",
+                "quantity": 1,
+                "currency_id": "BRL",
+                "unit_price": 360
+            }
+        ],
+        "back_urls": {
+            "success": "https:\/\/mobile.appcheckin.com.br\/pagamento\/sucesso",
+            "failure": "https:\/\/mobile.appcheckin.com.br\/pagamento\/falha",
+            "pending": "https:\/\/mobile.appcheckin.com.br\/pagamento\/pendente"
+        },
+        "captured": false,
+        "refunded": false,
+        "refund_amount": 0,
+        "created_at": "2026-03-02T14:53:32.000+00:00",
+        "updated_at": "2026-03-02T14:53:32.000+00:00"
+    },
+    "791457601111": {
+        "id": "791457601111",
+        "gateway_assinatura_id": "450759970586",
+        "pacote_contrato_id": null,
+        "gateway_preference_id": "525368718063",
+        "external_reference": "PAC-15-1772469577",
+        "payment_url": "http:\/\/localhost:8085\/checkout\/791457601111",
+        "status": "approved",
+        "status_detail": "accredited",
+        "amount": 360,
+        "currency": "BRL",
+        "payment_method": "credit_card",
+        "card": null,
+        "payer": {
+            "name": "ANDRE CABRAL SILVA",
+            "email": "andrecabrall@gmail.com",
+            "document": ""
+        },
+        "description": "Plano Família I 1x Quad",
+        "notification_url": "https:\/\/api.appcheckin.com.br\/api\/webhooks\/mercadopago",
+        "metadata": {
+            "tenant_id": 3,
+            "matricula_id": null,
+            "aluno_id": null,
+            "usuario_id": 3,
+            "tipo": "pacote",
+            "email_real": "andrecabrall@gmail.com",
+            "pacote_contrato_id": 15
+        },
+        "installments": 1,
+        "items": [
+            {
+                "id": "PACOTE_15",
+                "title": "Plano Família I 1x Quad",
+                "description": "Pacote: Plano Família I 1x Quad",
+                "picture_url": null,
+                "category_id": "services",
+                "quantity": 1,
+                "currency_id": "BRL",
+                "unit_price": 360
+            }
+        ],
+        "back_urls": {
+            "success": "https:\/\/mobile.appcheckin.com.br\/pagamento\/sucesso",
+            "failure": "https:\/\/mobile.appcheckin.com.br\/pagamento\/falha",
+            "pending": "https:\/\/mobile.appcheckin.com.br\/pagamento\/pendente"
+        },
+        "captured": true,
+        "refunded": false,
+        "refund_amount": 0,
+        "created_at": "2026-03-02T16:39:37.000+00:00",
+        "updated_at": "2026-03-02T16:39:39.000+00:00",
+        "payment_method_id": "visa",
+        "payment_type_id": "credit_card",
+        "date_approved": "2026-03-02T16:39:39.000+00:00",
+        "date_last_updated": "2026-03-02T16:39:39.000+00:00",
+        "transaction_amount": 360,
+        "transaction_details": {
+            "net_received_amount": 343.8,
+            "total_paid_amount": 360,
+            "overpaid_amount": 0,
+            "installment_amount": 360
+        },
+        "live_mode": false,
+        "point_of_interaction": null
+    },
+    "785162217515": {
+        "id": "785162217515",
+        "gateway_assinatura_id": "527546990150",
+        "pacote_contrato_id": null,
+        "gateway_preference_id": "279682273833",
+        "external_reference": "PAC-15-1772469679",
+        "payment_url": "http:\/\/localhost:8085\/checkout\/785162217515",
+        "status": "approved",
+        "status_detail": "accredited",
+        "amount": 360,
+        "currency": "BRL",
+        "payment_method": "credit_card",
+        "card": null,
+        "payer": {
+            "name": "ANDRE CABRAL SILVA",
+            "email": "andrecabrall@gmail.com",
+            "document": ""
+        },
+        "description": "Plano Família I 1x Quad",
+        "notification_url": "https:\/\/api.appcheckin.com.br\/api\/webhooks\/mercadopago",
+        "metadata": {
+            "tenant_id": 3,
+            "matricula_id": null,
+            "aluno_id": null,
+            "usuario_id": 3,
+            "tipo": "pacote",
+            "email_real": "andrecabrall@gmail.com",
+            "pacote_contrato_id": 15
+        },
+        "installments": 1,
+        "items": [
+            {
+                "id": "PACOTE_15",
+                "title": "Plano Família I 1x Quad",
+                "description": "Pacote: Plano Família I 1x Quad",
+                "picture_url": null,
+                "category_id": "services",
+                "quantity": 1,
+                "currency_id": "BRL",
+                "unit_price": 360
+            }
+        ],
+        "back_urls": {
+            "success": "https:\/\/mobile.appcheckin.com.br\/pagamento\/sucesso",
+            "failure": "https:\/\/mobile.appcheckin.com.br\/pagamento\/falha",
+            "pending": "https:\/\/mobile.appcheckin.com.br\/pagamento\/pendente"
+        },
+        "captured": true,
+        "refunded": false,
+        "refund_amount": 0,
+        "created_at": "2026-03-02T16:41:19.000+00:00",
+        "updated_at": "2026-03-02T16:41:21.000+00:00",
+        "payment_method_id": "visa",
+        "payment_type_id": "credit_card",
+        "date_approved": "2026-03-02T16:41:21.000+00:00",
+        "date_last_updated": "2026-03-02T16:41:21.000+00:00",
+        "transaction_amount": 360,
+        "transaction_details": {
+            "net_received_amount": 343.8,
+            "total_paid_amount": 360,
+            "overpaid_amount": 0,
+            "installment_amount": 360
+        },
+        "live_mode": false,
+        "point_of_interaction": null
+    },
+    "884957138447": {
+        "id": "884957138447",
+        "gateway_assinatura_id": "992937358365",
+        "pacote_contrato_id": null,
+        "gateway_preference_id": "924678957225",
+        "external_reference": "PAC-16-1772472030",
+        "payment_url": "http:\/\/localhost:8085\/checkout\/884957138447",
+        "status": "approved",
+        "status_detail": "accredited",
+        "amount": 360,
+        "currency": "BRL",
+        "payment_method": "credit_card",
+        "card": null,
+        "payer": {
+            "name": "ANDRE CABRAL SILVA",
+            "email": "andrecabrall@gmail.com",
+            "document": ""
+        },
+        "description": "Plano Família I 1x Quad",
+        "notification_url": "https:\/\/api.appcheckin.com.br\/api\/webhooks\/mercadopago",
+        "metadata": {
+            "tenant_id": 3,
+            "matricula_id": null,
+            "aluno_id": null,
+            "usuario_id": 3,
+            "tipo": "pacote",
+            "email_real": "andrecabrall@gmail.com",
+            "pacote_contrato_id": 16
+        },
+        "installments": 1,
+        "items": [
+            {
+                "id": "PACOTE_16",
+                "title": "Plano Família I 1x Quad",
+                "description": "Pacote: Plano Família I 1x Quad",
+                "picture_url": null,
+                "category_id": "services",
+                "quantity": 1,
+                "currency_id": "BRL",
+                "unit_price": 360
+            }
+        ],
+        "back_urls": {
+            "success": "https:\/\/mobile.appcheckin.com.br\/pagamento\/sucesso",
+            "failure": "https:\/\/mobile.appcheckin.com.br\/pagamento\/falha",
+            "pending": "https:\/\/mobile.appcheckin.com.br\/pagamento\/pendente"
+        },
+        "captured": true,
+        "refunded": false,
+        "refund_amount": 0,
+        "created_at": "2026-03-02T17:20:30.000+00:00",
+        "updated_at": "2026-03-02T17:20:31.000+00:00",
+        "payment_method_id": "visa",
+        "payment_type_id": "credit_card",
+        "date_approved": "2026-03-02T17:20:31.000+00:00",
+        "date_last_updated": "2026-03-02T17:20:31.000+00:00",
+        "transaction_amount": 360,
+        "transaction_details": {
+            "net_received_amount": 343.8,
+            "total_paid_amount": 360,
+            "overpaid_amount": 0,
+            "installment_amount": 360
+        },
+        "live_mode": false,
+        "point_of_interaction": null
+    },
+    "505899815217": {
+        "id": "505899815217",
+        "gateway_assinatura_id": "126605818884",
+        "pacote_contrato_id": null,
+        "gateway_preference_id": "213009994138",
+        "external_reference": "PAC-18-1772472289",
+        "payment_url": "http:\/\/localhost:8085\/checkout\/505899815217",
+        "status": "approved",
+        "status_detail": "accredited",
+        "amount": 360,
+        "currency": "BRL",
+        "payment_method": "credit_card",
+        "card": null,
+        "payer": {
+            "name": "ANDRE CABRAL SILVA",
+            "email": "andrecabrall@gmail.com",
+            "document": ""
+        },
+        "description": "Plano Família I 1x Quad",
+        "notification_url": "https:\/\/api.appcheckin.com.br\/api\/webhooks\/mercadopago",
+        "metadata": {
+            "tenant_id": 3,
+            "matricula_id": null,
+            "aluno_id": null,
+            "usuario_id": 3,
+            "tipo": "pacote",
+            "email_real": "andrecabrall@gmail.com",
+            "pacote_contrato_id": 18
+        },
+        "installments": 1,
+        "items": [
+            {
+                "id": "PACOTE_18",
+                "title": "Plano Família I 1x Quad",
+                "description": "Pacote: Plano Família I 1x Quad",
+                "picture_url": null,
+                "category_id": "services",
+                "quantity": 1,
+                "currency_id": "BRL",
+                "unit_price": 360
+            }
+        ],
+        "back_urls": {
+            "success": "https:\/\/mobile.appcheckin.com.br\/pagamento\/sucesso",
+            "failure": "https:\/\/mobile.appcheckin.com.br\/pagamento\/falha",
+            "pending": "https:\/\/mobile.appcheckin.com.br\/pagamento\/pendente"
+        },
+        "captured": true,
+        "refunded": false,
+        "refund_amount": 0,
+        "created_at": "2026-03-02T17:24:49.000+00:00",
+        "updated_at": "2026-03-02T17:24:50.000+00:00",
+        "payment_method_id": "visa",
+        "payment_type_id": "credit_card",
+        "date_approved": "2026-03-02T17:24:50.000+00:00",
+        "date_last_updated": "2026-03-02T17:24:50.000+00:00",
+        "transaction_amount": 360,
+        "transaction_details": {
+            "net_received_amount": 343.8,
+            "total_paid_amount": 360,
+            "overpaid_amount": 0,
+            "installment_amount": 360
+        },
+        "live_mode": false,
+        "point_of_interaction": null
+    },
+    "277639107037": {
+        "id": "277639107037",
+        "gateway_assinatura_id": "357473347860",
+        "pacote_contrato_id": null,
+        "gateway_preference_id": "211076373710",
+        "external_reference": "PAC-19-1772474664",
+        "payment_url": "http:\/\/localhost:8085\/checkout\/277639107037",
+        "status": "pending",
+        "status_detail": "waiting_checkout",
+        "amount": 360,
+        "currency": "BRL",
+        "payment_method": null,
+        "card": null,
+        "payer": {
+            "name": "ANDRE CABRAL SILVA",
+            "email": "andrecabrall@gmail.com",
+            "document": null
+        },
+        "description": "Plano Família I 1x Quad",
+        "notification_url": "https:\/\/api.appcheckin.com.br\/api\/webhooks\/mercadopago",
+        "metadata": {
+            "tenant_id": 3,
+            "matricula_id": null,
+            "aluno_id": null,
+            "usuario_id": 3,
+            "tipo": "pacote",
+            "email_real": "andrecabrall@gmail.com",
+            "pacote_contrato_id": 19
+        },
+        "installments": 1,
+        "items": [
+            {
+                "id": "PACOTE_19",
+                "title": "Plano Família I 1x Quad",
+                "description": "Pacote: Plano Família I 1x Quad",
+                "picture_url": null,
+                "category_id": "services",
+                "quantity": 1,
+                "currency_id": "BRL",
+                "unit_price": 360
+            }
+        ],
+        "back_urls": {
+            "success": "https:\/\/mobile.appcheckin.com.br\/pagamento\/sucesso",
+            "failure": "https:\/\/mobile.appcheckin.com.br\/pagamento\/falha",
+            "pending": "https:\/\/mobile.appcheckin.com.br\/pagamento\/pendente"
+        },
+        "captured": false,
+        "refunded": false,
+        "refund_amount": 0,
+        "created_at": "2026-03-02T18:04:25.000+00:00",
+        "updated_at": "2026-03-02T18:04:25.000+00:00"
     }
 }

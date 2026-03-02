@@ -36,6 +36,7 @@ use App\Controllers\PlanoCicloController;
 use App\Controllers\AssinaturaController;
 use App\Controllers\RelatorioController;
 use App\Controllers\PacoteController;
+use App\Controllers\ParametroController;
 use App\Middlewares\AuthMiddleware;
 use App\Middlewares\TenantMiddleware;
 use App\Middlewares\AdminMiddleware;
@@ -1187,6 +1188,48 @@ return function ($app) {
         $group->get('/payment-credentials', [\App\Controllers\TenantPaymentCredentialsController::class, 'obter']);
         $group->post('/payment-credentials', [\App\Controllers\TenantPaymentCredentialsController::class, 'salvar']);
         $group->post('/payment-credentials/test', [\App\Controllers\TenantPaymentCredentialsController::class, 'testar']);
+        
+        // ========================================
+        // Parâmetros do Sistema (Configurações por categoria)
+        // ========================================
+        $group->get('/parametros', function($request, $response) {
+            $controller = new ParametroController(require __DIR__ . '/../config/database.php');
+            return $controller->index($request, $response);
+        });
+        $group->get('/parametros/categorias', function($request, $response) {
+            $controller = new ParametroController(require __DIR__ . '/../config/database.php');
+            return $controller->categorias($request, $response);
+        });
+        $group->get('/parametros/pagamentos/resumo', function($request, $response) {
+            $controller = new ParametroController(require __DIR__ . '/../config/database.php');
+            return $controller->resumoPagamentos($request, $response);
+        });
+        $group->get('/parametros/{categoria}', function($request, $response, $args) {
+            $controller = new ParametroController(require __DIR__ . '/../config/database.php');
+            return $controller->byCategoria($request, $response, $args);
+        });
+        $group->get('/parametros/valor/{codigo}', function($request, $response, $args) {
+            $controller = new ParametroController(require __DIR__ . '/../config/database.php');
+            return $controller->getValue($request, $response, $args);
+        });
+        $group->put('/parametros', function($request, $response) {
+            $controller = new ParametroController(require __DIR__ . '/../config/database.php');
+            return $controller->updateMultiple($request, $response);
+        });
+        $group->put('/parametros/{codigo}', function($request, $response, $args) {
+            $controller = new ParametroController(require __DIR__ . '/../config/database.php');
+            return $controller->update($request, $response, $args);
+        });
+        // PATCH para alteração imediata (persiste sem botão salvar)
+        $group->patch('/parametros/{codigo}', function($request, $response, $args) {
+            $controller = new ParametroController(require __DIR__ . '/../config/database.php');
+            return $controller->patch($request, $response, $args);
+        });
+        // Toggle para parâmetros booleanos (inverte true <-> false)
+        $group->patch('/parametros/{codigo}/toggle', function($request, $response, $args) {
+            $controller = new ParametroController(require __DIR__ . '/../config/database.php');
+            return $controller->toggle($request, $response, $args);
+        });
     })->add(AdminMiddleware::class)->add(AuthMiddleware::class);
 
     // ========================================

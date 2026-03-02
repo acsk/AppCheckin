@@ -56,12 +56,20 @@ class MercadoPagoWebhookController
      */
     public function processarWebhook(Request $request, Response $response): Response
     {
+        // DEBUG: Log em arquivo dedicado
+        $debugLog = __DIR__ . '/../../storage/logs/webhook_debug.log';
+        @mkdir(dirname($debugLog), 0777, true);
+        $ts = date('Y-m-d H:i:s');
+        file_put_contents($debugLog, "\n[{$ts}] ========== WEBHOOK RECEBIDO ==========\n", FILE_APPEND);
+        
         $body = $request->getParsedBody();
         if (!is_array($body)) {
             $raw = (string) $request->getBody();
             $decoded = json_decode($raw, true);
             $body = is_array($decoded) ? $decoded : [];
         }
+        
+        file_put_contents($debugLog, "[{$ts}] Body: " . json_encode($body) . "\n", FILE_APPEND);
 
         $queryParams = $request->getQueryParams();
 
@@ -941,7 +949,7 @@ class MercadoPagoWebhookController
         
         // Buscar assinatura na tabela assinaturas pelo gateway_assinatura_id
         $stmtBuscar = $this->db->prepare("
-            SELECT a.id, a.matricula_id, s.codigo as status_atual 
+            SELECT a.id, a.matricula_id, a.pacote_contrato_id, s.codigo as status_atual 
             FROM assinaturas a
             INNER JOIN assinatura_status s ON s.id = a.status_id
             WHERE a.gateway_assinatura_id = ?
@@ -950,8 +958,54 @@ class MercadoPagoWebhookController
         $stmtBuscar->execute([$preapprovalId]);
         $assinaturaDb = $stmtBuscar->fetch(\PDO::FETCH_ASSOC);
         
+        // FALLBACK: Se não encontrou por gateway_assinatura_id, buscar por external_reference
+        if (!$assinaturaDb && $externalReference) {
+            error_log("[Webhook MP] 🔍 Buscando assinatura por external_reference: {$externalReference}");
+            $stmtBuscarRef = $this->db->prepare("
+                SELECT a.id, a.matricula_id, a.pacote_contrato_id, s.codigo as status_atual 
+                FROM assinaturas a
+                INNER JOIN assinatura_status s ON s.id = a.status_id
+                WHERE a.external_reference = ?
+                LIMIT 1
+            ");
+            $stmtBuscarRef->execute([$externalReference]);
+            $assinaturaDb = $stmtBuscarRef->fetch(\PDO::FETCH_ASSOC);
+            
+            if ($assinaturaDb) {
+                error_log("[Webhook MP] ✅ Assinatura encontrada por external_reference: #{$assinaturaDb['id']}");
+                // Atualizar gateway_assinatura_id para futuras consultas
+                $stmtUpdateGateway = $this->db->prepare("UPDATE assinaturas SET gateway_assinatura_id = ? WHERE id = ?");
+                $stmtUpdateGateway->execute([$preapprovalId, $assinaturaDb['id']]);
+                error_log("[Webhook MP] ✅ gateway_assinatura_id atualizado para {$preapprovalId}");
+            }
+        }
+        
+        // Se ainda não encontrou e é pacote, buscar pelo pacote_contrato_id
+        if (!$assinaturaDb && $pacoteContratoId) {
+            error_log("[Webhook MP] 🔍 Buscando assinatura por pacote_contrato_id: {$pacoteContratoId}");
+            $stmtBuscarPacote = $this->db->prepare("
+                SELECT a.id, a.matricula_id, a.pacote_contrato_id, s.codigo as status_atual 
+                FROM assinaturas a
+                INNER JOIN assinatura_status s ON s.id = a.status_id
+                WHERE a.pacote_contrato_id = ?
+                ORDER BY a.id DESC
+                LIMIT 1
+            ");
+            $stmtBuscarPacote->execute([$pacoteContratoId]);
+            $assinaturaDb = $stmtBuscarPacote->fetch(\PDO::FETCH_ASSOC);
+            
+            if ($assinaturaDb) {
+                error_log("[Webhook MP] ✅ Assinatura encontrada por pacote_contrato_id: #{$assinaturaDb['id']}");
+                // Atualizar gateway_assinatura_id e external_reference
+                $stmtUpdateGateway = $this->db->prepare("UPDATE assinaturas SET gateway_assinatura_id = ?, external_reference = COALESCE(external_reference, ?) WHERE id = ?");
+                $stmtUpdateGateway->execute([$preapprovalId, $externalReference, $assinaturaDb['id']]);
+            }
+        }
+        
         if ($assinaturaDb) {
             $matriculaId = $matriculaId ?? $assinaturaDb['matricula_id'];
+            // Se a assinatura tem pacote_contrato_id, usar esse
+            $pacoteContratoId = $pacoteContratoId ?? $assinaturaDb['pacote_contrato_id'];
             
             // Mapear status do MP para status interno
             $statusMap = [
@@ -1003,7 +1057,11 @@ class MercadoPagoWebhookController
         
         // Se assinatura foi autorizada, ativar matrícula e registrar pagamento
         if ($status === 'approved' || $status === 'authorized') {
-            if ($matriculaId) {
+            // Se for pacote, processar pacote com a mesma lógica de plano
+            if ($pacoteContratoId) {
+                error_log("[Webhook MP] 🎁 PACOTE DETECTADO - Ativando contrato #{$pacoteContratoId} via fluxo de assinatura");
+                $this->ativarPacoteContrato($pacoteContratoId, $assinatura);
+            } elseif ($matriculaId) {
                 $this->ativarMatricula($matriculaId);
                 $this->baixarPagamentoPlanoAssinatura($matriculaId, $assinatura);
             }
@@ -1234,20 +1292,30 @@ class MercadoPagoWebhookController
      */
     private function atualizarPagamento(array $pagamento): void
     {
+        // DEBUG: Log em arquivo dedicado
+        $debugLog = __DIR__ . '/../../storage/logs/webhook_debug.log';
+        $ts = date('Y-m-d H:i:s');
+        file_put_contents($debugLog, "\n[{$ts}] ========== ATUALIZARPAGAMENTO ==========\n", FILE_APPEND);
+        file_put_contents($debugLog, "[{$ts}] Pagamento ID: " . ($pagamento['id'] ?? 'N/A') . "\n", FILE_APPEND);
+        file_put_contents($debugLog, "[{$ts}] Status: " . ($pagamento['status'] ?? 'N/A') . "\n", FILE_APPEND);
+        file_put_contents($debugLog, "[{$ts}] External Reference: " . ($pagamento['external_reference'] ?? 'N/A') . "\n", FILE_APPEND);
+        file_put_contents($debugLog, "[{$ts}] Metadata: " . json_encode($pagamento['metadata'] ?? []) . "\n", FILE_APPEND);
+        
         error_log("[Webhook MP] 📊 ATUALIZANDO PAGAMENTO");
         error_log("[Webhook MP] 📋 Status: " . ($pagamento['status'] ?? 'N/A'));
         error_log("[Webhook MP] 💳 ID Pagamento: " . ($pagamento['id'] ?? 'N/A'));
         error_log("[Webhook MP] 📝 External reference: " . ($pagamento['external_reference'] ?? 'N/A'));
         error_log("[Webhook MP] 🏷️ Metadados completos: " . json_encode($pagamento['metadata'] ?? []));
         
-        $externalReference = $pagamento['external_reference'];
-        $metadata = $pagamento['metadata'];
+        $externalReference = $pagamento['external_reference'] ?? '';
+        $metadata = $pagamento['metadata'] ?? [];
         $tipo = $metadata['tipo'] ?? null;
         
         // FALLBACK: Se tipo não veio no metadata, tentar extrair do external_reference
         if (!$tipo && $externalReference) {
             if (strpos($externalReference, 'PAC-') === 0) {
                 $tipo = 'pacote';
+                file_put_contents($debugLog, "[{$ts}] 🎁 TIPO DETECTADO: PACOTE (via external_reference)\n", FILE_APPEND);
                 error_log("[Webhook MP] 🎁 Tipo detectado como PACOTE pelo external_reference: {$externalReference}");
             } elseif (strpos($externalReference, 'MAT-') === 0) {
                 $tipo = 'matricula';
@@ -1258,9 +1326,13 @@ class MercadoPagoWebhookController
         // Para pagamentos de pacote, não há matrícula ainda (será criada pelo webhook)
         // Saímos do fluxo normal de pagamento e processamos direto com ativarPacoteContrato
         if ($tipo === 'pacote') {
+            file_put_contents($debugLog, "[{$ts}] 🎁 PACOTE DETECTED - Processando pagamento de pacote\n", FILE_APPEND);
             error_log("[Webhook MP] 🎁 PACOTE DETECTED - Processando pagamento de pacote");
             
+            file_put_contents($debugLog, "[{$ts}] Status do pagamento: " . ($pagamento['status'] ?? 'N/A') . "\n", FILE_APPEND);
+            
             if ($pagamento['status'] === 'approved') {
+                file_put_contents($debugLog, "[{$ts}] ✅ Pagamento de pacote APROVADO!\n", FILE_APPEND);
                 error_log("[Webhook MP] ✅ Pagamento de pacote APROVADO");
                 
                 $pacoteContratoId = $metadata['pacote_contrato_id'] ?? null;
@@ -1268,17 +1340,22 @@ class MercadoPagoWebhookController
                 // FALLBACK: Extrair do external_reference se não estiver no metadata
                 if (!$pacoteContratoId && $externalReference && preg_match('/PAC-(\d+)-/', $externalReference, $matches)) {
                     $pacoteContratoId = (int) $matches[1];
+                    file_put_contents($debugLog, "[{$ts}] 🎯 pacote_contrato_id extraído: {$pacoteContratoId}\n", FILE_APPEND);
                     error_log("[Webhook MP] 🎯 pacote_contrato_id extraído do external_reference: {$pacoteContratoId}");
                 }
                 
                 if ($pacoteContratoId) {
+                    file_put_contents($debugLog, "[{$ts}] 📨 Chamando ativarPacoteContrato({$pacoteContratoId})...\n", FILE_APPEND);
                     // Ativar contrato e criar matrículas para todos (pagante + beneficiários)
                     error_log("[Webhook MP] 📨 Ativando contrato e criando matrículas...");
                     $this->ativarPacoteContrato($pacoteContratoId, $pagamento);
+                    file_put_contents($debugLog, "[{$ts}] ✅ ativarPacoteContrato concluído\n", FILE_APPEND);
                 } else {
+                    file_put_contents($debugLog, "[{$ts}] ❌ pacote_contrato_id não encontrado!\n", FILE_APPEND);
                     error_log("[Webhook MP] ❌ pacote_contrato_id não encontrado no metadata nem no external_reference");
                 }
             } else {
+                file_put_contents($debugLog, "[{$ts}] ⚠️ Pacote com status não-approved: " . ($pagamento['status'] ?? 'N/A') . "\n", FILE_APPEND);
                 error_log("[Webhook MP] ⚠️ Pagamento de pacote com status: {$pagamento['status']} (não processando)");
             }
             return; // Sair da função aqui, não continua com o fluxo de matrícula avulsa
@@ -1453,8 +1530,14 @@ class MercadoPagoWebhookController
      */
     private function ativarPacoteContrato(int $contratoId, array $pagamento): void
     {
+        // DEBUG: Log em arquivo dedicado
+        $debugLog = __DIR__ . '/../../storage/logs/webhook_debug.log';
+        $ts = date('Y-m-d H:i:s');
+        file_put_contents($debugLog, "\n[{$ts}] ========== ATIVAR PACOTE CONTRATO #{$contratoId} ==========\n", FILE_APPEND);
+        
         try {
             error_log("[Webhook MP] 🎯 Iniciando baixa completa do contrato #{$contratoId}");
+            file_put_contents($debugLog, "[{$ts}] 🎯 Iniciando baixa completa do contrato #{$contratoId}\n", FILE_APPEND);
 
             // 1. Buscar contrato com dados do pacote
             $stmtContrato = $this->db->prepare("
@@ -1469,11 +1552,13 @@ class MercadoPagoWebhookController
 
             if (!$contrato) {
                 error_log("[Webhook MP] ❌ Contrato #{$contratoId} não encontrado");
+                file_put_contents($debugLog, "[{$ts}] ❌ Contrato #{$contratoId} NÃO ENCONTRADO\n", FILE_APPEND);
                 return;
             }
 
             $tenantId = (int) $contrato['tenant_id'];
             error_log("[Webhook MP] 📋 Contrato: {$contrato['pacote_nome']}, tenant={$tenantId}, status_atual={$contrato['status']}");
+            file_put_contents($debugLog, "[{$ts}] 📋 Contrato encontrado: {$contrato['pacote_nome']}, tenant={$tenantId}, status={$contrato['status']}\n", FILE_APPEND);
 
             // 2. Buscar beneficiários
             $stmtBenef = $this->db->prepare("
@@ -1483,9 +1568,12 @@ class MercadoPagoWebhookController
             ");
             $stmtBenef->execute([$contratoId, $tenantId]);
             $beneficiarios = $stmtBenef->fetchAll(\PDO::FETCH_ASSOC);
+            
+            file_put_contents($debugLog, "[{$ts}] Beneficiários encontrados: " . count($beneficiarios) . "\n", FILE_APPEND);
 
             if (empty($beneficiarios)) {
                 error_log("[Webhook MP] ⚠️ Nenhum beneficiário para contrato #{$contratoId}");
+                file_put_contents($debugLog, "[{$ts}] ⚠️ Nenhum beneficiário!\n", FILE_APPEND);
                 // Mesmo sem beneficiários, atualizar status do contrato
                 $this->db->prepare("UPDATE pacote_contratos SET status = 'ativo', updated_at = NOW() WHERE id = ?")->execute([$contratoId]);
                 return;
@@ -1528,22 +1616,24 @@ class MercadoPagoWebhookController
             // 4. Buscar IDs de status
             $stmtStatusAtiva = $this->db->prepare("SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1");
             $stmtStatusAtiva->execute();
-            $statusAtivaId = (int) ($stmtStatusAtiva->fetchColumn() ?: 1);
+            $statusAtivaId = (int) ($stmtStatusAtiva->fetchColumn() ?: 6);
 
             $stmtMotivo = $this->db->prepare("SELECT id FROM motivo_matricula WHERE codigo = 'nova' LIMIT 1");
             $stmtMotivo->execute();
             $motivoId = (int) ($stmtMotivo->fetchColumn() ?: 1);
 
-            $stmtStatusPago = $this->db->prepare("SELECT id FROM status_pagamento WHERE codigo IN ('aprovado', 'pago') LIMIT 1");
+            // status_pagamento NÃO tem coluna 'codigo', usar 'nome' ao invés
+            $stmtStatusPago = $this->db->prepare("SELECT id FROM status_pagamento WHERE nome LIKE '%ago%' LIMIT 1");
             $stmtStatusPago->execute();
             $statusPagoId = (int) ($stmtStatusPago->fetchColumn() ?: 2);
 
-            // Buscar forma de pagamento pelo método do MP
+            // Buscar forma de pagamento pelo método do MP (usando nome na tabela)
             $formaPagamentoId = null;
             $metodoPagamento = $pagamento['payment_method_id'] ?? null;
             if ($metodoPagamento) {
-                $stmtForma = $this->db->prepare("SELECT id FROM formas_pagamento WHERE codigo = ? AND tenant_id = ? LIMIT 1");
-                $stmtForma->execute([$metodoPagamento, $tenantId]);
+                // formas_pagamento não tem coluna 'codigo', usar 'nome'
+                $stmtForma = $this->db->prepare("SELECT id FROM formas_pagamento WHERE nome LIKE ? AND ativo = 1 LIMIT 1");
+                $stmtForma->execute(['%' . $metodoPagamento . '%']);
                 $formaPagamentoId = $stmtForma->fetchColumn() ?: null;
             }
 
@@ -1678,12 +1768,9 @@ class MercadoPagoWebhookController
 
                 // 7. Gerar próxima parcela
                 try {
-                    $proximoVencimento = null;
-                    if ($mesesCiclo && $mesesCiclo > 0) {
-                        $proximoVencimento = date('Y-m-d', strtotime("+{$mesesCiclo} months", strtotime($dataFim)));
-                    } else {
-                        $proximoVencimento = date('Y-m-d', strtotime("+{$duracaoDias} days", strtotime($dataFim)));
-                    }
+                    // O próximo vencimento é a data de fim do ciclo atual (dataFim)
+                    // Não somar meses novamente pois dataFim já é dataInicio + mesesCiclo
+                    $proximoVencimento = $dataFim;
 
                     $this->db->prepare("
                         INSERT INTO pagamentos_plano
@@ -1710,19 +1797,48 @@ class MercadoPagoWebhookController
             }
 
             // 8. Atualizar contrato para ativo
-            $this->db->prepare("
+            file_put_contents($debugLog, "[{$ts}] 📝 UPDATE contrato #{$contratoId} - tenant={$tenantId}, dataInicio={$dataInicio}, dataFim={$dataFim}\n", FILE_APPEND);
+            error_log("[Webhook MP] 📝 Executando UPDATE contrato #{$contratoId} para status='ativo'...");
+            
+            $stmtUpdContrato = $this->db->prepare("
                 UPDATE pacote_contratos
                 SET status = 'ativo', data_inicio = COALESCE(data_inicio, ?), data_fim = COALESCE(data_fim, ?), updated_at = NOW()
                 WHERE id = ? AND tenant_id = ?
-            ")->execute([$dataInicio, $dataFim, $contratoId, $tenantId]);
+            ");
+            $stmtUpdContrato->execute([$dataInicio, $dataFim, $contratoId, $tenantId]);
+            $contratoRowsAffected = $stmtUpdContrato->rowCount();
+            
+            file_put_contents($debugLog, "[{$ts}] ✅ UPDATE contrato: {$contratoRowsAffected} linhas afetadas\n", FILE_APPEND);
+            error_log("[Webhook MP] ✅ UPDATE contrato: {$contratoRowsAffected} linhas afetadas");
 
+            // 9. Atualizar assinaturas do pacote
+            $stmtStatusAssAtiva = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'ativa' LIMIT 1");
+            $stmtStatusAssAtiva->execute();
+            $statusAssAtivaId = (int) ($stmtStatusAssAtiva->fetchColumn() ?: 6);
+
+            $stmtUpdAss = $this->db->prepare("
+                UPDATE assinaturas
+                SET status_id = ?, status_gateway = 'approved', atualizado_em = NOW()
+                WHERE pacote_contrato_id = ? AND tenant_id = ?
+            ");
+            $stmtUpdAss->execute([$statusAssAtivaId, $contratoId, $tenantId]);
+            $assinaturasAtualizadas = $stmtUpdAss->rowCount();
+            error_log("[Webhook MP] ✅ {$assinaturasAtualizadas} assinatura(s) do pacote atualizada(s) para ativa/approved");
+            file_put_contents($debugLog, "[{$ts}] ✅ {$assinaturasAtualizadas} assinatura(s) atualizada(s)\n", FILE_APPEND);
+
+            file_put_contents($debugLog, "[{$ts}] 🔄 Executando COMMIT...\n", FILE_APPEND);
             $this->db->commit();
+            file_put_contents($debugLog, "[{$ts}] ✅ COMMIT executado com sucesso!\n", FILE_APPEND);
 
             error_log("[Webhook MP] ✅ Baixa completa do contrato #{$contratoId}: {$matriculasProcessadas} matrículas processadas, " . count($beneficiarios) . " beneficiários ativados");
+            file_put_contents($debugLog, "[{$ts}] 🎉 BAIXA COMPLETA - {$matriculasProcessadas} matrículas, " . count($beneficiarios) . " beneficiários\n", FILE_APPEND);
 
         } catch (\Exception $e) {
+            file_put_contents($debugLog, "[{$ts}] ❌ EXCEÇÃO: " . $e->getMessage() . "\n", FILE_APPEND);
+            file_put_contents($debugLog, "[{$ts}] Stack: " . $e->getTraceAsString() . "\n", FILE_APPEND);
             if ($this->db->inTransaction()) {
                 $this->db->rollBack();
+                file_put_contents($debugLog, "[{$ts}] ⚠️ ROLLBACK executado\n", FILE_APPEND);
             }
             error_log("[Webhook MP] ❌ Erro na baixa do contrato #{$contratoId}: " . $e->getMessage());
             error_log("[Webhook MP] Stack: " . $e->getTraceAsString());

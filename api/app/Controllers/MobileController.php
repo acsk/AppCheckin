@@ -10,6 +10,7 @@ use App\Models\Checkin;
 use App\Models\Wod;
 use App\Models\WodBloco;
 use App\Models\WodVariacao;
+use App\Models\Parametro;
 use OpenApi\Attributes as OA;
 
 /**
@@ -4046,6 +4047,43 @@ class MobileController
 
             $valorTotal = (float) $contrato['valor_total'];
             $permiteRecorrencia = (bool) ($contrato['permite_recorrencia'] ?? false);
+            
+            // =====================================================
+            // VERIFICAR MÉTODOS DE PAGAMENTO DISPONÍVEIS (parâmetros)
+            // =====================================================
+            $parametro = new Parametro($this->db);
+            $habilitarPix = $parametro->isEnabled($tenantId, 'habilitar_pix');
+            $habilitarCartao = $parametro->isEnabled($tenantId, 'habilitar_cartao_credito');
+            $habilitarDebito = $parametro->isEnabled($tenantId, 'habilitar_cartao_debito');
+            $habilitarBoleto = $parametro->isEnabled($tenantId, 'habilitar_boleto');
+            
+            $metodosDisponiveis = [];
+            if ($habilitarPix) $metodosDisponiveis[] = 'PIX';
+            if ($habilitarCartao) $metodosDisponiveis[] = 'Cartão de Crédito';
+            if ($habilitarDebito) $metodosDisponiveis[] = 'Cartão de Débito';
+            if ($habilitarBoleto) $metodosDisponiveis[] = 'Boleto';
+            
+            error_log("[MobileController::pagarPacote] Métodos de pagamento habilitados: " . implode(', ', $metodosDisponiveis));
+            
+            // Se nenhum método de pagamento está habilitado, retornar erro
+            if (empty($metodosDisponiveis)) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'Nenhum método de pagamento está habilitado. Entre em contato com a academia.',
+                    'metodos_disponiveis' => []
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+            
+            // Se for recorrente, precisa de cartão de crédito
+            if ($permiteRecorrencia && !$habilitarCartao) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'Pacotes recorrentes requerem cartão de crédito, que não está habilitado.',
+                    'metodos_disponiveis' => $metodosDisponiveis
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
             
             error_log("[MobileController::pagarPacote] permite_recorrencia = " . ($permiteRecorrencia ? 'SIM (recorrente)' : 'NÃO (avulso)'));
 

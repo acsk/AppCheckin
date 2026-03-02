@@ -9,6 +9,17 @@ export const setOnUnauthorized = (callback) => {
   onUnauthorizedCallback = callback;
 };
 
+const isPublicAuthEndpoint = (endpoint = "") =>
+  endpoint === "/auth/login" ||
+  endpoint === "/auth/register" ||
+  endpoint === "/auth/register-mobile" ||
+  endpoint === "/auth/tenants-public" ||
+  endpoint === "/auth/select-tenant" ||
+  endpoint === "/auth/select-tenant-public" ||
+  endpoint === "/auth/password-recovery/request" ||
+  endpoint === "/auth/password-recovery/validate-token" ||
+  endpoint === "/auth/password-recovery/reset";
+
 /**
  * Cliente HTTP customizado para fazer requisições à API
  * Similar ao axios mas usando fetch nativo
@@ -78,13 +89,7 @@ const api = {
       // Buscar token do storage
       const token = await AsyncStorage.getItem("@appcheckin:token");
       const shouldSkipAuth = Boolean(config?.skipAuth);
-      const isAuthEndpoint =
-        endpoint === "/auth/login" ||
-        endpoint === "/auth/register" ||
-        endpoint === "/auth/register-mobile" ||
-        endpoint === "/auth/tenants-public" ||
-        endpoint === "/auth/select-tenant" ||
-        endpoint === "/auth/select-tenant-public";
+      const isAuthEndpoint = isPublicAuthEndpoint(endpoint);
 
       // Debug: listar todas as chaves do storage
       const allKeys = await AsyncStorage.getAllKeys?.();
@@ -220,11 +225,10 @@ const api = {
           "Acesso não autorizado";
         const errorCode = responseData?.code;
 
-        // Verificar se é erro de login (endpoint /auth/login)
-        // Se for, não chamar o callback, deixar a tela de login tratar
-        const isLoginEndpoint = endpoint === "/auth/login";
+        // Endpoints públicos de autenticação não devem disparar logout global
+        const isAuthPublicEndpoint = isPublicAuthEndpoint(endpoint);
 
-        if (!isLoginEndpoint) {
+        if (!isAuthPublicEndpoint) {
           // Para outros endpoints, limpar storage e notificar
           console.warn(
             "🚫 Token inválido ou expirado - redirecionando para login...",

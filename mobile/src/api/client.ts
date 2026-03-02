@@ -44,9 +44,13 @@ function isAuthEndpoint(url?: string): boolean {
   if (!url) return false;
   return (
     url.includes("/auth/login") ||
+    url.includes("/auth/register") ||
     url.includes("/auth/register-mobile") ||
     url.includes("/auth/select-tenant") ||
-    url.includes("/auth/select-tenant-public")
+    url.includes("/auth/select-tenant-public") ||
+    url.includes("/auth/password-recovery/request") ||
+    url.includes("/auth/password-recovery/validate-token") ||
+    url.includes("/auth/password-recovery/reset")
   );
 }
 
@@ -127,8 +131,9 @@ client.interceptors.response.use(
     const status = error.response?.status;
     const data: any = error.response?.data;
     const code = data?.code;
+    const requestUrl = error.config?.url;
 
-    if (status === 401) {
+    if (status === 401 && !isAuthEndpoint(requestUrl)) {
       // Clear token and notify app to redirect to login
       await AsyncStorage.removeItem(TOKEN_KEY);
       await AsyncStorage.removeItem("@appcheckin:user");
