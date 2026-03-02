@@ -810,6 +810,266 @@ class TurmaController
     }
 
     /**
+     * POST /admin/turmas/replicar-semana
+     * Replica todas as turmas de uma semana para outras semanas/meses
+     * 
+     * Body:
+     * {
+     *   "semana_data": "2026-02-24",        // Data de referência (qualquer dia da semana origem)
+     *   "meses_destino": ["2026-03", "2026-04"],  // Array de meses destino
+     *   "modalidade_id": 3                  // Opcional: filtrar por modalidade
+     * }
+     * 
+     * A função identifica a semana da data informada (seg-dom) e replica todas as turmas
+     * para as mesmas semanas (mesmos dias da semana) nos meses destino.
+     */
+    public function replicarSemana(Request $request, Response $response): Response
+    {
+        $tenantId = $request->getAttribute('tenantId');
+        $data = $request->getParsedBody();
+        
+        // Validar inputs obrigatórios
+        if (!isset($data['semana_data'])) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'semana_data é obrigatório (formato: YYYY-MM-DD)'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+        }
+
+        if (!isset($data['meses_destino']) || !is_array($data['meses_destino']) || empty($data['meses_destino'])) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'meses_destino é obrigatório (array de meses no formato YYYY-MM)'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+        }
+
+        $semanaData = $data['semana_data'];
+        $mesesDestino = $data['meses_destino'];
+        $modalidadeId = isset($data['modalidade_id']) ? (int) $data['modalidade_id'] : null;
+
+        try {
+            // Calcular o início (segunda) e fim (domingo) da semana de origem
+            $dataRef = new \DateTime($semanaData);
+            $diaSemana = (int) $dataRef->format('N'); // 1=seg, 7=dom
+            
+            // Voltar para segunda-feira
+            $segundaOrigem = clone $dataRef;
+            $segundaOrigem->sub(new \DateInterval('P' . ($diaSemana - 1) . 'D'));
+            
+            // Ir para domingo
+            $domingoOrigem = clone $segundaOrigem;
+            $domingoOrigem->add(new \DateInterval('P6D'));
+
+            // Buscar todos os dias da semana origem no banco
+            $db = $this->getConnection();
+            $sql = "SELECT * FROM dias WHERE data BETWEEN :data_inicio AND :data_fim AND ativo = 1 ORDER BY data ASC";
+            $stmt = $db->prepare($sql);
+            $stmt->execute([
+                'data_inicio' => $segundaOrigem->format('Y-m-d'),
+                'data_fim' => $domingoOrigem->format('Y-m-d')
+            ]);
+            $diasOrigem = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            if (empty($diasOrigem)) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'message' => 'Nenhum dia encontrado na semana de origem'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
+            }
+
+            // Buscar todas as turmas da semana origem
+            $turmasOrigem = [];
+            $diasIds = array_column($diasOrigem, 'id');
+            $placeholders = implode(',', array_fill(0, count($diasIds), '?'));
+            
+            $sqlTurmas = "SELECT t.*, d.data as dia_data, DAYOFWEEK(d.data) as dia_semana
+                          FROM turmas t 
+                          JOIN dias d ON t.dia_id = d.id
+                          WHERE t.tenant_id = ? AND t.dia_id IN ($placeholders) AND t.ativo = 1
+                          ORDER BY d.data, t.horario_inicio";
+            
+            $params = array_merge([$tenantId], $diasIds);
+            $stmt = $db->prepare($sqlTurmas);
+            $stmt->execute($params);
+            $turmasOrigem = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Filtrar por modalidade se fornecida
+            if ($modalidadeId !== null) {
+                $turmasOrigem = array_filter($turmasOrigem, function($turma) use ($modalidadeId) {
+                    return (int) $turma['modalidade_id'] === $modalidadeId;
+                });
+                $turmasOrigem = array_values($turmasOrigem);
+            }
+
+            if (empty($turmasOrigem)) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'success',
+                    'message' => 'Nenhuma turma encontrada na semana de origem',
+                    'semana_origem' => [
+                        'inicio' => $segundaOrigem->format('Y-m-d'),
+                        'fim' => $domingoOrigem->format('Y-m-d')
+                    ],
+                    'summary' => [
+                        'total_turmas_origem' => 0,
+                        'total_criadas' => 0,
+                        'total_puladas' => 0
+                    ]
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+            }
+
+            // Agrupar turmas por dia da semana (1-7)
+            $turmasPorDiaSemana = [];
+            foreach ($turmasOrigem as $turma) {
+                $diaSemana = (int) $turma['dia_semana'];
+                if (!isset($turmasPorDiaSemana[$diaSemana])) {
+                    $turmasPorDiaSemana[$diaSemana] = [];
+                }
+                $turmasPorDiaSemana[$diaSemana][] = $turma;
+            }
+
+            // Para cada mês destino, replicar as turmas
+            $totalCriadas = 0;
+            $totalPuladas = 0;
+            $detalhes = [];
+            $turmasCriadas = [];
+
+            foreach ($mesesDestino as $mesDestino) {
+                $detalheMes = [
+                    'mes' => $mesDestino,
+                    'criadas' => 0,
+                    'puladas' => 0,
+                    'dias_processados' => []
+                ];
+
+                // Buscar dias do mês destino para cada dia da semana que tem turmas
+                foreach ($turmasPorDiaSemana as $diaSemana => $turmasDoDia) {
+                    // Buscar dias do mês que correspondem a esse dia da semana
+                    $diasDestino = $this->buscarDiasDoMesPorDiaSemana($mesDestino, $diaSemana, $tenantId);
+
+                    foreach ($diasDestino as $diaDestino) {
+                        $detalheDia = [
+                            'dia_id' => $diaDestino['id'],
+                            'data' => $diaDestino['data'],
+                            'dia_semana' => $diaSemana,
+                            'turmas_criadas' => 0,
+                            'turmas_puladas' => 0
+                        ];
+
+                        foreach ($turmasDoDia as $turmaOrigem) {
+                            // Verificar conflito de horário
+                            $temConflito = $this->turmaModel->verificarHorarioOcupado(
+                                $tenantId,
+                                $diaDestino['id'],
+                                $turmaOrigem['horario_inicio'],
+                                $turmaOrigem['horario_fim'],
+                                null,
+                                $turmaOrigem['professor_id']
+                            );
+
+                            if ($temConflito) {
+                                $detalheDia['turmas_puladas']++;
+                                $detalheMes['puladas']++;
+                                $totalPuladas++;
+                                continue;
+                            }
+
+                            // Criar nova turma
+                            $novaTurma = [
+                                'tenant_id' => $tenantId,
+                                'professor_id' => (int) $turmaOrigem['professor_id'],
+                                'modalidade_id' => (int) $turmaOrigem['modalidade_id'],
+                                'dia_id' => (int) $diaDestino['id'],
+                                'horario_inicio' => $turmaOrigem['horario_inicio'],
+                                'horario_fim' => $turmaOrigem['horario_fim'],
+                                'nome' => $turmaOrigem['nome'] ?? '',
+                                'limite_alunos' => (int) $turmaOrigem['limite_alunos'],
+                                'ativo' => 1
+                            ];
+
+                            $idNovaTurma = $this->turmaModel->create($novaTurma);
+                            if ($idNovaTurma) {
+                                $detalheDia['turmas_criadas']++;
+                                $detalheMes['criadas']++;
+                                $totalCriadas++;
+
+                                $turmaCompleta = $this->turmaModel->findById($idNovaTurma, $tenantId);
+                                if ($turmaCompleta) {
+                                    $turmasCriadas[] = $turmaCompleta;
+                                }
+                            }
+                        }
+
+                        $detalheMes['dias_processados'][] = $detalheDia;
+                    }
+                }
+
+                $detalhes[] = $detalheMes;
+            }
+
+            $response->getBody()->write(json_encode([
+                'type' => 'success',
+                'message' => 'Replicação de semana concluída com sucesso',
+                'semana_origem' => [
+                    'inicio' => $segundaOrigem->format('Y-m-d'),
+                    'fim' => $domingoOrigem->format('Y-m-d'),
+                    'total_turmas' => count($turmasOrigem)
+                ],
+                'summary' => [
+                    'meses_destino' => count($mesesDestino),
+                    'total_turmas_origem' => count($turmasOrigem),
+                    'total_criadas' => $totalCriadas,
+                    'total_puladas' => $totalPuladas
+                ],
+                'detalhes_por_mes' => $detalhes,
+                'turmas_criadas' => $turmasCriadas
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(201);
+
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Erro ao replicar semana: ' . $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
+        }
+    }
+
+    /**
+     * Buscar dias do mês que correspondem a um dia da semana específico
+     */
+    private function buscarDiasDoMesPorDiaSemana(string $mes, int $diaSemana, int $tenantId): array
+    {
+        $dataParts = explode('-', $mes);
+        if (count($dataParts) !== 2) {
+            return [];
+        }
+        $ano = (int)$dataParts[0];
+        $mes_num = (int)$dataParts[1];
+
+        $sql = "SELECT * FROM dias 
+                WHERE YEAR(data) = :ano 
+                AND MONTH(data) = :mes 
+                AND DAYOFWEEK(data) = :dia_semana
+                AND ativo = 1
+                ORDER BY data ASC";
+
+        $db = $this->getConnection();
+        $stmt = $db->prepare($sql);
+        $stmt->execute([
+            'ano' => $ano,
+            'mes' => $mes_num,
+            'dia_semana' => $diaSemana
+        ]);
+
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    /**
      * POST /admin/turmas/desativar
      * Desativa turmas com opção de replicar para outros dias da semana
      * 

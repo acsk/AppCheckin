@@ -35,6 +35,7 @@ services:
       JWT_SECRET: seu_secret_super_seguro_aqui_change_me
       JWT_EXPIRATION: 86400
       APP_ENV: development
+      MP_FAKE_API_URL: http://host.docker.internal:8085
     networks:
       - appcheckin_network
 

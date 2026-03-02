@@ -213,12 +213,73 @@ class PacoteController
             }
 
             $beneficiarios = isset($data['beneficiarios']) ? (array) $data['beneficiarios'] : [];
+            $beneficiarios = array_values(array_unique(array_filter(array_map('intval', $beneficiarios), function ($id) {
+                return $id > 0;
+            })));
+
             if (count($beneficiarios) > (int) $pacote['qtd_beneficiarios']) {
                 $response->getBody()->write(json_encode([
                     'success' => false,
                     'message' => 'Quantidade de beneficiários excede o limite do pacote'
                 ], JSON_UNESCAPED_UNICODE));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Buscar aluno do pagante (obrigatório para criar matrícula do pagante)
+            $stmtPaganteAluno = $this->db->prepare("
+                SELECT a.id
+                FROM alunos a
+                INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = a.usuario_id
+                    AND tup.tenant_id = ?
+                    AND tup.papel_id = 1
+                    AND tup.ativo = 1
+                WHERE a.usuario_id = ?
+                LIMIT 1
+            ");
+            $stmtPaganteAluno->execute([$tenantId, (int) $data['pagante_usuario_id']]);
+            $paganteAlunoId = (int) ($stmtPaganteAluno->fetchColumn() ?: 0);
+
+            if ($paganteAlunoId <= 0) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'Pagante não possui cadastro de aluno no tenant'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            // Beneficiários finais = pagante + dependentes informados
+            $beneficiariosFinais = array_values(array_unique(array_merge([$paganteAlunoId], $beneficiarios)));
+            $limiteTotalPessoas = (int) $pacote['qtd_beneficiarios'] + 1;
+
+            if (count($beneficiariosFinais) > $limiteTotalPessoas) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => "Quantidade total de pessoas excede o limite do pacote ({$limiteTotalPessoas})"
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            // Validar se todos os beneficiários existem e pertencem ao tenant como aluno
+            $placeholders = implode(',', array_fill(0, count($beneficiariosFinais), '?'));
+            $stmtValidaBeneficiarios = $this->db->prepare("
+                SELECT a.id
+                FROM alunos a
+                INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = a.usuario_id
+                    AND tup.tenant_id = ?
+                    AND tup.papel_id = 1
+                    AND tup.ativo = 1
+                WHERE a.id IN ({$placeholders})
+            ");
+            $stmtValidaBeneficiarios->execute(array_merge([$tenantId], $beneficiariosFinais));
+            $beneficiariosValidos = array_map('intval', $stmtValidaBeneficiarios->fetchAll(\PDO::FETCH_COLUMN));
+            $beneficiariosNaoEncontrados = array_values(array_diff($beneficiariosFinais, $beneficiariosValidos));
+
+            if (!empty($beneficiariosNaoEncontrados)) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'message' => 'Beneficiários não encontrados no tenant: ' . implode(', ', $beneficiariosNaoEncontrados)
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
             }
 
             $this->db->beginTransaction();
@@ -236,22 +297,101 @@ class PacoteController
             ]);
             $contratoId = (int) $this->db->lastInsertId();
 
-            if (!empty($beneficiarios)) {
-                $stmtInsBen = $this->db->prepare("
-                    INSERT INTO pacote_beneficiarios
-                    (tenant_id, pacote_contrato_id, aluno_id, status)
-                    VALUES (?, ?, ?, 'pendente')
-                ");
-                foreach ($beneficiarios as $alunoId) {
-                    $stmtInsBen->execute([$tenantId, $contratoId, (int) $alunoId]);
+            // Datas de vigência e parâmetros de matrícula
+            $dataInicio = date('Y-m-d');
+            $duracaoDias = max(1, (int) ($pacote['duracao_dias'] ?? 30));
+
+            if (!empty($pacote['plano_ciclo_id'])) {
+                $stmtCiclo = $this->db->prepare("SELECT meses FROM plano_ciclos WHERE id = ? AND tenant_id = ? LIMIT 1");
+                $stmtCiclo->execute([(int) $pacote['plano_ciclo_id'], $tenantId]);
+                $meses = (int) ($stmtCiclo->fetchColumn() ?: 0);
+                if ($meses > 0) {
+                    $dataFim = (new \DateTime($dataInicio))->modify("+{$meses} months")->format('Y-m-d');
+                } else {
+                    $dataFim = date('Y-m-d', strtotime("+{$duracaoDias} days", strtotime($dataInicio)));
                 }
+            } else {
+                $dataFim = date('Y-m-d', strtotime("+{$duracaoDias} days", strtotime($dataInicio)));
+            }
+
+            $stmtStatus = $this->db->prepare("SELECT id FROM status_matricula WHERE codigo = 'pendente' LIMIT 1");
+            $stmtStatus->execute();
+            $statusPendenteId = (int) ($stmtStatus->fetchColumn() ?: 5);
+
+            $stmtMotivo = $this->db->prepare("SELECT id FROM motivo_matricula WHERE codigo = 'nova' LIMIT 1");
+            $stmtMotivo->execute();
+            $motivoNovaId = (int) ($stmtMotivo->fetchColumn() ?: 1);
+
+            $totalPessoas = count($beneficiariosFinais);
+            $valorTotal = (float) $pacote['valor_total'];
+            $valorBaseRateio = round($valorTotal / max(1, $totalPessoas), 2);
+            $valorAcumulado = 0.0;
+
+            $stmtInsertMatricula = $this->db->prepare("
+                INSERT INTO matriculas
+                (tenant_id, aluno_id, plano_id, plano_ciclo_id, pacote_contrato_id, tipo_cobranca,
+                 data_matricula, data_inicio, data_vencimento, valor, valor_rateado,
+                 status_id, motivo_id, proxima_data_vencimento, dia_vencimento, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, 'avulso', ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+            ");
+
+            $stmtInsertBeneficiario = $this->db->prepare("
+                INSERT INTO pacote_beneficiarios
+                (tenant_id, pacote_contrato_id, aluno_id, matricula_id, valor_rateado, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, 'pendente', NOW(), NOW())
+            ");
+
+            $matriculasCriadas = [];
+            foreach ($beneficiariosFinais as $index => $alunoId) {
+                $isLast = ($index === ($totalPessoas - 1));
+                $valorRateado = $isLast
+                    ? round($valorTotal - $valorAcumulado, 2)
+                    : $valorBaseRateio;
+                $valorAcumulado += $valorRateado;
+
+                $diaVencimento = (int) date('d', strtotime($dataFim));
+
+                $stmtInsertMatricula->execute([
+                    $tenantId,
+                    (int) $alunoId,
+                    (int) $pacote['plano_id'],
+                    !empty($pacote['plano_ciclo_id']) ? (int) $pacote['plano_ciclo_id'] : null,
+                    $contratoId,
+                    $dataInicio,
+                    $dataInicio,
+                    $dataFim,
+                    $valorRateado,
+                    $valorRateado,
+                    $statusPendenteId,
+                    $motivoNovaId,
+                    $dataFim,
+                    $diaVencimento
+                ]);
+                $matriculaId = (int) $this->db->lastInsertId();
+
+                $stmtInsertBeneficiario->execute([
+                    $tenantId,
+                    $contratoId,
+                    (int) $alunoId,
+                    $matriculaId,
+                    $valorRateado
+                ]);
+
+                $matriculasCriadas[] = [
+                    'aluno_id' => (int) $alunoId,
+                    'matricula_id' => $matriculaId,
+                    'valor_rateado' => $valorRateado,
+                    'is_pagante' => ((int) $alunoId === $paganteAlunoId)
+                ];
             }
 
             $this->db->commit();
 
             $response->getBody()->write(json_encode([
                 'success' => true,
-                'pacote_contrato_id' => $contratoId
+                'pacote_contrato_id' => $contratoId,
+                'matriculas' => $matriculasCriadas,
+                'total_matriculas' => count($matriculasCriadas)
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(201);
         } catch (\Exception $e) {

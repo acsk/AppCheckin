@@ -4066,6 +4066,9 @@ class MobileController
                 
                 error_log("[MobileController::pagarPacote] ℹ️ Reutilizando payment_url existente. assinatura_id={$assinExistId}");
                 
+                // ✅ GARANTIR que existem matrículas para os beneficiários (retrocompatibilidade)
+                $matriculasCriadas = $this->garantirMatriculasPacote($contratoId, $tenantId, $valorTotal);
+                
                 $response->getBody()->write(json_encode([
                     'success' => true,
                     'message' => 'Pagamento já gerado',
@@ -4074,7 +4077,8 @@ class MobileController
                         'assinatura_id' => $assinExistId,
                         'payment_url' => $contrato['payment_url'],
                         'preference_id' => $contrato['payment_preference_id'],
-                        'valor_total' => (float) $contrato['valor_total']
+                        'valor_total' => (float) $contrato['valor_total'],
+                        'matriculas_criadas' => $matriculasCriadas
                     ]
                 ], JSON_UNESCAPED_UNICODE));
                 return $response->withHeader('Content-Type', 'application/json');
@@ -4252,6 +4256,9 @@ class MobileController
                 throw $e;
             }
 
+            // ✅ GARANTIR que existem matrículas para os beneficiários
+            $matriculasCriadas = $this->garantirMatriculasPacote($contratoId, $tenantId, $valorTotal);
+
             $response->getBody()->write(json_encode([
                 'success' => true,
                 'data' => [
@@ -4259,7 +4266,8 @@ class MobileController
                     'assinatura_id' => $assinaturaId,
                     'payment_url' => $preferencia['init_point'] ?? null,
                     'preference_id' => $preferencia['id'] ?? null,
-                    'valor_total' => (float) $contrato['valor_total']
+                    'valor_total' => (float) $contrato['valor_total'],
+                    'matriculas_criadas' => $matriculasCriadas
                 ]
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json');
@@ -4271,6 +4279,287 @@ class MobileController
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
+    }
+
+    /**
+     * Garante que existem matrículas para todos os beneficiários de um pacote.
+     * Retrocompatibilidade: cria matrículas se o contrato foi criado antes dessa funcionalidade.
+     *
+     * @param int $contratoId ID do pacote_contratos
+     * @param int $tenantId ID do tenant
+     * @param float $valorTotal Valor total do pacote
+     * @return array Lista de matrículas criadas
+     */
+    private function garantirMatriculasPacote(int $contratoId, int $tenantId, float $valorTotal): array
+    {
+        $matriculasCriadas = [];
+        error_log("[MobileController::garantirMatriculasPacote] Iniciando - contratoId={$contratoId}, tenantId={$tenantId}, valorTotal={$valorTotal}");
+
+        try {
+            // Buscar dados do contrato
+            $stmtContrato = $this->db->prepare("
+                SELECT pc.pacote_id, pc.pagante_usuario_id, p.plano_id, p.qtd_beneficiarios
+                FROM pacote_contratos pc
+                INNER JOIN pacotes p ON p.id = pc.pacote_id
+                WHERE pc.id = ? AND pc.tenant_id = ?
+                LIMIT 1
+            ");
+            $stmtContrato->execute([$contratoId, $tenantId]);
+            $contrato = $stmtContrato->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$contrato) {
+                error_log("[MobileController::garantirMatriculasPacote] Contrato {$contratoId} não encontrado");
+                return [];
+            }
+
+            $planoId = (int) ($contrato['plano_id'] ?? 0);
+            $paganteUsuarioId = (int) ($contrato['pagante_usuario_id'] ?? 0);
+
+            if ($planoId === 0) {
+                error_log("[MobileController::garantirMatriculasPacote] Pacote sem plano_id vinculado, não é possível criar matrículas");
+                return [];
+            }
+
+            // Buscar status 'pendente' e motivo 'compra_pacote'
+            $stmtStatus = $this->db->prepare("SELECT id FROM status_matricula WHERE codigo = 'pendente' LIMIT 1");
+            $stmtStatus->execute();
+            $statusPendente = (int) ($stmtStatus->fetchColumn() ?: 0);
+            
+            // Se não encontrou 'pendente', buscar qualquer status ativo
+            if ($statusPendente === 0) {
+                $stmtStatus2 = $this->db->prepare("SELECT id FROM status_matricula WHERE ativo = 1 ORDER BY id ASC LIMIT 1");
+                $stmtStatus2->execute();
+                $statusPendente = (int) ($stmtStatus2->fetchColumn() ?: 1);
+            }
+
+            $stmtMotivo = $this->db->prepare("SELECT id FROM motivo_matricula WHERE codigo = 'compra_pacote' LIMIT 1");
+            $stmtMotivo->execute();
+            $motivoPacote = (int) ($stmtMotivo->fetchColumn() ?: 0);
+            
+            // Se não encontrou 'compra_pacote', buscar qualquer motivo
+            if ($motivoPacote === 0) {
+                $stmtMotivo2 = $this->db->prepare("SELECT id FROM motivo_matricula ORDER BY id ASC LIMIT 1");
+                $stmtMotivo2->execute();
+                $motivoPacote = (int) ($stmtMotivo2->fetchColumn() ?: 1);
+            }
+
+            // Buscar aluno_id do pagante
+            $paganteAlunoId = null;
+            error_log("[MobileController::garantirMatriculasPacote] Buscando aluno do pagante usuario_id={$paganteUsuarioId}");
+            if ($paganteUsuarioId > 0) {
+                $stmtAluno = $this->db->prepare("
+                    SELECT a.id FROM alunos a
+                    INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = a.usuario_id 
+                        AND tup.tenant_id = :tenant_id AND tup.papel_id = 1
+                    WHERE a.usuario_id = :usuario_id
+                    LIMIT 1
+                ");
+                $stmtAluno->execute(['usuario_id' => $paganteUsuarioId, 'tenant_id' => $tenantId]);
+                $paganteAlunoId = (int) ($stmtAluno->fetchColumn() ?: 0);
+                error_log("[MobileController::garantirMatriculasPacote] paganteAlunoId encontrado via tenant_usuario_papel = {$paganteAlunoId}");
+                
+                // Se não existe aluno, criar automaticamente
+                if ($paganteAlunoId === 0) {
+                    error_log("[MobileController::garantirMatriculasPacote] Pagante usuario_id={$paganteUsuarioId} não tem aluno, criando...");
+                    
+                    // Verificar se existe registro na tabela alunos (sem vínculo no tenant)
+                    $stmtAlunoSemTenant = $this->db->prepare("SELECT id FROM alunos WHERE usuario_id = ? LIMIT 1");
+                    $stmtAlunoSemTenant->execute([$paganteUsuarioId]);
+                    $alunoIdExistente = (int) ($stmtAlunoSemTenant->fetchColumn() ?: 0);
+                    
+                    if ($alunoIdExistente === 0) {
+                        // Criar registro de aluno
+                        $stmtCreateAluno = $this->db->prepare("
+                            INSERT INTO alunos (usuario_id, created_at, updated_at)
+                            VALUES (?, NOW(), NOW())
+                        ");
+                        $stmtCreateAluno->execute([$paganteUsuarioId]);
+                        $paganteAlunoId = (int) $this->db->lastInsertId();
+                        error_log("[MobileController::garantirMatriculasPacote] ✅ Aluno #{$paganteAlunoId} criado para usuario #{$paganteUsuarioId}");
+                    } else {
+                        $paganteAlunoId = $alunoIdExistente;
+                    }
+                    
+                    // Verificar/criar vínculo tenant_usuario_papel
+                    $stmtCheckPapel = $this->db->prepare("
+                        SELECT id FROM tenant_usuario_papel 
+                        WHERE tenant_id = ? AND usuario_id = ? AND papel_id = 1
+                        LIMIT 1
+                    ");
+                    $stmtCheckPapel->execute([$tenantId, $paganteUsuarioId]);
+                    if (!$stmtCheckPapel->fetchColumn()) {
+                        $stmtCreatePapel = $this->db->prepare("
+                            INSERT INTO tenant_usuario_papel (tenant_id, usuario_id, papel_id, created_at)
+                            VALUES (?, ?, 1, NOW())
+                        ");
+                        $stmtCreatePapel->execute([$tenantId, $paganteUsuarioId]);
+                        error_log("[MobileController::garantirMatriculasPacote] ✅ Papel aluno criado para usuario #{$paganteUsuarioId} no tenant #{$tenantId}");
+                    }
+                }
+            }
+
+            // Buscar beneficiários do contrato
+            $stmtBenef = $this->db->prepare("
+                SELECT pb.id as beneficiario_id, pb.aluno_id, pb.matricula_id
+                FROM pacote_beneficiarios pb
+                WHERE pb.pacote_contrato_id = ?
+            ");
+            $stmtBenef->execute([$contratoId]);
+            $beneficiarios = $stmtBenef->fetchAll(\PDO::FETCH_ASSOC);
+            error_log("[MobileController::garantirMatriculasPacote] Beneficiários encontrados: " . json_encode($beneficiarios));
+            error_log("[MobileController::garantirMatriculasPacote] paganteAlunoId após busca = {$paganteAlunoId}");
+
+            // Se não há beneficiários cadastrados, criar para o pagante
+            if (empty($beneficiarios) && $paganteAlunoId > 0) {
+                error_log("[MobileController::garantirMatriculasPacote] Nenhum beneficiário cadastrado, adicionando pagante como beneficiário");
+                $stmtAddBenef = $this->db->prepare("
+                    INSERT INTO pacote_beneficiarios (pacote_contrato_id, aluno_id, created_at)
+                    VALUES (?, ?, NOW())
+                ");
+                $stmtAddBenef->execute([$contratoId, $paganteAlunoId]);
+                $beneficiarios = [['beneficiario_id' => (int) $this->db->lastInsertId(), 'aluno_id' => $paganteAlunoId, 'matricula_id' => null]];
+            }
+
+            // Calcular valor rateado
+            $totalBeneficiarios = count($beneficiarios);
+            if ($totalBeneficiarios === 0) {
+                error_log("[MobileController::garantirMatriculasPacote] Nenhum beneficiário encontrado para contrato {$contratoId}");
+                return [];
+            }
+
+            $valorRateado = round($valorTotal / $totalBeneficiarios, 2);
+            $somaRateio = $valorRateado * ($totalBeneficiarios - 1);
+            $valorUltimo = round($valorTotal - $somaRateio, 2);
+
+            $dataInicio = date('Y-m-d');
+            $dataVencimento = date('Y-m-d', strtotime('+1 month'));
+
+            $i = 0;
+            foreach ($beneficiarios as $benef) {
+                $alunoId = (int) ($benef['aluno_id'] ?? 0);
+                $matriculaRefId = (int) ($benef['matricula_id'] ?? 0);
+                $beneficiarioId = (int) ($benef['beneficiario_id'] ?? 0);
+                $valor = ($i === $totalBeneficiarios - 1) ? $valorUltimo : $valorRateado;
+                $i++;
+
+                // Se já tem matrícula vinculada, verificar se ela REALMENTE EXISTE
+                if ($matriculaRefId > 0) {
+                    $stmtCheckExists = $this->db->prepare("SELECT id FROM matriculas WHERE id = ? LIMIT 1");
+                    $stmtCheckExists->execute([$matriculaRefId]);
+                    if ($stmtCheckExists->fetchColumn()) {
+                        // Matrícula existe, pode pular
+                        error_log("[MobileController::garantirMatriculasPacote] Matrícula #{$matriculaRefId} já existe para aluno #{$alunoId}, pulando");
+                        continue;
+                    } else {
+                        // Matrícula foi deletada! Limpar referência
+                        error_log("[MobileController::garantirMatriculasPacote] ⚠️ Matrícula #{$matriculaRefId} não existe mais no banco! Limpando referência...");
+                        $stmtClearRef = $this->db->prepare("UPDATE pacote_beneficiarios SET matricula_id = NULL WHERE id = ?");
+                        $stmtClearRef->execute([$beneficiarioId]);
+                    }
+                }
+
+                // Verificar se existe matrícula pendente para este aluno neste contrato
+                $stmtCheck = $this->db->prepare("
+                    SELECT id FROM matriculas 
+                    WHERE aluno_id = ? AND tenant_id = ? AND pacote_contrato_id = ?
+                    LIMIT 1
+                ");
+                $stmtCheck->execute([$alunoId, $tenantId, $contratoId]);
+                $matriculaExistente = (int) ($stmtCheck->fetchColumn() ?: 0);
+
+                if ($matriculaExistente > 0) {
+                    // Atualizar pacote_beneficiarios com matricula_id
+                    if ($beneficiarioId > 0) {
+                        $stmtUpBenef = $this->db->prepare("UPDATE pacote_beneficiarios SET matricula_id = ? WHERE id = ?");
+                        $stmtUpBenef->execute([$matriculaExistente, $beneficiarioId]);
+                    }
+                    continue;
+                }
+
+                // Criar matrícula pendente
+                $stmtInsertMat = $this->db->prepare("
+                    INSERT INTO matriculas 
+                    (tenant_id, aluno_id, plano_id, status_id, motivo_id,
+                     data_matricula, data_inicio, data_vencimento, proxima_data_vencimento,
+                     valor, valor_rateado, tipo_cobranca, pacote_contrato_id, periodo_teste, created_at, updated_at)
+                    VALUES 
+                    (?, ?, ?, ?, ?,
+                     ?, ?, ?, ?,
+                     ?, ?, 'avulso', ?, 0, NOW(), NOW())
+                ");
+                $stmtInsertMat->execute([
+                    $tenantId,
+                    $alunoId,
+                    $planoId,
+                    $statusPendente,
+                    $motivoPacote,
+                    $dataInicio,
+                    $dataInicio,
+                    $dataVencimento,
+                    $dataVencimento,
+                    $valor,
+                    $valor,
+                    $contratoId
+                ]);
+
+                $novaMatriculaId = (int) $this->db->lastInsertId();
+
+                // Atualizar pacote_beneficiarios
+                if ($beneficiarioId > 0) {
+                    $stmtUpBenef = $this->db->prepare("UPDATE pacote_beneficiarios SET matricula_id = ? WHERE id = ?");
+                    $stmtUpBenef->execute([$novaMatriculaId, $beneficiarioId]);
+                }
+
+                $matriculasCriadas[] = [
+                    'matricula_id' => $novaMatriculaId,
+                    'aluno_id' => $alunoId,
+                    'valor_rateado' => $valor
+                ];
+
+                error_log("[MobileController::garantirMatriculasPacote] ✅ Matrícula #{$novaMatriculaId} criada para aluno #{$alunoId}");
+            }
+
+            if (!empty($matriculasCriadas)) {
+                error_log("[MobileController::garantirMatriculasPacote] Total de " . count($matriculasCriadas) . " matrículas criadas para contrato #{$contratoId}");
+                
+                // ✅ Vincular a primeira matrícula (do pagante) à assinatura
+                $primeiraMatriculaId = $matriculasCriadas[0]['matricula_id'] ?? null;
+                if ($primeiraMatriculaId) {
+                    $stmtUpdateAssinatura = $this->db->prepare("
+                        UPDATE assinaturas 
+                        SET matricula_id = ? 
+                        WHERE pacote_contrato_id = ? AND tenant_id = ? AND matricula_id IS NULL
+                    ");
+                    $stmtUpdateAssinatura->execute([$primeiraMatriculaId, $contratoId, $tenantId]);
+                    $rowsUpdated = $stmtUpdateAssinatura->rowCount();
+                    error_log("[MobileController::garantirMatriculasPacote] ✅ Assinatura atualizada com matricula_id={$primeiraMatriculaId}, rows={$rowsUpdated}");
+                }
+            } else {
+                // Se não criou matrículas, verificar se existem e vincular à assinatura
+                $stmtMatExist = $this->db->prepare("
+                    SELECT id FROM matriculas 
+                    WHERE pacote_contrato_id = ? AND tenant_id = ?
+                    ORDER BY id ASC LIMIT 1
+                ");
+                $stmtMatExist->execute([$contratoId, $tenantId]);
+                $matriculaExistenteId = (int) ($stmtMatExist->fetchColumn() ?: 0);
+                
+                if ($matriculaExistenteId > 0) {
+                    $stmtUpdateAssinatura = $this->db->prepare("
+                        UPDATE assinaturas 
+                        SET matricula_id = ? 
+                        WHERE pacote_contrato_id = ? AND tenant_id = ? AND matricula_id IS NULL
+                    ");
+                    $stmtUpdateAssinatura->execute([$matriculaExistenteId, $contratoId, $tenantId]);
+                    error_log("[MobileController::garantirMatriculasPacote] ✅ Assinatura vinculada à matrícula existente #{$matriculaExistenteId}");
+                }
+            }
+
+        } catch (\Exception $e) {
+            error_log("[MobileController::garantirMatriculasPacote] ERRO: " . $e->getMessage());
+        }
+
+        return $matriculasCriadas;
     }
 
     /**

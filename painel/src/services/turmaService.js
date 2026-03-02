@@ -163,7 +163,7 @@ export const turmaService = {
     }
   },
 
-  // Replicar turmas para diferentes períodos
+  // Replicar turmas para diferentes períodos (método legado)
   async replicar(diaId, periodo = 'custom', diasSemana = [], mes = null, modalidadeId = null) {
     try {
       const payload = {
@@ -187,6 +187,26 @@ export const turmaService = {
       }
 
       const response = await api.post('/admin/turmas/replicar', payload);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao replicar turmas:', error);
+      throw error;
+    }
+  },
+
+  // Novo método: replicar semana para meses de destino
+  async replicarSemana(semanaData, mesesDestino = [], modalidadeId = null) {
+    try {
+      const payload = {
+        semana_data: semanaData,
+        meses_destino: mesesDestino,
+      };
+
+      if (modalidadeId) {
+        payload.modalidade_id = parseInt(modalidadeId);
+      }
+
+      const response = await api.post('/admin/turmas/replicar-semana', payload);
       return response.data;
     } catch (error) {
       console.error('Erro ao replicar turmas:', error);

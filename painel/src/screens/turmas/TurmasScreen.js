@@ -445,31 +445,68 @@ export default function TurmasScreen() {
 
   const handleReplicar = async () => {
     try {
-      if (periodoReplicacao === 'custom' && diasSemanaSelecionados.length === 0) {
-        showError('Selecione pelo menos um dia da semana');
-        return;
-      }
-
       setReplicando(true);
-      const mes = mesReplicacao || `${dataSelecionada.substring(0, 7)}`;
-      
-      console.log('🔵 [handleReplicar] Chamando API:', {
-        diaId,
-        periodoReplicacao,
-        diasSemanaSelecionados,
-        mes,
-        modalidadeId: modalidadeReplicarId
-      });
-      
-      const resultado = await turmaService.replicar(diaId, periodoReplicacao, diasSemanaSelecionados, mes, modalidadeReplicarId);
+      let resultado;
+
+      if (periodoReplicacao === 'replicar_semana') {
+        const mesesDestino = (mesReplicacao || '')
+          .split(',')
+          .map((mes) => mes.trim())
+          .filter(Boolean);
+
+        if (mesesDestino.length === 0) {
+          showError('Informe pelo menos um mês de destino');
+          setReplicando(false);
+          return;
+        }
+
+        const mesInvalido = mesesDestino.find((mes) => !/^\d{4}-\d{2}$/.test(mes));
+        if (mesInvalido) {
+          showError(`Mês inválido: ${mesInvalido}. Use o formato YYYY-MM`);
+          setReplicando(false);
+          return;
+        }
+
+        console.log('🔵 [handleReplicar] Chamando API replicar-semana:', {
+          semanaData: dataSelecionada,
+          mesesDestino,
+          modalidadeId: modalidadeReplicarId,
+        });
+
+        resultado = await turmaService.replicarSemana(dataSelecionada, mesesDestino, modalidadeReplicarId);
+      } else {
+        if (periodoReplicacao === 'custom' && diasSemanaSelecionados.length === 0) {
+          showError('Selecione pelo menos um dia da semana');
+          setReplicando(false);
+          return;
+        }
+
+        const mes = mesReplicacao || `${dataSelecionada.substring(0, 7)}`;
+
+        console.log('🔵 [handleReplicar] Chamando API legado:', {
+          diaId,
+          periodoReplicacao,
+          diasSemanaSelecionados,
+          mes,
+          modalidadeId: modalidadeReplicarId,
+        });
+
+        resultado = await turmaService.replicar(
+          diaId,
+          periodoReplicacao,
+          diasSemanaSelecionados,
+          mes,
+          modalidadeReplicarId
+        );
+      }
 
       console.log('✅ [handleReplicar] Resposta da API:', resultado);
 
       if (resultado.type === 'success') {
-        // Extrair informações dos detalhes
-        const totalCriadas = resultado.turmas_criadas?.length || 0;
-        
-        let mensagem = `✅ ${totalCriadas} turmas criadas com sucesso!`;
+        const totalCriadas = resultado.turmas_criadas?.length || resultado.total_criadas || 0;
+        const mensagem = totalCriadas > 0
+          ? `✅ ${totalCriadas} turmas criadas com sucesso!`
+          : (resultado.message || 'Replicação concluída com sucesso!');
         
         showSuccess(mensagem);
         setModalReplicarVisible(false);
@@ -1707,6 +1744,24 @@ ${listaTurmas ? `Turmas deletadas:\n${listaTurmas}` : ''}
                         Customizado
                       </Text>
                     </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.toggleButton,
+                        periodoReplicacao === 'replicar_semana' && styles.toggleButtonActive
+                      ]}
+                      onPress={() => setPeriodoReplicacao('replicar_semana')}
+                      disabled={replicando}
+                    >
+                      <Text
+                        style={[
+                          styles.toggleText,
+                          periodoReplicacao === 'replicar_semana' && styles.toggleTextActive
+                        ]}
+                      >
+                        Replicar Semana
+                      </Text>
+                    </TouchableOpacity>
                   </View>
                 </View>
 
@@ -1753,6 +1808,24 @@ ${listaTurmas ? `Turmas deletadas:\n${listaTurmas}` : ''}
                       editable={!replicando}
                     />
                     <Text style={styles.helperText}>Deixe vazio para usar o mês atual ({dataSelecionada.substring(0, 7)})</Text>
+                  </View>
+                )}
+
+                {periodoReplicacao === 'replicar_semana' && (
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>
+                      Meses de Destino
+                      <Text style={styles.required}>*</Text>
+                    </Text>
+                    <TextInput
+                      style={styles.formInput}
+                      placeholder="YYYY-MM, YYYY-MM (ex: 2026-03, 2026-04)"
+                      placeholderTextColor="#9ca3af"
+                      value={mesReplicacao}
+                      onChangeText={setMesReplicacao}
+                      editable={!replicando}
+                    />
+                    <Text style={styles.helperText}>Informe um ou mais meses separados por vírgula</Text>
                   </View>
                 )}
 
