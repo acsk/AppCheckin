@@ -11324,3 +11324,5 @@
 [2026-03-11 13:32:39] GET /admin/assinaturas?page=1&per_page=20
 [2026-03-11 13:32:39] OPTIONS /admin/assinaturas?page=1&per_page=20
 [2026-03-11 13:32:39] GET /admin/assinaturas?page=1&per_page=20
+[2026-03-11 13:37:40] OPTIONS /admin/assinaturas?page=1&per_page=20
+[2026-03-11 13:37:40] GET /admin/assinaturas?page=1&per_page=20

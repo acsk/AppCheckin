@@ -106,12 +106,6 @@ client.interceptors.request.use(
       });
     }
 
-    if (typeof window !== "undefined") {
-      headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
-      headers.Pragma = "no-cache";
-      headers.Expires = "0";
-    }
-
     // Ensure Content-Type only for requests with body (avoid adding on GET)
     const method = (config.method || "GET").toUpperCase();
     const hasBody = ["POST", "PUT", "PATCH", "DELETE"].includes(method);
