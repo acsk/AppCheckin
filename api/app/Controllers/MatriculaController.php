@@ -1352,6 +1352,45 @@ class MatriculaController
         $stmtPagamentos->execute([$matriculaId]);
         $matricula['pagamentos'] = $stmtPagamentos->fetchAll() ?? [];
         $matricula['total_pagamentos'] = (float) array_sum(array_column($matricula['pagamentos'], 'valor'));
+
+        // Buscar possíveis IDs de pagamentos do Mercado Pago relacionados a esta matrícula
+        try {
+            $mpPaymentIds = [];
+
+            // 1) procurar espelho oficial em pagamentos_mercadopago (matricula_id)
+            $stmtMp = $db->prepare("SELECT DISTINCT payment_id FROM pagamentos_mercadopago WHERE matricula_id = ? AND tenant_id = ? AND payment_id IS NOT NULL");
+            $stmtMp->execute([$matriculaId, $tenantId]);
+            $rowsMp = $stmtMp->fetchAll(
+                \PDO::FETCH_COLUMN
+            );
+            if ($rowsMp) {
+                foreach ($rowsMp as $pid) {
+                    if (!empty($pid)) $mpPaymentIds[] = (string)$pid;
+                }
+            }
+
+            // 2) procurar webhooks que contenham external_reference MAT-{id} ou payment_id
+            $externalPattern = 'MAT-' . $matriculaId . '-%';
+            $stmtWp = $db->prepare("SELECT DISTINCT payment_id FROM webhook_payloads_mercadopago WHERE (external_reference LIKE ? OR external_reference = ?) AND payment_id IS NOT NULL");
+            $stmtWp->execute([$externalPattern, 'MAT-' . $matriculaId]);
+            $rowsWp = $stmtWp->fetchAll(\PDO::FETCH_COLUMN);
+            if ($rowsWp) {
+                foreach ($rowsWp as $pid) {
+                    if (!empty($pid)) $mpPaymentIds[] = (string)$pid;
+                }
+            }
+
+            // Unificar e ordenar
+            $mpPaymentIds = array_values(array_unique($mpPaymentIds));
+            $matricula['mercadopago_payment_ids'] = $mpPaymentIds;
+            // Também fornecer um campo prático com o último ID (ou null)
+            $matricula['mercadopago_last_payment_id'] = count($mpPaymentIds) ? $mpPaymentIds[0] : null;
+        } catch (\Exception $e) {
+            // falha não deve impedir retorno da matrícula
+            error_log("[MatriculaController] Erro ao buscar MP payment ids: " . $e->getMessage());
+            $matricula['mercadopago_payment_ids'] = [];
+            $matricula['mercadopago_last_payment_id'] = null;
+        }
         
         $response->getBody()->write(json_encode([
             'matricula' => $matricula,

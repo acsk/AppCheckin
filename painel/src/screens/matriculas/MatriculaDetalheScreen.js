@@ -17,6 +17,7 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import LayoutBase from '../../components/LayoutBase';
 import BaixaPagamentoPlanoModal from '../../components/BaixaPagamentoPlanoModal';
 import { matriculaService } from '../../services/matriculaService';
+import mercadoPagoService from '../../services/mercadoPagoService';
 import { formatarDataParaInput, calcularDiasRestantes } from '../../utils/formatadores';
 import { mascaraData } from '../../utils/masks';
 import { obterMensagemErro } from '../../utils/errorHandler';
@@ -37,6 +38,7 @@ export default function MatriculaDetalheScreen() {
   const [modalEditarVencimento, setModalEditarVencimento] = useState(false);
   const [novaDataVencimento, setNovaDataVencimento] = useState('');
   const [salvandoData, setSalvandoData] = useState(false);
+  const [reprocessandoPagamentoId, setReprocessandoPagamentoId] = useState(null);
   const [modalBaixaPacoteVisible, setModalBaixaPacoteVisible] = useState(false);
   const [baixaPacoteLoading, setBaixaPacoteLoading] = useState(false);
   const [errorModal, setErrorModal] = useState({ visible: false, title: '', message: '' });
@@ -440,6 +442,36 @@ export default function MatriculaDetalheScreen() {
     return statusId === 1 && isVencido(pagamento.data_vencimento);
   };
   const isPagamentoBaixavel = (pagamento) => !pagamento?.data_pagamento;
+  const hasMercadoPagoIds =
+    Array.isArray(matricula?.mercadopago_payment_ids) &&
+    matricula.mercadopago_payment_ids.length > 0 &&
+    Boolean(matricula?.mercadopago_last_payment_id);
+  const isPagamentoNaoPago = (pagamento) => Number(pagamento?.status_pagamento_id) !== 2;
+
+  const handleReprocessarPagamentoMP = async () => {
+    const paymentId =
+      matricula?.mercadopago_last_payment_id ||
+      (Array.isArray(matricula?.mercadopago_payment_ids)
+        ? matricula.mercadopago_payment_ids[0]
+        : null);
+
+    if (!paymentId) {
+      showAlert('Atenção', 'Payment ID do Mercado Pago não encontrado para reprocessamento.');
+      return;
+    }
+
+    try {
+      setReprocessandoPagamentoId(paymentId);
+      const response = await mercadoPagoService.reprocessarPagamento(String(paymentId));
+      showToast(response?.message || 'Reprocessamento iniciado com sucesso.');
+      await carregarDados();
+    } catch (error) {
+      const mensagem = obterMensagemErro(error, 'Não foi possível reprocessar o pagamento no Mercado Pago');
+      showAlert('Erro', mensagem);
+    } finally {
+      setReprocessandoPagamentoId(null);
+    }
+  };
 
   const resumo = calcularResumo();
   const cicloInfo = getCicloInfo();
@@ -824,17 +856,36 @@ export default function MatriculaDetalheScreen() {
                           </View>
                         </View>
                         <View style={{ flex: 1, alignItems: 'center' }}>
-                          {(!isPacote && baixavel) ? (
-                            <Pressable
-                              className="rounded-lg bg-orange-500 px-3 py-1.5"
-                              style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                              onPress={() => handleBaixaPagamento(pagamento)}
-                            >
-                              <Text className="text-[11px] font-semibold text-white">Dar baixa</Text>
-                            </Pressable>
-                          ) : (
-                            <Text className="text-[11px] text-slate-400">—</Text>
-                          )}
+                          <View className="flex-row items-center gap-2">
+                            {(!isPacote && baixavel) ? (
+                              <Pressable
+                                className="rounded-lg bg-orange-500 px-3 py-1.5"
+                                style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                                onPress={() => handleBaixaPagamento(pagamento)}
+                              >
+                                <Text className="text-[11px] font-semibold text-white">Dar baixa</Text>
+                              </Pressable>
+                            ) : null}
+
+                            {hasMercadoPagoIds && isPagamentoNaoPago(pagamento) ? (
+                              <Pressable
+                                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5"
+                                style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                                onPress={handleReprocessarPagamentoMP}
+                                disabled={reprocessandoPagamentoId !== null}
+                              >
+                                {reprocessandoPagamentoId !== null ? (
+                                  <ActivityIndicator size="small" color="#f97316" />
+                                ) : (
+                                  <Text className="text-[11px] font-semibold text-slate-700">Reprocessar</Text>
+                                )}
+                              </Pressable>
+                            ) : null}
+
+                            {(!(!isPacote && baixavel) && !(hasMercadoPagoIds && isPagamentoNaoPago(pagamento))) ? (
+                              <Text className="text-[11px] text-slate-400">—</Text>
+                            ) : null}
+                          </View>
                         </View>
                       </View>
                     );

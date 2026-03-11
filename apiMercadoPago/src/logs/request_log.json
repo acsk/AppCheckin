@@ -1,25 +1,5 @@
 [
     {
-        "time": "2026-02-26 03:25:54",
-        "method": "GET",
-        "uri": "\/purchases",
-        "query": "",
-        "headers": {
-            "content_type": "",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-26 03:26:34",
-        "method": "GET",
-        "uri": "\/purchases",
-        "query": "",
-        "headers": {
-            "content_type": "",
-            "authorization": ""
-        }
-    },
-    {
         "time": "2026-02-26 03:26:34",
         "method": "GET",
         "uri": "\/.well-known\/appspecific\/com.chrome.devtools.json",
@@ -1993,6 +1973,26 @@
         "time": "2026-03-02 18:09:28",
         "method": "GET",
         "uri": "\/checkout\/277639107037",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-03-03 13:20:39",
+        "method": "GET",
+        "uri": "\/checkout\/277639107037",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-03-03 13:20:39",
+        "method": "GET",
+        "uri": "\/favicon.ico",
         "query": "",
         "headers": {
             "content_type": "",
