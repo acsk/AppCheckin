@@ -1,145 +1,5 @@
 [
     {
-        "time": "2026-02-26 03:26:34",
-        "method": "GET",
-        "uri": "\/.well-known\/appspecific\/com.chrome.devtools.json",
-        "query": "",
-        "headers": {
-            "content_type": "",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-26 03:26:34",
-        "method": "GET",
-        "uri": "\/api\/purchases",
-        "query": "limit=100",
-        "headers": {
-            "content_type": "",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-26 03:26:40",
-        "method": "GET",
-        "uri": "\/api\/purchases",
-        "query": "limit=100",
-        "headers": {
-            "content_type": "",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-26 11:26:20",
-        "method": "GET",
-        "uri": "\/purchases",
-        "query": "",
-        "headers": {
-            "content_type": "",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-26 11:26:20",
-        "method": "GET",
-        "uri": "\/.well-known\/appspecific\/com.chrome.devtools.json",
-        "query": "",
-        "headers": {
-            "content_type": "",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-26 11:26:20",
-        "method": "GET",
-        "uri": "\/api\/purchases",
-        "query": "limit=100",
-        "headers": {
-            "content_type": "",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-27 13:29:38",
-        "method": "POST",
-        "uri": "\/checkout\/preferences",
-        "query": "",
-        "headers": {
-            "content_type": "application\/json",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-27 13:29:38",
-        "method": "GET",
-        "uri": "\/checkout\/453246467285",
-        "query": "",
-        "headers": {
-            "content_type": "",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-27 13:29:39",
-        "method": "GET",
-        "uri": "\/favicon.ico",
-        "query": "",
-        "headers": {
-            "content_type": "",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-27 13:29:46",
-        "method": "POST",
-        "uri": "\/checkout\/453246467285\/process",
-        "query": "",
-        "headers": {
-            "content_type": "application\/json",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-27 13:29:46",
-        "method": "GET",
-        "uri": "\/v1\/payments\/453246467285",
-        "query": "",
-        "headers": {
-            "content_type": "application\/json",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-27 13:29:46",
-        "method": "GET",
-        "uri": "\/v1\/payments\/453246467285",
-        "query": "",
-        "headers": {
-            "content_type": "application\/json",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-27 13:40:06",
-        "method": "GET",
-        "uri": "\/checkout\/453246467285",
-        "query": "",
-        "headers": {
-            "content_type": "",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-27 13:40:29",
-        "method": "GET",
-        "uri": "\/checkout\/453246467285",
-        "query": "",
-        "headers": {
-            "content_type": "",
-            "authorization": ""
-        }
-    },
-    {
         "time": "2026-02-27 13:40:53",
         "method": "GET",
         "uri": "\/checkout\/453246467285",
@@ -1996,6 +1856,146 @@
         "query": "",
         "headers": {
             "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-03-11 13:31:11",
+        "method": "GET",
+        "uri": "\/v1\/payments\/search",
+        "query": "external_reference=PAC-19-1772474664&sort=date_created&criteria=desc",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-03-11 13:31:19",
+        "method": "GET",
+        "uri": "\/v1\/payments\/search",
+        "query": "external_reference=PAC-19-1772474664&sort=date_created&criteria=desc",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-03-11 13:31:31",
+        "method": "GET",
+        "uri": "\/v1\/payments\/423433232432",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-03-11 13:31:31",
+        "method": "GET",
+        "uri": "\/v1\/payments\/423433232432",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-03-11 13:31:31",
+        "method": "GET",
+        "uri": "\/api\/payments\/423433232432",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-03-11 13:31:31",
+        "method": "GET",
+        "uri": "\/authorized_payments\/423433232432",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-03-11 13:31:32",
+        "method": "GET",
+        "uri": "\/v1\/payments\/423433232432",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-03-11 13:31:33",
+        "method": "GET",
+        "uri": "\/v1\/payments\/423433232432",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-03-11 13:31:33",
+        "method": "GET",
+        "uri": "\/api\/payments\/423433232432",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-03-11 13:31:33",
+        "method": "GET",
+        "uri": "\/authorized_payments\/423433232432",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-03-11 13:32:23",
+        "method": "GET",
+        "uri": "\/v1\/payments\/149133802243",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-03-11 13:32:23",
+        "method": "GET",
+        "uri": "\/v1\/payments\/149133802243",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-03-11 13:32:23",
+        "method": "GET",
+        "uri": "\/api\/payments\/149133802243",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-03-11 13:32:23",
+        "method": "GET",
+        "uri": "\/authorized_payments\/149133802243",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
             "authorization": ""
         }
     }

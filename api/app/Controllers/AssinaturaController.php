@@ -446,7 +446,7 @@ class AssinaturaController
             }
             
             $stmt = $this->db->prepare("
-                  SELECT a.id, a.status_id, a.valor, a.data_inicio, a.data_fim, a.proxima_cobranca,
+                  SELECT a.id, a.matricula_id, a.status_id, a.valor, a.data_inicio, a.data_fim, a.proxima_cobranca,
                        a.ultima_cobranca, a.gateway_assinatura_id as mp_preapproval_id,
                        a.gateway_preference_id, a.external_reference, a.payment_url, a.tipo_cobranca,
                       a.status_gateway, a.cancelado_por_id,
@@ -533,6 +533,49 @@ class AssinaturaController
                     $assinaturaData['pode_pagar'] = true;
                 } else {
                     $assinaturaData['pode_pagar'] = false;
+                }
+
+                // Se está pendente, anexar possíveis IDs do Mercado Pago relacionados à matrícula/assinatura
+                try {
+                    $assinaturaData['mercadopago_payment_ids'] = [];
+                    $assinaturaData['mercadopago_last_payment_id'] = null;
+
+                    if ($isPendente) {
+                        $mpPaymentIds = [];
+                        $matriculaId = (int) ($row['matricula_id'] ?? 0);
+
+                        if ($matriculaId > 0) {
+                            // 1) procurar espelho oficial em pagamentos_mercadopago
+                            $stmtMp = $this->db->prepare("SELECT DISTINCT payment_id FROM pagamentos_mercadopago WHERE matricula_id = ? AND tenant_id = ? AND payment_id IS NOT NULL");
+                            $stmtMp->execute([$matriculaId, $tenantId]);
+                            $rowsMp = $stmtMp->fetchAll(\PDO::FETCH_COLUMN);
+                            if ($rowsMp) foreach ($rowsMp as $pid) if (!empty($pid)) $mpPaymentIds[] = (string)$pid;
+
+                            // 2) procurar webhooks que contenham external_reference MAT-{id}
+                            $externalPattern = 'MAT-' . $matriculaId . '-%';
+                            $stmtWp = $this->db->prepare("SELECT DISTINCT payment_id FROM webhook_payloads_mercadopago WHERE (external_reference LIKE ? OR external_reference = ?) AND payment_id IS NOT NULL");
+                            $stmtWp->execute([$externalPattern, 'MAT-' . $matriculaId]);
+                            $rowsWp = $stmtWp->fetchAll(\PDO::FETCH_COLUMN);
+                            if ($rowsWp) foreach ($rowsWp as $pid) if (!empty($pid)) $mpPaymentIds[] = (string)$pid;
+                        } else {
+                            // Sem matrícula associada — tentar usar external_reference da assinatura
+                            $externalReference = $row['external_reference'] ?? null;
+                            if (!empty($externalReference)) {
+                                $stmtWp2 = $this->db->prepare("SELECT DISTINCT payment_id FROM webhook_payloads_mercadopago WHERE external_reference = ? AND payment_id IS NOT NULL");
+                                $stmtWp2->execute([$externalReference]);
+                                $rowsWp2 = $stmtWp2->fetchAll(\PDO::FETCH_COLUMN);
+                                if ($rowsWp2) foreach ($rowsWp2 as $pid) if (!empty($pid)) $mpPaymentIds[] = (string)$pid;
+                            }
+                        }
+
+                        $mpPaymentIds = array_values(array_unique($mpPaymentIds));
+                        $assinaturaData['mercadopago_payment_ids'] = $mpPaymentIds;
+                        $assinaturaData['mercadopago_last_payment_id'] = count($mpPaymentIds) ? $mpPaymentIds[0] : null;
+                    }
+                } catch (\Exception $e) {
+                    error_log("[minhasAssinaturas] Erro ao buscar MP ids: " . $e->getMessage());
+                    $assinaturaData['mercadopago_payment_ids'] = [];
+                    $assinaturaData['mercadopago_last_payment_id'] = null;
                 }
                 
                 $assinaturas[] = $assinaturaData;

@@ -274,9 +274,9 @@ return function ($app) {
     // Endpoints de Debug para Webhook MP (protegidos por Admin)
     $app->get('/api/webhooks/mercadopago/list', [MercadoPagoWebhookController::class, 'listarWebhooks'])->add(AdminMiddleware::class)->add(AuthMiddleware::class);
     $app->get('/api/webhooks/mercadopago/show/{id}', [MercadoPagoWebhookController::class, 'mostrarWebhook'])->add(AdminMiddleware::class)->add(AuthMiddleware::class);
-    $app->post('/api/webhooks/mercadopago/reprocess/{id}', [MercadoPagoWebhookController::class, 'reprocessarWebhook'])->add(AdminMiddleware::class)->add(AuthMiddleware::class);
-    $app->get('/api/webhooks/mercadopago/payment/{paymentId}', [MercadoPagoWebhookController::class, 'buscarPagamentoDebug'])->add(AdminMiddleware::class)->add(AuthMiddleware::class);
-    $app->post('/api/webhooks/mercadopago/payment/{paymentId}/reprocess', [MercadoPagoWebhookController::class, 'reprocessarPagamento'])->add(AdminMiddleware::class)->add(AuthMiddleware::class);
+    $app->post('/api/webhooks/mercadopago/reprocess/{id}', [MercadoPagoWebhookController::class, 'reprocessarWebhook'])->add(AuthMiddleware::class);
+    $app->get('/api/webhooks/mercadopago/payment/{paymentId}', [MercadoPagoWebhookController::class, 'buscarPagamentoDebug'])->add(AuthMiddleware::class);
+    $app->post('/api/webhooks/mercadopago/payment/{paymentId}/reprocess', [MercadoPagoWebhookController::class, 'reprocessarPagamento'])->add(AuthMiddleware::class);
     
     // Cadastro público para Mobile: cria usuário com senha = CPF e vincula ao tenant
     $app->post('/auth/register-mobile', function($request, $response) {

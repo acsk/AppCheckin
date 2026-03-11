@@ -44,6 +44,8 @@ interface PlanoAssinatura {
 interface Assinatura {
   id: number;
   matricula_id?: number | null;
+  mercadopago_payment_ids?: (string | number)[] | null;
+  mercadopago_last_payment_id?: string | number | null;
   status: StatusAssinatura;
   valor: number;
   tipo_cobranca?: string | null;
@@ -112,7 +114,7 @@ export default function MinhasAssinaturasScreen() {
   const router = useRouter();
 
   // Verificar autenticação - se não autenticado, redireciona
-  const { isLoading: isAuthChecking } = useProtectedRoute();
+  useProtectedRoute();
 
   const [assinaturas, setAssinaturas] = useState<Assinatura[]>([]);
   const [pacotes, setPacotes] = useState<PacoteContrato[]>([]);
@@ -126,6 +128,10 @@ export default function MinhasAssinaturasScreen() {
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
   const [assinaturaParaCancelar, setAssinaturaParaCancelar] =
     useState<Assinatura | null>(null);
+  const [reprocessModalVisible, setReprocessModalVisible] = useState(false);
+  const [assinaturaParaReprocessar, setAssinaturaParaReprocessar] =
+    useState<Assinatura | null>(null);
+  const [reprocessando, setReprocessando] = useState<number | null>(null);
   const [errorModalVisible, setErrorModalVisible] = useState(false);
   const [errorModalData, setErrorModalData] = useState<ErrorModalData>({
     title: "",
@@ -372,9 +378,11 @@ export default function MinhasAssinaturasScreen() {
         console.log("✅ Resposta do cancelamento:", data);
 
         if (data.success) {
+          const dataLimite =
+            formatDate(assinatura.proxima_cobranca) || "o fim do período atual";
           showErrorModal(
             "✅ Cancelada com Sucesso",
-            `Sua assinatura de ${assinatura.plano.nome} foi cancelada.\n\nA cobrança automática foi interrompida e você poderá usar o serviço até ${new Date(assinatura.proxima_cobranca).toLocaleDateString("pt-BR")}.`,
+            `Sua assinatura de ${assinatura.plano.nome} foi cancelada.\n\nA cobrança automática foi interrompida e você poderá usar o serviço até ${dataLimite}.`,
             "success",
           );
 
@@ -581,6 +589,86 @@ export default function MinhasAssinaturasScreen() {
     [apiUrl],
   );
 
+  const confirmarReprocessamento = useCallback(
+    async (assinatura: Assinatura) => {
+      const paymentIds = Array.isArray(assinatura.mercadopago_payment_ids)
+        ? assinatura.mercadopago_payment_ids
+        : [];
+      const paymentId =
+        assinatura.mercadopago_last_payment_id ?? paymentIds[0] ?? null;
+
+      if (!paymentId) {
+        showErrorModal(
+          "⚠️ Payment ID não encontrado",
+          "Não foi possível identificar um pagamento para reprocessar.",
+          "warning",
+        );
+        return;
+      }
+
+      try {
+        setReprocessando(assinatura.id);
+
+        const token = await AsyncStorage.getItem("@appcheckin:token");
+        if (!token) {
+          throw new Error("Token não encontrado");
+        }
+
+        const url = `${apiUrl}/api/webhooks/mercadopago/payment/${paymentId}/reprocess`;
+        const response = await fetch(url, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        const text = await response.text();
+        let json: any = {};
+        try {
+          json = text ? JSON.parse(text) : {};
+        } catch {
+          json = {};
+        }
+
+        if (!response.ok || json?.success === false) {
+          if (response.status === 401) {
+            await AsyncStorage.removeItem("@appcheckin:token");
+            await AsyncStorage.removeItem("@appcheckin:user");
+            router.replace("/(auth)/login");
+            return;
+          }
+
+          const msg =
+            json?.message ||
+            json?.error ||
+            text ||
+            "Não foi possível reprocessar o pagamento.";
+          showErrorModal("⚠️ Erro ao reprocessar", msg, "warning");
+          return;
+        }
+
+        showErrorModal(
+          "✅ Reprocessamento iniciado",
+          json?.message ||
+            "Solicitação de reprocessamento enviada com sucesso.",
+          "success",
+        );
+
+        setTimeout(() => {
+          fetchAssinaturasCallback(apiUrl);
+        }, 1200);
+      } catch (err) {
+        const errorMsg =
+          err instanceof Error ? err.message : "Erro ao reprocessar pagamento";
+        showErrorModal("❌ Erro ao reprocessar", errorMsg, "error");
+      } finally {
+        setReprocessando(null);
+      }
+    },
+    [apiUrl, fetchAssinaturasCallback, router],
+  );
+
   const renderAssinatura = ({ item }: { item: Assinatura }) => {
     const dataInicioText = formatDate(item.data_inicio) || "-";
     const isAtiva = item.status.codigo === "ativa";
@@ -604,6 +692,11 @@ export default function MinhasAssinaturasScreen() {
     const podePagar =
       isPendente && !!item.payment_url && item.pode_pagar !== false;
     const podeCancelarDiaria = isAvulso && isPago && !!item.matricula_id;
+    const paymentIds = Array.isArray(item.mercadopago_payment_ids)
+      ? item.mercadopago_payment_ids
+      : [];
+    const podeReprocessar =
+      paymentIds.length > 0 || !!item.mercadopago_last_payment_id;
 
     const valorFormatado = formatCurrency(item.valor);
 
@@ -682,6 +775,7 @@ export default function MinhasAssinaturasScreen() {
         </View>
 
         {(podePagar ||
+          podeReprocessar ||
           podeCancelarDiaria ||
           (!isAvulso && (isAtiva || isPendente))) && (
           <View style={styles.actionStack}>
@@ -710,6 +804,29 @@ export default function MinhasAssinaturasScreen() {
                     <Feather name="x-circle" size={16} color="#fff" />
                     <Text style={styles.botaoCancelarDiariaTexto}>
                       Cancelar diária
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+
+            {podeReprocessar && (
+              <TouchableOpacity
+                style={styles.botaoReprocessar}
+                onPress={() => {
+                  setAssinaturaParaReprocessar(item);
+                  setReprocessModalVisible(true);
+                }}
+                disabled={reprocessando === item.id}
+                activeOpacity={0.8}
+              >
+                {reprocessando === item.id ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <Feather name="rotate-cw" size={16} color="#fff" />
+                    <Text style={styles.botaoReprocessarTexto}>
+                      Reprocessar
                     </Text>
                   </>
                 )}
@@ -1015,11 +1132,17 @@ export default function MinhasAssinaturasScreen() {
 
             <Text style={styles.modalTitle}>Cancelar Assinatura</Text>
 
-            {assinaturaParaCancelar && (
-              <Text style={styles.modalMessage}>
-                {`Tem certeza que deseja cancelar a assinatura de ${assinaturaParaCancelar.plano.nome}?\n\nA cobrança automática será interrompida e você poderá usar o plano até ${new Date(assinaturaParaCancelar.proxima_cobranca).toLocaleDateString("pt-BR")}.\n\nEsta ação não pode ser desfeita.`}
-              </Text>
-            )}
+            {assinaturaParaCancelar &&
+              (() => {
+                const dataCancelamento =
+                  formatDate(assinaturaParaCancelar.proxima_cobranca) ||
+                  "o fim do período atual";
+                return (
+                  <Text style={styles.modalMessage}>
+                    {`Tem certeza que deseja cancelar a assinatura de ${assinaturaParaCancelar.plano.nome}?\n\nA cobrança automática será interrompida e você poderá usar o plano até ${dataCancelamento}.\n\nEsta ação não pode ser desfeita.`}
+                  </Text>
+                );
+              })()}
 
             <View style={styles.confirmButtons}>
               <TouchableOpacity
@@ -1043,6 +1166,54 @@ export default function MinhasAssinaturasScreen() {
               >
                 <Text style={styles.confirmButtonCancelarText}>
                   Sim, Cancelar
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Error Modal */}
+      <Modal visible={reprocessModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View
+              style={[
+                styles.modalIcon,
+                { backgroundColor: "rgba(59, 130, 246, 0.1)" },
+              ]}
+            >
+              <Feather name="rotate-cw" size={40} color="#2563eb" />
+            </View>
+
+            <Text style={styles.modalTitle}>Reprocessar Pagamento</Text>
+
+            <Text style={styles.modalMessage}>
+              {`Deseja reprocessar os pagamentos da assinatura${assinaturaParaReprocessar?.plano?.nome ? ` ${assinaturaParaReprocessar.plano.nome}` : ""}?\n\nEssa ação tentará sincronizar novamente os pagamentos do Mercado Pago.`}
+            </Text>
+
+            <View style={styles.confirmButtons}>
+              <TouchableOpacity
+                style={styles.confirmButtonManter}
+                onPress={() => {
+                  setReprocessModalVisible(false);
+                  setAssinaturaParaReprocessar(null);
+                }}
+              >
+                <Text style={styles.confirmButtonManterText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmButtonReprocessar}
+                onPress={() => {
+                  setReprocessModalVisible(false);
+                  if (assinaturaParaReprocessar) {
+                    confirmarReprocessamento(assinaturaParaReprocessar);
+                  }
+                  setAssinaturaParaReprocessar(null);
+                }}
+              >
+                <Text style={styles.confirmButtonCancelarText}>
+                  Sim, Reprocessar
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1569,6 +1740,22 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
 
+  botaoReprocessar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#2563eb",
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    gap: 8,
+  },
+  botaoReprocessarTexto: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+
   /* Botão Cancelar */
   botaoCancelar: {
     flexDirection: "row",
@@ -1772,6 +1959,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: "center",
     backgroundColor: "#DC3545",
+  },
+
+  confirmButtonReprocessar: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 12,
+    alignItems: "center",
+    backgroundColor: "#2563eb",
   },
 
   confirmButtonCancelarText: {
