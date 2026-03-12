@@ -81,9 +81,27 @@ try {
             continue;
         }
 
-        $sqlP = "SELECT id, payment_id, status_id, status, status_detail, date_created FROM pagamentos_mercadopago WHERE matricula_id = ? AND DATE(date_created) = CURDATE() AND (status_id IS NULL OR status_id <> 6)";
-        $stmtP = $pdo->prepare($sqlP);
-        $stmtP->execute([$matriculaId]);
+        // Detectar se a coluna status_id existe
+        $hasStatusId = false;
+        try {
+            $colCheck = $pdo->query("SHOW COLUMNS FROM pagamentos_mercadopago LIKE 'status_id'");
+            $hasStatusId = ($colCheck && $colCheck->rowCount() > 0);
+        } catch (Exception $e) {
+            // se a query de show columns falhar, assumimos que não existe
+            $hasStatusId = false;
+        }
+
+        if ($hasStatusId) {
+            $sqlP = "SELECT id, payment_id, status_id, status, status_detail, date_created FROM pagamentos_mercadopago WHERE matricula_id = ? AND DATE(date_created) = CURDATE() AND (status_id IS NULL OR status_id <> 6)";
+            $stmtP = $pdo->prepare($sqlP);
+            $stmtP->execute([$matriculaId]);
+        } else {
+            // fallback: tabela antiga sem status_id, reprocessar somente quando status = 'pending'
+            logMsg("⚠️  Coluna status_id não encontrada — usando filtro por texto (status='pending') para reprocessar", $quiet);
+            $sqlP = "SELECT id, payment_id, status, status_detail, date_created FROM pagamentos_mercadopago WHERE matricula_id = ? AND DATE(date_created) = CURDATE() AND LOWER(status) = 'pending'";
+            $stmtP = $pdo->prepare($sqlP);
+            $stmtP->execute([$matriculaId]);
+        }
         $pagamentos = $stmtP->fetchAll(PDO::FETCH_ASSOC) ?? [];
 
         logMsg("Assinatura {$assinaturaId} (matricula {$matriculaId}) - pagamentos a reprocessar: " . count($pagamentos), $quiet);
