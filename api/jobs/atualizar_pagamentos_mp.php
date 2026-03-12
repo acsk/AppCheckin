@@ -13,58 +13,92 @@
  *  php jobs/reprocess_today_payments.php [--dry-run]
  */
 
+define('LOCK_FILE', '/tmp/atualizar_pagamentos_mp.lock');
+define('MAX_EXECUTION_TIME', 300);
+
+$options = getopt('', ['dry-run', 'quiet', 'tenant:','verbose']);
+$dryRun = isset($options['dry-run']);
+$quiet = isset($options['quiet']);
+$tenantId = isset($options['tenant']) ? (int)$options['tenant'] : null;
+$verbose = isset($options['verbose']);
+
 $root = dirname(__DIR__);
-require_once $root . '/config/database.php';
+$logFile = $root . '/storage/logs/atualizar_pagamentos_mp.log';
 
-$dryRun = in_array('--dry-run', $argv ?? []);
-$logFile = $root . '/storage/logs/reprocess_today_payments.log';
-
-function logMsg($msg) {
-    global $logFile;
-    $ts = (new DateTime())->format('Y-m-d H:i:s');
-    file_put_contents($logFile, "[$ts] $msg\n", FILE_APPEND);
+function logMsg($message, $isQuiet = false, $toFile = true) {
+    global $logFile, $verbose;
+    $ts = date('Y-m-d H:i:s');
+    $line = "[$ts] $message";
+    if (!$isQuiet) {
+        echo $line . "\n";
+    }
+    if ($toFile) file_put_contents($logFile, $line . "\n", FILE_APPEND);
 }
 
-$db = require $root . '/config/database.php';
-
-logMsg('Iniciando job reprocess_today_payments' . ($dryRun ? ' (dry-run)' : ''));
+// Lock
+if (file_exists(LOCK_FILE)) {
+    $lockTime = filemtime(LOCK_FILE);
+    if (time() - $lockTime > 600) {
+        unlink(LOCK_FILE);
+        logMsg("⚠️  Lock antigo removido", $quiet);
+    } else {
+        logMsg("❌ Job já está em execução (lock ativo)", $quiet);
+        exit(1);
+    }
+}
+file_put_contents(LOCK_FILE, getmypid());
+set_time_limit(MAX_EXECUTION_TIME);
 
 try {
-    $stmt = $db->prepare("SELECT id, tenant_id, matricula_id, gateway_id, gateway_assinatura_id, criado_em FROM assinaturas WHERE DATE(criado_em) = CURDATE()");
-    $stmt->execute();
-    $assinaturas = $stmt->fetchAll(PDO::FETCH_ASSOC) ?? [];
+    logMsg("🚀 Iniciando job: atualizar_pagamentos_mp" . ($dryRun ? ' (dry-run)' : ''), $quiet);
 
-    logMsg('Assinaturas encontradas: ' . count($assinaturas));
+    // Conectar DB
+    require_once __DIR__ . '/../config/database.php';
+    if (!isset($pdo) || !$pdo) {
+        // config/database.php retorna PDO, capture em $pdo
+        $pdo = require __DIR__ . '/../config/database.php';
+    }
+    if (!isset($pdo)) throw new Exception('Erro ao conectar ao banco');
+
+    $sqlAss = "SELECT id, tenant_id, matricula_id, gateway_id, gateway_assinatura_id, criado_em FROM assinaturas WHERE DATE(criado_em) = CURDATE()";
+    if ($tenantId) {
+        $sqlAss .= " AND tenant_id = ?";
+        $stmt = $pdo->prepare($sqlAss);
+        $stmt->execute([$tenantId]);
+    } else {
+        $stmt = $pdo->prepare($sqlAss);
+        $stmt->execute();
+    }
+    $assinaturas = $stmt->fetchAll(PDO::FETCH_ASSOC) ?? [];
+    logMsg('Assinaturas encontradas: ' . count($assinaturas), $quiet);
 
     foreach ($assinaturas as $ass) {
         $matriculaId = $ass['matricula_id'];
         $assinaturaId = $ass['id'];
 
         if (empty($matriculaId)) {
-            logMsg("Assinatura {$assinaturaId} sem matricula_id — pulando");
+            logMsg("Assinatura {$assinaturaId} sem matricula_id — pulando", $quiet);
             continue;
         }
 
-        // Buscar pagamentos do mesmo dia para esta matricula que não estejam aprovados
-        $stmtP = $db->prepare(
-            "SELECT id, payment_id, status, status_detail, date_created FROM pagamentos_mercadopago WHERE matricula_id = ? AND DATE(date_created) = CURDATE() AND (status IS NULL OR LOWER(status) != 'approved')"
-        );
+        $sqlP = "SELECT id, payment_id, status, status_detail, date_created FROM pagamentos_mercadopago WHERE matricula_id = ? AND DATE(date_created) = CURDATE() AND (status IS NULL OR LOWER(status) != 'approved')";
+        $stmtP = $pdo->prepare($sqlP);
         $stmtP->execute([$matriculaId]);
         $pagamentos = $stmtP->fetchAll(PDO::FETCH_ASSOC) ?? [];
 
-        logMsg("Assinatura {$assinaturaId} (matricula {$matriculaId}) - pagamentos a reprocessar: " . count($pagamentos));
+        logMsg("Assinatura {$assinaturaId} (matricula {$matriculaId}) - pagamentos a reprocessar: " . count($pagamentos), $quiet);
 
         foreach ($pagamentos as $pg) {
             $paymentId = $pg['payment_id'] ?? null;
             if (empty($paymentId)) {
-                logMsg("Pagamento registro {$pg['id']} sem payment_id — pulando");
+                logMsg("Pagamento registro {$pg['id']} sem payment_id — pulando", $quiet);
                 continue;
             }
 
             $url = "https://api.appcheckin.com.br/api/webhooks/mercadopago/payment/{$paymentId}/reprocess";
 
             if ($dryRun) {
-                logMsg("[dry-run] POST {$url}");
+                logMsg("[dry-run] POST {$url}", $quiet);
                 continue;
             }
 
@@ -74,7 +108,6 @@ try {
             curl_setopt($ch, CURLOPT_POST, true);
             curl_setopt($ch, CURLOPT_TIMEOUT, 30);
             curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-            // se necessário, incluir cabeçalhos de autenticação (ex: Authorization) — adicionar aqui
             curl_setopt($ch, CURLOPT_HTTPHEADER, [
                 'Content-Type: application/json'
             ]);
@@ -85,17 +118,19 @@ try {
             curl_close($ch);
 
             if ($err) {
-                logMsg("Erro ao chamar reprocess para payment {$paymentId}: {$err}");
+                logMsg("Erro ao chamar reprocess para payment {$paymentId}: {$err}", $quiet);
             } else {
-                logMsg("Reprocess payment {$paymentId} - HTTP {$httpCode} - resposta: " . substr($resp ?? '', 0, 1000));
+                logMsg("Reprocess payment {$paymentId} - HTTP {$httpCode} - resposta: " . substr($resp ?? '', 0, 1000), $quiet);
             }
         }
     }
 
-    logMsg('Job finalizado');
+    if (file_exists(LOCK_FILE)) unlink(LOCK_FILE);
+    logMsg('Job finalizado', $quiet);
+    exit(0);
+
 } catch (Exception $e) {
-    logMsg('Erro no job: ' . $e->getMessage());
+    if (file_exists(LOCK_FILE)) unlink(LOCK_FILE);
+    logMsg('❌ ERRO: ' . $e->getMessage());
     exit(1);
 }
-
-return 0;
