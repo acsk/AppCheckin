@@ -19,14 +19,13 @@ import { matriculaService } from '../../services/matriculaService';
 import { StyleSheet } from 'react-native';
 
 export default function MatriculasScreen() {
-  const POR_PAGINA = 1000;
+  const POR_PAGINA = 200;
   const router = useRouter();
   const { width } = useWindowDimensions();
   const [matriculas, setMatriculas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [serverSearchTerm, setServerSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
   const [cache, setCache] = useState({});
   const [deletePreview, setDeletePreview] = useState({
@@ -42,14 +41,21 @@ export default function MatriculasScreen() {
 
   const isMobile = width < 768;
 
+  const normalizarTextoBusca = (valor) =>
+    String(valor || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+
   // Função de filtro
   const filteredMatriculas = matriculas.filter(matricula => {
-    const term = searchTerm.trim().toLowerCase();
-    const matchSearch = term === '' || 
-      matricula.usuario_nome?.toLowerCase().includes(term) ||
-      matricula.usuario_email?.toLowerCase().includes(term) ||
-      matricula.plano_nome?.toLowerCase().includes(term) ||
-      matricula.modalidade_nome?.toLowerCase().includes(term);
+    const term = normalizarTextoBusca(searchTerm);
+    const matchSearch = term === '' ||
+      normalizarTextoBusca(matricula.usuario_nome).includes(term) ||
+      normalizarTextoBusca(matricula.usuario_email).includes(term) ||
+      normalizarTextoBusca(matricula.plano_nome).includes(term) ||
+      normalizarTextoBusca(matricula.modalidade_nome).includes(term);
     
     // Mapear filtro de texto para status_id
     const statusMap = { 'ativa': 1, 'vencida': 2, 'cancelada': 3, 'finalizada': 4, 'pendente': 5, 'bloqueado': 6 };
@@ -70,11 +76,11 @@ export default function MatriculasScreen() {
       statusEffectRef.current = true;
       return;
     }
-    carregarMatriculas({ busca: serverSearchTerm });
+    carregarMatriculas();
   }, [statusFilter]);
 
-  const buildCacheKey = ({ porPagina, status, incluirInativos, alunoId, busca }) =>
-    JSON.stringify({ porPagina, status, incluirInativos, alunoId, busca });
+  const buildCacheKey = ({ porPagina, status, incluirInativos, alunoId }) =>
+    JSON.stringify({ porPagina, status, incluirInativos, alunoId });
 
   const normalizeLista = (data) => {
     if (Array.isArray(data?.matriculas)) return data.matriculas;
@@ -83,17 +89,66 @@ export default function MatriculasScreen() {
     return [];
   };
 
-  const carregarMatriculas = async ({ busca, force = false } = {}) => {
+  const extractPagination = (data, fallbackPorPagina) => {
+    const paginacao = data?.paginacao || data?.pagination || data?.meta || {};
+    const total = paginacao.total || data?.total || data?.total_registros || data?.total_itens || null;
+    const totalPaginas =
+      paginacao.total_paginas ||
+      paginacao.totalPages ||
+      paginacao.last_page ||
+      (total ? Math.ceil(total / fallbackPorPagina) : null);
+
+    return {
+      total,
+      totalPaginas: totalPaginas || null,
+    };
+  };
+
+  const listarTodasPaginas = async ({ status, incluirInativos, alunoId }) => {
+    let paginaAtual = 1;
+    let totalPaginasApi = null;
+    const acumulado = [];
+
+    while (paginaAtual <= 100) {
+      const data = await matriculaService.listar({
+        pagina: paginaAtual,
+        por_pagina: POR_PAGINA,
+        status,
+        aluno_id: alunoId,
+        incluir_inativos: incluirInativos,
+      });
+
+      const listaPagina = normalizeLista(data);
+      acumulado.push(...listaPagina);
+
+      const { totalPaginas } = extractPagination(data, POR_PAGINA);
+      if (totalPaginas) {
+        totalPaginasApi = totalPaginas;
+      }
+
+      if (totalPaginasApi && paginaAtual >= totalPaginasApi) {
+        break;
+      }
+
+      if (!totalPaginasApi && listaPagina.length < POR_PAGINA) {
+        break;
+      }
+
+      paginaAtual += 1;
+    }
+
+    return acumulado;
+  };
+
+  const carregarMatriculas = async ({ force = false } = {}) => {
     const status = statusFilter !== 'todos' ? statusFilter : undefined;
     const incluirInativos = statusFilter === 'todos';
     const alunoId = undefined;
-    const buscaParam = busca ?? serverSearchTerm;
     const key = buildCacheKey({
       porPagina: POR_PAGINA,
       status,
       incluirInativos,
       alunoId,
-      busca: buscaParam || '',
     });
 
     if (!force && cache[key]) {
@@ -105,14 +160,11 @@ export default function MatriculasScreen() {
 
     setLoading(true);
     try {
-      const data = await matriculaService.listar({
-        por_pagina: POR_PAGINA,
+      const lista = await listarTodasPaginas({
         status,
-        aluno_id: alunoId,
-        incluir_inativos: incluirInativos,
-        busca: buscaParam || undefined,
+        incluirInativos,
+        alunoId,
       });
-      const lista = normalizeLista(data);
 
       setMatriculas(lista);
 
@@ -130,10 +182,8 @@ export default function MatriculasScreen() {
   };
 
   const handlePesquisar = async () => {
-    const termo = searchTerm.trim();
     setIsSearching(true);
-    setServerSearchTerm(termo);
-    await carregarMatriculas({ busca: termo });
+    await carregarMatriculas({ force: true });
     setIsSearching(false);
   };
 
@@ -198,7 +248,7 @@ export default function MatriculasScreen() {
         matricula: null,
         pacoteContratoId: null,
       });
-      await carregarMatriculas({ busca: serverSearchTerm, force: true });
+      await carregarMatriculas({ force: true });
     } catch (error) {
       console.error('Erro ao excluir:', error);
       const contratoPacoteId =
