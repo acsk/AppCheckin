@@ -2289,36 +2289,62 @@ class MatriculaController
         ");
         $stmtMatricula->execute([$pagamento['matricula_id']]);
         
-        // Criar próxima parcela automaticamente
+        // Criar próxima parcela automaticamente — basear cálculo na data informada pelo usuário (`data_pagamento`)
         try {
-            $dataVencimentoAtual = new \DateTime($pagamento['data_vencimento']);
-            
+            // Determinar base para cálculo da próxima parcela:
+            // - Se o pagamento foi feito ANTES da data de vencimento, respeitar o período existente (usar data_vencimento)
+            // - Se o pagamento foi feito NA/DEPOIS da data de vencimento, usar a data de pagamento como base
+            $pagamentoVencimento = null;
+            if (!empty($pagamento['data_vencimento'])) {
+                try {
+                    $pagamentoVencimento = new \DateTime($pagamento['data_vencimento']);
+                } catch (\Exception $e) {
+                    $pagamentoVencimento = null;
+                }
+            }
+
+            try {
+                $pagoDate = new \DateTime($dataPagamento);
+            } catch (\Exception $e) {
+                $pagoDate = null;
+            }
+
+            if ($pagoDate && $pagamentoVencimento) {
+                $baseDate = ($pagoDate > $pagamentoVencimento) ? $pagoDate : $pagamentoVencimento;
+            } elseif ($pagamentoVencimento) {
+                $baseDate = $pagamentoVencimento;
+            } elseif ($pagoDate) {
+                $baseDate = $pagoDate;
+            } else {
+                $baseDate = new \DateTime('now');
+            }
+
             // Se matrícula tem ciclo, usar meses do ciclo; senão, usar duracao_dias do plano
             $mesesCiclo = $pagamento['ciclo_meses'] ?? $pagamento['frequencia_meses'] ?? null;
             if ($mesesCiclo) {
-                $proximoVencimento = clone $dataVencimentoAtual;
+                $proximoVencimento = clone $baseDate;
                 $proximoVencimento->modify("+{$mesesCiclo} months");
             } else {
                 $duracaoDias = (int) $pagamento['duracao_dias'];
-                $proximoVencimento = clone $dataVencimentoAtual;
+                $proximoVencimento = clone $baseDate;
                 $proximoVencimento->add(new \DateInterval("P{$duracaoDias}D"));
             }
-            
-            $stmtProxima = $db->prepare("
-                INSERT INTO pagamentos_plano (
-                    tenant_id,
-                    aluno_id,
-                    matricula_id,
-                    plano_id,
-                    valor,
-                    data_vencimento,
-                    status_pagamento_id,
-                    observacoes,
-                    criado_por,
-                    created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, NOW())
+
+            $stmtProxima = $db->prepare("\
+                INSERT INTO pagamentos_plano (\
+                    tenant_id,\
+                    aluno_id,\
+                    matricula_id,\
+                    plano_id,\
+                    valor,\
+                    data_vencimento,\
+                    status_pagamento_id,\
+                    observacoes,\
+                    criado_por,\
+                    created_at\
+                ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, NOW())\
             ");
-            
+
             $stmtProxima->execute([
                 $pagamento['tenant_id'],
                 $pagamento['aluno_id'],
@@ -2329,16 +2355,20 @@ class MatriculaController
                 'Pagamento gerado automaticamente após confirmação',
                 $adminId
             ]);
-            
+
             $proximaParcela = [
                 'id' => $db->lastInsertId(),
                 'data_vencimento' => $proximoVencimento->format('Y-m-d'),
                 'valor' => $pagamento['valor'],
                 'status' => 'Aguardando'
             ];
-            
+
+            // Atualizar matrícula com a próxima data de vencimento calculada
+            $stmtUpdMat = $db->prepare("UPDATE matriculas SET proxima_data_vencimento = ?, updated_at = NOW() WHERE id = ?");
+            $stmtUpdMat->execute([$proximoVencimento->format('Y-m-d'), $pagamento['matricula_id']]);
+
             error_log("Próxima parcela criada com sucesso: ID " . $proximaParcela['id']);
-            
+
         } catch (\Exception $e) {
             error_log("Erro ao criar próxima parcela: " . $e->getMessage());
             // Não falha a operação se houver erro ao criar próxima parcela
