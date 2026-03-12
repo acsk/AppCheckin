@@ -81,7 +81,7 @@ try {
             continue;
         }
 
-        $sqlP = "SELECT id, payment_id, status, status_detail, date_created FROM pagamentos_mercadopago WHERE matricula_id = ? AND DATE(date_created) = CURDATE() AND (status IS NULL OR LOWER(status) != 'approved')";
+        $sqlP = "SELECT id, payment_id, status_id, status, status_detail, date_created FROM pagamentos_mercadopago WHERE matricula_id = ? AND DATE(date_created) = CURDATE() AND (status_id IS NULL OR status_id <> 6)";
         $stmtP = $pdo->prepare($sqlP);
         $stmtP->execute([$matriculaId]);
         $pagamentos = $stmtP->fetchAll(PDO::FETCH_ASSOC) ?? [];
@@ -90,8 +90,15 @@ try {
 
         foreach ($pagamentos as $pg) {
             $paymentId = $pg['payment_id'] ?? null;
+            $statusId = isset($pg['status_id']) ? (int)$pg['status_id'] : null;
             if (empty($paymentId)) {
                 logMsg("Pagamento registro {$pg['id']} sem payment_id — pulando", $quiet);
+                continue;
+            }
+
+            // Só reprocessar se status_id != 6 (ou NULL)
+            if ($statusId === 6) {
+                logMsg("Pagamento {$pg['id']} (payment_id={$paymentId}) possui status_id=6 — pulando", $quiet);
                 continue;
             }
 
