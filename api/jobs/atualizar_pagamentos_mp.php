@@ -81,28 +81,11 @@ try {
             continue;
         }
 
-        // Detectar se a coluna status_id existe — sem fallback: exigir coluna
-        try {
-            $colCheck = $pdo->query("SHOW COLUMNS FROM pagamentos_mercadopago LIKE 'status_id'");
-            $hasStatusId = ($colCheck && $colCheck->rowCount() > 0);
-        } catch (Exception $e) {
-            $hasStatusId = false;
-        }
-
-        if (!$hasStatusId) {
-            logMsg('❌ Coluna status_id não encontrada — job exige essa coluna. Aplique a migration e execute novamente.', $quiet);
-            // Em dry-run, apenas logamos e não processamos pagamentos
-            if ($dryRun) {
-                $pagamentos = [];
-            } else {
-                throw new Exception('Coluna status_id ausente. Abortando.');
-            }
-        } else {
-            $sqlP = "SELECT id, payment_id, status_id, status, status_detail, date_created FROM pagamentos_mercadopago WHERE matricula_id = ? AND DATE(date_created) = CURDATE() AND (status_id IS NULL OR status_id <> 6)";
-            $stmtP = $pdo->prepare($sqlP);
-            $stmtP->execute([$matriculaId]);
-            $pagamentos = $stmtP->fetchAll(PDO::FETCH_ASSOC) ?? [];
-        }
+        // Selecionar pagamentos do dia com status 'pending' (texto)
+        $sqlP = "SELECT id, payment_id, status, status_detail, date_created FROM pagamentos_mercadopago WHERE matricula_id = ? AND DATE(date_created) = CURDATE() AND LOWER(status) = 'pending'";
+        $stmtP = $pdo->prepare($sqlP);
+        $stmtP->execute([$matriculaId]);
+        $pagamentos = $stmtP->fetchAll(PDO::FETCH_ASSOC) ?? [];
 
         logMsg("Assinatura {$assinaturaId} (matricula {$matriculaId}) - pagamentos a reprocessar: " . count($pagamentos), $quiet);
 
