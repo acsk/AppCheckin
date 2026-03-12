@@ -2330,20 +2330,18 @@ class MatriculaController
                 $proximoVencimento->add(new \DateInterval("P{$duracaoDias}D"));
             }
 
-            $stmtProxima = $db->prepare("\
-                INSERT INTO pagamentos_plano (\
-                    tenant_id,\
-                    aluno_id,\
-                    matricula_id,\
-                    plano_id,\
-                    valor,\
-                    data_vencimento,\
-                    status_pagamento_id,\
-                    observacoes,\
-                    criado_por,\
-                    created_at\
-                ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, NOW())\
-            ");
+            $stmtProxima = $db->prepare("INSERT INTO pagamentos_plano (
+                    tenant_id,
+                    aluno_id,
+                    matricula_id,
+                    plano_id,
+                    valor,
+                    data_vencimento,
+                    status_pagamento_id,
+                    observacoes,
+                    criado_por,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, NOW())");
 
             $stmtProxima->execute([
                 $pagamento['tenant_id'],
