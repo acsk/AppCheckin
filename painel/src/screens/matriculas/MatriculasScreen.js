@@ -19,6 +19,7 @@ import { matriculaService } from '../../services/matriculaService';
 import { StyleSheet } from 'react-native';
 
 export default function MatriculasScreen() {
+  const POR_PAGINA = 1000;
   const router = useRouter();
   const { width } = useWindowDimensions();
   const [matriculas, setMatriculas] = useState([]);
@@ -27,12 +28,6 @@ export default function MatriculasScreen() {
   const [searchTerm, setSearchTerm] = useState('');
   const [serverSearchTerm, setServerSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('todos');
-  const [pagina, setPagina] = useState(1);
-  const [porPagina] = useState(50
-    
-  );
-  const [totalPaginas, setTotalPaginas] = useState(1);
-  const [totalItens, setTotalItens] = useState(0);
   const [cache, setCache] = useState({});
   const [deletePreview, setDeletePreview] = useState({
     visible: false,
@@ -75,12 +70,11 @@ export default function MatriculasScreen() {
       statusEffectRef.current = true;
       return;
     }
-    setPagina(1);
-    carregarMatriculas({ pagina: 1, busca: serverSearchTerm });
+    carregarMatriculas({ busca: serverSearchTerm });
   }, [statusFilter]);
 
-  const buildCacheKey = ({ pagina, porPagina, status, incluirInativos, alunoId, busca }) =>
-    JSON.stringify({ pagina, porPagina, status, incluirInativos, alunoId, busca });
+  const buildCacheKey = ({ porPagina, status, incluirInativos, alunoId, busca }) =>
+    JSON.stringify({ porPagina, status, incluirInativos, alunoId, busca });
 
   const normalizeLista = (data) => {
     if (Array.isArray(data?.matriculas)) return data.matriculas;
@@ -89,32 +83,13 @@ export default function MatriculasScreen() {
     return [];
   };
 
-  const extractPagination = (data, fallbackPorPagina, fallbackPagina) => {
-    const paginacao = data?.paginacao || data?.pagination || data?.meta || {};
-    const total = paginacao.total || data?.total || data?.total_registros || data?.total_itens;
-    const totalPaginas =
-      paginacao.total_paginas ||
-      paginacao.totalPages ||
-      paginacao.total_paginas ||
-      (total ? Math.ceil(total / fallbackPorPagina) : 1);
-    const paginaAtual = paginacao.pagina || paginacao.page || fallbackPagina;
-
-    return {
-      total: total ?? null,
-      totalPaginas: totalPaginas || 1,
-      pagina: paginaAtual || 1,
-    };
-  };
-
-  const carregarMatriculas = async ({ pagina: paginaParam, busca, force = false } = {}) => {
-    const paginaAtual = paginaParam || pagina;
+  const carregarMatriculas = async ({ busca, force = false } = {}) => {
     const status = statusFilter !== 'todos' ? statusFilter : undefined;
     const incluirInativos = statusFilter === 'todos';
     const alunoId = undefined;
     const buscaParam = busca ?? serverSearchTerm;
     const key = buildCacheKey({
-      pagina: paginaAtual,
-      porPagina,
+      porPagina: POR_PAGINA,
       status,
       incluirInativos,
       alunoId,
@@ -124,9 +99,6 @@ export default function MatriculasScreen() {
     if (!force && cache[key]) {
       const cached = cache[key];
       setMatriculas(cached.matriculas);
-      setTotalPaginas(cached.totalPaginas || 1);
-      setTotalItens(cached.totalItens || 0);
-      setPagina(cached.pagina || paginaAtual);
       setLoading(false);
       return;
     }
@@ -134,28 +106,20 @@ export default function MatriculasScreen() {
     setLoading(true);
     try {
       const data = await matriculaService.listar({
-        pagina: paginaAtual,
-        por_pagina: porPagina,
+        por_pagina: POR_PAGINA,
         status,
         aluno_id: alunoId,
         incluir_inativos: incluirInativos,
         busca: buscaParam || undefined,
       });
       const lista = normalizeLista(data);
-      const pagination = extractPagination(data, porPagina, paginaAtual);
 
       setMatriculas(lista);
-      setTotalPaginas(pagination.totalPaginas || 1);
-      setTotalItens(pagination.total ?? 0);
-      setPagina(pagination.pagina || paginaAtual);
 
       setCache(prev => ({
         ...prev,
         [key]: {
           matriculas: lista,
-          totalPaginas: pagination.totalPaginas || 1,
-          totalItens: pagination.total ?? 0,
-          pagina: pagination.pagina || paginaAtual,
         },
       }));
     } catch (error) {
@@ -169,15 +133,8 @@ export default function MatriculasScreen() {
     const termo = searchTerm.trim();
     setIsSearching(true);
     setServerSearchTerm(termo);
-    setPagina(1);
-    await carregarMatriculas({ pagina: 1, busca: termo });
+    await carregarMatriculas({ busca: termo });
     setIsSearching(false);
-  };
-
-  const handlePageChange = (novaPagina) => {
-    if (novaPagina < 1 || novaPagina > totalPaginas || loading) return;
-    setPagina(novaPagina);
-    carregarMatriculas({ pagina: novaPagina });
   };
 
   const handleOpenDeletePreview = async (matricula) => {
@@ -241,7 +198,7 @@ export default function MatriculasScreen() {
         matricula: null,
         pacoteContratoId: null,
       });
-      await carregarMatriculas({ pagina, busca: serverSearchTerm, force: true });
+      await carregarMatriculas({ busca: serverSearchTerm, force: true });
     } catch (error) {
       console.error('Erro ao excluir:', error);
       const contratoPacoteId =
@@ -837,7 +794,6 @@ export default function MatriculasScreen() {
           
           <Text style={styles.resultCount}>
             {filteredMatriculas.length} {filteredMatriculas.length === 1 ? 'matrícula' : 'matrículas'}
-            {totalItens ? ` • Total: ${totalItens}` : ''}
           </Text>
         </View>
 
@@ -873,37 +829,6 @@ export default function MatriculasScreen() {
                 renderTable()
               )}
             </ScrollView>
-            <View style={styles.paginationContainer}>
-              <Pressable
-                onPress={() => handlePageChange(pagina - 1)}
-                disabled={pagina <= 1 || loading}
-                style={({ pressed }) => [
-                  styles.paginationButton,
-                  (pagina <= 1 || loading) && styles.paginationButtonDisabled,
-                  pressed && { opacity: 0.8 },
-                ]}
-              >
-                <Feather name="chevron-left" size={18} color="#111827" />
-                <Text style={styles.paginationButtonText}>Anterior</Text>
-              </Pressable>
-
-              <Text style={styles.paginationInfo}>
-                Página {pagina} de {totalPaginas}
-              </Text>
-
-              <Pressable
-                onPress={() => handlePageChange(pagina + 1)}
-                disabled={pagina >= totalPaginas || loading}
-                style={({ pressed }) => [
-                  styles.paginationButton,
-                  (pagina >= totalPaginas || loading) && styles.paginationButtonDisabled,
-                  pressed && { opacity: 0.8 },
-                ]}
-              >
-                <Text style={styles.paginationButtonText}>Próxima</Text>
-                <Feather name="chevron-right" size={18} color="#111827" />
-              </Pressable>
-            </View>
           </View>
         )}
 
@@ -1026,40 +951,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#6b7280',
     fontWeight: '500',
-  },
-  paginationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-    backgroundColor: '#fff',
-  },
-  paginationButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    backgroundColor: '#f9fafb',
-  },
-  paginationButtonDisabled: {
-    opacity: 0.5,
-  },
-  paginationButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  paginationInfo: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#374151',
   },
   title: {
     fontSize: 24,
