@@ -431,4 +431,58 @@ class PagamentoPlano
         
         return (int) $stmt->fetch(PDO::FETCH_ASSOC)['total'] > 0;
     }
+
+    /**
+     * Atualizar pagamento
+     */
+    public function atualizar(int $tenantId, int $id, array $dados): bool
+    {
+        $fields = [];
+        $params = ['tenant_id' => $tenantId, 'id' => $id];
+
+        if (isset($dados['valor'])) {
+            $fields[] = 'valor = :valor';
+            $params['valor'] = $dados['valor'];
+        }
+        if (isset($dados['data_vencimento'])) {
+            $fields[] = 'data_vencimento = :data_vencimento';
+            $params['data_vencimento'] = $dados['data_vencimento'];
+        }
+        if (array_key_exists('data_pagamento', $dados)) {
+            $fields[] = 'data_pagamento = :data_pagamento';
+            $params['data_pagamento'] = $dados['data_pagamento'];
+        }
+        if (isset($dados['status_pagamento_id'])) {
+            $fields[] = 'status_pagamento_id = :status_pagamento_id';
+            $params['status_pagamento_id'] = $dados['status_pagamento_id'];
+        }
+        if (isset($dados['forma_pagamento_id'])) {
+            $fields[] = 'forma_pagamento_id = :forma_pagamento_id';
+            $params['forma_pagamento_id'] = $dados['forma_pagamento_id'];
+        }
+        if (isset($dados['comprovante'])) {
+            $fields[] = 'comprovante = :comprovante';
+            $params['comprovante'] = $dados['comprovante'];
+        }
+        if (isset($dados['observacoes'])) {
+            $fields[] = 'observacoes = :observacoes';
+            $params['observacoes'] = $dados['observacoes'];
+        }
+
+        if (empty($fields)) return false;
+
+        $sql = "UPDATE pagamentos_plano SET " . implode(', ', $fields) . ", updated_at = NOW() WHERE tenant_id = :tenant_id AND id = :id";
+        $stmt = $this->pdo->prepare($sql);
+        return (bool) $stmt->execute($params);
+    }
+
+    /**
+     * Excluir (remover) pagamento fisicamente
+     */
+    public function excluir(int $tenantId, int $id): bool
+    {
+        $sql = "DELETE FROM pagamentos_plano WHERE tenant_id = :tenant_id AND id = :id";
+        $stmt = $this->pdo->prepare($sql);
+        return (bool) $stmt->execute(['tenant_id' => $tenantId, 'id' => $id]);
+    }
 }

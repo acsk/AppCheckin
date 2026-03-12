@@ -263,6 +263,51 @@ class PagamentoPlanoController
     }
 
     /**
+     * Atualizar pagamento
+     * PUT /admin/pagamentos-plano/{id}
+     */
+    public function atualizar(Request $request, Response $response, array $args): Response
+    {
+        $tenantId = $request->getAttribute('tenant_id');
+        $pagamentoId = (int) $args['id'];
+        $data = $request->getParsedBody();
+
+        $db = require __DIR__ . '/../../config/database.php';
+        $pagamentoModel = new PagamentoPlano($db);
+
+        try {
+            $pagamento = $pagamentoModel->buscarPorId($tenantId, $pagamentoId);
+            if (!$pagamento) {
+                $response->getBody()->write(json_encode(['type' => 'error', 'message' => 'Pagamento não encontrado'], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            // Campos permitidos
+            $allowed = ['valor','data_vencimento','data_pagamento','status_pagamento_id','forma_pagamento_id','comprovante','observacoes'];
+            $updateData = [];
+            foreach ($allowed as $f) {
+                if (array_key_exists($f, $data)) $updateData[$f] = $data[$f];
+            }
+
+            if (empty($updateData)) {
+                $response->getBody()->write(json_encode(['type' => 'error', 'message' => 'Nenhum campo para atualizar'], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+            }
+
+            $ok = $pagamentoModel->atualizar($tenantId, $pagamentoId, $updateData);
+            if (!$ok) throw new \Exception('Falha ao atualizar pagamento');
+
+            $pagamentoAtualizado = $pagamentoModel->buscarPorId($tenantId, $pagamentoId);
+
+            $response->getBody()->write(json_encode(['type' => 'success','message' => 'Pagamento atualizado','pagamento' => $pagamentoAtualizado], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode(['type' => 'error','message' => $e->getMessage()], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
      * Confirmar pagamento (dar baixa)
      * POST /admin/pagamentos-plano/{id}/confirmar
      */
@@ -433,6 +478,36 @@ class PagamentoPlanoController
                 'type' => 'error',
                 'message' => $e->getMessage()
             ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * Excluir pagamento fisicamente
+     * DELETE /admin/pagamentos-plano/{id}/excluir
+     */
+    public function excluir(Request $request, Response $response, array $args): Response
+    {
+        $tenantId = $request->getAttribute('tenant_id');
+        $pagamentoId = (int) $args['id'];
+
+        $db = require __DIR__ . '/../../config/database.php';
+        $pagamentoModel = new PagamentoPlano($db);
+
+        try {
+            $pagamento = $pagamentoModel->buscarPorId($tenantId, $pagamentoId);
+            if (!$pagamento) {
+                $response->getBody()->write(json_encode(['type' => 'error','message' => 'Pagamento não encontrado'], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            $ok = $pagamentoModel->excluir($tenantId, $pagamentoId);
+            if (!$ok) throw new \Exception('Falha ao excluir pagamento');
+
+            $response->getBody()->write(json_encode(['type' => 'success','message' => 'Pagamento removido com sucesso'], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode(['type' => 'error','message' => $e->getMessage()], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
     }

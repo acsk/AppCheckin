@@ -18,6 +18,7 @@ import LayoutBase from '../../components/LayoutBase';
 import BaixaPagamentoPlanoModal from '../../components/BaixaPagamentoPlanoModal';
 import { matriculaService } from '../../services/matriculaService';
 import mercadoPagoService from '../../services/mercadoPagoService';
+import { pagamentoPlanoService } from '../../services/pagamentoPlanoService';
 import { formatarDataParaInput, calcularDiasRestantes } from '../../utils/formatadores';
 import { mascaraData } from '../../utils/masks';
 import { obterMensagemErro } from '../../utils/errorHandler';
@@ -39,6 +40,19 @@ export default function MatriculaDetalheScreen() {
   const [novaDataVencimento, setNovaDataVencimento] = useState('');
   const [salvandoData, setSalvandoData] = useState(false);
   const [reprocessandoPagamentoId, setReprocessandoPagamentoId] = useState(null);
+  const [modalEditarPagamentoVisible, setModalEditarPagamentoVisible] = useState(false);
+  const [modalExcluirPagamentoVisible, setModalExcluirPagamentoVisible] = useState(false);
+  const [salvandoPagamento, setSalvandoPagamento] = useState(false);
+  const [excluindoPagamento, setExcluindoPagamento] = useState(false);
+  const [pagamentoEditando, setPagamentoEditando] = useState(null);
+  const [pagamentoExcluindo, setPagamentoExcluindo] = useState(null);
+  const [formEditarPagamento, setFormEditarPagamento] = useState({
+    valor: '',
+    data_vencimento: '',
+    data_pagamento: '',
+    status_pagamento_id: '1',
+    observacoes: '',
+  });
   const [modalBaixaPacoteVisible, setModalBaixaPacoteVisible] = useState(false);
   const [baixaPacoteLoading, setBaixaPacoteLoading] = useState(false);
   const [errorModal, setErrorModal] = useState({ visible: false, title: '', message: '' });
@@ -473,6 +487,89 @@ export default function MatriculaDetalheScreen() {
     }
   };
 
+  const getPagamentoId = (pagamento) => pagamento?.id || pagamento?.pagamento_id || pagamento?.conta_id;
+
+  const handleAbrirEditarPagamento = (pagamento) => {
+    setPagamentoEditando(pagamento);
+    setFormEditarPagamento({
+      valor: String(pagamento?.valor || ''),
+      data_vencimento: pagamento?.data_vencimento || '',
+      data_pagamento: pagamento?.data_pagamento || '',
+      status_pagamento_id: String(pagamento?.status_pagamento_id || 1),
+      observacoes: pagamento?.observacoes || '',
+    });
+    setModalEditarPagamentoVisible(true);
+  };
+
+  const handleSalvarEdicaoPagamento = async () => {
+    const pagamentoId = getPagamentoId(pagamentoEditando);
+    if (!pagamentoId) {
+      showAlert('Erro', 'Pagamento inválido para edição');
+      return;
+    }
+
+    const valorNormalizado = Number(String(formEditarPagamento.valor || '').replace(',', '.'));
+    if (!Number.isFinite(valorNormalizado) || valorNormalizado <= 0) {
+      showAlert('Erro', 'Informe um valor válido');
+      return;
+    }
+
+    if (!formEditarPagamento.data_vencimento) {
+      showAlert('Erro', 'Data de vencimento é obrigatória');
+      return;
+    }
+
+    try {
+      setSalvandoPagamento(true);
+
+      const payload = {
+        valor: valorNormalizado,
+        data_vencimento: formEditarPagamento.data_vencimento,
+        data_pagamento: formEditarPagamento.data_pagamento || null,
+        status_pagamento_id: Number(formEditarPagamento.status_pagamento_id || 1),
+        observacoes: formEditarPagamento.observacoes || null,
+      };
+
+      const response = await pagamentoPlanoService.atualizar(pagamentoId, payload);
+      showToast(response?.message || 'Pagamento atualizado com sucesso');
+      setModalEditarPagamentoVisible(false);
+      setPagamentoEditando(null);
+      await carregarDados();
+    } catch (error) {
+      const mensagem = obterMensagemErro(error, 'Não foi possível atualizar o pagamento');
+      showAlert('Erro', mensagem);
+    } finally {
+      setSalvandoPagamento(false);
+    }
+  };
+
+  const handleAbrirExcluirPagamento = (pagamento) => {
+    setPagamentoExcluindo(pagamento);
+    setModalExcluirPagamentoVisible(true);
+  };
+
+  const handleConfirmarExcluirPagamento = async () => {
+    const pagamentoId = getPagamentoId(pagamentoExcluindo);
+    if (!pagamentoId) {
+      showAlert('Erro', 'Pagamento inválido para exclusão');
+      return;
+    }
+
+    try {
+      setExcluindoPagamento(true);
+      const response = await pagamentoPlanoService.excluir(pagamentoId);
+      showToast(response?.message || 'Pagamento excluído com sucesso');
+      setModalExcluirPagamentoVisible(false);
+      setPagamentoExcluindo(null);
+      await carregarDados();
+    } catch (error) {
+      const mensagem = obterMensagemErro(error, 'Não foi possível excluir o pagamento');
+      showAlert('Erro', mensagem);
+    } finally {
+      setExcluindoPagamento(false);
+    }
+  };
+
   const resumo = calcularResumo();
   const cicloInfo = getCicloInfo();
 
@@ -799,7 +896,7 @@ export default function MatriculaDetalheScreen() {
                   <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 1.3 }}>Baixado por</Text>
                   <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-right" style={{ flex: 1 }}>Valor</Text>
                   <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-center" style={{ flex: 0.9 }}>Status</Text>
-                  <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-center" style={{ flex: 1 }}>Ação</Text>
+                  <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-center" style={{ flex: 1.6 }}>Ação</Text>
                 </View>
 
                 {(() => {
@@ -855,8 +952,8 @@ export default function MatriculaDetalheScreen() {
                             </Text>
                           </View>
                         </View>
-                        <View style={{ flex: 1, alignItems: 'center' }}>
-                          <View className="flex-row items-center gap-2">
+                        <View style={{ flex: 1.6, alignItems: 'center' }}>
+                          <View className="flex-row flex-wrap items-center justify-center gap-2">
                             {(!isPacote && baixavel) ? (
                               <Pressable
                                 className="rounded-lg bg-orange-500 px-3 py-1.5"
@@ -882,9 +979,22 @@ export default function MatriculaDetalheScreen() {
                               </Pressable>
                             ) : null}
 
-                            {(!(!isPacote && baixavel) && !(hasMercadoPagoIds && isPagamentoNaoPago(pagamento))) ? (
-                              <Text className="text-[11px] text-slate-400">—</Text>
-                            ) : null}
+                            <Pressable
+                              className="h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white"
+                              style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                              onPress={() => handleAbrirEditarPagamento(pagamento)}
+                            >
+                              <Feather name="edit-2" size={14} color="#334155" />
+                            </Pressable>
+
+                            <Pressable
+                              className="h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-rose-50"
+                              style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                              onPress={() => handleAbrirExcluirPagamento(pagamento)}
+                            >
+                              <Feather name="trash-2" size={14} color="#dc2626" />
+                            </Pressable>
+
                           </View>
                         </View>
                       </View>
@@ -1206,6 +1316,187 @@ export default function MatriculaDetalheScreen() {
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
                   <Text className="text-sm font-semibold text-white">Salvar</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de Editar Pagamento */}
+      <Modal
+        visible={modalEditarPagamentoVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setModalEditarPagamentoVisible(false)}
+      >
+        <View className="flex-1 items-center justify-center bg-black/50 px-4">
+          <View className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+            <View className="border-b border-slate-200 px-6 py-5">
+              <Text className="text-lg font-bold text-slate-800">Editar pagamento</Text>
+              <Text className="text-sm text-slate-500">
+                Parcela #{getPagamentoId(pagamentoEditando) || '-'}
+              </Text>
+            </View>
+
+            <View className="px-6 py-5">
+              <View className="mb-3">
+                <Text className="mb-1 text-xs font-semibold uppercase text-slate-500">Valor</Text>
+                <TextInput
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
+                  value={formEditarPagamento.valor}
+                  onChangeText={(text) => setFormEditarPagamento((prev) => ({ ...prev, valor: text }))}
+                  keyboardType="decimal-pad"
+                  placeholder="0.00"
+                />
+              </View>
+
+              <View className="mb-3">
+                <Text className="mb-1 text-xs font-semibold uppercase text-slate-500">Data de vencimento</Text>
+                <input
+                  type="date"
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#cbd5e1',
+                    borderRadius: 8,
+                    padding: 10,
+                    fontSize: 14,
+                    width: '100%',
+                  }}
+                  value={formEditarPagamento.data_vencimento}
+                  onChange={(e) => setFormEditarPagamento((prev) => ({ ...prev, data_vencimento: e.target.value }))}
+                />
+              </View>
+
+              <View className="mb-3">
+                <Text className="mb-1 text-xs font-semibold uppercase text-slate-500">Data de pagamento</Text>
+                <input
+                  type="date"
+                  style={{
+                    borderWidth: 1,
+                    borderColor: '#cbd5e1',
+                    borderRadius: 8,
+                    padding: 10,
+                    fontSize: 14,
+                    width: '100%',
+                  }}
+                  value={formEditarPagamento.data_pagamento || ''}
+                  onChange={(e) => setFormEditarPagamento((prev) => ({ ...prev, data_pagamento: e.target.value }))}
+                />
+              </View>
+
+              <View className="mb-3">
+                <Text className="mb-1 text-xs font-semibold uppercase text-slate-500">Status</Text>
+                <View className="flex-row flex-wrap gap-2">
+                  {[
+                    { id: '1', label: 'Aguardando', color: '#3B82F6' },
+                    { id: '2', label: 'Pago', color: '#10b981' },
+                    { id: '3', label: 'Atrasado', color: '#dc2626' },
+                    { id: '4', label: 'Cancelado', color: '#6B7280' },
+                  ].map((status) => {
+                    const ativo = formEditarPagamento.status_pagamento_id === status.id;
+                    return (
+                      <Pressable
+                        key={status.id}
+                        className="rounded-full border px-3 py-1"
+                        style={{
+                          borderColor: ativo ? status.color : '#cbd5e1',
+                          backgroundColor: ativo ? status.color : '#fff',
+                        }}
+                        onPress={() => setFormEditarPagamento((prev) => ({ ...prev, status_pagamento_id: status.id }))}
+                      >
+                        <Text
+                          className="text-xs font-semibold"
+                          style={{ color: ativo ? '#fff' : '#475569' }}
+                        >
+                          {status.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+
+              <View>
+                <Text className="mb-1 text-xs font-semibold uppercase text-slate-500">Observações</Text>
+                <TextInput
+                  className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
+                  value={formEditarPagamento.observacoes}
+                  onChangeText={(text) => setFormEditarPagamento((prev) => ({ ...prev, observacoes: text }))}
+                  multiline
+                  numberOfLines={3}
+                />
+              </View>
+            </View>
+
+            <View className="flex-row gap-3 border-t border-slate-200 px-6 py-4">
+              <Pressable
+                onPress={() => setModalEditarPagamentoVisible(false)}
+                disabled={salvandoPagamento}
+                className="flex-1 items-center justify-center rounded-lg bg-slate-200 py-3"
+                style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+              >
+                <Text className="text-sm font-semibold text-slate-700">Cancelar</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleSalvarEdicaoPagamento}
+                disabled={salvandoPagamento}
+                className="flex-1 items-center justify-center rounded-lg bg-orange-500 py-3"
+                style={({ pressed }) => [pressed && { opacity: 0.8 }, salvandoPagamento && { opacity: 0.6 }]}
+              >
+                {salvandoPagamento ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text className="text-sm font-semibold text-white">Salvar alterações</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de Excluir Pagamento */}
+      <Modal
+        visible={modalExcluirPagamentoVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setModalExcluirPagamentoVisible(false)}
+      >
+        <View className="flex-1 items-center justify-center bg-black/50 px-4">
+          <View className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+            <View className="items-center border-b border-slate-200 px-6 py-5">
+              <View className="mb-3 h-14 w-14 items-center justify-center rounded-full bg-rose-100">
+                <Feather name="trash-2" size={24} color="#dc2626" />
+              </View>
+              <Text className="text-lg font-bold text-slate-800">Excluir pagamento</Text>
+              <Text className="text-sm text-slate-500">Esta ação não pode ser desfeita</Text>
+            </View>
+
+            <View className="px-6 py-5">
+              <Text className="text-center text-sm text-slate-700">
+                Confirma excluir o pagamento #{getPagamentoId(pagamentoExcluindo) || '-'}?
+              </Text>
+            </View>
+
+            <View className="flex-row gap-3 border-t border-slate-200 px-6 py-4">
+              <Pressable
+                onPress={() => setModalExcluirPagamentoVisible(false)}
+                disabled={excluindoPagamento}
+                className="flex-1 items-center justify-center rounded-lg bg-slate-200 py-3"
+                style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+              >
+                <Text className="text-sm font-semibold text-slate-700">Cancelar</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleConfirmarExcluirPagamento}
+                disabled={excluindoPagamento}
+                className="flex-1 items-center justify-center rounded-lg bg-rose-600 py-3"
+                style={({ pressed }) => [pressed && { opacity: 0.8 }, excluindoPagamento && { opacity: 0.6 }]}
+              >
+                {excluindoPagamento ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text className="text-sm font-semibold text-white">Excluir</Text>
                 )}
               </Pressable>
             </View>
