@@ -32,6 +32,7 @@ use App\Controllers\PresencaController;
 use App\Controllers\MaintenanceController;
 use App\Controllers\DashboardController;
 use App\Controllers\MercadoPagoWebhookController;
+use App\Controllers\NotificationController;
 use App\Controllers\PlanoCicloController;
 use App\Controllers\AssinaturaController;
 use App\Controllers\RelatorioController;
@@ -692,6 +693,13 @@ return function ($app) {
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
             }
         })->add(AuthMiddleware::class);
+        // Notificações (usuário autenticado)
+        $group->get('/notificacoes', [NotificationController::class, 'index'])->add(AuthMiddleware::class);
+        $group->get('/notificacoes/unread', [NotificationController::class, 'unread'])->add(AuthMiddleware::class);
+        $group->get('/notificacoes/{id}', [NotificationController::class, 'show'])->add(AuthMiddleware::class);
+        $group->post('/notificacoes', [NotificationController::class, 'store'])->add(AuthMiddleware::class);
+        $group->post('/notificacoes/{id}/read', [NotificationController::class, 'markAsRead'])->add(AuthMiddleware::class);
+        $group->post('/notificacoes/read-all', [NotificationController::class, 'markAllRead'])->add(AuthMiddleware::class);
 
         // perfil alias (rota alternativa sem prefixo /mobile)
         $group->get('/profile', function($request, $response) {

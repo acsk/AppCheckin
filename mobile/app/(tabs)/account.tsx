@@ -17,6 +17,7 @@ import {
 } from "@/src/utils/imageCompression";
 import AsyncStorage from "@/src/utils/storage";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -75,6 +76,7 @@ export default function AccountScreen() {
   // const [assetsUrl, setAssetsUrl] = useState<string>("");
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
   const [userRoles, setUserRoles] = useState<any[]>([]);
   const sidebarTranslateX = useRef(
     new Animated.Value(-Dimensions.get("window").width),
@@ -236,6 +238,51 @@ export default function AccountScreen() {
     }
   }, []);
 
+  const loadUnreadNotificationsCount = useCallback(async () => {
+    try {
+      const token = await AsyncStorage.getItem("@appcheckin:token");
+      if (!token) {
+        setUnreadNotificationsCount(0);
+        return;
+      }
+
+      const response = await fetch(
+        `${getApiUrlRuntime()}/notificacoes/unread`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      );
+
+      const text = await response.text();
+      let json: any = {};
+      try {
+        json = text ? JSON.parse(text) : {};
+      } catch {
+        json = {};
+      }
+
+      if (!response.ok || json?.success === false) {
+        setUnreadNotificationsCount(0);
+        return;
+      }
+
+      const total =
+        typeof json?.total === "number"
+          ? json.total
+          : Array.isArray(json?.data)
+            ? json.data.length
+            : 0;
+
+      setUnreadNotificationsCount(total);
+    } catch (error) {
+      console.warn("⚠️ Falha ao carregar notificações não lidas:", error);
+      setUnreadNotificationsCount(0);
+    }
+  }, []);
+
   // Verificar se o usuário é admin (papel_id 3 ou 4)
   const isUserAdmin = React.useMemo(() => {
     if (!Array.isArray(userRoles) || userRoles.length === 0) {
@@ -246,6 +293,13 @@ export default function AccountScreen() {
       return roleId === 3 || roleId === 4;
     });
   }, [userRoles]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadUnreadNotificationsCount();
+      return () => {};
+    }, [loadUnreadNotificationsCount]),
+  );
 
   const getTenantImageUrl = () => {
     const raw =

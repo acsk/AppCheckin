@@ -5,6 +5,22 @@ import Constants from "expo-constants";
 // Callback para notificar logout quando token é inválido
 let onUnauthorizedCallback = null;
 
+const TOKEN_KEYS = ["@appcheckin:token", "auth_token"];
+
+async function getStoredToken() {
+  for (const key of TOKEN_KEYS) {
+    const value = await AsyncStorage.getItem(key);
+    if (value) return value;
+  }
+  return null;
+}
+
+async function clearStoredTokens() {
+  for (const key of TOKEN_KEYS) {
+    await AsyncStorage.removeItem(key);
+  }
+}
+
 export const setOnUnauthorized = (callback) => {
   onUnauthorizedCallback = callback;
 };
@@ -19,6 +35,32 @@ const isPublicAuthEndpoint = (endpoint = "") =>
   endpoint === "/auth/password-recovery/request" ||
   endpoint === "/auth/password-recovery/validate-token" ||
   endpoint === "/auth/password-recovery/reset";
+
+function normalizeNetworkError(error, endpoint, method) {
+  const rawMessage = String(error?.message || "");
+  const isWeb = typeof window !== "undefined";
+  const isFetchFailure =
+    error?.name === "TypeError" && /Failed to fetch/i.test(rawMessage);
+
+  if (isWeb && isFetchFailure) {
+    return {
+      message:
+        "Falha de conexão com a API (possível erro de CORS/preflight no servidor).",
+      isNetworkError: true,
+      code: "CORS_OR_NETWORK_ERROR",
+      endpoint,
+      method,
+    };
+  }
+
+  return {
+    message: rawMessage || "Erro de conexão",
+    isNetworkError: true,
+    code: "NETWORK_ERROR",
+    endpoint,
+    method,
+  };
+}
 
 /**
  * Cliente HTTP customizado para fazer requisições à API
@@ -87,7 +129,7 @@ const api = {
       }
 
       // Buscar token do storage
-      const token = await AsyncStorage.getItem("@appcheckin:token");
+      const token = await getStoredToken();
       const shouldSkipAuth = Boolean(config?.skipAuth);
       const isAuthEndpoint = isPublicAuthEndpoint(endpoint);
 
@@ -120,18 +162,26 @@ const api = {
         }
       }
 
-      // Adicionar token se existir
-      if (token) {
+      // Adicionar token somente em rotas protegidas
+      const shouldAttachAuthHeader = Boolean(
+        token && !isAuthEndpoint && !shouldSkipAuth,
+      );
+
+      if (shouldAttachAuthHeader) {
         headers["Authorization"] = `Bearer ${token}`;
         console.log(
           "🔑 Token adicionado ao header:",
           token.substring(0, 20) + "...",
         );
+      } else if (token && (isAuthEndpoint || shouldSkipAuth)) {
+        console.log("🔓 Endpoint público/auth - Authorization removido");
       } else {
-        console.warn(
-          "⚠️ Nenhum token encontrado em storage (@appcheckin:token)",
-        );
-        console.warn("⚠️ Para rota protegida:", endpoint);
+        if (!isAuthEndpoint && !shouldSkipAuth) {
+          console.warn(
+            "⚠️ Nenhum token encontrado em storage (@appcheckin:token)",
+          );
+          console.warn("⚠️ Para rota protegida:", endpoint);
+        }
         if (!isAuthEndpoint && !shouldSkipAuth && onUnauthorizedCallback) {
           console.log("[API] Chamando onUnauthorizedCallback...");
           onUnauthorizedCallback();
@@ -227,7 +277,7 @@ const api = {
           console.warn(
             "🚫 Token inválido ou expirado - redirecionando para login...",
           );
-          await AsyncStorage.removeItem("@appcheckin:token");
+          await clearStoredTokens();
           await AsyncStorage.removeItem("@appcheckin:user");
 
           if (onUnauthorizedCallback) {
@@ -235,7 +285,7 @@ const api = {
           }
         } else {
           // Para login, apenas remover dados se existirem
-          await AsyncStorage.removeItem("@appcheckin:token");
+          await clearStoredTokens();
           await AsyncStorage.removeItem("@appcheckin:user");
         }
 
@@ -310,10 +360,7 @@ const api = {
         name: error?.name,
         stack: error?.stack,
       });
-      throw {
-        message: error.message || "Erro de conexão",
-        isNetworkError: true,
-      };
+      throw normalizeNetworkError(error, endpoint, method);
     }
   },
 };

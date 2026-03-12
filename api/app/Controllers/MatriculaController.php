@@ -2188,7 +2188,7 @@ class MatriculaController
         requestBody: new OA\RequestBody(
             content: new OA\JsonContent(
                 properties: [
-                    new OA\Property(property: "data_pagamento", type: "string", format: "date", nullable: true, description: "Data do pagamento (padrão: hoje)"),
+                    new OA\Property(property: "data_vencimento", type: "string", format: "date", nullable: false, description: "Data de vencimento da parcela (obrigatória para baixas manuais)"),
                     new OA\Property(property: "forma_pagamento_id", type: "integer", nullable: true, description: "ID da forma de pagamento"),
                     new OA\Property(property: "observacoes", type: "string", nullable: true, description: "Observações sobre o pagamento")
                 ]
@@ -2252,6 +2252,33 @@ class MatriculaController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
         
+        $dataVencimento = $data['data_vencimento'] ?? null;
+        if (empty($dataVencimento)) {
+            $response->getBody()->write(json_encode(['error' => 'data_vencimento é obrigatória para baixa manual']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
+
+        // Validar formato e intervalo de data_vencimento:
+        try {
+            $vencDateObj = new \DateTime($dataVencimento);
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode(['error' => 'data_vencimento inválida']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
+
+        $today = new \DateTime('today');
+        $startOfMonth = new \DateTime('first day of this month');
+
+        if ($vencDateObj > $today) {
+            $response->getBody()->write(json_encode(['error' => 'data_vencimento não pode ser maior que a data de hoje']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
+
+        if ($vencDateObj < $startOfMonth) {
+            $response->getBody()->write(json_encode(['error' => 'data_vencimento não pode ser anterior ao mês atual']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
+
         $dataPagamento = $data['data_pagamento'] ?? date('Y-m-d');
         $formaPagamentoId = $data['forma_pagamento_id'] ?? null;
         $observacoes = $data['observacoes'] ?? null;
@@ -2289,13 +2316,20 @@ class MatriculaController
         ");
         $stmtMatricula->execute([$pagamento['matricula_id']]);
         
-        // Criar próxima parcela automaticamente — basear cálculo na data informada pelo usuário (`data_pagamento`)
+        // Criar próxima parcela automaticamente — basear cálculo na data informada pelo usuário (`data_vencimento`)
         try {
             // Determinar base para cálculo da próxima parcela:
             // - Se o pagamento foi feito ANTES da data de vencimento, respeitar o período existente (usar data_vencimento)
             // - Se o pagamento foi feito NA/DEPOIS da data de vencimento, usar a data de pagamento como base
             $pagamentoVencimento = null;
-            if (!empty($pagamento['data_vencimento'])) {
+            // Preferir data_vencimento enviada pelo front; caso contrário usar a data_vencimento do pagamento armazenado
+            if (!empty($dataVencimento)) {
+                try {
+                    $pagamentoVencimento = new \DateTime($dataVencimento);
+                } catch (\Exception $e) {
+                    $pagamentoVencimento = null;
+                }
+            } elseif (!empty($pagamento['data_vencimento'])) {
                 try {
                     $pagamentoVencimento = new \DateTime($pagamento['data_vencimento']);
                 } catch (\Exception $e) {

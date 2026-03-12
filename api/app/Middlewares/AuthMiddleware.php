@@ -12,6 +12,11 @@ class AuthMiddleware
 {
     public function __invoke(Request $request, RequestHandler $handler): Response
     {
+        // Allow CORS preflight requests to pass through without auth
+        if ($request->getMethod() === 'OPTIONS') {
+            return $handler->handle($request);
+        }
+
         $authHeader = $request->getHeaderLine('Authorization');
 
         if (!$authHeader) {

@@ -12,6 +12,7 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
   const [creditoAplicado, setCreditoAplicado] = useState(null);
   const [formasPagamento, setFormasPagamento] = useState([]);
   const [formData, setFormData] = useState({
+    data_vencimento: '',
     data_pagamento: '',
     forma_pagamento_id: '',
     comprovante: '',
@@ -30,6 +31,7 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
       // Preencher dados do pagamento
       const hoje = new Date().toISOString().split('T')[0];
       setFormData({
+        data_vencimento: pagamento.data_vencimento || '',
         data_pagamento: hoje,
         forma_pagamento_id: pagamento.forma_pagamento_id || '',
         comprovante: '',
@@ -51,6 +53,22 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
   };
 
   const handleConfirmar = async () => {
+    if (!formData.data_vencimento) {
+      showError('Data de vencimento é obrigatória');
+      return;
+    }
+
+    const hoje = new Date().toISOString().split('T')[0];
+    const primeiroDiaMesAtual = `${hoje.slice(0, 7)}-01`;
+    if (formData.data_vencimento > hoje) {
+      showError('Data de vencimento não pode ser maior que hoje');
+      return;
+    }
+    if (formData.data_vencimento < primeiroDiaMesAtual) {
+      showError('Data de vencimento não pode ser menor que o mês atual');
+      return;
+    }
+
     if (!formData.data_pagamento) {
       showError('Data de pagamento é obrigatória');
       return;
@@ -67,6 +85,7 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
 
   const handleClose = () => {
     setFormData({
+      data_vencimento: '',
       data_pagamento: '',
       forma_pagamento_id: '',
       comprovante: '',
@@ -82,6 +101,7 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
       setShowConfirmModal(false);
       
       const payload = {
+        data_vencimento: formData.data_vencimento,
         data_pagamento: formData.data_pagamento,
         forma_pagamento_id: formData.forma_pagamento_id,
         observacoes: formData.observacoes
@@ -96,6 +116,7 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
 
       showSuccess('Pagamento confirmado! Próximo pagamento gerado automaticamente.');
       setFormData({
+        data_vencimento: '',
         data_pagamento: '',
         forma_pagamento_id: '',
         comprovante: '',
@@ -217,6 +238,28 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
                 <Text style={styles.infoLabel}>Plano:</Text>
                 <Text style={styles.infoValue}>{pagamento.plano_nome}</Text>
               </View>
+            </View>
+
+            {/* Forma de Pagamento - OBRIGATÓRIA */}
+            <View style={styles.field}>
+              <Text style={styles.label}>Data de Vencimento *</Text>
+              <input
+                type="date"
+                style={{
+                  borderWidth: 1,
+                  borderColor: '#d1d5db',
+                  borderRadius: 8,
+                  padding: 12,
+                  fontSize: 14,
+                  backgroundColor: '#fff',
+                  width: '100%',
+                  fontFamily: 'system-ui, -apple-system, sans-serif',
+                }}
+                value={formData.data_vencimento}
+                onChange={(e) => setFormData({ ...formData, data_vencimento: e.target.value })}
+                min={`${new Date().toISOString().split('T')[0].slice(0, 7)}-01`}
+                max={new Date().toISOString().split('T')[0]}
+              />
             </View>
 
             {/* Forma de Pagamento - OBRIGATÓRIA */}

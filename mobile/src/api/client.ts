@@ -82,6 +82,11 @@ client.interceptors.request.use(
       ...(config.headers || {}),
       ...dynamicHeaders,
     } as any;
+
+    if (isAuthEndpoint(config.url) || shouldSkipAuth) {
+      delete headers["Authorization"];
+    }
+
     config.headers = headers;
 
     if (!token && !isAuthEndpoint(config.url) && !shouldSkipAuth) {
@@ -108,7 +113,7 @@ client.interceptors.request.use(
 
     // Ensure Content-Type only for requests with body (avoid adding on GET)
     const method = (config.method || "GET").toUpperCase();
-    const hasBody = ["POST", "PUT", "PATCH", "DELETE"].includes(method);
+    const hasBody = ["POST", "PUT", "PATCH"].includes(method);
     const isFormData = hasBody && config.data && (typeof FormData !== "undefined") && config.data instanceof FormData;
     if (hasBody && !isFormData) {
       headers["Content-Type"] = headers["Content-Type"] || "application/json";
