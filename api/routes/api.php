@@ -1105,6 +1105,8 @@ return function ($app) {
         $group->post('/matriculas/{id}/pagamentos-plano', [PagamentoPlanoController::class, 'criar']);
         $group->post('/pagamentos-plano/{id}/confirmar', [PagamentoPlanoController::class, 'confirmar']);
         $group->delete('/pagamentos-plano/{id}', [PagamentoPlanoController::class, 'cancelar']);
+        $group->put('/pagamentos-plano/{id}', [PagamentoPlanoController::class, 'atualizar']);
+        $group->delete('/pagamentos-plano/{id}/excluir', [PagamentoPlanoController::class, 'excluir']);
         $group->post('/pagamentos-plano/marcar-atrasados', [PagamentoPlanoController::class, 'marcarAtrasados']);
 
         // Pacotes (admin)
