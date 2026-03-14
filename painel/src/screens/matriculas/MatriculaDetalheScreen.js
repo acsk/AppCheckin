@@ -48,6 +48,8 @@ export default function MatriculaDetalheScreen() {
   const [pagamentoExcluindo, setPagamentoExcluindo] = useState(null);
   const [formEditarPagamento, setFormEditarPagamento] = useState({
     valor: '',
+    desconto: '',
+    motivo_desconto: '',
     data_vencimento: '',
     data_pagamento: '',
     status_pagamento_id: '1',
@@ -489,10 +491,38 @@ export default function MatriculaDetalheScreen() {
 
   const getPagamentoId = (pagamento) => pagamento?.id || pagamento?.pagamento_id || pagamento?.conta_id;
 
+  const formatarMoedaInput = (valor) => {
+    const numero = Number(valor || 0);
+    if (!Number.isFinite(numero)) return '';
+    return numero.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const aplicarMascaraDesconto = (texto) => {
+    const digitos = String(texto || '').replace(/\D/g, '');
+    if (!digitos) return '';
+    const numero = Number(digitos) / 100;
+    return numero.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
+
+  const parseMoeda = (valor) => {
+    const raw = String(valor || '').trim();
+    if (!raw) return 0;
+
+    let normalizado = raw;
+    if (normalizado.includes(',')) {
+      normalizado = normalizado.replace(/\./g, '').replace(',', '.');
+    }
+
+    normalizado = normalizado.replace(/[^\d.-]/g, '');
+    return Number(normalizado);
+  };
+
   const handleAbrirEditarPagamento = (pagamento) => {
     setPagamentoEditando(pagamento);
     setFormEditarPagamento({
-      valor: String(pagamento?.valor || ''),
+      valor: formatarMoedaInput(pagamento?.valor || 0),
+      desconto: formatarMoedaInput(pagamento?.desconto || 0),
+      motivo_desconto: pagamento?.motivo_desconto || '',
       data_vencimento: pagamento?.data_vencimento || '',
       data_pagamento: pagamento?.data_pagamento || '',
       status_pagamento_id: String(pagamento?.status_pagamento_id || 1),
@@ -508,9 +538,20 @@ export default function MatriculaDetalheScreen() {
       return;
     }
 
-    const valorNormalizado = Number(String(formEditarPagamento.valor || '').replace(',', '.'));
+    const valorNormalizado = parseMoeda(formEditarPagamento.valor);
     if (!Number.isFinite(valorNormalizado) || valorNormalizado <= 0) {
       showAlert('Erro', 'Informe um valor válido');
+      return;
+    }
+
+    const descontoNormalizado = parseMoeda(formEditarPagamento.desconto);
+    if (!Number.isFinite(descontoNormalizado) || descontoNormalizado < 0) {
+      showAlert('Erro', 'Informe um desconto válido');
+      return;
+    }
+
+    if (descontoNormalizado > valorNormalizado) {
+      showAlert('Erro', 'Desconto não pode ser maior que o valor do pagamento');
       return;
     }
 
@@ -524,6 +565,8 @@ export default function MatriculaDetalheScreen() {
 
       const payload = {
         valor: valorNormalizado,
+        desconto: descontoNormalizado,
+        motivo_desconto: formEditarPagamento.motivo_desconto || null,
         data_vencimento: formEditarPagamento.data_vencimento,
         data_pagamento: formEditarPagamento.data_pagamento || null,
         status_pagamento_id: Number(formEditarPagamento.status_pagamento_id || 1),
@@ -569,6 +612,57 @@ export default function MatriculaDetalheScreen() {
       setExcluindoPagamento(false);
     }
   };
+
+  const renderAcoesPagamento = (pagamento, mobile = false) => (
+    <View className={`flex-row flex-wrap items-center ${mobile ? 'justify-start' : 'justify-end'} gap-1.5`}>
+      {(!isPacote && isPagamentoBaixavel(pagamento)) ? (
+        <Pressable
+          className="flex-row items-center gap-1 rounded-lg bg-orange-500 px-3 py-1.5"
+          style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+          onPress={() => handleBaixaPagamento(pagamento)}
+        >
+          <Feather name="check-circle" size={12} color="#fff" />
+          <Text className="text-[11px] font-semibold text-white">Dar baixa</Text>
+        </Pressable>
+      ) : null}
+
+      {hasMercadoPagoIds && isPagamentoNaoPago(pagamento) ? (
+        <Pressable
+          className="flex-row items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5"
+          style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+          onPress={handleReprocessarPagamentoMP}
+          disabled={reprocessandoPagamentoId !== null}
+        >
+          {reprocessandoPagamentoId !== null ? (
+            <ActivityIndicator size="small" color="#f97316" />
+          ) : (
+            <>
+              <Feather name="refresh-ccw" size={12} color="#475569" />
+              <Text className="text-[11px] font-semibold text-slate-700">Reprocessar</Text>
+            </>
+          )}
+        </Pressable>
+      ) : null}
+
+      <Pressable
+        className="flex-row items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5"
+        style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+        onPress={() => handleAbrirEditarPagamento(pagamento)}
+      >
+        <Feather name="edit-2" size={14} color="#334155" />
+        <Text className="text-[11px] font-semibold text-slate-700">Editar</Text>
+      </Pressable>
+
+      <Pressable
+        className="flex-row items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5"
+        style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+        onPress={() => handleAbrirExcluirPagamento(pagamento)}
+      >
+        <Feather name="trash-2" size={14} color="#dc2626" />
+        <Text className="text-[11px] font-semibold text-rose-600">Excluir</Text>
+      </Pressable>
+    </View>
+  );
 
   const resumo = calcularResumo();
   const cicloInfo = getCicloInfo();
@@ -887,33 +981,92 @@ export default function MatriculaDetalheScreen() {
                   </View>
                 </View>
               </View>
-            ) : (
-              <View className="px-4 py-3">
-                <View className="flex-row items-center border-b border-slate-200 pb-2">
-                  <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 0.7 }}>Parcela</Text>
-                  <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 1.1 }}>Vencimento</Text>
-                  <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 1.1 }}>Pagamento</Text>
-                  <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 1.3 }}>Baixado por</Text>
-                  <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-right" style={{ flex: 1 }}>Valor</Text>
-                  <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-center" style={{ flex: 0.9 }}>Status</Text>
-                  <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-center" style={{ flex: 1.6 }}>Ação</Text>
-                </View>
+            ) : (() => {
+              const pagamentosOrdenados = pagamentos
+                .slice()
+                .sort((a, b) => new Date(b.data_vencimento) - new Date(a.data_vencimento));
+              const numeroFallback = pagamentos
+                .slice()
+                .sort((a, b) => new Date(a.data_vencimento) - new Date(b.data_vencimento))
+                .reduce((acc, pagamento, idx) => {
+                  acc.set(pagamento.id, idx + 1);
+                  return acc;
+                }, new Map());
 
-                {(() => {
-                  const pagamentosOrdenados = pagamentos
-                    .slice()
-                    .sort((a, b) => new Date(b.data_vencimento) - new Date(a.data_vencimento));
-                  const numeroFallback = pagamentos
-                    .slice()
-                    .sort((a, b) => new Date(a.data_vencimento) - new Date(b.data_vencimento))
-                    .reduce((acc, pagamento, idx) => {
-                      acc.set(pagamento.id, idx + 1);
-                      return acc;
-                    }, new Map());
+              if (!isDesktop) {
+                return (
+                  <View className="gap-3 px-4 py-3">
+                    {pagamentosOrdenados.map((pagamento, index) => {
+                      const numeroParcela = pagamento.numero_parcela || numeroFallback.get(pagamento.id) || index + 1;
+                      return (
+                        <View key={pagamento.id || index} className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+                          <View className="mb-2 flex-row items-center justify-between">
+                            <View>
+                              <Text className="text-[12px] text-slate-400">#{pagamento.id || '-'}</Text>
+                              <Text className="text-[14px] font-semibold text-slate-800">Parcela {numeroParcela}</Text>
+                            </View>
+                            <View
+                              className="rounded-full px-2.5 py-1"
+                              style={{ backgroundColor: getPagamentoStatusColor(pagamento.status_pagamento_id) }}
+                            >
+                              <Text className="text-[11px] font-bold text-white">
+                                {getPagamentoStatusLabel(pagamento.status_pagamento_id)}
+                              </Text>
+                            </View>
+                          </View>
 
-                  return pagamentosOrdenados.map((pagamento, index) => {
-                    const pendente = isPagamentoPendente(pagamento);
-                    const baixavel = isPagamentoBaixavel(pagamento);
+                          <View className="mb-2 flex-row justify-between">
+                            <Text className="text-[12px] text-slate-500">Vencimento</Text>
+                            <Text className="text-[13px] font-semibold text-slate-700">{formatDate(pagamento.data_vencimento)}</Text>
+                          </View>
+
+                          <View className="mb-2 flex-row justify-between">
+                            <Text className="text-[12px] text-slate-500">Pagamento</Text>
+                            <Text className={`text-[13px] font-semibold ${pagamento.data_pagamento ? 'text-emerald-600' : 'text-slate-400'}`}>
+                              {pagamento.data_pagamento ? formatDate(pagamento.data_pagamento) : '-'}
+                            </Text>
+                          </View>
+
+                          <View className="mb-2 flex-row justify-between">
+                            <Text className="text-[12px] text-slate-500">Valor</Text>
+                            <Text className="text-[14px] font-bold text-slate-800">{formatCurrency(pagamento.valor)}</Text>
+                          </View>
+
+                          <View className="mb-2 flex-row justify-between">
+                            <Text className="text-[12px] text-slate-500">Desconto</Text>
+                            <Text className="text-[13px] font-semibold text-slate-700">{formatCurrency(pagamento.desconto || 0)}</Text>
+                          </View>
+
+                          <View className="mb-3 rounded-lg bg-slate-50 px-2.5 py-2">
+                            <Text className="text-[11px] text-slate-500">Baixado por</Text>
+                            <Text className="text-[12px] font-semibold text-slate-700">{pagamento.baixado_por_nome || '-'}</Text>
+                            {pagamento.tipo_baixa_nome && (
+                              <Text className="mt-0.5 text-[11px] text-slate-500">{pagamento.tipo_baixa_nome}</Text>
+                            )}
+                          </View>
+
+                          {renderAcoesPagamento(pagamento, true)}
+                        </View>
+                      );
+                    })}
+                  </View>
+                );
+              }
+
+              return (
+                <View className="px-4 py-3">
+                  <View className="flex-row items-center border-b border-slate-200 pb-2">
+                    <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 0.7 }}>Parcela</Text>
+                    <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 1.1 }}>Vencimento</Text>
+                    <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 1.1 }}>Pagamento</Text>
+                    <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={{ flex: 1.3 }}>Baixado por</Text>
+                    <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-right" style={{ flex: 1 }}>Valor</Text>
+                    <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-right" style={{ flex: 1 }}>Desconto</Text>
+                    <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-center" style={{ flex: 0.9 }}>Status</Text>
+                    <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500 text-right" style={{ flex: 2.2 }}>Ação</Text>
+                  </View>
+
+                  {pagamentosOrdenados.map((pagamento, index) => {
                     const numeroParcela = pagamento.numero_parcela || numeroFallback.get(pagamento.id) || index + 1;
                     return (
                       <View key={pagamento.id || index} className="flex-row items-center border-b border-slate-100 py-3">
@@ -942,6 +1095,9 @@ export default function MatriculaDetalheScreen() {
                         <Text className="text-[13px] font-semibold text-slate-700" style={{ flex: 1, textAlign: 'right' }}>
                           {formatCurrency(pagamento.valor)}
                         </Text>
+                        <Text className="text-[13px] font-semibold text-slate-700" style={{ flex: 1, textAlign: 'right' }}>
+                          {formatCurrency(pagamento.desconto || 0)}
+                        </Text>
                         <View style={{ flex: 0.9, alignItems: 'center' }}>
                           <View
                             className="rounded-full px-2.5 py-1"
@@ -952,57 +1108,15 @@ export default function MatriculaDetalheScreen() {
                             </Text>
                           </View>
                         </View>
-                        <View style={{ flex: 1.6, alignItems: 'center' }}>
-                          <View className="flex-row flex-wrap items-center justify-center gap-2">
-                            {(!isPacote && baixavel) ? (
-                              <Pressable
-                                className="rounded-lg bg-orange-500 px-3 py-1.5"
-                                style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                                onPress={() => handleBaixaPagamento(pagamento)}
-                              >
-                                <Text className="text-[11px] font-semibold text-white">Dar baixa</Text>
-                              </Pressable>
-                            ) : null}
-
-                            {hasMercadoPagoIds && isPagamentoNaoPago(pagamento) ? (
-                              <Pressable
-                                className="rounded-lg border border-slate-200 bg-white px-3 py-1.5"
-                                style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                                onPress={handleReprocessarPagamentoMP}
-                                disabled={reprocessandoPagamentoId !== null}
-                              >
-                                {reprocessandoPagamentoId !== null ? (
-                                  <ActivityIndicator size="small" color="#f97316" />
-                                ) : (
-                                  <Text className="text-[11px] font-semibold text-slate-700">Reprocessar</Text>
-                                )}
-                              </Pressable>
-                            ) : null}
-
-                            <Pressable
-                              className="h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white"
-                              style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                              onPress={() => handleAbrirEditarPagamento(pagamento)}
-                            >
-                              <Feather name="edit-2" size={14} color="#334155" />
-                            </Pressable>
-
-                            <Pressable
-                              className="h-8 w-8 items-center justify-center rounded-lg border border-rose-200 bg-rose-50"
-                              style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                              onPress={() => handleAbrirExcluirPagamento(pagamento)}
-                            >
-                              <Feather name="trash-2" size={14} color="#dc2626" />
-                            </Pressable>
-
-                          </View>
+                        <View style={{ flex: 2.2, alignItems: 'flex-end' }}>
+                          {renderAcoesPagamento(pagamento)}
                         </View>
                       </View>
                     );
-                  });
-                })()}
-              </View>
-            )}
+                  })}
+                </View>
+              );
+            })()}
           </View>
 
           {/* Card de Resumo Financeiro - Design Moderno */}
@@ -1331,7 +1445,7 @@ export default function MatriculaDetalheScreen() {
         onRequestClose={() => setModalEditarPagamentoVisible(false)}
       >
         <View className="flex-1 items-center justify-center bg-black/50 px-4">
-          <View className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+          <View className="w-full max-w-xl rounded-2xl bg-white shadow-2xl">
             <View className="border-b border-slate-200 px-6 py-5">
               <Text className="text-lg font-bold text-slate-800">Editar pagamento</Text>
               <Text className="text-sm text-slate-500">
@@ -1339,49 +1453,79 @@ export default function MatriculaDetalheScreen() {
               </Text>
             </View>
 
-            <View className="px-6 py-5">
+            <ScrollView
+              className="px-6 py-4"
+              style={{ maxHeight: isDesktop ? 430 : 360 }}
+              showsVerticalScrollIndicator={false}
+            >
+              <View className="mb-3 flex-row gap-3">
+                <View className="flex-1">
+                  <Text className="mb-1 text-xs font-semibold uppercase text-slate-500">Valor</Text>
+                  <TextInput
+                    className="rounded-lg border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-500"
+                    value={formEditarPagamento.valor}
+                    editable={false}
+                    selectTextOnFocus={false}
+                  />
+                </View>
+
+                <View className="flex-1">
+                  <Text className="mb-1 text-xs font-semibold uppercase text-slate-500">Desconto</Text>
+                  <TextInput
+                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
+                    value={formEditarPagamento.desconto}
+                    onChangeText={(text) =>
+                      setFormEditarPagamento((prev) => ({ ...prev, desconto: aplicarMascaraDesconto(text) }))
+                    }
+                    keyboardType="decimal-pad"
+                    placeholder="0,00"
+                  />
+                </View>
+              </View>
+
+              <View className="mb-3 flex-row gap-3">
+                <View className="flex-1">
+                  <Text className="mb-1 text-xs font-semibold uppercase text-slate-500">Data de vencimento</Text>
+                  <input
+                    type="date"
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#cbd5e1',
+                      borderRadius: 8,
+                      padding: 10,
+                      fontSize: 14,
+                      width: '100%',
+                    }}
+                    value={formEditarPagamento.data_vencimento}
+                    onChange={(e) => setFormEditarPagamento((prev) => ({ ...prev, data_vencimento: e.target.value }))}
+                  />
+                </View>
+
+                <View className="flex-1">
+                  <Text className="mb-1 text-xs font-semibold uppercase text-slate-500">Data de pagamento</Text>
+                  <input
+                    type="date"
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#cbd5e1',
+                      borderRadius: 8,
+                      padding: 10,
+                      fontSize: 14,
+                      width: '100%',
+                    }}
+                    value={formEditarPagamento.data_pagamento || ''}
+                    onChange={(e) => setFormEditarPagamento((prev) => ({ ...prev, data_pagamento: e.target.value }))}
+                  />
+                </View>
+              </View>
+
               <View className="mb-3">
-                <Text className="mb-1 text-xs font-semibold uppercase text-slate-500">Valor</Text>
+                <Text className="mb-1 text-xs font-semibold uppercase text-slate-500">Motivo do desconto</Text>
                 <TextInput
                   className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
-                  value={formEditarPagamento.valor}
-                  onChangeText={(text) => setFormEditarPagamento((prev) => ({ ...prev, valor: text }))}
-                  keyboardType="decimal-pad"
-                  placeholder="0.00"
-                />
-              </View>
-
-              <View className="mb-3">
-                <Text className="mb-1 text-xs font-semibold uppercase text-slate-500">Data de vencimento</Text>
-                <input
-                  type="date"
-                  style={{
-                    borderWidth: 1,
-                    borderColor: '#cbd5e1',
-                    borderRadius: 8,
-                    padding: 10,
-                    fontSize: 14,
-                    width: '100%',
-                  }}
-                  value={formEditarPagamento.data_vencimento}
-                  onChange={(e) => setFormEditarPagamento((prev) => ({ ...prev, data_vencimento: e.target.value }))}
-                />
-              </View>
-
-              <View className="mb-3">
-                <Text className="mb-1 text-xs font-semibold uppercase text-slate-500">Data de pagamento</Text>
-                <input
-                  type="date"
-                  style={{
-                    borderWidth: 1,
-                    borderColor: '#cbd5e1',
-                    borderRadius: 8,
-                    padding: 10,
-                    fontSize: 14,
-                    width: '100%',
-                  }}
-                  value={formEditarPagamento.data_pagamento || ''}
-                  onChange={(e) => setFormEditarPagamento((prev) => ({ ...prev, data_pagamento: e.target.value }))}
+                  value={formEditarPagamento.motivo_desconto}
+                  onChangeText={(text) => setFormEditarPagamento((prev) => ({ ...prev, motivo_desconto: text }))}
+                  placeholder="Ex: desconto promocional"
                 />
               </View>
 
@@ -1424,10 +1568,10 @@ export default function MatriculaDetalheScreen() {
                   value={formEditarPagamento.observacoes}
                   onChangeText={(text) => setFormEditarPagamento((prev) => ({ ...prev, observacoes: text }))}
                   multiline
-                  numberOfLines={3}
+                  numberOfLines={2}
                 />
               </View>
-            </View>
+            </ScrollView>
 
             <View className="flex-row gap-3 border-t border-slate-200 px-6 py-4">
               <Pressable

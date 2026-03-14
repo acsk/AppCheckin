@@ -209,6 +209,9 @@ class PagamentoPlanoController
         if (empty($data['valor']) || !is_numeric($data['valor']) || $data['valor'] <= 0) {
             $errors[] = 'Valor inválido';
         }
+        if (isset($data['desconto']) && !is_numeric($data['desconto'])) {
+            $errors[] = 'Desconto inválido';
+        }
         if (empty($data['data_vencimento'])) {
             $errors[] = 'Data de vencimento é obrigatória';
         }
@@ -234,6 +237,8 @@ class PagamentoPlanoController
                 'usuario_id' => $data['usuario_id'],
                 'plano_id' => $data['plano_id'],
                 'valor' => $data['valor'],
+                'desconto' => $data['desconto'] ?? 0.00,
+                'motivo_desconto' => $data['motivo_desconto'] ?? null,
                 'data_vencimento' => $data['data_vencimento'],
                 'data_pagamento' => $data['data_pagamento'] ?? null,
                 'status_pagamento_id' => $data['status_pagamento_id'] ?? 1,
@@ -271,7 +276,9 @@ class PagamentoPlanoController
         $tenantId = $request->getAttribute('tenant_id');
         $pagamentoId = (int) $args['id'];
         $data = $request->getParsedBody();
-
+        
+        // Admin performing the action (fallbacks to different attribute names)
+        $adminId = $request->getAttribute('userId') ?? $request->getAttribute('usuario_id');
         $db = require __DIR__ . '/../../config/database.php';
         $pagamentoModel = new PagamentoPlano($db);
 
@@ -283,7 +290,7 @@ class PagamentoPlanoController
             }
 
             // Campos permitidos
-            $allowed = ['valor','data_vencimento','data_pagamento','status_pagamento_id','forma_pagamento_id','comprovante','observacoes'];
+            $allowed = ['valor','desconto','motivo_desconto','data_vencimento','data_pagamento','status_pagamento_id','forma_pagamento_id','comprovante','observacoes'];
             $updateData = [];
             foreach ($allowed as $f) {
                 if (array_key_exists($f, $data)) $updateData[$f] = $data[$f];
@@ -294,10 +301,74 @@ class PagamentoPlanoController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
             }
 
-            $ok = $pagamentoModel->atualizar($tenantId, $pagamentoId, $updateData);
-            if (!$ok) throw new \Exception('Falha ao atualizar pagamento');
+            // Se estiver marcando como PAGO (2) e antes não estava pago, executar fluxo de confirmação (baixa)
+            if (isset($updateData['status_pagamento_id']) && (int)$updateData['status_pagamento_id'] === 2 && (int)$pagamento['status_pagamento_id'] !== 2) {
+                $db = require __DIR__ . '/../../config/database.php';
+                $planoModel = new Plano($db, $tenantId);
 
-            $pagamentoAtualizado = $pagamentoModel->buscarPorId($tenantId, $pagamentoId);
+                $db->beginTransaction();
+                try {
+                    // Usar campos fornecidos quando existirem
+                    $dataPagamento = $updateData['data_pagamento'] ?? null;
+                    $formaPagamentoId = $updateData['forma_pagamento_id'] ?? null;
+                    $comprovante = $updateData['comprovante'] ?? null;
+                    $observacoes = $updateData['observacoes'] ?? null;
+
+                    $pagamentoModel->confirmarPagamento(
+                        $tenantId,
+                        $pagamentoId,
+                        (int)$adminId,
+                        $dataPagamento,
+                        $formaPagamentoId,
+                        $comprovante,
+                        $observacoes,
+                        1
+                    );
+
+                    // Gerar próxima parcela seguindo a mesma regra de confirmar()
+                    $plano = $planoModel->findById($pagamento['plano_id']);
+                    if ($plano && $plano['duracao_dias'] > 0) {
+                        $dataVencimentoAtual = new \DateTime($pagamento['data_vencimento']);
+                        $proximaDataVencimento = clone $dataVencimentoAtual;
+                        $proximaDataVencimento->modify("+{$plano['duracao_dias']} days");
+
+                        $jaExiste = $pagamentoModel->existePagamentoParaData(
+                            $tenantId,
+                            $pagamento['matricula_id'],
+                            $proximaDataVencimento->format('Y-m-d')
+                        );
+
+                        if (!$jaExiste) {
+                            $proximoPagamento = [
+                                'tenant_id' => $tenantId,
+                                'matricula_id' => $pagamento['matricula_id'],
+                                'usuario_id' => $pagamento['usuario_id'],
+                                'plano_id' => $pagamento['plano_id'],
+                                'valor' => $plano['valor'],
+                                'desconto' => $pagamento['desconto'] ?? 0.00,
+                                'motivo_desconto' => $pagamento['motivo_desconto'] ?? null,
+                                'data_vencimento' => $proximaDataVencimento->format('Y-m-d'),
+                                'status_pagamento_id' => 1,
+                                'observacoes' => 'Pagamento gerado automaticamente após confirmação',
+                                'criado_por' => $adminId
+                            ];
+                            $pagamentoModel->criar($proximoPagamento);
+                        }
+                    }
+
+                    $db->commit();
+                } catch (\Exception $e) {
+                    $db->rollBack();
+                    throw $e;
+                }
+
+                $pagamentoAtualizado = $pagamentoModel->buscarPorId($tenantId, $pagamentoId);
+            } else {
+                $ok = $pagamentoModel->atualizar($tenantId, $pagamentoId, $updateData);
+                if (!$ok) throw new \Exception('Falha ao atualizar pagamento');
+
+                $pagamentoAtualizado = $pagamentoModel->buscarPorId($tenantId, $pagamentoId);
+            }
 
             $response->getBody()->write(json_encode(['type' => 'success','message' => 'Pagamento atualizado','pagamento' => $pagamentoAtualizado], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json');

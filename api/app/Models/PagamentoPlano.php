@@ -18,12 +18,17 @@ class PagamentoPlano
      */
     public function criar(array $dados): int
     {
+        // Calcular valor final aplicando desconto (se informado)
+        $originalValor = isset($dados['valor']) ? (float)$dados['valor'] : 0.0;
+        $desconto = isset($dados['desconto']) ? (float)$dados['desconto'] : 0.0;
+        $valorFinal = max(0, $originalValor - $desconto);
+
         $sql = "INSERT INTO pagamentos_plano 
-                (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento, 
-                 data_pagamento, status_pagamento_id, forma_pagamento_id, comprovante, observacoes, criado_por)
-                VALUES 
-                (:tenant_id, :aluno_id, :matricula_id, :plano_id, :valor, :data_vencimento,
-                 :data_pagamento, :status_pagamento_id, :forma_pagamento_id, :comprovante, :observacoes, :criado_por)";
+            (tenant_id, aluno_id, matricula_id, plano_id, valor, desconto, motivo_desconto, data_vencimento, 
+             data_pagamento, status_pagamento_id, forma_pagamento_id, comprovante, observacoes, criado_por)
+            VALUES 
+            (:tenant_id, :aluno_id, :matricula_id, :plano_id, :valor, :desconto, :motivo_desconto, :data_vencimento,
+             :data_pagamento, :status_pagamento_id, :forma_pagamento_id, :comprovante, :observacoes, :criado_por)";
         
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([
@@ -31,7 +36,9 @@ class PagamentoPlano
             'aluno_id' => $dados['aluno_id'],
             'matricula_id' => $dados['matricula_id'],
             'plano_id' => $dados['plano_id'],
-            'valor' => $dados['valor'],
+            'valor' => $valorFinal,
+            'desconto' => $desconto,
+            'motivo_desconto' => $dados['motivo_desconto'] ?? null,
             'data_vencimento' => $dados['data_vencimento'],
             'data_pagamento' => $dados['data_pagamento'] ?? null,
             'status_pagamento_id' => $dados['status_pagamento_id'] ?? 1, // Default: Aguardando
@@ -440,6 +447,21 @@ class PagamentoPlano
         $fields = [];
         $params = ['tenant_id' => $tenantId, 'id' => $id];
 
+        // Se desconto foi informado, recalcular o valor armazenado (valor - desconto).
+        if (array_key_exists('desconto', $dados)) {
+            $desconto = (float) $dados['desconto'];
+            if (!isset($dados['valor'])) {
+                $stmtCur = $this->pdo->prepare("SELECT valor FROM pagamentos_plano WHERE tenant_id = :tenant_id AND id = :id LIMIT 1");
+                $stmtCur->execute(['tenant_id' => $tenantId, 'id' => $id]);
+                $cur = $stmtCur->fetch(PDO::FETCH_ASSOC);
+                $baseValor = $cur ? (float)$cur['valor'] : 0.0;
+            } else {
+                $baseValor = (float) $dados['valor'];
+            }
+            $novoValor = max(0, $baseValor - $desconto);
+            $dados['valor'] = $novoValor;
+        }
+
         if (isset($dados['valor'])) {
             $fields[] = 'valor = :valor';
             $params['valor'] = $dados['valor'];
@@ -463,6 +485,14 @@ class PagamentoPlano
         if (isset($dados['comprovante'])) {
             $fields[] = 'comprovante = :comprovante';
             $params['comprovante'] = $dados['comprovante'];
+        }
+        if (isset($dados['desconto'])) {
+            $fields[] = 'desconto = :desconto';
+            $params['desconto'] = $dados['desconto'];
+        }
+        if (array_key_exists('motivo_desconto', $dados)) {
+            $fields[] = 'motivo_desconto = :motivo_desconto';
+            $params['motivo_desconto'] = $dados['motivo_desconto'];
         }
         if (isset($dados['observacoes'])) {
             $fields[] = 'observacoes = :observacoes';
