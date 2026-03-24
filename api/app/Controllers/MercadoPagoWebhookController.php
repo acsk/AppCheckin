@@ -2246,11 +2246,15 @@ class MercadoPagoWebhookController
                     FROM pagamentos_plano pp
                     WHERE pp.matricula_id = ?
                       AND pp.status_pagamento_id = 2
-                      AND pp.observacoes LIKE ?
+                                            AND (
+                                                pp.observacoes LIKE ?
+                                                OR pp.observacoes LIKE ?
+                                            )
                     LIMIT 1
                 ");
                 $patternPaymentId = '%ID: ' . $paymentId . '%';
-                $stmtIdempotencia->execute([$matriculaId, $patternPaymentId]);
+                                $patternPaymentLegacy = '%Payment #' . $paymentId . '%';
+                                $stmtIdempotencia->execute([$matriculaId, $patternPaymentId, $patternPaymentLegacy]);
 
                 if ($stmtIdempotencia->fetch()) {
                     error_log("[Webhook MP] ℹ️ Pagamento MP #{$paymentId} já baixado anteriormente, ignorando reprocessamento");

@@ -190,7 +190,7 @@ function sincronizarPagamentoAprovado(PDO $pdo, int $matriculaId, array $pagamen
         $stmtBaixa->execute([
             $dateApproved ?: date('Y-m-d H:i:s'),
             $formaPagamentoId,
-            "Pago via Mercado Pago - Payment #{$paymentId} (detectado via polling)",
+            "Pago via Mercado Pago - ID: {$paymentId} (detectado via polling)",
             $pagamentoPlanoId,
         ]);
         logMsg("✅ pagamentos_plano {$pagamentoPlanoId} baixado como pago", $quiet);
