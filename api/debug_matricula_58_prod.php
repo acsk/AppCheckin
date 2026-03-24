@@ -96,8 +96,8 @@ foreach ($pagamentos as $pag) {
 // ============ PAGAMENTOS PLANO ============
 echo "\n📋 PAGAMENTOS PLANO DA MATRÍCULA #$matriculaId\n";
 echo str_repeat("=", 50) . "\n";
-$sql = "SELECT id, tenant_id, matricula_id, external_reference, status_pagamento_id,
-               valor, data_pagamento, data_vencimento, payment_id_mp, created_at
+$sql = "SELECT id, tenant_id, matricula_id, status_pagamento_id,
+           valor, data_pagamento, data_vencimento, created_at
         FROM pagamentos_plano 
         WHERE matricula_id = ? 
         ORDER BY id DESC";
@@ -110,9 +110,7 @@ printf("Total: %d registros\n\n", count($pagamentosPlano));
 foreach ($pagamentosPlano as $pp) {
     printf("  💰 ID: %d\n", $pp['id']);
     printf("     Tenant: %s | Matrícula: %s\n", $pp['tenant_id'] ?? 'N/A', $pp['matricula_id'] ?? 'N/A');
-    printf("     External Ref: %s\n", $pp['external_reference'] ?? 'N/A');
     printf("     Status Pagamento ID: %s\n", $pp['status_pagamento_id'] ?? 'N/A');
-    printf("     Payment ID MP: %s\n", $pp['payment_id_mp'] ?? 'N/A');
     printf("     Valor: %.2f\n", $pp['valor'] ?? 0);
     printf("     Data Pagamento: %s\n", $pp['data_pagamento'] ?? 'N/A');
     printf("     Data Vencimento: %s\n", $pp['data_vencimento'] ?? 'N/A');
