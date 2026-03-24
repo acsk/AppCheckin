@@ -249,6 +249,25 @@ try {
             $stmt->execute(['tenant_id' => $tenant['id']]);
             $sincExpiradas = $stmt->rowCount();
             logMessage("  ✓ Matrículas sincronizadas (assinatura expirada/vencida): {$sincExpiradas}\n", $quiet);
+
+            // 6.1 Sincronizar matrículas com assinaturas approved/ativas
+            // Corrige inconsistências onde a assinatura já está paga/aprovada,
+            // mas a matrícula permaneceu como pendente/vencida.
+            $sqlSincAssAprovadas = "
+                UPDATE matriculas m
+                INNER JOIN assinaturas a ON a.matricula_id = m.id AND a.tenant_id = m.tenant_id
+                LEFT JOIN assinatura_status ast ON ast.id = a.status_id
+                SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1),
+                    m.updated_at = NOW()
+                WHERE m.tenant_id = :tenant_id
+                AND m.status_id IN (SELECT id FROM status_matricula WHERE codigo IN ('pendente', 'vencida'))
+                AND (a.status_gateway = 'approved' OR ast.codigo IN ('ativa', 'paga'))
+                AND (m.proxima_data_vencimento IS NULL OR m.proxima_data_vencimento >= CURDATE())
+            ";
+            $stmt = $db->prepare($sqlSincAssAprovadas);
+            $stmt->execute(['tenant_id' => $tenant['id']]);
+            $sincAprovadas = $stmt->rowCount();
+            logMessage("  ✓ Matrículas sincronizadas (assinatura approved/ativa): {$sincAprovadas}\n", $quiet);
             
             // 7. Reativar matrículas que foram regularizadas
             // Só reativa se NÃO houver assinatura cancelada/pausada associada
@@ -283,7 +302,7 @@ try {
             // Commit da transação
             $db->commit();
             
-            $totalTenant = $vencidasAtualizadas + $canceladasAtualizadas + $vencidasPorData + $sincCanceladas + $sincPausadas + $sincExpiradas + $reativadas;
+            $totalTenant = $vencidasAtualizadas + $canceladasAtualizadas + $vencidasPorData + $sincCanceladas + $sincPausadas + $sincExpiradas + $sincAprovadas + $reativadas;
             $totalAtualizado += $totalTenant;
             
             if ($totalTenant > 0) {
