@@ -119,7 +119,7 @@ try {
         $mId = $matriculaId ?? $matriculaIdAss;
 
         // Construir query de pagamentos com filtros flexíveis
-        $sqlP = "SELECT id, payment_id, status, status_detail, status_id, date_created 
+        $sqlP = "SELECT id, payment_id, status, status_detail, date_created 
                  FROM pagamentos_mercadopago 
                  WHERE matricula_id = ? 
                  AND LOWER(status) = 'pending'";
@@ -143,7 +143,6 @@ try {
 
         foreach ($pagamentos as $pg) {
             $paymentId = $pg['payment_id'] ?? null;
-            $statusIdBanco = isset($pg['status_id']) ? (int)$pg['status_id'] : null;
             $statusText = $pg['status'] ?? 'unknown';
             
             if (empty($paymentId)) {
@@ -151,16 +150,10 @@ try {
                 continue;
             }
 
-            // status_id=6 significa 'approved', não reprocessar
-            if ($statusIdBanco === 6) {
-                logMsg("Pagamento {$pg['id']} (payment_id={$paymentId}) já tem status_id=6 (approved) — pulando", $quiet);
-                continue;
-            }
-
             $url = "https://api.appcheckin.com.br/api/webhooks/mercadopago/payment/{$paymentId}/reprocess";
 
             if ($dryRun) {
-                logMsg("[dry-run] POST {$url} [status={$statusText}, status_id={$statusIdBanco}]", $quiet);
+                logMsg("[dry-run] POST {$url} [status={$statusText}]", $quiet);
                 continue;
             }
 
