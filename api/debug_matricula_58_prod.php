@@ -22,16 +22,18 @@ $matriculaId = 58;
 // ============ MATRÍCULA ============
 echo "📋 MATRÍCULA #$matriculaId\n";
 echo str_repeat("=", 50) . "\n";
-$sql = "SELECT id, aluno_id, plano_id, tenant_id, data_matricula, data_inicio, 
-               data_vencimento, status, valor, mes_entrada, ano_entrada
-        FROM matriculas WHERE id = ?";
+$sql = "SELECT m.*, sm.codigo AS status_codigo, sm.nome AS status_nome
+        FROM matriculas m
+        LEFT JOIN status_matricula sm ON sm.id = m.status_id
+        WHERE m.id = ?";
 $stmt = $pdo->prepare($sql);
 $stmt->execute([$matriculaId]);
 $matricula = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if ($matricula) {
     printf("ID: %d\n", $matricula['id']);
-    printf("Status: %s\n", $matricula['status'] ?? 'N/A');
+    printf("Status ID: %s\n", $matricula['status_id'] ?? 'N/A');
+    printf("Status: %s - %s\n", $matricula['status_codigo'] ?? 'N/A', $matricula['status_nome'] ?? 'N/A');
     printf("Data Matrícula: %s\n", $matricula['data_matricula'] ?? 'N/A');
     printf("Data Início: %s\n", $matricula['data_inicio'] ?? 'N/A');
     printf("Data Vencimento: %s\n", $matricula['data_vencimento'] ?? 'N/A');
@@ -68,11 +70,11 @@ foreach ($assinaturas as $ass) {
 // ============ PAGAMENTOS MERCADOPAGO ============
 echo "\n📋 PAGAMENTOS MERCADOPAGO DA MATRÍCULA #$matriculaId\n";
 echo str_repeat("=", 50) . "\n";
-$sql = "SELECT id, payment_id, status, status_detail, status_code,
-               date_created, data_processada, valor, tipo_pagamento
+$sql = "SELECT id, tenant_id, matricula_id, payment_id, external_reference,
+           status, status_detail, transaction_amount, date_created, created_at
         FROM pagamentos_mercadopago 
         WHERE matricula_id = ? 
-        ORDER BY date_created DESC";
+    ORDER BY id DESC";
 $stmt = $pdo->prepare($sql);
 $stmt->execute([$matriculaId]);
 $pagamentos = $stmt->fetchAll(PDO::FETCH_ASSOC) ?? [];
@@ -82,24 +84,23 @@ printf("Total: %d pagamentos\n\n", count($pagamentos));
 foreach ($pagamentos as $pag) {
     printf("  💳 Payment Record ID: %d\n", $pag['id']);
     printf("     Payment ID (MP): %s\n", $pag['payment_id'] ?? 'N/A');
-    printf("     Status: %s (code: %s)\n", 
-           $pag['status'] ?? 'N/A', 
-           $pag['status_code'] ?? 'N/A');
+    printf("     Tenant: %s | Matrícula: %s\n", $pag['tenant_id'] ?? 'N/A', $pag['matricula_id'] ?? 'N/A');
+    printf("     Status: %s\n", $pag['status'] ?? 'N/A');
     printf("     Status Detail: %s\n", $pag['status_detail'] ?? 'N/A');
-    printf("     Tipo: %s\n", $pag['tipo_pagamento'] ?? 'N/A');
-    printf("     Valor: %.2f\n", $pag['valor'] ?? 0);
+    printf("     External Ref: %s\n", $pag['external_reference'] ?? 'N/A');
+    printf("     Valor: %.2f\n", $pag['transaction_amount'] ?? 0);
     printf("     Data Criação: %s\n", $pag['date_created'] ?? 'N/A');
-    printf("     Data Processada: %s\n\n", $pag['data_processada'] ?? 'N/A');
+    printf("     Registrado em: %s\n\n", $pag['created_at'] ?? 'N/A');
 }
 
 // ============ PAGAMENTOS PLANO ============
 echo "\n📋 PAGAMENTOS PLANO DA MATRÍCULA #$matriculaId\n";
 echo str_repeat("=", 50) . "\n";
-$sql = "SELECT id, matricula_id, valor, status, data_pagamento,
-               data_vencimento, criado_em
+$sql = "SELECT id, tenant_id, matricula_id, external_reference, status_pagamento_id,
+               valor, data_pagamento, data_vencimento, payment_id_mp, created_at
         FROM pagamentos_plano 
         WHERE matricula_id = ? 
-        ORDER BY criado_em DESC";
+        ORDER BY id DESC";
 $stmt = $pdo->prepare($sql);
 $stmt->execute([$matriculaId]);
 $pagamentosPlano = $stmt->fetchAll(PDO::FETCH_ASSOC) ?? [];
@@ -108,11 +109,14 @@ printf("Total: %d registros\n\n", count($pagamentosPlano));
 
 foreach ($pagamentosPlano as $pp) {
     printf("  💰 ID: %d\n", $pp['id']);
-    printf("     Status: %s\n", $pp['status'] ?? 'N/A');
+    printf("     Tenant: %s | Matrícula: %s\n", $pp['tenant_id'] ?? 'N/A', $pp['matricula_id'] ?? 'N/A');
+    printf("     External Ref: %s\n", $pp['external_reference'] ?? 'N/A');
+    printf("     Status Pagamento ID: %s\n", $pp['status_pagamento_id'] ?? 'N/A');
+    printf("     Payment ID MP: %s\n", $pp['payment_id_mp'] ?? 'N/A');
     printf("     Valor: %.2f\n", $pp['valor'] ?? 0);
     printf("     Data Pagamento: %s\n", $pp['data_pagamento'] ?? 'N/A');
     printf("     Data Vencimento: %s\n", $pp['data_vencimento'] ?? 'N/A');
-    printf("     Criado: %s\n\n", $pp['criado_em'] ?? 'N/A');
+    printf("     Criado: %s\n\n", $pp['created_at'] ?? 'N/A');
 }
 
 echo "\n✅ Debug concluído\n";
