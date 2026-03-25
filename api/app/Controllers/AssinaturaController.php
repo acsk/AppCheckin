@@ -916,7 +916,7 @@ class AssinaturaController
             if ($stmtJa->fetch()) {
                 error_log("[aprovadasHoje] ℹ️ Pagamento #{$pagamento['id']} já registrado em pagamentos_mercadopago");
                 // Verificar se matrícula está ativa, se não, ativar
-                $this->ativarMatriculaSeNecessario($matriculaId);
+                $this->ativarMatriculaSeNecessario($matriculaId, $pagamento['date_approved'] ?? null);
                 $this->baixarPagamentoPlanoSeNecessario($matriculaId, $pagamento);
                 return;
             }
@@ -966,7 +966,7 @@ class AssinaturaController
             error_log("[aprovadasHoje] ✅ Registro criado em pagamentos_mercadopago");
 
             // Ativar matrícula
-            $this->ativarMatriculaSeNecessario($matriculaId);
+            $this->ativarMatriculaSeNecessario($matriculaId, $pagamento['date_approved'] ?? null);
 
             // Baixar pagamento_plano
             $this->baixarPagamentoPlanoSeNecessario($matriculaId, $pagamento);
@@ -984,19 +984,74 @@ class AssinaturaController
     /**
      * Ativar matrícula se ainda não está ativa
      */
-    private function ativarMatriculaSeNecessario(int $matriculaId): void
+    private function ativarMatriculaSeNecessario(int $matriculaId, ?string $dataReferencia = null): void
     {
-        $stmt = $this->db->prepare("
+        $stmtMatricula = $this->db->prepare("\
+            SELECT m.id, m.status_id, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento,
+                   p.duracao_dias, pc.meses
+            FROM matriculas m
+            INNER JOIN planos p ON p.id = m.plano_id
+            LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+            WHERE m.id = ?
+            LIMIT 1
+        ");
+        $stmtMatricula->execute([$matriculaId]);
+        $matricula = $stmtMatricula->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$matricula) {
+            error_log("[aprovadasHoje] ⚠️ Matrícula #{$matriculaId} não encontrada para sincronizar vigência");
+            return;
+        }
+
+        $stmtStatus = $this->db->prepare("SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1");
+        $stmtStatus->execute();
+        $statusAtivaId = (int) ($stmtStatus->fetchColumn() ?: 0);
+
+        if ($statusAtivaId <= 0) {
+            error_log("[aprovadasHoje] ⚠️ Status 'ativa' não encontrado para matrícula #{$matriculaId}");
+            return;
+        }
+
+        $dataBase = !empty($dataReferencia)
+            ? \DateTimeImmutable::createFromFormat('Y-m-d', date('Y-m-d', strtotime($dataReferencia)))
+            : new \DateTimeImmutable(date('Y-m-d'));
+
+        if (!$dataBase) {
+            $dataBase = new \DateTimeImmutable(date('Y-m-d'));
+        }
+
+        $duracaoMeses = (int) ($matricula['meses'] ?? 0);
+        if ($duracaoMeses > 0) {
+            $dataVencimento = $dataBase->modify("+{$duracaoMeses} months")->format('Y-m-d');
+        } else {
+            $duracaoDias = max(1, (int) ($matricula['duracao_dias'] ?? 30));
+            $dataVencimento = $dataBase->modify("+{$duracaoDias} days")->format('Y-m-d');
+        }
+
+        $dataInicio = $dataBase->format('Y-m-d');
+
+        if ((int) $matricula['status_id'] === $statusAtivaId
+            && $matricula['data_inicio'] === $dataInicio
+            && $matricula['data_vencimento'] === $dataVencimento
+            && $matricula['proxima_data_vencimento'] === $dataVencimento
+        ) {
+            error_log("[aprovadasHoje] ℹ️ Matrícula #{$matriculaId} já está alinhada até {$dataVencimento}");
+            return;
+        }
+
+        $stmt = $this->db->prepare("\
             UPDATE matriculas
-            SET status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1),
+            SET status_id = ?,
+                data_inicio = ?,
+                data_vencimento = ?,
+                proxima_data_vencimento = ?,
                 updated_at = NOW()
             WHERE id = ?
-              AND status_id != (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1)
         ");
-        $stmt->execute([$matriculaId]);
+        $stmt->execute([$statusAtivaId, $dataInicio, $dataVencimento, $dataVencimento, $matriculaId]);
 
         if ($stmt->rowCount() > 0) {
-            error_log("[aprovadasHoje] ✅ Matrícula #{$matriculaId} ativada");
+            error_log("[aprovadasHoje] ✅ Matrícula #{$matriculaId} sincronizada até {$dataVencimento}");
         }
     }
 

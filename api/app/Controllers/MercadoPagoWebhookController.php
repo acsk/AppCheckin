@@ -1062,7 +1062,7 @@ class MercadoPagoWebhookController
                 error_log("[Webhook MP] 🎁 PACOTE DETECTADO - Ativando contrato #{$pacoteContratoId} via fluxo de assinatura");
                 $this->ativarPacoteContrato($pacoteContratoId, $assinatura);
             } elseif ($matriculaId) {
-                $this->ativarMatricula($matriculaId);
+                $this->ativarMatricula($matriculaId, $assinatura['date_approved'] ?? null);
                 $this->baixarPagamentoPlanoAssinatura($matriculaId, $assinatura);
             }
         }
@@ -1507,7 +1507,7 @@ class MercadoPagoWebhookController
             $matriculaIdInt = (int) $matriculaId;
             error_log("[Webhook MP] ✅ Pagamento APROVADO - matriculaId: {$matriculaIdInt}");
             
-            $this->ativarMatricula($matriculaIdInt);
+            $this->ativarMatricula($matriculaIdInt, $pagamento['date_approved'] ?? null);
             $this->baixarPagamentoPlano($matriculaIdInt, $pagamento);
             $this->atualizarAssinaturaAvulsa($matriculaIdInt, $pagamento);
         } elseif (in_array($pagamento['status'], ['refunded', 'cancelled', 'charged_back'], true)) {
@@ -2113,11 +2113,12 @@ class MercadoPagoWebhookController
     /**
      * Ativar matrícula após pagamento aprovado
      */
-    private function ativarMatricula(int $matriculaId): void
+    private function ativarMatricula(int $matriculaId, ?string $dataReferencia = null): void
     {
         // Buscar dados da matrícula/plano para calcular vigência somente no approved
         $stmtMatricula = $this->db->prepare("
-            SELECT m.id, m.status_id, m.plano_id, m.plano_ciclo_id, p.duracao_dias, pc.meses
+            SELECT m.id, m.status_id, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento,
+                   m.plano_id, m.plano_ciclo_id, p.duracao_dias, pc.meses
             FROM matriculas m
             INNER JOIN planos p ON p.id = m.plano_id
             LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
@@ -2143,20 +2144,32 @@ class MercadoPagoWebhookController
         }
         $statusAtivaId = (int) $statusAtivaId;
 
-        // Evitar reprocessamento de webhooks duplicados
-        if ((int) $matricula['status_id'] === $statusAtivaId) {
-            error_log("[Webhook MP] ℹ️ Matrícula #{$matriculaId} já ativa, ignorando atualização de vigência");
-            return;
+        $dataBase = !empty($dataReferencia)
+            ? \DateTimeImmutable::createFromFormat('Y-m-d', date('Y-m-d', strtotime($dataReferencia)))
+            : new \DateTimeImmutable(date('Y-m-d'));
+
+        if (!$dataBase) {
+            $dataBase = new \DateTimeImmutable(date('Y-m-d'));
         }
 
-        $hoje = new \DateTimeImmutable(date('Y-m-d'));
         $duracaoMeses = (int) ($matricula['meses'] ?? 0);
 
         if ($duracaoMeses > 0) {
-            $dataVencimento = $hoje->modify("+{$duracaoMeses} months")->format('Y-m-d');
+            $dataVencimento = $dataBase->modify("+{$duracaoMeses} months")->format('Y-m-d');
         } else {
             $duracaoDias = max(1, (int) ($matricula['duracao_dias'] ?? 30));
-            $dataVencimento = $hoje->modify("+{$duracaoDias} days")->format('Y-m-d');
+            $dataVencimento = $dataBase->modify("+{$duracaoDias} days")->format('Y-m-d');
+        }
+
+        $dataInicio = $dataBase->format('Y-m-d');
+
+        if ((int) $matricula['status_id'] === $statusAtivaId
+            && $matricula['data_inicio'] === $dataInicio
+            && $matricula['data_vencimento'] === $dataVencimento
+            && $matricula['proxima_data_vencimento'] === $dataVencimento
+        ) {
+            error_log("[Webhook MP] ℹ️ Matrícula #{$matriculaId} já está com vigência alinhada até {$dataVencimento}");
+            return;
         }
 
         $stmtUpdate = $this->db->prepare("
@@ -2171,14 +2184,14 @@ class MercadoPagoWebhookController
 
         $stmtUpdate->execute([
             $statusAtivaId,
-            $hoje->format('Y-m-d'),
+            $dataInicio,
             $dataVencimento,
             $dataVencimento,
             $matriculaId
         ]);
 
         if ($stmtUpdate->rowCount() > 0) {
-            error_log("Matrícula #{$matriculaId} ativada após pagamento aprovado com vigência até {$dataVencimento}");
+            error_log("Matrícula #{$matriculaId} sincronizada após pagamento aprovado com vigência até {$dataVencimento}");
         }
     }
 

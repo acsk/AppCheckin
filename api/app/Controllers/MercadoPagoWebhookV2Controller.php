@@ -254,7 +254,7 @@ class MercadoPagoWebhookV2Controller
 
             if ($stmt_update->execute() && $stmt_update->affected_rows > 0) {
                 $this->log("✅ Pagamento pendente baixado como PAGO via webhook.");
-                $this->ativarMatricula((int)$matricula['id']);
+                $this->ativarMatricula((int)$matricula['id'], $payment['date_approved'] ?? null);
                 $this->atualizarAssinaturaAvulsaPorPagamento((int)$matricula['id'], $payment);
                 return;
             }
@@ -292,7 +292,7 @@ class MercadoPagoWebhookV2Controller
         if ($stmt_insert->execute()) {
             $this->log("✅ Pagamento registrado via webhook com status_id={$statusPagamentoId}");
             if ($isAprovado) {
-                $this->ativarMatricula((int)$matricula['id']);
+                $this->ativarMatricula((int)$matricula['id'], $payment['date_approved'] ?? null);
                 $this->atualizarAssinaturaAvulsaPorPagamento((int)$matricula['id'], $payment);
             } elseif (in_array($paymentStatus, ['cancelled', 'refunded', 'charged_back'], true)) {
                 $this->cancelarMatricula((int)$matricula['id']);
@@ -405,10 +405,18 @@ class MercadoPagoWebhookV2Controller
         }
     }
 
-    private function ativarMatricula(int $matriculaId): void
+    private function ativarMatricula(int $matriculaId, ?string $dataReferencia = null): void
     {
         try {
-            $sql = "SELECT id, status_id, plano_id, plano_ciclo_id FROM matriculas WHERE id = ? LIMIT 1";
+            $sql = "
+                SELECT m.id, m.status_id, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento,
+                       p.duracao_dias, pc.meses
+                FROM matriculas m
+                INNER JOIN planos p ON p.id = m.plano_id
+                LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+                WHERE m.id = ?
+                LIMIT 1
+            ";
             $stmt = $this->db->prepare($sql);
             $stmt->bind_param("i", $matriculaId);
             $stmt->execute();
@@ -424,34 +432,32 @@ class MercadoPagoWebhookV2Controller
             $rowStatusAtiva = $resStatusAtiva ? $resStatusAtiva->fetch_assoc() : null;
             $statusAtivaId = (int)($rowStatusAtiva['id'] ?? 1);
 
-            if ((int)$mat['status_id'] === $statusAtivaId) {
+            $dataBase = !empty($dataReferencia)
+                ? \DateTimeImmutable::createFromFormat('Y-m-d', date('Y-m-d', strtotime($dataReferencia)))
+                : new \DateTimeImmutable(date('Y-m-d'));
+
+            if (!$dataBase) {
+                $dataBase = new \DateTimeImmutable(date('Y-m-d'));
+            }
+
+            $meses = (int)($mat['meses'] ?? 0);
+            if ($meses > 0) {
+                $vencimento = $dataBase->modify("+{$meses} months")->format('Y-m-d');
+            } else {
+                $dias = max(1, (int)($mat['duracao_dias'] ?? 30));
+                $vencimento = $dataBase->modify("+{$dias} days")->format('Y-m-d');
+            }
+
+            $dataInicio = $dataBase->format('Y-m-d');
+
+            if ((int)$mat['status_id'] === $statusAtivaId
+                && ($mat['data_inicio'] ?? null) === $dataInicio
+                && ($mat['data_vencimento'] ?? null) === $vencimento
+                && ($mat['proxima_data_vencimento'] ?? null) === $vencimento
+            ) {
                 return;
             }
 
-            $sqlDuracao = "
-                SELECT p.duracao_dias, pc.meses
-                FROM matriculas m
-                INNER JOIN planos p ON p.id = m.plano_id
-                LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
-                WHERE m.id = ?
-                LIMIT 1
-            ";
-            $stmtDuracao = $this->db->prepare($sqlDuracao);
-            $stmtDuracao->bind_param("i", $matriculaId);
-            $stmtDuracao->execute();
-            $resDuracao = $stmtDuracao->get_result();
-            $duracao = $resDuracao ? $resDuracao->fetch_assoc() : null;
-
-            $hoje = new \DateTimeImmutable(date('Y-m-d'));
-            $meses = (int)($duracao['meses'] ?? 0);
-            if ($meses > 0) {
-                $vencimento = $hoje->modify("+{$meses} months")->format('Y-m-d');
-            } else {
-                $dias = max(1, (int)($duracao['duracao_dias'] ?? 30));
-                $vencimento = $hoje->modify("+{$dias} days")->format('Y-m-d');
-            }
-
-            $dataInicio = $hoje->format('Y-m-d');
             $sqlUpdate = "
                 UPDATE matriculas
                 SET status_id = ?,

@@ -61,6 +61,76 @@ function buscarPagamentoAprovadoPorExternalReference(int $tenantId, string $exte
     return [];
 }
 
+function atualizarVigenciaMatriculaAprovada(PDO $pdo, int $matriculaId, ?string $dataReferencia, bool $quiet): void
+{
+    $stmtMatricula = $pdo->prepare("\
+        SELECT m.id, m.status_id, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento,
+               p.duracao_dias, pc.meses
+        FROM matriculas m
+        INNER JOIN planos p ON p.id = m.plano_id
+        LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+        WHERE m.id = ?
+        LIMIT 1
+    ");
+    $stmtMatricula->execute([$matriculaId]);
+    $matricula = $stmtMatricula->fetch(PDO::FETCH_ASSOC);
+
+    if (!$matricula) {
+        logMsg("❌ Matrícula {$matriculaId} não encontrada ao atualizar vigência", $quiet);
+        return;
+    }
+
+    $stmtStatusAtiva = $pdo->query("SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1");
+    $statusAtivaId = (int) ($stmtStatusAtiva->fetchColumn() ?: 0);
+
+    if ($statusAtivaId <= 0) {
+        logMsg("❌ Status 'ativa' não encontrado ao atualizar vigência da matrícula {$matriculaId}", $quiet);
+        return;
+    }
+
+    $dataBase = !empty($dataReferencia)
+        ? DateTimeImmutable::createFromFormat('Y-m-d', date('Y-m-d', strtotime($dataReferencia)))
+        : new DateTimeImmutable(date('Y-m-d'));
+
+    if (!$dataBase) {
+        $dataBase = new DateTimeImmutable(date('Y-m-d'));
+    }
+
+    $duracaoMeses = (int) ($matricula['meses'] ?? 0);
+    if ($duracaoMeses > 0) {
+        $dataVencimento = $dataBase->modify("+{$duracaoMeses} months")->format('Y-m-d');
+    } else {
+        $duracaoDias = max(1, (int) ($matricula['duracao_dias'] ?? 30));
+        $dataVencimento = $dataBase->modify("+{$duracaoDias} days")->format('Y-m-d');
+    }
+
+    $dataInicio = $dataBase->format('Y-m-d');
+
+    if ((int) $matricula['status_id'] === $statusAtivaId
+        && $matricula['data_inicio'] === $dataInicio
+        && $matricula['data_vencimento'] === $dataVencimento
+        && $matricula['proxima_data_vencimento'] === $dataVencimento
+    ) {
+        logMsg("ℹ️  Matrícula {$matriculaId} já está alinhada até {$dataVencimento}", $quiet);
+        return;
+    }
+
+    $stmtUpdate = $pdo->prepare("\
+        UPDATE matriculas
+        SET status_id = ?,
+            data_inicio = ?,
+            data_vencimento = ?,
+            proxima_data_vencimento = ?,
+            updated_at = NOW()
+        WHERE id = ?
+    ");
+    $stmtUpdate->execute([$statusAtivaId, $dataInicio, $dataVencimento, $dataVencimento, $matriculaId]);
+
+    if ($stmtUpdate->rowCount() > 0) {
+        logMsg("✅ Matrícula {$matriculaId} sincronizada até {$dataVencimento}", $quiet);
+    }
+}
+
 function sincronizarPagamentoAprovado(PDO $pdo, int $matriculaId, array $pagamento, string $externalReference, bool $quiet): void
 {
     $paymentId = (string)($pagamento['id'] ?? '');
@@ -145,18 +215,6 @@ function sincronizarPagamentoAprovado(PDO $pdo, int $matriculaId, array $pagamen
         logMsg("✅ pagamentos_mercadopago inserido para payment {$paymentId}", $quiet);
     }
 
-    $stmtAtivar = $pdo->prepare("
-        UPDATE matriculas
-        SET status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1),
-            updated_at = NOW()
-        WHERE id = ?
-          AND status_id != (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1)
-    ");
-    $stmtAtivar->execute([$matriculaId]);
-    if ($stmtAtivar->rowCount() > 0) {
-        logMsg("✅ Matrícula {$matriculaId} ativada", $quiet);
-    }
-
     $paymentType = strtolower((string)($pagamento['payment_type_id'] ?? $pagamento['payment_method_id'] ?? ''));
     $formaPagamentoId = match (true) {
         str_contains($paymentType, 'credit') => 9,
@@ -176,7 +234,22 @@ function sincronizarPagamentoAprovado(PDO $pdo, int $matriculaId, array $pagamen
     $stmtPend->execute([$matriculaId]);
     $pagamentoPlanoId = $stmtPend->fetchColumn();
 
-    if ($pagamentoPlanoId) {
+    $stmtJaBaixado = $pdo->prepare("\
+        SELECT id FROM pagamentos_plano
+        WHERE matricula_id = ?
+          AND status_pagamento_id = 2
+          AND (observacoes LIKE ? OR observacoes LIKE ?)
+        LIMIT 1
+    ");
+    $patternId = "%ID: {$paymentId}%";
+    $patternLegacy = "%Payment #{$paymentId}%";
+    $stmtJaBaixado->execute([$matriculaId, $patternId, $patternLegacy]);
+    $pagamentoJaBaixado = $stmtJaBaixado->fetchColumn();
+
+    if ($pagamentoJaBaixado) {
+        logMsg("ℹ️  Pagamento {$paymentId} já estava baixado em pagamentos_plano", $quiet);
+        atualizarVigenciaMatriculaAprovada($pdo, $matriculaId, $dateApproved, $quiet);
+    } elseif ($pagamentoPlanoId) {
         $stmtBaixa = $pdo->prepare("
             UPDATE pagamentos_plano
             SET status_pagamento_id = 2,
@@ -194,6 +267,7 @@ function sincronizarPagamentoAprovado(PDO $pdo, int $matriculaId, array $pagamen
             $pagamentoPlanoId,
         ]);
         logMsg("✅ pagamentos_plano {$pagamentoPlanoId} baixado como pago", $quiet);
+        atualizarVigenciaMatriculaAprovada($pdo, $matriculaId, $dateApproved, $quiet);
     } else {
         logMsg("ℹ️  Nenhum pagamento_plano pendente encontrado para matrícula {$matriculaId}", $quiet);
     }
