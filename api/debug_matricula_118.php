@@ -278,45 +278,49 @@ foreach ($webhooks as $wh) {
     echo "\n";
 }
 
-// 5. Assinaturas relacionadas (se existe)
-echo "5. ASSINATURAS RELACIONADAS\n";
+// 5. Assinaturas relacionadas (opcional - alguns ambientes legados nao possuem as colunas)
+echo "5. ASSINATURAS RELACIONADAS (OPCIONAL)\n";
 echo str_repeat("-", 80) . "\n";
-$sql = "
-    SELECT 
-        a.id,
-        a.aluno_id,
-        a.plano_ciclo_id,
-        a.status,
-        a.data_inicio,
-        a.data_vencimento,
-        a.proxima_data_vencimento,
-        a.valor_mensal,
-        pc.meses,
-        pc.valor,
-        a.created_at,
-        a.updated_at
-    FROM assinaturas a
-    LEFT JOIN plano_ciclos pc ON a.plano_ciclo_id = pc.id
-    WHERE a.aluno_id = ?
-    ORDER BY a.created_at DESC
-";
-$stmt = $db->prepare($sql);
-$stmt->execute([$matricula['aluno_id']]);
-$assinaturas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+try {
+    $sql = "
+        SELECT 
+            a.id,
+            a.aluno_id,
+            a.plano_ciclo_id,
+            a.status,
+            a.data_inicio,
+            a.data_vencimento,
+            a.proxima_data_vencimento,
+            a.valor_mensal,
+            pc.meses,
+            pc.valor,
+            a.created_at,
+            a.updated_at
+        FROM assinaturas a
+        LEFT JOIN plano_ciclos pc ON a.plano_ciclo_id = pc.id
+        WHERE a.aluno_id = ?
+        ORDER BY a.created_at DESC
+    ";
+    $stmt = $db->prepare($sql);
+    $stmt->execute([$matricula['aluno_id']]);
+    $assinaturas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-echo "Total de assinaturas do aluno: " . count($assinaturas) . "\n\n";
-foreach ($assinaturas as $ass) {
-    echo "Assinatura ID: {$ass['id']}\n";
-    echo "  Aluno: {$ass['aluno_id']}\n";
-    echo "  Plano Ciclo: {$ass['plano_ciclo_id']} ({$ass['meses']} mês(es))\n";
-    echo "  Status: {$ass['status']}\n";
-    echo "  Data Início: {$ass['data_inicio']}\n";
-    echo "  Data Vencimento: {$ass['data_vencimento']}\n";
-    echo "  Próxima Data Vencimento: {$ass['proxima_data_vencimento']}\n";
-    echo "  Valor Mensal: R$ " . number_format($ass['valor_mensal'], 2, ',', '.') . "\n";
-    echo "  Criada em: {$ass['created_at']}\n";
-    echo "  Atualizada em: {$ass['updated_at']}\n";
-    echo "\n";
+    echo "Total de assinaturas do aluno: " . count($assinaturas) . "\n\n";
+    foreach ($assinaturas as $ass) {
+        echo "Assinatura ID: " . ($ass['id'] ?? '-') . "\n";
+        echo "  Aluno: " . ($ass['aluno_id'] ?? '-') . "\n";
+        echo "  Plano Ciclo: " . ($ass['plano_ciclo_id'] ?? '-') . " (" . ($ass['meses'] ?? '-') . " mes(es))\n";
+        echo "  Status: " . ($ass['status'] ?? '-') . "\n";
+        echo "  Data Início: " . ($ass['data_inicio'] ?? '-') . "\n";
+        echo "  Data Vencimento: " . ($ass['data_vencimento'] ?? '-') . "\n";
+        echo "  Próxima Data Vencimento: " . ($ass['proxima_data_vencimento'] ?? '-') . "\n";
+        echo "  Valor Mensal: R$ " . number_format((float) ($ass['valor_mensal'] ?? 0), 2, ',', '.') . "\n";
+        echo "  Criada em: " . ($ass['created_at'] ?? '-') . "\n";
+        echo "  Atualizada em: " . ($ass['updated_at'] ?? '-') . "\n";
+        echo "\n";
+    }
+} catch (\Throwable $e) {
+    echo "Seção opcional ignorada (schema sem colunas de assinatura esperadas): " . $e->getMessage() . "\n\n";
 }
 
 // 6. Histórico de matrículas do aluno
@@ -396,6 +400,23 @@ $parelasPendentes = array_filter($parcelas, fn($p) => strpos($p['status_pagament
 
 if (count($pgsAprovados) > 0 && count($parelasPendentes) > 0) {
     $anomalias[] = "⚠️ Tem " . count($pgsAprovados) . " pagamento(s) aprovado(s) no MP mas " . count($parelasPendentes) . " parcela(s) ainda aguardando";
+}
+
+// Verificar parcelas antigas (antes da data de inicio da matricula atual)
+$parcelasAnteriores = array_filter($parcelas, function ($p) use ($matricula) {
+    return !empty($p['data_vencimento']) && !empty($matricula['data_inicio']) && $p['data_vencimento'] < $matricula['data_inicio'];
+});
+if (count($parcelasAnteriores) > 0) {
+    $anomalias[] = "Parcelas de ciclo anterior encontradas nesta matricula: " . count($parcelasAnteriores) . " (vencimento antes de " . $matricula['data_inicio'] . ")";
+}
+
+// Verificar cancelamento inconsistente com proximo vencimento futuro
+if (
+    $matricula['status_codigo'] === 'cancelada'
+    && !empty($matricula['proxima_data_vencimento'])
+    && $matricula['proxima_data_vencimento'] >= date('Y-m-d')
+) {
+    $anomalias[] = "Status cancelada com proxima_data_vencimento futura (" . $matricula['proxima_data_vencimento'] . ")";
 }
 
 // Verificar datas inconsistentes
