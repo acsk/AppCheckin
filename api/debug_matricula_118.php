@@ -124,12 +124,14 @@ $parcelas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
 echo "Total de parcelas: " . count($parcelas) . "\n\n";
 foreach ($parcelas as $idx => $parcela) {
+    $dataPagamento = $parcela['data_pagamento'] ?: 'Nao paga';
+    $formaPagamento = $parcela['forma_pagamento'] ?: '-';
     echo "Parcela #{$parcela['numero_parcela']} (ID: {$parcela['id']})\n";
     echo "  Valor: R$ " . number_format($parcela['valor'], 2, ',', '.') . "\n";
     echo "  Data Vencimento: {$parcela['data_vencimento']}\n";
     echo "  Status: {$parcela['status_pagamento']}\n";
-    echo "  Data Pagamento: {$parcela['data_pagamento'] ?? 'Não paga'}\n";
-    echo "  Forma Pagamento: {$parcela['forma_pagamento'] ?? '-'}\n";
+    echo "  Data Pagamento: {$dataPagamento}\n";
+    echo "  Forma Pagamento: {$formaPagamento}\n";
     if ($parcela['observacoes']) {
         echo "  Observações: {$parcela['observacoes']}\n";
     }
@@ -326,7 +328,7 @@ $anomalias = [];
 
 // Verificar status cancelada
 if ($matricula['status_codigo'] === 'cancelada' && count($parcelas) > 0) {
-    $anomalias[] = "⚠️ Matrícula cancelada mas tem {$count($parcelas)} parcelas ativas/abertas";
+    $anomalias[] = "Matrícula cancelada mas tem " . count($parcelas) . " parcela(s) cadastrada(s)";
 }
 
 // Verificar parcelas pagas mas matrícula cancelada
@@ -344,7 +346,7 @@ foreach ($parcelas as $p) {
 foreach ($groupedByDate as $key => $group) {
     if (count($group) > 1) {
         list($data, $valor) = explode('|', $key);
-        $anomalias[] = "⚠️ Parcelas duplicadas: {$count($group)} parcelas com mesma data ({$data}) e valor (R\$ {$valor})";
+        $anomalias[] = "Parcelas duplicadas: " . count($group) . " parcela(s) com mesma data ({$data}) e valor (R$ {$valor})";
     }
 }
 
