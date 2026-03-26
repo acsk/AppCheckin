@@ -101,7 +101,6 @@ echo str_repeat("-", 80) . "\n";
 $sql = "
     SELECT 
         pp.id,
-        pp.numero_parcela,
         pp.valor,
         pp.data_vencimento,
         pp.data_pagamento,
@@ -116,7 +115,7 @@ $sql = "
     LEFT JOIN status_pagamento sp ON pp.status_pagamento_id = sp.id
     LEFT JOIN formas_pagamento fp ON pp.forma_pagamento_id = fp.id
     WHERE pp.matricula_id = ?
-    ORDER BY pp.numero_parcela ASC
+    ORDER BY pp.data_vencimento ASC, pp.id ASC
 ";
 $stmt = $db->prepare($sql);
 $stmt->execute([$matriculaId]);
@@ -126,7 +125,8 @@ echo "Total de parcelas: " . count($parcelas) . "\n\n";
 foreach ($parcelas as $idx => $parcela) {
     $dataPagamento = $parcela['data_pagamento'] ?: 'Nao paga';
     $formaPagamento = $parcela['forma_pagamento'] ?: '-';
-    echo "Parcela #{$parcela['numero_parcela']} (ID: {$parcela['id']})\n";
+    $numeroParcela = $idx + 1;
+    echo "Parcela #{$numeroParcela} (ID: {$parcela['id']})\n";
     echo "  Valor: R$ " . number_format($parcela['valor'], 2, ',', '.') . "\n";
     echo "  Data Vencimento: {$parcela['data_vencimento']}\n";
     echo "  Status: {$parcela['status_pagamento']}\n";
@@ -167,20 +167,39 @@ $sql = "
     WHERE pm.matricula_id = ?
     ORDER BY pm.created_at DESC
 ";
-$stmt = $db->prepare($sql);
-$stmt->execute([$matriculaId]);
-$pagamentosMp = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+$pagamentosMp = [];
+try {
+    $stmt = $db->prepare($sql);
+    $stmt->execute([$matriculaId]);
+    $pagamentosMp = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+} catch (\Throwable $e) {
+    echo "Aviso: falha na consulta detalhada de pagamentos_mercadopago: " . $e->getMessage() . "\n";
+    $sqlFallback = "SELECT * FROM pagamentos_mercadopago WHERE matricula_id = ? ORDER BY id DESC";
+    $stmt = $db->prepare($sqlFallback);
+    $stmt->execute([$matriculaId]);
+    $pagamentosMp = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+}
 
 echo "Total de pagamentos MP: " . count($pagamentosMp) . "\n\n";
 foreach ($pagamentosMp as $pm) {
-    echo "Payment ID: {$pm['payment_id']}\n";
-    echo "  Status: {$pm['status']} - {$pm['status_detail']}\n";
-    echo "  External Reference: {$pm['external_reference']}\n";
-    echo "  Data Aprovação: {$pm['date_approved']}\n";
-    echo "  Data Criação: {$pm['date_created']}\n";
-    echo "  Valor: R$ " . number_format($pm['amount'], 2, ',', '.') . "\n";
-    echo "  Description: {$pm['description']}\n";
-    echo "  Payer Email: {$pm['payer_email']}\n";
+    $paymentId = $pm['payment_id'] ?? ($pm['id'] ?? '-');
+    $status = $pm['status'] ?? '-';
+    $statusDetail = $pm['status_detail'] ?? '-';
+    $externalRef = $pm['external_reference'] ?? '-';
+    $dateApproved = $pm['date_approved'] ?? '-';
+    $dateCreated = $pm['date_created'] ?? ($pm['created_at'] ?? '-');
+    $amount = isset($pm['amount']) ? (float)$pm['amount'] : (isset($pm['transaction_amount']) ? (float)$pm['transaction_amount'] : 0);
+    $description = $pm['description'] ?? '-';
+    $payerEmail = $pm['payer_email'] ?? '-';
+
+    echo "Payment ID: {$paymentId}\n";
+    echo "  Status: {$status} - {$statusDetail}\n";
+    echo "  External Reference: {$externalRef}\n";
+    echo "  Data Aprovação: {$dateApproved}\n";
+    echo "  Data Criação: {$dateCreated}\n";
+    echo "  Valor: R$ " . number_format($amount, 2, ',', '.') . "\n";
+    echo "  Description: {$description}\n";
+    echo "  Payer Email: {$payerEmail}\n";
     
     if ($pm['assinatura_id']) {
         echo "  Assinatura: {$pm['assinatura_id']}\n";
@@ -218,23 +237,44 @@ $sql = "
     WHERE wp.external_reference LIKE ?
     ORDER BY wp.created_at DESC
 ";
-$stmt = $db->prepare($sql);
-$stmt->execute(['MAT-' . $matriculaId . '%']);
-$webhooks = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+$webhooks = [];
+try {
+    $stmt = $db->prepare($sql);
+    $stmt->execute(['MAT-' . $matriculaId . '%']);
+    $webhooks = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+} catch (\Throwable $e) {
+    echo "Aviso: falha na consulta detalhada de webhook_payloads_mercadopago: " . $e->getMessage() . "\n";
+    $sqlFallback = "SELECT * FROM webhook_payloads_mercadopago WHERE external_reference LIKE ? ORDER BY id DESC";
+    $stmt = $db->prepare($sqlFallback);
+    $stmt->execute(['MAT-' . $matriculaId . '%']);
+    $webhooks = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+}
 
 echo "Total de webhooks: " . count($webhooks) . "\n\n";
 foreach ($webhooks as $wh) {
+    $event = $wh['event'] ?? ($wh['topic'] ?? '-');
+    $action = $wh['action'] ?? '-';
+    $paymentId = $wh['payment_id'] ?? '-';
+    $externalRef = $wh['external_reference'] ?? '-';
+    $status = $wh['status'] ?? '-';
+    $statusDetail = $wh['status_detail'] ?? '-';
+    $amount = isset($wh['amount']) ? (float)$wh['amount'] : 0;
+    $dateApproved = $wh['date_approved'] ?? '-';
+    $processedAt = $wh['processed_at'] ?? '-';
+    $processedResult = $wh['processed_result'] ?? '-';
+    $createdAt = $wh['created_at'] ?? '-';
+
     echo "Webhook ID: {$wh['id']}\n";
-    echo "  Event: {$wh['event']}\n";
-    echo "  Action: {$wh['action']}\n";
-    echo "  Payment ID: {$wh['payment_id']}\n";
-    echo "  External Ref: {$wh['external_reference']}\n";
-    echo "  Status: {$wh['status']} - {$wh['status_detail']}\n";
-    echo "  Valor: R$ " . number_format($wh['amount'] ?? 0, 2, ',', '.') . "\n";
-    echo "  Data Aprovação: {$wh['date_approved']}\n";
-    echo "  Processado: {$wh['processed_at']}\n";
-    echo "  Resultado: {$wh['processed_result']}\n";
-    echo "  Criado em: {$wh['created_at']}\n";
+    echo "  Event: {$event}\n";
+    echo "  Action: {$action}\n";
+    echo "  Payment ID: {$paymentId}\n";
+    echo "  External Ref: {$externalRef}\n";
+    echo "  Status: {$status} - {$statusDetail}\n";
+    echo "  Valor: R$ " . number_format($amount, 2, ',', '.') . "\n";
+    echo "  Data Aprovação: {$dateApproved}\n";
+    echo "  Processado: {$processedAt}\n";
+    echo "  Resultado: {$processedResult}\n";
+    echo "  Criado em: {$createdAt}\n";
     echo "\n";
 }
 
