@@ -284,6 +284,23 @@ class MatriculaController
         
         // Buscar modalidade do novo plano
         $modalidadeAtual = $plano['modalidade_id'];
+
+        $matriculaDuplicada = $this->buscarMatriculaDuplicadaMesmoPlanoCiclo(
+            $db,
+            $tenantId,
+            $alunoId,
+            (int) $planoId,
+            $planoCicloId ? (int) $planoCicloId : null,
+            $modalidadeAtual ? (int) $modalidadeAtual : null
+        );
+
+        if ($matriculaDuplicada) {
+            $statusDuplicado = $matriculaDuplicada['status_codigo'] ?? 'desconhecido';
+            $response->getBody()->write(json_encode([
+                'error' => "Ja existe matricula #{$matriculaDuplicada['id']} com mesma modalidade, plano e ciclo em status {$statusDuplicado}. Reutilize ou ajuste o registro existente antes de criar outra."
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
         
         // Verificar se existe matrícula ativa na mesma modalidade
         $matriculaMesmaModalidade = null;
@@ -768,6 +785,27 @@ class MatriculaController
             $pagamentosCriados = [];
 
             foreach ($beneficiariosIds as $benAlunoId) {
+                $matriculaDuplicada = $this->buscarMatriculaDuplicadaMesmoPlanoCiclo(
+                    $db,
+                    $tenantId,
+                    $benAlunoId,
+                    $planoId,
+                    $planoCicloId,
+                    isset($pacote['modalidade_id']) ? (int) $pacote['modalidade_id'] : null
+                );
+
+                if ($matriculaDuplicada) {
+                    $stmtNome = $db->prepare("SELECT nome FROM alunos WHERE id = ? LIMIT 1");
+                    $stmtNome->execute([$benAlunoId]);
+                    $nomeAluno = $stmtNome->fetchColumn() ?: "ID {$benAlunoId}";
+                    $statusDuplicado = $matriculaDuplicada['status_codigo'] ?? 'desconhecido';
+                    $db->rollBack();
+                    $response->getBody()->write(json_encode([
+                        'error' => "Aluno {$nomeAluno} ja possui matricula #{$matriculaDuplicada['id']} com mesmo plano/ciclo/modalidade em status {$statusDuplicado}"
+                    ], JSON_UNESCAPED_UNICODE));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                }
+
                 // Verificar se já existe matrícula ativa na mesma modalidade
                 $stmtAtiva = $db->prepare("
                     SELECT m.id FROM matriculas m
@@ -1465,6 +1503,51 @@ class MatriculaController
         
         $stmt = $db->prepare($sqlAtualizarPagamentos);
         $stmt->execute(['tenant_id' => $tenantId]);
+    }
+
+    private function buscarMatriculaDuplicadaMesmoPlanoCiclo(
+        \PDO $db,
+        int $tenantId,
+        int $alunoId,
+        int $planoId,
+        ?int $planoCicloId,
+        ?int $modalidadeId
+    ): ?array {
+        if ($modalidadeId === null) {
+            return null;
+        }
+
+        $sql = "
+            SELECT m.id, sm.codigo as status_codigo, m.proxima_data_vencimento, m.data_vencimento
+            FROM matriculas m
+            INNER JOIN planos p ON p.id = m.plano_id
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            WHERE m.tenant_id = ?
+              AND m.aluno_id = ?
+              AND m.plano_id = ?
+              AND p.modalidade_id = ?
+              AND (
+                    (m.plano_ciclo_id = ?)
+                    OR (? IS NULL AND m.plano_ciclo_id IS NULL)
+              )
+              AND sm.codigo IN ('vencida', 'ativa', 'cancelada', 'pendente')
+            ORDER BY m.updated_at DESC, m.id DESC
+            LIMIT 1
+        ";
+
+        $stmt = $db->prepare($sql);
+        $stmt->execute([
+            $tenantId,
+            $alunoId,
+            $planoId,
+            $modalidadeId,
+            $planoCicloId,
+            $planoCicloId,
+        ]);
+
+        $matricula = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        return $matricula ?: null;
     }
 
     /**
