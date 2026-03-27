@@ -21,6 +21,7 @@ use App\Controllers\FormaPagamentoController;
 use App\Controllers\ModalidadeController;
 use App\Controllers\TenantFormaPagamentoController;
 use App\Controllers\CepController;
+use App\Controllers\CreditoAlunoController;
 use App\Controllers\StatusController;
 use App\Controllers\FeatureFlagController;
 use App\Controllers\MobileController;
@@ -1089,6 +1090,12 @@ return function ($app) {
         $group->post('/matriculas/{id}/cancelar', [MatriculaController::class, 'cancelar']);
         $group->post('/matriculas/{id}/alterar-plano', [MatriculaController::class, 'alterarPlano']);
         $group->post('/matriculas/contas/{id}/baixa', [MatriculaController::class, 'darBaixaConta']);
+        
+        // Créditos do Aluno
+        $group->get('/alunos/{id}/creditos', [CreditoAlunoController::class, 'listarPorAluno']);
+        $group->get('/alunos/{id}/creditos/saldo', [CreditoAlunoController::class, 'saldo']);
+        $group->post('/alunos/{id}/creditos', [CreditoAlunoController::class, 'criar']);
+        $group->delete('/creditos/{id}', [CreditoAlunoController::class, 'cancelar']);
         $group->post('/matriculas/pacote-contrato/{contratoId}/baixa', [MatriculaController::class, 'darBaixaPacote']);
         
         // Matrículas - Gerenciamento de Vencimentos

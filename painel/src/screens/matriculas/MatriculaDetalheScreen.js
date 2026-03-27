@@ -59,6 +59,9 @@ export default function MatriculaDetalheScreen() {
     data_inicio: formatarDataParaInput(new Date()),
     dia_vencimento: '',
     observacoes: '',
+    tipo_credito: 'nenhum',
+    credito: '',
+    motivo_credito: '',
   });
   const [formEditarPagamento, setFormEditarPagamento] = useState({
     valor: '',
@@ -324,6 +327,9 @@ export default function MatriculaDetalheScreen() {
       data_inicio: formatarDataParaInput(new Date()),
       dia_vencimento: diaVencimentoAtual,
       observacoes: '',
+      tipo_credito: 'nenhum',
+      credito: '',
+      motivo_credito: '',
     });
     setCiclosAlteracao([]);
     setModalAlterarPlanoVisible(true);
@@ -368,8 +374,28 @@ export default function MatriculaDetalheScreen() {
         observacoes: formAlterarPlano.observacoes?.trim() || null,
       };
 
+      if (formAlterarPlano.tipo_credito === 'abater') {
+        payload.abater_pagamento_anterior = true;
+      } else if (formAlterarPlano.tipo_credito === 'manual') {
+        const creditoVal = parseFloat(formAlterarPlano.credito);
+        if (creditoVal > 0) {
+          payload.credito = creditoVal;
+          if (formAlterarPlano.motivo_credito?.trim()) {
+            payload.motivo_credito = formAlterarPlano.motivo_credito.trim();
+          }
+        }
+      }
+
       const response = await matriculaService.alterarPlano(id, payload);
-      showToast(response?.message || 'Plano alterado com sucesso');
+
+      let msg = response?.message || 'Plano alterado com sucesso';
+      if (response?.credito && response.credito.valor_aplicado > 0) {
+        msg += ` — Crédito de ${formatCurrency(response.credito.valor_aplicado)} aplicado. Parcela: ${formatCurrency(response.valor_parcela)}`;
+        if (response.credito.saldo_restante > 0) {
+          msg += ` (saldo restante: ${formatCurrency(response.credito.saldo_restante)})`;
+        }
+      }
+      showToast(msg);
       setModalAlterarPlanoVisible(false);
       await carregarDados();
     } catch (error) {
@@ -1831,6 +1857,134 @@ export default function MatriculaDetalheScreen() {
                   />
                 )}
               </View>
+
+              {/* Crédito na primeira parcela */}
+              {(() => {
+                const ultimoPagamentoPago = [...pagamentos]
+                  .filter((p) => Number(p.status_pagamento_id) === 2)
+                  .sort((a, b) => new Date(b.data_pagamento || b.data_vencimento) - new Date(a.data_pagamento || a.data_vencimento))[0];
+                const valorUltimoPago = ultimoPagamentoPago ? parseFloat(ultimoPagamentoPago.valor || 0) : 0;
+
+                const cicloSelecionado = ciclosAlteracao.find(
+                  (c) => c.id.toString() === formAlterarPlano.plano_ciclo_id
+                );
+                const valorNovoParcela = cicloSelecionado ? parseFloat(cicloSelecionado.valor || 0) : 0;
+
+                const creditoEstimado =
+                  formAlterarPlano.tipo_credito === 'abater'
+                    ? valorUltimoPago
+                    : formAlterarPlano.tipo_credito === 'manual'
+                    ? parseFloat(formAlterarPlano.credito) || 0
+                    : 0;
+                const valorPrimeiraParcela = Math.max(0, valorNovoParcela - creditoEstimado);
+                const saldoRestanteEstimado = Math.max(0, creditoEstimado - valorNovoParcela);
+
+                const opcoes = [
+                  { key: 'nenhum', label: 'Sem crédito', icon: 'x-circle' },
+                  ...(ultimoPagamentoPago
+                    ? [{ key: 'abater', label: `Abater último pago (${formatCurrency(valorUltimoPago)})`, icon: 'refresh-cw' }]
+                    : []),
+                  { key: 'manual', label: 'Crédito manual', icon: 'edit-3' },
+                ];
+
+                return (
+                  <View className="mb-4">
+                    <Text className="mb-2 text-sm font-semibold text-slate-700">Crédito na primeira parcela</Text>
+                    <View className="flex-row flex-wrap gap-3">
+                      {opcoes.map((opcao) => {
+                        const selecionado = formAlterarPlano.tipo_credito === opcao.key;
+                        return (
+                          <Pressable
+                            key={opcao.key}
+                            className={`min-w-[140px] flex-1 rounded-xl border p-3 ${
+                              selecionado ? 'border-emerald-400 bg-emerald-50/70' : 'border-slate-200 bg-white'
+                            }`}
+                            style={({ pressed }) => [pressed && { opacity: 0.85 }]}
+                            onPress={() =>
+                              setFormAlterarPlano((prev) => ({
+                                ...prev,
+                                tipo_credito: opcao.key,
+                                ...(opcao.key !== 'manual' ? { credito: '', motivo_credito: '' } : {}),
+                              }))
+                            }
+                          >
+                            <View className="flex-row items-center gap-2">
+                              <Feather name={opcao.icon} size={14} color={selecionado ? '#10b981' : '#64748b'} />
+                              <Text className={`text-sm font-semibold ${selecionado ? 'text-emerald-700' : 'text-slate-700'}`}>
+                                {opcao.label}
+                              </Text>
+                              {selecionado ? <Feather name="check" size={14} color="#10b981" /> : null}
+                            </View>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
+
+                    {formAlterarPlano.tipo_credito === 'abater' && ultimoPagamentoPago && (
+                      <View className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+                        <Text className="text-sm text-blue-700">
+                          Crédito de {formatCurrency(valorUltimoPago)} será gerado automaticamente a partir do último pagamento pago.
+                        </Text>
+                      </View>
+                    )}
+
+                    {formAlterarPlano.tipo_credito === 'manual' && (
+                      <View className="mt-3 gap-3">
+                        <View>
+                          <Text className="mb-1 text-sm font-semibold text-slate-700">Valor do crédito (R$)</Text>
+                          <TextInput
+                            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
+                            value={formAlterarPlano.credito}
+                            onChangeText={(text) =>
+                              setFormAlterarPlano((prev) => ({ ...prev, credito: text.replace(/[^0-9.,]/g, '') }))
+                            }
+                            placeholder="Ex: 150.00"
+                            keyboardType="decimal-pad"
+                          />
+                        </View>
+                        <View>
+                          <Text className="mb-1 text-sm font-semibold text-slate-700">Motivo do crédito</Text>
+                          <TextInput
+                            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
+                            value={formAlterarPlano.motivo_credito}
+                            onChangeText={(text) =>
+                              setFormAlterarPlano((prev) => ({ ...prev, motivo_credito: text }))
+                            }
+                            placeholder="Ex: Acordo comercial"
+                          />
+                        </View>
+                      </View>
+                    )}
+
+                    {formAlterarPlano.tipo_credito !== 'nenhum' && valorNovoParcela > 0 && creditoEstimado > 0 && (
+                      <View className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+                        <Text className="text-xs font-semibold uppercase text-emerald-600">Preview da 1ª parcela</Text>
+                        <View className="mt-2 flex-row items-center justify-between">
+                          <Text className="text-sm text-slate-600">Valor do ciclo</Text>
+                          <Text className="text-sm font-semibold text-slate-800">{formatCurrency(valorNovoParcela)}</Text>
+                        </View>
+                        <View className="mt-1 flex-row items-center justify-between">
+                          <Text className="text-sm text-slate-600">Crédito aplicado</Text>
+                          <Text className="text-sm font-semibold text-emerald-700">
+                            - {formatCurrency(Math.min(creditoEstimado, valorNovoParcela))}
+                          </Text>
+                        </View>
+                        <View className="mt-2 border-t border-emerald-200 pt-2 flex-row items-center justify-between">
+                          <Text className="text-sm font-bold text-slate-800">1ª Parcela</Text>
+                          <Text className="text-lg font-bold text-emerald-700">{formatCurrency(valorPrimeiraParcela)}</Text>
+                        </View>
+                        {saldoRestanteEstimado > 0 && (
+                          <View className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+                            <Text className="text-xs text-amber-700">
+                              Saldo restante de {formatCurrency(saldoRestanteEstimado)} ficará como crédito ativo do aluno.
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    )}
+                  </View>
+                );
+              })()}
 
               <View>
                 <Text className="mb-2 text-sm font-semibold text-slate-700">Observações</Text>

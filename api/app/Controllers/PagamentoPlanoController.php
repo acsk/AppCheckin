@@ -330,7 +330,7 @@ class PagamentoPlanoController
 
                     // Buscar ciclo da matrícula e aluno_id (fallback se parcela não tiver)
                     $stmtMatCiclo = $db->prepare("
-                        SELECT m.plano_ciclo_id, m.aluno_id,
+                        SELECT m.plano_ciclo_id, m.aluno_id, m.valor as matricula_valor,
                                pc.meses as ciclo_meses, af.meses as frequencia_meses
                         FROM matriculas m
                         LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
@@ -341,6 +341,8 @@ class PagamentoPlanoController
                     $matCicloInfo = $stmtMatCiclo->fetch(\PDO::FETCH_ASSOC);
                     $mesesCiclo = $matCicloInfo['ciclo_meses'] ?? $matCicloInfo['frequencia_meses'] ?? null;
                     $alunoIdProxima = $pagamento['aluno_id'] ?? $matCicloInfo['aluno_id'] ?? null;
+                    // Valor da próxima parcela: usar valor da matrícula (valor cheio do plano/ciclo)
+                    $valorProximaParcela = $matCicloInfo['matricula_valor'] ?? $plano['valor'];
 
                     if ($plano && ($mesesCiclo || $plano['duracao_dias'] > 0)) {
                         $dataVencimentoAtual = new \DateTime($pagamento['data_vencimento']);
@@ -363,9 +365,7 @@ class PagamentoPlanoController
                                 'aluno_id' => $alunoIdProxima,
                                 'matricula_id' => $pagamento['matricula_id'],
                                 'plano_id' => $pagamento['plano_id'],
-                                'valor' => $plano['valor'],
-                                'desconto' => $pagamento['desconto'] ?? 0.00,
-                                'motivo_desconto' => $pagamento['motivo_desconto'] ?? null,
+                                'valor' => $valorProximaParcela,
                                 'data_vencimento' => $proximaDataVencimento->format('Y-m-d'),
                                 'status_pagamento_id' => 1,
                                 'observacoes' => 'Pagamento gerado automaticamente após confirmação',
@@ -478,7 +478,7 @@ class PagamentoPlanoController
 
             // Buscar ciclo da matrícula e aluno_id (fallback se parcela não tiver)
             $stmtMatCiclo = $db->prepare("
-                SELECT m.plano_ciclo_id, m.aluno_id,
+                SELECT m.plano_ciclo_id, m.aluno_id, m.valor as matricula_valor,
                        pc.meses as ciclo_meses, af.meses as frequencia_meses
                 FROM matriculas m
                 LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
@@ -489,6 +489,8 @@ class PagamentoPlanoController
             $matCicloInfo = $stmtMatCiclo->fetch(\PDO::FETCH_ASSOC);
             $mesesCiclo = $matCicloInfo['ciclo_meses'] ?? $matCicloInfo['frequencia_meses'] ?? null;
             $alunoIdProxima = $pagamento['aluno_id'] ?? $matCicloInfo['aluno_id'] ?? null;
+            // Valor da próxima parcela: usar valor da matrícula (valor cheio do plano/ciclo)
+            $valorProximaParcela = $matCicloInfo['matricula_valor'] ?? $plano['valor'];
 
             if ($plano && ($mesesCiclo || $plano['duracao_dias'] > 0)) {
                 // Calcular próxima data sempre a partir do vencimento original da parcela
@@ -514,7 +516,7 @@ class PagamentoPlanoController
                         'aluno_id' => $alunoIdProxima,
                         'matricula_id' => $pagamento['matricula_id'],
                         'plano_id' => $pagamento['plano_id'],
-                        'valor' => $plano['valor'], // Usar valor atual do plano
+                        'valor' => $valorProximaParcela,
                         'data_vencimento' => $proximaDataVencimento->format('Y-m-d'),
                         'status_pagamento_id' => 1, // Aguardando
                         'observacoes' => 'Pagamento gerado automaticamente após confirmação',

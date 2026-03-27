@@ -1672,6 +1672,9 @@ class MatriculaController
                     new OA\Property(property: "plano_ciclo_id", type: "integer", nullable: true, description: "ID do ciclo do novo plano"),
                     new OA\Property(property: "data_inicio", type: "string", format: "date", description: "Data de início do novo plano (padrão: hoje)"),
                     new OA\Property(property: "dia_vencimento", type: "integer", description: "Dia de vencimento (1-31)"),
+                    new OA\Property(property: "abater_pagamento_anterior", type: "boolean", description: "Se true, abate o valor do último pagamento pago como desconto na primeira parcela do novo plano"),
+                    new OA\Property(property: "desconto", type: "number", description: "Valor de desconto manual na primeira parcela"),
+                    new OA\Property(property: "motivo_desconto", type: "string", nullable: true, description: "Motivo do desconto"),
                     new OA\Property(property: "observacoes", type: "string", nullable: true)
                 ]
             )
@@ -1686,7 +1689,9 @@ class MatriculaController
                         new OA\Property(property: "message", type: "string"),
                         new OA\Property(property: "matricula", type: "object"),
                         new OA\Property(property: "parcelas_canceladas", type: "integer"),
-                        new OA\Property(property: "novo_pagamento_id", type: "integer")
+                        new OA\Property(property: "novo_pagamento_id", type: "integer"),
+                        new OA\Property(property: "desconto_aplicado", type: "number"),
+                        new OA\Property(property: "valor_parcela", type: "number")
                     ]
                 )
             ),
@@ -1806,6 +1811,38 @@ class MatriculaController
 
         $planoAnteriorId = (int) $matricula['plano_id'];
 
+        // Calcular crédito na primeira parcela
+        $creditoValor = 0.0;
+        $creditoMotivo = $data['motivo_credito'] ?? null;
+        $creditoId = null;
+        $pagamentoOrigemId = null;
+
+        if (!empty($data['abater_pagamento_anterior'])) {
+            // Buscar último pagamento PAGO desta matrícula para gerar crédito
+            $stmtUltimoPago = $db->prepare("
+                SELECT id, valor, data_pagamento, data_vencimento
+                FROM pagamentos_plano
+                WHERE matricula_id = ? AND tenant_id = ? AND status_pagamento_id = 2
+                ORDER BY data_vencimento DESC
+                LIMIT 1
+            ");
+            $stmtUltimoPago->execute([$matriculaId, $tenantId]);
+            $ultimoPago = $stmtUltimoPago->fetch(\PDO::FETCH_ASSOC);
+
+            if ($ultimoPago) {
+                $creditoValor = (float) $ultimoPago['valor'];
+                $pagamentoOrigemId = (int) $ultimoPago['id'];
+                $creditoMotivo = $creditoMotivo ?? "Crédito do plano anterior (pagamento de R$" . number_format($creditoValor, 2, ',', '.') . " em " . date('d/m/Y', strtotime($ultimoPago['data_pagamento'] ?? $ultimoPago['data_vencimento'])) . ")";
+            }
+        } elseif (isset($data['credito'])) {
+            $creditoValor = (float) $data['credito'];
+            $creditoMotivo = $creditoMotivo ?? "Crédito manual na alteração de plano";
+        }
+
+        // Valor da parcela descontando o crédito
+        $creditoAplicado = min($creditoValor, (float) $valorNovo); // não aplicar mais que o valor da parcela
+        $valorParcela = max(0, (float) $valorNovo - $creditoAplicado);
+
         // Status: pendente (aguarda pagamento da primeira parcela do novo plano)
         $stmtStatus = $db->prepare("SELECT id FROM status_matricula WHERE codigo = 'pendente' LIMIT 1");
         $stmtStatus->execute();
@@ -1887,19 +1924,48 @@ class MatriculaController
                 $adminId
             ]);
 
-            // 4. Criar primeira parcela do novo plano
+            // 4. Criar crédito se houver valor a abater
+            if ($creditoAplicado > 0) {
+                $stmtCredito = $db->prepare("
+                    INSERT INTO creditos_aluno
+                    (tenant_id, aluno_id, matricula_origem_id, pagamento_origem_id, valor, motivo, criado_por)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ");
+                $stmtCredito->execute([
+                    $tenantId,
+                    $matricula['aluno_id'],
+                    $matriculaId,
+                    $pagamentoOrigemId,
+                    $creditoValor,
+                    $creditoMotivo,
+                    $adminId
+                ]);
+                $creditoId = (int) $db->lastInsertId();
+
+                // Marcar crédito como utilizado (parcial ou total)
+                $saldoCredito = $creditoValor - $creditoAplicado;
+                $statusCreditoId = $saldoCredito <= 0.001 ? 2 : 1; // 2=utilizado, 1=ativo
+                $stmtUtilizar = $db->prepare("
+                    UPDATE creditos_aluno SET valor_utilizado = ?, status_credito_id = ?, updated_at = NOW() WHERE id = ?
+                ");
+                $stmtUtilizar->execute([round($creditoAplicado, 2), $statusCreditoId, $creditoId]);
+            }
+
+            // 5. Criar primeira parcela do novo plano (com crédito se houver)
             $stmtPagamento = $db->prepare("
                 INSERT INTO pagamentos_plano
-                (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento,
+                (tenant_id, aluno_id, matricula_id, plano_id, valor, credito_id, credito_aplicado, data_vencimento,
                  status_pagamento_id, observacoes, criado_por, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, 1, 'Primeiro pagamento - alteração de plano', ?, NOW(), NOW())
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 'Primeiro pagamento - alteração de plano', ?, NOW(), NOW())
             ");
             $stmtPagamento->execute([
                 $tenantId,
                 $matricula['aluno_id'],
                 $matriculaId,
                 $novoPlanoId,
-                $valorNovo,
+                $valorParcela,
+                $creditoId,
+                $creditoAplicado > 0 ? $creditoAplicado : null,
                 $dataInicio,
                 $adminId
             ]);
@@ -1931,6 +1997,14 @@ class MatriculaController
             'plano_novo' => $novoPlano['nome'],
             'parcelas_canceladas' => $parcelasCanceladas,
             'novo_pagamento_id' => $novoPagamentoId,
+            'valor_parcela' => $valorParcela,
+            'credito' => $creditoAplicado > 0 ? [
+                'id' => $creditoId,
+                'valor_total' => $creditoValor,
+                'valor_aplicado' => $creditoAplicado,
+                'saldo_restante' => round($creditoValor - $creditoAplicado, 2),
+                'motivo' => $creditoMotivo
+            ] : null,
             'motivo' => $motivo
         ], JSON_UNESCAPED_UNICODE));
         return $response->withHeader('Content-Type', 'application/json');
@@ -2603,6 +2677,7 @@ class MatriculaController
         // Buscar pagamento com informações do plano e ciclo
         $stmt = $db->prepare("
             SELECT pp.*, m.plano_id, m.plano_ciclo_id, p.duracao_dias,
+                   m.valor as matricula_valor,
                    pc.meses as ciclo_meses, af.meses as frequencia_meses
             FROM pagamentos_plano pp
             INNER JOIN matriculas m ON pp.matricula_id = m.id
@@ -2737,12 +2812,15 @@ class MatriculaController
                     created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, NOW())");
 
+            // Usar valor da matrícula (valor cheio do plano/ciclo), não o valor da parcela (que pode ter desconto)
+            $valorProximaParcela = $pagamento['matricula_valor'] ?? $pagamento['valor'];
+
             $stmtProxima->execute([
                 $pagamento['tenant_id'],
                 $pagamento['aluno_id'],
                 $pagamento['matricula_id'],
                 $pagamento['plano_id'],
-                $pagamento['valor'],
+                $valorProximaParcela,
                 $proximoVencimento->format('Y-m-d'),
                 'Pagamento gerado automaticamente após confirmação',
                 $adminId
@@ -2751,7 +2829,7 @@ class MatriculaController
             $proximaParcela = [
                 'id' => $db->lastInsertId(),
                 'data_vencimento' => $proximoVencimento->format('Y-m-d'),
-                'valor' => $pagamento['valor'],
+                'valor' => $valorProximaParcela,
                 'status' => 'Aguardando'
             ];
 
