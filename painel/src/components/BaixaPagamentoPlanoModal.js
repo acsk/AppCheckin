@@ -60,10 +60,10 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
 
     const hoje = new Date().toISOString().split('T')[0];
     const primeiroDiaMesAtual = `${hoje.slice(0, 7)}-01`;
-    if (formData.data_vencimento > hoje) {
-      showError('Data de vencimento não pode ser maior que hoje');
-      return;
-    }
+    // if (formData.data_vencimento > hoje) {
+    //   showError('Data de vencimento não pode ser maior que hoje');
+    //   return;
+    // }
     if (formData.data_vencimento < primeiroDiaMesAtual) {
       showError('Data de vencimento não pode ser menor que o mês atual');
       return;

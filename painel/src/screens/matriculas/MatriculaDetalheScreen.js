@@ -10,15 +10,16 @@ import {
   Modal,
   ToastAndroid,
   TextInput,
-  Alert,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Picker } from '@react-native-picker/picker';
 import LayoutBase from '../../components/LayoutBase';
 import BaixaPagamentoPlanoModal from '../../components/BaixaPagamentoPlanoModal';
 import { matriculaService } from '../../services/matriculaService';
 import mercadoPagoService from '../../services/mercadoPagoService';
 import { pagamentoPlanoService } from '../../services/pagamentoPlanoService';
+import planoService from '../../services/planoService';
 import { formatarDataParaInput, calcularDiasRestantes } from '../../utils/formatadores';
 import { mascaraData } from '../../utils/masks';
 import { obterMensagemErro } from '../../utils/errorHandler';
@@ -44,8 +45,21 @@ export default function MatriculaDetalheScreen() {
   const [modalExcluirPagamentoVisible, setModalExcluirPagamentoVisible] = useState(false);
   const [salvandoPagamento, setSalvandoPagamento] = useState(false);
   const [excluindoPagamento, setExcluindoPagamento] = useState(false);
+  const [modalAlterarPlanoVisible, setModalAlterarPlanoVisible] = useState(false);
+  const [loadingPlanosAlteracao, setLoadingPlanosAlteracao] = useState(false);
+  const [loadingCiclosAlteracao, setLoadingCiclosAlteracao] = useState(false);
+  const [salvandoAlteracaoPlano, setSalvandoAlteracaoPlano] = useState(false);
+  const [planosAlteracao, setPlanosAlteracao] = useState([]);
+  const [ciclosAlteracao, setCiclosAlteracao] = useState([]);
   const [pagamentoEditando, setPagamentoEditando] = useState(null);
   const [pagamentoExcluindo, setPagamentoExcluindo] = useState(null);
+  const [formAlterarPlano, setFormAlterarPlano] = useState({
+    plano_id: '',
+    plano_ciclo_id: '',
+    data_inicio: formatarDataParaInput(new Date()),
+    dia_vencimento: '',
+    observacoes: '',
+  });
   const [formEditarPagamento, setFormEditarPagamento] = useState({
     valor: '',
     desconto: '',
@@ -62,6 +76,41 @@ export default function MatriculaDetalheScreen() {
   useEffect(() => {
     carregarDados();
   }, [id]);
+
+  useEffect(() => {
+    if (!modalAlterarPlanoVisible) return;
+
+    if (!formAlterarPlano.plano_id) {
+      setCiclosAlteracao([]);
+      setFormAlterarPlano((prev) => ({ ...prev, plano_ciclo_id: '' }));
+      return;
+    }
+
+    const planoSelecionado = planosAlteracao.find(
+      (plano) => plano.id === Number(formAlterarPlano.plano_id)
+    );
+
+    if (planoSelecionado?.ciclos?.length) {
+      const ciclosOrdenados = [...planoSelecionado.ciclos].sort((a, b) => a.meses - b.meses);
+      setCiclosAlteracao(ciclosOrdenados);
+      setFormAlterarPlano((prev) => {
+        const cicloAtualValido = ciclosOrdenados.some(
+          (ciclo) => ciclo.id.toString() === prev.plano_ciclo_id
+        );
+
+        return {
+          ...prev,
+          plano_ciclo_id:
+            cicloAtualValido || ciclosOrdenados.length !== 1
+              ? prev.plano_ciclo_id
+              : ciclosOrdenados[0].id.toString(),
+        };
+      });
+      return;
+    }
+
+    carregarCiclosAlteracao(formAlterarPlano.plano_id);
+  }, [formAlterarPlano.plano_id, modalAlterarPlanoVisible, planosAlteracao]);
 
   const carregarDados = async () => {
     try {
@@ -185,6 +234,149 @@ export default function MatriculaDetalheScreen() {
       showAlert('Erro', errorMsg);
     } finally {
       setSalvandoData(false);
+    }
+  };
+
+  const getCicloLabel = (ciclo) => {
+    if (!ciclo) return '-';
+    const meses = Number(ciclo.meses || 0);
+    const frequencia = ciclo.frequencia_nome || ciclo.nome || 'Ciclo';
+    return `${frequencia}${meses ? ` • ${meses} ${meses === 1 ? 'mês' : 'meses'}` : ''}`;
+  };
+
+  const carregarPlanosAlteracao = async () => {
+    try {
+      setLoadingPlanosAlteracao(true);
+      const response = await planoService.listar(true);
+      const todosPlanos = Array.isArray(response)
+        ? response
+        : Array.isArray(response?.planos)
+        ? response.planos
+        : [];
+
+      const planosAtivos = todosPlanos.filter((plano) => plano.ativo && plano.atual);
+      const planosDaModalidade = matricula?.modalidade_id
+        ? planosAtivos.filter((plano) => plano.modalidade_id === Number(matricula.modalidade_id))
+        : [];
+
+      setPlanosAlteracao(planosDaModalidade.length > 0 ? planosDaModalidade : planosAtivos);
+    } catch (error) {
+      setPlanosAlteracao([]);
+      const mensagem = obterMensagemErro(error, 'Não foi possível carregar os planos disponíveis');
+      showAlert('Erro', mensagem);
+    } finally {
+      setLoadingPlanosAlteracao(false);
+    }
+  };
+
+  const carregarCiclosAlteracao = async (planoId) => {
+    if (!planoId) {
+      setCiclosAlteracao([]);
+      return;
+    }
+
+    try {
+      setLoadingCiclosAlteracao(true);
+      setCiclosAlteracao([]);
+      const response = await planoService.listarCiclos(planoId);
+      const lista = Array.isArray(response)
+        ? response
+        : response?.ciclos || response?.data?.ciclos || [];
+      const ciclosOrdenados = lista.slice().sort((a, b) => a.meses - b.meses);
+      setCiclosAlteracao(ciclosOrdenados);
+      setFormAlterarPlano((prev) => ({
+        ...prev,
+        plano_ciclo_id: ciclosOrdenados.some((ciclo) => ciclo.id.toString() === prev.plano_ciclo_id)
+          ? prev.plano_ciclo_id
+          : ciclosOrdenados.length === 1
+          ? ciclosOrdenados[0].id.toString()
+          : '',
+      }));
+    } catch (error) {
+      setCiclosAlteracao([]);
+      const mensagem = obterMensagemErro(error, 'Não foi possível carregar os ciclos do plano');
+      showAlert('Erro', mensagem);
+    } finally {
+      setLoadingCiclosAlteracao(false);
+    }
+  };
+
+  const handleAbrirAlterarPlano = async () => {
+    if (!matricula) {
+      showAlert('Erro', 'Matrícula não carregada');
+      return;
+    }
+
+    const dataVencimentoAtual = matricula.proxima_data_vencimento || matricula.data_vencimento;
+    const planoAtualId = matricula?.plano_id ? String(matricula.plano_id) : '';
+    const planoCicloAtualId = matricula?.plano_ciclo_id
+      ? String(matricula.plano_ciclo_id)
+      : cicloInfo?.ciclo?.id
+      ? String(cicloInfo.ciclo.id)
+      : '';
+    const diaVencimentoAtual = dataVencimentoAtual
+      ? String(Number(dataVencimentoAtual.split('-')[2] || 0) || '')
+      : String(new Date().getDate());
+
+    setFormAlterarPlano({
+      plano_id: planoAtualId,
+      plano_ciclo_id: planoCicloAtualId,
+      data_inicio: formatarDataParaInput(new Date()),
+      dia_vencimento: diaVencimentoAtual,
+      observacoes: '',
+    });
+    setCiclosAlteracao([]);
+    setModalAlterarPlanoVisible(true);
+    await carregarPlanosAlteracao();
+  };
+
+  const handleConfirmarAlteracaoPlano = async () => {
+    if (!formAlterarPlano.plano_id) {
+      showAlert('Erro', 'Selecione um plano');
+      return;
+    }
+
+    if (!formAlterarPlano.plano_ciclo_id) {
+      showAlert('Erro', 'Selecione um ciclo de pagamento');
+      return;
+    }
+
+    if (!formAlterarPlano.data_inicio || !/^\d{4}-\d{2}-\d{2}$/.test(formAlterarPlano.data_inicio)) {
+      showAlert('Erro', 'Informe uma data de início válida no formato YYYY-MM-DD');
+      return;
+    }
+
+    const diaVencimentoInformado = Number(formAlterarPlano.dia_vencimento);
+    const diaVencimentoDataInicio = Number((formAlterarPlano.data_inicio || '').split('-')[2] || 0);
+    const diaVencimento =
+      Number.isInteger(diaVencimentoInformado) && diaVencimentoInformado >= 1 && diaVencimentoInformado <= 31
+        ? diaVencimentoInformado
+        : diaVencimentoDataInicio;
+
+    if (!Number.isInteger(diaVencimento) || diaVencimento < 1 || diaVencimento > 31) {
+      showAlert('Erro', 'Não foi possível determinar o dia de vencimento pela data de início');
+      return;
+    }
+
+    try {
+      setSalvandoAlteracaoPlano(true);
+      const payload = {
+        plano_id: Number(formAlterarPlano.plano_id),
+        plano_ciclo_id: Number(formAlterarPlano.plano_ciclo_id),
+        data_inicio: formAlterarPlano.data_inicio,
+        dia_vencimento: diaVencimento,
+        observacoes: formAlterarPlano.observacoes?.trim() || null,
+      };
+
+      const response = await matriculaService.alterarPlano(id, payload);
+      showToast(response?.message || 'Plano alterado com sucesso');
+      setModalAlterarPlanoVisible(false);
+      await carregarDados();
+    } catch (error) {
+      const mensagem = obterMensagemErro(error, 'Não foi possível alterar o plano da matrícula');
+      showAlert('Erro', mensagem);
+    } finally {
+      setSalvandoAlteracaoPlano(false);
     }
   };
 
@@ -457,7 +649,10 @@ export default function MatriculaDetalheScreen() {
     if (statusId === 3) return true;
     return statusId === 1 && isVencido(pagamento.data_vencimento);
   };
-  const isPagamentoBaixavel = (pagamento) => !pagamento?.data_pagamento;
+  const isPagamentoBaixavel = (pagamento) => {
+    const statusId = Number(pagamento?.status_pagamento_id);
+    return statusId !== 4 && !pagamento?.data_pagamento;
+  };
   const hasMercadoPagoIds =
     Array.isArray(matricula?.mercadopago_payment_ids) &&
     matricula.mercadopago_payment_ids.length > 0 &&
@@ -666,6 +861,9 @@ export default function MatriculaDetalheScreen() {
 
   const resumo = calcularResumo();
   const cicloInfo = getCicloInfo();
+  const planoSelecionadoAlteracao = planosAlteracao.find(
+    (plano) => plano.id === Number(formAlterarPlano.plano_id)
+  );
 
   return (
     <LayoutBase title={`Matrícula #${matricula.id}`}>
@@ -928,17 +1126,30 @@ export default function MatriculaDetalheScreen() {
               <Text className="text-lg font-extrabold text-emerald-800">{formatCurrency(matricula.valor)}</Text>
             </View>
 
-            {/* Botão Editar Data de Vencimento (somente quando não há valor) */}
-            {!(matricula?.valor > 0) && !isPacote && (
+            {/* Ações da matrícula */}
+            {!isPacote && (
               <View className="border-t border-slate-100 px-5 py-3">
-                <Pressable
-                  onPress={handleAbrirModalEditarVencimento}
-                  className="flex-row items-center justify-center gap-2 rounded-lg bg-orange-500 py-3"
-                  style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                >
-                  <Feather name="calendar" size={16} color="#fff" />
-                  <Text className="text-sm font-semibold text-white">Alterar Data de Vencimento</Text>
-                </Pressable>
+                <View className={`gap-3 ${isDesktop ? 'flex-row' : ''}`}>
+                  {!(matricula?.valor > 0) && (
+                    <Pressable
+                      onPress={handleAbrirModalEditarVencimento}
+                      className="flex-1 flex-row items-center justify-center gap-2 rounded-lg bg-orange-500 py-3"
+                      style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                    >
+                      <Feather name="calendar" size={16} color="#fff" />
+                      <Text className="text-sm font-semibold text-white">Alterar Data de Vencimento</Text>
+                    </Pressable>
+                  )}
+
+                  <Pressable
+                    onPress={handleAbrirAlterarPlano}
+                    className="flex-1 flex-row items-center justify-center gap-2 rounded-lg bg-slate-800 py-3"
+                    style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                  >
+                    <Feather name="repeat" size={16} color="#fff" />
+                    <Text className="text-sm font-semibold text-white">Alterar Plano</Text>
+                  </Pressable>
+                </View>
               </View>
             )}
 
@@ -984,12 +1195,20 @@ export default function MatriculaDetalheScreen() {
             ) : (() => {
               const pagamentosOrdenados = pagamentos
                 .slice()
-                .sort((a, b) => new Date(b.data_vencimento) - new Date(a.data_vencimento));
-              const numeroFallback = pagamentos
+                .sort((a, b) => {
+                  const pagamentoBId = Number(getPagamentoId(b) || 0);
+                  const pagamentoAId = Number(getPagamentoId(a) || 0);
+
+                  if (pagamentoBId !== pagamentoAId) {
+                    return pagamentoBId - pagamentoAId;
+                  }
+
+                  return new Date(b.data_vencimento || 0) - new Date(a.data_vencimento || 0);
+                });
+              const numeroFallback = pagamentosOrdenados
                 .slice()
-                .sort((a, b) => new Date(a.data_vencimento) - new Date(b.data_vencimento))
                 .reduce((acc, pagamento, idx) => {
-                  acc.set(pagamento.id, idx + 1);
+                  acc.set(getPagamentoId(pagamento), idx + 1);
                   return acc;
                 }, new Map());
 
@@ -997,7 +1216,7 @@ export default function MatriculaDetalheScreen() {
                 return (
                   <View className="gap-3 px-4 py-3">
                     {pagamentosOrdenados.map((pagamento, index) => {
-                      const numeroParcela = pagamento.numero_parcela || numeroFallback.get(pagamento.id) || index + 1;
+                      const numeroParcela = pagamento.numero_parcela || numeroFallback.get(getPagamentoId(pagamento)) || index + 1;
                       return (
                         <View key={pagamento.id || index} className="rounded-xl border border-slate-200 bg-white px-3 py-3">
                           <View className="mb-2 flex-row items-center justify-between">
@@ -1067,7 +1286,7 @@ export default function MatriculaDetalheScreen() {
                   </View>
 
                   {pagamentosOrdenados.map((pagamento, index) => {
-                    const numeroParcela = pagamento.numero_parcela || numeroFallback.get(pagamento.id) || index + 1;
+                    const numeroParcela = pagamento.numero_parcela || numeroFallback.get(getPagamentoId(pagamento)) || index + 1;
                     return (
                       <View key={pagamento.id || index} className="flex-row items-center border-b border-slate-100 py-3">
                         <View style={{ flex: 0.7 }}>
@@ -1430,6 +1649,224 @@ export default function MatriculaDetalheScreen() {
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
                   <Text className="text-sm font-semibold text-white">Salvar</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={modalAlterarPlanoVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setModalAlterarPlanoVisible(false)}
+      >
+        <View className="flex-1 items-center justify-center bg-black/50 px-4">
+          <View className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl">
+            <View className="border-b border-slate-200 px-6 py-5">
+              <View className="flex-row items-center gap-3">
+                <View className="h-12 w-12 items-center justify-center rounded-full bg-slate-100">
+                  <Feather name="repeat" size={24} color="#0f172a" />
+                </View>
+                <View className="flex-1">
+                  <Text className="text-lg font-bold text-slate-800">Alterar plano da matrícula</Text>
+                  <Text className="text-sm text-slate-500">
+                    Atualize plano, ciclo e regra de vencimento da matrícula.
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            <ScrollView
+              className="px-6 py-5"
+              style={{ maxHeight: isDesktop ? 560 : 500 }}
+              showsVerticalScrollIndicator={false}
+            >
+              <View className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <Text className="text-xs font-semibold uppercase text-slate-500">Plano atual</Text>
+                <Text className="mt-1 text-base font-semibold text-slate-800">{matricula?.plano_nome || '-'}</Text>
+                <Text className="mt-1 text-sm text-slate-500">
+                  {matricula?.modalidade_nome || '-'}
+                  {cicloInfo ? ` • ${cicloInfo.frequencia}` : ''}
+                </Text>
+              </View>
+
+              <View className="mb-4">
+                <Text className="mb-2 text-sm font-semibold text-slate-700">Plano</Text>
+                {loadingPlanosAlteracao ? (
+                  <View className="items-center rounded-lg border border-slate-200 bg-slate-50 px-6 py-6">
+                    <ActivityIndicator size="small" color="#f97316" />
+                    <Text className="mt-2 text-xs text-slate-500">Carregando planos...</Text>
+                  </View>
+                ) : planosAlteracao.length > 0 ? (
+                  <View className="rounded-lg border border-slate-200 bg-white">
+                    <Picker
+                      selectedValue={formAlterarPlano.plano_id}
+                      onValueChange={(value) => {
+                        setFormAlterarPlano((prev) => ({
+                          ...prev,
+                          plano_id: value,
+                          plano_ciclo_id: '',
+                        }));
+                      }}
+                      style={{ height: 50 }}
+                    >
+                      <Picker.Item label="Selecione um plano" value="" />
+                      {planosAlteracao.map((plano) => (
+                        <Picker.Item
+                          key={plano.id}
+                          label={`${plano.nome} • ${formatCurrency(plano.valor)}`}
+                          value={plano.id.toString()}
+                        />
+                      ))}
+                    </Picker>
+                  </View>
+                ) : (
+                  <View className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                    <Text className="text-sm text-amber-700">Nenhum plano disponível para alteração.</Text>
+                  </View>
+                )}
+              </View>
+
+              {planoSelecionadoAlteracao ? (
+                <View className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <View className="flex-row items-center justify-between gap-3">
+                    <View className="flex-1">
+                      <Text className="text-sm font-semibold text-slate-800">{planoSelecionadoAlteracao.nome}</Text>
+                      <Text className="mt-1 text-xs text-slate-500">
+                        {planoSelecionadoAlteracao.checkins_semanais || 0}x por semana • {planoSelecionadoAlteracao.duracao_dias || 0} dias
+                      </Text>
+                    </View>
+                    <Text className="text-sm font-bold text-emerald-600">
+                      {formatCurrency(planoSelecionadoAlteracao.valor)}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
+
+              <View className="mb-4">
+                <Text className="mb-2 text-sm font-semibold text-slate-700">Ciclo de pagamento</Text>
+                {loadingCiclosAlteracao ? (
+                  <View className="items-center rounded-lg border border-slate-200 bg-slate-50 px-6 py-6">
+                    <ActivityIndicator size="small" color="#f97316" />
+                    <Text className="mt-2 text-xs text-slate-500">Carregando ciclos...</Text>
+                  </View>
+                ) : ciclosAlteracao.length > 0 ? (
+                  <View className="flex-row flex-wrap gap-3">
+                    {ciclosAlteracao.map((ciclo) => {
+                      const selecionado = formAlterarPlano.plano_ciclo_id === ciclo.id.toString();
+                      return (
+                        <Pressable
+                          key={ciclo.id}
+                          className={`min-w-[190px] flex-1 rounded-2xl border p-4 ${
+                            selecionado ? 'border-emerald-400 bg-emerald-50/70' : 'border-slate-200 bg-white'
+                          }`}
+                          style={({ pressed }) => [
+                            { flexBasis: isDesktop ? 220 : 'auto' },
+                            pressed && { opacity: 0.85 },
+                          ]}
+                          onPress={() => {
+                            setFormAlterarPlano((prev) => ({ ...prev, plano_ciclo_id: ciclo.id.toString() }));
+                          }}
+                        >
+                          <View className="flex-row items-center justify-between gap-2">
+                            <Text className={`text-sm font-semibold ${selecionado ? 'text-emerald-700' : 'text-slate-800'}`}>
+                              {getCicloLabel(ciclo)}
+                            </Text>
+                            {selecionado ? <Feather name="check" size={16} color="#10b981" /> : null}
+                          </View>
+                          <Text className={`mt-2 text-lg font-bold ${selecionado ? 'text-emerald-600' : 'text-slate-700'}`}>
+                            {formatCurrency(ciclo.valor)}
+                          </Text>
+                          {!!Number(ciclo.desconto_percentual || 0) && (
+                            <Text className="mt-2 text-xs text-emerald-600">
+                              {Number(ciclo.desconto_percentual)}% de desconto
+                            </Text>
+                          )}
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                ) : formAlterarPlano.plano_id ? (
+                  <View className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                    <Text className="text-sm text-amber-700">Nenhum ciclo disponível para o plano selecionado.</Text>
+                  </View>
+                ) : (
+                  <View className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                    <Text className="text-sm text-slate-500">Selecione um plano para ver os ciclos.</Text>
+                  </View>
+                )}
+              </View>
+
+              <View className="mb-4">
+                <Text className="mb-2 text-sm font-semibold text-slate-700">Data de início</Text>
+                {Platform.OS === 'web' ? (
+                  <input
+                    type="date"
+                    style={{
+                      borderWidth: 1,
+                      borderColor: '#cbd5e1',
+                      borderRadius: 8,
+                      padding: 10,
+                      fontSize: 14,
+                      width: '100%',
+                    }}
+                    value={formAlterarPlano.data_inicio}
+                    onChange={(e) =>
+                      setFormAlterarPlano((prev) => ({ ...prev, data_inicio: e.target.value }))
+                    }
+                  />
+                ) : (
+                  <TextInput
+                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
+                    value={formAlterarPlano.data_inicio}
+                    onChangeText={(text) =>
+                      setFormAlterarPlano((prev) => ({ ...prev, data_inicio: text }))
+                    }
+                    placeholder="YYYY-MM-DD"
+                    autoCapitalize="none"
+                  />
+                )}
+              </View>
+
+              <View>
+                <Text className="mb-2 text-sm font-semibold text-slate-700">Observações</Text>
+                <TextInput
+                  className="min-h-[96px] rounded-lg border border-slate-300 px-3 py-3 text-sm text-slate-800"
+                  value={formAlterarPlano.observacoes}
+                  onChangeText={(text) =>
+                    setFormAlterarPlano((prev) => ({ ...prev, observacoes: text }))
+                  }
+                  placeholder="Ex: Troca de plano solicitada pelo aluno"
+                  multiline
+                  textAlignVertical="top"
+                />
+              </View>
+            </ScrollView>
+
+            <View className="flex-row gap-3 border-t border-slate-200 px-6 py-4">
+              <Pressable
+                onPress={() => setModalAlterarPlanoVisible(false)}
+                disabled={salvandoAlteracaoPlano}
+                className="flex-1 items-center justify-center rounded-lg bg-slate-200 py-3"
+                style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+              >
+                <Text className="text-sm font-semibold text-slate-700">Cancelar</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleConfirmarAlteracaoPlano}
+                disabled={salvandoAlteracaoPlano || loadingPlanosAlteracao || loadingCiclosAlteracao}
+                className="flex-1 items-center justify-center rounded-lg bg-slate-800 py-3"
+                style={({ pressed }) => [
+                  pressed && { opacity: 0.8 },
+                  (salvandoAlteracaoPlano || loadingPlanosAlteracao || loadingCiclosAlteracao) && { opacity: 0.6 },
+                ]}
+              >
+                {salvandoAlteracaoPlano ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text className="text-sm font-semibold text-white">Confirmar alteração</Text>
                 )}
               </Pressable>
             </View>

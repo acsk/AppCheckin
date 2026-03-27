@@ -327,10 +327,29 @@ class PagamentoPlanoController
 
                     // Gerar próxima parcela seguindo a mesma regra de confirmar()
                     $plano = $planoModel->findById($pagamento['plano_id']);
-                    if ($plano && $plano['duracao_dias'] > 0) {
+
+                    // Buscar ciclo da matrícula e aluno_id (fallback se parcela não tiver)
+                    $stmtMatCiclo = $db->prepare("
+                        SELECT m.plano_ciclo_id, m.aluno_id,
+                               pc.meses as ciclo_meses, af.meses as frequencia_meses
+                        FROM matriculas m
+                        LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+                        LEFT JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
+                        WHERE m.id = ?
+                    ");
+                    $stmtMatCiclo->execute([$pagamento['matricula_id']]);
+                    $matCicloInfo = $stmtMatCiclo->fetch(\PDO::FETCH_ASSOC);
+                    $mesesCiclo = $matCicloInfo['ciclo_meses'] ?? $matCicloInfo['frequencia_meses'] ?? null;
+                    $alunoIdProxima = $pagamento['aluno_id'] ?? $matCicloInfo['aluno_id'] ?? null;
+
+                    if ($plano && ($mesesCiclo || $plano['duracao_dias'] > 0)) {
                         $dataVencimentoAtual = new \DateTime($pagamento['data_vencimento']);
                         $proximaDataVencimento = clone $dataVencimentoAtual;
-                        $proximaDataVencimento->modify("+{$plano['duracao_dias']} days");
+                        if ($mesesCiclo) {
+                            $proximaDataVencimento->modify("+{$mesesCiclo} months");
+                        } else {
+                            $proximaDataVencimento->modify("+{$plano['duracao_dias']} days");
+                        }
 
                         $jaExiste = $pagamentoModel->existePagamentoParaData(
                             $tenantId,
@@ -341,8 +360,8 @@ class PagamentoPlanoController
                         if (!$jaExiste) {
                             $proximoPagamento = [
                                 'tenant_id' => $tenantId,
+                                'aluno_id' => $alunoIdProxima,
                                 'matricula_id' => $pagamento['matricula_id'],
-                                'usuario_id' => $pagamento['usuario_id'],
                                 'plano_id' => $pagamento['plano_id'],
                                 'valor' => $plano['valor'],
                                 'desconto' => $pagamento['desconto'] ?? 0.00,
@@ -354,6 +373,10 @@ class PagamentoPlanoController
                             ];
                             $pagamentoModel->criar($proximoPagamento);
                         }
+
+                        // Atualizar matrícula com a próxima data de vencimento
+                        $stmtUpdMat = $db->prepare("UPDATE matriculas SET proxima_data_vencimento = ?, updated_at = NOW() WHERE id = ?");
+                        $stmtUpdMat->execute([$proximaDataVencimento->format('Y-m-d'), $pagamento['matricula_id']]);
                     }
 
                     $db->commit();
@@ -452,12 +475,30 @@ class PagamentoPlanoController
             
             // Buscar informações do plano para calcular próximo vencimento
             $plano = $planoModel->findById($pagamento['plano_id']);
-            
-            if ($plano && $plano['duracao_dias'] > 0) {
-                // Calcular próxima data de vencimento
+
+            // Buscar ciclo da matrícula e aluno_id (fallback se parcela não tiver)
+            $stmtMatCiclo = $db->prepare("
+                SELECT m.plano_ciclo_id, m.aluno_id,
+                       pc.meses as ciclo_meses, af.meses as frequencia_meses
+                FROM matriculas m
+                LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+                LEFT JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
+                WHERE m.id = ?
+            ");
+            $stmtMatCiclo->execute([$pagamento['matricula_id']]);
+            $matCicloInfo = $stmtMatCiclo->fetch(\PDO::FETCH_ASSOC);
+            $mesesCiclo = $matCicloInfo['ciclo_meses'] ?? $matCicloInfo['frequencia_meses'] ?? null;
+            $alunoIdProxima = $pagamento['aluno_id'] ?? $matCicloInfo['aluno_id'] ?? null;
+
+            if ($plano && ($mesesCiclo || $plano['duracao_dias'] > 0)) {
+                // Calcular próxima data sempre a partir do vencimento original da parcela
                 $dataVencimentoAtual = new \DateTime($pagamento['data_vencimento']);
                 $proximaDataVencimento = clone $dataVencimentoAtual;
-                $proximaDataVencimento->modify("+{$plano['duracao_dias']} days");
+                if ($mesesCiclo) {
+                    $proximaDataVencimento->modify("+{$mesesCiclo} months");
+                } else {
+                    $proximaDataVencimento->modify("+{$plano['duracao_dias']} days");
+                }
                 
                 // Verificar se já existe pagamento para esta data
                 $jaExiste = $pagamentoModel->existePagamentoParaData(
@@ -470,8 +511,8 @@ class PagamentoPlanoController
                 if (!$jaExiste) {
                     $proximoPagamento = [
                         'tenant_id' => $tenantId,
+                        'aluno_id' => $alunoIdProxima,
                         'matricula_id' => $pagamento['matricula_id'],
-                        'usuario_id' => $pagamento['usuario_id'],
                         'plano_id' => $pagamento['plano_id'],
                         'valor' => $plano['valor'], // Usar valor atual do plano
                         'data_vencimento' => $proximaDataVencimento->format('Y-m-d'),
@@ -481,6 +522,10 @@ class PagamentoPlanoController
                     ];
                     $pagamentoModel->criar($proximoPagamento);
                 }
+
+                // Atualizar matrícula com a próxima data de vencimento
+                $stmtUpdMat = $db->prepare("UPDATE matriculas SET proxima_data_vencimento = ?, updated_at = NOW() WHERE id = ?");
+                $stmtUpdMat->execute([$proximaDataVencimento->format('Y-m-d'), $pagamento['matricula_id']]);
             }
             
             $db->commit();

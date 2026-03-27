@@ -1645,6 +1645,298 @@ class MatriculaController
     }
 
     /**
+     * Alterar plano de uma matrícula existente
+     * Permite trocar o plano/ciclo mantendo o mesmo registro de matrícula.
+     * Cancela parcelas pendentes do plano anterior e cria a primeira parcela do novo plano.
+     */
+    #[OA\Post(
+        path: "/admin/matriculas/{id}/alterar-plano",
+        summary: "Alterar plano da matrícula",
+        description: "Altera o plano de uma matrícula existente (qualquer status exceto finalizada). Cancela parcelas pendentes do plano anterior, atualiza a matrícula com o novo plano e cria a primeira parcela.",
+        tags: ["Matrículas"],
+        parameters: [
+            new OA\Parameter(
+                name: "id",
+                description: "ID da matrícula",
+                in: "path",
+                required: true,
+                schema: new OA\Schema(type: "integer")
+            )
+        ],
+        requestBody: new OA\RequestBody(
+            required: true,
+            content: new OA\JsonContent(
+                required: ["plano_id"],
+                properties: [
+                    new OA\Property(property: "plano_id", type: "integer", description: "ID do novo plano"),
+                    new OA\Property(property: "plano_ciclo_id", type: "integer", nullable: true, description: "ID do ciclo do novo plano"),
+                    new OA\Property(property: "data_inicio", type: "string", format: "date", description: "Data de início do novo plano (padrão: hoje)"),
+                    new OA\Property(property: "dia_vencimento", type: "integer", description: "Dia de vencimento (1-31)"),
+                    new OA\Property(property: "observacoes", type: "string", nullable: true)
+                ]
+            )
+        ),
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Plano alterado com sucesso",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "message", type: "string"),
+                        new OA\Property(property: "matricula", type: "object"),
+                        new OA\Property(property: "parcelas_canceladas", type: "integer"),
+                        new OA\Property(property: "novo_pagamento_id", type: "integer")
+                    ]
+                )
+            ),
+            new OA\Response(response: 400, description: "Dados inválidos ou plano igual ao atual"),
+            new OA\Response(response: 404, description: "Matrícula ou plano não encontrado"),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
+    public function alterarPlano(Request $request, Response $response, array $args): Response
+    {
+        $matriculaId = (int) $args['id'];
+        $tenantId = $request->getAttribute('tenantId', 1);
+        $adminId = $request->getAttribute('userId', null);
+        $data = $request->getParsedBody();
+        $db = require __DIR__ . '/../../config/database.php';
+
+        // Validações básicas
+        if (empty($data['plano_id'])) {
+            $response->getBody()->write(json_encode(['error' => 'plano_id é obrigatório']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+        }
+
+        $novoPlanoId = (int) $data['plano_id'];
+        $novoCicloId = !empty($data['plano_ciclo_id']) ? (int) $data['plano_ciclo_id'] : null;
+
+        // Buscar matrícula atual com detalhes
+        $stmt = $db->prepare("
+            SELECT m.*, sm.codigo as status_codigo, p.modalidade_id, p.nome as plano_nome, p.valor as plano_valor, p.duracao_dias
+            FROM matriculas m
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            INNER JOIN planos p ON p.id = m.plano_id
+            WHERE m.id = ? AND m.tenant_id = ?
+        ");
+        $stmt->execute([$matriculaId, $tenantId]);
+        $matricula = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$matricula) {
+            $response->getBody()->write(json_encode(['error' => 'Matrícula não encontrada']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        if ($matricula['status_codigo'] === 'finalizada') {
+            $response->getBody()->write(json_encode(['error' => 'Não é possível alterar plano de matrícula finalizada']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
+
+        // Buscar novo plano
+        $stmtPlano = $db->prepare("SELECT * FROM planos WHERE id = ? AND tenant_id = ?");
+        $stmtPlano->execute([$novoPlanoId, $tenantId]);
+        $novoPlano = $stmtPlano->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$novoPlano) {
+            $response->getBody()->write(json_encode(['error' => 'Novo plano não encontrado']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        // Buscar ciclo se informado
+        $novoCiclo = null;
+        if ($novoCicloId) {
+            $stmtCiclo = $db->prepare("
+                SELECT pc.*, af.meses as frequencia_meses
+                FROM plano_ciclos pc
+                LEFT JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
+                WHERE pc.id = ? AND pc.plano_id = ? AND pc.tenant_id = ?
+            ");
+            $stmtCiclo->execute([$novoCicloId, $novoPlanoId, $tenantId]);
+            $novoCiclo = $stmtCiclo->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$novoCiclo) {
+                $response->getBody()->write(json_encode(['error' => 'Ciclo não encontrado ou não pertence ao plano informado']));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+        }
+
+        // Verificar se é o mesmo plano+ciclo
+        if ((int) $matricula['plano_id'] === $novoPlanoId && (int) ($matricula['plano_ciclo_id'] ?? 0) === ($novoCicloId ?? 0)) {
+            $response->getBody()->write(json_encode(['error' => 'O plano e ciclo selecionados são iguais aos atuais']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
+
+        // Calcular valor e duração do novo plano
+        if ($novoCiclo) {
+            $valorNovo = $data['valor'] ?? $novoCiclo['valor'];
+            $mesesCiclo = (int) ($novoCiclo['meses'] ?? $novoCiclo['frequencia_meses'] ?? 1);
+            $duracaoDias = $mesesCiclo * 30;
+        } else {
+            $valorNovo = $data['valor'] ?? $novoPlano['valor'];
+            $duracaoDias = (int) $novoPlano['duracao_dias'];
+            $mesesCiclo = null;
+        }
+
+        date_default_timezone_set('America/Sao_Paulo');
+
+        $dataInicio = !empty($data['data_inicio']) ? $data['data_inicio'] : date('Y-m-d');
+        $dataInicioObj = new \DateTime($dataInicio);
+        $proximaDataVencimento = clone $dataInicioObj;
+
+        if ($mesesCiclo) {
+            $proximaDataVencimento->modify("+{$mesesCiclo} months");
+        } else {
+            $proximaDataVencimento->modify("+{$duracaoDias} days");
+        }
+
+        $dataVencimento = date('Y-m-d', strtotime($dataInicio . " +{$duracaoDias} days"));
+        $diaVencimento = $data['dia_vencimento'] ?? $matricula['dia_vencimento'];
+
+        // Determinar motivo (upgrade ou downgrade)
+        $valorAtual = (float) $matricula['valor'];
+        $valorNovoFloat = (float) $valorNovo;
+        if ($valorNovoFloat > $valorAtual) {
+            $motivo = 'upgrade';
+        } elseif ($valorNovoFloat < $valorAtual) {
+            $motivo = 'downgrade';
+        } else {
+            $motivo = 'renovacao';
+        }
+
+        $planoAnteriorId = (int) $matricula['plano_id'];
+
+        // Status: pendente (aguarda pagamento da primeira parcela do novo plano)
+        $stmtStatus = $db->prepare("SELECT id FROM status_matricula WHERE codigo = 'pendente' LIMIT 1");
+        $stmtStatus->execute();
+        $statusPendenteId = (int) $stmtStatus->fetchColumn();
+
+        $stmtMotivo = $db->prepare("SELECT id FROM motivo_matricula WHERE codigo = ? LIMIT 1");
+        $stmtMotivo->execute([$motivo]);
+        $motivoRow = $stmtMotivo->fetch();
+        $motivoId = $motivoRow ? (int) $motivoRow['id'] : 1;
+
+        try {
+            $db->beginTransaction();
+
+            // 1. Cancelar parcelas pendentes/aguardando do plano anterior
+            $stmtCancelarParcelas = $db->prepare("
+                UPDATE pagamentos_plano
+                SET status_pagamento_id = 4,
+                    observacoes = CONCAT(COALESCE(observacoes, ''), ' [Cancelado por alteração de plano]'),
+                    updated_at = NOW()
+                WHERE matricula_id = ? AND tenant_id = ? AND status_pagamento_id IN (1, 3)
+            ");
+            $stmtCancelarParcelas->execute([$matriculaId, $tenantId]);
+            $parcelasCanceladas = $stmtCancelarParcelas->rowCount();
+
+            // 2. Atualizar matrícula com novo plano
+            $stmtUpdate = $db->prepare("
+                UPDATE matriculas
+                SET plano_id = ?,
+                    plano_ciclo_id = ?,
+                    plano_anterior_id = ?,
+                    valor = ?,
+                    data_inicio = ?,
+                    data_vencimento = ?,
+                    proxima_data_vencimento = ?,
+                    dia_vencimento = ?,
+                    status_id = ?,
+                    motivo_id = ?,
+                    observacoes = ?,
+                    updated_at = NOW()
+                WHERE id = ? AND tenant_id = ?
+            ");
+            $stmtUpdate->execute([
+                $novoPlanoId,
+                $novoCicloId,
+                $planoAnteriorId,
+                $valorNovo,
+                $dataInicio,
+                $dataVencimento,
+                $proximaDataVencimento->format('Y-m-d'),
+                $diaVencimento,
+                $statusPendenteId,
+                $motivoId,
+                $data['observacoes'] ?? null,
+                $matriculaId,
+                $tenantId
+            ]);
+
+            // 3. Registrar no histórico de planos
+            $stmtHistorico = $db->prepare("
+                INSERT INTO historico_planos
+                (usuario_id, plano_anterior_id, plano_novo_id, data_inicio, data_vencimento, valor_pago, motivo, observacoes, criado_por)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ");
+
+            // Buscar usuario_id via aluno
+            $stmtUsuario = $db->prepare("SELECT usuario_id FROM alunos WHERE id = ?");
+            $stmtUsuario->execute([$matricula['aluno_id']]);
+            $usuarioId = (int) $stmtUsuario->fetchColumn();
+
+            $stmtHistorico->execute([
+                $usuarioId,
+                $planoAnteriorId,
+                $novoPlanoId,
+                $dataInicio,
+                $dataVencimento,
+                $valorNovo,
+                $motivo,
+                $data['observacoes'] ?? "Alteração de plano via admin",
+                $adminId
+            ]);
+
+            // 4. Criar primeira parcela do novo plano
+            $stmtPagamento = $db->prepare("
+                INSERT INTO pagamentos_plano
+                (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento,
+                 status_pagamento_id, observacoes, criado_por, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, 1, 'Primeiro pagamento - alteração de plano', ?, NOW(), NOW())
+            ");
+            $stmtPagamento->execute([
+                $tenantId,
+                $matricula['aluno_id'],
+                $matriculaId,
+                $novoPlanoId,
+                $valorNovo,
+                $dataInicio,
+                $adminId
+            ]);
+            $novoPagamentoId = (int) $db->lastInsertId();
+
+            $db->commit();
+        } catch (\Exception $e) {
+            $db->rollBack();
+            error_log("Erro ao alterar plano da matrícula #{$matriculaId}: " . $e->getMessage());
+            $response->getBody()->write(json_encode(['error' => 'Erro ao alterar plano: ' . $e->getMessage()]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+
+        // Buscar matrícula atualizada
+        $stmtFinal = $db->prepare("
+            SELECT m.*, p.nome as plano_nome, sm.codigo as status_codigo, sm.nome as status_nome
+            FROM matriculas m
+            INNER JOIN planos p ON p.id = m.plano_id
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            WHERE m.id = ?
+        ");
+        $stmtFinal->execute([$matriculaId]);
+        $matriculaAtualizada = $stmtFinal->fetch(\PDO::FETCH_ASSOC);
+
+        $response->getBody()->write(json_encode([
+            'message' => 'Plano alterado com sucesso',
+            'matricula' => $matriculaAtualizada,
+            'plano_anterior' => $matricula['plano_nome'],
+            'plano_novo' => $novoPlano['nome'],
+            'parcelas_canceladas' => $parcelasCanceladas,
+            'novo_pagamento_id' => $novoPagamentoId,
+            'motivo' => $motivo
+        ], JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
      * Cancelar matrícula
      */
     #[OA\Post(
@@ -2349,18 +2641,7 @@ class MatriculaController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
 
-        $today = new \DateTime('today');
-        $startOfMonth = new \DateTime('first day of this month');
-
-        if ($vencDateObj > $today) {
-            $response->getBody()->write(json_encode(['error' => 'data_vencimento não pode ser maior que a data de hoje']));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
-        }
-
-        if ($vencDateObj < $startOfMonth) {
-            $response->getBody()->write(json_encode(['error' => 'data_vencimento não pode ser anterior ao mês atual']));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
-        }
+        // Validação removida: permitir data_vencimento futura (pagamento adiantado)
 
         $dataPagamento = $data['data_pagamento'] ?? date('Y-m-d');
         $formaPagamentoId = $data['forma_pagamento_id'] ?? null;
@@ -2404,15 +2685,11 @@ class MatriculaController
             // Determinar base para cálculo da próxima parcela:
             // - Se o pagamento foi feito ANTES da data de vencimento, respeitar o período existente (usar data_vencimento)
             // - Se o pagamento foi feito NA/DEPOIS da data de vencimento, usar a data de pagamento como base
+            // Usar SEMPRE a data_vencimento original da parcela no BD como base.
+            // Isso garante que pagamentos adiantados não encurtem a vigência.
+            // Ex: parcela venc=31/01, pagou 29/01 → próxima = 28/02 (não 01/03)
             $pagamentoVencimento = null;
-            // Preferir data_vencimento enviada pelo front; caso contrário usar a data_vencimento do pagamento armazenado
-            if (!empty($dataVencimento)) {
-                try {
-                    $pagamentoVencimento = new \DateTime($dataVencimento);
-                } catch (\Exception $e) {
-                    $pagamentoVencimento = null;
-                }
-            } elseif (!empty($pagamento['data_vencimento'])) {
+            if (!empty($pagamento['data_vencimento'])) {
                 try {
                     $pagamentoVencimento = new \DateTime($pagamento['data_vencimento']);
                 } catch (\Exception $e) {
