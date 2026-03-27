@@ -644,6 +644,8 @@ export default function MatriculaDetalheScreen() {
     return statusId === 1 && isVencido(p.data_vencimento);
   });
   const isPacote = Boolean(matricula?.pacote_contrato_id);
+  const isMatriculaCancelada = Number(matricula?.status_id) === 3;
+  const podeExibirAlterarPlano = !isPacote || isMatriculaCancelada;
   const isPagamentoPendente = (pagamento) => {
     const statusId = Number(pagamento.status_pagamento_id);
     if (statusId === 3) return true;
@@ -1127,7 +1129,7 @@ export default function MatriculaDetalheScreen() {
             </View>
 
             {/* Ações da matrícula */}
-            {!isPacote && (
+            {podeExibirAlterarPlano && (
               <View className="border-t border-slate-100 px-5 py-3">
                 <View className={`gap-3 ${isDesktop ? 'flex-row' : ''}`}>
                   {!(matricula?.valor > 0) && (
