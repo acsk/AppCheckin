@@ -52,7 +52,7 @@ export default function DetalheAlunoScreen() {
       const user = await authService.getCurrentUser();
       if (!user || ![3, 4].includes(user.papel_id)) {
         showError('Acesso restrito aos administradores');
-        router.replace('/');
+        router.replace('/'); 
       }
     } catch (error) {
       router.replace('/');
