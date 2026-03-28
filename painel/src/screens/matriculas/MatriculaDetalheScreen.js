@@ -23,7 +23,7 @@ import planoService from '../../services/planoService';
 import { formatarDataParaInput, calcularDiasRestantes } from '../../utils/formatadores';
 import { mascaraData } from '../../utils/masks';
 import { obterMensagemErro } from '../../utils/errorHandler';
-import authService from '../../services/authService';
+import { authService } from '../../services/authService';
 
 export default function MatriculaDetalheScreen() {
   const { id } = useLocalSearchParams();
