@@ -2829,6 +2829,7 @@ class MatriculaController
         $stmtUpdate = $db->prepare("
             UPDATE pagamentos_plano 
             SET status_pagamento_id = 2,
+                data_vencimento = ?,
                 data_pagamento = ?,
                 forma_pagamento_id = ?,
                 observacoes = ?,
@@ -2839,6 +2840,7 @@ class MatriculaController
         ");
         
         $stmtUpdate->execute([
+            $dataVencimento,
             $dataPagamento,
             $formaPagamentoId,
             $observacoes,
@@ -2865,10 +2867,12 @@ class MatriculaController
             // Usar SEMPRE a data_vencimento original da parcela no BD como base.
             // Isso garante que pagamentos adiantados não encurtem a vigência.
             // Ex: parcela venc=31/01, pagou 29/01 → próxima = 28/02 (não 01/03)
+            // Usar a data_vencimento informada pelo usuário (já salva no BD)
             $pagamentoVencimento = null;
-            if (!empty($pagamento['data_vencimento'])) {
+            $vencimentoBase = $dataVencimento ?? $pagamento['data_vencimento'];
+            if (!empty($vencimentoBase)) {
                 try {
-                    $pagamentoVencimento = new \DateTime($pagamento['data_vencimento']);
+                    $pagamentoVencimento = new \DateTime($vencimentoBase);
                 } catch (\Exception $e) {
                     $pagamentoVencimento = null;
                 }
