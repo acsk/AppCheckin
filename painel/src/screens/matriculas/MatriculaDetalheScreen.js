@@ -23,6 +23,7 @@ import planoService from '../../services/planoService';
 import { formatarDataParaInput, calcularDiasRestantes } from '../../utils/formatadores';
 import { mascaraData } from '../../utils/masks';
 import { obterMensagemErro } from '../../utils/errorHandler';
+import authService from '../../services/authService';
 
 export default function MatriculaDetalheScreen() {
   const { id } = useLocalSearchParams();
@@ -72,9 +73,17 @@ export default function MatriculaDetalheScreen() {
     status_pagamento_id: '1',
     observacoes: '',
   });
+  const [baixaConfirmando, setBaixaConfirmando] = useState(false);
   const [modalBaixaPacoteVisible, setModalBaixaPacoteVisible] = useState(false);
   const [baixaPacoteLoading, setBaixaPacoteLoading] = useState(false);
   const [errorModal, setErrorModal] = useState({ visible: false, title: '', message: '' });
+  const [currentUserId, setCurrentUserId] = useState(null);
+
+  useEffect(() => {
+    authService.getCurrentUser().then((user) => {
+      if (user?.id) setCurrentUserId(Number(user.id));
+    });
+  }, []);
 
   useEffect(() => {
     carregarDados();
@@ -160,6 +169,7 @@ export default function MatriculaDetalheScreen() {
   const handleBaixaSuccess = () => {
     setModalVisible(false);
     setPagamentoSelecionado(null);
+    setBaixaConfirmando(false);
     showToast('Pagamento confirmado! Próximo pagamento gerado automaticamente.');
     carregarDados();
   };
@@ -867,23 +877,27 @@ export default function MatriculaDetalheScreen() {
         </Pressable>
       ) : null}
 
-      <Pressable
-        className="flex-row items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5"
-        style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-        onPress={() => handleAbrirEditarPagamento(pagamento)}
-      >
-        <Feather name="edit-2" size={14} color="#334155" />
-        <Text className="text-[11px] font-semibold text-slate-700">Editar</Text>
-      </Pressable>
+      {currentUserId === 3 && (
+        <>
+          <Pressable
+            className="flex-row items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5"
+            style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+            onPress={() => handleAbrirEditarPagamento(pagamento)}
+          >
+            <Feather name="edit-2" size={14} color="#334155" />
+            <Text className="text-[11px] font-semibold text-slate-700">Editar</Text>
+          </Pressable>
 
-      <Pressable
-        className="flex-row items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5"
-        style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-        onPress={() => handleAbrirExcluirPagamento(pagamento)}
-      >
-        <Feather name="trash-2" size={14} color="#dc2626" />
-        <Text className="text-[11px] font-semibold text-rose-600">Excluir</Text>
-      </Pressable>
+          <Pressable
+            className="flex-row items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5"
+            style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+            onPress={() => handleAbrirExcluirPagamento(pagamento)}
+          >
+            <Feather name="trash-2" size={14} color="#dc2626" />
+            <Text className="text-[11px] font-semibold text-rose-600">Excluir</Text>
+          </Pressable>
+        </>
+      )}
     </View>
   );
 
@@ -1441,7 +1455,7 @@ export default function MatriculaDetalheScreen() {
       {/* Modal de Baixa de Pagamento */}
       <BaixaPagamentoPlanoModal
         visible={modalVisible}
-        onClose={() => setModalVisible(false)}
+        onClose={() => { setModalVisible(false); setBaixaConfirmando(false); }}
         pagamento={pagamentoSelecionado}
         onSuccess={handleBaixaSuccess}
       />
@@ -1451,7 +1465,7 @@ export default function MatriculaDetalheScreen() {
         visible={modalConfirmBaixaVisible}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setModalConfirmBaixaVisible(false)}
+        onRequestClose={() => { setModalConfirmBaixaVisible(false); setBaixaConfirmando(false); }}
       >
         <View className="flex-1 items-center justify-center bg-black/40 px-4">
           <View className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
@@ -1482,21 +1496,31 @@ export default function MatriculaDetalheScreen() {
 
             <View className="flex-row gap-3 border-t border-slate-200 px-6 py-4">
               <Pressable
-                onPress={() => setModalConfirmBaixaVisible(false)}
+                onPress={() => { setModalConfirmBaixaVisible(false); setBaixaConfirmando(false); }}
                 className="flex-1 items-center justify-center rounded-lg bg-slate-200 py-3"
                 style={({ pressed }) => [pressed && { opacity: 0.7 }]}
+                disabled={baixaConfirmando}
               >
                 <Text className="text-sm font-semibold text-slate-700">Cancelar</Text>
               </Pressable>
               <Pressable
                 onPress={() => {
+                  setBaixaConfirmando(true);
                   setModalConfirmBaixaVisible(false);
                   setModalVisible(true);
                 }}
+                disabled={baixaConfirmando}
                 className="flex-1 items-center justify-center rounded-lg bg-orange-500 py-3"
-                style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                style={({ pressed }) => [
+                  pressed && { opacity: 0.8 },
+                  baixaConfirmando && { opacity: 0.6 },
+                ]}
               >
-                <Text className="text-sm font-semibold text-white">Sim, dar baixa</Text>
+                {baixaConfirmando ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text className="text-sm font-semibold text-white">Sim, dar baixa</Text>
+                )}
               </Pressable>
             </View>
           </View>
