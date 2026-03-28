@@ -7,11 +7,15 @@ import {
   ScrollView,
   ActivityIndicator,
   useWindowDimensions,
+  Modal,
+  TextInput,
+  Pressable,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import alunoService from '../../services/alunoService';
 import { authService } from '../../services/authService';
+import { creditoService } from '../../services/creditoService';
 import LayoutBase from '../../components/LayoutBase';
 import { showSuccess, showError } from '../../utils/toast';
 
@@ -27,6 +31,14 @@ export default function DetalheAlunoScreen() {
   const [historico, setHistorico] = useState([]);
   const [loadingHistorico, setLoadingHistorico] = useState(false);
   const [activeTab, setActiveTab] = useState('dados');
+  const [creditos, setCreditos] = useState([]);
+  const [saldoCreditos, setSaldoCreditos] = useState(0);
+  const [loadingCreditos, setLoadingCreditos] = useState(false);
+  const [modalAdicionarCredito, setModalAdicionarCredito] = useState(false);
+  const [modalCancelarCredito, setModalCancelarCredito] = useState(null);
+  const [salvandoCredito, setSalvandoCredito] = useState(false);
+  const [cancelandoCredito, setCancelandoCredito] = useState(false);
+  const [formCredito, setFormCredito] = useState({ valor: '', motivo: '' });
 
   useEffect(() => {
     ensureAdminAccess();
@@ -79,6 +91,64 @@ export default function DetalheAlunoScreen() {
     setActiveTab(tab);
     if (tab === 'historico' && historico.length === 0) {
       loadHistorico();
+    }
+    if (tab === 'creditos') {
+      loadCreditos();
+    }
+  };
+
+  const loadCreditos = async () => {
+    try {
+      setLoadingCreditos(true);
+      const [creditosList, saldoResp] = await Promise.all([
+        creditoService.listar(alunoId),
+        creditoService.consultarSaldo(alunoId),
+      ]);
+      setCreditos(Array.isArray(creditosList) ? creditosList : []);
+      setSaldoCreditos(saldoResp?.saldo_total || 0);
+    } catch (error) {
+      console.error('Erro ao carregar créditos:', error);
+      setCreditos([]);
+      setSaldoCreditos(0);
+    } finally {
+      setLoadingCreditos(false);
+    }
+  };
+
+  const handleAdicionarCredito = async () => {
+    const valor = parseFloat(formCredito.valor?.replace(',', '.'));
+    if (!valor || valor <= 0) {
+      showError('Informe um valor válido maior que zero');
+      return;
+    }
+    try {
+      setSalvandoCredito(true);
+      await creditoService.criar(alunoId, {
+        valor,
+        motivo: formCredito.motivo?.trim() || 'Crédito manual',
+      });
+      showSuccess('Crédito adicionado com sucesso');
+      setModalAdicionarCredito(false);
+      setFormCredito({ valor: '', motivo: '' });
+      await loadCreditos();
+    } catch (error) {
+      showError(error.message || 'Erro ao adicionar crédito');
+    } finally {
+      setSalvandoCredito(false);
+    }
+  };
+
+  const handleCancelarCredito = async (creditoId) => {
+    try {
+      setCancelandoCredito(true);
+      await creditoService.cancelar(creditoId);
+      showSuccess('Crédito cancelado com sucesso');
+      setModalCancelarCredito(null);
+      await loadCreditos();
+    } catch (error) {
+      showError(error.message || 'Erro ao cancelar crédito');
+    } finally {
+      setCancelandoCredito(false);
     }
   };
 
@@ -382,6 +452,139 @@ export default function DetalheAlunoScreen() {
     </View>
   );
 
+  const getCreditoStatusStyle = (status) => {
+    switch (status) {
+      case 'ativo':
+        return { bg: '#d1fae5', text: '#16a34a', label: 'Ativo' };
+      case 'utilizado':
+        return { bg: '#e5e7eb', text: '#6b7280', label: 'Utilizado' };
+      case 'cancelado':
+        return { bg: '#fee2e2', text: '#ef4444', label: 'Cancelado' };
+      default:
+        return { bg: '#e5e7eb', text: '#6b7280', label: status || '-' };
+    }
+  };
+
+  const renderCreditosTab = () => (
+    <View style={styles.tabContent}>
+      {/* Card de Saldo */}
+      <View style={[styles.card, { marginBottom: 16 }]}>
+        <View style={[styles.cardHeader, { backgroundColor: '#ecfdf5', borderBottomColor: '#a7f3d0' }]}>
+          <Feather name="credit-card" size={20} color="#16a34a" />
+          <Text style={styles.cardTitle}>Saldo de Créditos</Text>
+        </View>
+        <View style={[styles.cardContent, { alignItems: 'center', paddingVertical: 20 }]}>
+          <Text style={{ fontSize: 28, fontWeight: '800', color: saldoCreditos > 0 ? '#16a34a' : '#6b7280' }}>
+            {formatCurrency(saldoCreditos)}
+          </Text>
+          <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Saldo disponível</Text>
+        </View>
+      </View>
+
+      {/* Botão Adicionar */}
+      <TouchableOpacity
+        style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: 8,
+          backgroundColor: '#f97316',
+          borderRadius: 10,
+          paddingVertical: 12,
+          marginBottom: 16,
+        }}
+        onPress={() => {
+          setFormCredito({ valor: '', motivo: '' });
+          setModalAdicionarCredito(true);
+        }}
+      >
+        <Feather name="plus-circle" size={18} color="#fff" />
+        <Text style={{ color: '#fff', fontWeight: '700', fontSize: 14 }}>Adicionar Crédito</Text>
+      </TouchableOpacity>
+
+      {/* Lista de Créditos */}
+      {loadingCreditos ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#f97316" />
+          <Text style={styles.loadingText}>Carregando créditos...</Text>
+        </View>
+      ) : creditos.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Feather name="credit-card" size={48} color="#ccc" />
+          <Text style={styles.emptyText}>Nenhum crédito encontrado</Text>
+          <Text style={styles.emptySubtext}>O aluno não possui créditos registrados</Text>
+        </View>
+      ) : (
+        <View style={{ gap: 12 }}>
+          {creditos.map((credito) => {
+            const statusStyle = getCreditoStatusStyle(credito.status);
+            return (
+              <View key={credito.id} style={styles.historicoCard}>
+                <View style={styles.historicoHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '700', color: '#111827' }}>
+                      {formatCurrency(credito.valor)}
+                    </Text>
+                    <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
+                      Saldo: {formatCurrency(credito.saldo)}
+                    </Text>
+                  </View>
+                  <View style={[styles.badge, { backgroundColor: statusStyle.bg }]}>
+                    <Text style={[styles.badgeText, { color: statusStyle.text }]}>
+                      {statusStyle.label}
+                    </Text>
+                  </View>
+                </View>
+                <View style={{ padding: 16 }}>
+                  {credito.motivo && (
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginBottom: 8 }}>
+                      <Feather name="message-circle" size={14} color="#6b7280" />
+                      <Text style={{ fontSize: 13, color: '#374151', flex: 1 }}>{credito.motivo}</Text>
+                    </View>
+                  )}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <Feather name="calendar" size={14} color="#6b7280" />
+                    <Text style={{ fontSize: 12, color: '#6b7280' }}>
+                      Criado em: {formatDate(credito.created_at)}
+                    </Text>
+                  </View>
+                  {credito.valor_utilizado && parseFloat(credito.valor_utilizado) > 0 && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <Feather name="check" size={14} color="#6b7280" />
+                      <Text style={{ fontSize: 12, color: '#6b7280' }}>
+                        Utilizado: {formatCurrency(credito.valor_utilizado)}
+                      </Text>
+                    </View>
+                  )}
+                  {credito.status === 'ativo' && (
+                    <TouchableOpacity
+                      style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 6,
+                        marginTop: 8,
+                        paddingVertical: 8,
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: '#fecaca',
+                        backgroundColor: '#fef2f2',
+                      }}
+                      onPress={() => setModalCancelarCredito(credito)}
+                    >
+                      <Feather name="x-circle" size={14} color="#ef4444" />
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: '#ef4444' }}>Cancelar crédito</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      )}
+    </View>
+  );
+
   return (
     <LayoutBase title="Detalhes do Aluno" subtitle={aluno.nome}>
       <ScrollView style={styles.container}>
@@ -427,11 +630,132 @@ export default function DetalheAlunoScreen() {
               Histórico de Planos
             </Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'creditos' && styles.tabActive]}
+            onPress={() => handleTabChange('creditos')}
+          >
+            <Feather name="credit-card" size={16} color={activeTab === 'creditos' ? '#f97316' : '#6b7280'} />
+            <Text style={[styles.tabText, activeTab === 'creditos' && styles.tabTextActive]}>
+              Créditos
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Conteúdo da Tab */}
-        {activeTab === 'dados' ? renderDadosTab() : renderHistoricoTab()}
+        {activeTab === 'dados' && renderDadosTab()}
+        {activeTab === 'historico' && renderHistoricoTab()}
+        {activeTab === 'creditos' && renderCreditosTab()}
       </ScrollView>
+
+      {/* Modal Adicionar Crédito */}
+      <Modal
+        visible={modalAdicionarCredito}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModalAdicionarCredito(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Adicionar Crédito</Text>
+              <TouchableOpacity onPress={() => setModalAdicionarCredito(false)}>
+                <Feather name="x" size={20} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.modalBody}>
+              <Text style={styles.inputLabel}>Valor (R$)</Text>
+              <TextInput
+                style={styles.input}
+                value={formCredito.valor}
+                onChangeText={(text) =>
+                  setFormCredito((prev) => ({ ...prev, valor: text.replace(/[^0-9.,]/g, '') }))
+                }
+                placeholder="Ex: 50.00"
+                keyboardType="decimal-pad"
+              />
+              <Text style={[styles.inputLabel, { marginTop: 12 }]}>Motivo</Text>
+              <TextInput
+                style={styles.input}
+                value={formCredito.motivo}
+                onChangeText={(text) =>
+                  setFormCredito((prev) => ({ ...prev, motivo: text }))
+                }
+                placeholder="Ex: Cortesia por indicação"
+              />
+            </View>
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => setModalAdicionarCredito(false)}
+                disabled={salvandoCredito}
+              >
+                <Text style={styles.modalCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalConfirmButton, salvandoCredito && { opacity: 0.6 }]}
+                onPress={handleAdicionarCredito}
+                disabled={salvandoCredito}
+              >
+                {salvandoCredito ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.modalConfirmText}>Adicionar</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Cancelar Crédito */}
+      <Modal
+        visible={modalCancelarCredito !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModalCancelarCredito(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Cancelar Crédito</Text>
+              <TouchableOpacity onPress={() => setModalCancelarCredito(null)}>
+                <Feather name="x" size={20} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.modalBody}>
+              <Text style={{ fontSize: 14, color: '#374151', textAlign: 'center' }}>
+                Tem certeza que deseja cancelar este crédito de{' '}
+                {formatCurrency(modalCancelarCredito?.valor)}?
+              </Text>
+              {modalCancelarCredito?.motivo && (
+                <Text style={{ fontSize: 12, color: '#6b7280', textAlign: 'center', marginTop: 8 }}>
+                  Motivo: {modalCancelarCredito.motivo}
+                </Text>
+              )}
+            </View>
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => setModalCancelarCredito(null)}
+                disabled={cancelandoCredito}
+              >
+                <Text style={styles.modalCancelText}>Não</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalDeleteButton, cancelandoCredito && { opacity: 0.6 }]}
+                onPress={() => handleCancelarCredito(modalCancelarCredito?.id)}
+                disabled={cancelandoCredito}
+              >
+                {cancelandoCredito ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.modalConfirmText}>Sim, cancelar</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </LayoutBase>
   );
 }
@@ -793,5 +1117,90 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#374151',
     fontStyle: 'italic',
+  },
+  /* ── Modal styles ─────────────────────────── */
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  modalContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    width: '100%',
+    maxWidth: 420,
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  modalBody: {
+    padding: 16,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#e5e7eb',
+  },
+  modalCancelButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    backgroundColor: '#fff',
+  },
+  modalCancelText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  modalConfirmButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    backgroundColor: '#f97316',
+  },
+  modalConfirmText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  modalDeleteButton: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    backgroundColor: '#ef4444',
+  },
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 6,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#111827',
+    backgroundColor: '#f9fafb',
   },
 });

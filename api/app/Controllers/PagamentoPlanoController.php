@@ -301,8 +301,92 @@ class PagamentoPlanoController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
             }
 
+            // Verificar sequência: se status final é PAGO, checar se há parcela anterior pendente
+            $statusFinal = isset($updateData['status_pagamento_id']) ? (int)$updateData['status_pagamento_id'] : (int)$pagamento['status_pagamento_id'];
+            if ($statusFinal === 2 && empty($data['forcar'])) {
+                // Check 1: parcela anterior não paga
+                $stmtAntEditar = $db->prepare("
+                    SELECT pp.id, pp.valor, pp.data_vencimento,
+                           CASE pp.status_pagamento_id
+                               WHEN 1 THEN 'Aguardando'
+                               WHEN 3 THEN 'Atrasado'
+                               ELSE CONCAT('Status_', pp.status_pagamento_id)
+                           END AS status
+                    FROM pagamentos_plano pp
+                    WHERE pp.tenant_id = :tenant_id
+                      AND pp.matricula_id = :matricula_id
+                      AND pp.status_pagamento_id NOT IN (2, 4)
+                      AND pp.id != :pagamento_id
+                      AND pp.data_vencimento < :data_vencimento
+                    ORDER BY pp.data_vencimento ASC
+                    LIMIT 1
+                ");
+                $stmtAntEditar->execute([
+                    'tenant_id' => $tenantId,
+                    'matricula_id' => $pagamento['matricula_id'],
+                    'pagamento_id' => $pagamentoId,
+                    'data_vencimento' => $updateData['data_vencimento'] ?? $pagamento['data_vencimento']
+                ]);
+                $antEditar = $stmtAntEditar->fetch(\PDO::FETCH_ASSOC);
+
+                if ($antEditar) {
+                    $antEditarDataFmt = date('d/m/Y', strtotime($antEditar['data_vencimento']));
+                    $response->getBody()->write(json_encode([
+                        'type' => 'warning',
+                        'message' => 'Existe uma parcela anterior (vencimento ' . $antEditarDataFmt . ') ainda não paga. Confirme as parcelas na sequência.',
+                        'parcela_pendente' => [
+                            'id' => (int) $antEditar['id'],
+                            'valor' => $antEditar['valor'],
+                            'data_vencimento' => $antEditar['data_vencimento'],
+                            'status' => $antEditar['status']
+                        ],
+                        'confirmar_mesmo_assim' => 'Envie o parâmetro "forcar": true para confirmar fora da sequência'
+                    ], JSON_UNESCAPED_UNICODE));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(409);
+                }
+
+                // Check 2: já existe pagamento PAGO no mesmo mês
+                $dataVencRef = $updateData['data_vencimento'] ?? $pagamento['data_vencimento'];
+                $stmtDupMes = $db->prepare("
+                    SELECT pp.id, pp.valor, pp.data_vencimento, pp.data_pagamento
+                    FROM pagamentos_plano pp
+                    WHERE pp.tenant_id = :tenant_id
+                      AND pp.matricula_id = :matricula_id
+                      AND pp.status_pagamento_id = 2
+                      AND pp.id != :pagamento_id
+                      AND YEAR(pp.data_vencimento) = YEAR(:data_vencimento)
+                      AND MONTH(pp.data_vencimento) = MONTH(:data_vencimento2)
+                    LIMIT 1
+                ");
+                $stmtDupMes->execute([
+                    'tenant_id' => $tenantId,
+                    'matricula_id' => $pagamento['matricula_id'],
+                    'pagamento_id' => $pagamentoId,
+                    'data_vencimento' => $dataVencRef,
+                    'data_vencimento2' => $dataVencRef
+                ]);
+                $dupMes = $stmtDupMes->fetch(\PDO::FETCH_ASSOC);
+
+                if ($dupMes) {
+                    $dupMesDataFmt = date('d/m/Y', strtotime($dupMes['data_vencimento']));
+                    $response->getBody()->write(json_encode([
+                        'type' => 'warning',
+                        'message' => 'Já existe um pagamento confirmado neste mês (vencimento ' . $dupMesDataFmt . '). Não é permitido dois pagamentos pagos no mesmo mês.',
+                        'pagamento_existente' => [
+                            'id' => (int) $dupMes['id'],
+                            'valor' => $dupMes['valor'],
+                            'data_pagamento' => $dupMes['data_pagamento'],
+                            'data_vencimento' => $dupMes['data_vencimento']
+                        ],
+                        'confirmar_mesmo_assim' => 'Envie o parâmetro "forcar": true para confirmar mesmo assim'
+                    ], JSON_UNESCAPED_UNICODE));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(409);
+                }
+            }
+
             // Se estiver marcando como PAGO (2) e antes não estava pago, executar fluxo de confirmação (baixa)
             if (isset($updateData['status_pagamento_id']) && (int)$updateData['status_pagamento_id'] === 2 && (int)$pagamento['status_pagamento_id'] !== 2) {
+
                 $db = require __DIR__ . '/../../config/database.php';
                 $planoModel = new Plano($db, $tenantId);
 
@@ -436,6 +520,89 @@ class PagamentoPlanoController
                     'message' => 'Pagamento não encontrado'
                 ], JSON_UNESCAPED_UNICODE));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+            
+            // Verificar se existem parcelas anteriores (por data_vencimento) ainda não pagas
+            if (empty($data['forcar'])) {
+                // Check 1: parcela anterior não paga
+                $stmtAnterior = $db->prepare("
+                    SELECT pp.id, pp.valor, pp.data_vencimento,
+                           CASE pp.status_pagamento_id
+                               WHEN 1 THEN 'Aguardando'
+                               WHEN 3 THEN 'Atrasado'
+                               ELSE CONCAT('Status_', pp.status_pagamento_id)
+                           END AS status
+                    FROM pagamentos_plano pp
+                    WHERE pp.tenant_id = :tenant_id
+                      AND pp.matricula_id = :matricula_id
+                      AND pp.status_pagamento_id NOT IN (2, 4)
+                      AND pp.id != :pagamento_id
+                      AND pp.data_vencimento < :data_vencimento
+                    ORDER BY pp.data_vencimento ASC
+                    LIMIT 1
+                ");
+                $stmtAnterior->execute([
+                    'tenant_id' => $tenantId,
+                    'matricula_id' => $pagamento['matricula_id'],
+                    'pagamento_id' => $pagamentoId,
+                    'data_vencimento' => $pagamento['data_vencimento']
+                ]);
+                $parcelaAnterior = $stmtAnterior->fetch(\PDO::FETCH_ASSOC);
+
+                if ($parcelaAnterior) {
+                    $parcelaAntDataFmt = date('d/m/Y', strtotime($parcelaAnterior['data_vencimento']));
+                    $db->rollBack();
+                    $response->getBody()->write(json_encode([
+                        'type' => 'warning',
+                        'message' => 'Existe uma parcela anterior (vencimento ' . $parcelaAntDataFmt . ') ainda não paga. Confirme as parcelas na sequência.',
+                        'parcela_pendente' => [
+                            'id' => (int) $parcelaAnterior['id'],
+                            'valor' => $parcelaAnterior['valor'],
+                            'data_vencimento' => $parcelaAnterior['data_vencimento'],
+                            'status' => $parcelaAnterior['status']
+                        ],
+                        'confirmar_mesmo_assim' => 'Envie o parâmetro "forcar": true para confirmar fora da sequência'
+                    ], JSON_UNESCAPED_UNICODE));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(409);
+                }
+
+                // Check 2: já existe pagamento PAGO no mesmo mês
+                $stmtDupMesConf = $db->prepare("
+                    SELECT pp.id, pp.valor, pp.data_vencimento, pp.data_pagamento
+                    FROM pagamentos_plano pp
+                    WHERE pp.tenant_id = :tenant_id
+                      AND pp.matricula_id = :matricula_id
+                      AND pp.status_pagamento_id = 2
+                      AND pp.id != :pagamento_id
+                      AND YEAR(pp.data_vencimento) = YEAR(:data_vencimento)
+                      AND MONTH(pp.data_vencimento) = MONTH(:data_vencimento2)
+                    LIMIT 1
+                ");
+                $stmtDupMesConf->execute([
+                    'tenant_id' => $tenantId,
+                    'matricula_id' => $pagamento['matricula_id'],
+                    'pagamento_id' => $pagamentoId,
+                    'data_vencimento' => $pagamento['data_vencimento'],
+                    'data_vencimento2' => $pagamento['data_vencimento']
+                ]);
+                $dupMesConf = $stmtDupMesConf->fetch(\PDO::FETCH_ASSOC);
+
+                if ($dupMesConf) {
+                    $dupMesConfDataFmt = date('d/m/Y', strtotime($dupMesConf['data_vencimento']));
+                    $db->rollBack();
+                    $response->getBody()->write(json_encode([
+                        'type' => 'warning',
+                        'message' => 'Já existe um pagamento confirmado neste mês (vencimento ' . $dupMesConfDataFmt . '). Não é permitido dois pagamentos pagos no mesmo mês.',
+                        'pagamento_existente' => [
+                            'id' => (int) $dupMesConf['id'],
+                            'valor' => $dupMesConf['valor'],
+                            'data_pagamento' => $dupMesConf['data_pagamento'],
+                            'data_vencimento' => $dupMesConf['data_vencimento']
+                        ],
+                        'confirmar_mesmo_assim' => 'Envie o parâmetro "forcar": true para confirmar mesmo assim'
+                    ], JSON_UNESCAPED_UNICODE));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(409);
+                }
             }
             
             // Confirmar o pagamento

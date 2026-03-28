@@ -34,6 +34,7 @@ const MENU = [
   { label: 'Formas de Pagamento', path: '/formas-pagamento', icon: 'credit-card', roles: [3, 4] },
   { label: 'Pagamentos MP', path: '/pagamentos-mp', icon: 'dollar-sign', roles: [3, 4] },
   { label: 'Configurações de Pagamento', path: '/configuracoes-pagamento', icon: 'settings', roles: [3, 4] },
+  { label: 'Auditoria', path: '/auditoria', icon: 'shield', roles: [3, 4] },
 ];
 
 const BREAKPOINT_MOBILE = 768;

@@ -2,26 +2,37 @@
 
 ## 📌 O que foi implementado
 
-O sistema agora **abate automaticamente créditos** de downgrades anteriores quando um aluno efetua um pagamento.
+O sistema agora **abate automaticamente créditos** quando um aluno troca de plano ou efetua um pagamento. Os créditos são gerenciados pela tabela `creditos_aluno` (com status ativo/utilizado/cancelado).
 
-### Fluxo Automático
+### Formas de gerar crédito na alteração de plano
+
+| Opção | Parâmetro | Como funciona |
+|-------|-----------|---------------|
+| **Valor cheio do plano** | `abater_plano_anterior: true` | Usa o valor integral do plano/ciclo atual como crédito |
+| **Proporcional (dias restantes)** | `abater_pagamento_anterior: true` | Calcula `(valor / dias_totais) × dias_restantes` |
+| **Manual** | `credito: 100` | Valor fixo informado pelo admin |
+
+> `usar_credito_existente: true` pode ser **combinado** com qualquer opção acima para somar créditos ativos existentes do aluno.
+
+### Fluxo de Alteração de Plano com Crédito
 
 ```
-Aluno fez downgrade → Recebeu crédito
+Admin quer trocar plano do aluno
        ↓
-Aluno agora quer pagar a mensalidade
+POST /admin/matriculas/{id}/alterar-plano
+  { abater_plano_anterior: true, usar_credito_existente: true }
        ↓
-POST /admin/pagamentos-plano/{id}/confirmar
+Sistema calcula:
+  1. Crédito do plano anterior (valor cheio ou proporcional)
+  2. Créditos existentes do aluno (saldo > 0)
+  3. Total = crédito gerado + créditos existentes
        ↓
-Sistema verifica: "Tem crédito pendente?"
+Aplica na 1ª parcela:
+  valor_parcela = max(0, valorNovoPlano - totalCredito)
        ↓
-SIM → Deduz crédito do valor a pagar
- ↓
-Cria registro de desconto (negativo)
- ↓
-Atualiza valor do pagamento
- ↓
-Retorna na resposta quanto foi descontado
+Registra tudo na tabela creditos_aluno
+       ↓
+Retorna response com detalhes completos
 ```
 
 ---
@@ -51,26 +62,27 @@ curl -X POST http://localhost:8084/admin/pagamentos-plano/27/confirmar \
 
 Nos bastidores, o sistema:
 
-1. **Busca créditos pendentes** do aluno
+1. **Busca créditos ativos** do aluno via `creditos_aluno`
    ```sql
-   SELECT * FROM pagamentos_plano 
-   WHERE usuario_id = ? 
-   AND valor < 0 
-   AND status_pagamento_id = 1
+   SELECT * FROM creditos_aluno 
+   WHERE aluno_id = ? AND tenant_id = ? 
+   AND status_credito_id = 1  -- ativo
+   AND (valor - valor_utilizado) > 0
+   ORDER BY created_at ASC
    ```
 
-2. **Deduz créditos** do valor a pagar
-   - Se crédito é R$ 50 e pagamento é R$ 150
-   - Valor final = 150 - 50 = R$ 100
+2. **Gera novo crédito** (se `abater_plano_anterior` ou `abater_pagamento_anterior`)
+   - Insere na tabela `creditos_aluno` com o valor calculado
+   - Marca quanto foi utilizado na parcela
 
-3. **Registra o desconto** como um pagamento negativo
-   - Cria um novo registro com `valor: -50`
-   - Status: "Pago" (desconto já aplicado)
-   - Observação: "Desconto automático de créditos"
+3. **Consome créditos existentes** (se `usar_credito_existente: true`)
+   - Do mais antigo ao mais recente
+   - Atualiza `valor_utilizado` de cada crédito
+   - Muda status para `utilizado` quando saldo = 0
 
-4. **Atualiza o pagamento original**
-   - Muda o valor de R$ 150 para R$ 100
-   - Adiciona observação indicando o desconto
+4. **Calcula valor da parcela**
+   - `valor_parcela = max(0, valorNovoPlano - totalCredito)`
+   - Registra `credito_id` e `credito_aplicado` na parcela
 
 ---
 
@@ -362,12 +374,14 @@ ON DUPLICATE KEY UPDATE ativo = 1;
 
 | Item | Descrição |
 |------|-----------|
-| **O que muda** | Ao confirmar pagamento, créditos são descontados automaticamente |
-| **Quem vê** | Sistema desconta, frontend exibe o resultado |
-| **Resposta** | Inclui `credito_aplicado` com valores e observação |
-| **No BD** | Cria registro negativo como "desconto aplicado" |
-| **No Front** | Exibir `credito_aplicado` se não for nulo |
-| **User Experience** | Aluno vê que pagou menos graças ao crédito |
+| **O que muda** | Ao alterar plano, créditos são gerados e aplicados automaticamente na 1ª parcela |
+| **Tabela principal** | `creditos_aluno` com status: ativo(1), utilizado(2), cancelado(3) |
+| **3 opções de crédito** | `abater_plano_anterior` (cheio), `abater_pagamento_anterior` (proporcional), `credito` (manual) |
+| **Combinável** | `usar_credito_existente` soma créditos ativos existentes a qualquer opção |
+| **Resposta** | Inclui `credito` com breakdown completo (gerado, existentes usados, total aplicado, saldo) |
+| **No BD** | Crédito registrado em `creditos_aluno`, parcela com `credito_id` e `credito_aplicado` |
+| **No Front** | Exibir `credito` se não for `null`, mostrar saldo via `GET /admin/alunos/{id}/creditos/saldo` |
+| **Referência completa** | Ver `API_ALTERAR_PLANO_MATRICULA.md` para todos os parâmetros e exemplos |
 
 ---
 

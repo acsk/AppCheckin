@@ -208,13 +208,16 @@ POST /admin/matriculas/{matriculaId}/alterar-plano
 | `plano_ciclo_id` | number | Não | ID do ciclo do novo plano |
 | `data_inicio` | string | Não | Data de início (`YYYY-MM-DD`). Default: hoje |
 | `dia_vencimento` | number | Não | Dia de vencimento (1-31). Se omitido, mantém o atual |
-| `abater_pagamento_anterior` | boolean | Não | Se `true`, gera crédito automático com o valor do último pagamento pago |
+| `abater_plano_anterior` | boolean | Não | Se `true`, usa o **valor cheio** do plano/ciclo atual como crédito para abater do novo plano |
+| `abater_pagamento_anterior` | boolean | Não | Se `true`, gera crédito **proporcional** aos dias restantes do ciclo atual |
+| `usar_credito_existente` | boolean | Não | Se `true`, usa créditos ativos existentes do aluno (saldo > 0) para abater adicionalmente |
 | `credito` | number | Não | Valor de crédito manual a aplicar na 1ª parcela |
-| `motivo_credito` | string | Não | Motivo do crédito (gerado automaticamente se usar `abater_pagamento_anterior`) |
+| `motivo_credito` | string | Não | Motivo do crédito (gerado automaticamente se usar `abater_plano_anterior`/`abater_pagamento_anterior`) |
 | `valor` | number | Não | Override do valor do plano/ciclo |
 | `observacoes` | string | Não | Observações sobre a alteração |
 
-> **Importante:** `abater_pagamento_anterior` e `credito` são **mutuamente exclusivos**. Use um OU outro.
+> **Importante:** `abater_plano_anterior`, `abater_pagamento_anterior` e `credito` são **mutuamente exclusivos** — use apenas um.
+> `usar_credito_existente` pode ser **combinado** com qualquer uma das opções acima para somar créditos existentes.
 
 ### 4.2 Response de Sucesso (200)
 
@@ -235,17 +238,31 @@ POST /admin/matriculas/{matriculaId}/alterar-plano
   "novo_pagamento_id": 85,
   "valor_parcela": 90.00,
   "credito": {
-    "id": 1,
-    "valor_total": 150.00,
-    "valor_aplicado": 150.00,
-    "saldo_restante": 0.00,
-    "motivo": "Crédito do plano anterior (pagamento de R$150,00 em 27/03/2026)"
+    "credito_gerado_id": 1,
+    "credito_gerado_valor": 150.00,
+    "creditos_existentes_usados": [],
+    "credito_existente_utilizado": 0.00,
+    "total_aplicado": 150.00,
+    "saldo_creditos_restante": 0.00,
+    "motivo": "Crédito do plano anterior (Natação 3x por Semana - R$150,00)"
   },
   "motivo": "upgrade"
 }
 ```
 
 > **O campo `credito` será `null` se não foi aplicado nenhum crédito.**
+
+#### Campos do objeto `credito`
+
+| Campo | Tipo | Descrição |
+|-------|------|-----------|
+| `credito_gerado_id` | number\|null | ID do novo crédito gerado (se `abater_plano_anterior`, `abater_pagamento_anterior` ou `credito` foi usado) |
+| `credito_gerado_valor` | number | Valor do crédito gerado (0 se nenhum novo crédito) |
+| `creditos_existentes_usados` | array | Lista de créditos existentes consumidos `[{id, valor_usado}]` (quando `usar_credito_existente: true`) |
+| `credito_existente_utilizado` | number | Total de créditos existentes que foram consumidos |
+| `total_aplicado` | number | Total de crédito aplicado na parcela (gerado + existentes) |
+| `saldo_creditos_restante` | number | Saldo de créditos ativos do aluno após a operação |
+| `motivo` | string | Descrição/motivo do crédito |
 
 ### 4.3 Erros Possíveis
 
@@ -263,20 +280,42 @@ POST /admin/matriculas/{matriculaId}/alterar-plano
 
 ## 5. Casos de Uso — Fluxos de Tela
 
-### Caso 1: Upgrade com abatimento automático
+### Caso 1: Abater valor cheio do plano anterior
 
-**Cenário:** Aluno no plano Mensal R$150 quer ir para Bimestral R$240. Último pagamento (R$150) já está pago. Admin quer abater.
+**Cenário:** Aluno no plano Bimestral R$120 quer ir para Quadrimestral R$200. Admin quer usar o valor cheio do plano atual como crédito.
 
 **Fluxo na tela:**
 1. Admin abre a tela de detalhe da matrícula
 2. Clica em "Alterar Plano"
 3. Seleciona o novo plano e ciclo
-4. A tela mostra o valor do novo plano: **R$240,00**
-5. Admin marca o checkbox **"Abater último pagamento"** (`abater_pagamento_anterior: true`)
-6. A tela mostra preview: *"Crédito de R$150,00 será aplicado. Primeira parcela: R$90,00"*
+4. A tela mostra o valor do novo plano: **R$200,00**
+5. Admin marca a opção **"Usar plano anterior como crédito"** (`abater_plano_anterior: true`)
+6. A tela mostra preview: *"Crédito de R$120,00 será aplicado. Primeira parcela: R$80,00"*
 7. Admin confirma
-8. API retorna sucesso com `credito.valor_aplicado = 150.00` e `valor_parcela = 90.00`
-9. Tela mostra mensagem de sucesso: *"Plano alterado! Primeira parcela de R$90,00 (crédito de R$150,00 aplicado)"*
+8. API retorna sucesso com `credito.total_aplicado = 120.00` e `valor_parcela = 80.00`
+9. Tela mostra mensagem de sucesso: *"Plano alterado! Primeira parcela de R$80,00 (crédito de R$120,00 aplicado)"*
+
+**Request enviado:**
+```json
+{
+  "plano_id": 10,
+  "plano_ciclo_id": 67,
+  "abater_plano_anterior": true
+}
+```
+
+### Caso 1b: Abater proporcional (dias restantes do ciclo)
+
+**Cenário:** Aluno no plano Bimestral R$120 (60 dias) quer ir para Quadrimestral R$200. Restam 30 dias no ciclo atual. Admin quer gerar crédito proporcional.
+
+**Cálculo proporcional:**
+- Valor por dia = R$120 / 60 dias = R$2,00/dia
+- Crédito = R$2,00 × 30 dias restantes = **R$60,00**
+
+**Fluxo na tela:**
+1. Admin marca a opção **"Abater pagamento proporcional"** (`abater_pagamento_anterior: true`)
+2. Preview: *"Crédito proporcional de R$60,00 (30 dias restantes). Primeira parcela: R$140,00"*
+3. API retorna `credito.credito_gerado_valor = 60.00` e `valor_parcela = 140.00`
 
 **Request enviado:**
 ```json
@@ -286,6 +325,8 @@ POST /admin/matriculas/{matriculaId}/alterar-plano
   "abater_pagamento_anterior": true
 }
 ```
+
+> **Nota:** Se o ciclo já estiver vencido, o sistema busca o último pagamento pago como fallback.
 
 ### Caso 2: Crédito manual (cortesia, ajuste)
 
@@ -360,16 +401,54 @@ Response terá `credito: null` e `valor_parcela` = valor cheio do ciclo.
 {
   "valor_parcela": 0.00,
   "credito": {
-    "id": 5,
-    "valor_total": 300.00,
-    "valor_aplicado": 200.00,
-    "saldo_restante": 100.00,
+    "credito_gerado_id": 5,
+    "credito_gerado_valor": 300.00,
+    "creditos_existentes_usados": [],
+    "credito_existente_utilizado": 0.00,
+    "total_aplicado": 200.00,
+    "saldo_creditos_restante": 100.00,
     "motivo": "..."
   }
 }
 ```
 
 > O saldo de R$100 fica como crédito `ativo` do aluno e pode ser consultado via `GET /admin/alunos/{id}/creditos/saldo`.
+
+### Caso 7: Combinar crédito existente com plano anterior
+
+**Cenário:** Aluno tem R$50 de crédito ativo de operação anterior. Agora está no plano R$120 e quer ir para R$200. Admin quer abater o valor cheio do plano + usar o crédito existente.
+
+**O que acontece:**
+- Crédito gerado (plano anterior): R$120
+- Crédito existente utilizado: R$50
+- Total aplicado: R$170
+- Valor da parcela: R$200 - R$170 = **R$30,00**
+
+**Request:**
+```json
+{
+  "plano_id": 10,
+  "plano_ciclo_id": 67,
+  "abater_plano_anterior": true,
+  "usar_credito_existente": true
+}
+```
+
+**Response terá:**
+```json
+{
+  "valor_parcela": 30.00,
+  "credito": {
+    "credito_gerado_id": 8,
+    "credito_gerado_valor": 120.00,
+    "creditos_existentes_usados": [{"id": 2, "valor_usado": 50.00}],
+    "credito_existente_utilizado": 50.00,
+    "total_aplicado": 170.00,
+    "saldo_creditos_restante": 0.00,
+    "motivo": "Crédito do plano anterior (Bimestral - R$120,00)"
+  }
+}
+```
 
 ### Caso 6: Cancelar crédito
 
@@ -393,10 +472,15 @@ Response terá `credito: null` e `valor_parcela` = valor cheio do ciclo.
 - **Botão "Alterar Plano"** → abre modal/tela
   - Select de plano + ciclo
   - Exibir valor do novo plano
-  - Checkbox: "Abater último pagamento" (só aparece se houver pagamento pago)
-  - Campo numérico: "Crédito manual" (desabilita se checkbox marcado)
+  - **Radio ou Select de crédito** (mutuamente exclusivos):
+    - "Usar plano anterior como crédito" (`abater_plano_anterior`) — valor cheio do plano/ciclo atual
+    - "Abater proporcional (dias restantes)" (`abater_pagamento_anterior`) — crédito proporcional
+    - "Crédito manual" (`credito`) — campo numérico livre
+    - "Sem crédito" — nenhuma das opções
+  - Checkbox: "Usar créditos existentes do aluno" (`usar_credito_existente`) — pode ser combinado com qualquer opção acima
+    - Mostrar saldo disponível: *"Saldo disponível: R$50,00"*
   - Campo texto: "Motivo do crédito" (opcional)
-  - Preview do valor da primeira parcela: `max(0, valorPlano - credito)`
+  - Preview do valor da primeira parcela: `max(0, valorPlano - totalCredito)`
   - Botão confirmar
 
 ### Na tela de Detalhe/Perfil do Aluno
@@ -433,4 +517,7 @@ Se a parcela tem `credito_id` e `credito_aplicado`, exibir informação:
 | Crédito parcial | Se crédito > parcela, aplica só o necessário e saldo fica ativo |
 | Próxima parcela | Sempre valor cheio do plano (crédito NÃO se propaga) |
 | Transação | Tudo dentro de transaction — se falhar, nada é alterado |
-| `abater_pagamento_anterior` | Busca o último pagamento com status **pago** (status_pagamento_id = 2) |
+| `abater_plano_anterior` | Usa o **valor cheio** do plano/ciclo atual (`matricula.valor`) como crédito |
+| `abater_pagamento_anterior` | Calcula crédito **proporcional** aos dias restantes do ciclo. Se ciclo vencido, usa último pagamento pago |
+| `usar_credito_existente` | Pode ser **combinado** com qualquer opção de crédito. Consome créditos do mais antigo ao mais recente |
+| Mutuamente exclusivos | `abater_plano_anterior`, `abater_pagamento_anterior` e `credito` — use apenas **um** |

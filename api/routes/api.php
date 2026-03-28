@@ -39,6 +39,7 @@ use App\Controllers\AssinaturaController;
 use App\Controllers\RelatorioController;
 use App\Controllers\PacoteController;
 use App\Controllers\ParametroController;
+use App\Controllers\AuditoriaController;
 use App\Middlewares\AuthMiddleware;
 use App\Middlewares\TenantMiddleware;
 use App\Middlewares\AdminMiddleware;
@@ -1072,6 +1073,10 @@ return function ($app) {
         
         // Relatórios
         $group->get('/relatorios/planos-ciclos', [RelatorioController::class, 'planosCiclos']);
+
+        // Auditoria
+        $group->get('/auditoria/pagamentos-duplicados', [AuditoriaController::class, 'pagamentosDuplicados']);
+        $group->get('/auditoria/pagamentos-duplicados/detalhe', [AuditoriaController::class, 'pagamentosDuplicadosDetalhe']);
         
         // Contas a Receber
         $group->get('/contas-receber', [ContasReceberController::class, 'index']);

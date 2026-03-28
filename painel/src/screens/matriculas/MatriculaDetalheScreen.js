@@ -20,6 +20,7 @@ import { matriculaService } from '../../services/matriculaService';
 import mercadoPagoService from '../../services/mercadoPagoService';
 import { pagamentoPlanoService } from '../../services/pagamentoPlanoService';
 import planoService from '../../services/planoService';
+import { creditoService } from '../../services/creditoService';
 import { formatarDataParaInput, calcularDiasRestantes } from '../../utils/formatadores';
 import { mascaraData } from '../../utils/masks';
 import { obterMensagemErro } from '../../utils/errorHandler';
@@ -61,9 +62,12 @@ export default function MatriculaDetalheScreen() {
     dia_vencimento: '',
     observacoes: '',
     tipo_credito: 'nenhum',
+    usar_credito_existente: false,
     credito: '',
     motivo_credito: '',
   });
+  const [saldoCreditosAluno, setSaldoCreditosAluno] = useState(null);
+  const [loadingSaldoCreditos, setLoadingSaldoCreditos] = useState(false);
   const [formEditarPagamento, setFormEditarPagamento] = useState({
     valor: '',
     desconto: '',
@@ -338,12 +342,28 @@ export default function MatriculaDetalheScreen() {
       dia_vencimento: diaVencimentoAtual,
       observacoes: '',
       tipo_credito: 'nenhum',
+      usar_credito_existente: false,
       credito: '',
       motivo_credito: '',
     });
     setCiclosAlteracao([]);
+    setSaldoCreditosAluno(null);
     setModalAlterarPlanoVisible(true);
     await carregarPlanosAlteracao();
+
+    // Buscar saldo de créditos do aluno
+    if (matricula?.aluno_id) {
+      try {
+        setLoadingSaldoCreditos(true);
+        const saldoResp = await creditoService.consultarSaldo(matricula.aluno_id);
+        setSaldoCreditosAluno(saldoResp);
+      } catch (err) {
+        console.log('Saldo de créditos não disponível:', err);
+        setSaldoCreditosAluno(null);
+      } finally {
+        setLoadingSaldoCreditos(false);
+      }
+    }
   };
 
   const handleConfirmarAlteracaoPlano = async () => {
@@ -384,7 +404,9 @@ export default function MatriculaDetalheScreen() {
         observacoes: formAlterarPlano.observacoes?.trim() || null,
       };
 
-      if (formAlterarPlano.tipo_credito === 'abater') {
+      if (formAlterarPlano.tipo_credito === 'abater_plano') {
+        payload.abater_plano_anterior = true;
+      } else if (formAlterarPlano.tipo_credito === 'abater') {
         payload.abater_pagamento_anterior = true;
       } else if (formAlterarPlano.tipo_credito === 'manual') {
         const creditoVal = parseFloat(formAlterarPlano.credito);
@@ -396,13 +418,19 @@ export default function MatriculaDetalheScreen() {
         }
       }
 
+      if (formAlterarPlano.usar_credito_existente) {
+        payload.usar_credito_existente = true;
+      }
+
       const response = await matriculaService.alterarPlano(id, payload);
 
       let msg = response?.message || 'Plano alterado com sucesso';
-      if (response?.credito && response.credito.valor_aplicado > 0) {
-        msg += ` — Crédito de ${formatCurrency(response.credito.valor_aplicado)} aplicado. Parcela: ${formatCurrency(response.valor_parcela)}`;
-        if (response.credito.saldo_restante > 0) {
-          msg += ` (saldo restante: ${formatCurrency(response.credito.saldo_restante)})`;
+      if (response?.credito && (response.credito.total_aplicado > 0 || response.credito.valor_aplicado > 0)) {
+        const totalAplicado = response.credito.total_aplicado || response.credito.valor_aplicado || 0;
+        msg += ` — Crédito de ${formatCurrency(totalAplicado)} aplicado. Parcela: ${formatCurrency(response.valor_parcela)}`;
+        const saldoRestante = response.credito.saldo_creditos_restante ?? response.credito.saldo_restante ?? 0;
+        if (saldoRestante > 0) {
+          msg += ` (saldo restante: ${formatCurrency(saldoRestante)})`;
         }
       }
       showToast(msg);
@@ -1298,6 +1326,17 @@ export default function MatriculaDetalheScreen() {
                             <Text className="text-[13px] font-semibold text-slate-700">{formatCurrency(pagamento.desconto || 0)}</Text>
                           </View>
 
+                          {pagamento.credito_aplicado > 0 && (
+                            <View className="mb-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2">
+                              <View className="flex-row items-center gap-1.5">
+                                <Feather name="gift" size={12} color="#10b981" />
+                                <Text className="text-[11px] font-semibold text-emerald-700">
+                                  Crédito aplicado: {formatCurrency(pagamento.credito_aplicado)}
+                                </Text>
+                              </View>
+                            </View>
+                          )}
+
                           <View className="mb-3 rounded-lg bg-slate-50 px-2.5 py-2">
                             <Text className="text-[11px] text-slate-500">Baixado por</Text>
                             <Text className="text-[12px] font-semibold text-slate-700">{pagamento.baixado_por_nome || '-'}</Text>
@@ -1353,9 +1392,16 @@ export default function MatriculaDetalheScreen() {
                             </Text>
                           )}
                         </View>
-                        <Text className="text-[13px] font-semibold text-slate-700" style={{ flex: 1, textAlign: 'right' }}>
-                          {formatCurrency(pagamento.valor)}
-                        </Text>
+                        <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                          <Text className="text-[13px] font-semibold text-slate-700">
+                            {formatCurrency(pagamento.valor)}
+                          </Text>
+                          {pagamento.credito_aplicado > 0 && (
+                            <Text className="text-[10px] text-emerald-600">
+                              crédito: {formatCurrency(pagamento.credito_aplicado)}
+                            </Text>
+                          )}
+                        </View>
                         <Text className="text-[13px] font-semibold text-slate-700" style={{ flex: 1, textAlign: 'right' }}>
                           {formatCurrency(pagamento.desconto || 0)}
                         </Text>
@@ -1888,6 +1934,7 @@ export default function MatriculaDetalheScreen() {
                   .filter((p) => Number(p.status_pagamento_id) === 2)
                   .sort((a, b) => new Date(b.data_pagamento || b.data_vencimento) - new Date(a.data_pagamento || a.data_vencimento))[0];
                 const valorUltimoPago = ultimoPagamentoPago ? parseFloat(ultimoPagamentoPago.valor || 0) : 0;
+                const valorPlanoAtual = parseFloat(matricula?.valor || 0);
 
                 const cicloSelecionado = ciclosAlteracao.find(
                   (c) => c.id.toString() === formAlterarPlano.plano_ciclo_id
@@ -1895,18 +1942,27 @@ export default function MatriculaDetalheScreen() {
                 const valorNovoParcela = cicloSelecionado ? parseFloat(cicloSelecionado.valor || 0) : 0;
 
                 const creditoEstimado =
-                  formAlterarPlano.tipo_credito === 'abater'
+                  formAlterarPlano.tipo_credito === 'abater_plano'
+                    ? valorPlanoAtual
+                    : formAlterarPlano.tipo_credito === 'abater'
                     ? valorUltimoPago
                     : formAlterarPlano.tipo_credito === 'manual'
                     ? parseFloat(formAlterarPlano.credito) || 0
                     : 0;
-                const valorPrimeiraParcela = Math.max(0, valorNovoParcela - creditoEstimado);
-                const saldoRestanteEstimado = Math.max(0, creditoEstimado - valorNovoParcela);
+                const saldoExistente = formAlterarPlano.usar_credito_existente
+                  ? parseFloat(saldoCreditosAluno?.saldo_total || 0)
+                  : 0;
+                const totalCredito = creditoEstimado + saldoExistente;
+                const valorPrimeiraParcela = Math.max(0, valorNovoParcela - totalCredito);
+                const saldoRestanteEstimado = Math.max(0, totalCredito - valorNovoParcela);
 
                 const opcoes = [
                   { key: 'nenhum', label: 'Sem crédito', icon: 'x-circle' },
+                  ...(valorPlanoAtual > 0
+                    ? [{ key: 'abater_plano', label: `Valor cheio do plano (${formatCurrency(valorPlanoAtual)})`, icon: 'dollar-sign' }]
+                    : []),
                   ...(ultimoPagamentoPago
-                    ? [{ key: 'abater', label: `Abater último pago (${formatCurrency(valorUltimoPago)})`, icon: 'refresh-cw' }]
+                    ? [{ key: 'abater', label: `Proporcional (dias restantes)`, icon: 'refresh-cw' }]
                     : []),
                   { key: 'manual', label: 'Crédito manual', icon: 'edit-3' },
                 ];
@@ -1944,10 +2000,18 @@ export default function MatriculaDetalheScreen() {
                       })}
                     </View>
 
+                    {formAlterarPlano.tipo_credito === 'abater_plano' && (
+                      <View className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+                        <Text className="text-sm text-blue-700">
+                          Crédito de {formatCurrency(valorPlanoAtual)} (valor cheio do plano/ciclo atual) será aplicado na primeira parcela.
+                        </Text>
+                      </View>
+                    )}
+
                     {formAlterarPlano.tipo_credito === 'abater' && ultimoPagamentoPago && (
                       <View className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
                         <Text className="text-sm text-blue-700">
-                          Crédito de {formatCurrency(valorUltimoPago)} será gerado automaticamente a partir do último pagamento pago.
+                          Crédito proporcional será calculado com base nos dias restantes do ciclo atual. Último pagamento: {formatCurrency(valorUltimoPago)}.
                         </Text>
                       </View>
                     )}
@@ -1980,19 +2044,87 @@ export default function MatriculaDetalheScreen() {
                       </View>
                     )}
 
-                    {formAlterarPlano.tipo_credito !== 'nenhum' && valorNovoParcela > 0 && creditoEstimado > 0 && (
+                    {/* Checkbox: Usar créditos existentes */}
+                    {(() => {
+                      const saldoDisponivel = parseFloat(saldoCreditosAluno?.saldo_total || 0);
+                      if (loadingSaldoCreditos) {
+                        return (
+                          <View className="mt-3 flex-row items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                            <ActivityIndicator size="small" color="#f97316" />
+                            <Text className="text-sm text-slate-500">Verificando créditos do aluno...</Text>
+                          </View>
+                        );
+                      }
+                      if (saldoDisponivel <= 0) return null;
+                      return (
+                        <Pressable
+                          className={`mt-3 flex-row items-center gap-3 rounded-xl border p-3 ${
+                            formAlterarPlano.usar_credito_existente
+                              ? 'border-violet-400 bg-violet-50/70'
+                              : 'border-slate-200 bg-white'
+                          }`}
+                          style={({ pressed }) => [pressed && { opacity: 0.85 }]}
+                          onPress={() =>
+                            setFormAlterarPlano((prev) => ({
+                              ...prev,
+                              usar_credito_existente: !prev.usar_credito_existente,
+                            }))
+                          }
+                        >
+                          <View
+                            className={`h-5 w-5 items-center justify-center rounded border ${
+                              formAlterarPlano.usar_credito_existente
+                                ? 'border-violet-500 bg-violet-500'
+                                : 'border-slate-300 bg-white'
+                            }`}
+                          >
+                            {formAlterarPlano.usar_credito_existente && (
+                              <Feather name="check" size={12} color="#fff" />
+                            )}
+                          </View>
+                          <View className="flex-1">
+                            <Text className={`text-sm font-semibold ${
+                              formAlterarPlano.usar_credito_existente ? 'text-violet-700' : 'text-slate-700'
+                            }`}>
+                              Usar créditos existentes do aluno
+                            </Text>
+                            <Text className="text-xs text-slate-500">
+                              Saldo disponível: {formatCurrency(saldoDisponivel)}
+                            </Text>
+                          </View>
+                        </Pressable>
+                      );
+                    })()}
+
+                    {(formAlterarPlano.tipo_credito !== 'nenhum' || formAlterarPlano.usar_credito_existente) && valorNovoParcela > 0 && totalCredito > 0 && (
                       <View className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
                         <Text className="text-xs font-semibold uppercase text-emerald-600">Preview da 1ª parcela</Text>
                         <View className="mt-2 flex-row items-center justify-between">
                           <Text className="text-sm text-slate-600">Valor do ciclo</Text>
                           <Text className="text-sm font-semibold text-slate-800">{formatCurrency(valorNovoParcela)}</Text>
                         </View>
-                        <View className="mt-1 flex-row items-center justify-between">
-                          <Text className="text-sm text-slate-600">Crédito aplicado</Text>
-                          <Text className="text-sm font-semibold text-emerald-700">
-                            - {formatCurrency(Math.min(creditoEstimado, valorNovoParcela))}
-                          </Text>
-                        </View>
+                        {creditoEstimado > 0 && (
+                          <View className="mt-1 flex-row items-center justify-between">
+                            <Text className="text-sm text-slate-600">
+                              {formAlterarPlano.tipo_credito === 'abater_plano'
+                                ? 'Crédito (plano anterior)'
+                                : formAlterarPlano.tipo_credito === 'abater'
+                                ? 'Crédito (proporcional)'
+                                : 'Crédito manual'}
+                            </Text>
+                            <Text className="text-sm font-semibold text-emerald-700">
+                              - {formatCurrency(Math.min(creditoEstimado, valorNovoParcela))}
+                            </Text>
+                          </View>
+                        )}
+                        {saldoExistente > 0 && (
+                          <View className="mt-1 flex-row items-center justify-between">
+                            <Text className="text-sm text-slate-600">Créditos existentes</Text>
+                            <Text className="text-sm font-semibold text-violet-700">
+                              - {formatCurrency(Math.min(saldoExistente, Math.max(0, valorNovoParcela - creditoEstimado)))}
+                            </Text>
+                          </View>
+                        )}
                         <View className="mt-2 border-t border-emerald-200 pt-2 flex-row items-center justify-between">
                           <Text className="text-sm font-bold text-slate-800">1ª Parcela</Text>
                           <Text className="text-lg font-bold text-emerald-700">{formatCurrency(valorPrimeiraParcela)}</Text>

@@ -254,10 +254,45 @@ curl -X POST http://localhost:8084/admin/matriculas \
 
 ---
 
+## � Alteração via `alterarPlano()` (método atualizado)
+
+O método `alterarPlano()` em `MatriculaController` agora oferece **3 opções de crédito** ao trocar de plano:
+
+### Opções de crédito (mutuamente exclusivas)
+
+| Opção | Parâmetro | Cálculo |
+|-------|-----------|---------|
+| **Valor cheio do plano** | `abater_plano_anterior: true` | Usa `matricula.valor` integral como crédito |
+| **Proporcional (dias restantes)** | `abater_pagamento_anterior: true` | `(valorCicloAtual / totalDiasCiclo) × diasRestantes` |
+| **Manual** | `credito: 100` | Valor fixo informado pelo admin |
+
+### Complemento com créditos existentes
+
+O parâmetro `usar_credito_existente: true` pode ser **combinado** com qualquer opção acima. Ele consome créditos ativos do aluno (do mais antigo ao mais recente) adicionalmente ao crédito gerado.
+
+### Exemplo de cálculo proporcional
+
+```
+Plano Bimestral: R$120 / 60 dias
+Hoje: dia 30 do ciclo → 30 dias restantes
+Crédito = (120 / 60) × 30 = R$60,00
+```
+
+### Exemplo de valor cheio
+
+```
+Plano Bimestral: R$120
+Crédito = R$120,00 (valor integral do plano/ciclo atual)
+```
+
+> Para detalhes completos de request/response, ver `API_ALTERAR_PLANO_MATRICULA.md`.
+
+---
+
 ## 🚀 Próximas Melhorias Possíveis
 
-1. Aplicar créditos automaticamente no próximo pagamento
-2. Dashboard com resumo de créditos do aluno
+1. ~~Aplicar créditos automaticamente no próximo pagamento~~ ✅ Implementado via `usar_credito_existente`
+2. ~~Dashboard com resumo de créditos do aluno~~ ✅ Disponível via `GET /admin/alunos/{id}/creditos/saldo`
 3. Relatório de upgrades/downgrades por período
 4. Configuração de regras (ex: só permitir upgrade após X dias)
 5. Notificação ao aluno sobre ajuste de valor

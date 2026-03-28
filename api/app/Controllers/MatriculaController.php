@@ -1229,7 +1229,7 @@ class MatriculaController
                 u.email as usuario_email,
                 a.usuario_id,
                 p.nome as plano_nome,
-                p.valor,
+                p.valor as plano_valor_base,
                 p.duracao_dias,
                 p.checkins_semanais,
                 modalidade.nome as modalidade_nome,
@@ -1433,10 +1433,25 @@ class MatriculaController
             $matricula['mercadopago_last_payment_id'] = null;
         }
         
+        // Buscar saldo de créditos do aluno
+        $saldoCreditos = 0.0;
+        $creditosAtivos = [];
+        try {
+            $creditoModel = new \App\Models\CreditoAluno($db);
+            $saldoCreditos = $creditoModel->saldoTotal($tenantId, (int) $matricula['aluno_id']);
+            $creditosAtivos = $creditoModel->listarAtivos($tenantId, (int) $matricula['aluno_id']);
+        } catch (\Exception $e) {
+            error_log("[MatriculaController] Erro ao buscar créditos: " . $e->getMessage());
+        }
+
         $response->getBody()->write(json_encode([
             'matricula' => $matricula,
             'pagamentos' => $matricula['pagamentos'],
-            'total' => $matricula['total_pagamentos']
+            'total' => $matricula['total_pagamentos'],
+            'creditos' => [
+                'saldo_total' => $saldoCreditos,
+                'creditos_ativos' => $creditosAtivos
+            ]
         ]));
         return $response->withHeader('Content-Type', 'application/json');
     }
@@ -1672,9 +1687,11 @@ class MatriculaController
                     new OA\Property(property: "plano_ciclo_id", type: "integer", nullable: true, description: "ID do ciclo do novo plano"),
                     new OA\Property(property: "data_inicio", type: "string", format: "date", description: "Data de início do novo plano (padrão: hoje)"),
                     new OA\Property(property: "dia_vencimento", type: "integer", description: "Dia de vencimento (1-31)"),
-                    new OA\Property(property: "abater_pagamento_anterior", type: "boolean", description: "Se true, abate o valor do último pagamento pago como desconto na primeira parcela do novo plano"),
-                    new OA\Property(property: "desconto", type: "number", description: "Valor de desconto manual na primeira parcela"),
-                    new OA\Property(property: "motivo_desconto", type: "string", nullable: true, description: "Motivo do desconto"),
+                    new OA\Property(property: "abater_pagamento_anterior", type: "boolean", description: "Se true, gera crédito proporcional aos dias restantes do ciclo atual"),
+                    new OA\Property(property: "abater_plano_anterior", type: "boolean", description: "Se true, usa o valor cheio do plano/ciclo atual como crédito para abater do novo plano"),
+                    new OA\Property(property: "usar_credito_existente", type: "boolean", description: "Se true, usa créditos ativos existentes do aluno para abater"),
+                    new OA\Property(property: "credito", type: "number", description: "Valor de crédito manual a aplicar na primeira parcela"),
+                    new OA\Property(property: "motivo_credito", type: "string", nullable: true, description: "Motivo do crédito"),
                     new OA\Property(property: "observacoes", type: "string", nullable: true)
                 ]
             )
@@ -1811,36 +1828,80 @@ class MatriculaController
 
         $planoAnteriorId = (int) $matricula['plano_id'];
 
-        // Calcular crédito na primeira parcela
+        // ===== LÓGICA DE CRÉDITO =====
+        // 1. Buscar créditos existentes (ativos com saldo > 0) do aluno
+        $creditoModel = new \App\Models\CreditoAluno($db);
+        $saldoCreditosExistentes = $creditoModel->saldoTotal($tenantId, (int) $matricula['aluno_id']);
+        $creditosAtivosParaUsar = $creditoModel->listarAtivos($tenantId, (int) $matricula['aluno_id']);
+
         $creditoValor = 0.0;
         $creditoMotivo = $data['motivo_credito'] ?? null;
         $creditoId = null;
         $pagamentoOrigemId = null;
+        $creditoGerado = false; // flag: se estamos GERANDO um novo crédito ou USANDO existente
 
-        if (!empty($data['abater_pagamento_anterior'])) {
-            // Buscar último pagamento PAGO desta matrícula para gerar crédito
-            $stmtUltimoPago = $db->prepare("
-                SELECT id, valor, data_pagamento, data_vencimento
-                FROM pagamentos_plano
-                WHERE matricula_id = ? AND tenant_id = ? AND status_pagamento_id = 2
-                ORDER BY data_vencimento DESC
-                LIMIT 1
-            ");
-            $stmtUltimoPago->execute([$matriculaId, $tenantId]);
-            $ultimoPago = $stmtUltimoPago->fetch(\PDO::FETCH_ASSOC);
+        // Opção A: Usar créditos já existentes do aluno (saldo > 0)
+        $usarCreditoExistente = !empty($data['usar_credito_existente']) && $saldoCreditosExistentes > 0;
 
-            if ($ultimoPago) {
-                $creditoValor = (float) $ultimoPago['valor'];
-                $pagamentoOrigemId = (int) $ultimoPago['id'];
-                $creditoMotivo = $creditoMotivo ?? "Crédito do plano anterior (pagamento de R$" . number_format($creditoValor, 2, ',', '.') . " em " . date('d/m/Y', strtotime($ultimoPago['data_pagamento'] ?? $ultimoPago['data_vencimento'])) . ")";
+        if (!empty($data['abater_plano_anterior'])) {
+            // Opção B: Usar o valor CHEIO do plano/ciclo atual como crédito
+            $creditoValor = (float) $matricula['valor'];
+            
+            if ($creditoValor > 0) {
+                $creditoGerado = true;
+                $creditoMotivo = $creditoMotivo ?? "Crédito do plano anterior (" . $matricula['plano_nome'] . " - R$" . number_format($creditoValor, 2, ',', '.') . ")";
+            }
+        } elseif (!empty($data['abater_pagamento_anterior'])) {
+            // Opção C: Gerar novo crédito PROPORCIONAL aos dias restantes do ciclo atual
+            $valorCicloAtual = (float) $matricula['valor'];
+            
+            // Calcular proporcional: quanto do ciclo atual ainda resta
+            $hoje = new \DateTime();
+            $dataVencimentoAtual = new \DateTime($matricula['data_vencimento']);
+            $dataInicioAtual = new \DateTime($matricula['data_inicio']);
+            
+            $totalDiasCicloAtual = max(1, (int) $dataInicioAtual->diff($dataVencimentoAtual)->days);
+            $diasRestantes = max(0, (int) $hoje->diff($dataVencimentoAtual)->days);
+            
+            // Se o ciclo ainda está vigente, creditar o proporcional restante
+            if ($diasRestantes > 0 && $hoje <= $dataVencimentoAtual) {
+                $creditoValor = round(($valorCicloAtual / $totalDiasCicloAtual) * $diasRestantes, 2);
+            } else {
+                // Ciclo já venceu, buscar último pagamento pago como antes
+                $stmtUltimoPago = $db->prepare("
+                    SELECT id, valor, data_pagamento, data_vencimento
+                    FROM pagamentos_plano
+                    WHERE matricula_id = ? AND tenant_id = ? AND status_pagamento_id = 2
+                    ORDER BY data_vencimento DESC
+                    LIMIT 1
+                ");
+                $stmtUltimoPago->execute([$matriculaId, $tenantId]);
+                $ultimoPago = $stmtUltimoPago->fetch(\PDO::FETCH_ASSOC);
+                
+                if ($ultimoPago) {
+                    $creditoValor = (float) $ultimoPago['valor'];
+                    $pagamentoOrigemId = (int) $ultimoPago['id'];
+                }
+            }
+            
+            if ($creditoValor > 0) {
+                $creditoGerado = true;
+                $creditoMotivo = $creditoMotivo ?? "Crédito proporcional do plano anterior ({$diasRestantes} dias restantes de R$" . number_format($valorCicloAtual, 2, ',', '.') . ")";
             }
         } elseif (isset($data['credito'])) {
             $creditoValor = (float) $data['credito'];
+            $creditoGerado = true;
             $creditoMotivo = $creditoMotivo ?? "Crédito manual na alteração de plano";
         }
 
-        // Valor da parcela descontando o crédito
-        $creditoAplicado = min($creditoValor, (float) $valorNovo); // não aplicar mais que o valor da parcela
+        // Somar: crédito existente + novo crédito gerado (se houver)
+        $totalCredito = $creditoValor;
+        if ($usarCreditoExistente) {
+            $totalCredito += $saldoCreditosExistentes;
+        }
+
+        // Valor da parcela descontando o crédito total
+        $creditoAplicado = min($totalCredito, (float) $valorNovo); // não aplicar mais que o valor da parcela
         $valorParcela = max(0, (float) $valorNovo - $creditoAplicado);
 
         // Status: pendente (aguarda pagamento da primeira parcela do novo plano)
@@ -1924,8 +1985,38 @@ class MatriculaController
                 $adminId
             ]);
 
-            // 4. Criar crédito se houver valor a abater
-            if ($creditoAplicado > 0) {
+            // 4. Gerenciar créditos
+            $creditoExistenteUtilizado = 0.0;
+            $creditosUsados = [];
+
+            // 4a. Usar créditos existentes do aluno (se solicitado)
+            if ($usarCreditoExistente && $creditoAplicado > 0) {
+                $restanteAplicar = $creditoAplicado;
+                
+                // Se há novo crédito sendo gerado, primeiro reservar esse valor
+                if ($creditoGerado && $creditoValor > 0) {
+                    $restanteAplicar = max(0, $creditoAplicado - $creditoValor);
+                }
+                
+                // Consumir créditos existentes do mais antigo ao mais recente
+                foreach ($creditosAtivosParaUsar as $creditoExistente) {
+                    if ($restanteAplicar <= 0.001) break;
+                    
+                    $saldoDisponivel = (float) $creditoExistente['saldo'];
+                    $valorUsar = min($saldoDisponivel, $restanteAplicar);
+                    
+                    $creditoModel->utilizar((int) $creditoExistente['id'], $valorUsar);
+                    $creditoExistenteUtilizado += $valorUsar;
+                    $restanteAplicar -= $valorUsar;
+                    $creditosUsados[] = [
+                        'id' => (int) $creditoExistente['id'],
+                        'valor_usado' => $valorUsar
+                    ];
+                }
+            }
+
+            // 4b. Criar novo crédito se houver valor gerado pela alteração
+            if ($creditoGerado && $creditoValor > 0) {
                 $stmtCredito = $db->prepare("
                     INSERT INTO creditos_aluno
                     (tenant_id, aluno_id, matricula_origem_id, pagamento_origem_id, valor, motivo, criado_por)
@@ -1942,13 +2033,18 @@ class MatriculaController
                 ]);
                 $creditoId = (int) $db->lastInsertId();
 
-                // Marcar crédito como utilizado (parcial ou total)
-                $saldoCredito = $creditoValor - $creditoAplicado;
-                $statusCreditoId = $saldoCredito <= 0.001 ? 2 : 1; // 2=utilizado, 1=ativo
-                $stmtUtilizar = $db->prepare("
-                    UPDATE creditos_aluno SET valor_utilizado = ?, status_credito_id = ?, updated_at = NOW() WHERE id = ?
-                ");
-                $stmtUtilizar->execute([round($creditoAplicado, 2), $statusCreditoId, $creditoId]);
+                // Marcar quanto do novo crédito foi utilizado nesta parcela
+                $novoCredUsado = min($creditoValor, $creditoAplicado - $creditoExistenteUtilizado);
+                $novoCredUsado = max(0, $novoCredUsado);
+                
+                if ($novoCredUsado > 0) {
+                    $saldoCredito = $creditoValor - $novoCredUsado;
+                    $statusCreditoId = $saldoCredito <= 0.001 ? 2 : 1; // 2=utilizado, 1=ativo
+                    $stmtUtilizar = $db->prepare("
+                        UPDATE creditos_aluno SET valor_utilizado = ?, status_credito_id = ?, updated_at = NOW() WHERE id = ?
+                    ");
+                    $stmtUtilizar->execute([round($novoCredUsado, 2), $statusCreditoId, $creditoId]);
+                }
             }
 
             // 5. Criar primeira parcela do novo plano (com crédito se houver)
@@ -1990,6 +2086,9 @@ class MatriculaController
         $stmtFinal->execute([$matriculaId]);
         $matriculaAtualizada = $stmtFinal->fetch(\PDO::FETCH_ASSOC);
 
+        // Buscar saldo de créditos atualizado
+        $saldoFinal = $creditoModel->saldoTotal($tenantId, (int) $matricula['aluno_id']);
+
         $response->getBody()->write(json_encode([
             'message' => 'Plano alterado com sucesso',
             'matricula' => $matriculaAtualizada,
@@ -1997,12 +2096,15 @@ class MatriculaController
             'plano_novo' => $novoPlano['nome'],
             'parcelas_canceladas' => $parcelasCanceladas,
             'novo_pagamento_id' => $novoPagamentoId,
+            'valor_plano_novo' => (float) $valorNovo,
             'valor_parcela' => $valorParcela,
             'credito' => $creditoAplicado > 0 ? [
-                'id' => $creditoId,
-                'valor_total' => $creditoValor,
-                'valor_aplicado' => $creditoAplicado,
-                'saldo_restante' => round($creditoValor - $creditoAplicado, 2),
+                'credito_gerado_id' => $creditoId,
+                'credito_gerado_valor' => $creditoGerado ? $creditoValor : 0,
+                'creditos_existentes_usados' => $creditosUsados,
+                'credito_existente_utilizado' => $creditoExistenteUtilizado,
+                'total_aplicado' => $creditoAplicado,
+                'saldo_creditos_restante' => $saldoFinal,
                 'motivo' => $creditoMotivo
             ] : null,
             'motivo' => $motivo
