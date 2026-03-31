@@ -309,15 +309,13 @@ class PagamentoPlano
         // Atualizar matrícula
         $sqlUpdate = "
             UPDATE matriculas 
-            SET status = :status,
-                status_id = (SELECT id FROM status_matricula WHERE codigo = :status_codigo LIMIT 1),
+            SET status_id = (SELECT id FROM status_matricula WHERE codigo = :status_codigo LIMIT 1),
                 updated_at = NOW()
             WHERE tenant_id = :tenant_id AND id = :matricula_id
         ";
         
         $stmtUpdate = $this->pdo->prepare($sqlUpdate);
         $stmtUpdate->execute([
-            'status' => $novoStatus,
             'status_codigo' => $novoStatus,
             'tenant_id' => $tenantId,
             'matricula_id' => $matriculaId
