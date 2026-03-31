@@ -12940,3 +12940,5 @@
 [2026-03-31 11:06:37] GET /admin/matriculas/232
 [2026-03-31 11:06:38] OPTIONS /admin/matriculas/232/pagamentos
 [2026-03-31 11:06:38] GET /admin/matriculas/232/pagamentos
+[2026-03-31 11:53:55] OPTIONS /admin/matriculas?pagina=1&por_pagina=200&incluir_inativos=true
+[2026-03-31 11:53:55] GET /admin/matriculas?pagina=1&por_pagina=200&incluir_inativos=true

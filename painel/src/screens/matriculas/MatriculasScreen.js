@@ -564,15 +564,15 @@ export default function MatriculasScreen() {
             >
               <Feather name="file-text" size={18} color="#f97316" />
             </Pressable>
-            {matricula.status_id !== 3 && matricula.status_id !== 4 && (
-              <Pressable
-                onPress={() => handleOpenDeletePreview(matricula)}
-                className="h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
-                style={({ pressed }) => [pressed && { opacity: 0.7 }]}
-              >
-                <Feather name="trash-2" size={18} color="#ef4444" />
-              </Pressable>
-            )}
+              {/* {matricula.status_id !== 3 && matricula.status_id !== 4 && (
+                <Pressable
+                  onPress={() => handleOpenDeletePreview(matricula)}
+                  className="h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
+                  style={({ pressed }) => [pressed && { opacity: 0.7 }]}
+                >
+                  <Feather name="trash-2" size={18} color="#ef4444" />
+                </Pressable>
+              )} */}
           </View>
         </View>
       ))}
