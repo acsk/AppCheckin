@@ -42,7 +42,7 @@ $sql = "
     FROM matriculas m
     INNER JOIN assinaturas a ON a.matricula_id = m.id AND a.tenant_id = m.tenant_id
     LEFT JOIN status_matricula sm ON sm.id = m.status_id
-    LEFT JOIN alunos al ON al.id = m.aluno_id AND al.tenant_id = m.tenant_id
+    LEFT JOIN alunos al ON al.id = m.aluno_id
     LEFT JOIN usuarios u ON u.id = al.usuario_id
     LEFT JOIN planos p ON p.id = m.plano_id
     WHERE a.status_gateway = 'approved'
