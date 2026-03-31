@@ -1709,7 +1709,15 @@ class MobileController
             $planoInfo = $this->checkinModel->obterLimiteCheckinsPlano($usuarioId, $tenantId, $modalidadeTurma);
             if ($planoInfo['tem_plano'] && $planoInfo['limite'] > 0) {
                 if ($planoInfo['permite_reposicao']) {
+                    // Meses com 5 semanas liberam +1 check-in
+                    $primeiroDiaMes = new \DateTime(date('Y-m-01'));
+                    $diaSemanaInicio = (int) $primeiroDiaMes->format('w');
+                    $diasNoMes = (int) $primeiroDiaMes->format('t');
+                    $semanasNoMes = (int) ceil(($diasNoMes + $diaSemanaInicio) / 7);
+                    $bonusCincoSemanas = ($semanasNoMes >= 5) ? 1 : 0;
+
                     $limiteMensal = (int) ($planoInfo['limite_mensal'] ?? ($planoInfo['limite'] * 4));
+                    $limiteMensal += $bonusCincoSemanas;
                     $checkinsNoMes = $this->checkinModel->contarCheckinsNoMes($usuarioId, $modalidadeTurma);
                     if ($checkinsNoMes >= $limiteMensal) {
                         $response->getBody()->write(json_encode([
@@ -2006,8 +2014,17 @@ class MobileController
             $planoInfo = $this->checkinModel->obterLimiteCheckinsPlano($userId, $tenantId, $modalidadeTurma);
             
             if ($planoInfo['tem_plano'] && $planoInfo['limite'] > 0) {
+                // Verificar se o mês atual tem 5 semanas (Sun-Sat)
+                // Meses com 5 semanas liberam +1 check-in no total
+                $primeiroDiaMes = new \DateTime(date('Y-m-01'));
+                $diaSemanaInicio = (int) $primeiroDiaMes->format('w'); // 0=domingo
+                $diasNoMes = (int) $primeiroDiaMes->format('t');
+                $semanasNoMes = (int) ceil(($diasNoMes + $diaSemanaInicio) / 7);
+                $bonusCincoSemanas = ($semanasNoMes >= 5) ? 1 : 0;
+
                 if ($planoInfo['permite_reposicao']) {
                     $limiteMensal = (int) ($planoInfo['limite_mensal'] ?? ($planoInfo['limite'] * 4));
+                    $limiteMensal += $bonusCincoSemanas;
                     $checkinsNoMes = $this->checkinModel->contarCheckinsNoMes($userId, $modalidadeTurma);
                     
                     if ($checkinsNoMes >= $limiteMensal) {
@@ -2027,16 +2044,18 @@ class MobileController
                 } else {
                     // Contar check-ins apenas na mesma modalidade
                     $checkinsNaSemana = $this->checkinModel->contarCheckinsNaSemana($userId, $modalidadeTurma);
+                    $limiteSemanal = $planoInfo['limite'] + $bonusCincoSemanas;
                     
-                    if ($checkinsNaSemana >= $planoInfo['limite']) {
+                    if ($checkinsNaSemana >= $limiteSemanal) {
                         $response->getBody()->write(json_encode([
                             'success' => false,
                             'error' => 'Você atingiu o limite de check-ins desta semana',
                             'detalhes' => [
                                 'plano' => $planoInfo['plano_nome'],
-                                'limite_semana' => $planoInfo['limite'],
+                                'limite_semana' => $limiteSemanal,
                                 'checkins_semana' => $checkinsNaSemana,
-                                'mensagem' => 'Seu plano (' . $planoInfo['plano_nome'] . ') permite ' . $planoInfo['limite'] . ' check-in(s) por semana. Você já realizou ' . $checkinsNaSemana . '.'
+                                'bonus_cinco_semanas' => $bonusCincoSemanas > 0,
+                                'mensagem' => 'Seu plano (' . $planoInfo['plano_nome'] . ') permite ' . $limiteSemanal . ' check-in(s) por semana' . ($bonusCincoSemanas > 0 ? ' (bônus mês com 5 semanas)' : '') . '. Você já realizou ' . $checkinsNaSemana . '.'
                             ]
                         ]));
                         return $response->withHeader('Content-Type', 'application/json')->withStatus(400);

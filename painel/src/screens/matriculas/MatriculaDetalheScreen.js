@@ -984,23 +984,23 @@ export default function MatriculaDetalheScreen() {
         </Pressable>
       ) : null}
 
-      {hasMercadoPagoIds && isPagamentoNaoPago(pagamento) ? (
-        <Pressable
-          className="flex-row items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5"
-          style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-          onPress={handleReprocessarPagamentoMP}
-          disabled={reprocessandoPagamentoId !== null}
-        >
-          {reprocessandoPagamentoId !== null ? (
-            <ActivityIndicator size="small" color="#f97316" />
-          ) : (
-            <>
-              <Feather name="refresh-ccw" size={12} color="#475569" />
-              <Text className="text-[11px] font-semibold text-slate-700">Reprocessar</Text>
-            </>
-          )}
-        </Pressable>
-      ) : null}
+        {/* {hasMercadoPagoIds && isPagamentoNaoPago(pagamento) ? (
+          <Pressable
+            className="flex-row items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5"
+            style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+            onPress={handleReprocessarPagamentoMP}
+            disabled={reprocessandoPagamentoId !== null}
+          >
+            {reprocessandoPagamentoId !== null ? (
+              <ActivityIndicator size="small" color="#f97316" />
+            ) : (
+              <>
+                <Feather name="refresh-ccw" size={12} color="#475569" />
+                <Text className="text-[11px] font-semibold text-slate-700">Reprocessar</Text>
+              </>
+            )}
+          </Pressable>
+        ) : null} */}
 
       {currentUserId === 3 && (
         <>
