@@ -1107,6 +1107,17 @@ class AssinaturaController
             if ($stmtUpdate->rowCount() > 0) {
                 error_log("[aprovadasHoje] ✅ Pagamento #{$pendente['id']} baixado como PAGO");
             }
+
+            // Gerar próximo pagamento pendente para manter o ciclo de cobrança
+            try {
+                $pagamentoModel = new \App\Models\PagamentoPlano($this->db);
+                $proximaParcela = $pagamentoModel->gerarProximoPagamentoAutomatico($matriculaId, $dataPagamento);
+                if ($proximaParcela) {
+                    error_log("[aprovadasHoje] ✅ Próximo pagamento #{$proximaParcela['id']} gerado para {$proximaParcela['data_vencimento']} (matrícula #{$matriculaId})");
+                }
+            } catch (\Exception $e) {
+                error_log("[aprovadasHoje] ⚠️ Erro ao gerar próximo pagamento matrícula #{$matriculaId}: " . $e->getMessage());
+            }
         } else {
             error_log("[aprovadasHoje] ℹ️ Nenhum pagamento pendente para matrícula #{$matriculaId}");
         }

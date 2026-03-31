@@ -272,6 +272,17 @@ function sincronizarPagamentoAprovado(PDO $pdo, int $matriculaId, array $pagamen
         logMsg("ℹ️  Nenhum pagamento_plano pendente encontrado para matrícula {$matriculaId}", $quiet);
     }
 
+    // Gerar próximo pagamento pendente para manter o ciclo de cobrança
+    try {
+        $pagamentoModel = new \App\Models\PagamentoPlano($pdo);
+        $proximaParcela = $pagamentoModel->gerarProximoPagamentoAutomatico($matriculaId, $dateApproved);
+        if ($proximaParcela) {
+            logMsg("✅ Próximo pagamento #{$proximaParcela['id']} gerado para {$proximaParcela['data_vencimento']} (matrícula {$matriculaId})", $quiet);
+        }
+    } catch (\Exception $e) {
+        logMsg("⚠️  Erro ao gerar próximo pagamento para matrícula {$matriculaId}: " . $e->getMessage(), $quiet);
+    }
+
     $stmtStatusAss = $pdo->query("SELECT id FROM assinatura_status WHERE codigo IN ('paga', 'ativa') ORDER BY FIELD(codigo, 'paga', 'ativa') LIMIT 1");
     $statusAssId = $stmtStatusAss->fetchColumn() ?: 2;
 

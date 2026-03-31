@@ -2401,6 +2401,17 @@ class MercadoPagoWebhookController
                 $novoPagamentoId = $this->db->lastInsertId();
                 error_log("[Webhook MP] ✅ Novo pagamento #{$novoPagamentoId} criado como PAGO");
             }
+
+            // Gerar próximo pagamento pendente para manter o ciclo de cobrança
+            try {
+                $pagamentoModel = new \App\Models\PagamentoPlano($this->db);
+                $proximaParcela = $pagamentoModel->gerarProximoPagamentoAutomatico($matriculaId, $dateApproved);
+                if ($proximaParcela) {
+                    error_log("[Webhook MP] ✅ Próximo pagamento #{$proximaParcela['id']} gerado para {$proximaParcela['data_vencimento']} (matrícula #{$matriculaId})");
+                }
+            } catch (\Exception $e) {
+                error_log("[Webhook MP] ⚠️ Erro ao gerar próximo pagamento matrícula #{$matriculaId}: " . $e->getMessage());
+            }
             
         } catch (\Exception $e) {
             error_log("[Webhook MP] ❌ Erro ao baixar pagamento_plano: " . $e->getMessage());

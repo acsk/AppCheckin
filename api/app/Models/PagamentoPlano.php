@@ -513,4 +513,133 @@ class PagamentoPlano
         $stmt = $this->pdo->prepare($sql);
         return (bool) $stmt->execute(['tenant_id' => $tenantId, 'id' => $id]);
     }
+
+    /**
+     * Gerar próximo pagamento pendente após confirmação automática (polling/webhook).
+     *
+     * Replica a lógica de MatriculaController::darBaixaConta() para criação da
+     * próxima parcela, garantindo que o ciclo de cobrança não seja interrompido
+     * quando o pagamento é confirmado automaticamente pelo Mercado Pago.
+     *
+     * @return array|null  Dados do pagamento criado ou null se não foi necessário
+     */
+    public function gerarProximoPagamentoAutomatico(int $matriculaId, ?string $dataPagamento = null): ?array
+    {
+        try {
+            // Buscar informações da matrícula, plano e ciclo
+            $stmt = $this->pdo->prepare("
+                SELECT m.id, m.tenant_id, m.aluno_id, m.plano_id, m.plano_ciclo_id, m.valor,
+                       p.duracao_dias, pc.meses as ciclo_meses, af.meses as frequencia_meses
+                FROM matriculas m
+                INNER JOIN planos p ON p.id = m.plano_id
+                LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+                LEFT JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
+                WHERE m.id = ?
+            ");
+            $stmt->execute([$matriculaId]);
+            $matricula = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$matricula) {
+                error_log("[gerarProximoPagamento] Matrícula #{$matriculaId} não encontrada");
+                return null;
+            }
+
+            $valorParcela = (float) ($matricula['valor'] ?? 0);
+            if ($valorParcela < 0.01) {
+                error_log("[gerarProximoPagamento] Matrícula #{$matriculaId} valor zero — próxima parcela não gerada");
+                return null;
+            }
+
+            // Verificar se já existe algum pagamento pendente para esta matrícula
+            $stmtPendente = $this->pdo->prepare("
+                SELECT id, data_vencimento FROM pagamentos_plano
+                WHERE matricula_id = ? AND status_pagamento_id = 1
+                LIMIT 1
+            ");
+            $stmtPendente->execute([$matriculaId]);
+            $pendente = $stmtPendente->fetch(\PDO::FETCH_ASSOC);
+
+            if ($pendente) {
+                error_log("[gerarProximoPagamento] Matrícula #{$matriculaId}: já existe pagamento pendente #{$pendente['id']} para {$pendente['data_vencimento']}");
+                // Mesmo assim, garantir que proxima_data_vencimento esteja sincronizado
+                $stmtSync = $this->pdo->prepare("
+                    UPDATE matriculas SET proxima_data_vencimento = ?, updated_at = NOW() WHERE id = ? AND (proxima_data_vencimento IS NULL OR proxima_data_vencimento != ?)
+                ");
+                $stmtSync->execute([$pendente['data_vencimento'], $matriculaId, $pendente['data_vencimento']]);
+                return null;
+            }
+
+            // Buscar data_vencimento do último pagamento pago para calcular base
+            $stmtUltimoPago = $this->pdo->prepare("
+                SELECT data_vencimento, data_pagamento FROM pagamentos_plano
+                WHERE matricula_id = ? AND status_pagamento_id = 2
+                ORDER BY data_vencimento DESC
+                LIMIT 1
+            ");
+            $stmtUltimoPago->execute([$matriculaId]);
+            $ultimoPago = $stmtUltimoPago->fetch(\PDO::FETCH_ASSOC);
+
+            // Calcular data base: MAX(data_vencimento do pago, data_pagamento)
+            $dataVencPago = $ultimoPago['data_vencimento'] ?? null;
+            $dataPag = $dataPagamento ? date('Y-m-d', strtotime($dataPagamento)) : ($ultimoPago['data_pagamento'] ?? null);
+            if ($dataPag) {
+                $dataPag = date('Y-m-d', strtotime($dataPag));
+            }
+
+            $dateVenc = $dataVencPago ? new \DateTime($dataVencPago) : new \DateTime();
+            $datePag = $dataPag ? new \DateTime($dataPag) : new \DateTime();
+
+            $baseDate = ($datePag > $dateVenc) ? $datePag : $dateVenc;
+
+            // Calcular próximo vencimento baseado no ciclo
+            $mesesCiclo = (int) ($matricula['ciclo_meses'] ?? $matricula['frequencia_meses'] ?? 0);
+            if ($mesesCiclo > 0) {
+                $proximoVencimento = clone $baseDate;
+                $proximoVencimento->modify("+{$mesesCiclo} months");
+            } else {
+                $duracaoDias = max(1, (int) ($matricula['duracao_dias'] ?? 30));
+                $proximoVencimento = clone $baseDate;
+                $proximoVencimento->add(new \DateInterval("P{$duracaoDias}D"));
+            }
+
+            $proximoVencimentoStr = $proximoVencimento->format('Y-m-d');
+
+            // Inserir próximo pagamento pendente
+            $stmtInsert = $this->pdo->prepare("
+                INSERT INTO pagamentos_plano (
+                    tenant_id, aluno_id, matricula_id, plano_id,
+                    valor, data_vencimento, status_pagamento_id,
+                    observacoes, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, NOW())
+            ");
+            $stmtInsert->execute([
+                $matricula['tenant_id'],
+                $matricula['aluno_id'],
+                $matriculaId,
+                $matricula['plano_id'],
+                $valorParcela,
+                $proximoVencimentoStr,
+                'Pagamento gerado automaticamente após confirmação MP'
+            ]);
+
+            $novoId = (int) $this->pdo->lastInsertId();
+
+            // Atualizar proxima_data_vencimento da matrícula
+            $stmtUpdMat = $this->pdo->prepare("
+                UPDATE matriculas SET proxima_data_vencimento = ?, updated_at = NOW() WHERE id = ?
+            ");
+            $stmtUpdMat->execute([$proximoVencimentoStr, $matriculaId]);
+
+            error_log("[gerarProximoPagamento] ✅ Matrícula #{$matriculaId}: próximo pagamento #{$novoId} criado para {$proximoVencimentoStr}");
+
+            return [
+                'id' => $novoId,
+                'data_vencimento' => $proximoVencimentoStr,
+                'valor' => $valorParcela,
+            ];
+        } catch (\Exception $e) {
+            error_log("[gerarProximoPagamento] ❌ Erro matrícula #{$matriculaId}: " . $e->getMessage());
+            return null;
+        }
+    }
 }
