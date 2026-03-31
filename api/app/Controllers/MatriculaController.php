@@ -1904,10 +1904,19 @@ class MatriculaController
         $creditoAplicado = min($totalCredito, (float) $valorNovo); // não aplicar mais que o valor da parcela
         $valorParcela = max(0, (float) $valorNovo - $creditoAplicado);
 
-        // Status: pendente (aguarda pagamento da primeira parcela do novo plano)
-        $stmtStatus = $db->prepare("SELECT id FROM status_matricula WHERE codigo = 'pendente' LIMIT 1");
-        $stmtStatus->execute();
-        $statusPendenteId = (int) $stmtStatus->fetchColumn();
+        // Se o valor da parcela é zero (plano temp/gratuito), ativar direto sem gerar pagamento
+        $planoGratuito = $valorParcela <= 0.001 && (float) $valorNovo <= 0.001;
+
+        if ($planoGratuito) {
+            $stmtStatus = $db->prepare("SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'ativo') LIMIT 1");
+            $stmtStatus->execute();
+            $statusNovoId = (int) $stmtStatus->fetchColumn();
+        } else {
+            // Status: pendente (aguarda pagamento da primeira parcela do novo plano)
+            $stmtStatus = $db->prepare("SELECT id FROM status_matricula WHERE codigo = 'pendente' LIMIT 1");
+            $stmtStatus->execute();
+            $statusNovoId = (int) $stmtStatus->fetchColumn();
+        }
 
         $stmtMotivo = $db->prepare("SELECT id FROM motivo_matricula WHERE codigo = ? LIMIT 1");
         $stmtMotivo->execute([$motivo]);
@@ -1928,7 +1937,7 @@ class MatriculaController
             $stmtCancelarParcelas->execute([$matriculaId, $tenantId]);
             $parcelasCanceladas = $stmtCancelarParcelas->rowCount();
 
-            // 2. Atualizar matrícula com novo plano
+            // 2. Atualizar matrícula com novo plano (limpar campos de cancelamento anterior)
             $stmtUpdate = $db->prepare("
                 UPDATE matriculas
                 SET plano_id = ?,
@@ -1942,6 +1951,9 @@ class MatriculaController
                     status_id = ?,
                     motivo_id = ?,
                     observacoes = ?,
+                    cancelado_por = NULL,
+                    data_cancelamento = NULL,
+                    motivo_cancelamento = NULL,
                     updated_at = NOW()
                 WHERE id = ? AND tenant_id = ?
             ");
@@ -1954,7 +1966,7 @@ class MatriculaController
                 $dataVencimento,
                 $proximaDataVencimento->format('Y-m-d'),
                 $diaVencimento,
-                $statusPendenteId,
+                $statusNovoId,
                 $motivoId,
                 $data['observacoes'] ?? null,
                 $matriculaId,
@@ -2048,24 +2060,28 @@ class MatriculaController
             }
 
             // 5. Criar primeira parcela do novo plano (com crédito se houver)
-            $stmtPagamento = $db->prepare("
-                INSERT INTO pagamentos_plano
-                (tenant_id, aluno_id, matricula_id, plano_id, valor, credito_id, credito_aplicado, data_vencimento,
-                 status_pagamento_id, observacoes, criado_por, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 'Primeiro pagamento - alteração de plano', ?, NOW(), NOW())
-            ");
-            $stmtPagamento->execute([
-                $tenantId,
-                $matricula['aluno_id'],
-                $matriculaId,
-                $novoPlanoId,
-                $valorParcela,
-                $creditoId,
-                $creditoAplicado > 0 ? $creditoAplicado : null,
-                $dataInicio,
-                $adminId
-            ]);
-            $novoPagamentoId = (int) $db->lastInsertId();
+            // Não criar pagamento para planos gratuitos/temporários (valor = 0)
+            $novoPagamentoId = null;
+            if (!$planoGratuito) {
+                $stmtPagamento = $db->prepare("
+                    INSERT INTO pagamentos_plano
+                    (tenant_id, aluno_id, matricula_id, plano_id, valor, credito_id, credito_aplicado, data_vencimento,
+                     status_pagamento_id, observacoes, criado_por, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 'Primeiro pagamento - alteração de plano', ?, NOW(), NOW())
+                ");
+                $stmtPagamento->execute([
+                    $tenantId,
+                    $matricula['aluno_id'],
+                    $matriculaId,
+                    $novoPlanoId,
+                    $valorParcela,
+                    $creditoId,
+                    $creditoAplicado > 0 ? $creditoAplicado : null,
+                    $dataInicio,
+                    $adminId
+                ]);
+                $novoPagamentoId = (int) $db->lastInsertId();
+            }
 
             $db->commit();
         } catch (\Exception $e) {
@@ -3263,29 +3279,34 @@ class MatriculaController
             // Usar valor da matrícula (valor cheio do plano/ciclo), não o valor da parcela (que pode ter desconto)
             $valorProximaParcela = $pagamento['matricula_valor'] ?? $pagamento['valor'];
 
-            $stmtProxima->execute([
-                $pagamento['tenant_id'],
-                $pagamento['aluno_id'],
-                $pagamento['matricula_id'],
-                $pagamento['plano_id'],
-                $valorProximaParcela,
-                $proximoVencimento->format('Y-m-d'),
-                'Pagamento gerado automaticamente após confirmação',
-                $adminId
-            ]);
+            // Não gerar próxima parcela para planos gratuitos/temporários (valor = 0)
+            if ((float) $valorProximaParcela > 0.001) {
+                $stmtProxima->execute([
+                    $pagamento['tenant_id'],
+                    $pagamento['aluno_id'],
+                    $pagamento['matricula_id'],
+                    $pagamento['plano_id'],
+                    $valorProximaParcela,
+                    $proximoVencimento->format('Y-m-d'),
+                    'Pagamento gerado automaticamente após confirmação',
+                    $adminId
+                ]);
 
-            $proximaParcela = [
-                'id' => $db->lastInsertId(),
-                'data_vencimento' => $proximoVencimento->format('Y-m-d'),
-                'valor' => $valorProximaParcela,
-                'status' => 'Aguardando'
-            ];
+                $proximaParcela = [
+                    'id' => $db->lastInsertId(),
+                    'data_vencimento' => $proximoVencimento->format('Y-m-d'),
+                    'valor' => $valorProximaParcela,
+                    'status' => 'Aguardando'
+                ];
+
+                error_log("Próxima parcela criada com sucesso: ID " . $proximaParcela['id']);
+            } else {
+                error_log("Plano gratuito/temporário (valor=0) - próxima parcela NÃO gerada para matrícula #{$pagamento['matricula_id']}");
+            }
 
             // Atualizar matrícula com a próxima data de vencimento calculada
             $stmtUpdMat = $db->prepare("UPDATE matriculas SET proxima_data_vencimento = ?, updated_at = NOW() WHERE id = ?");
             $stmtUpdMat->execute([$proximoVencimento->format('Y-m-d'), $pagamento['matricula_id']]);
-
-            error_log("Próxima parcela criada com sucesso: ID " . $proximaParcela['id']);
 
         } catch (\Exception $e) {
             error_log("Erro ao criar próxima parcela: " . $e->getMessage());

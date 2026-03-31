@@ -703,6 +703,43 @@ class MercadoPagoWebhookController
             $paymentId = (string)($args['paymentId'] ?? '');
             error_log("[Webhook MP] 🔄 Reprocessando pagamento #{$paymentId}...");
             
+            // Verificar se este pagamento já foi processado com sucesso (status=approved no BD)
+            $stmtCheck = $this->db->prepare("
+                SELECT pm.id, pm.status, pm.matricula_id, m.plano_id, m.plano_anterior_id, m.data_cancelamento
+                FROM pagamentos_mercadopago pm
+                LEFT JOIN matriculas m ON m.id = pm.matricula_id
+                WHERE pm.payment_id = ?
+                LIMIT 1
+            ");
+            $stmtCheck->execute([$paymentId]);
+            $existente = $stmtCheck->fetch(\PDO::FETCH_ASSOC);
+
+            if ($existente) {
+                // Se o pagamento já está approved E a matrícula mudou de plano, bloquear reprocessamento
+                if ($existente['status'] === 'approved' && !empty($existente['plano_anterior_id'])) {
+                    error_log("[Webhook MP] ⚠️ Pagamento #{$paymentId} já aprovado e matrícula #{$existente['matricula_id']} teve alteração de plano. Reprocessamento bloqueado.");
+                    $response->getBody()->write(json_encode([
+                        'success' => false,
+                        'error' => 'Pagamento já processado anteriormente e a matrícula teve alteração de plano. Reprocessamento não é seguro.',
+                        'payment_id' => $paymentId,
+                        'matricula_id' => $existente['matricula_id']
+                    ], JSON_UNESCAPED_UNICODE));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                }
+
+                // Se matrícula foi cancelada após o pagamento, bloquear
+                if ($existente['status'] === 'approved' && !empty($existente['data_cancelamento'])) {
+                    error_log("[Webhook MP] ⚠️ Pagamento #{$paymentId} já aprovado e matrícula #{$existente['matricula_id']} foi cancelada. Reprocessamento bloqueado.");
+                    $response->getBody()->write(json_encode([
+                        'success' => false,
+                        'error' => 'Pagamento já processado e matrícula foi cancelada. Reprocessamento não é seguro.',
+                        'payment_id' => $paymentId,
+                        'matricula_id' => $existente['matricula_id']
+                    ], JSON_UNESCAPED_UNICODE));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                }
+            }
+
             $tenantId = $request->getAttribute('tenantId');
             $mercadoPagoService = $this->getMercadoPagoService($tenantId ? (int)$tenantId : null);
             $pagamento = $mercadoPagoService->buscarPagamento($paymentId);
