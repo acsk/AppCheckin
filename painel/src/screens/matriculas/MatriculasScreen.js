@@ -473,19 +473,19 @@ export default function MatriculasScreen() {
           <Feather name="file-text" size={16} color="#3b82f6" />
           <Text style={styles.btnDetalhesText}>Detalhes</Text>
         </Pressable>
-        {matricula.status_id !== 3 && matricula.status_id !== 4 && (
-          <Pressable
-            onPress={() => handleOpenDeletePreview(matricula)}
-            style={({ pressed }) => [
-              styles.btnAction,
-              styles.btnCancelar,
-              pressed && { opacity: 0.7 },
-            ]}
-          >
-            <Feather name="trash-2" size={16} color="#ef4444" />
-            <Text style={styles.btnCancelarText}>Excluir</Text>
-          </Pressable>
-        )}
+              {/* {matricula.status_id !== 3 && matricula.status_id !== 4 && (
+                <Pressable
+                  onPress={() => handleOpenDeletePreview(matricula)}
+                  style={({ pressed }) => [
+                    styles.btnAction,
+                    styles.btnCancelar,
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <Feather name="trash-2" size={16} color="#ef4444" />
+                  <Text style={styles.btnCancelarText}>Excluir</Text>
+                </Pressable>
+              )} */}
       </View>
     </View>
   );

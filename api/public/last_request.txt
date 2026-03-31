@@ -12936,3 +12936,7 @@
 [2026-03-31 02:56:34] GET /admin/matriculas/232/pagamentos
 [2026-03-31 02:56:53] OPTIONS /admin/matriculas/232/simular-cancelamento
 [2026-03-31 02:56:53] GET /admin/matriculas/232/simular-cancelamento
+[2026-03-31 11:06:37] OPTIONS /admin/matriculas/232
+[2026-03-31 11:06:37] GET /admin/matriculas/232
+[2026-03-31 11:06:38] OPTIONS /admin/matriculas/232/pagamentos
+[2026-03-31 11:06:38] GET /admin/matriculas/232/pagamentos
