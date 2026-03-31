@@ -2953,6 +2953,10 @@ class MatriculaController
         // Buscar pagamento atualizado
         $stmt->execute([$pagamentoId, $tenantId]);
         $pagamentoAtualizado = $stmt->fetch();
+
+        // Recalcular status da matrícula baseado nos pagamentos
+        $pagamentoModel = new \App\Models\PagamentoPlano($db);
+        $pagamentoModel->atualizarStatusMatricula($tenantId, (int)$pagamento['matricula_id']);
         
         $response->getBody()->write(json_encode([
             'message' => 'Baixa realizada com sucesso',

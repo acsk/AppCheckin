@@ -477,6 +477,9 @@ class PagamentoPlanoController
                 $pagamentoAtualizado = $pagamentoModel->buscarPorId($tenantId, $pagamentoId);
             }
 
+            // Recalcular status da matrícula baseado nos pagamentos
+            $pagamentoModel->atualizarStatusMatricula($tenantId, (int)$pagamento['matricula_id']);
+
             $response->getBody()->write(json_encode(['type' => 'success','message' => 'Pagamento atualizado','pagamento' => $pagamentoAtualizado], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json');
         } catch (\Exception $e) {
@@ -617,29 +620,15 @@ class PagamentoPlanoController
                 1 // tipo_baixa_id = 1 (Manual)
             );
             
-            // Após baixa, garantir consistência da matrícula (status ativa)
-            $stmtStatusMatriculaAtiva = $db->prepare("SELECT id FROM status_matricula WHERE codigo = 'ativa' AND ativo = TRUE LIMIT 1");
-            $stmtStatusMatriculaAtiva->execute();
-            $statusMatriculaAtiva = $stmtStatusMatriculaAtiva->fetch(\PDO::FETCH_ASSOC);
+            // Garantir data_inicio na matrícula (primeira baixa)
+            $stmtDataInicio = $db->prepare("
+                UPDATE matriculas
+                SET data_inicio = COALESCE(data_inicio, CURDATE()),
+                    updated_at = NOW()
+                WHERE id = ?
+            ");
+            $stmtDataInicio->execute([(int)$pagamento['matricula_id']]);
 
-            if ($statusMatriculaAtiva && isset($statusMatriculaAtiva['id'])) {
-                $stmtAtualizarMatricula = $db->prepare("
-                    UPDATE matriculas
-                    SET status_id = ?,
-                        data_inicio = COALESCE(data_inicio, CURDATE()),
-                        updated_at = NOW()
-                    WHERE id = ?
-                ");
-                $stmtAtualizarMatricula->execute([
-                    (int)$statusMatriculaAtiva['id'],
-                    (int)$pagamento['matricula_id']
-                ]);
-            }
-
-            // Após baixa, garantir consistência da assinatura vinculada (approved/ativa)
-                // Não forçar assinatura para approved aqui.
-                // A confirmação de assinatura deve vir exclusivamente do webhook do gateway.
-            
             // Buscar informações do plano para calcular próximo vencimento
             $plano = $planoModel->findById($pagamento['plano_id']);
 
@@ -699,6 +688,9 @@ class PagamentoPlanoController
             
             $db->commit();
             
+            // Recalcular status da matrícula baseado nos pagamentos
+            $pagamentoModel->atualizarStatusMatricula($tenantId, (int)$pagamento['matricula_id']);
+
             // Buscar pagamento atualizado
             $pagamentoAtualizado = $pagamentoModel->buscarPorId($tenantId, $pagamentoId);
             
@@ -788,6 +780,9 @@ class PagamentoPlanoController
 
             $ok = $pagamentoModel->excluir($tenantId, $pagamentoId);
             if (!$ok) throw new \Exception('Falha ao excluir pagamento');
+
+            // Recalcular status da matrícula baseado nos pagamentos restantes
+            $pagamentoModel->atualizarStatusMatricula($tenantId, (int)$pagamento['matricula_id']);
 
             $response->getBody()->write(json_encode(['type' => 'success','message' => 'Pagamento removido com sucesso'], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json');

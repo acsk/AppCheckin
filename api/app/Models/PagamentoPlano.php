@@ -279,7 +279,7 @@ class PagamentoPlano
     /**
      * Atualizar status da matrícula baseado nos pagamentos
      */
-    private function atualizarStatusMatricula(int $tenantId, int $matriculaId): void
+    public function atualizarStatusMatricula(int $tenantId, int $matriculaId): void
     {
         // Verificar se ainda há pagamentos pendentes ou atrasados
         $sqlVerifica = "
