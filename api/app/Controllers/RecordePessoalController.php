@@ -27,8 +27,9 @@ class RecordePessoalController
         $tenantId = $request->getAttribute('tenantId');
         $queryParams = $request->getQueryParams();
         $apenasAtivas = !isset($queryParams['todas']) || $queryParams['todas'] !== 'true';
+        $modalidadeId = isset($queryParams['modalidade_id']) ? (int) $queryParams['modalidade_id'] : null;
 
-        $provas = $this->model->listarProvas($tenantId, $apenasAtivas);
+        $provas = $this->model->listarProvas($tenantId, $apenasAtivas, $modalidadeId);
 
         $response->getBody()->write(json_encode([
             'provas' => $provas
@@ -198,14 +199,15 @@ class RecordePessoalController
         $alunoId = isset($queryParams['aluno_id']) ? (int) $queryParams['aluno_id'] : null;
         $provaId = isset($queryParams['prova_id']) ? (int) $queryParams['prova_id'] : null;
         $origem = $queryParams['origem'] ?? null;
+        $modalidadeId = isset($queryParams['modalidade_id']) ? (int) $queryParams['modalidade_id'] : null;
 
         if ($origem === 'escola') {
-            $recordes = $this->model->listarRecordesEscola($tenantId, $provaId);
+            $recordes = $this->model->listarRecordesEscola($tenantId, $provaId, $modalidadeId);
         } elseif ($alunoId) {
             $recordes = $this->model->listarPorAluno($tenantId, $alunoId, $provaId);
         } else {
             // Listar todos os recordes do tenant
-            $recordes = $this->model->listarRecordesEscola($tenantId, $provaId);
+            $recordes = $this->model->listarRecordesEscola($tenantId, $provaId, $modalidadeId);
         }
 
         $response->getBody()->write(json_encode([

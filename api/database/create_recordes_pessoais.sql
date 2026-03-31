@@ -2,6 +2,7 @@
 CREATE TABLE IF NOT EXISTS recorde_provas (
     id INT AUTO_INCREMENT PRIMARY KEY,
     tenant_id INT NOT NULL,
+    modalidade_id INT NULL COMMENT 'FK para modalidades - separa provas por modalidade',
     nome VARCHAR(100) NOT NULL COMMENT 'Ex: 25m Crawl, 50m Costas',
     distancia_metros INT NULL COMMENT 'Distância em metros (25, 50, 100, 200)',
     estilo VARCHAR(50) NULL COMMENT 'Crawl, Costas, Peito, Borboleta, Medley',
@@ -11,7 +12,9 @@ CREATE TABLE IF NOT EXISTS recorde_provas (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_tenant (tenant_id),
-    INDEX idx_ativo (tenant_id, ativo)
+    INDEX idx_ativo (tenant_id, ativo),
+    INDEX idx_modalidade (tenant_id, modalidade_id),
+    FOREIGN KEY (modalidade_id) REFERENCES modalidades(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Tabela de recordes pessoais (registros de alunos e escola)

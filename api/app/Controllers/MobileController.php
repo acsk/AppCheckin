@@ -7443,8 +7443,10 @@ class MobileController
     public function listarProvasRecorde(Request $request, Response $response): Response
     {
         $tenantId = $request->getAttribute('tenantId');
+        $queryParams = $request->getQueryParams();
+        $modalidadeId = isset($queryParams['modalidade_id']) ? (int) $queryParams['modalidade_id'] : null;
 
-        $provas = $this->recordePessoalModel->listarProvas($tenantId);
+        $provas = $this->recordePessoalModel->listarProvas($tenantId, true, $modalidadeId);
 
         $response->getBody()->write(json_encode([
             'success' => true,
@@ -7713,8 +7715,9 @@ class MobileController
         $tenantId = $request->getAttribute('tenantId');
         $queryParams = $request->getQueryParams();
         $provaId = isset($queryParams['prova_id']) ? (int) $queryParams['prova_id'] : null;
+        $modalidadeId = isset($queryParams['modalidade_id']) ? (int) $queryParams['modalidade_id'] : null;
 
-        $recordes = $this->recordePessoalModel->listarRecordesEscola($tenantId, $provaId);
+        $recordes = $this->recordePessoalModel->listarRecordesEscola($tenantId, $provaId, $modalidadeId);
 
         $response->getBody()->write(json_encode([
             'success' => true,

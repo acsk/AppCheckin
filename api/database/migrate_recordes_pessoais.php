@@ -19,6 +19,7 @@ try {
         CREATE TABLE IF NOT EXISTS recorde_provas (
             id INT AUTO_INCREMENT PRIMARY KEY,
             tenant_id INT NOT NULL,
+            modalidade_id INT NULL,
             nome VARCHAR(100) NOT NULL,
             distancia_metros INT NULL,
             estilo VARCHAR(50) NULL,
@@ -28,7 +29,9 @@ try {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             INDEX idx_tenant (tenant_id),
-            INDEX idx_ativo (tenant_id, ativo)
+            INDEX idx_ativo (tenant_id, ativo),
+            INDEX idx_modalidade (tenant_id, modalidade_id),
+            FOREIGN KEY (modalidade_id) REFERENCES modalidades(id) ON DELETE SET NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     ");
     echo "✅ Tabela recorde_provas criada\n";
@@ -57,6 +60,16 @@ try {
     ");
     echo "✅ Tabela recordes_pessoais criada\n";
 
+    // 2.5. Adicionar coluna modalidade_id se não existir (para re-run)
+    try {
+        $db->exec("ALTER TABLE recorde_provas ADD COLUMN modalidade_id INT NULL AFTER tenant_id");
+        $db->exec("ALTER TABLE recorde_provas ADD INDEX idx_modalidade (tenant_id, modalidade_id)");
+        $db->exec("ALTER TABLE recorde_provas ADD FOREIGN KEY (modalidade_id) REFERENCES modalidades(id) ON DELETE SET NULL");
+        echo "✅ Coluna modalidade_id adicionada à recorde_provas\n";
+    } catch (\Exception $e) {
+        // Coluna já existe, ignorar
+    }
+
     // 3. Inserir provas padrão para todos os tenants ativos
     $stmtTenants = $db->query("SELECT id FROM tenants WHERE ativo = 1");
     $tenants = $stmtTenants->fetchAll(PDO::FETCH_COLUMN);
@@ -75,19 +88,30 @@ try {
     ];
 
     $stmtInsert = $db->prepare("
-        INSERT INTO recorde_provas (tenant_id, nome, distancia_metros, estilo, unidade_medida, ordem)
-        SELECT ?, ?, ?, ?, 'tempo', ?
+        INSERT INTO recorde_provas (tenant_id, modalidade_id, nome, distancia_metros, estilo, unidade_medida, ordem)
+        SELECT ?, ?, ?, ?, ?, 'tempo', ?
         FROM DUAL
         WHERE NOT EXISTS (
             SELECT 1 FROM recorde_provas WHERE tenant_id = ? AND nome = ?
         )
     ");
 
+    // Buscar modalidade de natação de cada tenant
+    $stmtModalidade = $db->prepare("
+        SELECT id FROM modalidades
+        WHERE tenant_id = ? AND LOWER(nome) LIKE '%nata%' AND ativo = 1
+        ORDER BY id ASC LIMIT 1
+    ");
+
     foreach ($tenants as $tenantId) {
+        // Buscar modalidade natação do tenant
+        $stmtModalidade->execute([$tenantId]);
+        $modalidadeId = $stmtModalidade->fetchColumn() ?: null;
+
         $count = 0;
         foreach ($provasPadrao as $prova) {
             $stmtInsert->execute([
-                $tenantId, $prova['nome'], $prova['distancia'], $prova['estilo'], $prova['ordem'],
+                $tenantId, $modalidadeId, $prova['nome'], $prova['distancia'], $prova['estilo'], $prova['ordem'],
                 $tenantId, $prova['nome']
             ]);
             if ($stmtInsert->rowCount() > 0) $count++;

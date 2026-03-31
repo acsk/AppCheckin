@@ -18,16 +18,21 @@ class RecordePessoal
     /**
      * Listar provas disponíveis do tenant
      */
-    public function listarProvas(int $tenantId, bool $apenasAtivas = true): array
+    public function listarProvas(int $tenantId, bool $apenasAtivas = true, ?int $modalidadeId = null): array
     {
-        $sql = "SELECT * FROM recorde_provas WHERE tenant_id = ?";
+        $sql = "SELECT rp.*, m.nome as modalidade_nome FROM recorde_provas rp LEFT JOIN modalidades m ON m.id = rp.modalidade_id WHERE rp.tenant_id = ?";
+        $params = [$tenantId];
         if ($apenasAtivas) {
-            $sql .= " AND ativo = 1";
+            $sql .= " AND rp.ativo = 1";
         }
-        $sql .= " ORDER BY ordem ASC, nome ASC";
+        if ($modalidadeId) {
+            $sql .= " AND rp.modalidade_id = ?";
+            $params[] = $modalidadeId;
+        }
+        $sql .= " ORDER BY rp.ordem ASC, rp.nome ASC";
 
         $stmt = $this->db->prepare($sql);
-        $stmt->execute([$tenantId]);
+        $stmt->execute($params);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
@@ -36,7 +41,7 @@ class RecordePessoal
      */
     public function buscarProva(int $id, int $tenantId): ?array
     {
-        $stmt = $this->db->prepare("SELECT * FROM recorde_provas WHERE id = ? AND tenant_id = ?");
+        $stmt = $this->db->prepare("SELECT rp.*, m.nome as modalidade_nome FROM recorde_provas rp LEFT JOIN modalidades m ON m.id = rp.modalidade_id WHERE rp.id = ? AND rp.tenant_id = ?");
         $stmt->execute([$id, $tenantId]);
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
         return $result ?: null;
@@ -48,11 +53,12 @@ class RecordePessoal
     public function criarProva(array $dados): int
     {
         $stmt = $this->db->prepare("
-            INSERT INTO recorde_provas (tenant_id, nome, distancia_metros, estilo, unidade_medida, ordem)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO recorde_provas (tenant_id, modalidade_id, nome, distancia_metros, estilo, unidade_medida, ordem)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         ");
         $stmt->execute([
             $dados['tenant_id'],
+            $dados['modalidade_id'] ?? null,
             $dados['nome'],
             $dados['distancia_metros'] ?? null,
             $dados['estilo'] ?? null,
@@ -69,10 +75,11 @@ class RecordePessoal
     {
         $stmt = $this->db->prepare("
             UPDATE recorde_provas
-            SET nome = ?, distancia_metros = ?, estilo = ?, unidade_medida = ?, ordem = ?, ativo = ?, updated_at = NOW()
+            SET modalidade_id = ?, nome = ?, distancia_metros = ?, estilo = ?, unidade_medida = ?, ordem = ?, ativo = ?, updated_at = NOW()
             WHERE id = ? AND tenant_id = ?
         ");
         $stmt->execute([
+            $dados['modalidade_id'] ?? null,
             $dados['nome'],
             $dados['distancia_metros'] ?? null,
             $dados['estilo'] ?? null,
@@ -178,13 +185,15 @@ class RecordePessoal
     /**
      * Listar recordes da escola
      */
-    public function listarRecordesEscola(int $tenantId, ?int $provaId = null): array
+    public function listarRecordesEscola(int $tenantId, ?int $provaId = null, ?int $modalidadeId = null): array
     {
         $sql = "
             SELECT rp.*, pr.nome as prova_nome, pr.distancia_metros, pr.estilo, pr.unidade_medida,
+                   pr.modalidade_id, mo.nome as modalidade_nome,
                    a.nome as aluno_nome, u.nome as registrado_por_nome
             FROM recordes_pessoais rp
             INNER JOIN recorde_provas pr ON pr.id = rp.prova_id
+            LEFT JOIN modalidades mo ON mo.id = pr.modalidade_id
             LEFT JOIN alunos a ON a.id = rp.aluno_id
             LEFT JOIN usuarios u ON u.id = rp.registrado_por
             WHERE rp.tenant_id = ? AND rp.origem = 'escola'
@@ -194,6 +203,10 @@ class RecordePessoal
         if ($provaId) {
             $sql .= " AND rp.prova_id = ?";
             $params[] = $provaId;
+        }
+        if ($modalidadeId) {
+            $sql .= " AND pr.modalidade_id = ?";
+            $params[] = $modalidadeId;
         }
 
         $sql .= " ORDER BY pr.ordem ASC, rp.data_registro DESC";
@@ -307,9 +320,11 @@ class RecordePessoal
     {
         $stmt = $this->db->prepare("
             SELECT rp.*, pr.nome as prova_nome, pr.unidade_medida, pr.distancia_metros, pr.estilo,
+                   pr.modalidade_id, mo.nome as modalidade_nome,
                    a.nome as aluno_nome
             FROM recordes_pessoais rp
             INNER JOIN recorde_provas pr ON pr.id = rp.prova_id
+            LEFT JOIN modalidades mo ON mo.id = pr.modalidade_id
             LEFT JOIN alunos a ON a.id = rp.aluno_id
             WHERE rp.id = ? AND rp.tenant_id = ?
         ");
