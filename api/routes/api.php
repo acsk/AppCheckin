@@ -19,6 +19,7 @@ use App\Controllers\PagamentoContratoController;
 use App\Controllers\PagamentoPlanoController;
 use App\Controllers\FormaPagamentoController;
 use App\Controllers\ModalidadeController;
+use App\Controllers\RecordePessoalController;
 use App\Controllers\TenantFormaPagamentoController;
 use App\Controllers\CepController;
 use App\Controllers\CreditoAlunoController;
@@ -961,6 +962,15 @@ return function ($app) {
         $group->get('/ranking/mensal', [MobileController::class, 'rankingMensal']);
         // Cancelar compra de diária
         $group->post('/diaria/{matriculaId}/cancelar', [MobileController::class, 'cancelarDiaria']);
+
+        // Recordes Pessoais
+        $group->get('/recordes/provas', [MobileController::class, 'listarProvasRecorde']);
+        $group->get('/recordes/meus', [MobileController::class, 'meusRecordes']);
+        $group->post('/recordes', [MobileController::class, 'criarMeuRecorde']);
+        $group->put('/recordes/{id}', [MobileController::class, 'atualizarMeuRecorde']);
+        $group->delete('/recordes/{id}', [MobileController::class, 'excluirMeuRecorde']);
+        $group->get('/recordes/ranking/{provaId}', [MobileController::class, 'rankingRecordes']);
+        $group->get('/recordes/escola', [MobileController::class, 'recordesEscola']);
     })->add(AuthMiddleware::class);
 
     // ========================================
@@ -1258,6 +1268,19 @@ return function ($app) {
             $controller = new ParametroController(require __DIR__ . '/../config/database.php');
             return $controller->toggle($request, $response, $args);
         });
+
+        // Recordes Pessoais (Admin)
+        $group->get('/recordes/provas', [RecordePessoalController::class, 'listarProvas']);
+        $group->get('/recordes/provas/{id}', [RecordePessoalController::class, 'buscarProva']);
+        $group->post('/recordes/provas', [RecordePessoalController::class, 'criarProva']);
+        $group->put('/recordes/provas/{id}', [RecordePessoalController::class, 'atualizarProva']);
+        $group->delete('/recordes/provas/{id}', [RecordePessoalController::class, 'excluirProva']);
+        $group->get('/recordes', [RecordePessoalController::class, 'listarRecordes']);
+        $group->get('/recordes/{id}', [RecordePessoalController::class, 'buscarRecorde']);
+        $group->post('/recordes', [RecordePessoalController::class, 'criarRecorde']);
+        $group->put('/recordes/{id}', [RecordePessoalController::class, 'atualizarRecorde']);
+        $group->delete('/recordes/{id}', [RecordePessoalController::class, 'excluirRecorde']);
+        $group->get('/recordes/ranking/{provaId}', [RecordePessoalController::class, 'ranking']);
     })->add(AdminMiddleware::class)->add(AuthMiddleware::class);
 
     // ========================================

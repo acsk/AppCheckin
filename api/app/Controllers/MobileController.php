@@ -11,6 +11,7 @@ use App\Models\Wod;
 use App\Models\WodBloco;
 use App\Models\WodVariacao;
 use App\Models\Parametro;
+use App\Models\RecordePessoal;
 use OpenApi\Attributes as OA;
 
 /**
@@ -31,6 +32,7 @@ class MobileController
     private Wod $wodModel;
     private WodBloco $wodBlocoModel;
     private WodVariacao $wodVariacaoModel;
+    private RecordePessoal $recordePessoalModel;
     private \PDO $db;
     private ?string $dbInitError = null;
 
@@ -44,6 +46,7 @@ class MobileController
             $this->wodModel = new Wod($this->db);
             $this->wodBlocoModel = new WodBloco($this->db);
             $this->wodVariacaoModel = new WodVariacao($this->db);
+            $this->recordePessoalModel = new RecordePessoal($this->db);
         } catch (\Throwable $e) {
             $this->dbInitError = $e->getMessage();
             error_log('[MobileController::__construct] DB init error: ' . $this->dbInitError);
@@ -7429,5 +7432,295 @@ class MobileController
         }
 
         return $debug;
+    }
+
+    // ========== RECORDES PESSOAIS (Mobile) ==========
+
+    /**
+     * Listar provas disponíveis para o aluno
+     * GET /mobile/recordes/provas
+     */
+    public function listarProvasRecorde(Request $request, Response $response): Response
+    {
+        $tenantId = $request->getAttribute('tenantId');
+
+        $provas = $this->recordePessoalModel->listarProvas($tenantId);
+
+        $response->getBody()->write(json_encode([
+            'success' => true,
+            'provas' => $provas
+        ], JSON_UNESCAPED_UNICODE));
+
+        return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+    }
+
+    /**
+     * Buscar meus recordes pessoais (do aluno logado)
+     * GET /mobile/recordes/meus
+     */
+    public function meusRecordes(Request $request, Response $response): Response
+    {
+        $tenantId = $request->getAttribute('tenantId');
+        $userId = $request->getAttribute('userId');
+        $queryParams = $request->getQueryParams();
+        $provaId = isset($queryParams['prova_id']) ? (int) $queryParams['prova_id'] : null;
+
+        // Buscar aluno_id do usuário
+        $stmtAluno = $this->db->prepare("SELECT id FROM alunos WHERE usuario_id = ? AND tenant_id = ? LIMIT 1");
+        $stmtAluno->execute([$userId, $tenantId]);
+        $alunoId = (int) $stmtAluno->fetchColumn();
+
+        if (!$alunoId) {
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Aluno não encontrado'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
+        }
+
+        $recordes = $this->recordePessoalModel->listarPorAluno($tenantId, $alunoId, $provaId);
+        $melhores = $this->recordePessoalModel->melhoresPorAluno($tenantId, $alunoId);
+
+        $response->getBody()->write(json_encode([
+            'success' => true,
+            'recordes' => $recordes,
+            'melhores' => $melhores
+        ], JSON_UNESCAPED_UNICODE));
+
+        return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+    }
+
+    /**
+     * Registrar meu recorde pessoal (aluno)
+     * POST /mobile/recordes
+     */
+    public function criarMeuRecorde(Request $request, Response $response): Response
+    {
+        $tenantId = $request->getAttribute('tenantId');
+        $userId = $request->getAttribute('userId');
+        $data = $request->getParsedBody();
+
+        // Buscar aluno_id
+        $stmtAluno = $this->db->prepare("SELECT id FROM alunos WHERE usuario_id = ? AND tenant_id = ? LIMIT 1");
+        $stmtAluno->execute([$userId, $tenantId]);
+        $alunoId = (int) $stmtAluno->fetchColumn();
+
+        if (!$alunoId) {
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Aluno não encontrado'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
+        }
+
+        // Validações
+        if (empty($data['prova_id'])) {
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Prova é obrigatória'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(422);
+        }
+        if (empty($data['data_registro'])) {
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Data do registro é obrigatória'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(422);
+        }
+        if (empty($data['tempo_segundos']) && empty($data['valor'])) {
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Tempo ou valor é obrigatório'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(422);
+        }
+
+        // Verifica se prova existe
+        $prova = $this->recordePessoalModel->buscarProva((int) $data['prova_id'], $tenantId);
+        if (!$prova) {
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Prova não encontrada'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
+        }
+
+        try {
+            $id = $this->recordePessoalModel->criar([
+                'tenant_id' => $tenantId,
+                'aluno_id' => $alunoId,
+                'prova_id' => (int) $data['prova_id'],
+                'tempo_segundos' => $data['tempo_segundos'] ?? null,
+                'valor' => $data['valor'] ?? null,
+                'data_registro' => $data['data_registro'],
+                'observacoes' => $data['observacoes'] ?? null,
+                'origem' => 'aluno',
+                'registrado_por' => $userId,
+            ]);
+            $recorde = $this->recordePessoalModel->buscar($id, $tenantId);
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'message' => 'Recorde registrado com sucesso',
+                'recorde' => $recorde
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(201);
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao registrar recorde: ' . $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
+        }
+    }
+
+    /**
+     * Atualizar meu recorde pessoal
+     * PUT /mobile/recordes/{id}
+     */
+    public function atualizarMeuRecorde(Request $request, Response $response, array $args): Response
+    {
+        $id = (int) $args['id'];
+        $tenantId = $request->getAttribute('tenantId');
+        $userId = $request->getAttribute('userId');
+        $data = $request->getParsedBody();
+
+        // Buscar aluno_id
+        $stmtAluno = $this->db->prepare("SELECT id FROM alunos WHERE usuario_id = ? AND tenant_id = ? LIMIT 1");
+        $stmtAluno->execute([$userId, $tenantId]);
+        $alunoId = (int) $stmtAluno->fetchColumn();
+
+        // Buscar recorde e verificar se é do aluno
+        $recorde = $this->recordePessoalModel->buscar($id, $tenantId);
+        if (!$recorde || (int) $recorde['aluno_id'] !== $alunoId || $recorde['origem'] !== 'aluno') {
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Recorde não encontrado ou sem permissão'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
+        }
+
+        if (empty($data['prova_id']) || empty($data['data_registro'])) {
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Prova e data do registro são obrigatórios'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(422);
+        }
+
+        try {
+            $this->recordePessoalModel->atualizar($id, $tenantId, $data);
+            $recorde = $this->recordePessoalModel->buscar($id, $tenantId);
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'message' => 'Recorde atualizado com sucesso',
+                'recorde' => $recorde
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao atualizar recorde: ' . $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
+        }
+    }
+
+    /**
+     * Excluir meu recorde pessoal
+     * DELETE /mobile/recordes/{id}
+     */
+    public function excluirMeuRecorde(Request $request, Response $response, array $args): Response
+    {
+        $id = (int) $args['id'];
+        $tenantId = $request->getAttribute('tenantId');
+        $userId = $request->getAttribute('userId');
+
+        // Buscar aluno_id
+        $stmtAluno = $this->db->prepare("SELECT id FROM alunos WHERE usuario_id = ? AND tenant_id = ? LIMIT 1");
+        $stmtAluno->execute([$userId, $tenantId]);
+        $alunoId = (int) $stmtAluno->fetchColumn();
+
+        // Buscar recorde e verificar propriedade
+        $recorde = $this->recordePessoalModel->buscar($id, $tenantId);
+        if (!$recorde || (int) $recorde['aluno_id'] !== $alunoId || $recorde['origem'] !== 'aluno') {
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Recorde não encontrado ou sem permissão'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
+        }
+
+        try {
+            $this->recordePessoalModel->excluir($id, $tenantId);
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'message' => 'Recorde excluído com sucesso'
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao excluir recorde: ' . $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
+        }
+    }
+
+    /**
+     * Ranking de recordes por prova
+     * GET /mobile/recordes/ranking/{provaId}
+     */
+    public function rankingRecordes(Request $request, Response $response, array $args): Response
+    {
+        $provaId = (int) $args['provaId'];
+        $tenantId = $request->getAttribute('tenantId');
+        $queryParams = $request->getQueryParams();
+        $limit = isset($queryParams['limit']) ? min((int) $queryParams['limit'], 100) : 50;
+
+        $prova = $this->recordePessoalModel->buscarProva($provaId, $tenantId);
+        if (!$prova) {
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Prova não encontrada'
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
+        }
+
+        $ranking = $this->recordePessoalModel->rankingPorProva($tenantId, $provaId, $limit);
+
+        $response->getBody()->write(json_encode([
+            'success' => true,
+            'prova' => $prova,
+            'ranking' => $ranking
+        ], JSON_UNESCAPED_UNICODE));
+
+        return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+    }
+
+    /**
+     * Recordes da escola (registrados pelo professor)
+     * GET /mobile/recordes/escola
+     */
+    public function recordesEscola(Request $request, Response $response): Response
+    {
+        $tenantId = $request->getAttribute('tenantId');
+        $queryParams = $request->getQueryParams();
+        $provaId = isset($queryParams['prova_id']) ? (int) $queryParams['prova_id'] : null;
+
+        $recordes = $this->recordePessoalModel->listarRecordesEscola($tenantId, $provaId);
+
+        $response->getBody()->write(json_encode([
+            'success' => true,
+            'recordes' => $recordes
+        ], JSON_UNESCAPED_UNICODE));
+
+        return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
     }
 }
