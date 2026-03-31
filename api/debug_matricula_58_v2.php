@@ -14,7 +14,7 @@ require_once __DIR__ . '/vendor/autoload.php';
 $pdo = require __DIR__ . '/config/database.php';
 $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
-$matriculaId = 58;
+$matriculaId = isset($argv[1]) ? (int)$argv[1] : 58;
 
 echo "=" . str_repeat("=", 79) . "\n";
 echo " DEBUG MATRÍCULA #{$matriculaId}\n";
