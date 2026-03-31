@@ -2328,6 +2328,14 @@ class MatriculaController
         // Valor do plano (ciclo ou plano)
         $valorPlano = (float) $matricula['valor'];
 
+        // Verificar se existe pelo menos um pagamento com status Pago (2)
+        $stmtPagos = $db->prepare("
+            SELECT COUNT(*) FROM pagamentos_plano
+            WHERE matricula_id = ? AND tenant_id = ? AND status_pagamento_id = 2
+        ");
+        $stmtPagos->execute([$matriculaId, $tenantId]);
+        $temPagamento = (int) $stmtPagos->fetchColumn() > 0;
+
         // Calcular dias totais e restantes (usar meia-noite para não contar o dia atual como utilizado)
         $hoje = new \DateTime('today');
         $dataInicio = new \DateTime($matricula['data_inicio'] ?? $matricula['created_at']);
@@ -2337,9 +2345,9 @@ class MatriculaController
         $diasUtilizados = max(0, (int) $dataInicio->diff($hoje)->days);
         $diasRestantes = max(0, (int) $hoje->diff($dataVencimento)->days);
 
-        // Se já venceu, não há crédito proporcional
+        // Só gera crédito proporcional se houver pagamento confirmado e plano ainda vigente
         $valorProporcional = 0.0;
-        if ($hoje <= $dataVencimento && $diasRestantes > 0) {
+        if ($temPagamento && $hoje <= $dataVencimento && $diasRestantes > 0) {
             $valorProporcional = round(($valorPlano / $diasTotais) * $diasRestantes, 2);
         }
 
@@ -2365,6 +2373,7 @@ class MatriculaController
             'dias_totais' => $diasTotais,
             'dias_utilizados' => min($diasUtilizados, $diasTotais),
             'dias_restantes' => $diasRestantes,
+            'tem_pagamento_pago' => $temPagamento,
             'valor_proporcional_credito' => $valorProporcional,
             'parcelas_pendentes' => $parcelasPendentes,
             'saldo_creditos_atual' => $saldoAtual
@@ -2464,15 +2473,25 @@ class MatriculaController
         $creditoInfo = null;
 
         if ($gerarCredito) {
-            $hoje = new \DateTime('today');
-            $dataInicio = new \DateTime($matricula['data_inicio'] ?? $matricula['created_at']);
-            $dataVencimento = new \DateTime($matricula['data_vencimento'] ?? $matricula['proxima_data_vencimento']);
+            // Verificar se existe pelo menos um pagamento com status Pago (2)
+            $stmtPagos = $db->prepare("
+                SELECT COUNT(*) FROM pagamentos_plano
+                WHERE matricula_id = ? AND tenant_id = ? AND status_pagamento_id = 2
+            ");
+            $stmtPagos->execute([$matriculaId, $tenantId]);
+            $temPagamento = (int) $stmtPagos->fetchColumn() > 0;
 
-            $diasTotais = max(1, (int) $dataInicio->diff($dataVencimento)->days);
-            $diasRestantes = max(0, (int) $hoje->diff($dataVencimento)->days);
+            if ($temPagamento) {
+                $hoje = new \DateTime('today');
+                $dataInicio = new \DateTime($matricula['data_inicio'] ?? $matricula['created_at']);
+                $dataVencimento = new \DateTime($matricula['data_vencimento'] ?? $matricula['proxima_data_vencimento']);
 
-            if ($hoje <= $dataVencimento && $diasRestantes > 0) {
-                $creditoValor = round(($valorPlano / $diasTotais) * $diasRestantes, 2);
+                $diasTotais = max(1, (int) $dataInicio->diff($dataVencimento)->days);
+                $diasRestantes = max(0, (int) $hoje->diff($dataVencimento)->days);
+
+                if ($hoje <= $dataVencimento && $diasRestantes > 0) {
+                    $creditoValor = round(($valorPlano / $diasTotais) * $diasRestantes, 2);
+                }
             }
         }
 

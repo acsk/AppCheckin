@@ -1934,10 +1934,20 @@ export default function MatriculaDetalheScreen() {
                         </Text>
                       )}
 
-                      {/* Checkbox gerar crédito - sempre marcado, desabilitado */}
-                      <View className="flex-row items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
-                        <View className="h-4 w-4 items-center justify-center rounded border border-emerald-500 bg-emerald-500">
-                          <Feather name="check" size={10} color="#fff" />
+                      {/* Checkbox gerar crédito */}
+                      <Pressable
+                        className={`flex-row items-center gap-2 rounded-lg border px-3 py-2 ${
+                          gerarCreditoCancelamento ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200 bg-white'
+                        }`}
+                        onPress={() => setGerarCreditoCancelamento((prev) => !prev)}
+                        style={({ pressed }) => [pressed && { opacity: 0.85 }]}
+                      >
+                        <View
+                          className={`h-4 w-4 items-center justify-center rounded border ${
+                            gerarCreditoCancelamento ? 'border-emerald-500 bg-emerald-500' : 'border-slate-300 bg-white'
+                          }`}
+                        >
+                          {gerarCreditoCancelamento ? <Feather name="check" size={10} color="#fff" /> : null}
                         </View>
                         <View className="flex-1">
                           <Text className="text-xs font-medium text-slate-600">Gerar crédito proporcional</Text>
@@ -1945,7 +1955,7 @@ export default function MatriculaDetalheScreen() {
                             {formatCurrency(simulacaoCancelamento.valor_proporcional_credito)} será creditado ao aluno
                           </Text>
                         </View>
-                      </View>
+                      </Pressable>
                     </View>
                   ) : null}
                 </ScrollView>
