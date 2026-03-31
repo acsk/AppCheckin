@@ -1885,6 +1885,15 @@ class MercadoPagoWebhookController
             
             error_log("[Webhook MP] 📋 Assinatura encontrada: ID={$assinatura['id']}, matricula_id={$assinatura['matricula_id']}, tipo={$assinatura['tipo_cobranca']}, status_atual={$assinatura['status_atual']}");
             
+            // Verificar se o pagamento pertence ao ciclo atual da assinatura
+            // Se a assinatura foi reutilizada para novo ciclo (gateway_preference_id diferente),
+            // o pagamento antigo não deve atualizar a assinatura
+            $assPreferenceId = $assinatura['gateway_preference_id'] ?? null;
+            if ($preferenceId && $assPreferenceId && (string)$preferenceId !== (string)$assPreferenceId) {
+                error_log("[Webhook MP] ⚠️ Pagamento preference_id ({$preferenceId}) não corresponde à assinatura ({$assPreferenceId}). Pagamento de ciclo anterior, ignorando.");
+                return;
+            }
+            
             // Se já está ativa/paga, não atualizar
             if (in_array($assinatura['status_atual'], ['ativa', 'paga'])) {
                 error_log("[Webhook MP] ℹ️ Assinatura #{$assinatura['id']} já está {$assinatura['status_atual']}, ignorando");
@@ -1962,6 +1971,13 @@ class MercadoPagoWebhookController
             
             if (!$assinatura) {
                 error_log("[Webhook MP] ⚠️ Nenhuma assinatura encontrada para cancelamento (matrícula #{$matriculaId})");
+                return;
+            }
+            
+            // Verificar se o pagamento pertence ao ciclo atual da assinatura
+            $assPreferenceId = $assinatura['gateway_preference_id'] ?? null;
+            if ($preferenceId && $assPreferenceId && (string)$preferenceId !== (string)$assPreferenceId) {
+                error_log("[Webhook MP] ⚠️ Cancelamento preference_id ({$preferenceId}) não corresponde à assinatura ({$assPreferenceId}). Pagamento de ciclo anterior, ignorando.");
                 return;
             }
             

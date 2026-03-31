@@ -507,7 +507,7 @@ class MercadoPagoWebhookV2Controller
     {
         try {
             $sqlBusca = "
-                SELECT a.id, a.tipo_cobranca
+                SELECT a.id, a.tipo_cobranca, a.gateway_preference_id
                 FROM assinaturas a
                 WHERE a.matricula_id = ?
                 ORDER BY a.id DESC
@@ -519,6 +519,14 @@ class MercadoPagoWebhookV2Controller
             $resBusca = $stmtBusca->get_result();
             $assinatura = $resBusca ? $resBusca->fetch_assoc() : null;
             if (!$assinatura) {
+                return;
+            }
+
+            // Verificar se o pagamento pertence ao ciclo atual da assinatura
+            $paymentPreferenceId = $payment['preference_id'] ?? null;
+            $assPreferenceId = $assinatura['gateway_preference_id'] ?? null;
+            if ($paymentPreferenceId && $assPreferenceId && (string)$paymentPreferenceId !== (string)$assPreferenceId) {
+                $this->log("⚠️ Pagamento preference_id ({$paymentPreferenceId}) não corresponde à assinatura ({$assPreferenceId}). Pagamento de ciclo anterior, ignorando.");
                 return;
             }
 
