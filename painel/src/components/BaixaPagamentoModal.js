@@ -6,6 +6,11 @@ import { showSuccess, showError } from '../utils/toast';
 import api from '../services/api';
 import pagamentoContratoService from '../services/pagamentoContratoService';
 
+const hojeLocal = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 export default function BaixaPagamentoModal({ visible, onClose, pagamento, onSuccess }) {
   const [loading, setLoading] = useState(false);
   const [formasPagamento, setFormasPagamento] = useState([]);
@@ -20,9 +25,8 @@ export default function BaixaPagamentoModal({ visible, onClose, pagamento, onSuc
   useEffect(() => {
     if (visible && pagamento) {
       // Preencher dados do pagamento
-      const hoje = new Date().toISOString().split('T')[0];
       setFormData({
-        data_pagamento: hoje,
+        data_pagamento: hojeLocal(),
         forma_pagamento_id: pagamento.forma_pagamento_id || '',
         valor: pagamento.valor !== undefined && pagamento.valor !== null ? pagamento.valor.toString() : '',
         comprovante: '',

@@ -2253,6 +2253,329 @@ class MatriculaController
     }
 
     /**
+     * Simular cancelamento da matrícula com cálculo de crédito proporcional
+     */
+    #[OA\Get(
+        path: "/admin/matriculas/{id}/simular-cancelamento",
+        summary: "Simular cancelamento com crédito proporcional",
+        description: "Calcula o valor proporcional restante do plano atual que pode ser convertido em crédito ao cancelar. Não faz nenhuma alteração.",
+        tags: ["Matrículas"],
+        parameters: [
+            new OA\Parameter(
+                name: "id",
+                description: "ID da matrícula",
+                in: "path",
+                required: true,
+                schema: new OA\Schema(type: "integer")
+            )
+        ],
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Simulação de cancelamento",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "matricula_id", type: "integer"),
+                        new OA\Property(property: "plano_nome", type: "string"),
+                        new OA\Property(property: "valor_plano", type: "number"),
+                        new OA\Property(property: "data_inicio", type: "string"),
+                        new OA\Property(property: "data_vencimento", type: "string"),
+                        new OA\Property(property: "dias_totais", type: "integer"),
+                        new OA\Property(property: "dias_utilizados", type: "integer"),
+                        new OA\Property(property: "dias_restantes", type: "integer"),
+                        new OA\Property(property: "valor_proporcional_credito", type: "number"),
+                        new OA\Property(property: "parcelas_pendentes", type: "integer"),
+                        new OA\Property(property: "saldo_creditos_atual", type: "number")
+                    ]
+                )
+            ),
+            new OA\Response(response: 400, description: "Matrícula já cancelada/finalizada"),
+            new OA\Response(response: 404, description: "Matrícula não encontrada")
+        ]
+    )]
+    public function simularCancelamento(Request $request, Response $response, array $args): Response
+    {
+        $matriculaId = (int) $args['id'];
+        $tenantId = $request->getAttribute('tenantId', 1);
+        $db = require __DIR__ . '/../../config/database.php';
+
+        date_default_timezone_set('America/Sao_Paulo');
+
+        $stmt = $db->prepare("
+            SELECT m.*, sm.codigo as status_codigo, p.nome as plano_nome, p.valor as plano_valor, p.duracao_dias,
+                   pc.valor as ciclo_valor, af.meses as frequencia_meses
+            FROM matriculas m
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            INNER JOIN planos p ON p.id = m.plano_id
+            LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+            LEFT JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
+            WHERE m.id = ? AND m.tenant_id = ?
+        ");
+        $stmt->execute([$matriculaId, $tenantId]);
+        $matricula = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$matricula) {
+            $response->getBody()->write(json_encode(['error' => 'Matrícula não encontrada']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        if (in_array($matricula['status_codigo'], ['cancelada', 'finalizada'])) {
+            $response->getBody()->write(json_encode(['error' => 'Matrícula já está ' . $matricula['status_codigo']]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
+
+        // Valor do plano (ciclo ou plano)
+        $valorPlano = (float) $matricula['valor'];
+
+        // Calcular dias totais e restantes (usar meia-noite para não contar o dia atual como utilizado)
+        $hoje = new \DateTime('today');
+        $dataInicio = new \DateTime($matricula['data_inicio'] ?? $matricula['created_at']);
+        $dataVencimento = new \DateTime($matricula['data_vencimento'] ?? $matricula['proxima_data_vencimento']);
+
+        $diasTotais = max(1, (int) $dataInicio->diff($dataVencimento)->days);
+        $diasUtilizados = max(0, (int) $dataInicio->diff($hoje)->days);
+        $diasRestantes = max(0, (int) $hoje->diff($dataVencimento)->days);
+
+        // Se já venceu, não há crédito proporcional
+        $valorProporcional = 0.0;
+        if ($hoje <= $dataVencimento && $diasRestantes > 0) {
+            $valorProporcional = round(($valorPlano / $diasTotais) * $diasRestantes, 2);
+        }
+
+        // Contar parcelas pendentes que serão canceladas
+        $stmtPendentes = $db->prepare("
+            SELECT COUNT(*) FROM pagamentos_plano
+            WHERE matricula_id = ? AND tenant_id = ? AND status_pagamento_id IN (1, 3)
+        ");
+        $stmtPendentes->execute([$matriculaId, $tenantId]);
+        $parcelasPendentes = (int) $stmtPendentes->fetchColumn();
+
+        // Saldo de créditos já existentes
+        $creditoModel = new \App\Models\CreditoAluno($db);
+        $saldoAtual = $creditoModel->saldoTotal($tenantId, (int) $matricula['aluno_id']);
+
+        $response->getBody()->write(json_encode([
+            'matricula_id' => $matriculaId,
+            'aluno_id' => (int) $matricula['aluno_id'],
+            'plano_nome' => $matricula['plano_nome'],
+            'valor_plano' => $valorPlano,
+            'data_inicio' => $matricula['data_inicio'],
+            'data_vencimento' => $matricula['data_vencimento'] ?? $matricula['proxima_data_vencimento'],
+            'dias_totais' => $diasTotais,
+            'dias_utilizados' => min($diasUtilizados, $diasTotais),
+            'dias_restantes' => $diasRestantes,
+            'valor_proporcional_credito' => $valorProporcional,
+            'parcelas_pendentes' => $parcelasPendentes,
+            'saldo_creditos_atual' => $saldoAtual
+        ], JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * Cancelar matrícula e gerar crédito proporcional
+     */
+    #[OA\Post(
+        path: "/admin/matriculas/{id}/cancelar-com-credito",
+        summary: "Cancelar matrícula gerando crédito proporcional",
+        description: "Cancela a matrícula, cancela parcelas pendentes e gera um crédito proporcional aos dias restantes do plano. Use simular-cancelamento antes para preview.",
+        tags: ["Matrículas"],
+        parameters: [
+            new OA\Parameter(
+                name: "id",
+                description: "ID da matrícula",
+                in: "path",
+                required: true,
+                schema: new OA\Schema(type: "integer")
+            )
+        ],
+        security: [["bearerAuth" => []]],
+        requestBody: new OA\RequestBody(
+            content: new OA\JsonContent(
+                properties: [
+                    new OA\Property(property: "gerar_credito", type: "boolean", description: "Se true, gera crédito proporcional. Se false, cancela sem crédito.", example: true),
+                    new OA\Property(property: "motivo_cancelamento", type: "string", nullable: true, description: "Motivo do cancelamento"),
+                    new OA\Property(property: "motivo_credito", type: "string", nullable: true, description: "Motivo personalizado do crédito")
+                ]
+            )
+        ),
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Matrícula cancelada com crédito gerado",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "message", type: "string"),
+                        new OA\Property(property: "matricula", type: "object"),
+                        new OA\Property(property: "credito_gerado", type: "object", nullable: true),
+                        new OA\Property(property: "parcelas_canceladas", type: "integer"),
+                        new OA\Property(property: "saldo_creditos_total", type: "number")
+                    ]
+                )
+            ),
+            new OA\Response(response: 400, description: "Matrícula já cancelada"),
+            new OA\Response(response: 404, description: "Matrícula não encontrada")
+        ]
+    )]
+    public function cancelarComCredito(Request $request, Response $response, array $args): Response
+    {
+        $matriculaId = (int) $args['id'];
+        $tenantId = $request->getAttribute('tenantId', 1);
+        $adminId = $request->getAttribute('userId', null);
+        $data = $request->getParsedBody() ?? [];
+        $db = require __DIR__ . '/../../config/database.php';
+
+        date_default_timezone_set('America/Sao_Paulo');
+
+        $stmt = $db->prepare("
+            SELECT m.*, sm.codigo as status_codigo, p.nome as plano_nome, p.valor as plano_valor, p.duracao_dias,
+                   pc.valor as ciclo_valor, af.meses as frequencia_meses
+            FROM matriculas m
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            INNER JOIN planos p ON p.id = m.plano_id
+            LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+            LEFT JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
+            WHERE m.id = ? AND m.tenant_id = ?
+        ");
+        $stmt->execute([$matriculaId, $tenantId]);
+        $matricula = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$matricula) {
+            $response->getBody()->write(json_encode(['error' => 'Matrícula não encontrada']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        if ($matricula['status_codigo'] === 'cancelada') {
+            $response->getBody()->write(json_encode(['error' => 'Matrícula já está cancelada']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
+
+        if ($matricula['status_codigo'] === 'finalizada') {
+            $response->getBody()->write(json_encode(['error' => 'Não é possível cancelar matrícula finalizada']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
+
+        $gerarCredito = !empty($data['gerar_credito']);
+        $motivoCancelamento = $data['motivo_cancelamento'] ?? 'Cancelado para alteração de plano';
+
+        // Calcular crédito proporcional
+        $valorPlano = (float) $matricula['valor'];
+        $creditoValor = 0.0;
+        $creditoInfo = null;
+
+        if ($gerarCredito) {
+            $hoje = new \DateTime('today');
+            $dataInicio = new \DateTime($matricula['data_inicio'] ?? $matricula['created_at']);
+            $dataVencimento = new \DateTime($matricula['data_vencimento'] ?? $matricula['proxima_data_vencimento']);
+
+            $diasTotais = max(1, (int) $dataInicio->diff($dataVencimento)->days);
+            $diasRestantes = max(0, (int) $hoje->diff($dataVencimento)->days);
+
+            if ($hoje <= $dataVencimento && $diasRestantes > 0) {
+                $creditoValor = round(($valorPlano / $diasTotais) * $diasRestantes, 2);
+            }
+        }
+
+        try {
+            $db->beginTransaction();
+
+            // 1. Cancelar parcelas pendentes/aguardando
+            $stmtCancelarParcelas = $db->prepare("
+                UPDATE pagamentos_plano
+                SET status_pagamento_id = 4,
+                    observacoes = CONCAT(COALESCE(observacoes, ''), ' [Cancelado por cancelamento da matrícula com crédito]'),
+                    updated_at = NOW()
+                WHERE matricula_id = ? AND tenant_id = ? AND status_pagamento_id IN (1, 3)
+            ");
+            $stmtCancelarParcelas->execute([$matriculaId, $tenantId]);
+            $parcelasCanceladas = $stmtCancelarParcelas->rowCount();
+
+            // 2. Cancelar matrícula
+            $stmtUpdate = $db->prepare("
+                UPDATE matriculas
+                SET status_id = (SELECT id FROM status_matricula WHERE codigo = 'cancelada'),
+                    cancelado_por = ?,
+                    data_cancelamento = CURDATE(),
+                    motivo_cancelamento = ?,
+                    updated_at = NOW()
+                WHERE id = ?
+            ");
+            $stmtUpdate->execute([$adminId, $motivoCancelamento, $matriculaId]);
+
+            // 3. Remover plano do usuário
+            $stmtAluno = $db->prepare("SELECT usuario_id FROM alunos WHERE id = ?");
+            $stmtAluno->execute([$matricula['aluno_id']]);
+            $alunoRow = $stmtAluno->fetch();
+
+            if ($alunoRow && $this->usuariosTemColunasPlano($db)) {
+                $stmtUpdateUsuario = $db->prepare("
+                    UPDATE usuarios
+                    SET plano_id = NULL, data_vencimento_plano = NULL
+                    WHERE id = ?
+                ");
+                $stmtUpdateUsuario->execute([$alunoRow['usuario_id']]);
+            }
+
+            // 4. Gerar crédito se solicitado e com valor > 0
+            if ($gerarCredito && $creditoValor > 0) {
+                $motivoCredito = $data['motivo_credito']
+                    ?? "Crédito proporcional do cancelamento do plano " . $matricula['plano_nome']
+                       . " (R$" . number_format($creditoValor, 2, ',', '.') . ")";
+
+                $creditoModel = new \App\Models\CreditoAluno($db);
+                $creditoId = $creditoModel->criar([
+                    'tenant_id' => $tenantId,
+                    'aluno_id' => (int) $matricula['aluno_id'],
+                    'matricula_origem_id' => $matriculaId,
+                    'pagamento_origem_id' => null,
+                    'valor' => $creditoValor,
+                    'motivo' => $motivoCredito,
+                    'criado_por' => $adminId
+                ]);
+
+                $creditoInfo = [
+                    'id' => $creditoId,
+                    'valor' => $creditoValor,
+                    'motivo' => $motivoCredito
+                ];
+            }
+
+            $db->commit();
+        } catch (\Exception $e) {
+            $db->rollBack();
+            error_log("Erro ao cancelar matrícula #{$matriculaId} com crédito: " . $e->getMessage());
+            $response->getBody()->write(json_encode(['error' => 'Erro ao cancelar: ' . $e->getMessage()]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+
+        // Buscar matrícula atualizada
+        $stmtFinal = $db->prepare("
+            SELECT m.*, p.nome as plano_nome, sm.codigo as status_codigo, sm.nome as status_nome
+            FROM matriculas m
+            INNER JOIN planos p ON p.id = m.plano_id
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            WHERE m.id = ?
+        ");
+        $stmtFinal->execute([$matriculaId]);
+        $matriculaAtualizada = $stmtFinal->fetch(\PDO::FETCH_ASSOC);
+
+        // Saldo total de créditos
+        $creditoModel = new \App\Models\CreditoAluno($db);
+        $saldoTotal = $creditoModel->saldoTotal($tenantId, (int) $matricula['aluno_id']);
+
+        $response->getBody()->write(json_encode([
+            'message' => $creditoInfo
+                ? 'Matrícula cancelada e crédito de R$' . number_format($creditoValor, 2, ',', '.') . ' gerado com sucesso'
+                : 'Matrícula cancelada com sucesso',
+            'matricula' => $matriculaAtualizada,
+            'credito_gerado' => $creditoInfo,
+            'parcelas_canceladas' => $parcelasCanceladas,
+            'saldo_creditos_total' => $saldoTotal
+        ], JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
      * Prévia completa de exclusão da matrícula
      */
     #[OA\Get(
@@ -2820,7 +3143,7 @@ class MatriculaController
 
         // Validação removida: permitir data_vencimento futura (pagamento adiantado)
 
-        $dataPagamento = $data['data_pagamento'] ?? date('Y-m-d');
+        $dataPagamento = !empty($data['data_pagamento']) ? $data['data_pagamento'] : null;
         $formaPagamentoId = $data['forma_pagamento_id'] ?? null;
         $observacoes = $data['observacoes'] ?? null;
         $tipoBaixaId = 1; // 1 = Manual (assumindo que existe na tabela tipos_baixa)
@@ -2830,7 +3153,7 @@ class MatriculaController
             UPDATE pagamentos_plano 
             SET status_pagamento_id = 2,
                 data_vencimento = ?,
-                data_pagamento = ?,
+                data_pagamento = COALESCE(?, CURDATE()),
                 forma_pagamento_id = ?,
                 observacoes = ?,
                 baixado_por = ?,

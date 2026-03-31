@@ -5,6 +5,11 @@ import { Picker } from '@react-native-picker/picker';
 import { showSuccess, showError } from '../utils/toast';
 import api from '../services/api';
 
+const hojeLocal = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, onSuccess }) {
   const [loading, setLoading] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -29,10 +34,9 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
         pagamentos_plano_id: pagamento.pagamentos_plano_id
       });
       // Preencher dados do pagamento
-      const hoje = new Date().toISOString().split('T')[0];
       setFormData({
         data_vencimento: pagamento.data_vencimento || '',
-        data_pagamento: hoje,
+        data_pagamento: hojeLocal(),
         forma_pagamento_id: pagamento.forma_pagamento_id || '',
         comprovante: '',
         observacoes: ''
@@ -58,7 +62,7 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
       return;
     }
 
-    const hoje = new Date().toISOString().split('T')[0];
+    const hoje = hojeLocal();
     const primeiroDiaMesAtual = `${hoje.slice(0, 7)}-01`;
     // if (formData.data_vencimento > hoje) {
     //   showError('Data de vencimento não pode ser maior que hoje');
@@ -257,8 +261,8 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
                 }}
                 value={formData.data_vencimento}
                 onChange={(e) => setFormData({ ...formData, data_vencimento: e.target.value })}
-                min={`${new Date().toISOString().split('T')[0].slice(0, 7)}-01`}
-                max={new Date().toISOString().split('T')[0]}
+                min={`${hojeLocal().slice(0, 7)}-01`}
+                max={hojeLocal()}
               />
             </View>
 
@@ -300,7 +304,7 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
                 }}
                 value={formData.data_pagamento}
                 onChange={(e) => setFormData({ ...formData, data_pagamento: e.target.value })}
-                max={new Date().toISOString().split('T')[0]}
+                max={hojeLocal()}
               />
             </View>
 

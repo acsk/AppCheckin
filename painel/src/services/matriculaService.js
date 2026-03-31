@@ -73,6 +73,26 @@ export const matriculaService = {
     }
   },
 
+  async simularCancelamento(id) {
+    try {
+      const response = await api.get(`/admin/matriculas/${id}/simular-cancelamento`);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao simular cancelamento:', error);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
+  async cancelarComCredito(id, dados) {
+    try {
+      const response = await api.post(`/admin/matriculas/${id}/cancelar-com-credito`, dados);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao cancelar matrícula com crédito:', error);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
   async buscarPagamentos(id) {
     try {
       const response = await api.get(`/admin/matriculas/${id}/pagamentos`);

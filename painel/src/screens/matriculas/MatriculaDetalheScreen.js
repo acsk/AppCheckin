@@ -68,6 +68,11 @@ export default function MatriculaDetalheScreen() {
   });
   const [saldoCreditosAluno, setSaldoCreditosAluno] = useState(null);
   const [loadingSaldoCreditos, setLoadingSaldoCreditos] = useState(false);
+  const [etapaAlterarPlano, setEtapaAlterarPlano] = useState('cancelamento'); // 'cancelamento' | 'plano'
+  const [simulacaoCancelamento, setSimulacaoCancelamento] = useState(null);
+  const [loadingSimulacao, setLoadingSimulacao] = useState(false);
+  const [gerarCreditoCancelamento, setGerarCreditoCancelamento] = useState(true);
+  const [cancelandoMatricula, setCancelandoMatricula] = useState(false);
   const [formEditarPagamento, setFormEditarPagamento] = useState({
     valor: '',
     desconto: '',
@@ -78,6 +83,8 @@ export default function MatriculaDetalheScreen() {
     observacoes: '',
   });
   const [baixaConfirmando, setBaixaConfirmando] = useState(false);
+  const [modalConfirmCancelamentoVisible, setModalConfirmCancelamentoVisible] = useState(false);
+  const [modalConfirmAlteracaoVisible, setModalConfirmAlteracaoVisible] = useState(false);
   const [modalBaixaPacoteVisible, setModalBaixaPacoteVisible] = useState(false);
   const [baixaPacoteLoading, setBaixaPacoteLoading] = useState(false);
   const [errorModal, setErrorModal] = useState({ visible: false, title: '', message: '' });
@@ -335,34 +342,124 @@ export default function MatriculaDetalheScreen() {
       ? String(Number(dataVencimentoAtual.split('-')[2] || 0) || '')
       : String(new Date().getDate());
 
-    setFormAlterarPlano({
-      plano_id: planoAtualId,
-      plano_ciclo_id: planoCicloAtualId,
-      data_inicio: formatarDataParaInput(new Date()),
-      dia_vencimento: diaVencimentoAtual,
-      observacoes: '',
-      tipo_credito: 'nenhum',
-      usar_credito_existente: false,
-      credito: '',
-      motivo_credito: '',
-    });
-    setCiclosAlteracao([]);
-    setSaldoCreditosAluno(null);
-    setModalAlterarPlanoVisible(true);
-    await carregarPlanosAlteracao();
+    // Se a matrícula já está cancelada, pular direto para seleção de plano (etapa 2)
+    if (Number(matricula?.status_id) === 3) {
+      setEtapaAlterarPlano('plano');
+      setSimulacaoCancelamento(null);
+      setModalAlterarPlanoVisible(true);
 
-    // Buscar saldo de créditos do aluno
-    if (matricula?.aluno_id) {
-      try {
-        setLoadingSaldoCreditos(true);
-        const saldoResp = await creditoService.consultarSaldo(matricula.aluno_id);
-        setSaldoCreditosAluno(saldoResp);
-      } catch (err) {
-        console.log('Saldo de créditos não disponível:', err);
-        setSaldoCreditosAluno(null);
-      } finally {
-        setLoadingSaldoCreditos(false);
+      setFormAlterarPlano({
+        plano_id: '',
+        plano_ciclo_id: '',
+        data_inicio: formatarDataParaInput(new Date()),
+        dia_vencimento: diaVencimentoAtual,
+        observacoes: '',
+        tipo_credito: 'nenhum',
+        usar_credito_existente: false,
+        credito: '',
+        motivo_credito: '',
+      });
+      setCiclosAlteracao([]);
+      await carregarPlanosAlteracao();
+
+      // Buscar saldo de créditos
+      if (matricula?.aluno_id) {
+        try {
+          setLoadingSaldoCreditos(true);
+          const saldoResp = await creditoService.consultarSaldo(matricula.aluno_id);
+          setSaldoCreditosAluno(saldoResp);
+          if (saldoResp?.saldo_total > 0) {
+            setFormAlterarPlano((prev) => ({ ...prev, usar_credito_existente: true }));
+          }
+        } catch (err) {
+          console.log('Saldo de créditos não disponível:', err);
+        } finally {
+          setLoadingSaldoCreditos(false);
+        }
       }
+      return;
+    }
+
+    // Etapa 1: Simular cancelamento
+    setEtapaAlterarPlano('cancelamento');
+    setSimulacaoCancelamento(null);
+    setGerarCreditoCancelamento(true);
+    setCancelandoMatricula(false);
+    setModalAlterarPlanoVisible(true);
+
+    try {
+      setLoadingSimulacao(true);
+      const simulacao = await matriculaService.simularCancelamento(id);
+      setSimulacaoCancelamento(simulacao);
+    } catch (err) {
+      console.error('Erro ao simular cancelamento:', err);
+      const msg = obterMensagemErro(err, 'Não foi possível simular o cancelamento');
+      showAlert('Erro', msg);
+      setModalAlterarPlanoVisible(false);
+    } finally {
+      setLoadingSimulacao(false);
+    }
+  };
+
+  const handleConfirmarCancelamentoEAvancar = async () => {
+    try {
+      setCancelandoMatricula(true);
+      const resultado = await matriculaService.cancelarComCredito(id, {
+        gerar_credito: gerarCreditoCancelamento,
+        motivo_cancelamento: 'Cancelado para alteração de plano',
+      });
+
+      const creditoMsg = resultado?.credito_gerado
+        ? ` Crédito de ${formatCurrency(resultado.credito_gerado.valor)} gerado.`
+        : '';
+      showToast(`Matrícula cancelada.${creditoMsg} Selecione o novo plano.`);
+
+      // Carregar dados atualizados e avançar para etapa 2
+      await carregarDados();
+      setEtapaAlterarPlano('plano');
+
+      // Preparar formulário do plano
+      const dataVencimentoAtual = matricula.proxima_data_vencimento || matricula.data_vencimento;
+      const diaVencimentoAtual = dataVencimentoAtual
+        ? String(Number(dataVencimentoAtual.split('-')[2] || 0) || '')
+        : String(new Date().getDate());
+
+      setFormAlterarPlano({
+        plano_id: '',
+        plano_ciclo_id: '',
+        data_inicio: formatarDataParaInput(new Date()),
+        dia_vencimento: diaVencimentoAtual,
+        observacoes: '',
+        tipo_credito: 'nenhum',
+        usar_credito_existente: resultado?.saldo_creditos_total > 0,
+        credito: '',
+        motivo_credito: '',
+      });
+      setCiclosAlteracao([]);
+      setSaldoCreditosAluno(
+        resultado?.saldo_creditos_total != null
+          ? { saldo_total: resultado.saldo_creditos_total }
+          : null
+      );
+      await carregarPlanosAlteracao();
+
+      // Buscar saldo de créditos atualizado
+      if (matricula?.aluno_id) {
+        try {
+          setLoadingSaldoCreditos(true);
+          const saldoResp = await creditoService.consultarSaldo(matricula.aluno_id);
+          setSaldoCreditosAluno(saldoResp);
+        } catch (err) {
+          console.log('Saldo de créditos não disponível:', err);
+        } finally {
+          setLoadingSaldoCreditos(false);
+        }
+      }
+    } catch (error) {
+      const mensagem = obterMensagemErro(error, 'Não foi possível cancelar a matrícula');
+      showAlert('Erro', mensagem);
+    } finally {
+      setCancelandoMatricula(false);
     }
   };
 
@@ -1762,40 +1859,162 @@ export default function MatriculaDetalheScreen() {
       >
         <View className="flex-1 items-center justify-center bg-black/50 px-4">
           <View className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl">
-            <View className="border-b border-slate-200 px-6 py-5">
-              <View className="flex-row items-center gap-3">
-                <View className="h-12 w-12 items-center justify-center rounded-full bg-slate-100">
-                  <Feather name="repeat" size={24} color="#0f172a" />
+
+            {/* ===== ETAPA 1: Cancelamento com crédito ===== */}
+            {etapaAlterarPlano === 'cancelamento' && (
+              <>
+                <View className="border-b border-slate-100 px-5 py-3">
+                  <View className="flex-row items-center gap-2">
+                    <Feather name="alert-circle" size={16} color="#94a3b8" />
+                    <View className="flex-1">
+                      <Text className="text-sm font-semibold text-slate-700">Cancelar matrícula atual</Text>
+                      <Text className="text-[10px] text-slate-400">
+                        A matrícula atual será cancelada para permitir a troca de plano.
+                      </Text>
+                    </View>
+                  </View>
                 </View>
+
+                <ScrollView
+                  className="px-5 py-3"
+                  style={{ maxHeight: isDesktop ? 700 : 500 }}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {loadingSimulacao ? (
+                    <View className="items-center py-8">
+                      <ActivityIndicator size="large" color="#f97316" />
+                      <Text className="mt-2 text-xs text-slate-500">Simulando cancelamento...</Text>
+                    </View>
+                  ) : simulacaoCancelamento ? (
+                    <View className="gap-3">
+                      {/* Info do plano atual */}
+                      <View className="flex-row items-center justify-between rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-2">
+                        <View>
+                          <Text className="text-[10px] text-slate-400">Plano atual</Text>
+                          <Text className="text-xs font-medium text-slate-700">
+                            {simulacaoCancelamento.plano_nome}
+                          </Text>
+                        </View>
+                        <Text className="text-xs font-medium text-slate-500">
+                          {formatCurrency(simulacaoCancelamento.valor_plano)}
+                        </Text>
+                      </View>
+
+                      {/* Dias - inline */}
+                      <View className="flex-row items-center gap-4 px-1">
+                        <Text className="text-[10px] text-slate-400">
+                          Utilizados: <Text className="font-medium text-slate-600">{simulacaoCancelamento.dias_utilizados}</Text> de {simulacaoCancelamento.dias_totais} dias
+                        </Text>
+                        <Text className="text-[10px] text-slate-400">
+                          Restantes: <Text className="font-medium text-slate-600">{simulacaoCancelamento.dias_restantes}</Text>
+                        </Text>
+                      </View>
+
+                      {/* Crédito proporcional - destaque principal */}
+                      <View className="items-center rounded-lg border border-slate-200 bg-white px-4 py-4">
+                        <Text className="text-[10px] uppercase tracking-wide text-slate-400">Crédito proporcional</Text>
+                        <Text className="mt-1 text-2xl font-bold text-slate-800">
+                          {formatCurrency(simulacaoCancelamento.valor_proporcional_credito)}
+                        </Text>
+                        <Text className="mt-0.5 text-[10px] text-slate-400">
+                          {simulacaoCancelamento.dias_restantes} dias restantes
+                        </Text>
+                      </View>
+
+                      {/* Info adicional */}
+                      {simulacaoCancelamento.parcelas_pendentes > 0 && (
+                        <Text className="px-1 text-[10px] text-slate-400">
+                          {simulacaoCancelamento.parcelas_pendentes} parcela(s) pendente(s) serão cancelada(s).
+                        </Text>
+                      )}
+
+                      {simulacaoCancelamento.saldo_creditos_atual > 0 && (
+                        <Text className="px-1 text-[10px] text-slate-400">
+                          Saldo de créditos existente: {formatCurrency(simulacaoCancelamento.saldo_creditos_atual)}
+                        </Text>
+                      )}
+
+                      {/* Checkbox gerar crédito - sempre marcado, desabilitado */}
+                      <View className="flex-row items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+                        <View className="h-4 w-4 items-center justify-center rounded border border-emerald-500 bg-emerald-500">
+                          <Feather name="check" size={10} color="#fff" />
+                        </View>
+                        <View className="flex-1">
+                          <Text className="text-xs font-medium text-slate-600">Gerar crédito proporcional</Text>
+                          <Text className="text-[10px] text-slate-400">
+                            {formatCurrency(simulacaoCancelamento.valor_proporcional_credito)} será creditado ao aluno
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  ) : null}
+                </ScrollView>
+
+                <View className="flex-row gap-3 border-t border-slate-100 px-5 py-3">
+                  <Pressable
+                    onPress={() => setModalAlterarPlanoVisible(false)}
+                    disabled={cancelandoMatricula}
+                    className="flex-1 items-center justify-center rounded-lg border border-slate-200 bg-white py-2"
+                    style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                  >
+                    <Text className="text-xs font-medium text-slate-500">Voltar</Text>
+                  </Pressable>
+                  <Pressable
+                    onPress={() => setModalConfirmCancelamentoVisible(true)}
+                    disabled={cancelandoMatricula || loadingSimulacao || !simulacaoCancelamento}
+                    className="flex-1 items-center justify-center rounded-lg bg-slate-800 py-2"
+                    style={({ pressed }) => [
+                      pressed && { opacity: 0.8 },
+                      (cancelandoMatricula || loadingSimulacao || !simulacaoCancelamento) && { opacity: 0.6 },
+                    ]}
+                  >
+                    {cancelandoMatricula ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text className="text-xs font-medium text-white">Cancelar e continuar</Text>
+                    )}
+                  </Pressable>
+                </View>
+              </>
+            )}
+
+            {/* ===== ETAPA 2: Selecionar novo plano ===== */}
+            {etapaAlterarPlano === 'plano' && (
+              <>
+            <View className="border-b border-slate-100 px-5 py-3">
+              <View className="flex-row items-center gap-2">
+                <Feather name="repeat" size={16} color="#64748b" />
                 <View className="flex-1">
-                  <Text className="text-lg font-bold text-slate-800">Alterar plano da matrícula</Text>
-                  <Text className="text-sm text-slate-500">
-                    Atualize plano, ciclo e regra de vencimento da matrícula.
+                  <Text className="text-sm font-semibold text-slate-700">Selecionar novo plano</Text>
+                  <Text className="text-[10px] text-slate-400">
+                    Atualize plano, ciclo e regra de vencimento.
                   </Text>
                 </View>
               </View>
             </View>
 
             <ScrollView
-              className="px-6 py-5"
-              style={{ maxHeight: isDesktop ? 560 : 500 }}
+              className="px-5 py-3"
+              style={{ maxHeight: isDesktop ? 700 : 500 }}
               showsVerticalScrollIndicator={false}
             >
-              <View className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                <Text className="text-xs font-semibold uppercase text-slate-500">Plano atual</Text>
-                <Text className="mt-1 text-base font-semibold text-slate-800">{matricula?.plano_nome || '-'}</Text>
-                <Text className="mt-1 text-sm text-slate-500">
+              <View className="mb-2 flex-row items-center justify-between rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-2">
+                <View>
+                  <Text className="text-[10px] text-slate-400">Plano atual</Text>
+                  <Text className="text-xs font-medium text-slate-600">{matricula?.plano_nome || '-'}</Text>
+                </View>
+                <Text className="text-[10px] text-slate-400">
                   {matricula?.modalidade_nome || '-'}
                   {cicloInfo ? ` • ${cicloInfo.frequencia}` : ''}
                 </Text>
               </View>
 
-              <View className="mb-4">
-                <Text className="mb-2 text-sm font-semibold text-slate-700">Plano</Text>
+              <View className="mb-2">
+                <Text className="mb-1 text-[10px] font-medium text-slate-500">Plano</Text>
                 {loadingPlanosAlteracao ? (
-                  <View className="items-center rounded-lg border border-slate-200 bg-slate-50 px-6 py-6">
-                    <ActivityIndicator size="small" color="#f97316" />
-                    <Text className="mt-2 text-xs text-slate-500">Carregando planos...</Text>
+                  <View className="items-center rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-3">
+                    <ActivityIndicator size="small" color="#94a3b8" />
+                    <Text className="mt-1 text-[10px] text-slate-400">Carregando planos...</Text>
                   </View>
                 ) : planosAlteracao.length > 0 ? (
                   <View className="rounded-lg border border-slate-200 bg-white">
@@ -1808,7 +2027,7 @@ export default function MatriculaDetalheScreen() {
                           plano_ciclo_id: '',
                         }));
                       }}
-                      style={{ height: 50 }}
+                      style={{ height: 40, fontSize: 13 }}
                     >
                       <Picker.Item label="Selecione um plano" value="" />
                       {planosAlteracao.map((plano) => (
@@ -1828,57 +2047,55 @@ export default function MatriculaDetalheScreen() {
               </View>
 
               {planoSelecionadoAlteracao ? (
-                <View className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                  <View className="flex-row items-center justify-between gap-3">
-                    <View className="flex-1">
-                      <Text className="text-sm font-semibold text-slate-800">{planoSelecionadoAlteracao.nome}</Text>
-                      <Text className="mt-1 text-xs text-slate-500">
-                        {planoSelecionadoAlteracao.checkins_semanais || 0}x por semana • {planoSelecionadoAlteracao.duracao_dias || 0} dias
-                      </Text>
-                    </View>
-                    <Text className="text-sm font-bold text-emerald-600">
-                      {formatCurrency(planoSelecionadoAlteracao.valor)}
+                <View className="mb-2 flex-row items-center justify-between rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-2">
+                  <View className="flex-1">
+                    <Text className="text-xs font-medium text-slate-600">{planoSelecionadoAlteracao.nome}</Text>
+                    <Text className="text-[10px] text-slate-400">
+                      {planoSelecionadoAlteracao.checkins_semanais || 0}x por semana • {planoSelecionadoAlteracao.duracao_dias || 0} dias
                     </Text>
                   </View>
+                  <Text className="text-xs font-semibold text-slate-700">
+                    {formatCurrency(planoSelecionadoAlteracao.valor)}
+                  </Text>
                 </View>
               ) : null}
 
-              <View className="mb-4">
-                <Text className="mb-2 text-sm font-semibold text-slate-700">Ciclo de pagamento</Text>
+              <View className="mb-2">
+                <Text className="mb-1 text-[10px] font-medium text-slate-500">Ciclo de pagamento</Text>
                 {loadingCiclosAlteracao ? (
-                  <View className="items-center rounded-lg border border-slate-200 bg-slate-50 px-6 py-6">
-                    <ActivityIndicator size="small" color="#f97316" />
-                    <Text className="mt-2 text-xs text-slate-500">Carregando ciclos...</Text>
+                  <View className="items-center rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-3">
+                    <ActivityIndicator size="small" color="#94a3b8" />
+                    <Text className="mt-1 text-xs text-slate-500">Carregando ciclos...</Text>
                   </View>
                 ) : ciclosAlteracao.length > 0 ? (
-                  <View className="flex-row flex-wrap gap-3">
+                  <View className="flex-row flex-wrap gap-2">
                     {ciclosAlteracao.map((ciclo) => {
                       const selecionado = formAlterarPlano.plano_ciclo_id === ciclo.id.toString();
                       return (
                         <Pressable
                           key={ciclo.id}
-                          className={`min-w-[190px] flex-1 rounded-2xl border p-4 ${
-                            selecionado ? 'border-emerald-400 bg-emerald-50/70' : 'border-slate-200 bg-white'
+                          className={`min-w-[140px] flex-1 rounded-lg border px-3 py-2 ${
+                            selecionado ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200 bg-white'
                           }`}
                           style={({ pressed }) => [
-                            { flexBasis: isDesktop ? 220 : 'auto' },
+                            { flexBasis: isDesktop ? 160 : 'auto' },
                             pressed && { opacity: 0.85 },
                           ]}
                           onPress={() => {
                             setFormAlterarPlano((prev) => ({ ...prev, plano_ciclo_id: ciclo.id.toString() }));
                           }}
                         >
-                          <View className="flex-row items-center justify-between gap-2">
-                            <Text className={`text-sm font-semibold ${selecionado ? 'text-emerald-700' : 'text-slate-800'}`}>
+                          <View className="flex-row items-center justify-between gap-1">
+                            <Text className={`text-[10px] font-medium ${selecionado ? 'text-emerald-700' : 'text-slate-500'}`}>
                               {getCicloLabel(ciclo)}
                             </Text>
-                            {selecionado ? <Feather name="check" size={16} color="#10b981" /> : null}
+                            {selecionado ? <Feather name="check" size={12} color="#059669" /> : null}
                           </View>
-                          <Text className={`mt-2 text-lg font-bold ${selecionado ? 'text-emerald-600' : 'text-slate-700'}`}>
+                          <Text className={`mt-0.5 text-xs font-semibold ${selecionado ? 'text-emerald-800' : 'text-slate-600'}`}>
                             {formatCurrency(ciclo.valor)}
                           </Text>
                           {!!Number(ciclo.desconto_percentual || 0) && (
-                            <Text className="mt-2 text-xs text-emerald-600">
+                            <Text className="mt-0.5 text-[10px] text-slate-400">
                               {Number(ciclo.desconto_percentual)}% de desconto
                             </Text>
                           )}
@@ -1887,18 +2104,18 @@ export default function MatriculaDetalheScreen() {
                     })}
                   </View>
                 ) : formAlterarPlano.plano_id ? (
-                  <View className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-                    <Text className="text-sm text-amber-700">Nenhum ciclo disponível para o plano selecionado.</Text>
+                  <View className="rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2">
+                    <Text className="text-[10px] text-slate-400">Nenhum ciclo disponível para o plano selecionado.</Text>
                   </View>
                 ) : (
-                  <View className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
-                    <Text className="text-sm text-slate-500">Selecione um plano para ver os ciclos.</Text>
+                  <View className="rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-2">
+                    <Text className="text-[10px] text-slate-400">Selecione um plano para ver os ciclos.</Text>
                   </View>
                 )}
               </View>
 
-              <View className="mb-4">
-                <Text className="mb-2 text-sm font-semibold text-slate-700">Data de início</Text>
+              <View className="mb-2">
+                <Text className="mb-1 text-[10px] font-medium text-slate-500">Data de início</Text>
                 {Platform.OS === 'web' ? (
                   <input
                     type="date"
@@ -1958,26 +2175,26 @@ export default function MatriculaDetalheScreen() {
 
                 const opcoes = [
                   { key: 'nenhum', label: 'Sem crédito', icon: 'x-circle' },
-                  ...(valorPlanoAtual > 0
+                  ...(valorPlanoAtual > 0 && ultimoPagamentoPago && !isMatriculaCancelada
                     ? [{ key: 'abater_plano', label: `Valor cheio do plano (${formatCurrency(valorPlanoAtual)})`, icon: 'dollar-sign' }]
                     : []),
-                  ...(ultimoPagamentoPago
+                  ...(ultimoPagamentoPago && !isMatriculaCancelada
                     ? [{ key: 'abater', label: `Proporcional (dias restantes)`, icon: 'refresh-cw' }]
                     : []),
                   { key: 'manual', label: 'Crédito manual', icon: 'edit-3' },
                 ];
 
                 return (
-                  <View className="mb-4">
-                    <Text className="mb-2 text-sm font-semibold text-slate-700">Crédito na primeira parcela</Text>
-                    <View className="flex-row flex-wrap gap-3">
+                  <View className="mb-2">
+                    <Text className="mb-1 text-[10px] font-medium text-slate-500">Crédito na primeira parcela</Text>
+                    <View className="flex-row flex-wrap gap-2">
                       {opcoes.map((opcao) => {
                         const selecionado = formAlterarPlano.tipo_credito === opcao.key;
                         return (
                           <Pressable
                             key={opcao.key}
-                            className={`min-w-[140px] flex-1 rounded-xl border p-3 ${
-                              selecionado ? 'border-emerald-400 bg-emerald-50/70' : 'border-slate-200 bg-white'
+                            className={`min-w-[100px] flex-1 rounded-lg border px-2 py-1.5 ${
+                              selecionado ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200 bg-white'
                             }`}
                             style={({ pressed }) => [pressed && { opacity: 0.85 }]}
                             onPress={() =>
@@ -1988,12 +2205,12 @@ export default function MatriculaDetalheScreen() {
                               }))
                             }
                           >
-                            <View className="flex-row items-center gap-2">
-                              <Feather name={opcao.icon} size={14} color={selecionado ? '#10b981' : '#64748b'} />
-                              <Text className={`text-sm font-semibold ${selecionado ? 'text-emerald-700' : 'text-slate-700'}`}>
+                            <View className="flex-row items-center gap-1">
+                              <Feather name={opcao.icon} size={10} color={selecionado ? '#059669' : '#94a3b8'} />
+                              <Text className={`text-[10px] font-medium ${selecionado ? 'text-emerald-700' : 'text-slate-500'}`}>
                                 {opcao.label}
                               </Text>
-                              {selecionado ? <Feather name="check" size={14} color="#10b981" /> : null}
+                              {selecionado ? <Feather name="check" size={10} color="#475569" /> : null}
                             </View>
                           </Pressable>
                         );
@@ -2001,27 +2218,27 @@ export default function MatriculaDetalheScreen() {
                     </View>
 
                     {formAlterarPlano.tipo_credito === 'abater_plano' && (
-                      <View className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
-                        <Text className="text-sm text-blue-700">
+                      <View className="mt-1 px-1">
+                        <Text className="text-[10px] text-slate-400">
                           Crédito de {formatCurrency(valorPlanoAtual)} (valor cheio do plano/ciclo atual) será aplicado na primeira parcela.
                         </Text>
                       </View>
                     )}
 
                     {formAlterarPlano.tipo_credito === 'abater' && ultimoPagamentoPago && (
-                      <View className="mt-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
-                        <Text className="text-sm text-blue-700">
-                          Crédito proporcional será calculado com base nos dias restantes do ciclo atual. Último pagamento: {formatCurrency(valorUltimoPago)}.
+                      <View className="mt-1 px-1">
+                        <Text className="text-[10px] text-slate-400">
+                          Crédito proporcional será calculado com base nos dias restantes. Último pagamento: {formatCurrency(valorUltimoPago)}.
                         </Text>
                       </View>
                     )}
 
                     {formAlterarPlano.tipo_credito === 'manual' && (
-                      <View className="mt-3 gap-3">
+                      <View className="mt-1.5 gap-1.5">
                         <View>
-                          <Text className="mb-1 text-sm font-semibold text-slate-700">Valor do crédito (R$)</Text>
+                          <Text className="mb-0.5 text-[10px] font-medium text-slate-500">Valor do crédito (R$)</Text>
                           <TextInput
-                            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
+                            className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-700"
                             value={formAlterarPlano.credito}
                             onChangeText={(text) =>
                               setFormAlterarPlano((prev) => ({ ...prev, credito: text.replace(/[^0-9.,]/g, '') }))
@@ -2031,9 +2248,9 @@ export default function MatriculaDetalheScreen() {
                           />
                         </View>
                         <View>
-                          <Text className="mb-1 text-sm font-semibold text-slate-700">Motivo do crédito</Text>
+                          <Text className="mb-0.5 text-[10px] font-medium text-slate-500">Motivo do crédito</Text>
                           <TextInput
-                            className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
+                            className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-700"
                             value={formAlterarPlano.motivo_credito}
                             onChangeText={(text) =>
                               setFormAlterarPlano((prev) => ({ ...prev, motivo_credito: text }))
@@ -2049,18 +2266,18 @@ export default function MatriculaDetalheScreen() {
                       const saldoDisponivel = parseFloat(saldoCreditosAluno?.saldo_total || 0);
                       if (loadingSaldoCreditos) {
                         return (
-                          <View className="mt-3 flex-row items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
+                          <View className="mt-2 flex-row items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
                             <ActivityIndicator size="small" color="#f97316" />
-                            <Text className="text-sm text-slate-500">Verificando créditos do aluno...</Text>
+                            <Text className="text-xs text-slate-500">Verificando créditos do aluno...</Text>
                           </View>
                         );
                       }
                       if (saldoDisponivel <= 0) return null;
                       return (
                         <Pressable
-                          className={`mt-3 flex-row items-center gap-3 rounded-xl border p-3 ${
+                          className={`mt-1.5 flex-row items-center gap-2 rounded-lg border px-2.5 py-1.5 ${
                             formAlterarPlano.usar_credito_existente
-                              ? 'border-violet-400 bg-violet-50/70'
+                              ? 'border-emerald-400 bg-emerald-50'
                               : 'border-slate-200 bg-white'
                           }`}
                           style={({ pressed }) => [pressed && { opacity: 0.85 }]}
@@ -2072,23 +2289,23 @@ export default function MatriculaDetalheScreen() {
                           }
                         >
                           <View
-                            className={`h-5 w-5 items-center justify-center rounded border ${
+                            className={`h-4 w-4 items-center justify-center rounded border ${
                               formAlterarPlano.usar_credito_existente
-                                ? 'border-violet-500 bg-violet-500'
+                                ? 'border-emerald-500 bg-emerald-500'
                                 : 'border-slate-300 bg-white'
                             }`}
                           >
                             {formAlterarPlano.usar_credito_existente && (
-                              <Feather name="check" size={12} color="#fff" />
+                              <Feather name="check" size={10} color="#fff" />
                             )}
                           </View>
                           <View className="flex-1">
-                            <Text className={`text-sm font-semibold ${
-                              formAlterarPlano.usar_credito_existente ? 'text-violet-700' : 'text-slate-700'
+                            <Text className={`text-[10px] font-medium ${
+                              formAlterarPlano.usar_credito_existente ? 'text-slate-700' : 'text-slate-500'
                             }`}>
                               Usar créditos existentes do aluno
                             </Text>
-                            <Text className="text-xs text-slate-500">
+                            <Text className="text-[10px] text-slate-400">
                               Saldo disponível: {formatCurrency(saldoDisponivel)}
                             </Text>
                           </View>
@@ -2097,41 +2314,41 @@ export default function MatriculaDetalheScreen() {
                     })()}
 
                     {(formAlterarPlano.tipo_credito !== 'nenhum' || formAlterarPlano.usar_credito_existente) && valorNovoParcela > 0 && totalCredito > 0 && (
-                      <View className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-                        <Text className="text-xs font-semibold uppercase text-emerald-600">Preview da 1ª parcela</Text>
-                        <View className="mt-2 flex-row items-center justify-between">
-                          <Text className="text-sm text-slate-600">Valor do ciclo</Text>
-                          <Text className="text-sm font-semibold text-slate-800">{formatCurrency(valorNovoParcela)}</Text>
+                      <View className="mt-2 rounded-lg border border-slate-200 bg-slate-50/50 p-2.5">
+                        <Text className="text-[10px] font-medium uppercase text-slate-400">Preview da 1ª parcela</Text>
+                        <View className="mt-1 flex-row items-center justify-between">
+                          <Text className="text-xs text-slate-600">Valor do ciclo</Text>
+                          <Text className="text-xs font-semibold text-slate-800">{formatCurrency(valorNovoParcela)}</Text>
                         </View>
                         {creditoEstimado > 0 && (
                           <View className="mt-1 flex-row items-center justify-between">
-                            <Text className="text-sm text-slate-600">
+                            <Text className="text-xs text-slate-600">
                               {formAlterarPlano.tipo_credito === 'abater_plano'
                                 ? 'Crédito (plano anterior)'
                                 : formAlterarPlano.tipo_credito === 'abater'
                                 ? 'Crédito (proporcional)'
                                 : 'Crédito manual'}
                             </Text>
-                            <Text className="text-sm font-semibold text-emerald-700">
+                            <Text className="text-xs font-medium text-slate-500">
                               - {formatCurrency(Math.min(creditoEstimado, valorNovoParcela))}
                             </Text>
                           </View>
                         )}
                         {saldoExistente > 0 && (
                           <View className="mt-1 flex-row items-center justify-between">
-                            <Text className="text-sm text-slate-600">Créditos existentes</Text>
-                            <Text className="text-sm font-semibold text-violet-700">
+                            <Text className="text-xs text-slate-600">Créditos existentes</Text>
+                            <Text className="text-xs font-medium text-slate-500">
                               - {formatCurrency(Math.min(saldoExistente, Math.max(0, valorNovoParcela - creditoEstimado)))}
                             </Text>
                           </View>
                         )}
-                        <View className="mt-2 border-t border-emerald-200 pt-2 flex-row items-center justify-between">
-                          <Text className="text-sm font-bold text-slate-800">1ª Parcela</Text>
-                          <Text className="text-lg font-bold text-emerald-700">{formatCurrency(valorPrimeiraParcela)}</Text>
+                        <View className="mt-1 border-t border-slate-200 pt-1 flex-row items-center justify-between">
+                          <Text className="text-xs font-semibold text-slate-700">1ª Parcela</Text>
+                          <Text className="text-sm font-bold text-slate-800">{formatCurrency(valorPrimeiraParcela)}</Text>
                         </View>
                         {saldoRestanteEstimado > 0 && (
-                          <View className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-                            <Text className="text-xs text-amber-700">
+                          <View className="mt-1.5 px-1">
+                            <Text className="text-[10px] text-slate-400">
                               Saldo restante de {formatCurrency(saldoRestanteEstimado)} ficará como crédito ativo do aluno.
                             </Text>
                           </View>
@@ -2143,9 +2360,9 @@ export default function MatriculaDetalheScreen() {
               })()}
 
               <View>
-                <Text className="mb-2 text-sm font-semibold text-slate-700">Observações</Text>
+                <Text className="mb-1 text-[10px] font-medium text-slate-500">Observações</Text>
                 <TextInput
-                  className="min-h-[96px] rounded-lg border border-slate-300 px-3 py-3 text-sm text-slate-800"
+                  className="min-h-[48px] rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs text-slate-700"
                   value={formAlterarPlano.observacoes}
                   onChangeText={(text) =>
                     setFormAlterarPlano((prev) => ({ ...prev, observacoes: text }))
@@ -2157,19 +2374,19 @@ export default function MatriculaDetalheScreen() {
               </View>
             </ScrollView>
 
-            <View className="flex-row gap-3 border-t border-slate-200 px-6 py-4">
+            <View className="flex-row gap-3 border-t border-slate-100 px-5 py-2.5">
               <Pressable
                 onPress={() => setModalAlterarPlanoVisible(false)}
                 disabled={salvandoAlteracaoPlano}
-                className="flex-1 items-center justify-center rounded-lg bg-slate-200 py-3"
+                className="flex-1 items-center justify-center rounded-lg border border-slate-200 bg-white py-2"
                 style={({ pressed }) => [pressed && { opacity: 0.8 }]}
               >
-                <Text className="text-sm font-semibold text-slate-700">Cancelar</Text>
+                <Text className="text-xs font-medium text-slate-500">Cancelar</Text>
               </Pressable>
               <Pressable
-                onPress={handleConfirmarAlteracaoPlano}
+                onPress={() => setModalConfirmAlteracaoVisible(true)}
                 disabled={salvandoAlteracaoPlano || loadingPlanosAlteracao || loadingCiclosAlteracao}
-                className="flex-1 items-center justify-center rounded-lg bg-slate-800 py-3"
+                className="flex-1 items-center justify-center rounded-lg bg-slate-800 py-2"
                 style={({ pressed }) => [
                   pressed && { opacity: 0.8 },
                   (salvandoAlteracaoPlano || loadingPlanosAlteracao || loadingCiclosAlteracao) && { opacity: 0.6 },
@@ -2178,8 +2395,93 @@ export default function MatriculaDetalheScreen() {
                 {salvandoAlteracaoPlano ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Text className="text-sm font-semibold text-white">Confirmar alteração</Text>
+                  <Text className="text-xs font-medium text-white">Confirmar alteração</Text>
                 )}
+              </Pressable>
+            </View>
+              </>
+            )}
+
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de Confirmação - Cancelar e continuar */}
+      <Modal
+        visible={modalConfirmCancelamentoVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setModalConfirmCancelamentoVisible(false)}
+      >
+        <View className="flex-1 items-center justify-center bg-black/40 px-4">
+          <View className="w-full max-w-sm rounded-2xl bg-white shadow-2xl">
+            <View className="items-center border-b border-slate-200 px-6 py-5">
+              <View className="mb-3 h-12 w-12 items-center justify-center rounded-full bg-amber-100">
+                <Feather name="alert-triangle" size={24} color="#f59e0b" />
+              </View>
+              <Text className="text-base font-bold text-slate-800">Confirmar cancelamento</Text>
+              <Text className="mt-1 text-center text-xs text-slate-500">
+                A matrícula atual será cancelada e um crédito proporcional será gerado. Deseja continuar?
+              </Text>
+            </View>
+            <View className="flex-row gap-3 border-t border-slate-200 px-6 py-4">
+              <Pressable
+                onPress={() => setModalConfirmCancelamentoVisible(false)}
+                className="flex-1 items-center justify-center rounded-lg border border-slate-200 bg-white py-2.5"
+                style={({ pressed }) => [pressed && { opacity: 0.7 }]}
+              >
+                <Text className="text-xs font-semibold text-slate-600">Não, voltar</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setModalConfirmCancelamentoVisible(false);
+                  handleConfirmarCancelamentoEAvancar();
+                }}
+                className="flex-1 items-center justify-center rounded-lg bg-slate-800 py-2.5"
+                style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+              >
+                <Text className="text-xs font-semibold text-white">Sim, cancelar e continuar</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de Confirmação - Alterar plano */}
+      <Modal
+        visible={modalConfirmAlteracaoVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setModalConfirmAlteracaoVisible(false)}
+      >
+        <View className="flex-1 items-center justify-center bg-black/40 px-4">
+          <View className="w-full max-w-sm rounded-2xl bg-white shadow-2xl">
+            <View className="items-center border-b border-slate-200 px-6 py-5">
+              <View className="mb-3 h-12 w-12 items-center justify-center rounded-full bg-emerald-100">
+                <Feather name="check-circle" size={24} color="#059669" />
+              </View>
+              <Text className="text-base font-bold text-slate-800">Confirmar alteração de plano</Text>
+              <Text className="mt-1 text-center text-xs text-slate-500">
+                O plano da matrícula será alterado. Essa ação não pode ser desfeita. Deseja continuar?
+              </Text>
+            </View>
+            <View className="flex-row gap-3 border-t border-slate-200 px-6 py-4">
+              <Pressable
+                onPress={() => setModalConfirmAlteracaoVisible(false)}
+                className="flex-1 items-center justify-center rounded-lg border border-slate-200 bg-white py-2.5"
+                style={({ pressed }) => [pressed && { opacity: 0.7 }]}
+              >
+                <Text className="text-xs font-semibold text-slate-600">Não, voltar</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setModalConfirmAlteracaoVisible(false);
+                  handleConfirmarAlteracaoPlano();
+                }}
+                className="flex-1 items-center justify-center rounded-lg bg-emerald-600 py-2.5"
+                style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+              >
+                <Text className="text-xs font-semibold text-white">Sim, alterar plano</Text>
               </Pressable>
             </View>
           </View>

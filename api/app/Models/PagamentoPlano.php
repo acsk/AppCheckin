@@ -216,7 +216,7 @@ class PagamentoPlano
     ): bool {
         $sql = "UPDATE pagamentos_plano 
                 SET status_pagamento_id = 2,
-                    data_pagamento = :data_pagamento,
+                    data_pagamento = COALESCE(:data_pagamento, CURDATE()),
                     forma_pagamento_id = COALESCE(:forma_pagamento_id, forma_pagamento_id),
                     comprovante = COALESCE(:comprovante, comprovante),
                     observacoes = COALESCE(:observacoes, observacoes),
@@ -229,7 +229,7 @@ class PagamentoPlano
         $result = $stmt->execute([
             'tenant_id' => $tenantId,
             'id' => $id,
-            'data_pagamento' => $dataPagamento ?? date('Y-m-d'),
+            'data_pagamento' => $dataPagamento,
             'forma_pagamento_id' => $formaPagamentoId,
             'comprovante' => $comprovante,
             'observacoes' => $observacoes,
