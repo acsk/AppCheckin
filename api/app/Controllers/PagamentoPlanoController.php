@@ -547,8 +547,68 @@ class PagamentoPlanoController
                 $pagamentoAtualizado = $pagamentoModel->buscarPorId($tenantId, $pagamentoId);
             }
 
+            // Sincronizar datas da matrícula com base nas parcelas reais
+            $matriculaId = (int) $pagamento['matricula_id'];
+
+            // data_inicio = vencimento da 1ª parcela não-cancelada
+            $stmtMinVenc = $db->prepare("
+                SELECT MIN(data_vencimento) as min_venc
+                FROM pagamentos_plano
+                WHERE tenant_id = ? AND matricula_id = ? AND status_pagamento_id != 4
+            ");
+            $stmtMinVenc->execute([$tenantId, $matriculaId]);
+            $minVenc = $stmtMinVenc->fetchColumn();
+
+            // proxima_data_vencimento = vencimento da próxima parcela pendente/atrasada
+            $stmtProxVenc = $db->prepare("
+                SELECT MIN(data_vencimento) as prox_venc
+                FROM pagamentos_plano
+                WHERE tenant_id = ? AND matricula_id = ? AND status_pagamento_id IN (1, 3)
+            ");
+            $stmtProxVenc->execute([$tenantId, $matriculaId]);
+            $proxVenc = $stmtProxVenc->fetchColumn();
+
+            // data_vencimento (acesso até) = proxima_data_vencimento quando há pendente,
+            // senão = MAX(data_vencimento) dos pagos (último ciclo pago)
+            $dataAcessoAte = $proxVenc;
+            if (!$dataAcessoAte) {
+                $stmtMaxPago = $db->prepare("
+                    SELECT MAX(data_vencimento) as max_venc
+                    FROM pagamentos_plano
+                    WHERE tenant_id = ? AND matricula_id = ? AND status_pagamento_id = 2
+                ");
+                $stmtMaxPago->execute([$tenantId, $matriculaId]);
+                $dataAcessoAte = $stmtMaxPago->fetchColumn();
+            }
+
+            if ($minVenc || $proxVenc || $dataAcessoAte) {
+                $sqlSync = "UPDATE matriculas SET ";
+                $paramsSync = [];
+                $sets = [];
+
+                if ($minVenc) {
+                    $sets[] = "data_inicio = ?";
+                    $paramsSync[] = $minVenc;
+                }
+                if ($dataAcessoAte) {
+                    $sets[] = "data_vencimento = ?";
+                    $paramsSync[] = $dataAcessoAte;
+                }
+                if ($proxVenc) {
+                    $sets[] = "proxima_data_vencimento = ?";
+                    $paramsSync[] = $proxVenc;
+                }
+                $sets[] = "updated_at = NOW()";
+
+                $sqlSync .= implode(', ', $sets) . " WHERE id = ? AND tenant_id = ?";
+                $paramsSync[] = $matriculaId;
+                $paramsSync[] = $tenantId;
+
+                $db->prepare($sqlSync)->execute($paramsSync);
+            }
+
             // Recalcular status da matrícula baseado nos pagamentos
-            $pagamentoModel->atualizarStatusMatricula($tenantId, (int)$pagamento['matricula_id']);
+            $pagamentoModel->atualizarStatusMatricula($tenantId, $matriculaId);
 
             $response->getBody()->write(json_encode(['type' => 'success','message' => 'Pagamento atualizado','pagamento' => $pagamentoAtualizado], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json');
