@@ -515,11 +515,11 @@ class PagamentoPlanoController
                                 'observacoes' => 'Pagamento gerado automaticamente após confirmação',
                                 'criado_por' => $adminId
                             ];
-                            $pagamentoModel->criar($proximoPagamento);
+                            $novoPagId = $pagamentoModel->criar($proximoPagamento);
 
                             // Salvar descontos aplicados na tabela pivot
                             if (!empty($infoDesconto['detalhes'])) {
-                                $descontoModel->salvarDescontosAplicados((int) $db->lastInsertId(), $infoDesconto['detalhes']);
+                                $descontoModel->salvarDescontosAplicados($novoPagId, $infoDesconto['detalhes']);
                             }
 
                             // Decrementar parcelas_restantes dos descontos usados

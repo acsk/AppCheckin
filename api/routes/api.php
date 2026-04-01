@@ -1142,6 +1142,25 @@ return function ($app) {
         $group->put('/matricula-descontos/{id}', [MatriculaDescontoController::class, 'atualizar']);
         $group->delete('/matricula-descontos/{id}', [MatriculaDescontoController::class, 'desativar']);
 
+        // Listar admins do tenant (para selects como autorizado_por)
+        $group->get('/admins', function ($request, $response) {
+            $tenantId = $request->getAttribute('tenant_id');
+            $db = require __DIR__ . '/../config/database.php';
+            $stmt = $db->prepare("
+                SELECT DISTINCT u.id, u.nome, u.email, p.nome as papel
+                FROM usuarios u
+                INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.ativo = 1
+                INNER JOIN papeis p ON p.id = tup.papel_id
+                WHERE tup.tenant_id = :tenant_id
+                  AND tup.papel_id IN (3, 4)
+                ORDER BY u.nome ASC
+            ");
+            $stmt->execute(['tenant_id' => $tenantId]);
+            $admins = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $response->getBody()->write(json_encode(['admins' => $admins], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json');
+        });
+
         // Pacotes (admin)
         $group->get('/pacotes', [PacoteController::class, 'listar']);
         $group->post('/pacotes', [PacoteController::class, 'criar']);

@@ -10,6 +10,7 @@ import {
   Modal,
   ToastAndroid,
   TextInput,
+  TouchableOpacity,
 } from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
 import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -97,6 +98,7 @@ export default function MatriculaDetalheScreen() {
   const [modalDescontoVisible, setModalDescontoVisible] = useState(false);
   const [salvandoDesconto, setSalvandoDesconto] = useState(false);
   const [descontoEditando, setDescontoEditando] = useState(null); // null = novo, obj = editar
+  const [adminsLista, setAdminsLista] = useState([]);
   const [formDesconto, setFormDesconto] = useState({
     tipo: 'recorrente',
     modo: 'valor', // 'valor' | 'percentual'
@@ -106,7 +108,11 @@ export default function MatriculaDetalheScreen() {
     vigencia_inicio: '',
     vigencia_fim: '',
     parcelas_restantes: '',
+    autorizado_por: '',
   });
+  const [calendarDescontoVisible, setCalendarDescontoVisible] = useState(false);
+  const [calendarDescontoCampo, setCalendarDescontoCampo] = useState('inicio'); // 'inicio' | 'fim'
+  const [mesCalendarioDesconto, setMesCalendarioDesconto] = useState(new Date());
 
   useEffect(() => {
     authService.getCurrentUser().then((user) => {
@@ -187,6 +193,14 @@ export default function MatriculaDetalheScreen() {
       } catch (error) {
         console.log('Endpoint de descontos não disponível ainda');
         setDescontos([]);
+      }
+
+      // Buscar admins para o select de autorizado_por
+      try {
+        const responseAdmins = await descontoMatriculaService.listarAdmins();
+        setAdminsLista(responseAdmins?.admins || []);
+      } catch (error) {
+        console.log('Endpoint de admins não disponível ainda');
       }
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
@@ -903,6 +917,12 @@ export default function MatriculaDetalheScreen() {
   };
 
   // --- Descontos ---
+  const formatarDataBRDesconto = (dataISO) => {
+    if (!dataISO) return '';
+    const [y, m, d] = dataISO.split('-');
+    return `${d}/${m}/${y}`;
+  };
+
   const abrirNovoDesconto = () => {
     setDescontoEditando(null);
     const hoje = new Date();
@@ -916,6 +936,7 @@ export default function MatriculaDetalheScreen() {
       vigencia_inicio: hojeISO,
       vigencia_fim: '',
       parcelas_restantes: '',
+      autorizado_por: '',
     });
     setModalDescontoVisible(true);
   };
@@ -931,6 +952,7 @@ export default function MatriculaDetalheScreen() {
       vigencia_inicio: desc.vigencia_inicio || '',
       vigencia_fim: desc.vigencia_fim || '',
       parcelas_restantes: desc.parcelas_restantes != null ? String(desc.parcelas_restantes) : '',
+      autorizado_por: desc.autorizado_por != null ? String(desc.autorizado_por) : '',
     });
     setModalDescontoVisible(true);
   };
@@ -957,10 +979,20 @@ export default function MatriculaDetalheScreen() {
     }
 
     if (formDesconto.vigencia_inicio) payload.vigencia_inicio = formDesconto.vigencia_inicio;
-    if (formDesconto.vigencia_fim) payload.vigencia_fim = formDesconto.vigencia_fim;
+    if (formDesconto.vigencia_fim) {
+      if (formDesconto.vigencia_inicio && formDesconto.vigencia_fim < formDesconto.vigencia_inicio) {
+        showAlert('Atenção', 'A data de fim não pode ser anterior à data de início.');
+        return;
+      }
+      payload.vigencia_fim = formDesconto.vigencia_fim;
+    }
     if (formDesconto.parcelas_restantes !== '') {
       const prc = parseInt(formDesconto.parcelas_restantes, 10);
       if (prc > 0) payload.parcelas_restantes = prc;
+    }
+
+    if (formDesconto.autorizado_por) {
+      payload.autorizado_por = Number(formDesconto.autorizado_por);
     }
 
     try {
@@ -1776,6 +1808,15 @@ export default function MatriculaDetalheScreen() {
                         </Text>
                         <Text className="text-xs text-slate-500 mt-0.5">{desc.motivo}</Text>
 
+                        {desc.autorizado_por_nome && (
+                          <View className="flex-row items-center gap-1 mt-1">
+                            <Feather name="user-check" size={11} color="#6366f1" />
+                            <Text className="text-[11px] font-medium text-indigo-600">
+                              Autorizado por: {desc.autorizado_por_nome}
+                            </Text>
+                          </View>
+                        )}
+
                         <View className="flex-row flex-wrap gap-x-4 gap-y-1 mt-2">
                           <Text className="text-[11px] text-slate-400">
                             Início: {desc.vigencia_inicio ? formatDate(desc.vigencia_inicio) : '-'}
@@ -1925,45 +1966,61 @@ export default function MatriculaDetalheScreen() {
                   />
                 </View>
 
+                {/* Autorizado por */}
+                <View>
+                  <Text className="text-xs font-semibold text-slate-600 mb-1.5">Autorizado por</Text>
+                  <View className="rounded-lg border border-slate-200 bg-slate-50">
+                    <Picker
+                      selectedValue={formDesconto.autorizado_por}
+                      onValueChange={(val) => setFormDesconto({ ...formDesconto, autorizado_por: val })}
+                      style={{ height: 44, color: '#1e293b' }}
+                    >
+                      <Picker.Item label="Selecione (opcional)" value="" color="#94a3b8" />
+                      {adminsLista.map((adm) => (
+                        <Picker.Item key={adm.id} label={adm.nome} value={String(adm.id)} />
+                      ))}
+                    </Picker>
+                  </View>
+                </View>
+
                 {/* Vigência */}
                 <View className="flex-row gap-3">
                   <View className="flex-1">
                     <Text className="text-xs font-semibold text-slate-600 mb-1.5">Início vigência</Text>
-                    <TextInput
-                      className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800"
-                      placeholder="dd/mm/aaaa"
-                      value={formDesconto.vigencia_inicio ? mascaraData(formDesconto.vigencia_inicio.split('-').reverse().join('')) : ''}
-                      onChangeText={(val) => {
-                        const masked = mascaraData(val);
-                        if (masked.length === 10) {
-                          const [d, m, y] = masked.split('/');
-                          setFormDesconto({ ...formDesconto, vigencia_inicio: `${y}-${m}-${d}` });
-                        } else {
-                          setFormDesconto({ ...formDesconto, vigencia_inicio: '' });
-                        }
+                    <Pressable
+                      onPress={() => {
+                        setCalendarDescontoCampo('inicio');
+                        setMesCalendarioDesconto(formDesconto.vigencia_inicio ? new Date(formDesconto.vigencia_inicio + 'T00:00:00') : new Date());
+                        setCalendarDescontoVisible(true);
                       }}
-                      keyboardType="numeric"
-                      maxLength={10}
-                    />
+                      className="flex-row items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5"
+                    >
+                      <Text className={`text-sm ${formDesconto.vigencia_inicio ? 'font-semibold text-slate-800' : 'text-slate-400'}`}>
+                        {formDesconto.vigencia_inicio ? formatarDataBRDesconto(formDesconto.vigencia_inicio) : 'dd/mm/aaaa'}
+                      </Text>
+                      <Feather name="calendar" size={16} color="#f97316" />
+                    </Pressable>
                   </View>
                   <View className="flex-1">
                     <Text className="text-xs font-semibold text-slate-600 mb-1.5">Fim vigência</Text>
-                    <TextInput
-                      className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800"
-                      placeholder="Indefinido"
-                      value={formDesconto.vigencia_fim ? mascaraData(formDesconto.vigencia_fim.split('-').reverse().join('')) : ''}
-                      onChangeText={(val) => {
-                        const masked = mascaraData(val);
-                        if (masked.length === 10) {
-                          const [d, m, y] = masked.split('/');
-                          setFormDesconto({ ...formDesconto, vigencia_fim: `${y}-${m}-${d}` });
-                        } else {
-                          setFormDesconto({ ...formDesconto, vigencia_fim: '' });
-                        }
+                    <Pressable
+                      onPress={() => {
+                        setCalendarDescontoCampo('fim');
+                        setMesCalendarioDesconto(formDesconto.vigencia_fim ? new Date(formDesconto.vigencia_fim + 'T00:00:00') : new Date());
+                        setCalendarDescontoVisible(true);
                       }}
-                      keyboardType="numeric"
-                      maxLength={10}
-                    />
+                      className="flex-row items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5"
+                    >
+                      <Text className={`text-sm ${formDesconto.vigencia_fim ? 'font-semibold text-slate-800' : 'text-slate-400'}`}>
+                        {formDesconto.vigencia_fim ? formatarDataBRDesconto(formDesconto.vigencia_fim) : 'Indefinido'}
+                      </Text>
+                      <Feather name="calendar" size={16} color="#f97316" />
+                    </Pressable>
+                    {formDesconto.vigencia_fim && (
+                      <Pressable onPress={() => setFormDesconto({ ...formDesconto, vigencia_fim: '' })}>
+                        <Text className="text-xs text-red-500 mt-1">Limpar</Text>
+                      </Pressable>
+                    )}
                   </View>
                 </View>
 
@@ -3167,6 +3224,104 @@ export default function MatriculaDetalheScreen() {
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* Modal Calendário Desconto */}
+      <Modal visible={calendarDescontoVisible} transparent animationType="fade" onRequestClose={() => setCalendarDescontoVisible(false)}>
+        <Pressable onPress={() => setCalendarDescontoVisible(false)} style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.4)' }}>
+          <Pressable onPress={(e) => e.stopPropagation()} style={{ backgroundColor: '#fff', borderRadius: 16, padding: 20, width: isDesktop ? 340 : '90%' }}>
+            {/* Navegação mês */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+              <TouchableOpacity onPress={() => setMesCalendarioDesconto((prev) => { const d = new Date(prev); d.setMonth(d.getMonth() - 1); return d; })} style={{ padding: 6 }}>
+                <Feather name="chevron-left" size={20} color="#334155" />
+              </TouchableOpacity>
+              <Text style={{ fontSize: 15, fontWeight: '700', color: '#0f172a' }}>
+                {mesCalendarioDesconto.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })}
+              </Text>
+              <TouchableOpacity onPress={() => setMesCalendarioDesconto((prev) => { const d = new Date(prev); d.setMonth(d.getMonth() + 1); return d; })} style={{ padding: 6 }}>
+                <Feather name="chevron-right" size={20} color="#334155" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Cabeçalho dias da semana */}
+            <View style={{ flexDirection: 'row', marginBottom: 6 }}>
+              {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((d) => (
+                <View key={d} style={{ flex: 1, alignItems: 'center' }}>
+                  <Text style={{ fontSize: 11, fontWeight: '600', color: '#94a3b8' }}>{d}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* Grid dias */}
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+              {(() => {
+                const ano = mesCalendarioDesconto.getFullYear();
+                const mes = mesCalendarioDesconto.getMonth();
+                const primeiroDia = new Date(ano, mes, 1);
+                const ultimoDia = new Date(ano, mes + 1, 0);
+                const diasNoMes = ultimoDia.getDate();
+                const diaInicio = primeiroDia.getDay();
+                const dias = [];
+                for (let i = 0; i < diaInicio; i++) dias.push(null);
+                for (let i = 1; i <= diasNoMes; i++) dias.push(new Date(ano, mes, i));
+                return dias;
+              })().map((dia, idx) => {
+                if (!dia) return <View key={`e-${idx}`} style={{ width: '14.28%', height: 36 }} />;
+                const diaISO = `${dia.getFullYear()}-${String(dia.getMonth() + 1).padStart(2, '0')}-${String(dia.getDate()).padStart(2, '0')}`;
+                const valorAtual = calendarDescontoCampo === 'inicio' ? formDesconto.vigencia_inicio : formDesconto.vigencia_fim;
+                const selecionado = valorAtual === diaISO;
+                const hoje = new Date();
+                const ehHoje = dia.getFullYear() === hoje.getFullYear() && dia.getMonth() === hoje.getMonth() && dia.getDate() === hoje.getDate();
+
+                // Desabilitar datas anteriores ao início quando selecionando fim
+                let desabilitado = false;
+                if (calendarDescontoCampo === 'fim' && formDesconto.vigencia_inicio && diaISO < formDesconto.vigencia_inicio) {
+                  desabilitado = true;
+                }
+
+                return (
+                  <TouchableOpacity
+                    key={diaISO}
+                    disabled={desabilitado}
+                    onPress={() => {
+                      if (calendarDescontoCampo === 'inicio') {
+                        setFormDesconto((prev) => {
+                          const novoForm = { ...prev, vigencia_inicio: diaISO };
+                          if (prev.vigencia_fim && diaISO > prev.vigencia_fim) novoForm.vigencia_fim = '';
+                          return novoForm;
+                        });
+                      } else {
+                        setFormDesconto((prev) => ({ ...prev, vigencia_fim: diaISO }));
+                      }
+                      setCalendarDescontoVisible(false);
+                    }}
+                    style={{ width: '14.28%', height: 36, justifyContent: 'center', alignItems: 'center' }}
+                  >
+                    <View
+                      style={{
+                        width: 30, height: 30, borderRadius: 15,
+                        justifyContent: 'center', alignItems: 'center',
+                        backgroundColor: selecionado ? '#f97316' : ehHoje ? '#fff7ed' : 'transparent',
+                        borderWidth: ehHoje && !selecionado ? 1 : 0,
+                        borderColor: '#fdba74',
+                        opacity: desabilitado ? 0.3 : 1,
+                      }}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: selecionado || ehHoje ? '700' : '400', color: selecionado ? '#fff' : '#0f172a' }}>
+                        {dia.getDate()}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Botão fechar */}
+            <TouchableOpacity onPress={() => setCalendarDescontoVisible(false)} style={{ marginTop: 14, paddingVertical: 10, borderRadius: 8, backgroundColor: '#f1f5f9', alignItems: 'center' }}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: '#64748b' }}>Fechar</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
       </Modal>
     </LayoutBase>
   );

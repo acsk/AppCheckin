@@ -51,6 +51,16 @@ const descontoMatriculaService = {
       throw prepararErro(error.response?.data || error);
     }
   },
+
+  async listarAdmins() {
+    try {
+      const response = await api.get('/admin/admins');
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao listar admins:', error);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
 };
 
 export default descontoMatriculaService;

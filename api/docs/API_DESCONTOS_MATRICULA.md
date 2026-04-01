@@ -15,6 +15,7 @@ Gerenciamento de descontos vinculados a matrículas. Os descontos são aplicados
 | `vigencia_fim` | Data (YYYY-MM-DD) final da vigência. **`null` = infinito** – o desconto fica ativo até ser desativado manualmente. |
 | `parcelas_restantes` | Quantidade de parcelas ainda disponíveis. Decrementado automaticamente a cada aplicação. **`null` = sem limite** (respeita somente a vigência). Quando chega a `0`, o desconto é desativado automaticamente. |
 | `motivo` | Texto obrigatório descrevendo o motivo (ex: "Promoção de inauguração", "Funcionário", "Indicação"). |
+| `autorizado_por` | ID do admin que **autorizou** o desconto (opcional). Diferente de `criado_por` (preenchido automaticamente com o admin logado). |
 | `ativo` | `1` = ativo, `0` = desativado. Descontos inativos não são aplicados. |
 
 ### Campos de desconto no pagamento
@@ -58,6 +59,36 @@ Isso permite saber **exatamente quais descontos** foram aplicados em cada parcel
 
 ---
 
+### 0. Listar admins do tenant (para select "Autorizado por")
+
+```
+GET /admin/admins
+```
+
+Retorna todos os usuários com papel `admin` ou `super_admin` do tenant. Use para preencher o select de `autorizado_por`.
+
+**Resposta 200:**
+```json
+{
+  "admins": [
+    {
+      "id": 3,
+      "nome": "ANDRE CABRAL SILVA",
+      "email": "andrecabrall@gmail.com",
+      "papel": "admin"
+    },
+    {
+      "id": 5,
+      "nome": "TIAGO OLIVEIRA",
+      "email": "tiago@academia.com",
+      "papel": "admin"
+    }
+  ]
+}
+```
+
+---
+
 ### 1. Listar descontos de uma matrícula
 
 ```
@@ -81,6 +112,8 @@ GET /admin/matriculas/{matriculaId}/descontos
       "motivo": "Funcionário da academia",
       "ativo": 1,
       "criado_por": 5,
+      "autorizado_por": 3,
+      "autorizado_por_nome": "ANDRE CABRAL SILVA",
       "created_at": "2026-04-01 10:00:00",
       "updated_at": "2026-04-01 10:00:00"
     }
@@ -112,6 +145,8 @@ GET /admin/matricula-descontos/{descontoId}
     "motivo": "Funcionário da academia",
     "ativo": 1,
     "criado_por": 5,
+    "autorizado_por": 3,
+    "autorizado_por_nome": "ANDRE CABRAL SILVA",
     "created_at": "2026-04-01 10:00:00",
     "updated_at": "2026-04-01 10:00:00"
   }
@@ -142,13 +177,15 @@ POST /admin/matriculas/{matriculaId}/descontos
 | `vigencia_inicio` | string (date) | Não | Default: data atual. Formato `YYYY-MM-DD` |
 | `vigencia_fim` | string (date) \| null | Não | Default: `null` (infinito). Formato `YYYY-MM-DD` |
 | `parcelas_restantes` | integer \| null | Não | Default: `null` (sem limite) |
+| `autorizado_por` | integer \| null | Não | ID do admin que autorizou (usar `GET /admin/admins` para listar) |
 
 **Exemplo — Desconto fixo de R$ 50 na 1ª mensalidade:**
 ```json
 {
   "tipo": "primeira_mensalidade",
   "valor": 50.00,
-  "motivo": "Promoção de inauguração"
+  "motivo": "Promoção de inauguração",
+  "autorizado_por": 3
 }
 ```
 
@@ -159,7 +196,8 @@ POST /admin/matriculas/{matriculaId}/descontos
   "percentual": 15.00,
   "motivo": "Indicação de aluno",
   "vigencia_inicio": "2026-04-01",
-  "vigencia_fim": "2026-09-30"
+  "vigencia_fim": "2026-09-30",
+  "autorizado_por": 3
 }
 ```
 
@@ -169,7 +207,8 @@ POST /admin/matriculas/{matriculaId}/descontos
   "tipo": "recorrente",
   "valor": 30.00,
   "motivo": "Acordo especial",
-  "parcelas_restantes": 3
+  "parcelas_restantes": 3,
+  "autorizado_por": 5
 }
 ```
 
@@ -191,11 +230,16 @@ POST /admin/matriculas/{matriculaId}/descontos
     "motivo": "Acordo especial",
     "ativo": 1,
     "criado_por": 5,
+    "autorizado_por": 5,
+    "autorizado_por_nome": "TIAGO OLIVEIRA",
     "created_at": "2026-04-01 10:00:00",
     "updated_at": "2026-04-01 10:00:00"
-  }
+  },
+  "pagamentos_atualizados": 3
 }
 ```
+
+> **Nota:** `pagamentos_atualizados` indica quantas parcelas pendentes foram recalculadas com o novo desconto.
 
 **Resposta 422 (validação):**
 ```json
@@ -230,6 +274,7 @@ PUT /admin/matricula-descontos/{descontoId}
 | `vigencia_fim` | string (date) \| null | Fim da vigência (`null` = infinito) |
 | `parcelas_restantes` | integer \| null | Parcelas restantes (`null` = sem limite) |
 | `ativo` | integer | `1` para reativar, `0` para desativar |
+| `autorizado_por` | integer \| null | ID do admin que autorizou |
 
 **Exemplo — Estender vigência:**
 ```json
@@ -250,9 +295,12 @@ PUT /admin/matricula-descontos/{descontoId}
 {
   "type": "success",
   "message": "Desconto atualizado",
-  "desconto": { ... }
+  "desconto": { ... },
+  "pagamentos_atualizados": 2
 }
 ```
+
+> **Nota:** `pagamentos_atualizados` indica quantas parcelas pendentes foram recalculadas.
 
 ---
 
@@ -268,9 +316,12 @@ O desconto **não é excluído** do banco, apenas marcado como `ativo = 0`. Parc
 ```json
 {
   "type": "success",
-  "message": "Desconto desativado com sucesso"
+  "message": "Desconto desativado com sucesso",
+  "pagamentos_atualizados": 2
 }
 ```
+
+> **Nota:** Ao desativar, as parcelas pendentes são recalculadas removendo este desconto.
 
 ---
 

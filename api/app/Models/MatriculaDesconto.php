@@ -19,9 +19,10 @@ class MatriculaDesconto
     public function listarPorMatricula(int $tenantId, int $matriculaId): array
     {
         $stmt = $this->pdo->prepare("
-            SELECT md.*, u.nome as criado_por_nome
+            SELECT md.*, u.nome as criado_por_nome, ua.nome as autorizado_por_nome
             FROM matricula_descontos md
             LEFT JOIN usuarios u ON md.criado_por = u.id
+            LEFT JOIN usuarios ua ON md.autorizado_por = ua.id
             WHERE md.tenant_id = :tenant_id AND md.matricula_id = :matricula_id
             ORDER BY md.tipo ASC, md.created_at DESC
         ");
@@ -35,9 +36,10 @@ class MatriculaDesconto
     public function buscarPorId(int $tenantId, int $id): ?array
     {
         $stmt = $this->pdo->prepare("
-            SELECT md.*, u.nome as criado_por_nome
+            SELECT md.*, u.nome as criado_por_nome, ua.nome as autorizado_por_nome
             FROM matricula_descontos md
             LEFT JOIN usuarios u ON md.criado_por = u.id
+            LEFT JOIN usuarios ua ON md.autorizado_por = ua.id
             WHERE md.tenant_id = :tenant_id AND md.id = :id
         ");
         $stmt->execute(['tenant_id' => $tenantId, 'id' => $id]);
@@ -53,10 +55,10 @@ class MatriculaDesconto
         $stmt = $this->pdo->prepare("
             INSERT INTO matricula_descontos
             (tenant_id, matricula_id, tipo, valor, percentual, vigencia_inicio, vigencia_fim,
-             parcelas_restantes, motivo, ativo, criado_por)
+             parcelas_restantes, motivo, ativo, criado_por, autorizado_por)
             VALUES
             (:tenant_id, :matricula_id, :tipo, :valor, :percentual, :vigencia_inicio, :vigencia_fim,
-             :parcelas_restantes, :motivo, 1, :criado_por)
+             :parcelas_restantes, :motivo, 1, :criado_por, :autorizado_por)
         ");
         $stmt->execute([
             'tenant_id' => $dados['tenant_id'],
@@ -69,6 +71,7 @@ class MatriculaDesconto
             'parcelas_restantes' => $dados['parcelas_restantes'] ?? null,
             'motivo' => $dados['motivo'],
             'criado_por' => $dados['criado_por'] ?? null,
+            'autorizado_por' => $dados['autorizado_por'] ?? null,
         ]);
         return (int) $this->pdo->lastInsertId();
     }
@@ -79,7 +82,7 @@ class MatriculaDesconto
     public function atualizar(int $tenantId, int $id, array $dados): bool
     {
         $allowed = ['tipo', 'valor', 'percentual', 'vigencia_inicio', 'vigencia_fim',
-                     'parcelas_restantes', 'motivo', 'ativo'];
+                     'parcelas_restantes', 'motivo', 'ativo', 'autorizado_por'];
         $sets = [];
         $params = ['tenant_id' => $tenantId, 'id' => $id];
 

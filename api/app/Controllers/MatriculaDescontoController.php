@@ -135,6 +135,7 @@ class MatriculaDescontoController
                 'parcelas_restantes' => $data['parcelas_restantes'] ?? null,
                 'motivo' => $data['motivo'],
                 'criado_por' => $adminId,
+                'autorizado_por' => $data['autorizado_por'] ?? null,
             ]);
 
             $desconto = $model->buscarPorId($tenantId, $id);

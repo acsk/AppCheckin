@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS matricula_descontos (
     ativo TINYINT(1) NOT NULL DEFAULT 1,
 
     criado_por INT NULL,
+    autorizado_por INT NULL COMMENT 'ID do admin que autorizou o desconto',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
