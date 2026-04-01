@@ -1,12 +1,17 @@
--- Tabela de provas/eventos disponíveis (25m Crawl, 50m Crawl, etc.)
-CREATE TABLE IF NOT EXISTS recorde_provas (
+-- =============================================
+-- Modelagem genérica de Recordes/PRs
+-- Suporta qualquer modalidade: natação, cross,
+-- musculação, corrida, testes físicos, etc.
+-- =============================================
+
+-- 1) Definição do teste/recorde (substitui recorde_provas)
+CREATE TABLE IF NOT EXISTS recorde_definicoes (
     id INT AUTO_INCREMENT PRIMARY KEY,
     tenant_id INT NOT NULL,
-    modalidade_id INT NULL COMMENT 'FK para modalidades - separa provas por modalidade',
-    nome VARCHAR(100) NOT NULL COMMENT 'Ex: 25m Crawl, 50m Costas',
-    distancia_metros INT NULL COMMENT 'Distância em metros (25, 50, 100, 200)',
-    estilo VARCHAR(50) NULL COMMENT 'Crawl, Costas, Peito, Borboleta, Medley',
-    unidade_medida ENUM('tempo', 'metros', 'repeticoes', 'peso_kg') NOT NULL DEFAULT 'tempo' COMMENT 'Tipo de medida do recorde',
+    modalidade_id INT NULL COMMENT 'FK para modalidades (Natação, CrossFit, Musculação...)',
+    nome VARCHAR(150) NOT NULL COMMENT 'Ex: Deadlift, BMU Max Reps, 100m Crawl, AMRAP 12 min',
+    categoria ENUM('movimento', 'prova', 'workout', 'teste_fisico') NOT NULL DEFAULT 'movimento',
+    descricao TEXT NULL,
     ativo TINYINT(1) NOT NULL DEFAULT 1,
     ordem INT NOT NULL DEFAULT 0 COMMENT 'Ordem de exibição',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -14,29 +19,62 @@ CREATE TABLE IF NOT EXISTS recorde_provas (
     INDEX idx_tenant (tenant_id),
     INDEX idx_ativo (tenant_id, ativo),
     INDEX idx_modalidade (tenant_id, modalidade_id),
+    INDEX idx_categoria (tenant_id, categoria),
     FOREIGN KEY (modalidade_id) REFERENCES modalidades(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Tabela de recordes pessoais (registros de alunos e escola)
-CREATE TABLE IF NOT EXISTS recordes_pessoais (
+-- 2) Métricas de cada definição (como o recorde é medido)
+CREATE TABLE IF NOT EXISTS recorde_definicao_metricas (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    definicao_id INT NOT NULL,
+    codigo VARCHAR(50) NOT NULL COMMENT 'Ex: tempo_ms, peso_kg, repeticoes, distancia_m, rounds',
+    nome VARCHAR(100) NOT NULL COMMENT 'Ex: Tempo, Carga, Repetições, Distância',
+    tipo_valor ENUM('inteiro', 'decimal', 'tempo_ms') NOT NULL DEFAULT 'decimal',
+    unidade VARCHAR(30) NULL COMMENT 'Ex: ms, kg, reps, m',
+    ordem_comparacao INT NOT NULL DEFAULT 1 COMMENT '1 = principal, 2 = desempate...',
+    direcao ENUM('maior_melhor', 'menor_melhor') NOT NULL,
+    obrigatoria TINYINT(1) NOT NULL DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_definicao_codigo (definicao_id, codigo),
+    INDEX idx_definicao (definicao_id),
+    FOREIGN KEY (definicao_id) REFERENCES recorde_definicoes(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 3) Registro do recorde (a tentativa/PR em si)
+CREATE TABLE IF NOT EXISTS recordes (
     id INT AUTO_INCREMENT PRIMARY KEY,
     tenant_id INT NOT NULL,
-    aluno_id INT NULL COMMENT 'NULL = recorde da escola/academia',
-    prova_id INT NOT NULL,
-    tempo_segundos DECIMAL(10,2) NULL COMMENT 'Tempo em segundos (ex: 32.45)',
-    valor DECIMAL(10,2) NULL COMMENT 'Valor genérico (metros, reps, kg) para unidades não-tempo',
-    data_registro DATE NOT NULL COMMENT 'Data em que o recorde foi alcançado',
+    aluno_id INT NULL COMMENT 'NULL = recorde da academia/escola',
+    definicao_id INT NOT NULL,
+    origem ENUM('aluno', 'academia') NOT NULL DEFAULT 'aluno',
+    data_recorde DATE NOT NULL,
     observacoes TEXT NULL,
-    origem ENUM('aluno', 'escola') NOT NULL DEFAULT 'aluno' COMMENT 'Se é PR do aluno ou recorde da escola',
-    registrado_por INT NULL COMMENT 'ID do usuário que registrou (professor/admin/aluno)',
+    registrado_por INT NULL COMMENT 'ID do usuário que registrou',
+    valido TINYINT(1) NOT NULL DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_tenant_aluno (tenant_id, aluno_id),
-    INDEX idx_tenant_prova (tenant_id, prova_id),
+    INDEX idx_tenant_definicao (tenant_id, definicao_id),
     INDEX idx_origem (tenant_id, origem),
-    INDEX idx_ranking (tenant_id, prova_id, tempo_segundos),
-    FOREIGN KEY (prova_id) REFERENCES recorde_provas(id) ON DELETE CASCADE
+    INDEX idx_data (tenant_id, data_recorde),
+    FOREIGN KEY (definicao_id) REFERENCES recorde_definicoes(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Provas padrão (natação) - serão criadas por tenant quando necessário
--- INSERT via migration PHP abaixo
+-- 4) Valores medidos de cada recorde (1 ou mais métricas por recorde)
+CREATE TABLE IF NOT EXISTS recorde_valores (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    recorde_id INT NOT NULL,
+    metrica_id INT NOT NULL,
+    valor_int BIGINT NULL,
+    valor_decimal DECIMAL(12,3) NULL,
+    valor_tempo_ms BIGINT NULL COMMENT 'Tempo em milissegundos',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_recorde (recorde_id),
+    INDEX idx_metrica (metrica_id),
+    UNIQUE KEY uk_recorde_metrica (recorde_id, metrica_id),
+    FOREIGN KEY (recorde_id) REFERENCES recordes(id) ON DELETE CASCADE,
+    FOREIGN KEY (metrica_id) REFERENCES recorde_definicao_metricas(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Definições padrão serão inseridas via migration PHP por tenant

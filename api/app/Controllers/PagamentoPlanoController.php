@@ -392,6 +392,56 @@ class PagamentoPlanoController
 
                 $db->beginTransaction();
                 try {
+                    // Aplicar descontos ao pagamento ATUAL antes de confirmar (caso não tenha sido aplicado na criação)
+                    $descontoAtualEdit = (float) ($pagamento['desconto'] ?? 0);
+                    if ($descontoAtualEdit == 0) {
+                        $descontoModelAtualEdit = new \App\Models\MatriculaDesconto($db);
+
+                        $stmtPrimeiraEdit = $db->prepare("
+                            SELECT COUNT(*) FROM pagamentos_plano
+                            WHERE tenant_id = ? AND matricula_id = ? AND id != ? AND data_vencimento < ?
+                        ");
+                        $stmtPrimeiraEdit->execute([$tenantId, $pagamento['matricula_id'], $pagamentoId, $pagamento['data_vencimento']]);
+                        $isPrimeiraParcelaEdit = ((int) $stmtPrimeiraEdit->fetchColumn()) === 0;
+
+                        $descontosAplicaveisEdit = $descontoModelAtualEdit->buscarAplicaveis(
+                            $tenantId, (int) $pagamento['matricula_id'],
+                            $pagamento['data_vencimento'], $isPrimeiraParcelaEdit
+                        );
+                        $infoDescontoAtualEdit = $descontoModelAtualEdit->calcularDesconto(
+                            (float) $pagamento['valor'], $descontosAplicaveisEdit
+                        );
+
+                        if ($infoDescontoAtualEdit['desconto_total'] > 0) {
+                            $valorComDescontoEdit = max(0, (float) $pagamento['valor'] - $infoDescontoAtualEdit['desconto_total']);
+                            $stmtUpdDescEdit = $db->prepare("
+                                UPDATE pagamentos_plano
+                                SET valor = ?, valor_original = ?, desconto = ?, motivo_desconto = ?, updated_at = NOW()
+                                WHERE id = ? AND tenant_id = ?
+                            ");
+                            $stmtUpdDescEdit->execute([
+                                $valorComDescontoEdit,
+                                (float) $pagamento['valor'],
+                                $infoDescontoAtualEdit['desconto_total'],
+                                $infoDescontoAtualEdit['motivos'],
+                                $pagamentoId,
+                                $tenantId
+                            ]);
+
+                            // Salvar descontos aplicados na tabela pivot
+                            if (!empty($infoDescontoAtualEdit['detalhes'])) {
+                                $descontoModelAtualEdit->salvarDescontosAplicados($pagamentoId, $infoDescontoAtualEdit['detalhes']);
+                            }
+
+                            if (!empty($infoDescontoAtualEdit['ids'])) {
+                                $descontoModelAtualEdit->decrementarParcelas($infoDescontoAtualEdit['ids']);
+                            }
+
+                            $pagamento['valor'] = $valorComDescontoEdit;
+                            error_log("[atualizar] Desconto R$" . $infoDescontoAtualEdit['desconto_total'] . " aplicado ao pagamento #{$pagamentoId}");
+                        }
+                    }
+
                     // Usar campos fornecidos quando existirem
                     $dataPagamento = $updateData['data_pagamento'] ?? null;
                     $formaPagamentoId = $updateData['forma_pagamento_id'] ?? null;
@@ -444,18 +494,38 @@ class PagamentoPlanoController
                         );
 
                         if (!$jaExiste) {
+                            // Aplicar descontos recorrentes à próxima parcela
+                            $descontoModel = new \App\Models\MatriculaDesconto($db);
+                            $descontosAplicaveis = $descontoModel->buscarAplicaveis(
+                                $tenantId, $pagamento['matricula_id'],
+                                $proximaDataVencimento->format('Y-m-d'), false
+                            );
+                            $infoDesconto = $descontoModel->calcularDesconto((float) $valorProximaParcela, $descontosAplicaveis);
+
                             $proximoPagamento = [
                                 'tenant_id' => $tenantId,
                                 'aluno_id' => $alunoIdProxima,
                                 'matricula_id' => $pagamento['matricula_id'],
                                 'plano_id' => $pagamento['plano_id'],
                                 'valor' => $valorProximaParcela,
+                                'desconto' => $infoDesconto['desconto_total'],
+                                'motivo_desconto' => $infoDesconto['motivos'] ?: null,
                                 'data_vencimento' => $proximaDataVencimento->format('Y-m-d'),
                                 'status_pagamento_id' => 1,
                                 'observacoes' => 'Pagamento gerado automaticamente após confirmação',
                                 'criado_por' => $adminId
                             ];
                             $pagamentoModel->criar($proximoPagamento);
+
+                            // Salvar descontos aplicados na tabela pivot
+                            if (!empty($infoDesconto['detalhes'])) {
+                                $descontoModel->salvarDescontosAplicados((int) $db->lastInsertId(), $infoDesconto['detalhes']);
+                            }
+
+                            // Decrementar parcelas_restantes dos descontos usados
+                            if (!empty($infoDesconto['ids'])) {
+                                $descontoModel->decrementarParcelas($infoDesconto['ids']);
+                            }
                         }
 
                         // Atualizar matrícula com a próxima data de vencimento
@@ -608,6 +678,62 @@ class PagamentoPlanoController
                 }
             }
             
+            // Aplicar descontos ao pagamento ATUAL antes de confirmar (caso não tenha sido aplicado na criação)
+            $descontoAtual = (float) ($pagamento['desconto'] ?? 0);
+            if ($descontoAtual == 0) {
+                $descontoModelAtual = new \App\Models\MatriculaDesconto($db);
+
+                // Verificar se é a 1ª parcela (não existe parcela anterior)
+                $stmtPrimeira = $db->prepare("
+                    SELECT COUNT(*) FROM pagamentos_plano
+                    WHERE tenant_id = ? AND matricula_id = ? AND id != ? AND data_vencimento < ?
+                ");
+                $stmtPrimeira->execute([$tenantId, $pagamento['matricula_id'], $pagamentoId, $pagamento['data_vencimento']]);
+                $isPrimeiraParcela = ((int) $stmtPrimeira->fetchColumn()) === 0;
+
+                $descontosAplicaveisAtual = $descontoModelAtual->buscarAplicaveis(
+                    $tenantId, (int) $pagamento['matricula_id'],
+                    $pagamento['data_vencimento'], $isPrimeiraParcela
+                );
+                $infoDescontoAtual = $descontoModelAtual->calcularDesconto(
+                    (float) $pagamento['valor'], $descontosAplicaveisAtual
+                );
+
+                if ($infoDescontoAtual['desconto_total'] > 0) {
+                    $valorAtualComDesconto = max(0, (float) $pagamento['valor'] - $infoDescontoAtual['desconto_total']);
+                    $stmtUpdDesc = $db->prepare("
+                        UPDATE pagamentos_plano
+                        SET valor = ?, valor_original = ?, desconto = ?, motivo_desconto = ?, updated_at = NOW()
+                        WHERE id = ? AND tenant_id = ?
+                    ");
+                    $stmtUpdDesc->execute([
+                        $valorAtualComDesconto,
+                        (float) $pagamento['valor'],
+                        $infoDescontoAtual['desconto_total'],
+                        $infoDescontoAtual['motivos'],
+                        $pagamentoId,
+                        $tenantId
+                    ]);
+
+                    // Salvar descontos aplicados na tabela pivot
+                    if (!empty($infoDescontoAtual['detalhes'])) {
+                        $descontoModelAtual->salvarDescontosAplicados($pagamentoId, $infoDescontoAtual['detalhes']);
+                    }
+
+                    // Decrementar parcelas_restantes dos descontos usados
+                    if (!empty($infoDescontoAtual['ids'])) {
+                        $descontoModelAtual->decrementarParcelas($infoDescontoAtual['ids']);
+                    }
+
+                    // Atualizar referência local para resposta
+                    $pagamento['valor'] = $valorAtualComDesconto;
+                    $pagamento['desconto'] = $infoDescontoAtual['desconto_total'];
+                    $pagamento['motivo_desconto'] = $infoDescontoAtual['motivos'];
+
+                    error_log("[confirmar] Desconto R$" . $infoDescontoAtual['desconto_total'] . " aplicado ao pagamento #{$pagamentoId}");
+                }
+            }
+
             // Confirmar o pagamento
             $pagamentoModel->confirmarPagamento(
                 $tenantId,
@@ -667,18 +793,38 @@ class PagamentoPlanoController
                 
                 // Se não existe, criar o próximo pagamento automaticamente
                 if (!$jaExiste) {
+                    // Aplicar descontos recorrentes à próxima parcela
+                    $descontoModel = new \App\Models\MatriculaDesconto($db);
+                    $descontosAplicaveis = $descontoModel->buscarAplicaveis(
+                        $tenantId, $pagamento['matricula_id'],
+                        $proximaDataVencimento->format('Y-m-d'), false
+                    );
+                    $infoDesconto = $descontoModel->calcularDesconto((float) $valorProximaParcela, $descontosAplicaveis);
+
                     $proximoPagamento = [
                         'tenant_id' => $tenantId,
                         'aluno_id' => $alunoIdProxima,
                         'matricula_id' => $pagamento['matricula_id'],
                         'plano_id' => $pagamento['plano_id'],
                         'valor' => $valorProximaParcela,
+                        'desconto' => $infoDesconto['desconto_total'],
+                        'motivo_desconto' => $infoDesconto['motivos'] ?: null,
                         'data_vencimento' => $proximaDataVencimento->format('Y-m-d'),
                         'status_pagamento_id' => 1, // Aguardando
                         'observacoes' => 'Pagamento gerado automaticamente após confirmação',
                         'criado_por' => $adminId
                     ];
-                    $pagamentoModel->criar($proximoPagamento);
+                    $novoPagamentoId = $pagamentoModel->criar($proximoPagamento);
+
+                    // Salvar descontos aplicados na tabela pivot
+                    if (!empty($infoDesconto['detalhes'])) {
+                        $descontoModel->salvarDescontosAplicados($novoPagamentoId, $infoDesconto['detalhes']);
+                    }
+
+                    // Decrementar parcelas_restantes dos descontos usados
+                    if (!empty($infoDesconto['ids'])) {
+                        $descontoModel->decrementarParcelas($infoDesconto['ids']);
+                    }
                 }
 
                 // Atualizar matrícula com a próxima data de vencimento

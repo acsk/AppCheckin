@@ -7437,20 +7437,21 @@ class MobileController
     // ========== RECORDES PESSOAIS (Mobile) ==========
 
     /**
-     * Listar provas disponíveis para o aluno
-     * GET /mobile/recordes/provas
+     * Listar definições de recordes disponíveis para o aluno
+     * GET /mobile/recordes/definicoes
      */
-    public function listarProvasRecorde(Request $request, Response $response): Response
+    public function listarDefinicoesRecorde(Request $request, Response $response): Response
     {
         $tenantId = $request->getAttribute('tenantId');
         $queryParams = $request->getQueryParams();
         $modalidadeId = isset($queryParams['modalidade_id']) ? (int) $queryParams['modalidade_id'] : null;
+        $categoria = $queryParams['categoria'] ?? null;
 
-        $provas = $this->recordePessoalModel->listarProvas($tenantId, true, $modalidadeId);
+        $definicoes = $this->recordePessoalModel->listarDefinicoes($tenantId, true, $modalidadeId, $categoria);
 
         $response->getBody()->write(json_encode([
             'success' => true,
-            'provas' => $provas
+            'definicoes' => $definicoes
         ], JSON_UNESCAPED_UNICODE));
 
         return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
@@ -7465,7 +7466,7 @@ class MobileController
         $tenantId = $request->getAttribute('tenantId');
         $userId = $request->getAttribute('userId');
         $queryParams = $request->getQueryParams();
-        $provaId = isset($queryParams['prova_id']) ? (int) $queryParams['prova_id'] : null;
+        $definicaoId = isset($queryParams['definicao_id']) ? (int) $queryParams['definicao_id'] : null;
 
         // Buscar aluno_id do usuário
         $stmtAluno = $this->db->prepare("SELECT id FROM alunos WHERE usuario_id = ? AND tenant_id = ? LIMIT 1");
@@ -7480,7 +7481,7 @@ class MobileController
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
         }
 
-        $recordes = $this->recordePessoalModel->listarPorAluno($tenantId, $alunoId, $provaId);
+        $recordes = $this->recordePessoalModel->listarPorAluno($tenantId, $alunoId, $definicaoId);
         $melhores = $this->recordePessoalModel->melhoresPorAluno($tenantId, $alunoId);
 
         $response->getBody()->write(json_encode([
@@ -7516,34 +7517,34 @@ class MobileController
         }
 
         // Validações
-        if (empty($data['prova_id'])) {
+        if (empty($data['definicao_id'])) {
             $response->getBody()->write(json_encode([
                 'success' => false,
-                'error' => 'Prova é obrigatória'
+                'error' => 'Definição é obrigatória'
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(422);
         }
-        if (empty($data['data_registro'])) {
+        if (empty($data['data_recorde'])) {
             $response->getBody()->write(json_encode([
                 'success' => false,
-                'error' => 'Data do registro é obrigatória'
+                'error' => 'Data do recorde é obrigatória'
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(422);
         }
-        if (empty($data['tempo_segundos']) && empty($data['valor'])) {
+        if (empty($data['valores']) || !is_array($data['valores'])) {
             $response->getBody()->write(json_encode([
                 'success' => false,
-                'error' => 'Tempo ou valor é obrigatório'
+                'error' => 'Pelo menos um valor é obrigatório'
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(422);
         }
 
-        // Verifica se prova existe
-        $prova = $this->recordePessoalModel->buscarProva((int) $data['prova_id'], $tenantId);
-        if (!$prova) {
+        // Verifica se definição existe
+        $definicao = $this->recordePessoalModel->buscarDefinicao((int) $data['definicao_id'], $tenantId);
+        if (!$definicao) {
             $response->getBody()->write(json_encode([
                 'success' => false,
-                'error' => 'Prova não encontrada'
+                'error' => 'Definição não encontrada'
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
         }
@@ -7552,10 +7553,9 @@ class MobileController
             $id = $this->recordePessoalModel->criar([
                 'tenant_id' => $tenantId,
                 'aluno_id' => $alunoId,
-                'prova_id' => (int) $data['prova_id'],
-                'tempo_segundos' => $data['tempo_segundos'] ?? null,
-                'valor' => $data['valor'] ?? null,
-                'data_registro' => $data['data_registro'],
+                'definicao_id' => (int) $data['definicao_id'],
+                'valores' => $data['valores'],
+                'data_recorde' => $data['data_recorde'],
                 'observacoes' => $data['observacoes'] ?? null,
                 'origem' => 'aluno',
                 'registrado_por' => $userId,
@@ -7604,10 +7604,10 @@ class MobileController
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
         }
 
-        if (empty($data['prova_id']) || empty($data['data_registro'])) {
+        if (empty($data['definicao_id']) || empty($data['data_recorde'])) {
             $response->getBody()->write(json_encode([
                 'success' => false,
-                'error' => 'Prova e data do registro são obrigatórios'
+                'error' => 'Definição e data do recorde são obrigatórios'
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(422);
         }
@@ -7676,30 +7676,30 @@ class MobileController
     }
 
     /**
-     * Ranking de recordes por prova
-     * GET /mobile/recordes/ranking/{provaId}
+     * Ranking de recordes por definição
+     * GET /mobile/recordes/ranking/{definicaoId}
      */
     public function rankingRecordes(Request $request, Response $response, array $args): Response
     {
-        $provaId = (int) $args['provaId'];
+        $definicaoId = (int) $args['definicaoId'];
         $tenantId = $request->getAttribute('tenantId');
         $queryParams = $request->getQueryParams();
         $limit = isset($queryParams['limit']) ? min((int) $queryParams['limit'], 100) : 50;
 
-        $prova = $this->recordePessoalModel->buscarProva($provaId, $tenantId);
-        if (!$prova) {
+        $definicao = $this->recordePessoalModel->buscarDefinicao($definicaoId, $tenantId);
+        if (!$definicao) {
             $response->getBody()->write(json_encode([
                 'success' => false,
-                'error' => 'Prova não encontrada'
+                'error' => 'Definição não encontrada'
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
         }
 
-        $ranking = $this->recordePessoalModel->rankingPorProva($tenantId, $provaId, $limit);
+        $ranking = $this->recordePessoalModel->rankingPorDefinicao($tenantId, $definicaoId, $limit);
 
         $response->getBody()->write(json_encode([
             'success' => true,
-            'prova' => $prova,
+            'definicao' => $definicao,
             'ranking' => $ranking
         ], JSON_UNESCAPED_UNICODE));
 
@@ -7707,17 +7707,17 @@ class MobileController
     }
 
     /**
-     * Recordes da escola (registrados pelo professor)
-     * GET /mobile/recordes/escola
+     * Recordes da academia (registrados pelo professor)
+     * GET /mobile/recordes/academia
      */
-    public function recordesEscola(Request $request, Response $response): Response
+    public function recordesAcademia(Request $request, Response $response): Response
     {
         $tenantId = $request->getAttribute('tenantId');
         $queryParams = $request->getQueryParams();
-        $provaId = isset($queryParams['prova_id']) ? (int) $queryParams['prova_id'] : null;
+        $definicaoId = isset($queryParams['definicao_id']) ? (int) $queryParams['definicao_id'] : null;
         $modalidadeId = isset($queryParams['modalidade_id']) ? (int) $queryParams['modalidade_id'] : null;
 
-        $recordes = $this->recordePessoalModel->listarRecordesEscola($tenantId, $provaId, $modalidadeId);
+        $recordes = $this->recordePessoalModel->listarRecordesAcademia($tenantId, $definicaoId, $modalidadeId);
 
         $response->getBody()->write(json_encode([
             'success' => true,

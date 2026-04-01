@@ -18,16 +18,16 @@ class PagamentoPlano
      */
     public function criar(array $dados): int
     {
-        // Calcular valor final aplicando desconto (se informado)
+        // valor = valor cheio ANTES do desconto (será armazenado como valor_original)
         $originalValor = isset($dados['valor']) ? (float)$dados['valor'] : 0.0;
         $desconto = isset($dados['desconto']) ? (float)$dados['desconto'] : 0.0;
         $valorFinal = max(0, $originalValor - $desconto);
 
         $sql = "INSERT INTO pagamentos_plano 
-            (tenant_id, aluno_id, matricula_id, plano_id, valor, desconto, motivo_desconto, data_vencimento, 
+            (tenant_id, aluno_id, matricula_id, plano_id, valor, valor_original, desconto, motivo_desconto, data_vencimento, 
              data_pagamento, status_pagamento_id, forma_pagamento_id, comprovante, observacoes, criado_por)
             VALUES 
-            (:tenant_id, :aluno_id, :matricula_id, :plano_id, :valor, :desconto, :motivo_desconto, :data_vencimento,
+            (:tenant_id, :aluno_id, :matricula_id, :plano_id, :valor, :valor_original, :desconto, :motivo_desconto, :data_vencimento,
              :data_pagamento, :status_pagamento_id, :forma_pagamento_id, :comprovante, :observacoes, :criado_por)";
         
         $stmt = $this->pdo->prepare($sql);
@@ -37,11 +37,12 @@ class PagamentoPlano
             'matricula_id' => $dados['matricula_id'],
             'plano_id' => $dados['plano_id'],
             'valor' => $valorFinal,
+            'valor_original' => $originalValor,
             'desconto' => $desconto,
             'motivo_desconto' => $dados['motivo_desconto'] ?? null,
             'data_vencimento' => $dados['data_vencimento'],
             'data_pagamento' => $dados['data_pagamento'] ?? null,
-            'status_pagamento_id' => $dados['status_pagamento_id'] ?? 1, // Default: Aguardando
+            'status_pagamento_id' => $dados['status_pagamento_id'] ?? 1,
             'forma_pagamento_id' => $dados['forma_pagamento_id'] ?? null,
             'comprovante' => $dados['comprovante'] ?? null,
             'observacoes' => $dados['observacoes'] ?? null,
@@ -445,17 +446,16 @@ class PagamentoPlano
         $fields = [];
         $params = ['tenant_id' => $tenantId, 'id' => $id];
 
-        // Se desconto foi informado, recalcular o valor armazenado (valor - desconto).
+        // Se desconto foi informado, recalcular o valor armazenado (valor_original - desconto).
         if (array_key_exists('desconto', $dados)) {
             $desconto = (float) $dados['desconto'];
-            if (!isset($dados['valor'])) {
-                $stmtCur = $this->pdo->prepare("SELECT valor FROM pagamentos_plano WHERE tenant_id = :tenant_id AND id = :id LIMIT 1");
-                $stmtCur->execute(['tenant_id' => $tenantId, 'id' => $id]);
-                $cur = $stmtCur->fetch(PDO::FETCH_ASSOC);
-                $baseValor = $cur ? (float)$cur['valor'] : 0.0;
-            } else {
-                $baseValor = (float) $dados['valor'];
-            }
+            // SEMPRE buscar valor_original do banco como base para evitar desconto-sobre-desconto
+            $stmtCur = $this->pdo->prepare("SELECT valor, valor_original FROM pagamentos_plano WHERE tenant_id = :tenant_id AND id = :id LIMIT 1");
+            $stmtCur->execute(['tenant_id' => $tenantId, 'id' => $id]);
+            $cur = $stmtCur->fetch(PDO::FETCH_ASSOC);
+            $baseValor = $cur && $cur['valor_original']
+                ? (float) $cur['valor_original']
+                : ($cur ? (float) $cur['valor'] + $desconto : 0.0);
             $novoValor = max(0, $baseValor - $desconto);
             $dados['valor'] = $novoValor;
         }
@@ -604,25 +604,46 @@ class PagamentoPlano
 
             $proximoVencimentoStr = $proximoVencimento->format('Y-m-d');
 
-            // Inserir próximo pagamento pendente
+            // Aplicar descontos recorrentes à próxima parcela
+            $descontoModel = new \App\Models\MatriculaDesconto($this->pdo);
+            $descontosAplicaveis = $descontoModel->buscarAplicaveis(
+                (int) $matricula['tenant_id'], $matriculaId, $proximoVencimentoStr, false
+            );
+            $infoDesconto = $descontoModel->calcularDesconto($valorParcela, $descontosAplicaveis);
+            $valorComDesconto = max(0, $valorParcela - $infoDesconto['desconto_total']);
+
+            // Inserir próximo pagamento pendente (INSERT direto, sem usar criar() para evitar double-subtraction)
             $stmtInsert = $this->pdo->prepare("
                 INSERT INTO pagamentos_plano (
                     tenant_id, aluno_id, matricula_id, plano_id,
-                    valor, data_vencimento, status_pagamento_id,
+                    valor, valor_original, desconto, motivo_desconto, data_vencimento, status_pagamento_id,
                     observacoes, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, NOW())
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NOW())
             ");
             $stmtInsert->execute([
                 $matricula['tenant_id'],
                 $matricula['aluno_id'],
                 $matriculaId,
                 $matricula['plano_id'],
+                $valorComDesconto,
                 $valorParcela,
+                $infoDesconto['desconto_total'],
+                $infoDesconto['motivos'] ?: null,
                 $proximoVencimentoStr,
                 'Pagamento gerado automaticamente após confirmação MP'
             ]);
 
             $novoId = (int) $this->pdo->lastInsertId();
+
+            // Salvar descontos aplicados na tabela pivot
+            if (!empty($infoDesconto['detalhes'])) {
+                $descontoModel->salvarDescontosAplicados($novoId, $infoDesconto['detalhes']);
+            }
+
+            // Decrementar parcelas_restantes dos descontos usados
+            if (!empty($infoDesconto['ids'])) {
+                $descontoModel->decrementarParcelas($infoDesconto['ids']);
+            }
 
             // Atualizar proxima_data_vencimento da matrícula
             $stmtUpdMat = $this->pdo->prepare("
@@ -630,12 +651,13 @@ class PagamentoPlano
             ");
             $stmtUpdMat->execute([$proximoVencimentoStr, $matriculaId]);
 
-            error_log("[gerarProximoPagamento] ✅ Matrícula #{$matriculaId}: próximo pagamento #{$novoId} criado para {$proximoVencimentoStr}");
+            error_log("[gerarProximoPagamento] ✅ Matrícula #{$matriculaId}: próximo pagamento #{$novoId} criado para {$proximoVencimentoStr} | Desconto: R$" . $infoDesconto['desconto_total']);
 
             return [
                 'id' => $novoId,
                 'data_vencimento' => $proximoVencimentoStr,
-                'valor' => $valorParcela,
+                'valor' => $valorComDesconto,
+                'desconto' => $infoDesconto['desconto_total'],
             ];
         } catch (\Exception $e) {
             error_log("[gerarProximoPagamento] ❌ Erro matrícula #{$matriculaId}: " . $e->getMessage());

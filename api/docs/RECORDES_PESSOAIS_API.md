@@ -1,8 +1,15 @@
-# Recordes Pessoais — Documentação API
+# Recordes — Documentação API
 
 ## Visão Geral
 
-Módulo de **Recordes Pessoais (PRs)** para registrar tempos e marcas de alunos em provas de natação e outras modalidades. Tanto o aluno (via mobile) quanto o professor/admin (via painel) podem registrar recordes. A escola também pode manter seus próprios recordes oficiais.
+Módulo genérico de **Recordes / PRs** para registrar marcas de alunos em qualquer modalidade: natação, cross, musculação, corrida, testes físicos, etc. Tanto o aluno (via mobile) quanto o professor/admin (via painel) podem registrar recordes. A academia também pode manter seus próprios recordes oficiais.
+
+A modelagem é baseada em **4 tabelas** que desacoplam a definição do teste das medições:
+
+1. **Definição** (`recorde_definicoes`) — o que está sendo medido (ex: Deadlift, 100m Crawl, AMRAP)
+2. **Métricas** (`recorde_definicao_metricas`) — como medir (ex: peso_kg, tempo_ms, rounds + reps)
+3. **Recorde** (`recordes`) — a tentativa/PR em si
+4. **Valores** (`recorde_valores`) — os valores alcançados para cada métrica
 
 ---
 
@@ -10,200 +17,219 @@ Módulo de **Recordes Pessoais (PRs)** para registrar tempos e marcas de alunos 
 
 | Conceito | Descrição |
 |---|---|
-| **Prova** | Tipo de evento/prova (ex: "25m Crawl", "50m Costas"). Configurável pelo admin. |
-| **Recorde** | Um registro de tempo/valor de um aluno em uma prova, com data. |
+| **Definição** | Tipo de recorde/teste (ex: "Deadlift", "100m Crawl", "AMRAP 12min"). Configurável pelo admin. |
+| **Métrica** | Como o recorde é medido. Cada definição tem 1+ métricas (ex: peso_kg, tempo_ms, rounds). |
+| **Recorde** | Um registro de tentativa de um aluno ou academia para uma definição, com data. |
+| **Valores** | Os valores medidos para cada métrica de um recorde. |
 | **Origem `aluno`** | Recorde registrado pelo próprio aluno (PR pessoal). |
-| **Origem `escola`** | Recorde registrado pelo professor/admin (recorde oficial da escola). |
-| **Unidade de medida** | `tempo` (segundos), `metros`, `repeticoes`, `peso_kg` — define como interpretar o valor. |
+| **Origem `academia`** | Recorde registrado pelo professor/admin (recorde oficial da academia). |
+| **Direção** | `maior_melhor` (Deadlift, reps) ou `menor_melhor` (tempo de natação, corrida). |
+| **Categoria** | `movimento`, `prova`, `workout`, `teste_fisico` — organiza os tipos de recorde. |
 
 ---
 
 ## Estrutura dos Dados
 
-### Prova (`recorde_provas`)
+### Definição (`recorde_definicoes`)
 
 ```json
 {
   "id": 1,
   "tenant_id": 1,
-  "modalidade_id": 3,
-  "modalidade_nome": "Natação",
-  "nome": "25m Crawl",
-  "distancia_metros": 25,
-  "estilo": "Crawl",
-  "unidade_medida": "tempo",
+  "modalidade_id": 2,
+  "modalidade_nome": "CrossFit",
+  "nome": "Deadlift",
+  "categoria": "movimento",
+  "descricao": null,
   "ativo": 1,
-  "ordem": 1,
-  "created_at": "2026-03-31 10:00:00",
-  "updated_at": "2026-03-31 10:00:00"
-}
-```
-
-| Campo | Tipo | Descrição |
-|---|---|---|
-| `modalidade_id` | int \| null | ID da modalidade associada (ex: Natação, CrossFit). Pode ser `null` |
-| `modalidade_nome` | string \| null | Nome da modalidade (retornado apenas na leitura) |
-| `nome` | string | Nome da prova (ex: "25m Crawl") |
-| `distancia_metros` | int \| null | Distância em metros |
-| `estilo` | string \| null | Crawl, Costas, Peito, Borboleta, Medley |
-| `unidade_medida` | enum | `tempo`, `metros`, `repeticoes`, `peso_kg` |
-| `ativo` | 0 \| 1 | Se a prova está disponível |
-| `ordem` | int | Ordem de exibição na listagem |
-
-### Recorde (`recordes_pessoais`)
-
-```json
-{
-  "id": 1,
-  "tenant_id": 1,
-  "aluno_id": 42,
-  "prova_id": 1,
-  "tempo_segundos": 32.45,
-  "valor": null,
-  "data_registro": "2026-03-15",
-  "observacoes": "Treino matutino",
-  "origem": "aluno",
-  "registrado_por": 10,
-  "prova_nome": "25m Crawl",
-  "distancia_metros": 25,
-  "estilo": "Crawl",
-  "unidade_medida": "tempo",
-  "modalidade_id": 3,
-  "modalidade_nome": "Natação",
-  "aluno_nome": "João Silva",
-  "registrado_por_nome": "João Silva"
-}
-```
-
-| Campo | Tipo | Descrição |
-|---|---|---|
-| `aluno_id` | int \| null | ID do aluno. `null` = recorde da escola |
-| `prova_id` | int | ID da prova |
-| `tempo_segundos` | decimal \| null | Tempo em segundos (usar quando `unidade_medida = tempo`) |
-| `valor` | decimal \| null | Valor genérico (usar quando `unidade_medida != tempo`) |
-| `data_registro` | date | Data do recorde (YYYY-MM-DD) |
-| `observacoes` | string \| null | Texto livre |
-| `origem` | enum | `aluno` ou `escola` |
-| `registrado_por` | int \| null | ID do usuário que registrou |
-
-> **Regra de valor:** Se a prova tem `unidade_medida = "tempo"`, envie `tempo_segundos`. Para outras unidades, envie `valor`.
-
----
-
-## Endpoints — Painel Admin
-
-Base: `/admin`  
-Auth: Bearer Token + AdminMiddleware
-
-### Provas (CRUD)
-
-#### Listar Provas
-```
-GET /admin/recordes/provas
-```
-Query params:
-- `todas=true` — inclui provas desativadas (default: só ativas)
-- `modalidade_id=3` — filtrar por modalidade
-
-**Resposta 200:**
-```json
-{
-  "provas": [
+  "ordem": 10,
+  "metricas": [
     {
       "id": 1,
-      "modalidade_id": 3,
-      "modalidade_nome": "Natação",
-      "nome": "25m Crawl",
-      "distancia_metros": 25,
-      "estilo": "Crawl",
-      "unidade_medida": "tempo",
-      "ativo": 1,
-      "ordem": 1
+      "definicao_id": 1,
+      "codigo": "peso_kg",
+      "nome": "Carga",
+      "tipo_valor": "decimal",
+      "unidade": "kg",
+      "ordem_comparacao": 1,
+      "direcao": "maior_melhor",
+      "obrigatoria": 1
     }
   ]
 }
 ```
 
-#### Buscar Prova por ID
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `modalidade_id` | int \| null | FK para modalidade (Natação, CrossFit, etc.) |
+| `nome` | string | Nome da definição (ex: "Deadlift", "100m Crawl") |
+| `categoria` | enum | `movimento`, `prova`, `workout`, `teste_fisico` |
+| `descricao` | string \| null | Descrição opcional |
+| `ativo` | 0 \| 1 | Se está disponível |
+| `ordem` | int | Ordem de exibição |
+| `metricas` | array | Métricas associadas (sempre retornadas junto) |
+
+### Métrica (`recorde_definicao_metricas`)
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `codigo` | string | Identificador único por definição (ex: `peso_kg`, `tempo_ms`, `repeticoes`) |
+| `nome` | string | Nome legível (ex: "Carga", "Tempo", "Repetições") |
+| `tipo_valor` | enum | `inteiro`, `decimal`, `tempo_ms` |
+| `unidade` | string \| null | Unidade de medida (ex: `kg`, `ms`, `reps`, `m`) |
+| `ordem_comparacao` | int | 1 = principal (usado no ranking), 2 = desempate, etc. |
+| `direcao` | enum | `maior_melhor` ou `menor_melhor` |
+| `obrigatoria` | 0 \| 1 | Se o valor é obrigatório ao registrar |
+
+### Recorde (`recordes`)
+
+```json
+{
+  "id": 1,
+  "tenant_id": 1,
+  "aluno_id": 10,
+  "definicao_id": 1,
+  "definicao_nome": "Deadlift",
+  "categoria": "movimento",
+  "modalidade_nome": "CrossFit",
+  "origem": "aluno",
+  "data_recorde": "2026-04-01",
+  "observacoes": "Novo PR de deadlift",
+  "registrado_por": 10,
+  "valido": 1,
+  "aluno_nome": "João Silva",
+  "valores": [
+    {
+      "recorde_id": 1,
+      "metrica_id": 1,
+      "codigo": "peso_kg",
+      "metrica_nome": "Carga",
+      "tipo_valor": "decimal",
+      "unidade": "kg",
+      "direcao": "maior_melhor",
+      "valor_int": null,
+      "valor_decimal": "180.000",
+      "valor_tempo_ms": null
+    }
+  ]
+}
 ```
-GET /admin/recordes/provas/{id}
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `aluno_id` | int \| null | ID do aluno. `null` = recorde da academia |
+| `definicao_id` | int | ID da definição |
+| `origem` | enum | `aluno` ou `academia` |
+| `data_recorde` | date | Data do recorde (YYYY-MM-DD) |
+| `observacoes` | string \| null | Texto livre |
+| `valido` | 0 \| 1 | Se o recorde é válido |
+| `valores` | array | Valores para cada métrica |
+
+### Valor (`recorde_valores`)
+
+Cada valor usa o campo correspondente ao `tipo_valor` da métrica:
+
+| tipo_valor | Campo usado |
+|---|---|
+| `inteiro` | `valor_int` (BIGINT) |
+| `decimal` | `valor_decimal` (DECIMAL 12,3) |
+| `tempo_ms` | `valor_tempo_ms` (BIGINT — milissegundos) |
+
+---
+
+## Endpoints — Painel Admin
+
+Base: `/admin`
+Auth: Bearer Token + AdminMiddleware
+
+### Definições (CRUD)
+
+#### Listar Definições
 ```
+GET /admin/recordes/definicoes
+```
+Query params:
+- `todas=true` — inclui desativadas (default: só ativas)
+- `modalidade_id=2` — filtrar por modalidade
+- `categoria=movimento` — filtrar por categoria
 
 **Resposta 200:**
 ```json
 {
-  "prova": { ... }
+  "definicoes": [
+    {
+      "id": 1,
+      "nome": "Deadlift",
+      "categoria": "movimento",
+      "modalidade_nome": "CrossFit",
+      "ativo": 1,
+      "ordem": 10,
+      "metricas": [
+        {
+          "codigo": "peso_kg",
+          "nome": "Carga",
+          "tipo_valor": "decimal",
+          "unidade": "kg",
+          "direcao": "maior_melhor"
+        }
+      ]
+    }
+  ]
 }
 ```
 
-#### Criar Prova
+#### Buscar Definição por ID
 ```
-POST /admin/recordes/provas
+GET /admin/recordes/definicoes/{id}
+```
+
+#### Criar Definição (com métricas)
+```
+POST /admin/recordes/definicoes
 Content-Type: application/json
 ```
 **Body:**
 ```json
 {
-  "nome": "100m Medley",
-  "modalidade_id": 3,
-  "distancia_metros": 100,
-  "estilo": "Medley",
-  "unidade_medida": "tempo",
-  "ordem": 10
+  "nome": "AMRAP 12 min - Cindy",
+  "modalidade_id": 2,
+  "categoria": "workout",
+  "descricao": "5 Pull-ups, 10 Push-ups, 15 Squats",
+  "ordem": 15,
+  "metricas": [
+    {
+      "codigo": "rounds",
+      "nome": "Rounds",
+      "tipo_valor": "inteiro",
+      "unidade": "rounds",
+      "ordem_comparacao": 1,
+      "direcao": "maior_melhor"
+    },
+    {
+      "codigo": "repeticoes",
+      "nome": "Repetições extras",
+      "tipo_valor": "inteiro",
+      "unidade": "reps",
+      "ordem_comparacao": 2,
+      "direcao": "maior_melhor",
+      "obrigatoria": 0
+    }
+  ]
 }
 ```
-Campos obrigatórios: `nome`
+Campos obrigatórios: `nome`, `metricas` (array com pelo menos 1 item contendo `codigo`, `nome`, `direcao`)
 
-**Resposta 201:**
-```json
-{
-  "type": "success",
-  "message": "Prova criada com sucesso",
-  "prova": { ... }
-}
+#### Atualizar Definição
 ```
+PUT /admin/recordes/definicoes/{id}
+```
+Mesma estrutura do POST. Se `metricas` for enviado, as anteriores são substituídas.
 
-#### Atualizar Prova
+#### Desativar Definição
 ```
-PUT /admin/recordes/provas/{id}
-Content-Type: application/json
-```
-**Body:**
-```json
-{
-  "nome": "100m Medley",
-  "modalidade_id": 3,
-  "distancia_metros": 100,
-  "estilo": "Medley",
-  "unidade_medida": "tempo",
-  "ordem": 10,
-  "ativo": 1
-}
-```
-Campos obrigatórios: `nome`
-
-**Resposta 200:**
-```json
-{
-  "type": "success",
-  "message": "Prova atualizada com sucesso",
-  "prova": { ... }
-}
-```
-
-#### Desativar Prova
-```
-DELETE /admin/recordes/provas/{id}
+DELETE /admin/recordes/definicoes/{id}
 ```
 > Não exclui fisicamente, apenas desativa (`ativo = 0`).
-
-**Resposta 200:**
-```json
-{
-  "type": "success",
-  "message": "Prova desativada com sucesso"
-}
-```
 
 ---
 
@@ -215,41 +241,13 @@ GET /admin/recordes
 ```
 Query params:
 - `aluno_id=42` — filtrar por aluno
-- `prova_id=1` — filtrar por prova
-- `origem=escola` — apenas recordes da escola
-- `modalidade_id=3` — filtrar por modalidade
-
-**Resposta 200:**
-```json
-{
-  "recordes": [
-    {
-      "id": 1,
-      "aluno_id": 42,
-      "prova_id": 1,
-      "tempo_segundos": "32.45",
-      "valor": null,
-      "data_registro": "2026-03-15",
-      "observacoes": null,
-      "origem": "escola",
-      "prova_nome": "25m Crawl",
-      "aluno_nome": "João Silva",
-      "registrado_por_nome": "Prof. Carlos"
-    }
-  ]
-}
-```
+- `definicao_id=1` — filtrar por definição
+- `origem=academia` — apenas recordes da academia
+- `modalidade_id=2` — filtrar por modalidade
 
 #### Buscar Recorde por ID
 ```
 GET /admin/recordes/{id}
-```
-
-**Resposta 200:**
-```json
-{
-  "recorde": { ... }
-}
 ```
 
 #### Criar Recorde
@@ -260,206 +258,115 @@ Content-Type: application/json
 **Body:**
 ```json
 {
-  "prova_id": 1,
-  "aluno_id": 42,
-  "tempo_segundos": 28.90,
-  "data_registro": "2026-03-20",
-  "observacoes": "Competição interna",
-  "origem": "escola"
+  "definicao_id": 1,
+  "aluno_id": 10,
+  "data_recorde": "2026-04-01",
+  "observacoes": "Novo PR de deadlift",
+  "origem": "academia",
+  "valores": [
+    { "metrica_id": 1, "valor_decimal": 180.000 }
+  ]
 }
 ```
-Campos obrigatórios: `prova_id`, `data_registro`, (`tempo_segundos` ou `valor`)
+Campos obrigatórios: `definicao_id`, `data_recorde`, `valores` (array com pelo menos 1 item)
 
-| Campo | Observação |
+| Campo | Descrição |
 |---|---|
-| `aluno_id` | Opcional. Se null = recorde geral da escola |
-| `origem` | Default: `escola`. Use `aluno` se quiser registrar um PR do aluno pelo admin |
-| `tempo_segundos` | Usar para provas com `unidade_medida = tempo` |
-| `valor` | Usar para provas com `unidade_medida != tempo` |
+| `aluno_id` | Opcional. Se null = recorde geral da academia |
+| `origem` | Default: `academia` |
+| `valores[].metrica_id` | ID da métrica |
+| `valores[].valor_int` | Para tipo `inteiro` |
+| `valores[].valor_decimal` | Para tipo `decimal` |
+| `valores[].valor_tempo_ms` | Para tipo `tempo_ms` |
 
-**Resposta 201:**
+**Exemplo AMRAP (múltiplas métricas):**
 ```json
 {
-  "type": "success",
-  "message": "Recorde registrado com sucesso",
-  "recorde": { ... }
+  "definicao_id": 5,
+  "aluno_id": 10,
+  "data_recorde": "2026-04-01",
+  "valores": [
+    { "metrica_id": 8, "valor_int": 15 },
+    { "metrica_id": 9, "valor_int": 7 }
+  ]
 }
 ```
 
 #### Atualizar Recorde
 ```
 PUT /admin/recordes/{id}
-Content-Type: application/json
-```
-**Body:**
-```json
-{
-  "prova_id": 1,
-  "tempo_segundos": 27.50,
-  "data_registro": "2026-03-25",
-  "observacoes": "Melhorou o tempo"
-}
-```
-Campos obrigatórios: `prova_id`, `data_registro`
-
-**Resposta 200:**
-```json
-{
-  "type": "success",
-  "message": "Recorde atualizado com sucesso",
-  "recorde": { ... }
-}
 ```
 
 #### Excluir Recorde
 ```
 DELETE /admin/recordes/{id}
 ```
-> Exclui fisicamente o registro.
-
-**Resposta 200:**
-```json
-{
-  "type": "success",
-  "message": "Recorde excluído com sucesso"
-}
-```
 
 ---
 
 ### Ranking
 
-#### Ranking por Prova
+#### Ranking por Definição
 ```
-GET /admin/recordes/ranking/{provaId}
+GET /admin/recordes/ranking/{definicaoId}
 ```
 Query params:
-- `limit=50` — quantidade máxima de resultados (default: 50, max: 100)
+- `limit=50` — max de resultados (default: 50, max: 100)
 
-Retorna o melhor tempo/valor de cada aluno na prova, ordenado do melhor para o pior.
+Usa a **métrica principal** (`ordem_comparacao = 1`) e sua `direcao` para ordenar.
 
 **Resposta 200:**
 ```json
 {
-  "prova": {
-    "id": 1,
-    "nome": "25m Crawl",
-    "unidade_medida": "tempo"
-  },
+  "definicao": { "id": 1, "nome": "Deadlift", "metricas": [...] },
   "ranking": [
     {
-      "aluno_id": 42,
+      "aluno_id": 10,
       "aluno_nome": "João Silva",
-      "melhor_tempo": "25.30",
-      "melhor_valor": null,
-      "data_recorde": "2026-03-20",
-      "unidade_medida": "tempo"
-    },
-    {
-      "aluno_id": 15,
-      "aluno_nome": "Maria Santos",
-      "melhor_tempo": "26.10",
-      "melhor_valor": null,
-      "data_recorde": "2026-03-18",
-      "unidade_medida": "tempo"
+      "melhor_valor": "180.000",
+      "data_recorde": "2026-04-01",
+      "metrica_codigo": "peso_kg",
+      "metrica_nome": "Carga",
+      "metrica_unidade": "kg",
+      "metrica_direcao": "maior_melhor",
+      "metrica_tipo_valor": "decimal"
     }
   ]
 }
 ```
-
-> **Para `unidade_medida = "tempo"`**: ordenado por `melhor_tempo` ASC (menor = melhor).  
-> **Para outras unidades**: ordenado por `melhor_valor` DESC (maior = melhor).
 
 ---
 
 ## Endpoints — App Mobile
 
-Base: `/mobile`  
+Base: `/mobile`
 Auth: Bearer Token
 
-### Listar Provas Disponíveis
+### Listar Definições Disponíveis
 ```
-GET /mobile/recordes/provas
+GET /mobile/recordes/definicoes
 ```
 Query params:
-- `modalidade_id=3` — filtrar por modalidade (opcional)
+- `modalidade_id=2` — filtrar por modalidade
+- `categoria=movimento` — filtrar por categoria
 
-**Resposta 200:**
-```json
-{
-  "success": true,
-  "provas": [
-    {
-      "id": 1,
-      "modalidade_id": 3,
-      "modalidade_nome": "Natação",
-      "nome": "25m Crawl",
-      "distancia_metros": 25,
-      "estilo": "Crawl",
-      "unidade_medida": "tempo",
-      "ordem": 1
-    }
-  ]
-}
-```
-
----
-
-### Meus Recordes (PRs do aluno logado)
+### Meus Recordes
 ```
 GET /mobile/recordes/meus
 ```
 Query params:
-- `prova_id=1` — filtrar por prova (opcional)
+- `definicao_id=1` — filtrar por definição
 
-Retorna todos os registros + os melhores (PRs) agrupados por prova.
+Retorna todos os registros + os melhores (PRs) agrupados por definição.
 
 **Resposta 200:**
 ```json
 {
   "success": true,
-  "recordes": [
-    {
-      "id": 1,
-      "prova_id": 1,
-      "tempo_segundos": "32.45",
-      "valor": null,
-      "data_registro": "2026-03-10",
-      "observacoes": null,
-      "origem": "aluno",
-      "prova_nome": "25m Crawl",
-      "unidade_medida": "tempo"
-    },
-    {
-      "id": 5,
-      "prova_id": 1,
-      "tempo_segundos": "30.20",
-      "valor": null,
-      "data_registro": "2026-03-20",
-      "observacoes": "Treino forte",
-      "origem": "aluno",
-      "prova_nome": "25m Crawl",
-      "unidade_medida": "tempo"
-    }
-  ],
-  "melhores": [
-    {
-      "id": 5,
-      "prova_id": 1,
-      "tempo_segundos": "30.20",
-      "data_registro": "2026-03-20",
-      "prova_nome": "25m Crawl",
-      "distancia_metros": 25,
-      "estilo": "Crawl",
-      "unidade_medida": "tempo"
-    }
-  ]
+  "recordes": [...],
+  "melhores": [...]
 }
 ```
-
-> `melhores` contém apenas 1 registro por prova (o melhor tempo ou maior valor).
-
----
 
 ### Registrar Meu Recorde
 ```
@@ -469,133 +376,39 @@ Content-Type: application/json
 **Body:**
 ```json
 {
-  "prova_id": 1,
-  "tempo_segundos": 29.80,
-  "data_registro": "2026-03-31",
-  "observacoes": "Novo PR!"
+  "definicao_id": 1,
+  "data_recorde": "2026-04-01",
+  "observacoes": "Novo PR!",
+  "valores": [
+    { "metrica_id": 1, "valor_decimal": 185.000 }
+  ]
 }
 ```
-Campos obrigatórios: `prova_id`, `data_registro`, (`tempo_segundos` ou `valor`)
-
-> Automaticamente registra com `origem = "aluno"` e `aluno_id` do usuário logado.
-
-**Resposta 201:**
-```json
-{
-  "success": true,
-  "message": "Recorde registrado com sucesso",
-  "recorde": { ... }
-}
-```
-
----
+Campos obrigatórios: `definicao_id`, `data_recorde`, `valores`
 
 ### Atualizar Meu Recorde
 ```
 PUT /mobile/recordes/{id}
-Content-Type: application/json
 ```
-**Body:**
-```json
-{
-  "prova_id": 1,
-  "tempo_segundos": 28.50,
-  "data_registro": "2026-03-31",
-  "observacoes": "Corrigi o tempo"
-}
-```
-
 > Só permite editar recordes do próprio aluno com `origem = "aluno"`.
-
-**Resposta 200:**
-```json
-{
-  "success": true,
-  "message": "Recorde atualizado com sucesso",
-  "recorde": { ... }
-}
-```
-
----
 
 ### Excluir Meu Recorde
 ```
 DELETE /mobile/recordes/{id}
 ```
 
-> Só permite excluir recordes do próprio aluno com `origem = "aluno"`.
-
-**Resposta 200:**
-```json
-{
-  "success": true,
-  "message": "Recorde excluído com sucesso"
-}
+### Ranking por Definição (Mobile)
+```
+GET /mobile/recordes/ranking/{definicaoId}
 ```
 
----
-
-### Ranking por Prova (Mobile)
+### Recordes da Academia
 ```
-GET /mobile/recordes/ranking/{provaId}
+GET /mobile/recordes/academia
 ```
 Query params:
-- `limit=50` — quantidade máxima (default: 50, max: 100)
-
-**Resposta 200:**
-```json
-{
-  "success": true,
-  "prova": {
-    "id": 1,
-    "nome": "25m Crawl",
-    "unidade_medida": "tempo"
-  },
-  "ranking": [
-    {
-      "aluno_id": 42,
-      "aluno_nome": "João Silva",
-      "melhor_tempo": "25.30",
-      "melhor_valor": null,
-      "data_recorde": "2026-03-20",
-      "unidade_medida": "tempo"
-    }
-  ]
-}
-```
-
----
-
-### Recordes da Escola
-```
-GET /mobile/recordes/escola
-```
-Query params:
-- `prova_id=1` — filtrar por prova (opcional)
-- `modalidade_id=3` — filtrar por modalidade (opcional)
-
-Retorna recordes registrados pelo professor/admin (`origem = "escola"`).
-
-**Resposta 200:**
-```json
-{
-  "success": true,
-  "recordes": [
-    {
-      "id": 10,
-      "aluno_id": 42,
-      "prova_id": 1,
-      "tempo_segundos": "24.50",
-      "data_registro": "2026-03-28",
-      "observacoes": "Recorde da escola",
-      "origem": "escola",
-      "prova_nome": "25m Crawl",
-      "aluno_nome": "João Silva",
-      "registrado_por_nome": "Prof. Carlos"
-    }
-  ]
-}
-```
+- `definicao_id=1` — filtrar por definição
+- `modalidade_id=2` — filtrar por modalidade
 
 ---
 
@@ -605,7 +418,7 @@ Retorna recordes registrados pelo professor/admin (`origem = "escola"`).
 |---|---|
 | 200 | Sucesso |
 | 201 | Criado com sucesso |
-| 404 | Recurso não encontrado (prova, recorde, aluno) |
+| 404 | Recurso não encontrado (definição, recorde, aluno) |
 | 422 | Validação falhou (campo obrigatório faltando) |
 | 500 | Erro interno do servidor |
 
@@ -613,60 +426,95 @@ Retorna recordes registrados pelo professor/admin (`origem = "escola"`).
 
 ## Formatação de Tempo (sugestão para o front)
 
-O campo `tempo_segundos` armazena o tempo em **segundos com centésimos** (ex: `92.45` = 1min 32seg 45cent).
-
-Exemplo de formatação:
+O campo `valor_tempo_ms` armazena tempo em **milissegundos** (ex: `92450` = 1min 32seg 450ms).
 
 ```javascript
-function formatarTempo(segundos) {
-  if (!segundos) return '--';
-  const s = parseFloat(segundos);
-  const min = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  const cent = Math.round((s % 1) * 100);
-  
+function formatarTempo(ms) {
+  if (!ms) return '--';
+  const totalSec = ms / 1000;
+  const min = Math.floor(totalSec / 60);
+  const sec = Math.floor(totalSec % 60);
+  const milli = Math.round(ms % 1000);
+
   if (min > 0) {
-    return `${min}:${String(sec).padStart(2, '0')}.${String(cent).padStart(2, '0')}`;
+    return `${min}:${String(sec).padStart(2, '0')}.${String(milli).padStart(3, '0')}`;
   }
-  return `${sec}.${String(cent).padStart(2, '0')}s`;
+  return `${sec}.${String(milli).padStart(3, '0')}s`;
 }
 
-// formatarTempo(92.45) → "1:32.45"
-// formatarTempo(25.30) → "25.30s"
-```
-
-## Input de Tempo (sugestão para o front)
-
-Para facilitar o input, sugere-se um campo com máscara `MM:SS.cc` ou apenas `SS.cc`:
-
-```javascript
-function tempoParaSegundos(input) {
-  // Aceita "1:32.45" ou "92.45"
-  if (input.includes(':')) {
-    const [min, rest] = input.split(':');
-    return parseInt(min) * 60 + parseFloat(rest);
-  }
-  return parseFloat(input);
-}
+// formatarTempo(92450) → "1:32.450"
+// formatarTempo(25300) → "25.300s"
 ```
 
 ---
 
-## Provas Pré-cadastradas
+## Definições Pré-cadastradas
 
-As seguintes provas são criadas automaticamente para cada escola, associadas à modalidade **Natação** (`modalidade_id` vinculado automaticamente caso a modalidade exista):
+As seguintes definições são criadas automaticamente para cada escola na migration:
 
-| Prova | Distância | Estilo | Unidade |
-|---|---|---|---|
-| 25m Crawl | 25m | Crawl | tempo |
-| 50m Crawl | 50m | Crawl | tempo |
-| 100m Crawl | 100m | Crawl | tempo |
-| 200m Crawl | 200m | Crawl | tempo |
-| 25m Costas | 25m | Costas | tempo |
-| 50m Costas | 50m | Costas | tempo |
-| 25m Peito | 25m | Peito | tempo |
-| 50m Peito | 50m | Peito | tempo |
-| 25m Borboleta | 25m | Borboleta | tempo |
-| 50m Borboleta | 50m | Borboleta | tempo |
+### Natação
 
-O admin pode criar provas adicionais pelo painel, vinculando-as a qualquer modalidade cadastrada.
+| Nome | Categoria | Métrica | Unidade | Direção |
+|---|---|---|---|---|
+| 25m Crawl | prova | tempo_ms | ms | menor_melhor |
+| 50m Crawl | prova | tempo_ms | ms | menor_melhor |
+| 100m Crawl | prova | tempo_ms | ms | menor_melhor |
+| 50m Costas | prova | tempo_ms | ms | menor_melhor |
+| 50m Peito | prova | tempo_ms | ms | menor_melhor |
+| 50m Borboleta | prova | tempo_ms | ms | menor_melhor |
+
+### Musculação / Cross
+
+| Nome | Categoria | Métrica | Unidade | Direção |
+|---|---|---|---|---|
+| Deadlift | movimento | peso_kg | kg | maior_melhor |
+| Back Squat | movimento | peso_kg | kg | maior_melhor |
+| BMU Máximo de Repetições | movimento | repeticoes | reps | maior_melhor |
+
+### Corrida
+
+| Nome | Categoria | Métrica | Unidade | Direção |
+|---|---|---|---|---|
+| Corrida 5km | prova | tempo_ms | ms | menor_melhor |
+
+O admin pode criar definições adicionais pelo painel, cada uma com suas próprias métricas e regras de comparação.
+
+---
+
+## Exemplos de Uso
+
+### Deadlift (1 métrica, maior melhor)
+```json
+// Definição: Deadlift → peso_kg → maior_melhor
+// Registrar PR:
+POST /mobile/recordes
+{
+  "definicao_id": 7,
+  "data_recorde": "2026-04-01",
+  "valores": [{ "metrica_id": 10, "valor_decimal": 180.0 }]
+}
+```
+
+### 100m Crawl (1 métrica, menor melhor)
+```json
+// Definição: 100m Crawl → tempo_ms → menor_melhor
+POST /mobile/recordes
+{
+  "definicao_id": 3,
+  "data_recorde": "2026-04-01",
+  "valores": [{ "metrica_id": 3, "valor_tempo_ms": 65230 }]
+}
+```
+
+### AMRAP (2 métricas)
+```json
+// Definição: AMRAP 12min → rounds (principal) + reps (desempate)
+POST /mobile/recordes
+{
+  "definicao_id": 5,
+  "data_recorde": "2026-04-01",
+  "valores": [
+    { "metrica_id": 8, "valor_int": 15 },
+    { "metrica_id": 9, "valor_int": 7 }
+  ]
+}

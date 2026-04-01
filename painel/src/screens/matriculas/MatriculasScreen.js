@@ -16,6 +16,7 @@ import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import LayoutBase from '../../components/LayoutBase';
 import { matriculaService } from '../../services/matriculaService';
+import { authService } from '../../services/authService';
 import { StyleSheet } from 'react-native';
 
 export default function MatriculasScreen() {
@@ -37,6 +38,7 @@ export default function MatriculasScreen() {
     pacoteContratoId: null,
   });
   const [deleting, setDeleting] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState(null);
   const statusEffectRef = useRef(false);
 
   const isMobile = width < 768;
@@ -68,6 +70,9 @@ export default function MatriculasScreen() {
   });
 
   useEffect(() => {
+    authService.getCurrentUser().then((user) => {
+      if (user?.id) setCurrentUserId(Number(user.id));
+    });
     carregarMatriculas();
   }, []);
 
@@ -564,15 +569,15 @@ export default function MatriculasScreen() {
             >
               <Feather name="file-text" size={18} color="#f97316" />
             </Pressable>
-              {/* {matricula.status_id !== 3 && matricula.status_id !== 4 && (
-                <Pressable
-                  onPress={() => handleOpenDeletePreview(matricula)}
-                  className="h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
-                  style={({ pressed }) => [pressed && { opacity: 0.7 }]}
-                >
-                  <Feather name="trash-2" size={18} color="#ef4444" />
-                </Pressable>
-              )} */}
+                {currentUserId === 3 && matricula.status_id !== 3 && matricula.status_id !== 4 && (
+                  <Pressable
+                    onPress={() => handleOpenDeletePreview(matricula)}
+                    className="h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
+                    style={({ pressed }) => [pressed && { opacity: 0.7 }]}
+                  >
+                    <Feather name="trash-2" size={18} color="#ef4444" />
+                  </Pressable>
+                )}
           </View>
         </View>
       ))}

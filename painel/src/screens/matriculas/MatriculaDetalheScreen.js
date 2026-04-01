@@ -25,6 +25,7 @@ import { formatarDataParaInput, calcularDiasRestantes } from '../../utils/format
 import { mascaraData } from '../../utils/masks';
 import { obterMensagemErro } from '../../utils/errorHandler';
 import { authService } from '../../services/authService';
+import descontoMatriculaService from '../../services/descontoMatriculaService';
 
 export default function MatriculaDetalheScreen() {
   const { id } = useLocalSearchParams();
@@ -89,6 +90,23 @@ export default function MatriculaDetalheScreen() {
   const [baixaPacoteLoading, setBaixaPacoteLoading] = useState(false);
   const [errorModal, setErrorModal] = useState({ visible: false, title: '', message: '' });
   const [currentUserId, setCurrentUserId] = useState(null);
+
+  // Descontos
+  const [descontos, setDescontos] = useState([]);
+  const [loadingDescontos, setLoadingDescontos] = useState(false);
+  const [modalDescontoVisible, setModalDescontoVisible] = useState(false);
+  const [salvandoDesconto, setSalvandoDesconto] = useState(false);
+  const [descontoEditando, setDescontoEditando] = useState(null); // null = novo, obj = editar
+  const [formDesconto, setFormDesconto] = useState({
+    tipo: 'recorrente',
+    modo: 'valor', // 'valor' | 'percentual'
+    valor: '',
+    percentual: '',
+    motivo: '',
+    vigencia_inicio: '',
+    vigencia_fim: '',
+    parcelas_restantes: '',
+  });
 
   useEffect(() => {
     authService.getCurrentUser().then((user) => {
@@ -160,6 +178,15 @@ export default function MatriculaDetalheScreen() {
       } catch (error) {
         console.log('Endpoint de pagamentos não disponível ainda');
         setPagamentos(pagamentosDaMatricula);
+      }
+
+      // Buscar descontos da matrícula
+      try {
+        const responseDescontos = await descontoMatriculaService.listar(id);
+        setDescontos(responseDescontos?.descontos || []);
+      } catch (error) {
+        console.log('Endpoint de descontos não disponível ainda');
+        setDescontos([]);
       }
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
@@ -873,6 +900,97 @@ export default function MatriculaDetalheScreen() {
 
     normalizado = normalizado.replace(/[^\d.-]/g, '');
     return Number(normalizado);
+  };
+
+  // --- Descontos ---
+  const abrirNovoDesconto = () => {
+    setDescontoEditando(null);
+    const hoje = new Date();
+    const hojeISO = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
+    setFormDesconto({
+      tipo: 'recorrente',
+      modo: 'valor',
+      valor: '',
+      percentual: '',
+      motivo: '',
+      vigencia_inicio: hojeISO,
+      vigencia_fim: '',
+      parcelas_restantes: '',
+    });
+    setModalDescontoVisible(true);
+  };
+
+  const abrirEditarDesconto = (desc) => {
+    setDescontoEditando(desc);
+    setFormDesconto({
+      tipo: desc.tipo || 'recorrente',
+      modo: desc.percentual ? 'percentual' : 'valor',
+      valor: desc.valor ? formatarMoedaInput(desc.valor) : '',
+      percentual: desc.percentual ? String(desc.percentual).replace('.', ',') : '',
+      motivo: desc.motivo || '',
+      vigencia_inicio: desc.vigencia_inicio || '',
+      vigencia_fim: desc.vigencia_fim || '',
+      parcelas_restantes: desc.parcelas_restantes != null ? String(desc.parcelas_restantes) : '',
+    });
+    setModalDescontoVisible(true);
+  };
+
+  const handleSalvarDesconto = async () => {
+    if (!formDesconto.motivo.trim()) {
+      showAlert('Atenção', 'Informe o motivo do desconto.');
+      return;
+    }
+
+    const payload = {
+      tipo: formDesconto.tipo,
+      motivo: formDesconto.motivo.trim(),
+    };
+
+    if (formDesconto.modo === 'valor') {
+      const val = parseMoeda(formDesconto.valor);
+      if (!val || val <= 0) { showAlert('Atenção', 'Informe um valor de desconto válido.'); return; }
+      payload.valor = val;
+    } else {
+      const pct = parseFloat(String(formDesconto.percentual).replace(',', '.'));
+      if (!pct || pct <= 0 || pct > 100) { showAlert('Atenção', 'Informe um percentual entre 0,01 e 100.'); return; }
+      payload.percentual = pct;
+    }
+
+    if (formDesconto.vigencia_inicio) payload.vigencia_inicio = formDesconto.vigencia_inicio;
+    if (formDesconto.vigencia_fim) payload.vigencia_fim = formDesconto.vigencia_fim;
+    if (formDesconto.parcelas_restantes !== '') {
+      const prc = parseInt(formDesconto.parcelas_restantes, 10);
+      if (prc > 0) payload.parcelas_restantes = prc;
+    }
+
+    try {
+      setSalvandoDesconto(true);
+      if (descontoEditando) {
+        await descontoMatriculaService.atualizar(descontoEditando.id, payload);
+        showToast('Desconto atualizado com sucesso!');
+      } else {
+        await descontoMatriculaService.criar(id, payload);
+        showToast('Desconto criado com sucesso!');
+      }
+      setModalDescontoVisible(false);
+      carregarDados();
+    } catch (error) {
+      const mensagem = obterMensagemErro(error, 'Erro ao salvar desconto');
+      showAlert('Erro', mensagem);
+    } finally {
+      setSalvandoDesconto(false);
+    }
+  };
+
+  const handleDesativarDesconto = async (descontoId) => {
+    try {
+      await descontoMatriculaService.desativar(descontoId);
+      showToast('Desconto desativado.');
+      carregarDados();
+    } catch (error) {
+      const mensagem = obterMensagemErro(error, 'Erro ao desativar desconto');
+      showAlert('Erro', mensagem);
+    }
   };
 
   const handleAbrirEditarPagamento = (pagamento) => {
@@ -1592,8 +1710,308 @@ export default function MatriculaDetalheScreen() {
               </View>
             </View>
           )}
+
+          {/* Card de Descontos */}
+          <View className="mb-10 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-md">
+            <View className="flex-row items-center justify-between border-b border-slate-200 bg-slate-50 px-5 py-4">
+              <View className="flex-row items-center gap-3">
+                <View className="h-10 w-10 items-center justify-center rounded-xl bg-violet-500 shadow-sm">
+                  <Feather name="percent" size={20} color="#fff" />
+                </View>
+                <View>
+                  <Text className="text-sm font-semibold text-slate-800">Descontos</Text>
+                  <Text className="text-xs text-slate-500">
+                    {descontos.filter((d) => d.ativo === 1).length} ativo(s)
+                  </Text>
+                </View>
+              </View>
+              <Pressable
+                className="flex-row items-center gap-1.5 rounded-lg bg-violet-500 px-3 py-2"
+                style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                onPress={abrirNovoDesconto}
+              >
+                <Feather name="plus" size={14} color="#fff" />
+                <Text className="text-[12px] font-semibold text-white">Adicionar</Text>
+              </Pressable>
+            </View>
+
+            {descontos.length === 0 ? (
+              <View className="px-5 py-6">
+                <View className="flex-row items-center gap-3">
+                  <View className="h-10 w-10 items-center justify-center rounded-full bg-slate-100">
+                    <Feather name="info" size={18} color="#94a3b8" />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-sm font-semibold text-slate-700">Nenhum desconto cadastrado</Text>
+                    <Text className="mt-1 text-xs text-slate-500">
+                      Adicione descontos para aplicação automática nas próximas parcelas.
+                    </Text>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <View className="gap-3 px-4 py-3">
+                {descontos.map((desc) => (
+                  <View
+                    key={desc.id}
+                    className={`rounded-xl border px-4 py-3 ${desc.ativo === 1 ? 'border-violet-200 bg-violet-50/50' : 'border-slate-200 bg-slate-50 opacity-60'}`}
+                  >
+                    <View className="flex-row items-start justify-between">
+                      <View className="flex-1">
+                        <View className="flex-row items-center gap-2 mb-1">
+                          <View className={`rounded-full px-2 py-0.5 ${desc.tipo === 'primeira_mensalidade' ? 'bg-amber-100' : 'bg-violet-100'}`}>
+                            <Text className={`text-[10px] font-bold ${desc.tipo === 'primeira_mensalidade' ? 'text-amber-700' : 'text-violet-700'}`}>
+                              {desc.tipo === 'primeira_mensalidade' ? '1ª MENSALIDADE' : 'RECORRENTE'}
+                            </Text>
+                          </View>
+                          <View className={`rounded-full px-2 py-0.5 ${desc.ativo === 1 ? 'bg-emerald-100' : 'bg-slate-200'}`}>
+                            <Text className={`text-[10px] font-bold ${desc.ativo === 1 ? 'text-emerald-700' : 'text-slate-500'}`}>
+                              {desc.ativo === 1 ? 'ATIVO' : 'INATIVO'}
+                            </Text>
+                          </View>
+                        </View>
+
+                        <Text className="text-base font-bold text-slate-800">
+                          {desc.valor ? formatCurrency(desc.valor) : `${String(desc.percentual).replace('.', ',')}%`}
+                        </Text>
+                        <Text className="text-xs text-slate-500 mt-0.5">{desc.motivo}</Text>
+
+                        <View className="flex-row flex-wrap gap-x-4 gap-y-1 mt-2">
+                          <Text className="text-[11px] text-slate-400">
+                            Início: {desc.vigencia_inicio ? formatDate(desc.vigencia_inicio) : '-'}
+                          </Text>
+                          <Text className="text-[11px] text-slate-400">
+                            Fim: {desc.vigencia_fim ? formatDate(desc.vigencia_fim) : 'Indefinido'}
+                          </Text>
+                          {desc.parcelas_restantes != null && (
+                            <Text className="text-[11px] text-slate-400">
+                              Parcelas restantes: {desc.parcelas_restantes}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+
+                      {desc.ativo === 1 && (
+                        <View className="flex-row gap-1.5 ml-2">
+                          <Pressable
+                            className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5"
+                            style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                            onPress={() => abrirEditarDesconto(desc)}
+                          >
+                            <Feather name="edit-2" size={14} color="#334155" />
+                          </Pressable>
+                          <Pressable
+                            className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1.5"
+                            style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                            onPress={() => handleDesativarDesconto(desc.id)}
+                          >
+                            <Feather name="x" size={14} color="#dc2626" />
+                          </Pressable>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
         </View>
       </ScrollView>
+
+      {/* Modal Desconto (Novo + Editar) */}
+      <Modal
+        visible={modalDescontoVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModalDescontoVisible(false)}
+      >
+        <Pressable
+          className="flex-1 items-center justify-center bg-black/40 px-4"
+          onPress={() => setModalDescontoVisible(false)}
+        >
+          <Pressable onPress={(e) => e.stopPropagation()} className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {/* Header */}
+              <View className="flex-row items-center justify-between border-b border-slate-200 px-6 py-4">
+                <Text className="text-lg font-bold text-slate-800">
+                  {descontoEditando ? 'Editar Desconto' : 'Novo Desconto'}
+                </Text>
+                <Pressable onPress={() => setModalDescontoVisible(false)} style={({ pressed }) => [pressed && { opacity: 0.7 }]}>
+                  <Feather name="x" size={22} color="#64748b" />
+                </Pressable>
+              </View>
+
+              <View className="px-6 py-4 gap-4">
+                {/* Tipo */}
+                <View>
+                  <Text className="text-xs font-semibold text-slate-600 mb-1.5">Tipo de desconto</Text>
+                  <View className="flex-row gap-2">
+                    {[
+                      { value: 'primeira_mensalidade', label: '1ª Mensalidade' },
+                      { value: 'recorrente', label: 'Recorrente' },
+                    ].map((opt) => (
+                      <Pressable
+                        key={opt.value}
+                        onPress={() => setFormDesconto({ ...formDesconto, tipo: opt.value })}
+                        className={`flex-1 items-center rounded-lg border py-2.5 ${formDesconto.tipo === opt.value ? 'border-violet-500 bg-violet-500' : 'border-slate-200 bg-white'}`}
+                        style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                      >
+                        <Text className={`text-[13px] font-semibold ${formDesconto.tipo === opt.value ? 'text-white' : 'text-slate-600'}`}>
+                          {opt.label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Modo: Valor / Percentual */}
+                <View>
+                  <Text className="text-xs font-semibold text-slate-600 mb-1.5">Desconto em</Text>
+                  <View className="flex-row gap-2">
+                    {[
+                      { value: 'valor', label: 'R$ (Fixo)' },
+                      { value: 'percentual', label: '% (Percentual)' },
+                    ].map((opt) => (
+                      <Pressable
+                        key={opt.value}
+                        onPress={() => setFormDesconto({ ...formDesconto, modo: opt.value })}
+                        className={`flex-1 items-center rounded-lg border py-2.5 ${formDesconto.modo === opt.value ? 'border-violet-500 bg-violet-500' : 'border-slate-200 bg-white'}`}
+                        style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                      >
+                        <Text className={`text-[13px] font-semibold ${formDesconto.modo === opt.value ? 'text-white' : 'text-slate-600'}`}>
+                          {opt.label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+
+                {/* Campo valor ou percentual */}
+                {formDesconto.modo === 'valor' ? (
+                  <View>
+                    <Text className="text-xs font-semibold text-slate-600 mb-1.5">Valor do desconto (R$)</Text>
+                    <TextInput
+                      className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-base font-bold text-slate-800"
+                      placeholder="0,00"
+                      value={formDesconto.valor}
+                      onChangeText={(val) => setFormDesconto({ ...formDesconto, valor: aplicarMascaraDesconto(val) })}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                ) : (
+                  <View>
+                    <Text className="text-xs font-semibold text-slate-600 mb-1.5">Percentual (%)</Text>
+                    <TextInput
+                      className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-base font-bold text-slate-800"
+                      placeholder="0,00"
+                      value={formDesconto.percentual}
+                      onChangeText={(val) => {
+                        const limpo = val.replace(/[^0-9,]/g, '');
+                        setFormDesconto({ ...formDesconto, percentual: limpo });
+                      }}
+                      keyboardType="decimal-pad"
+                    />
+                  </View>
+                )}
+
+                {/* Motivo */}
+                <View>
+                  <Text className="text-xs font-semibold text-slate-600 mb-1.5">Motivo *</Text>
+                  <TextInput
+                    className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800"
+                    placeholder="Ex: Promoção de inauguração, Funcionário..."
+                    value={formDesconto.motivo}
+                    onChangeText={(val) => setFormDesconto({ ...formDesconto, motivo: val })}
+                  />
+                </View>
+
+                {/* Vigência */}
+                <View className="flex-row gap-3">
+                  <View className="flex-1">
+                    <Text className="text-xs font-semibold text-slate-600 mb-1.5">Início vigência</Text>
+                    <TextInput
+                      className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800"
+                      placeholder="dd/mm/aaaa"
+                      value={formDesconto.vigencia_inicio ? mascaraData(formDesconto.vigencia_inicio.split('-').reverse().join('')) : ''}
+                      onChangeText={(val) => {
+                        const masked = mascaraData(val);
+                        if (masked.length === 10) {
+                          const [d, m, y] = masked.split('/');
+                          setFormDesconto({ ...formDesconto, vigencia_inicio: `${y}-${m}-${d}` });
+                        } else {
+                          setFormDesconto({ ...formDesconto, vigencia_inicio: '' });
+                        }
+                      }}
+                      keyboardType="numeric"
+                      maxLength={10}
+                    />
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-xs font-semibold text-slate-600 mb-1.5">Fim vigência</Text>
+                    <TextInput
+                      className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800"
+                      placeholder="Indefinido"
+                      value={formDesconto.vigencia_fim ? mascaraData(formDesconto.vigencia_fim.split('-').reverse().join('')) : ''}
+                      onChangeText={(val) => {
+                        const masked = mascaraData(val);
+                        if (masked.length === 10) {
+                          const [d, m, y] = masked.split('/');
+                          setFormDesconto({ ...formDesconto, vigencia_fim: `${y}-${m}-${d}` });
+                        } else {
+                          setFormDesconto({ ...formDesconto, vigencia_fim: '' });
+                        }
+                      }}
+                      keyboardType="numeric"
+                      maxLength={10}
+                    />
+                  </View>
+                </View>
+
+                {/* Parcelas restantes */}
+                {formDesconto.tipo === 'recorrente' && (
+                  <View>
+                    <Text className="text-xs font-semibold text-slate-600 mb-1.5">Parcelas restantes (vazio = sem limite)</Text>
+                    <TextInput
+                      className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-800"
+                      placeholder="Sem limite"
+                      value={formDesconto.parcelas_restantes}
+                      onChangeText={(val) => setFormDesconto({ ...formDesconto, parcelas_restantes: val.replace(/\D/g, '') })}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                )}
+              </View>
+
+              {/* Botões */}
+              <View className="flex-row gap-3 border-t border-slate-200 px-6 py-4">
+                <Pressable
+                  onPress={() => setModalDescontoVisible(false)}
+                  className="flex-1 items-center justify-center rounded-lg bg-slate-200 py-3"
+                  style={({ pressed }) => [pressed && { opacity: 0.7 }]}
+                  disabled={salvandoDesconto}
+                >
+                  <Text className="text-sm font-semibold text-slate-700">Cancelar</Text>
+                </Pressable>
+                <Pressable
+                  onPress={handleSalvarDesconto}
+                  disabled={salvandoDesconto}
+                  className="flex-[2] flex-row items-center justify-center gap-2 rounded-lg bg-violet-500 py-3"
+                  style={({ pressed }) => [pressed && { opacity: 0.8 }, salvandoDesconto && { opacity: 0.6 }]}
+                >
+                  {salvandoDesconto ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Feather name="save" size={16} color="#fff" />
+                  )}
+                  <Text className="text-sm font-bold text-white">
+                    {salvandoDesconto ? 'Salvando...' : descontoEditando ? 'Salvar Alterações' : 'Criar Desconto'}
+                  </Text>
+                </Pressable>
+              </View>
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* Modal de Baixa de Pagamento */}
       <BaixaPagamentoPlanoModal
@@ -2519,6 +2937,13 @@ export default function MatriculaDetalheScreen() {
               style={{ maxHeight: isDesktop ? 430 : 360 }}
               showsVerticalScrollIndicator={false}
             >
+              {pagamentoEditando?.valor_original && (
+                <View className="mb-3 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2.5 flex-row items-center justify-between">
+                  <Text className="text-xs font-semibold text-blue-700">Valor original da mensalidade</Text>
+                  <Text className="text-sm font-bold text-blue-800">{formatCurrency(pagamentoEditando.valor_original)}</Text>
+                </View>
+              )}
+
               <View className="mb-3 flex-row gap-3">
                 <View className="flex-1">
                   <Text className="mb-1 text-xs font-semibold uppercase text-slate-500">Valor</Text>

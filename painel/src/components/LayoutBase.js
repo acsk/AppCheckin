@@ -29,6 +29,7 @@ const MENU = [
   { label: 'Professores', path: '/professores', icon: 'user', roles: [3, 4] },
   { label: 'Aulas', path: '/turmas', icon: 'calendar', roles: [3, 4] },
   { label: 'WOD', path: '/wods', icon: 'zap', roles: [3, 4] },
+  { label: 'Recordes', path: '/recordes', icon: 'award', roles: [3, 4] },
   { label: 'Planos Sistema', path: '/planos-sistema', icon: 'layers', roles: [4] },
   { label: 'Usuários', path: '/usuarios', icon: 'users', roles: [3, 4] },
   { label: 'Formas de Pagamento', path: '/formas-pagamento', icon: 'credit-card', roles: [3, 4] },
