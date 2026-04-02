@@ -9,8 +9,14 @@ import {
   Animated,
   Easing,
   Platform,
-  StatusBar
+  StatusBar,
+  LayoutAnimation,
+  UIManager
 } from 'react-native';
+
+if (Platform.OS === 'android') {
+  UIManager.setLayoutAnimationEnabledExperimental?.(true);
+}
 import { Feather } from '@expo/vector-icons';
 import { useRouter, usePathname } from 'expo-router';
 import { authService } from '../services/authService';
@@ -19,24 +25,82 @@ const MENU = [
   { label: 'Dashboard', path: '/', icon: 'home', roles: [3, 4] },
   { label: 'Academias', path: '/academias', icon: 'briefcase', roles: [4] },
   { label: 'Contratos', path: '/contratos', icon: 'file-text', roles: [4] },
-  { label: 'Alunos', path: '/alunos', icon: 'users', roles: [3, 4] },
-  { label: 'Matrículas', path: '/matriculas', icon: 'user-check', roles: [3, 4] },
-  { label: 'Vencimentos', path: '/matriculas/vencimentos', icon: 'clock', roles: [3, 4] },
-  { label: 'Assinaturas', path: '/assinaturas', icon: 'repeat', roles: [3, 4] },
-  { label: 'Planos', path: '/planos', icon: 'package', roles: [3, 4] },
-  { label: 'Pacotes', path: '/pacotes', icon: 'archive', roles: [3, 4] },
-  { label: 'Modalidades', path: '/modalidades', icon: 'activity', roles: [3, 4] },
-  { label: 'Professores', path: '/professores', icon: 'user', roles: [3, 4] },
-  { label: 'Aulas', path: '/turmas', icon: 'calendar', roles: [3, 4] },
-  { label: 'WOD', path: '/wods', icon: 'zap', roles: [3, 4] },
-  { label: 'Recordes', path: '/recordes', icon: 'award', roles: [3, 4] },
-  { label: 'Planos Sistema', path: '/planos-sistema', icon: 'layers', roles: [4] },
-  { label: 'Usuários', path: '/usuarios', icon: 'users', roles: [3, 4] },
-  { label: 'Formas de Pagamento', path: '/formas-pagamento', icon: 'credit-card', roles: [3, 4] },
-  { label: 'Pagamentos MP', path: '/pagamentos-mp', icon: 'dollar-sign', roles: [3, 4] },
-  { label: 'Configurações de Pagamento', path: '/configuracoes-pagamento', icon: 'settings', roles: [3, 4] },
-  { label: 'Auditoria', path: '/auditoria', icon: 'shield', roles: [3, 4] },
+  {
+    label: 'Manutenção',
+    icon: 'tool',
+    roles: [3, 4],
+    children: [
+      { label: 'Alunos', path: '/alunos', icon: 'users', roles: [3, 4] },
+      { label: 'Matrículas', path: '/matriculas', icon: 'user-check', roles: [3, 4] },
+      { label: 'Professores', path: '/professores', icon: 'user', roles: [3, 4] },
+      { label: 'Usuários', path: '/usuarios', icon: 'users', roles: [3, 4] },
+      { label: 'Modalidades', path: '/modalidades', icon: 'activity', roles: [3, 4] },
+      { label: 'Pacotes', path: '/pacotes', icon: 'archive', roles: [3, 4] },
+    ],
+  },
+  {
+    label: 'Financeiro',
+    icon: 'tool',
+    roles: [3, 4],
+    children: [
+      { label: 'Vencimentos', path: '/matriculas/vencimentos', icon: 'clock', roles: [3, 4] },
+      { label: 'Assinaturas', path: '/assinaturas', icon: 'repeat', roles: [3, 4] },
+      { label: 'Planos', path: '/planos', icon: 'package', roles: [3, 4] },
+      { label: 'Formas de Pagamento', path: '/formas-pagamento', icon: 'credit-card', roles: [3, 4] },
+      { label: 'Pagamentos MP', path: '/pagamentos-mp', icon: 'dollar-sign', roles: [3, 4] },
+  
+    ],
+  },
+  {
+    label: 'Academia',
+    icon: 'tool',
+    roles: [3, 4],
+    children: [
+      { label: 'WOD', path: '/wods', icon: 'zap', roles: [3, 4] },
+      { label: 'Recordes', path: '/recordes', icon: 'award', roles: [3, 4] },
+      { label: 'Aulas', path: '/turmas', icon: 'calendar', roles: [3, 4] },
+      
+  
+    ],
+  },
+  {
+    label: 'Configurações',
+    icon: 'tool',
+    roles: [3, 4],
+    children: [
+           
+      { label: 'Planos Sistema', path: '/planos-sistema', icon: 'layers', roles: [4] },
+      { label: 'Configurações de Pagamento', path: '/configuracoes-pagamento', icon: 'settings', roles: [3, 4] },
+      { label: 'Auditoria', path: '/auditoria', icon: 'shield', roles: [3, 4] },
+  
+    ],
+  },
 ];
+
+function AccordionChildren({ isOpen, children }) {
+  const fadeAnim = React.useRef(new Animated.Value(0)).current;
+  const translateAnim = React.useRef(new Animated.Value(-8)).current;
+
+  React.useEffect(() => {
+    if (isOpen) {
+      Animated.parallel([
+        Animated.timing(fadeAnim, { toValue: 1, duration: 220, useNativeDriver: true }),
+        Animated.spring(translateAnim, { toValue: 0, tension: 120, friction: 10, useNativeDriver: true }),
+      ]).start();
+    } else {
+      fadeAnim.setValue(0);
+      translateAnim.setValue(-8);
+    }
+  }, [isOpen]);
+
+  if (!isOpen) return null;
+
+  return (
+    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: translateAnim }] }}>
+      {children}
+    </Animated.View>
+  );
+}
 
 const BREAKPOINT_MOBILE = 768;
 const BREAKPOINT_TABLET = 1024;
@@ -49,6 +113,7 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
   const [usuarioInfo, setUsuarioInfo] = React.useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerVisible, setDrawerVisible] = useState(false);
+  const [openGroups, setOpenGroups] = useState({});
   
   // Animações
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
@@ -130,6 +195,11 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
   const nome = usuarioInfo?.nome || 'Usuário';
   const canAccessParametros = usuarioInfo?.papel_id === 4 || usuarioInfo?.papel_id === 3;
 
+  const toggleGroup = (label) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));
+  };
+
   const renderSidebarContent = (isMobileDrawer = false) => (
     <View className="flex-1">
       {/* Header do Sidebar */}
@@ -186,58 +256,83 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
 
             return menuItems.map((item) => {
               if (item.children) {
+                const childPaths = item.children.map((c) => c.path);
+                const hasActiveChild = childPaths.some(
+                  (p) => p === bestMatchPath
+                );
+                const isOpen = openGroups[item.label] ?? hasActiveChild;
+
                 return (
-                  <View key={item.label} className="mt-1.5">
-                    <View className="flex-row items-center gap-2.5 px-3 py-1.5">
-                      <View className="h-7 w-7 items-center justify-center rounded-md bg-slate-100">
-                        <Feather name={item.icon} size={14} color="#64748b" />
+                  <View key={item.label} className="mt-1">
+                    {/* Header do grupo */}
+                    <Pressable
+                      onPress={() => toggleGroup(item.label)}
+                      style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
+                      className={`flex-row items-center gap-2.5 rounded-xl px-3 py-2 ${
+                        isOpen
+                          ? 'bg-orange-50 border border-orange-200'
+                          : hasActiveChild
+                          ? 'bg-orange-50'
+                          : 'bg-transparent'
+                      }`}
+                    >
+                      <View className={`h-7 w-7 items-center justify-center rounded-lg ${
+                        isOpen ? 'bg-orange-500' : hasActiveChild ? 'bg-orange-100' : 'bg-slate-100'
+                      }`}>
+                        <Feather name={item.icon} size={14} color={isOpen ? '#ffffff' : hasActiveChild ? '#f97316' : '#64748b'} />
                       </View>
-                      <Text className="flex-1 text-[11px] font-semibold text-slate-400">
+                      <Text className={`flex-1 text-[12px] font-bold ${
+                        isOpen ? 'text-orange-700' : hasActiveChild ? 'text-orange-600' : 'text-slate-500'
+                      }`}>
                         {item.label}
                       </Text>
-                    </View>
+                      <View className={`h-5 w-5 items-center justify-center rounded-full ${
+                        isOpen ? 'bg-orange-200' : 'bg-slate-100'
+                      }`}>
+                        <Feather
+                          name={isOpen ? 'chevron-up' : 'chevron-down'}
+                          size={12}
+                          color={isOpen ? '#ea580c' : '#94a3b8'}
+                        />
+                      </View>
+                    </Pressable>
 
-                    <View className="gap-0">
-                      {item.children.map((child) => {
-                        const selected = child.path === bestMatchPath;
+                    {/* Sub-itens com borda lateral */}
+                    <AccordionChildren isOpen={isOpen}>
+                      <View className="ml-3 mt-0.5 rounded-b-xl bg-orange-50 border-l-2 border-orange-200 pl-1 pb-1.5 pt-0.5 gap-0">
+                        {item.children.map((child) => {
+                          const selected = child.path === bestMatchPath;
 
-                        return (
-                          <Pressable
-                            key={child.label}
-                            onPress={() => {
-                              router.push(child.path);
-                              if (isMobile) closeDrawer();
-                            }}
-                            style={({ pressed }) => [
-                              { opacity: pressed ? 0.7 : 1 }
-                            ]}
-                            className={`flex-row items-center gap-2.5 rounded-lg py-1.5 pl-10 pr-3 ${
-                              selected 
-                                ? 'bg-orange-500' 
-                                : 'bg-transparent'
-                            }`}
-                          >
-                            <View className={`h-7 w-7 items-center justify-center rounded-md ${
-                              selected ? 'bg-white/20' : 'bg-slate-100'
-                            }`}>
-                              <Feather 
-                                name={child.icon} 
-                                size={14} 
-                                color={selected ? '#ffffff' : '#64748b'} 
-                              />
-                            </View>
-                            <Text className={`flex-1 text-[12px] font-medium ${
-                              selected ? 'text-white' : 'text-slate-600'
-                            }`}>
-                              {child.label}
-                            </Text>
-                            {selected && (
-                              <View className="h-1.5 w-1.5 rounded-full bg-white" />
-                            )}
-                          </Pressable>
-                        );
-                      })}
-                    </View>
+                          return (
+                            <Pressable
+                              key={child.label}
+                              onPress={() => {
+                                router.push(child.path);
+                                if (isMobile) closeDrawer();
+                              }}
+                              style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
+                              className={`flex-row items-center gap-2.5 rounded-lg py-1.5 pl-4 pr-3 ${
+                                selected ? 'bg-orange-500' : 'bg-transparent'
+                              }`}
+                            >
+                              <View className={`h-6 w-6 items-center justify-center rounded-md ${
+                                selected ? 'bg-white/20' : 'bg-slate-50'
+                              }`}>
+                                <Feather name={child.icon} size={13} color={selected ? '#ffffff' : '#64748b'} />
+                              </View>
+                              <Text className={`flex-1 text-[12px] font-medium ${
+                                selected ? 'text-white' : 'text-slate-600'
+                              }`}>
+                                {child.label}
+                              </Text>
+                              {selected && (
+                                <View className="h-1.5 w-1.5 rounded-full bg-white" />
+                              )}
+                            </Pressable>
+                          );
+                        })}
+                      </View>
+                    </AccordionChildren>
                   </View>
                 );
               }
