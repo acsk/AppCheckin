@@ -549,7 +549,7 @@ class PagamentoPlanoController
 
             // Sincronizar datas da matrícula com base nas parcelas reais
             // PULAR matrículas com assinatura ATIVA (datas gerenciadas pela assinatura)
-            // Assinaturas canceladas NÃO bloqueiam o sync (matrícula passa a ser gerenciada manualmente)
+            // Assinaturas canceladas = pagamento agora é manual, sync deve funcionar
             $matriculaId = (int) $pagamento['matricula_id'];
 
             $stmtAss = $db->prepare("
