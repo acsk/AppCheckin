@@ -6,15 +6,17 @@ echo "=== Debug Matrícula #78 ===\n\n";
 // Matrícula
 $mat = $db->query("
     SELECT m.*, p.nome as plano_nome, p.duracao_dias,
-           pc.nome as ciclo_nome, pc.meses as ciclo_meses
+           pc.meses as ciclo_meses, af.meses as frequencia_meses
     FROM matriculas m
     LEFT JOIN planos p ON p.id = m.plano_id
     LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+    LEFT JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
     WHERE m.id = 78
 ")->fetch(PDO::FETCH_ASSOC);
+$cicloMeses = (int) ($mat['ciclo_meses'] ?? $mat['frequencia_meses'] ?? 0);
 echo "--- Matrícula ---\n";
 echo "ID: {$mat['id']}\n";
-echo "Plano: {$mat['plano_nome']} | Ciclo: {$mat['ciclo_nome']} ({$mat['ciclo_meses']} meses) | duracao_dias: {$mat['duracao_dias']}\n";
+echo "Plano: {$mat['plano_nome']} | Ciclo: {$cicloMeses} meses | duracao_dias: {$mat['duracao_dias']}\n";
 echo "data_inicio: {$mat['data_inicio']}\n";
 echo "data_vencimento (acesso até): {$mat['data_vencimento']}\n";
 echo "proxima_data_vencimento: {$mat['proxima_data_vencimento']}\n";
