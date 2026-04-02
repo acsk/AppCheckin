@@ -75,11 +75,21 @@ function RegistrosLista({ tipo, registros, onGoMatricula }) {
               <Text style={styles.registroLabel}>Modalidade:</Text>
               <Text style={styles.registroValue}>{r.modalidade_nome}</Text>
             </View>
-            <View style={styles.registroRow}>
+            <View style={[styles.registroRow, { flexWrap: 'wrap', gap: 6 }]}>
               <Text style={styles.registroLabel}>Matrículas IDs:</Text>
-              <Text style={[styles.registroValue, { color: '#f97316', fontWeight: '700' }]}>
-                #{r.matricula_ids?.replace(/,/g, ', #')}
-              </Text>
+              {(r.matricula_ids?.split(',') || []).map((idRaw) => {
+                const id = idRaw.trim();
+                return (
+                  <TouchableOpacity
+                    key={id}
+                    style={styles.irMatriculaBtn}
+                    onPress={() => onGoMatricula(id)}
+                  >
+                    <Feather name="external-link" size={12} color="#6366f1" />
+                    <Text style={styles.irMatriculaText}>#{id}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
             <View style={styles.registroRow}>
               <Text style={styles.registroLabel}>Planos:</Text>
