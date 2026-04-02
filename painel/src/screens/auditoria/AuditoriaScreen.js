@@ -19,6 +19,21 @@ export default function AuditoriaScreen() {
         <TouchableOpacity
           style={styles.actionButton}
           activeOpacity={0.7}
+          onPress={() => router.push('/auditoria/anomalias-datas')}
+        >
+          <View style={[styles.actionIcon, { backgroundColor: '#fff7ed' }]}>
+            <Feather name="alert-triangle" size={22} color="#f97316" />
+          </View>
+          <View style={styles.actionContent}>
+            <Text style={styles.actionLabel}>Anomalias de Datas</Text>
+            <Text style={styles.actionDesc}>Inconsistências em matrículas: vencimentos, duplicatas e cancelamentos indevidos</Text>
+          </View>
+          <Feather name="chevron-right" size={20} color="#9ca3af" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionButton}
+          activeOpacity={0.7}
           onPress={() => router.push('/auditoria/pagamentos-duplicados')}
         >
           <View style={styles.actionIcon}>

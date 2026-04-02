@@ -190,4 +190,219 @@ class AuditoriaController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
     }
+
+    /**
+     * Anomalias de datas em matrículas
+     * GET /admin/auditoria/anomalias-datas
+     *
+     * Detecta:
+     * 1. proxima_data_vencimento NULL em matrículas ativas
+     * 2. proxima_data_vencimento desatualizada vs parcelas pendentes
+     * 3. Matrículas ativas com vencimento já expirado
+     * 4. Matrículas canceladas/vencidas que têm parcelas futuras pendentes
+     * 5. Matrículas duplicadas (mesmo aluno + modalidade ativas)
+     */
+    public function anomaliasDatas(Request $request, Response $response): Response
+    {
+        $tenantId = $request->getAttribute('tenant_id');
+        $db = require __DIR__ . '/../../config/database.php';
+
+        try {
+            $anomalias = [];
+
+            // 1. proxima_data_vencimento NULL em matrículas ativas
+            $sql = "
+                SELECT m.id AS matricula_id, a.nome AS aluno_nome, p.nome AS plano_nome,
+                       m.data_vencimento, m.proxima_data_vencimento, sm.codigo AS status
+                FROM matriculas m
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
+                INNER JOIN alunos a ON a.id = m.aluno_id
+                INNER JOIN planos p ON p.id = m.plano_id
+                WHERE m.tenant_id = :tid
+                  AND sm.codigo = 'ativa'
+                  AND m.proxima_data_vencimento IS NULL
+                ORDER BY a.nome
+            ";
+            $stmt = $db->prepare($sql);
+            $stmt->execute(['tid' => $tenantId]);
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            if ($rows) {
+                $anomalias[] = [
+                    'tipo' => 'proxima_data_vencimento_null',
+                    'descricao' => 'Matrículas ativas com proxima_data_vencimento NULL',
+                    'severidade' => 'alta',
+                    'total' => count($rows),
+                    'registros' => $rows,
+                ];
+            }
+
+            // 2. proxima_data_vencimento desatualizada (não bate com próxima parcela pendente)
+            $sql = "
+                SELECT m.id AS matricula_id, a.nome AS aluno_nome, p.nome AS plano_nome,
+                       m.proxima_data_vencimento AS vencimento_matricula,
+                       MIN(pp.data_vencimento) AS proxima_parcela_pendente,
+                       sm.codigo AS status
+                FROM matriculas m
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
+                INNER JOIN alunos a ON a.id = m.aluno_id
+                INNER JOIN planos p ON p.id = m.plano_id
+                INNER JOIN pagamentos_plano pp ON pp.matricula_id = m.id
+                    AND pp.status_pagamento_id IN (1, 3)
+                WHERE m.tenant_id = :tid
+                  AND sm.codigo = 'ativa'
+                  AND m.proxima_data_vencimento IS NOT NULL
+                GROUP BY m.id, a.nome, p.nome, m.proxima_data_vencimento, sm.codigo
+                HAVING m.proxima_data_vencimento != MIN(pp.data_vencimento)
+                ORDER BY a.nome
+            ";
+            $stmt = $db->prepare($sql);
+            $stmt->execute(['tid' => $tenantId]);
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            if ($rows) {
+                $anomalias[] = [
+                    'tipo' => 'proxima_data_vencimento_desatualizada',
+                    'descricao' => 'Matrículas ativas onde proxima_data_vencimento não corresponde à próxima parcela pendente',
+                    'severidade' => 'media',
+                    'total' => count($rows),
+                    'registros' => $rows,
+                ];
+            }
+
+            // 3. Matrículas ativas com vencimento expirado (> 5 dias)
+            $sql = "
+                SELECT m.id AS matricula_id, a.nome AS aluno_nome, p.nome AS plano_nome,
+                       COALESCE(m.proxima_data_vencimento, m.data_vencimento) AS vencimento_efetivo,
+                       DATEDIFF(CURDATE(), COALESCE(m.proxima_data_vencimento, m.data_vencimento)) AS dias_vencido,
+                       sm.codigo AS status
+                FROM matriculas m
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
+                INNER JOIN alunos a ON a.id = m.aluno_id
+                INNER JOIN planos p ON p.id = m.plano_id
+                WHERE m.tenant_id = :tid
+                  AND sm.codigo = 'ativa'
+                  AND COALESCE(m.proxima_data_vencimento, m.data_vencimento) < DATE_SUB(CURDATE(), INTERVAL 5 DAY)
+                ORDER BY dias_vencido DESC
+            ";
+            $stmt = $db->prepare($sql);
+            $stmt->execute(['tid' => $tenantId]);
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            if ($rows) {
+                $anomalias[] = [
+                    'tipo' => 'ativa_vencimento_expirado',
+                    'descricao' => 'Matrículas ativas com vencimento expirado há mais de 5 dias',
+                    'severidade' => 'alta',
+                    'total' => count($rows),
+                    'registros' => $rows,
+                ];
+            }
+
+            // 4. Matrículas canceladas/vencidas com parcelas futuras pendentes
+            $sql = "
+                SELECT m.id AS matricula_id, a.nome AS aluno_nome, p.nome AS plano_nome,
+                       sm.codigo AS status,
+                       m.proxima_data_vencimento, m.data_vencimento,
+                       COUNT(pp.id) AS parcelas_futuras_pendentes,
+                       MIN(pp.data_vencimento) AS proxima_parcela
+                FROM matriculas m
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
+                INNER JOIN alunos a ON a.id = m.aluno_id
+                INNER JOIN planos p ON p.id = m.plano_id
+                INNER JOIN pagamentos_plano pp ON pp.matricula_id = m.id
+                    AND pp.status_pagamento_id IN (1, 3)
+                    AND pp.data_vencimento >= CURDATE()
+                WHERE m.tenant_id = :tid
+                  AND sm.codigo IN ('cancelada', 'vencida')
+                GROUP BY m.id, a.nome, p.nome, sm.codigo, m.proxima_data_vencimento, m.data_vencimento
+                ORDER BY a.nome
+            ";
+            $stmt = $db->prepare($sql);
+            $stmt->execute(['tid' => $tenantId]);
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            if ($rows) {
+                $anomalias[] = [
+                    'tipo' => 'cancelada_com_parcelas_futuras',
+                    'descricao' => 'Matrículas canceladas/vencidas que possuem parcelas futuras pendentes',
+                    'severidade' => 'alta',
+                    'total' => count($rows),
+                    'registros' => $rows,
+                ];
+            }
+
+            // 5. Matrículas duplicadas (mesmo aluno + modalidade, ambas ativas)
+            $sql = "
+                SELECT a.nome AS aluno_nome, mo.nome AS modalidade_nome,
+                       GROUP_CONCAT(m.id ORDER BY m.id) AS matricula_ids,
+                       GROUP_CONCAT(p.nome ORDER BY m.id SEPARATOR ' | ') AS planos,
+                       COUNT(*) AS total
+                FROM matriculas m
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
+                INNER JOIN alunos a ON a.id = m.aluno_id
+                INNER JOIN planos p ON p.id = m.plano_id
+                INNER JOIN modalidades mo ON mo.id = p.modalidade_id
+                WHERE m.tenant_id = :tid
+                  AND sm.codigo = 'ativa'
+                GROUP BY m.aluno_id, a.nome, p.modalidade_id, mo.nome
+                HAVING COUNT(*) > 1
+                ORDER BY a.nome
+            ";
+            $stmt = $db->prepare($sql);
+            $stmt->execute(['tid' => $tenantId]);
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            if ($rows) {
+                $anomalias[] = [
+                    'tipo' => 'matriculas_duplicadas',
+                    'descricao' => 'Mesmo aluno com múltiplas matrículas ativas na mesma modalidade',
+                    'severidade' => 'media',
+                    'total' => count($rows),
+                    'registros' => $rows,
+                ];
+            }
+
+            // 6. Matrículas ativas sem nenhuma parcela
+            $sql = "
+                SELECT m.id AS matricula_id, a.nome AS aluno_nome, p.nome AS plano_nome,
+                       m.data_inicio, m.data_vencimento, m.proxima_data_vencimento,
+                       m.tipo_cobranca, sm.codigo AS status
+                FROM matriculas m
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
+                INNER JOIN alunos a ON a.id = m.aluno_id
+                INNER JOIN planos p ON p.id = m.plano_id
+                LEFT JOIN pagamentos_plano pp ON pp.matricula_id = m.id AND pp.status_pagamento_id != 4
+                WHERE m.tenant_id = :tid
+                  AND sm.codigo = 'ativa'
+                  AND pp.id IS NULL
+                ORDER BY a.nome
+            ";
+            $stmt = $db->prepare($sql);
+            $stmt->execute(['tid' => $tenantId]);
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            if ($rows) {
+                $anomalias[] = [
+                    'tipo' => 'ativa_sem_parcelas',
+                    'descricao' => 'Matrículas ativas sem nenhuma parcela (não-cancelada)',
+                    'severidade' => 'media',
+                    'total' => count($rows),
+                    'registros' => $rows,
+                ];
+            }
+
+            $totalAnomalias = array_sum(array_column($anomalias, 'total'));
+
+            $response->getBody()->write(json_encode([
+                'resumo' => [
+                    'total_anomalias' => $totalAnomalias,
+                    'tipos_encontrados' => count($anomalias),
+                ],
+                'anomalias' => $anomalias,
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Erro ao verificar anomalias: ' . $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
 }

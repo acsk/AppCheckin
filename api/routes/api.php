@@ -1088,6 +1088,7 @@ return function ($app) {
         // Auditoria
         $group->get('/auditoria/pagamentos-duplicados', [AuditoriaController::class, 'pagamentosDuplicados']);
         $group->get('/auditoria/pagamentos-duplicados/detalhe', [AuditoriaController::class, 'pagamentosDuplicadosDetalhe']);
+        $group->get('/auditoria/anomalias-datas', [AuditoriaController::class, 'anomaliasDatas']);
         
         // Contas a Receber
         $group->get('/contas-receber', [ContasReceberController::class, 'index']);

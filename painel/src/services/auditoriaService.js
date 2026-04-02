@@ -27,4 +27,14 @@ export const auditoriaService = {
       throw prepararErro(error.response?.data || error);
     }
   },
+
+  async anomaliasDatas() {
+    try {
+      const response = await api.get('/admin/auditoria/anomalias-datas');
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao buscar anomalias de datas:', error);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
 };
