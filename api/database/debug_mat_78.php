@@ -70,19 +70,19 @@ if (!empty($ass)) {
 } else {
     echo "Sem assinatura - deveria usar dados das parcelas\n";
     if (!empty($pags)) {
-        $duracaoMeses = (int) ($mat['duracao_meses'] ?? 1);
+        $cicloMeses = (int) ($mat['ciclo_meses'] ?? 0);
         $ultimoPago = null;
         foreach ($pags as $p) {
             if ((int) $p['status_pagamento_id'] === 2) {
                 $ultimoPago = $p;
             }
         }
-        if ($ultimoPago) {
+        if ($ultimoPago && $cicloMeses > 0) {
             $dataBase = new DateTime($ultimoPago['data_vencimento']);
             $acessoAte = clone $dataBase;
-            $acessoAte->modify("+{$duracaoMeses} months");
+            $acessoAte->modify("+{$cicloMeses} months");
             echo "Último pagamento pago: #{$ultimoPago['id']} em {$ultimoPago['data_vencimento']}\n";
-            echo "Duração ciclo: {$duracaoMeses} meses\n";
+            echo "Duração ciclo: {$cicloMeses} meses\n";
             echo "Acesso até deveria ser: " . $acessoAte->format('Y-m-d') . "\n";
         }
     }
