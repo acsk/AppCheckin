@@ -249,7 +249,7 @@ foreach ($todasMats as $m) {
     $mId = (int) $m['id'];
     $tId = (int) $m['tenant_id'];
 
-    // Calcular status correto baseado nas parcelas
+    // Calcular status correto baseado nas parcelas + acesso até
     $stmtCalc = $db->prepare("
         SELECT 
             MAX(CASE WHEN status_pagamento_id IN (1, 3) AND data_vencimento < CURDATE() THEN DATEDIFF(CURDATE(), data_vencimento) ELSE 0 END) as dias_atraso,
@@ -259,6 +259,11 @@ foreach ($todasMats as $m) {
     ");
     $stmtCalc->execute([$tId, $mId]);
     $res = $stmtCalc->fetch(PDO::FETCH_ASSOC);
+
+    // Buscar data_vencimento (acesso até) atualizada
+    $stmtMat = $db->prepare("SELECT data_vencimento FROM matriculas WHERE id = ? AND tenant_id = ?");
+    $stmtMat->execute([$mId, $tId]);
+    $matVenc = $stmtMat->fetchColumn();
 
     $novoStatus = 'ativa';
     $diasAtraso = (int) $res['dias_atraso'];
@@ -270,6 +275,9 @@ foreach ($todasMats as $m) {
         } elseif ($diasAtraso >= 1) {
             $novoStatus = 'vencida';
         }
+    } elseif ($matVenc && $matVenc < date('Y-m-d')) {
+        // Sem parcelas pendentes mas acesso até já passou → vencida
+        $novoStatus = 'vencida';
     }
 
     if ($novoStatus !== $m['status_codigo_atual']) {

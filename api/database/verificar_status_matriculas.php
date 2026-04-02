@@ -53,7 +53,7 @@ foreach ($mats as $m) {
     $stmtAss->execute([$mId]);
     $ass = $stmtAss->fetch(PDO::FETCH_ASSOC);
 
-    // Calcular status correto (mesma lógica de atualizarStatusMatricula)
+    // Calcular status correto (mesma lógica de atualizarStatusMatricula + acesso até)
     $statusCorreto = 'ativa';
     $pendentes = (int) $p['pendentes'] + (int) $p['atrasadas'];
     $diasAtraso = (int) $p['dias_atraso'];
@@ -64,6 +64,9 @@ foreach ($mats as $m) {
         } elseif ($diasAtraso >= 1) {
             $statusCorreto = 'vencida';
         }
+    } elseif ($m['data_vencimento'] && $m['data_vencimento'] < date('Y-m-d')) {
+        // Sem parcelas pendentes mas acesso até já passou → vencida
+        $statusCorreto = 'vencida';
     }
 
     $statusAtual = $m['status_codigo'];
