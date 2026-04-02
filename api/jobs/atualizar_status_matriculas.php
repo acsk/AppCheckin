@@ -192,7 +192,7 @@ try {
                     m.updated_at = NOW()
                 WHERE m.tenant_id = :tenant_id
                 AND m.status_id IN (SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'pendente'))
-                AND m.proxima_data_vencimento < CURDATE()
+                AND COALESCE(m.proxima_data_vencimento, m.data_vencimento) < CURDATE()
                 LIMIT 1000
             ";
             $stmt = $db->prepare($sqlVencidaPorData);

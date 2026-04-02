@@ -5788,7 +5788,7 @@ class MobileController
                 AND m.tenant_id = ? 
                 AND p.modalidade_id = ?
                 AND sm.codigo = 'ativa' 
-                AND m.proxima_data_vencimento >= CURDATE()
+                AND COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= CURDATE()
                 ORDER BY m.created_at DESC
                 LIMIT 1
             ");

@@ -276,7 +276,7 @@ class MatriculaController
             FROM matriculas m
             INNER JOIN planos p ON p.id = m.plano_id
             INNER JOIN status_matricula sm ON sm.id = m.status_id
-            WHERE m.aluno_id = ? AND m.tenant_id = ? AND sm.codigo = 'ativa' AND m.proxima_data_vencimento >= CURDATE()
+            WHERE m.aluno_id = ? AND m.tenant_id = ? AND sm.codigo = 'ativa' AND COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= CURDATE()
             ORDER BY m.created_at DESC
         ");
         $stmtAtiva->execute([$alunoId, $tenantId]);
@@ -832,7 +832,7 @@ class MatriculaController
                     INNER JOIN planos p ON p.id = m.plano_id
                     INNER JOIN status_matricula sm ON sm.id = m.status_id
                     WHERE m.aluno_id = ? AND m.tenant_id = ? AND sm.codigo = 'ativa'
-                      AND p.modalidade_id = ? AND m.proxima_data_vencimento >= CURDATE()
+                      AND p.modalidade_id = ? AND COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= CURDATE()
                     LIMIT 1
                 ");
                 $stmtAtiva->execute([$benAlunoId, $tenantId, $pacote['modalidade_id']]);
@@ -855,7 +855,7 @@ class MatriculaController
                     INNER JOIN planos p ON p.id = m.plano_id
                     INNER JOIN status_matricula sm ON sm.id = m.status_id
                     WHERE m.aluno_id = ? AND m.tenant_id = ? AND p.modalidade_id = ?
-                      AND (sm.codigo = 'vencida' OR m.proxima_data_vencimento < CURDATE())
+                      AND (sm.codigo = 'vencida' OR COALESCE(m.proxima_data_vencimento, m.data_vencimento) < CURDATE())
                     ORDER BY m.updated_at DESC, m.id DESC
                     LIMIT 1
                 ");
