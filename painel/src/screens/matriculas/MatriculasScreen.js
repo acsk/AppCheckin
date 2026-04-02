@@ -478,7 +478,7 @@ export default function MatriculasScreen() {
           <Feather name="file-text" size={16} color="#3b82f6" />
           <Text style={styles.btnDetalhesText}>Detalhes</Text>
         </Pressable>
-              {/* {matricula.status_id !== 3 && matricula.status_id !== 4 && (
+              {currentUserId === 3 && (
                 <Pressable
                   onPress={() => handleOpenDeletePreview(matricula)}
                   style={({ pressed }) => [
@@ -490,7 +490,7 @@ export default function MatriculasScreen() {
                   <Feather name="trash-2" size={16} color="#ef4444" />
                   <Text style={styles.btnCancelarText}>Excluir</Text>
                 </Pressable>
-              )} */}
+              )}
       </View>
     </View>
   );
@@ -569,7 +569,7 @@ export default function MatriculasScreen() {
             >
               <Feather name="file-text" size={18} color="#f97316" />
             </Pressable>
-                {currentUserId === 3 && matricula.status_id !== 3 && matricula.status_id !== 4 && (
+                {currentUserId === 3 && (
                   <Pressable
                     onPress={() => handleOpenDeletePreview(matricula)}
                     className="h-9 w-9 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
