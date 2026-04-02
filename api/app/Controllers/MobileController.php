@@ -1613,7 +1613,7 @@ class MobileController
 
             // Verificar matrícula ativa
             $stmtMatricula = $this->db->prepare("
-                SELECT m.id, m.proxima_data_vencimento, m.periodo_teste,
+                SELECT m.id, m.proxima_data_vencimento, m.data_vencimento, m.periodo_teste,
                        sm.codigo as status_codigo, sm.nome as status_nome
                 FROM matriculas m
                 INNER JOIN status_matricula sm ON sm.id = m.status_id
@@ -1674,13 +1674,14 @@ class MobileController
             }
 
             $hoje = date('Y-m-d');
-            if ($matricula['proxima_data_vencimento'] && $matricula['proxima_data_vencimento'] < $hoje) {
-                $dataVencimento = date('d/m/Y', strtotime($matricula['proxima_data_vencimento']));
+            $acessoAte = $matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'] ?? null;
+            if ($acessoAte && $acessoAte < $hoje) {
+                $dataVencimento = date('d/m/Y', strtotime($acessoAte));
                 $response->getBody()->write(json_encode([
                     'success' => false,
                     'error' => "Acesso do aluno expirou em {$dataVencimento}",
                     'code' => 'MATRICULA_VENCIDA',
-                    'data_vencimento' => $matricula['proxima_data_vencimento']
+                    'data_vencimento' => $acessoAte
                 ]));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
             }
@@ -1884,7 +1885,7 @@ class MobileController
             $this->atualizarStatusMatriculasVencidas($userId, $tenantId);
             
             $stmtMatricula = $this->db->prepare("
-                SELECT m.id, m.proxima_data_vencimento, m.periodo_teste,
+                SELECT m.id, m.proxima_data_vencimento, m.data_vencimento, m.periodo_teste,
                        sm.codigo as status_codigo, sm.nome as status_nome
                 FROM matriculas m
                 INNER JOIN status_matricula sm ON sm.id = m.status_id
@@ -1945,15 +1946,16 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
             }
             
-            // Verificar se o acesso ainda está válido (proxima_data_vencimento)
+            // Verificar se o acesso ainda está válido (proxima_data_vencimento ou data_vencimento)
             $hoje = date('Y-m-d');
-            if ($matricula['proxima_data_vencimento'] && $matricula['proxima_data_vencimento'] < $hoje) {
-                $dataVencimento = date('d/m/Y', strtotime($matricula['proxima_data_vencimento']));
+            $acessoAte = $matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'] ?? null;
+            if ($acessoAte && $acessoAte < $hoje) {
+                $dataVencimento = date('d/m/Y', strtotime($acessoAte));
                 $response->getBody()->write(json_encode([
                     'success' => false,
                     'error' => "Seu acesso expirou em {$dataVencimento}. Por favor, renove sua matrícula.",
                     'code' => 'MATRICULA_VENCIDA',
-                    'data_vencimento' => $matricula['proxima_data_vencimento']
+                    'data_vencimento' => $acessoAte
                 ]));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
             }
@@ -7268,8 +7270,8 @@ class MobileController
             
             // Buscar matrículas ativas do usuário que estão vencidas
             $stmt = $this->db->prepare("
-                SELECT m.id, m.proxima_data_vencimento,
-                       DATEDIFF(:hoje, m.proxima_data_vencimento) as dias_vencido
+                SELECT m.id, COALESCE(m.proxima_data_vencimento, m.data_vencimento) as acesso_ate,
+                       DATEDIFF(:hoje, COALESCE(m.proxima_data_vencimento, m.data_vencimento)) as dias_vencido
                 FROM matriculas m
                 INNER JOIN alunos a ON a.id = m.aluno_id
                 INNER JOIN status_matricula sm ON sm.id = m.status_id
@@ -7277,7 +7279,7 @@ class MobileController
                 AND m.tenant_id = :tenant_id
                 AND sm.permite_checkin = 1
                 AND sm.ativo = 1
-                AND m.proxima_data_vencimento < :hoje2
+                AND COALESCE(m.proxima_data_vencimento, m.data_vencimento) < :hoje2
             ");
             
             $stmt->execute([

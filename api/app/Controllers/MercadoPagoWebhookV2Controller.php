@@ -448,7 +448,8 @@ class MercadoPagoWebhookV2Controller
                 $vencimento = $dataBase->modify("+{$dias} days")->format('Y-m-d');
             }
 
-            $dataInicio = $dataBase->format('Y-m-d');
+            // Preservar data_inicio original se já existir (não resetar na renovação)
+            $dataInicio = !empty($mat['data_inicio']) ? $mat['data_inicio'] : $dataBase->format('Y-m-d');
 
             if ((int)$mat['status_id'] === $statusAtivaId
                 && ($mat['data_inicio'] ?? null) === $dataInicio

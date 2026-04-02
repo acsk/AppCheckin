@@ -104,7 +104,7 @@ function atualizarVigenciaMatriculaAprovada(PDO $pdo, int $matriculaId, ?string 
         $dataVencimento = $dataBase->modify("+{$duracaoDias} days")->format('Y-m-d');
     }
 
-    $dataInicio = $dataBase->format('Y-m-d');
+    $dataInicio = !empty($matricula['data_inicio']) ? $matricula['data_inicio'] : $dataBase->format('Y-m-d');
 
     if ((int) $matricula['status_id'] === $statusAtivaId
         && $matricula['data_inicio'] === $dataInicio

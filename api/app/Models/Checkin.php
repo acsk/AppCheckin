@@ -380,7 +380,7 @@ class Checkin
              WHERE a.usuario_id = :usuario_id
              AND m.tenant_id = :tenant_id
              AND sm.codigo = 'ativa'
-             AND m.proxima_data_vencimento >= CURDATE()";
+             AND COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= CURDATE()";
         
         $params = [
             'usuario_id' => $usuarioId,
