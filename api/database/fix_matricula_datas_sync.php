@@ -23,9 +23,12 @@ echo "--- Matrículas com assinatura (integração) ---\n\n";
 $assinaturas = $db->query("
     SELECT a.matricula_id, a.tenant_id, a.data_inicio as ass_inicio, a.dia_cobranca, 
            a.proxima_cobranca, a.status_id as ass_status, a.data_fim as ass_fim,
-           m.data_inicio as mat_inicio, m.data_vencimento as mat_venc, m.proxima_data_vencimento as mat_prox
+           m.data_inicio as mat_inicio, m.data_vencimento as mat_venc, m.proxima_data_vencimento as mat_prox,
+           COALESCE(pc.meses, af.meses, 1) as ciclo_meses
     FROM assinaturas a
     INNER JOIN matriculas m ON m.id = a.matricula_id
+    LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+    LEFT JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
     ORDER BY a.matricula_id
 ")->fetchAll(PDO::FETCH_ASSOC);
 
@@ -66,7 +69,15 @@ foreach ($assinaturas as $ass) {
         $novoAcessoAte = $novoProx;
     } else {
         // Cancelada: acesso até = data_fim da assinatura (período contratado)
-        $novoAcessoAte = $ass['ass_fim'] ?: $novoInicio;
+        // Se data_fim vazia, calcular com base no ciclo: data_inicio + ciclo_meses
+        if ($ass['ass_fim']) {
+            $novoAcessoAte = $ass['ass_fim'];
+        } else {
+            $cicloMeses = (int) $ass['ciclo_meses'];
+            $fimCalc = new DateTime($novoInicio);
+            $fimCalc->modify("+{$cicloMeses} months");
+            $novoAcessoAte = $fimCalc->format('Y-m-d');
+        }
     }
 
     // Verificar se algo mudou
