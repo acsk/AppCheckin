@@ -229,8 +229,69 @@ foreach ($matriculas as $mat) {
 }
 
 echo "\nManual: {$corrigidas} corrigidas\n";
+
+// =====================================================================
+// 3. RECALCULAR STATUS de todas as matrículas com parcelas
+// =====================================================================
+echo "\n--- Recalcular status das matrículas ---\n\n";
+
+$todasMats = $db->query("
+    SELECT DISTINCT m.id, m.tenant_id, m.status_id as status_atual, sm.codigo as status_codigo_atual
+    FROM matriculas m
+    INNER JOIN pagamentos_plano pp ON pp.matricula_id = m.id
+    LEFT JOIN status_matricula sm ON sm.id = m.status_id
+    ORDER BY m.id
+")->fetchAll(PDO::FETCH_ASSOC);
+
+$statusCorrigidos = 0;
+
+foreach ($todasMats as $m) {
+    $mId = (int) $m['id'];
+    $tId = (int) $m['tenant_id'];
+
+    // Calcular status correto baseado nas parcelas
+    $stmtCalc = $db->prepare("
+        SELECT 
+            MAX(CASE WHEN status_pagamento_id IN (1, 3) AND data_vencimento < CURDATE() THEN DATEDIFF(CURDATE(), data_vencimento) ELSE 0 END) as dias_atraso,
+            SUM(CASE WHEN status_pagamento_id IN (1, 3) THEN 1 ELSE 0 END) as pendentes
+        FROM pagamentos_plano
+        WHERE tenant_id = ? AND matricula_id = ?
+    ");
+    $stmtCalc->execute([$tId, $mId]);
+    $res = $stmtCalc->fetch(PDO::FETCH_ASSOC);
+
+    $novoStatus = 'ativa';
+    $diasAtraso = (int) $res['dias_atraso'];
+    $pendentes = (int) $res['pendentes'];
+
+    if ($pendentes > 0) {
+        if ($diasAtraso >= 5) {
+            $novoStatus = 'cancelada';
+        } elseif ($diasAtraso >= 1) {
+            $novoStatus = 'vencida';
+        }
+    }
+
+    if ($novoStatus !== $m['status_codigo_atual']) {
+        echo "Matrícula #{$mId}: status {$m['status_codigo_atual']} → {$novoStatus}\n";
+
+        if (!$dryRun) {
+            $db->prepare("
+                UPDATE matriculas 
+                SET status_id = (SELECT id FROM status_matricula WHERE codigo = ? LIMIT 1),
+                    updated_at = NOW()
+                WHERE id = ? AND tenant_id = ?
+            ")->execute([$novoStatus, $mId, $tId]);
+        }
+        $statusCorrigidos++;
+    }
+}
+
+echo "\nStatus corrigidos: {$statusCorrigidos}\n";
+
 echo "\n=== Resultado ===\n";
 echo "Total assinatura: {$corrigidasAss}\n";
 echo "Total manual: {$corrigidas}\n";
-echo "Total: " . ($corrigidasAss + $corrigidas) . "\n";
+echo "Total status: {$statusCorrigidos}\n";
+echo "Total: " . ($corrigidasAss + $corrigidas + $statusCorrigidos) . "\n";
 if ($dryRun) echo "(nenhuma alteração feita — remova --dry-run para aplicar)\n";
