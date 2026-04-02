@@ -548,14 +548,19 @@ class PagamentoPlanoController
             }
 
             // Sincronizar datas da matrícula com base nas parcelas reais
-            // PULAR matrículas com assinatura (datas gerenciadas pela assinatura)
+            // PULAR matrículas com assinatura ATIVA (datas gerenciadas pela assinatura)
+            // Assinaturas canceladas NÃO bloqueiam o sync (matrícula passa a ser gerenciada manualmente)
             $matriculaId = (int) $pagamento['matricula_id'];
 
-            $stmtAss = $db->prepare("SELECT COUNT(*) FROM assinaturas WHERE matricula_id = ?");
+            $stmtAss = $db->prepare("
+                SELECT COUNT(*) FROM assinaturas a
+                INNER JOIN assinatura_status ast ON ast.id = a.status_id
+                WHERE a.matricula_id = ? AND ast.codigo NOT IN ('cancelada', 'paga')
+            ");
             $stmtAss->execute([$matriculaId]);
-            $temAssinatura = (int) $stmtAss->fetchColumn() > 0;
+            $temAssinaturaAtiva = (int) $stmtAss->fetchColumn() > 0;
 
-            if (!$temAssinatura) {
+            if (!$temAssinaturaAtiva) {
                 // data_inicio = vencimento da 1ª parcela não-cancelada
                 $stmtMinVenc = $db->prepare("
                     SELECT MIN(data_vencimento) as min_venc
