@@ -424,6 +424,7 @@ export default function MatriculasScreen() {
             </View>
           )}
           <View style={styles.cardTitleContent}>
+            <Text style={{ fontSize: 11, fontWeight: '700', color: '#f97316', marginBottom: 1 }}>#{matricula.id}</Text>
             <Text style={styles.cardName}>{matricula.usuario_nome}</Text>
             <Text style={styles.cardEmail}>{matricula.usuario_email}</Text>
           </View>
@@ -499,6 +500,7 @@ export default function MatriculasScreen() {
     <View className="mx-4 my-3 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       {/* Header */}
       <View className="flex-row items-center border-b border-slate-200 bg-slate-50 px-4 py-3">
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colCodigo}>Cód.</Text>
         <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colAluno}>Aluno</Text>
         <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colPlano}>Plano</Text>
         <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colModalidade}>Modalidade</Text>
@@ -512,6 +514,7 @@ export default function MatriculasScreen() {
       {/* Body */}
       {filteredMatriculas.map((matricula) => (
         <View key={matricula.id} className="flex-row items-center border-b border-slate-100 px-4 py-3">
+          <Text className="text-[13px] font-bold text-orange-600" style={styles.colCodigo}>#{matricula.id}</Text>
           <View style={styles.colAluno}>
             <Text className="text-[13px] font-semibold text-slate-800">{matricula.usuario_nome}</Text>
             <Text className="text-[12px] text-slate-500">{matricula.usuario_email}</Text>
@@ -1189,6 +1192,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: 'center',
   },
+  colCodigo: { width: 60 },
   colAluno: { flex: 2.5 },
   colPlano: { flex: 1.5 },
   colModalidade: { flex: 1.5 },
