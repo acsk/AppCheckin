@@ -184,7 +184,7 @@ try {
             $canceladasAtualizadas = $stmt->rowCount();
             logMessage("  ✓ Matrículas Canceladas: {$canceladasAtualizadas}\n", $quiet);
 
-            // 3.1 Atualizar matrículas para VENCIDA quando a data de vencimento expirou
+            // 3.1 Atualizar matrículas para VENCIDA quando a data de vencimento expirou (1-4 dias)
             // Regras de expiração por data (independente de pagamentos)
             $sqlVencidaPorData = "
                 UPDATE matriculas m
@@ -193,12 +193,29 @@ try {
                 WHERE m.tenant_id = :tenant_id
                 AND m.status_id IN (SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'pendente'))
                 AND COALESCE(m.proxima_data_vencimento, m.data_vencimento) < CURDATE()
+                AND DATEDIFF(CURDATE(), COALESCE(m.proxima_data_vencimento, m.data_vencimento)) < 5
                 LIMIT 1000
             ";
             $stmt = $db->prepare($sqlVencidaPorData);
             $stmt->execute(['tenant_id' => $tenant['id']]);
             $vencidasPorData = $stmt->rowCount();
             logMessage("  ✓ Matrículas Vencidas (por data): {$vencidasPorData}\n", $quiet);
+
+            // 3.2 Atualizar matrículas para CANCELADA quando a data de vencimento expirou (5+ dias)
+            // Cobre matrículas avulso/diária que não têm parcelas recorrentes
+            $sqlCanceladaPorData = "
+                UPDATE matriculas m
+                SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'cancelada' LIMIT 1),
+                    m.updated_at = NOW()
+                WHERE m.tenant_id = :tenant_id
+                AND m.status_id IN (SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'pendente', 'vencida'))
+                AND DATEDIFF(CURDATE(), COALESCE(m.proxima_data_vencimento, m.data_vencimento)) >= 5
+                LIMIT 1000
+            ";
+            $stmt = $db->prepare($sqlCanceladaPorData);
+            $stmt->execute(['tenant_id' => $tenant['id']]);
+            $canceladasPorData = $stmt->rowCount();
+            logMessage("  ✓ Matrículas Canceladas (por data): {$canceladasPorData}\n", $quiet);
             
             // 4. Sincronizar matrículas com assinaturas canceladas
             // Se a assinatura foi cancelada, a matrícula também deve ser cancelada
@@ -278,7 +295,7 @@ try {
                     m.updated_at = NOW()
                 WHERE m.tenant_id = :tenant_id 
                 AND m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'vencida' LIMIT 1)
-                AND (m.proxima_data_vencimento IS NULL OR m.proxima_data_vencimento >= CURDATE())
+                AND COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= CURDATE()
                 AND NOT EXISTS (
                     SELECT 1 FROM pagamentos_plano pp
                     WHERE pp.matricula_id = m.id
@@ -302,7 +319,7 @@ try {
             // Commit da transação
             $db->commit();
             
-            $totalTenant = $vencidasAtualizadas + $canceladasAtualizadas + $vencidasPorData + $sincCanceladas + $sincPausadas + $sincExpiradas + $sincAprovadas + $reativadas;
+            $totalTenant = $vencidasAtualizadas + $canceladasAtualizadas + $vencidasPorData + $canceladasPorData + $sincCanceladas + $sincPausadas + $sincExpiradas + $sincAprovadas + $reativadas;
             $totalAtualizado += $totalTenant;
             
             if ($totalTenant > 0) {
