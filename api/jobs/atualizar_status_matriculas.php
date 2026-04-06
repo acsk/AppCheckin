@@ -219,6 +219,7 @@ try {
             
             // 4. Sincronizar matrículas com assinaturas canceladas
             // Se a assinatura foi cancelada, a matrícula também deve ser cancelada
+            // EXCETO se há parcelas futuras pendentes (aluno migrou para pagamento manual)
             $sqlSincAssCanceladas = "
                 UPDATE matriculas m
                 INNER JOIN assinaturas a ON a.matricula_id = m.id AND a.tenant_id = m.tenant_id
@@ -228,6 +229,12 @@ try {
                 WHERE m.tenant_id = :tenant_id
                 AND ast.codigo = 'cancelada'
                 AND m.status_id IN (SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'vencida'))
+                AND NOT EXISTS (
+                    SELECT 1 FROM pagamentos_plano pp
+                    WHERE pp.matricula_id = m.id
+                    AND pp.status_pagamento_id IN (1, 3)
+                    AND pp.data_vencimento >= CURDATE()
+                )
             ";
             $stmt = $db->prepare($sqlSincAssCanceladas);
             $stmt->execute(['tenant_id' => $tenant['id']]);
@@ -286,8 +293,7 @@ try {
             $sincAprovadas = $stmt->rowCount();
             logMessage("  ✓ Matrículas sincronizadas (assinatura approved/ativa): {$sincAprovadas}\n", $quiet);
             
-            // 7. Reativar matrículas que foram regularizadas
-            // Só reativa se NÃO houver assinatura cancelada/pausada associada
+            // 7. Reativar matrículas vencidas que foram regularizadas
             // E se a proxima_data_vencimento NÃO expirou
             $sqlReativar = "
                 UPDATE matriculas m
@@ -302,24 +308,47 @@ try {
                     AND pp.status_pagamento_id IN (1, 3)
                     AND pp.data_vencimento < CURDATE()
                 )
-                AND NOT EXISTS (
-                    SELECT 1 FROM assinaturas a
-                    INNER JOIN assinatura_status ast ON ast.id = a.status_id
-                    WHERE a.matricula_id = m.id
-                    AND a.tenant_id = m.tenant_id
-                    AND ast.codigo IN ('cancelada', 'pausada', 'expirada', 'vencida')
-                )
                 LIMIT 500
             ";
             $stmt = $db->prepare($sqlReativar);
             $stmt->execute(['tenant_id' => $tenant['id']]);
             $reativadas = $stmt->rowCount();
-            logMessage("  ✓ Matrículas Reativadas: {$reativadas}\n", $quiet);
+            logMessage("  ✓ Matrículas Reativadas (vencida→ativa): {$reativadas}\n", $quiet);
+
+            // 8. Reativar matrículas canceladas que têm parcelas futuras pendentes
+            // Cobre casos onde a matrícula foi cancelada indevidamente
+            // (ex: assinatura cancelada mas aluno migrou para manual)
+            $sqlReativarCanceladas = "
+                UPDATE matriculas m
+                SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1),
+                    m.updated_at = NOW()
+                WHERE m.tenant_id = :tenant_id
+                AND m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'cancelada' LIMIT 1)
+                AND COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= CURDATE()
+                AND EXISTS (
+                    SELECT 1 FROM pagamentos_plano pp
+                    WHERE pp.matricula_id = m.id
+                    AND pp.status_pagamento_id IN (1, 3)
+                    AND pp.data_vencimento >= CURDATE()
+                )
+                AND NOT EXISTS (
+                    SELECT 1 FROM pagamentos_plano pp
+                    WHERE pp.matricula_id = m.id
+                    AND pp.status_pagamento_id IN (1, 3)
+                    AND pp.data_vencimento < CURDATE()
+                    AND DATEDIFF(CURDATE(), pp.data_vencimento) >= 5
+                )
+                LIMIT 500
+            ";
+            $stmt = $db->prepare($sqlReativarCanceladas);
+            $stmt->execute(['tenant_id' => $tenant['id']]);
+            $reativadasCanceladas = $stmt->rowCount();
+            logMessage("  ✓ Matrículas Reativadas (cancelada→ativa): {$reativadasCanceladas}\n", $quiet);
             
             // Commit da transação
             $db->commit();
             
-            $totalTenant = $vencidasAtualizadas + $canceladasAtualizadas + $vencidasPorData + $canceladasPorData + $sincCanceladas + $sincPausadas + $sincExpiradas + $sincAprovadas + $reativadas;
+            $totalTenant = $vencidasAtualizadas + $canceladasAtualizadas + $vencidasPorData + $canceladasPorData + $sincCanceladas + $sincPausadas + $sincExpiradas + $sincAprovadas + $reativadas + $reativadasCanceladas;
             $totalAtualizado += $totalTenant;
             
             if ($totalTenant > 0) {
