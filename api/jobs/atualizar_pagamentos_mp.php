@@ -106,12 +106,23 @@ function atualizarVigenciaMatriculaAprovada(PDO $pdo, int $matriculaId, ?string 
 
     $dataInicio = !empty($matricula['data_inicio']) ? $matricula['data_inicio'] : $dataBase->format('Y-m-d');
 
+    // Usar a data da próxima parcela pendente real (se existir) como proxima_data_vencimento
+    // para evitar divergência com gerarProximoPagamentoAutomatico (que usa ciclo_meses, não duracao_dias)
+    $stmtPendReal = $pdo->prepare("
+        SELECT MIN(data_vencimento) FROM pagamentos_plano
+        WHERE matricula_id = ? AND status_pagamento_id IN (1, 3)
+    ");
+    $stmtPendReal->execute([$matriculaId]);
+    $proximaParcelaPendente = $stmtPendReal->fetchColumn() ?: null;
+
+    $proximaDataVencimento = $proximaParcelaPendente ?? $dataVencimento;
+
     if ((int) $matricula['status_id'] === $statusAtivaId
         && $matricula['data_inicio'] === $dataInicio
         && $matricula['data_vencimento'] === $dataVencimento
-        && $matricula['proxima_data_vencimento'] === $dataVencimento
+        && $matricula['proxima_data_vencimento'] === $proximaDataVencimento
     ) {
-        logMsg("ℹ️  Matrícula {$matriculaId} já está alinhada até {$dataVencimento}", $quiet);
+        logMsg("ℹ️  Matrícula {$matriculaId} já está alinhada até {$dataVencimento} (próx. parcela: {$proximaDataVencimento})", $quiet);
         return;
     }
 
@@ -124,10 +135,10 @@ function atualizarVigenciaMatriculaAprovada(PDO $pdo, int $matriculaId, ?string 
             updated_at = NOW()
         WHERE id = ?
     ");
-    $stmtUpdate->execute([$statusAtivaId, $dataInicio, $dataVencimento, $dataVencimento, $matriculaId]);
+    $stmtUpdate->execute([$statusAtivaId, $dataInicio, $dataVencimento, $proximaDataVencimento, $matriculaId]);
 
     if ($stmtUpdate->rowCount() > 0) {
-        logMsg("✅ Matrícula {$matriculaId} sincronizada até {$dataVencimento}", $quiet);
+        logMsg("✅ Matrícula {$matriculaId} sincronizada até {$dataVencimento} (próx. parcela: {$proximaDataVencimento})", $quiet);
     }
 }
 

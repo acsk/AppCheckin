@@ -550,10 +550,11 @@ class PagamentoPlano
                 return null;
             }
 
-            // Verificar se já existe algum pagamento pendente para esta matrícula
+            // Verificar se já existe algum pagamento pendente para esta matrícula (Aguardando ou Atrasado)
             $stmtPendente = $this->pdo->prepare("
                 SELECT id, data_vencimento FROM pagamentos_plano
-                WHERE matricula_id = ? AND status_pagamento_id = 1
+                WHERE matricula_id = ? AND status_pagamento_id IN (1, 3)
+                ORDER BY data_vencimento ASC
                 LIMIT 1
             ");
             $stmtPendente->execute([$matriculaId]);

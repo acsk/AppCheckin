@@ -405,4 +405,73 @@ class AuditoriaController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
     }
+
+    /**
+     * Repara proxima_data_vencimento de matrículas ativas onde o valor diverge da próxima parcela pendente.
+     *
+     * Para cada matrícula ativa que possui parcelas pendentes (status 1 ou 3), define
+     * proxima_data_vencimento = MIN(data_vencimento das parcelas pendentes).
+     *
+     * POST /admin/auditoria/reparar-proxima-data-vencimento
+     */
+    public function repararProximaDataVencimento(Request $request, Response $response): Response
+    {
+        $tenantId = $request->getAttribute('tenant_id');
+        $db = require __DIR__ . '/../../config/database.php';
+
+        $queryParams = $request->getQueryParams();
+        $dryRun = isset($queryParams['dry-run']) || isset($queryParams['dry_run']);
+
+        try {
+            // Buscar todas as matrículas ativas com divergência entre proxima_data_vencimento e MIN(parcela pendente)
+            $sqlDetect = "
+                SELECT m.id AS matricula_id,
+                       a.nome AS aluno_nome,
+                       m.proxima_data_vencimento AS valor_atual,
+                       MIN(pp.data_vencimento) AS valor_correto
+                FROM matriculas m
+                INNER JOIN status_matricula sm ON sm.id = m.status_id AND sm.codigo = 'ativa'
+                INNER JOIN alunos a ON a.id = m.aluno_id
+                INNER JOIN pagamentos_plano pp ON pp.matricula_id = m.id
+                    AND pp.status_pagamento_id IN (1, 3)
+                WHERE m.tenant_id = :tid
+                GROUP BY m.id, a.nome, m.proxima_data_vencimento
+                HAVING m.proxima_data_vencimento IS NULL OR m.proxima_data_vencimento != MIN(pp.data_vencimento)
+                ORDER BY a.nome
+            ";
+            $stmt = $db->prepare($sqlDetect);
+            $stmt->execute(['tid' => $tenantId]);
+            $casos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            $reparados = [];
+            if (!$dryRun && !empty($casos)) {
+                $stmtUpdate = $db->prepare("
+                    UPDATE matriculas
+                    SET proxima_data_vencimento = ?, updated_at = NOW()
+                    WHERE id = ? AND tenant_id = ?
+                ");
+                foreach ($casos as $caso) {
+                    $stmtUpdate->execute([$caso['valor_correto'], $caso['matricula_id'], $tenantId]);
+                    if ($stmtUpdate->rowCount() > 0) {
+                        $reparados[] = $caso;
+                    }
+                }
+            }
+
+            $response->getBody()->write(json_encode([
+                'dry_run' => $dryRun,
+                'total_divergentes' => count($casos),
+                'total_reparados' => $dryRun ? 0 : count($reparados),
+                'casos' => $dryRun ? $casos : $reparados,
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Erro ao reparar datas: ' . $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
 }
