@@ -123,8 +123,49 @@ class MercadoPagoWebhookController
             $webhookExternalRef = null;
 
             if (in_array($type, ['payment', 'authorized_payment', 'subscription_authorized_payment'], true)) {
-                $pagamento = $mercadoPagoService->buscarPagamento((string)$dataId);
-                
+                // Buscar pagamento; se as credenciais default não encontrarem (404), detectar tenant pela base local
+                try {
+                    $pagamento = $mercadoPagoService->buscarPagamento((string)$dataId);
+                } catch (\Throwable $eCreds) {
+                    $is404 = str_contains($eCreds->getMessage(), '[404]')
+                          || str_contains($eCreds->getMessage(), 'does not exist')
+                          || str_contains($eCreds->getMessage(), 'not found');
+                    if (!$is404) {
+                        throw $eCreds;
+                    }
+                    $this->logWebhook("[Webhook MP V1] Payment #{$dataId} não encontrado com credenciais default, buscando tenant na base local...");
+
+                    // 1. Tentar via pagamentos_mercadopago (pagamento já processado por polling)
+                    $stmtFindTenant = $this->db->prepare("SELECT tenant_id FROM pagamentos_mercadopago WHERE payment_id = ? LIMIT 1");
+                    $stmtFindTenant->execute([(string)$dataId]);
+                    $fallbackTenantId = $stmtFindTenant->fetchColumn() ?: null;
+
+                    if ($fallbackTenantId) {
+                        $this->logWebhook("[Webhook MP V1] Tenant #{$fallbackTenantId} encontrado via pagamentos_mercadopago para payment #{$dataId}");
+                        $pagamento = $this->getMercadoPagoService((int)$fallbackTenantId)->buscarPagamento((string)$dataId);
+                        $webhookTenantId = (int)$fallbackTenantId;
+                    } else {
+                        // 2. Varredura em todos os tenants com credenciais MP ativas
+                        $this->logWebhook("[Webhook MP V1] Varrendo todos os tenants para payment #{$dataId}...");
+                        $stmtTnts = $this->db->query("SELECT DISTINCT tenant_id FROM tenant_payment_credentials WHERE provider = 'mercadopago' AND is_active = 1 ORDER BY tenant_id");
+                        $candidateTenants = $stmtTnts ? $stmtTnts->fetchAll(\PDO::FETCH_COLUMN) : [];
+                        $pagamento = null;
+                        foreach ($candidateTenants as $candidateTid) {
+                            try {
+                                $pagamento = $this->getMercadoPagoService((int)$candidateTid)->buscarPagamento((string)$dataId);
+                                $webhookTenantId = (int)$candidateTid;
+                                $this->logWebhook("[Webhook MP V1] Payment #{$dataId} encontrado via tenant #{$candidateTid}");
+                                break;
+                            } catch (\Throwable $ignored) {
+                                // Este tenant não possui este pagamento, continuar
+                            }
+                        }
+                        if ($pagamento === null) {
+                            throw $eCreds;
+                        }
+                    }
+                }
+
                 // Extrair tenant_id da matrícula via external_reference
                 $extRef = $pagamento['external_reference'] ?? '';
                 $webhookExternalRef = $extRef;
