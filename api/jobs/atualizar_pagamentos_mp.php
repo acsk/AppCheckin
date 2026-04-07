@@ -63,7 +63,7 @@ function buscarPagamentoAprovadoPorExternalReference(int $tenantId, string $exte
 
 function atualizarVigenciaMatriculaAprovada(PDO $pdo, int $matriculaId, ?string $dataReferencia, bool $quiet): void
 {
-    $stmtMatricula = $pdo->prepare("\
+    $stmtMatricula = $pdo->prepare("
         SELECT m.id, m.status_id, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento,
                p.duracao_dias, pc.meses
         FROM matriculas m
@@ -115,7 +115,7 @@ function atualizarVigenciaMatriculaAprovada(PDO $pdo, int $matriculaId, ?string 
         return;
     }
 
-    $stmtUpdate = $pdo->prepare("\
+    $stmtUpdate = $pdo->prepare("
         UPDATE matriculas
         SET status_id = ?,
             data_inicio = ?,
@@ -234,7 +234,7 @@ function sincronizarPagamentoAprovado(PDO $pdo, int $matriculaId, array $pagamen
     $stmtPend->execute([$matriculaId]);
     $pagamentoPlanoId = $stmtPend->fetchColumn();
 
-    $stmtJaBaixado = $pdo->prepare("\
+    $stmtJaBaixado = $pdo->prepare("
         SELECT id FROM pagamentos_plano
         WHERE matricula_id = ?
           AND status_pagamento_id = 2
