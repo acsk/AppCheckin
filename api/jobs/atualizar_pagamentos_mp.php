@@ -349,7 +349,8 @@ try {
             $sqlAss .= " AND DATE(criado_em) >= DATE_SUB(CURDATE(), INTERVAL ? DAY)";
             $paramsAss[] = $daysBack;
         } else {
-            $sqlAss .= " AND DATE(criado_em) = CURDATE()";
+            // Janela padrão: últimos 2 dias (hoje + ontem) para não perder assinaturas criadas no fim do dia anterior
+            $sqlAss .= " AND DATE(criado_em) >= DATE_SUB(CURDATE(), INTERVAL 2 DAY)";
         }
     }
     
@@ -414,6 +415,47 @@ try {
                 }
             } catch (Throwable $mpError) {
                 logMsg("❌ Erro ao consultar MP por external_reference {$externalReference}: {$mpError->getMessage()}", $quiet);
+            }
+        }
+
+        // Verificar pagamentos approved em pagamentos_mercadopago que ainda não foram baixados em pagamentos_plano
+        $sqlAprov = "
+            SELECT pm.payment_id, pm.status, pm.status_detail, pm.transaction_amount,
+                   pm.payment_method_id, pm.payment_type_id, pm.installments,
+                   pm.date_approved, pm.date_created, pm.payer_email
+            FROM pagamentos_mercadopago pm
+            WHERE pm.matricula_id = ?
+              AND LOWER(pm.status) = 'approved'
+              AND NOT EXISTS (
+                  SELECT 1 FROM pagamentos_plano pp
+                  WHERE pp.matricula_id = pm.matricula_id
+                    AND pp.status_pagamento_id = 2
+                    AND (pp.observacoes LIKE CONCAT('%ID: ', pm.payment_id, '%')
+                      OR pp.observacoes LIKE CONCAT('%Payment #', pm.payment_id, '%'))
+              )
+        ";
+        $stmtAprov = $pdo->prepare($sqlAprov);
+        $stmtAprov->execute([$mId]);
+        $pagamentosAprovadosNaoSincronizados = $stmtAprov->fetchAll(PDO::FETCH_ASSOC) ?? [];
+
+        foreach ($pagamentosAprovadosNaoSincronizados as $pgAprov) {
+            logMsg("ℹ️  Pagamento approved não sincronizado para matrícula {$mId}: payment {$pgAprov['payment_id']}", $quiet);
+            if (!$dryRun) {
+                $pagamentoData = [
+                    'id'                 => $pgAprov['payment_id'],
+                    'status'             => 'approved',
+                    'status_detail'      => $pgAprov['status_detail'],
+                    'transaction_amount' => $pgAprov['transaction_amount'],
+                    'payment_method_id'  => $pgAprov['payment_method_id'],
+                    'payment_type_id'    => $pgAprov['payment_type_id'],
+                    'installments'       => $pgAprov['installments'],
+                    'date_approved'      => $pgAprov['date_approved'],
+                    'date_created'       => $pgAprov['date_created'],
+                    'payer'              => ['email' => $pgAprov['payer_email']],
+                ];
+                sincronizarPagamentoAprovado($pdo, (int)$mId, $pagamentoData, $externalReference ?? '', $quiet);
+            } else {
+                logMsg("[dry-run] Sincronizaria pagamento approved {$pgAprov['payment_id']} para matrícula {$mId}", $quiet);
             }
         }
 
