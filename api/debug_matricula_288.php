@@ -37,13 +37,14 @@ $stmt = $db->prepare("
         p.duracao_dias,
         pc.meses  as ciclo_meses,
         pc.valor  as ciclo_valor,
-        pc.nome   as ciclo_nome
+        af.nome   as ciclo_nome
     FROM matriculas m
     INNER JOIN alunos a    ON a.id  = m.aluno_id
     INNER JOIN usuarios u  ON u.id  = a.usuario_id
     INNER JOIN planos p    ON p.id  = m.plano_id
     INNER JOIN status_matricula sm ON sm.id = m.status_id
     LEFT  JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+    LEFT  JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
     WHERE m.id = ?
 ");
 $stmt->execute([$matriculaId]);
