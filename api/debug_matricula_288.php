@@ -250,7 +250,7 @@ echo "\n\n5. WEBHOOK LOGS (webhook_payloads_mercadopago)\n";
 echo str_repeat("-", 80) . "\n";
 // Buscar por matricula_id direto ou por external_reference MAT-288-%
 $stmt = $db->prepare("
-    SELECT id, payment_id, external_reference, status, topic, created_at
+    SELECT id, payment_id, external_reference, status, created_at
     FROM webhook_payloads_mercadopago
     WHERE (external_reference LIKE 'MAT-288-%' OR external_reference = 'MAT-288')
        OR payment_id IN (SELECT payment_id FROM pagamentos_mercadopago WHERE matricula_id = ? AND payment_id IS NOT NULL)
@@ -264,7 +264,7 @@ if (!$webhooks) {
     echo "  Nenhum webhook encontrado\n";
 } else {
     foreach ($webhooks as $wh) {
-        echo "  WH #{$wh['id']} | payment_id={$wh['payment_id']} | status={$wh['status']} | topic={$wh['topic']}\n";
+        echo "  WH #{$wh['id']} | payment_id={$wh['payment_id']} | status={$wh['status']}\n";
         echo "    ext_ref:    " . ($wh['external_reference'] ?? 'NULL') . "\n";
         echo "    created_at: {$wh['created_at']}\n";
     }
