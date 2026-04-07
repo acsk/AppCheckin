@@ -193,23 +193,29 @@ class DashboardController
         $ano = (int) date('Y');
         $mes = (int) date('m');
 
-        // Check-ins de hoje
+        // Check-ins de hoje — filtra pela DATA DA AULA (dias.data),
+        // não pela data de registro, pois alunos fazem check-in antecipado.
+        // Fallback: se não há turma vinculada, usa DATE(data_checkin).
         $stmtHoje = $this->db->prepare(
             "SELECT COUNT(*) as total
-             FROM checkins
-             WHERE tenant_id = :tenant_id 
-             AND DATE(data_checkin) = :hoje"
+             FROM checkins c
+             LEFT JOIN turmas t ON t.id = c.turma_id
+             LEFT JOIN dias d ON d.id = t.dia_id
+             WHERE c.tenant_id = :tenant_id
+               AND DATE(COALESCE(d.data, c.data_checkin)) = :hoje"
         );
         $stmtHoje->execute(['tenant_id' => $tenantId, 'hoje' => $hoje]);
         $checkinsHoje = (int) $stmtHoje->fetchColumn();
 
-        // Check-ins do mês
+        // Check-ins do mês — mesma lógica
         $stmtMes = $this->db->prepare(
             "SELECT COUNT(*) as total
-             FROM checkins
-             WHERE tenant_id = :tenant_id 
-             AND YEAR(data_checkin) = :ano
-             AND MONTH(data_checkin) = :mes"
+             FROM checkins c
+             LEFT JOIN turmas t ON t.id = c.turma_id
+             LEFT JOIN dias d ON d.id = t.dia_id
+             WHERE c.tenant_id = :tenant_id
+               AND YEAR(COALESCE(d.data, c.data_checkin)) = :ano
+               AND MONTH(COALESCE(d.data, c.data_checkin)) = :mes"
         );
         $stmtMes->execute(['tenant_id' => $tenantId, 'ano' => $ano, 'mes' => $mes]);
         $checkinsMes = (int) $stmtMes->fetchColumn();
