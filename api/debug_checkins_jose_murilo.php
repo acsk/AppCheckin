@@ -32,7 +32,7 @@ $stmt = $db->prepare("
         sm.nome as status_matricula, sm.codigo as status_codigo,
         p.nome as plano_nome, p.checkins_semanais, p.modalidade_id,
         mo.nome as modalidade_nome,
-        pc.id as plano_ciclo_id, pc.nome as ciclo_nome, pc.meses,
+        pc.id as plano_ciclo_id, af.nome as ciclo_nome, pc.meses,
         pc.permite_reposicao,
         t.nome as tenant_nome
     FROM usuarios u
@@ -42,6 +42,7 @@ $stmt = $db->prepare("
     INNER JOIN planos p ON p.id = m.plano_id
     LEFT JOIN modalidades mo ON mo.id = p.modalidade_id
     LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+    LEFT JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
     INNER JOIN tenants t ON t.id = m.tenant_id
     WHERE u.nome LIKE '%JOSÉ MURILO%PEREIRA%'
        OR u.nome LIKE '%Jose Murilo%Pereira%'
