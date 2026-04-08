@@ -364,5 +364,94 @@ if (!$planoInfo) {
     }
 }
 
+// ============================================================
+// 7. ANÁLISE MENSAL — MARÇO/2026 (limite por mês)
+// ============================================================
+echo "\n7. ANÁLISE MENSAL — MARÇO/2026\n";
+echo str_repeat("-", 80) . "\n";
+
+// Março 2026: primeiro dia = domingo (w=0), 31 dias → 5 semanas → bônus +1
+$primeiroDiaMarco = new DateTime('2026-03-01');
+$diaSemanaInicioMarco = (int) $primeiroDiaMarco->format('w'); // 0=domingo
+$diasNoMesMarco = (int) $primeiroDiaMarco->format('t');       // 31
+$semanasNoMesMarco = (int) ceil(($diasNoMesMarco + $diaSemanaInicioMarco) / 7);
+$bonusMarco = ($semanasNoMesMarco >= 5) ? 1 : 0;
+$limiteBase = $limiteSemanal * 4; // 3 × 4 = 12
+$limiteMensal = $limiteBase + $bonusMarco;
+
+echo "  Março/2026 começa em: " . ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'][$diaSemanaInicioMarco] . "\n";
+echo "  Dias no mês: {$diasNoMesMarco} | Semanas no mês: {$semanasNoMesMarco}" . ($bonusMarco ? " → ✅ Mês com 5 semanas (+1 bônus)" : " → sem bônus") . "\n";
+echo "  Limite mensal: {$limiteBase}" . ($bonusMarco ? " +{$bonusMarco} bônus = {$limiteMensal}" : " = {$limiteMensal}") . "\n\n";
+
+// Todos os check-ins de março por dia
+$stmtMarco = $db->prepare("
+    SELECT c.id,
+           COALESCE(c.data_checkin_date, DATE(c.created_at)) as data_checkin,
+           DAYOFWEEK(COALESCE(c.data_checkin_date, DATE(c.created_at))) as dia_semana_num,
+           YEARWEEK(COALESCE(c.data_checkin_date, DATE(c.created_at)), 1) as semana_iso,
+           c.presente,
+           t.nome as turma_nome, t.horario_inicio,
+           mo.nome as modalidade_nome
+    FROM checkins c
+    INNER JOIN alunos a ON a.id = c.aluno_id
+    INNER JOIN turmas t ON t.id = c.turma_id
+    LEFT JOIN modalidades mo ON mo.id = t.modalidade_id
+    WHERE a.usuario_id = :uid
+      AND t.modalidade_id = :mid
+      AND YEAR(COALESCE(c.data_checkin_date, DATE(c.created_at))) = 2026
+      AND MONTH(COALESCE(c.data_checkin_date, DATE(c.created_at))) = 3
+    ORDER BY data_checkin ASC, c.created_at ASC
+");
+$stmtMarco->execute([':uid' => $usuarioId, ':mid' => $modalidadeId]);
+$checkinsMarco = $stmtMarco->fetchAll(PDO::FETCH_ASSOC);
+
+$totalMarco = 0;
+$countValidos = 0;
+$semanaAnt = null;
+$contSemanaM = 0;
+
+if (empty($checkinsMarco)) {
+    echo "  Nenhum check-in em março/2026.\n";
+} else {
+    foreach ($checkinsMarco as $c) {
+        if ($c['semana_iso'] !== $semanaAnt) {
+            if ($semanaAnt !== null) {
+                echo "  → Subtotal semana {$semanaAnt}: {$contSemanaM} check-ins\n\n";
+            }
+            $semanaAnt = $c['semana_iso'];
+            $contSemanaM = 0;
+            echo "  -- Semana ISO {$c['semana_iso']}\n";
+        }
+
+        $valido = ($c['presente'] === null || $c['presente']);
+        if ($valido) {
+            $contSemanaM++;
+            $countValidos++;
+        }
+        $totalMarco++;
+        $diaLabel = $diasSemana[(int)$c['dia_semana_num']] ?? '?';
+        $presente = $c['presente'] === null ? '⏳' : ($c['presente'] ? '✅' : '❌');
+        echo "    CK #{$c['id']} | {$diaLabel} {$c['data_checkin']} | {$c['turma_nome']} {$c['horario_inicio']} | {$presente}\n";
+    }
+    if ($semanaAnt !== null) {
+        echo "  → Subtotal semana {$semanaAnt}: {$contSemanaM} check-ins\n";
+    }
+
+    echo "\n";
+    echo "  ┌─────────────────────────────────────────────\n";
+    echo "  │ Total check-ins março/2026 : {$countValidos} (presentes/pendentes)\n";
+    echo "  │ Limite mensal (permite_rep): {$limiteMensal}\n";
+    if ($countValidos > $limiteMensal) {
+        $excesso = $countValidos - $limiteMensal;
+        echo "  │ STATUS: ⛔ EXCEDEU em {$excesso} check-in(s)\n";
+    } elseif ($countValidos == $limiteMensal) {
+        echo "  │ STATUS: 🔶 EXATAMENTE no limite ({$countValidos}/{$limiteMensal})\n";
+    } else {
+        $restam = $limiteMensal - $countValidos;
+        echo "  │ STATUS: ✅ Abaixo do limite ({$countValidos}/{$limiteMensal}) — {$restam} restante(s)\n";
+    }
+    echo "  └─────────────────────────────────────────────\n";
+}
+
 echo "\n" . str_repeat("=", 80) . "\n";
 echo "Fim do diagnóstico.\n";
