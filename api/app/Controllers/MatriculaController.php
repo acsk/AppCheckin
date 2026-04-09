@@ -2077,6 +2077,38 @@ class MatriculaController
                     ");
                     $stmtUtilizar->execute([round($novoCredUsado, 2), $statusCreditoId, $creditoId]);
                 }
+
+                // Cancelar o pagamento pago que originou o crédito
+                if (!empty($data['abater_pagamento_anterior']) && $pagamentoOrigemId) {
+                    // Opção C: pagamento específico foi encontrado
+                    $stmtCancelarPago = $db->prepare("
+                        UPDATE pagamentos_plano
+                        SET status_pagamento_id = 4,
+                            observacoes = CONCAT(COALESCE(observacoes, ''), ' [Convertido em crédito na alteração de plano]'),
+                            updated_at = NOW()
+                        WHERE id = ? AND tenant_id = ? AND status_pagamento_id = 2
+                    ");
+                    $stmtCancelarPago->execute([$pagamentoOrigemId, $tenantId]);
+                } elseif (!empty($data['abater_plano_anterior'])) {
+                    // Opção B: cancelar o último pagamento pago da matrícula
+                    $stmtUltimoPagoB = $db->prepare("
+                        SELECT id FROM pagamentos_plano
+                        WHERE matricula_id = ? AND tenant_id = ? AND status_pagamento_id = 2
+                        ORDER BY data_vencimento DESC LIMIT 1
+                    ");
+                    $stmtUltimoPagoB->execute([$matriculaId, $tenantId]);
+                    $ultimoPagoId = $stmtUltimoPagoB->fetchColumn();
+                    if ($ultimoPagoId) {
+                        $stmtCancelarPagoB = $db->prepare("
+                            UPDATE pagamentos_plano
+                            SET status_pagamento_id = 4,
+                                observacoes = CONCAT(COALESCE(observacoes, ''), ' [Convertido em crédito na alteração de plano]'),
+                                updated_at = NOW()
+                            WHERE id = ? AND tenant_id = ?
+                        ");
+                        $stmtCancelarPagoB->execute([$ultimoPagoId, $tenantId]);
+                    }
+                }
             }
 
             // 5. Criar primeira parcela do novo plano (com crédito se houver)
