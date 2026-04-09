@@ -1179,9 +1179,8 @@ class AlunoController
         $params   = $request->getQueryParams();
 
         $modalidadeId = isset($params['modalidade_id']) ? (int) $params['modalidade_id'] : null;
-        $limite       = min((int) ($params['limite'] ?? 50), 200);
-        $pagina       = max((int) ($params['pagina'] ?? 1), 1);
-        $offset       = ($pagina - 1) * $limite;
+        $mes          = isset($params['mes']) ? (int) $params['mes'] : null;
+        $ano          = isset($params['ano']) ? (int) $params['ano'] : null;
 
         $where = 'c.tenant_id = :tenant_id AND a.id = :aluno_id';
         $bind  = ['tenant_id' => $tenantId, 'aluno_id' => $alunoId];
@@ -1191,52 +1190,68 @@ class AlunoController
             $bind['modalidade_id'] = $modalidadeId;
         }
 
+        // Com mes+ano: lista detalhada do mês
+        if ($mes && $ano) {
+            $where .= ' AND MONTH(d.data) = :mes AND YEAR(d.data) = :ano';
+            $bind['mes'] = $mes;
+            $bind['ano'] = $ano;
+
+            $stmt = $this->db->prepare("
+                SELECT
+                    c.id,
+                    DATE(d.data)     AS data_aula,
+                    t.horario_inicio,
+                    t.horario_fim,
+                    m.id             AS modalidade_id,
+                    m.nome           AS modalidade,
+                    c.presente,
+                    c.registrado_por_admin,
+                    c.created_at
+                FROM checkins c
+                INNER JOIN turmas      t ON t.id = c.turma_id
+                INNER JOIN dias        d ON d.id = t.dia_id
+                INNER JOIN modalidades m ON m.id = t.modalidade_id
+                INNER JOIN alunos      a ON a.usuario_id = c.aluno_id
+                WHERE {$where}
+                ORDER BY d.data ASC, t.horario_inicio ASC
+            ");
+            $stmt->execute($bind);
+            $checkins = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $response->getBody()->write(json_encode([
+                'success'  => true,
+                'mes'      => $mes,
+                'ano'      => $ano,
+                'total'    => count($checkins),
+                'checkins' => $checkins,
+            ]));
+
+            return $response->withHeader('Content-Type', 'application/json');
+        }
+
+        // Sem filtro de mês: retorna resumo agrupado mês a mês
         $stmt = $this->db->prepare("
             SELECT
-                c.id,
-                DATE(d.data)        AS data_aula,
-                t.horario_inicio,
-                t.horario_fim,
-                m.id                AS modalidade_id,
-                m.nome              AS modalidade,
-                c.presente,
-                c.registrado_por_admin,
-                c.created_at
+                YEAR(d.data)         AS ano,
+                MONTH(d.data)        AS mes,
+                COUNT(*)             AS total,
+                SUM(c.presente = 1)  AS presentes
             FROM checkins c
-            INNER JOIN turmas     t ON t.id = c.turma_id
-            INNER JOIN dias       d ON d.id = t.dia_id
+            INNER JOIN turmas      t ON t.id = c.turma_id
+            INNER JOIN dias        d ON d.id = t.dia_id
             INNER JOIN modalidades m ON m.id = t.modalidade_id
-            INNER JOIN alunos     a ON a.usuario_id = c.aluno_id
+            INNER JOIN alunos      a ON a.usuario_id = c.aluno_id
             WHERE {$where}
-            ORDER BY d.data DESC, t.horario_inicio DESC
-            LIMIT :limite OFFSET :offset
+            GROUP BY YEAR(d.data), MONTH(d.data)
+            ORDER BY YEAR(d.data) DESC, MONTH(d.data) DESC
         ");
-
-        $bind['limite']  = $limite;
-        $bind['offset']  = $offset;
         $stmt->execute($bind);
-        $checkins = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        // Total
-        $stmtTotal = $this->db->prepare("
-            SELECT COUNT(*) AS total
-            FROM checkins c
-            INNER JOIN turmas     t ON t.id = c.turma_id
-            INNER JOIN dias       d ON d.id = t.dia_id
-            INNER JOIN modalidades m ON m.id = t.modalidade_id
-            INNER JOIN alunos     a ON a.usuario_id = c.aluno_id
-            WHERE {$where}
-        ");
-        unset($bind['limite'], $bind['offset']);
-        $stmtTotal->execute($bind);
-        $total = (int) $stmtTotal->fetchColumn();
+        $meses = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $response->getBody()->write(json_encode([
-            'success'  => true,
-            'total'    => $total,
-            'pagina'   => $pagina,
-            'limite'   => $limite,
-            'checkins' => $checkins,
+            'success'      => true,
+            'total_geral'  => array_sum(array_column($meses, 'total')),
+            'meses'        => $meses,
         ]));
 
         return $response->withHeader('Content-Type', 'application/json');

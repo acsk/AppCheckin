@@ -39,8 +39,10 @@ export default function DetalheAlunoScreen() {
   const [salvandoCredito, setSalvandoCredito] = useState(false);
   const [cancelandoCredito, setCancelandoCredito] = useState(false);
   const [formCredito, setFormCredito] = useState({ valor: '', motivo: '' });
-  const [checkins, setCheckins] = useState([]);
+  const [checkinSummary, setCheckinSummary] = useState(null);
+  const [checkinsCache, setCheckinsCache] = useState({});
   const [loadingCheckins, setLoadingCheckins] = useState(false);
+  const [loadingCalMonth, setLoadingCalMonth] = useState(false);
   const [calendarDate, setCalendarDate] = useState(() => {
     const now = new Date();
     return { year: now.getFullYear(), month: now.getMonth() };
@@ -125,14 +127,30 @@ export default function DetalheAlunoScreen() {
     }
   };
 
+  const loadMonthCheckins = async (year, mes1based) => {
+    const key = `${year}-${mes1based}`;
+    if (checkinsCache[key] !== undefined) return;
+    try {
+      setLoadingCalMonth(true);
+      const response = await alunoService.checkins(alunoId, { mes: mes1based, ano: year });
+      setCheckinsCache(prev => ({ ...prev, [key]: response.checkins || [] }));
+    } catch (error) {
+      console.error('Erro ao carregar check-ins do mês:', error);
+      setCheckinsCache(prev => ({ ...prev, [key]: [] }));
+    } finally {
+      setLoadingCalMonth(false);
+    }
+  };
+
   const loadCheckins = async () => {
     try {
       setLoadingCheckins(true);
-      const response = await alunoService.checkins(alunoId, { limite: 200 });
-      setCheckins(response.checkins || []);
+      const summary = await alunoService.checkins(alunoId);
+      setCheckinSummary(summary);
+      const now = new Date();
+      await loadMonthCheckins(now.getFullYear(), now.getMonth() + 1);
     } catch (error) {
       console.error('Erro ao carregar check-ins:', error);
-      setCheckins([]);
     } finally {
       setLoadingCheckins(false);
     }
@@ -611,55 +629,86 @@ export default function DetalheAlunoScreen() {
   const renderCheckinsTab = () => {
     const { year, month } = calendarDate;
 
-    const firstDow = new Date(year, month, 1).getDay();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const daysInPrevMonth = new Date(year, month, 0).getDate();
-
+    // grade de células
+    const firstDow      = new Date(year, month, 1).getDay();
+    const daysInMonth   = new Date(year, month + 1, 0).getDate();
+    const daysInPrev    = new Date(year, month, 0).getDate();
     const cells = [];
-    for (let i = firstDow - 1; i >= 0; i--) {
-      cells.push({ day: daysInPrevMonth - i, current: false, dateStr: null });
-    }
+    for (let i = firstDow - 1; i >= 0; i--) cells.push({ day: daysInPrev - i,  current: false, dateStr: null });
     for (let d = 1; d <= daysInMonth; d++) {
-      const m = String(month + 1).padStart(2, '0');
+      const mm = String(month + 1).padStart(2, '0');
       const dd = String(d).padStart(2, '0');
-      cells.push({ day: d, current: true, dateStr: `${year}-${m}-${dd}` });
+      cells.push({ day: d, current: true, dateStr: `${year}-${mm}-${dd}` });
     }
-    let nextDay = 1;
-    while (cells.length < 42) {
-      cells.push({ day: nextDay++, current: false, dateStr: null });
-    }
+    let nd = 1; while (cells.length < 42) cells.push({ day: nd++, current: false, dateStr: null });
 
-    const checkinDays = new Set(checkins.map(c => c.data_aula?.slice(0, 10)));
-    const todayStr = new Date().toISOString().slice(0, 10);
+    // dados do mês (via cache)
+    const cacheKey      = `${year}-${month + 1}`;
+    const monthCheckins = checkinsCache[cacheKey] || [];
+    const checkinDays   = new Set(monthCheckins.map(c => c.data_aula?.slice(0, 10)));
+    const todayStr      = new Date().toISOString().slice(0, 10);
     const selectedCheckins = calendarSelected
-      ? checkins.filter(c => c.data_aula?.slice(0, 10) === calendarSelected)
+      ? monthCheckins.filter(c => c.data_aula?.slice(0, 10) === calendarSelected)
       : [];
-    const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
-    const monthCount = checkins.filter(c => c.data_aula?.startsWith(monthPrefix)).length;
+
+    // contagem do mês (do summary, ou do cache se já carregado)
+    const monthSummary = checkinSummary?.meses?.find(m => m.ano === year && m.mes === month + 1);
+    const monthCount   = monthSummary?.total ?? monthCheckins.length;
 
     const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
                     'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
     const goToPrev = () => {
       setCalendarSelected(null);
-      setCalendarDate(prev =>
-        prev.month === 0
-          ? { year: prev.year - 1, month: 11 }
-          : { year: prev.year, month: prev.month - 1 }
-      );
+      const cur = calendarDate;
+      const next = cur.month === 0 ? { year: cur.year - 1, month: 11 } : { year: cur.year, month: cur.month - 1 };
+      loadMonthCheckins(next.year, next.month + 1);
+      setCalendarDate(next);
     };
 
     const goToNext = () => {
       setCalendarSelected(null);
-      setCalendarDate(prev =>
-        prev.month === 11
-          ? { year: prev.year + 1, month: 0 }
-          : { year: prev.year, month: prev.month + 1 }
-      );
+      const cur = calendarDate;
+      const next = cur.month === 11 ? { year: cur.year + 1, month: 0 } : { year: cur.year, month: cur.month + 1 };
+      loadMonthCheckins(next.year, next.month + 1);
+      setCalendarDate(next);
     };
+
+    if (loadingCheckins) {
+      return (
+        <View style={[styles.tabContent, styles.loadingContainer]}>
+          <ActivityIndicator size="large" color="#f97316" />
+          <Text style={styles.loadingText}>Carregando...</Text>
+        </View>
+      );
+    }
 
     return (
       <View style={styles.tabContent}>
+        {/* Barra de totais */}
+        {checkinSummary && (
+          <View style={styles.calSummaryBar}>
+            <View style={styles.calSummaryItem}>
+              <Text style={styles.calSummaryNum}>{checkinSummary.total_geral ?? 0}</Text>
+              <Text style={styles.calSummaryLabel}>Total geral</Text>
+            </View>
+            <View style={styles.calSummarySep} />
+            <View style={styles.calSummaryItem}>
+              <Text style={[styles.calSummaryNum, { color: '#16a34a' }]}>{monthCount}</Text>
+              <Text style={styles.calSummaryLabel}>Neste mês</Text>
+            </View>
+            {monthSummary?.presentes !== undefined && (
+              <>
+                <View style={styles.calSummarySep} />
+                <View style={styles.calSummaryItem}>
+                  <Text style={[styles.calSummaryNum, { color: '#2563eb' }]}>{monthSummary.presentes}</Text>
+                  <Text style={styles.calSummaryLabel}>Presentes</Text>
+                </View>
+              </>
+            )}
+          </View>
+        )}
+
         {/* Calendário */}
         <View style={styles.calCard}>
           {/* Navegação */}
@@ -686,10 +735,10 @@ export default function DetalheAlunoScreen() {
           </View>
 
           {/* Grade */}
-          {loadingCheckins ? (
+          {loadingCalMonth ? (
             <View style={styles.calLoading}>
               <ActivityIndicator color="#f97316" />
-              <Text style={{ fontSize: 13, color: '#94a3b8', marginTop: 8 }}>Carregando...</Text>
+              <Text style={{ fontSize: 13, color: '#94a3b8', marginTop: 8 }}>Carregando mês...</Text>
             </View>
           ) : (
             <View style={styles.calGrid}>
@@ -713,10 +762,10 @@ export default function DetalheAlunoScreen() {
                     ]}>
                       <Text style={[
                         styles.calDayText,
-                        !cell.current                         && styles.calDayTextFaded,
-                        hasCheckin && !isSelected            && styles.calDayTextOnCheckin,
-                        isSelected                           && styles.calDayTextOnSelected,
-                        isToday && !hasCheckin && !isSelected && styles.calDayTextToday,
+                        !cell.current                          && styles.calDayTextFaded,
+                        hasCheckin && !isSelected             && styles.calDayTextOnCheckin,
+                        isSelected                            && styles.calDayTextOnSelected,
+                        isToday && !hasCheckin && !isSelected  && styles.calDayTextToday,
                       ]}>
                         {cell.day}
                       </Text>
@@ -1422,6 +1471,39 @@ const styles = StyleSheet.create({
   },
 
   /* ── Calendário de check-ins ───────────────────────────── */
+  calSummaryBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    gap: 4,
+  },
+  calSummaryItem: {
+    alignItems: 'center',
+    paddingHorizontal: 16,
+  },
+  calSummaryNum: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#111827',
+    lineHeight: 26,
+  },
+  calSummaryLabel: {
+    fontSize: 10,
+    color: '#94a3b8',
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  calSummarySep: {
+    width: 1,
+    height: 32,
+    backgroundColor: '#e5e7eb',
+  },
   calCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
