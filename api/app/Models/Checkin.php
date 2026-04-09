@@ -327,26 +327,24 @@ class Checkin
     public function contarCheckinsNoMes(int $usuarioId, ?int $modalidadeId = null): int
     {
         $sql = "SELECT COUNT(*) FROM checkins c
-                INNER JOIN alunos a ON a.id = c.aluno_id";
+                INNER JOIN alunos a ON a.id = c.aluno_id
+                INNER JOIN turmas t ON t.id = c.turma_id
+                INNER JOIN dias d ON d.id = t.dia_id";
         $params = ['usuario_id' => $usuarioId];
-        
-        if ($modalidadeId) {
-            $sql .= " INNER JOIN turmas t ON c.turma_id = t.id";
-        }
-        
+
         $sql .= " WHERE a.usuario_id = :usuario_id
-                  AND YEAR(COALESCE(c.data_checkin_date, DATE(c.created_at))) = YEAR(CURDATE())
-                  AND MONTH(COALESCE(c.data_checkin_date, DATE(c.created_at))) = MONTH(CURDATE())
+                  AND YEAR(d.data)  = YEAR(CURDATE())
+                  AND MONTH(d.data) = MONTH(CURDATE())
                   AND (c.presente IS NULL OR c.presente = 1)";
-        
+
         if ($modalidadeId) {
             $sql .= " AND t.modalidade_id = :modalidade_id";
             $params['modalidade_id'] = $modalidadeId;
         }
-        
+
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
-        
+
         return (int) $stmt->fetchColumn();
     }
 
