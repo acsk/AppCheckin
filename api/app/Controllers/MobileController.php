@@ -1705,11 +1705,29 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
 
+            // Verificar se aluno já tem check-in na mesma modalidade no mesmo dia
+            $diaAula = $turma['dia_data'] ?? date('Y-m-d');
+            $modalidadeTurma = $turma['modalidade_id'] ?? null;
+            $checkinDia = $this->checkinModel->usuarioTemCheckinNoDiaNaModalidade($usuarioId, $diaAula, $modalidadeTurma);
+            if ($checkinDia['total'] > 0) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Aluno já realizou um check-in nesta modalidade em ' . $diaAula . '. Máximo 1 check-in por modalidade por dia',
+                    'detalhes' => [
+                        'limite_diario_modalidade' => 1,
+                        'data' => $diaAula,
+                        'modalidade_id' => $modalidadeTurma,
+                        'checkins_no_dia_nesta_modalidade' => $checkinDia['total'],
+                        'ultimo_checkin_id' => $checkinDia['ultimo_checkin_id']
+                    ]
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
             // Verificar limite de check-ins conforme plano (se houver)
             // Regra do manual:
             // - Não validar limite semanal
             // - Se permite reposição, validar limite mensal
-            $modalidadeTurma = $turma['modalidade_id'] ?? null;
             $planoInfo = $this->checkinModel->obterLimiteCheckinsPlano($usuarioId, $tenantId, $modalidadeTurma);
             if ($planoInfo['tem_plano'] && $planoInfo['limite'] > 0) {
                 if ($planoInfo['permite_reposicao']) {
