@@ -73,7 +73,6 @@ $sqlTurma = "
         t.horario_fim,
         t.dia_id,
         d.data                                 AS dia_data,
-        d.descricao                            AS dia_descricao,
         mo.id                                  AS modalidade_id,
         mo.nome                                AS modalidade_nome,
         t.tenant_id                            AS turma_tenant_id
@@ -94,7 +93,6 @@ foreach ($turmas as $t) {
     echo "    Modalidade      : " . ($t['modalidade_nome'] ?? 'N/A') . " (id={$t['modalidade_id']})\n";
     echo "    dia_id          : " . ($t['dia_id'] ?? 'NULL') . "\n";
     echo "    ► DATA REAL da aula (dias.data) : " . ($t['dia_data'] ?? 'NULL') . "\n";
-    echo "    dia_descricao   : " . ($t['dia_descricao'] ?? 'NULL') . "\n";
     echo "\n";
 }
 
