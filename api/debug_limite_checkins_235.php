@@ -57,8 +57,7 @@ echo "\n2. PLANO_CICLOS DO PLANO {$mat['plano_id']}\n";
 echo str_repeat('-', 80) . "\n";
 
 $stmt = $db->prepare("
-    SELECT pc.id, pc.tenant_id, pc.ativo, pc.permite_reposicao,
-           pc.data_inicio, pc.data_fim
+    SELECT pc.id, pc.tenant_id, pc.ativo, pc.permite_reposicao
     FROM plano_ciclos pc
     WHERE pc.plano_id = :plano_id
     ORDER BY pc.id DESC
@@ -72,7 +71,7 @@ if (!$ciclos) {
     foreach ($ciclos as $c) {
         $ativo    = $c['ativo'] ? '✅' : '❌';
         $repos    = $c['permite_reposicao'] ? 'SIM' : 'NÃO';
-        echo "  Ciclo #{$c['id']} {$ativo} | permite_reposicao={$repos} | tenant={$c['tenant_id']} | {$c['data_inicio']} → {$c['data_fim']}\n";
+        echo "  Ciclo #{$c['id']} {$ativo} | permite_reposicao={$repos} | tenant={$c['tenant_id']}\n";
     }
 }
 
