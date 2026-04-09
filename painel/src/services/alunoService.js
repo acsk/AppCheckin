@@ -147,6 +147,19 @@ const alunoService = {
       throw error.response?.data || { error: 'Erro ao buscar histórico' };
     }
   },
+
+  /**
+   * Check-ins do aluno
+   */
+  async checkins(id, params = {}) {
+    try {
+      const response = await api.get(`/admin/alunos/${id}/checkins`, { params });
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao buscar check-ins:', error.response?.data || error.message);
+      throw error.response?.data || { error: 'Erro ao buscar check-ins' };
+    }
+  },
 };
 
 export default alunoService;

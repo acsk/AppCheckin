@@ -1169,6 +1169,80 @@ class AlunoController
     }
 
     /**
+     * Listar check-ins do aluno por modalidade
+     * GET /admin/alunos/{id}/checkins
+     */
+    public function checkins(Request $request, Response $response, array $args): Response
+    {
+        $tenantId = $request->getAttribute('tenantId');
+        $alunoId  = (int) $args['id'];
+        $params   = $request->getQueryParams();
+
+        $modalidadeId = isset($params['modalidade_id']) ? (int) $params['modalidade_id'] : null;
+        $limite       = min((int) ($params['limite'] ?? 50), 200);
+        $pagina       = max((int) ($params['pagina'] ?? 1), 1);
+        $offset       = ($pagina - 1) * $limite;
+
+        $where = 'c.tenant_id = :tenant_id AND a.id = :aluno_id';
+        $bind  = ['tenant_id' => $tenantId, 'aluno_id' => $alunoId];
+
+        if ($modalidadeId) {
+            $where .= ' AND m.id = :modalidade_id';
+            $bind['modalidade_id'] = $modalidadeId;
+        }
+
+        $stmt = $this->db->prepare("
+            SELECT
+                c.id,
+                DATE(d.data)        AS data_aula,
+                t.horario_inicio,
+                t.horario_fim,
+                m.id                AS modalidade_id,
+                m.nome              AS modalidade,
+                c.presente,
+                c.registrado_por_admin,
+                c.created_at
+            FROM checkins c
+            INNER JOIN turmas     t ON t.id = c.turma_id
+            INNER JOIN dias       d ON d.id = t.dia_id
+            INNER JOIN modalidades m ON m.id = t.modalidade_id
+            INNER JOIN alunos     a ON a.usuario_id = c.aluno_id
+            WHERE {$where}
+            ORDER BY d.data DESC, t.horario_inicio DESC
+            LIMIT :limite OFFSET :offset
+        ");
+
+        $bind['limite']  = $limite;
+        $bind['offset']  = $offset;
+        $stmt->execute($bind);
+        $checkins = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Total
+        $stmtTotal = $this->db->prepare("
+            SELECT COUNT(*) AS total
+            FROM checkins c
+            INNER JOIN turmas     t ON t.id = c.turma_id
+            INNER JOIN dias       d ON d.id = t.dia_id
+            INNER JOIN modalidades m ON m.id = t.modalidade_id
+            INNER JOIN alunos     a ON a.usuario_id = c.aluno_id
+            WHERE {$where}
+        ");
+        unset($bind['limite'], $bind['offset']);
+        $stmtTotal->execute($bind);
+        $total = (int) $stmtTotal->fetchColumn();
+
+        $response->getBody()->write(json_encode([
+            'success'  => true,
+            'total'    => $total,
+            'pagina'   => $pagina,
+            'limite'   => $limite,
+            'checkins' => $checkins,
+        ]));
+
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
      * Validar CPF
      */
     private function validarCPF(string $cpf): bool

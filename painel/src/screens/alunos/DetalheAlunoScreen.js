@@ -39,6 +39,13 @@ export default function DetalheAlunoScreen() {
   const [salvandoCredito, setSalvandoCredito] = useState(false);
   const [cancelandoCredito, setCancelandoCredito] = useState(false);
   const [formCredito, setFormCredito] = useState({ valor: '', motivo: '' });
+  const [checkins, setCheckins] = useState([]);
+  const [loadingCheckins, setLoadingCheckins] = useState(false);
+  const [calendarDate, setCalendarDate] = useState(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() };
+  });
+  const [calendarSelected, setCalendarSelected] = useState(null);
 
   useEffect(() => {
     ensureAdminAccess();
@@ -95,6 +102,9 @@ export default function DetalheAlunoScreen() {
     if (tab === 'creditos') {
       loadCreditos();
     }
+    if (tab === 'checkins') {
+      loadCheckins();
+    }
   };
 
   const loadCreditos = async () => {
@@ -112,6 +122,19 @@ export default function DetalheAlunoScreen() {
       setSaldoCreditos(0);
     } finally {
       setLoadingCreditos(false);
+    }
+  };
+
+  const loadCheckins = async () => {
+    try {
+      setLoadingCheckins(true);
+      const response = await alunoService.checkins(alunoId, { limite: 200 });
+      setCheckins(response.checkins || []);
+    } catch (error) {
+      console.error('Erro ao carregar check-ins:', error);
+      setCheckins([]);
+    } finally {
+      setLoadingCheckins(false);
     }
   };
 
@@ -585,6 +608,190 @@ export default function DetalheAlunoScreen() {
     </View>
   );
 
+  const renderCheckinsTab = () => {
+    const { year, month } = calendarDate;
+
+    const firstDow = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const daysInPrevMonth = new Date(year, month, 0).getDate();
+
+    const cells = [];
+    for (let i = firstDow - 1; i >= 0; i--) {
+      cells.push({ day: daysInPrevMonth - i, current: false, dateStr: null });
+    }
+    for (let d = 1; d <= daysInMonth; d++) {
+      const m = String(month + 1).padStart(2, '0');
+      const dd = String(d).padStart(2, '0');
+      cells.push({ day: d, current: true, dateStr: `${year}-${m}-${dd}` });
+    }
+    let nextDay = 1;
+    while (cells.length < 42) {
+      cells.push({ day: nextDay++, current: false, dateStr: null });
+    }
+
+    const checkinDays = new Set(checkins.map(c => c.data_aula?.slice(0, 10)));
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const selectedCheckins = calendarSelected
+      ? checkins.filter(c => c.data_aula?.slice(0, 10) === calendarSelected)
+      : [];
+    const monthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+    const monthCount = checkins.filter(c => c.data_aula?.startsWith(monthPrefix)).length;
+
+    const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+                    'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
+    const goToPrev = () => {
+      setCalendarSelected(null);
+      setCalendarDate(prev =>
+        prev.month === 0
+          ? { year: prev.year - 1, month: 11 }
+          : { year: prev.year, month: prev.month - 1 }
+      );
+    };
+
+    const goToNext = () => {
+      setCalendarSelected(null);
+      setCalendarDate(prev =>
+        prev.month === 11
+          ? { year: prev.year + 1, month: 0 }
+          : { year: prev.year, month: prev.month + 1 }
+      );
+    };
+
+    return (
+      <View style={styles.tabContent}>
+        {/* Calendário */}
+        <View style={styles.calCard}>
+          {/* Navegação */}
+          <View style={styles.calNav}>
+            <TouchableOpacity style={styles.calNavBtn} onPress={goToPrev}>
+              <Feather name="chevron-left" size={20} color="#374151" />
+            </TouchableOpacity>
+            <View style={{ alignItems: 'center' }}>
+              <Text style={styles.calNavTitle}>{MONTHS[month]} {year}</Text>
+              <Text style={styles.calNavSub}>
+                {monthCount} check-in{monthCount !== 1 ? 's' : ''} no mês
+              </Text>
+            </View>
+            <TouchableOpacity style={styles.calNavBtn} onPress={goToNext}>
+              <Feather name="chevron-right" size={20} color="#374151" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Dias da semana */}
+          <View style={styles.calWeekRow}>
+            {['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'].map(d => (
+              <Text key={d} style={styles.calWeekCell}>{d}</Text>
+            ))}
+          </View>
+
+          {/* Grade */}
+          {loadingCheckins ? (
+            <View style={styles.calLoading}>
+              <ActivityIndicator color="#f97316" />
+              <Text style={{ fontSize: 13, color: '#94a3b8', marginTop: 8 }}>Carregando...</Text>
+            </View>
+          ) : (
+            <View style={styles.calGrid}>
+              {cells.map((cell, i) => {
+                const hasCheckin = cell.current && checkinDays.has(cell.dateStr);
+                const isToday    = cell.current && cell.dateStr === todayStr;
+                const isSelected = cell.current && cell.dateStr === calendarSelected;
+                return (
+                  <TouchableOpacity
+                    key={i}
+                    style={styles.calCell}
+                    onPress={() => cell.current && setCalendarSelected(isSelected ? null : cell.dateStr)}
+                    activeOpacity={cell.current ? 0.7 : 1}
+                    disabled={!cell.current}
+                  >
+                    <View style={[
+                      styles.calDayCircle,
+                      hasCheckin && styles.calDayHasCheckin,
+                      isSelected && styles.calDaySelected,
+                      isToday && !isSelected && styles.calDayToday,
+                    ]}>
+                      <Text style={[
+                        styles.calDayText,
+                        !cell.current                         && styles.calDayTextFaded,
+                        hasCheckin && !isSelected            && styles.calDayTextOnCheckin,
+                        isSelected                           && styles.calDayTextOnSelected,
+                        isToday && !hasCheckin && !isSelected && styles.calDayTextToday,
+                      ]}>
+                        {cell.day}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          )}
+
+          {/* Legenda */}
+          <View style={styles.calLegend}>
+            <View style={[styles.calLegendDot, { backgroundColor: '#16a34a' }]} />
+            <Text style={styles.calLegendText}>Check-in</Text>
+            <View style={[styles.calLegendDot, { borderWidth: 2, borderColor: '#f97316', backgroundColor: 'transparent' }]} />
+            <Text style={styles.calLegendText}>Hoje</Text>
+            <View style={[styles.calLegendDot, { backgroundColor: '#f97316' }]} />
+            <Text style={styles.calLegendText}>Selecionado</Text>
+          </View>
+        </View>
+
+        {/* Detalhe do dia selecionado */}
+        {calendarSelected && (
+          <View style={styles.calDetailCard}>
+            <View style={styles.calDetailHeader}>
+              <Feather name="calendar" size={16} color="#f97316" />
+              <Text style={styles.calDetailTitle}>
+                {new Date(calendarSelected + 'T12:00:00').toLocaleDateString('pt-BR', {
+                  weekday: 'long', day: '2-digit', month: 'long', year: 'numeric',
+                })}
+              </Text>
+              <TouchableOpacity onPress={() => setCalendarSelected(null)}>
+                <Feather name="x" size={16} color="#9ca3af" />
+              </TouchableOpacity>
+            </View>
+            {selectedCheckins.length === 0 ? (
+              <View style={styles.calDetailEmpty}>
+                <Text style={styles.calDetailEmptyText}>Nenhum check-in neste dia</Text>
+              </View>
+            ) : (
+              <View style={{ padding: 12, gap: 8 }}>
+                {selectedCheckins.map(c => (
+                  <View key={c.id} style={styles.calCheckinItem}>
+                    <View style={[
+                      styles.calCheckinIcon,
+                      c.presente
+                        ? { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }
+                        : { backgroundColor: '#fef2f2', borderColor: '#fecaca' },
+                    ]}>
+                      <Feather
+                        name={c.presente ? 'check' : 'x'}
+                        size={14}
+                        color={c.presente ? '#16a34a' : '#ef4444'}
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.calCheckinModalidade}>{c.modalidade}</Text>
+                      <Text style={styles.calCheckinHorario}>
+                        {c.horario_inicio?.slice(0, 5)} – {c.horario_fim?.slice(0, 5)}
+                        {c.registrado_por_admin ? '  ·  Admin' : ''}
+                      </Text>
+                    </View>
+                    <View style={styles.calCheckinId}>
+                      <Text style={styles.calCheckinIdText}>#{c.id}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+      </View>
+    );
+  };
+
   return (
     <LayoutBase title="Detalhes do Aluno" subtitle={aluno.nome}>
       <ScrollView style={styles.container}>
@@ -639,12 +846,22 @@ export default function DetalheAlunoScreen() {
               Créditos
             </Text>
           </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tab, activeTab === 'checkins' && styles.tabActive]}
+            onPress={() => handleTabChange('checkins')}
+          >
+            <Feather name="check-circle" size={16} color={activeTab === 'checkins' ? '#f97316' : '#6b7280'} />
+            <Text style={[styles.tabText, activeTab === 'checkins' && styles.tabTextActive]}>
+              Check-ins
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Conteúdo da Tab */}
         {activeTab === 'dados' && renderDadosTab()}
         {activeTab === 'historico' && renderHistoricoTab()}
         {activeTab === 'creditos' && renderCreditosTab()}
+        {activeTab === 'checkins' && renderCheckinsTab()}
       </ScrollView>
 
       {/* Modal Adicionar Crédito */}
@@ -1202,5 +1419,199 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#111827',
     backgroundColor: '#f9fafb',
+  },
+
+  /* ── Calendário de check-ins ───────────────────────────── */
+  calCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  calNav: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  calNavBtn: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  calNavTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  calNavSub: {
+    fontSize: 11,
+    color: '#94a3b8',
+    marginTop: 2,
+  },
+  calWeekRow: {
+    flexDirection: 'row',
+    backgroundColor: '#f9fafb',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  calWeekCell: {
+    width: '14.285714%',
+    textAlign: 'center',
+    paddingVertical: 8,
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#9ca3af',
+  },
+  calGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 4,
+    paddingVertical: 6,
+  },
+  calCell: {
+    width: '14.285714%',
+    paddingVertical: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calDayCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  calDayHasCheckin: {
+    backgroundColor: '#16a34a',
+  },
+  calDaySelected: {
+    backgroundColor: '#f97316',
+  },
+  calDayToday: {
+    borderWidth: 2,
+    borderColor: '#f97316',
+  },
+  calDayText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  calDayTextFaded: {
+    color: '#d1d5db',
+    fontWeight: '400',
+  },
+  calDayTextOnCheckin: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  calDayTextOnSelected: {
+    color: '#fff',
+    fontWeight: '800',
+  },
+  calDayTextToday: {
+    color: '#f97316',
+    fontWeight: '800',
+  },
+  calLoading: {
+    paddingVertical: 40,
+    alignItems: 'center',
+  },
+  calLegend: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
+  },
+  calLegendDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  calLegendText: {
+    fontSize: 11,
+    color: '#6b7280',
+    marginRight: 8,
+  },
+  calDetailCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  calDetailHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 14,
+    backgroundColor: '#fff7ed',
+    borderBottomWidth: 1,
+    borderBottomColor: '#fed7aa',
+  },
+  calDetailTitle: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#111827',
+    textTransform: 'capitalize',
+  },
+  calDetailEmpty: {
+    paddingVertical: 24,
+    alignItems: 'center',
+  },
+  calDetailEmptyText: {
+    fontSize: 13,
+    color: '#9ca3af',
+  },
+  calCheckinItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#f9fafb',
+    borderRadius: 8,
+    padding: 10,
+  },
+  calCheckinIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  calCheckinModalidade: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#111827',
+  },
+  calCheckinHorario: {
+    fontSize: 11,
+    color: '#6b7280',
+    marginTop: 2,
+  },
+  calCheckinId: {
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  calCheckinIdText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#475569',
   },
 });

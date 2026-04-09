@@ -1053,6 +1053,7 @@ return function ($app) {
         $group->post('/alunos/associar', [AlunoController::class, 'associarAluno']);
         $group->get('/alunos/{id}', [AlunoController::class, 'show']);
         $group->get('/alunos/{id}/historico-planos', [AlunoController::class, 'historicoPlanos']);
+        $group->get('/alunos/{id}/checkins', [AlunoController::class, 'checkins']);
         $group->get('/alunos/{id}/delete-preview', [AlunoController::class, 'deletePreview']);
         $group->post('/alunos', [AlunoController::class, 'create']);
         $group->put('/alunos/{id}', [AlunoController::class, 'update']);
