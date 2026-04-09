@@ -26,83 +26,57 @@ const formatarData = (iso) => {
   return new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR');
 };
 
-function CardResumo({ icon, iconColor, label, value, valueColor }) {
+function ViolacaoCard({ v, tipo, onGoAluno }) {
+  const limite = tipo === 'mensal' ? v.limite_mensal : v.limite_semanal;
   return (
-    <View style={[styles.resumoCard, { borderLeftColor: iconColor }]}>
-      <Feather name={icon} size={22} color={iconColor} />
-      <View style={{ flex: 1 }}>
-        <Text style={styles.resumoLabel}>{label}</Text>
-        <Text style={[styles.resumoValue, { color: valueColor || '#334155' }]}>{value ?? 0}</Text>
-      </View>
-    </View>
-  );
-}
-
-function ViolacaoMensalCard({ v, onGoAluno }) {
-  return (
-    <View style={styles.violacaoCard}>
-      <View style={styles.violacaoHeaderRow}>
-        <View style={{ flex: 1 }}>
-          <TouchableOpacity style={styles.nomeRow} onPress={() => onGoAluno(v.aluno_id)}>
-            <Feather name="user" size={13} color="#64748b" />
-            <Text style={styles.nomeAluno}>{v.aluno_nome}</Text>
-            <Feather name="external-link" size={11} color="#9ca3af" />
-          </TouchableOpacity>
-          <Text style={styles.subInfo}>{v.modalidade} · {v.plano}</Text>
-        </View>
-        <View style={styles.excessoBadge}>
-          <Text style={styles.excessoText}>+{v.excesso}</Text>
-          <Text style={styles.excessoLabel}>excesso</Text>
-        </View>
-      </View>
-      <View style={styles.camposGrid}>
-        <View style={styles.campoItem}>
-          <Text style={styles.campoLabel}>Limite mensal</Text>
-          <Text style={styles.campoValue}>{v.limite_mensal}</Text>
-        </View>
-        <View style={styles.campoItem}>
-          <Text style={styles.campoLabel}>Check-ins realizados</Text>
-          <Text style={[styles.campoValue, { color: '#ef4444', fontWeight: '700' }]}>{v.total_checkins}</Text>
-        </View>
-      </View>
-    </View>
-  );
-}
-
-function ViolacaoSemanalCard({ v, onGoAluno }) {
-  return (
-    <View style={styles.violacaoCard}>
-      <View style={styles.violacaoHeaderRow}>
-        <View style={{ flex: 1 }}>
-          <TouchableOpacity style={styles.nomeRow} onPress={() => onGoAluno(v.aluno_id)}>
-            <Feather name="user" size={13} color="#64748b" />
-            <Text style={styles.nomeAluno}>{v.aluno_nome}</Text>
-            <Feather name="external-link" size={11} color="#9ca3af" />
-          </TouchableOpacity>
-          <Text style={styles.subInfo}>{v.modalidade} · {v.plano}</Text>
-        </View>
-        <View style={styles.excessoBadge}>
-          <Text style={styles.excessoText}>+{v.excesso}</Text>
-          <Text style={styles.excessoLabel}>excesso</Text>
-        </View>
-      </View>
-      <View style={styles.camposGrid}>
-        <View style={styles.campoItem}>
-          <Text style={styles.campoLabel}>Semana</Text>
-          <Text style={styles.campoValue}>
-            {formatarData(v.semana_inicio)} – {formatarData(v.semana_fim)}
+    <TouchableOpacity
+      style={styles.violacaoCard}
+      onPress={() => onGoAluno(v.aluno_id)}
+      activeOpacity={0.85}
+    >
+      {/* Linha superior: avatar + nome + excesso */}
+      <View style={styles.cardTopRow}>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>
+            {(v.aluno_nome || '?')[0].toUpperCase()}
           </Text>
         </View>
-        <View style={styles.campoItem}>
-          <Text style={styles.campoLabel}>Limite semanal</Text>
-          <Text style={styles.campoValue}>{v.limite_semanal}</Text>
+        <View style={{ flex: 1 }}>
+          <View style={styles.nomeRow}>
+            <Text style={styles.nomeAluno} numberOfLines={1}>{v.aluno_nome}</Text>
+            <Feather name="external-link" size={11} color="#94a3b8" />
+          </View>
+          {tipo === 'semanal' && (
+            <Text style={styles.semanaTag}>
+              {formatarData(v.semana_inicio)} – {formatarData(v.semana_fim)}
+            </Text>
+          )}
+          <View style={styles.tagsRow}>
+            <View style={styles.tag}><Text style={styles.tagText}>{v.modalidade}</Text></View>
+            <View style={[styles.tag, { backgroundColor: '#f0fdf4' }]}>
+              <Text style={[styles.tagText, { color: '#15803d' }]}>{v.plano}</Text>
+            </View>
+          </View>
         </View>
-        <View style={styles.campoItem}>
-          <Text style={styles.campoLabel}>Check-ins realizados</Text>
-          <Text style={[styles.campoValue, { color: '#ef4444', fontWeight: '700' }]}>{v.total_checkins}</Text>
+        <View style={styles.excessoBadge}>
+          <Text style={styles.excessoNum}>+{v.excesso}</Text>
+          <Text style={styles.excessoLabel}>excesso</Text>
         </View>
       </View>
-    </View>
+
+      {/* Linha inferior: limite vs realizados */}
+      <View style={styles.statsRow}>
+        <View style={styles.statItem}>
+          <Text style={styles.statLabel}>Limite {tipo === 'mensal' ? 'mensal' : 'semanal'}</Text>
+          <Text style={styles.statValue}>{limite}</Text>
+        </View>
+        <View style={styles.statDivider} />
+        <View style={styles.statItem}>
+          <Text style={styles.statLabel}>Realizados</Text>
+          <Text style={[styles.statValue, { color: '#ef4444' }]}>{v.total_checkins}</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -151,53 +125,49 @@ export default function CheckinsAcimaDoLimiteScreen() {
   const totalViolacoes = (resumo?.total_violacoes_mensais ?? 0) + (resumo?.total_violacoes_semanais ?? 0);
 
   return (
-    <LayoutBase title="Auditoria" subtitle="Check-ins acima do limite">
+    <LayoutBase title="Check-ins acima do limite" subtitle="Auditoria">
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-        {/* Cabeçalho */}
-        <View style={styles.headerRow}>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.push('/auditoria')}>
-            <Feather name="arrow-left" size={18} color="#fff" />
-            <Text style={styles.backButtonText}>Voltar</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.refreshButton} onPress={carregar}>
-            <Feather name="refresh-cw" size={16} color="#f97316" />
-            {!isMobile && <Text style={styles.refreshButtonText}>Atualizar</Text>}
-          </TouchableOpacity>
-        </View>
 
-        {/* Filtros */}
-        <View style={[styles.filtrosRow, isMobile && { flexDirection: 'column' }]}>
-          <View style={styles.filtroGroup}>
-            <Text style={styles.filtroLabel}>Ano</Text>
-            <TextInput
-              style={styles.filtroInput}
-              value={filtroAno}
-              onChangeText={setFiltroAno}
-              keyboardType="numeric"
-              placeholder="Ex: 2026"
-              maxLength={4}
-            />
-          </View>
-          <View style={styles.filtroGroup}>
-            <Text style={styles.filtroLabel}>Mês</Text>
-            <View style={styles.pickerWrap}>
-              <Picker
-                selectedValue={filtroMes}
-                onValueChange={(val) => setFiltroMes(val)}
-                style={styles.picker}
-              >
-                {['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
-                  'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'
-                ].map((nome, idx) => (
-                  <Picker.Item key={idx + 1} label={nome} value={String(idx + 1)} />
-                ))}
-              </Picker>
+        {/* ── Barra de filtro ───────────────────────────────────────────── */}
+        <View style={[styles.filtroBar, isMobile && { flexDirection: 'column' }]}>
+          <View style={styles.filtroBarLeft}>
+            <View style={styles.filtroField}>
+              <Text style={styles.filtroFieldLabel}>Ano</Text>
+              <TextInput
+                style={styles.filtroInput}
+                value={filtroAno}
+                onChangeText={setFiltroAno}
+                keyboardType="numeric"
+                placeholder="2026"
+                maxLength={4}
+              />
+            </View>
+            <View style={styles.filtroField}>
+              <Text style={styles.filtroFieldLabel}>Mês</Text>
+              <View style={styles.pickerWrap}>
+                <Picker
+                  selectedValue={filtroMes}
+                  onValueChange={(val) => setFiltroMes(val)}
+                  style={styles.picker}
+                >
+                  {['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+                    'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro',
+                  ].map((nome, idx) => (
+                    <Picker.Item key={idx + 1} label={nome} value={String(idx + 1)} />
+                  ))}
+                </Picker>
+              </View>
             </View>
           </View>
-          <TouchableOpacity style={styles.filtroBtn} onPress={aplicarFiltro}>
-            <Feather name="search" size={16} color="#fff" />
-            <Text style={styles.filtroBtnText}>Filtrar</Text>
-          </TouchableOpacity>
+          <View style={styles.filtroBarRight}>
+            <TouchableOpacity style={styles.btnFiltrar} onPress={aplicarFiltro}>
+              <Feather name="search" size={15} color="#fff" />
+              <Text style={styles.btnFiltrarText}>Filtrar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.btnAtualizar} onPress={carregar}>
+              <Feather name="refresh-cw" size={15} color="#f97316" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {loading ? (
@@ -207,91 +177,98 @@ export default function CheckinsAcimaDoLimiteScreen() {
           </View>
         ) : (
           <View style={styles.content}>
-            {/* Período */}
-            {periodo && (
-              <View style={styles.periodoInfo}>
-                <Feather name="calendar" size={14} color="#6b7280" />
-                <Text style={styles.periodoText}>
-                  {MESES[periodo.mes] || ''} / {periodo.ano}
-                  {periodo.bonus_cinco_semanas ? '  ·  Bônus de +1 check-in ativo (mês com 5 semanas)' : ''}
-                </Text>
-              </View>
-            )}
 
-            {/* Cards de resumo */}
-            <View style={[styles.resumoRow, isMobile && { flexDirection: 'column' }]}>
-              <CardResumo
-                icon="bar-chart-2"
-                iconColor="#64748b"
-                label="Total de violações"
-                value={totalViolacoes}
-                valueColor={totalViolacoes > 0 ? '#ef4444' : '#16a34a'}
-              />
-              <CardResumo
-                icon="calendar"
-                iconColor="#7c3aed"
-                label="Violações mensais"
-                value={resumo?.total_violacoes_mensais}
-                valueColor="#7c3aed"
-              />
-              <CardResumo
-                icon="grid"
-                iconColor="#2563eb"
-                label="Violações semanais"
-                value={resumo?.total_violacoes_semanais}
-                valueColor="#2563eb"
-              />
+            {/* ── Barra de resumo ───────────────────────────────────────── */}
+            <View style={styles.resumoBar}>
+              <View style={styles.resumoItem}>
+                <Text style={[styles.resumoNum, { color: totalViolacoes > 0 ? '#ef4444' : '#16a34a' }]}>
+                  {totalViolacoes}
+                </Text>
+                <Text style={styles.resumoLbl}>Total</Text>
+              </View>
+              <View style={styles.resumoSep} />
+              <View style={styles.resumoItem}>
+                <Text style={[styles.resumoNum, { color: '#7c3aed' }]}>
+                  {resumo?.total_violacoes_mensais ?? 0}
+                </Text>
+                <Text style={styles.resumoLbl}>Mensais</Text>
+              </View>
+              <View style={styles.resumoSep} />
+              <View style={styles.resumoItem}>
+                <Text style={[styles.resumoNum, { color: '#2563eb' }]}>
+                  {resumo?.total_violacoes_semanais ?? 0}
+                </Text>
+                <Text style={styles.resumoLbl}>Semanais</Text>
+              </View>
+              {periodo?.bonus_cinco_semanas && (
+                <>
+                  <View style={styles.resumoSep} />
+                  <View style={[styles.resumoItem, { flexDirection: 'row', gap: 6, alignItems: 'center' }]}>
+                    <Feather name="zap" size={13} color="#d97706" />
+                    <Text style={[styles.resumoLbl, { color: '#d97706', fontWeight: '700' }]}>Bônus 5ª semana</Text>
+                  </View>
+                </>
+              )}
+              {periodo && (
+                <>
+                  <View style={styles.resumoSep} />
+                  <View style={[styles.resumoItem, { alignItems: 'flex-end' }]}>
+                    <Text style={[styles.resumoLbl, { color: '#94a3b8', fontSize: 10 }]}>Período</Text>
+                    <Text style={[styles.resumoLbl, { fontWeight: '700', color: '#475569' }]}>
+                      {MESES[periodo.mes]} / {periodo.ano}
+                    </Text>
+                  </View>
+                </>
+              )}
             </View>
 
-            {/* Estado vazio */}
+            {/* ── Estado vazio ──────────────────────────────────────────── */}
             {totalViolacoes === 0 ? (
               <View style={styles.emptyState}>
-                <Feather name="check-circle" size={52} color="#16a34a" />
-                <Text style={styles.emptyTitle}>Nenhuma violação</Text>
+                <View style={styles.emptyIcon}>
+                  <Feather name="check-circle" size={32} color="#16a34a" />
+                </View>
+                <Text style={styles.emptyTitle}>Tudo certo!</Text>
                 <Text style={styles.emptySubtext}>
-                  Todos os alunos respeitaram os limites de check-in no período selecionado.
+                  Nenhum aluno ultrapassou o limite de check-ins no período.
                 </Text>
               </View>
             ) : (
-              <View style={{ gap: 24 }}>
+              <View style={{ gap: 28 }}>
                 {/* Violações mensais */}
                 {violacoesMensais.length > 0 && (
-                  <View style={{ gap: 10 }}>
-                    <View style={styles.secaoHeader}>
-                      <View style={[styles.secaoIconBox, { backgroundColor: '#f3e8ff' }]}>
-                        <Feather name="calendar" size={16} color="#7c3aed" />
+                  <View style={{ gap: 8 }}>
+                    <View style={styles.secaoDivider}>
+                      <View style={[styles.secaoDot, { backgroundColor: '#7c3aed' }]} />
+                      <Text style={[styles.secaoTitulo, { color: '#7c3aed' }]}>
+                        Mensais
+                      </Text>
+                      <View style={[styles.secaoCount, { backgroundColor: '#f3e8ff' }]}>
+                        <Text style={[styles.secaoCountText, { color: '#7c3aed' }]}>{violacoesMensais.length}</Text>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.secaoTitulo}>Violações mensais</Text>
-                        <Text style={styles.secaoDesc}>Planos com reposição — agrupa por mês inteiro</Text>
-                      </View>
-                      <View style={[styles.contadorBadge, { backgroundColor: '#f3e8ff' }]}>
-                        <Text style={[styles.contadorText, { color: '#7c3aed' }]}>{violacoesMensais.length}</Text>
-                      </View>
+                      <Text style={styles.secaoDesc}>planos com reposição</Text>
                     </View>
                     {violacoesMensais.map((v, i) => (
-                      <ViolacaoMensalCard key={i} v={v} onGoAluno={irParaAluno} />
+                      <ViolacaoCard key={i} v={v} tipo="mensal" onGoAluno={irParaAluno} />
                     ))}
                   </View>
                 )}
 
                 {/* Violações semanais */}
                 {violacoesSemanais.length > 0 && (
-                  <View style={{ gap: 10 }}>
-                    <View style={styles.secaoHeader}>
-                      <View style={[styles.secaoIconBox, { backgroundColor: '#dbeafe' }]}>
-                        <Feather name="grid" size={16} color="#2563eb" />
+                  <View style={{ gap: 8 }}>
+                    <View style={styles.secaoDivider}>
+                      <View style={[styles.secaoDot, { backgroundColor: '#2563eb' }]} />
+                      <Text style={[styles.secaoTitulo, { color: '#2563eb' }]}>
+                        Semanais
+                      </Text>
+                      <View style={[styles.secaoCount, { backgroundColor: '#dbeafe' }]}>
+                        <Text style={[styles.secaoCountText, { color: '#2563eb' }]}>{violacoesSemanais.length}</Text>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.secaoTitulo}>Violações semanais</Text>
-                        <Text style={styles.secaoDesc}>Planos sem reposição — agrupa por semana</Text>
-                      </View>
-                      <View style={[styles.contadorBadge, { backgroundColor: '#dbeafe' }]}>
-                        <Text style={[styles.contadorText, { color: '#2563eb' }]}>{violacoesSemanais.length}</Text>
-                      </View>
+                      <Text style={styles.secaoDesc}>planos sem reposição</Text>
                     </View>
                     {violacoesSemanais.map((v, i) => (
-                      <ViolacaoSemanalCard key={i} v={v} onGoAluno={irParaAluno} />
+                      <ViolacaoCard key={i} v={v} tipo="semanal" onGoAluno={irParaAluno} />
                     ))}
                   </View>
                 )}
@@ -305,266 +282,312 @@ export default function CheckinsAcimaDoLimiteScreen() {
 }
 
 const styles = StyleSheet.create({
-  headerRow: {
+  // ── Filtro ──────────────────────────────────────────────────────────────
+  filtroBar: {
     flexDirection: 'row',
+    alignItems: 'flex-end',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    backgroundColor: '#f97316',
-    borderRadius: 8,
-  },
-  backButtonText: {
-    fontSize: 14,
-    color: '#fff',
-    fontWeight: '600',
-  },
-  refreshButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 8,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+    gap: 12,
     borderWidth: 1,
-    borderColor: '#f97316',
-    backgroundColor: '#fff7ed',
+    borderColor: '#e5e7eb',
   },
-  refreshButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#f97316',
-  },
-  filtrosRow: {
+  filtroBarLeft: {
     flexDirection: 'row',
     gap: 10,
-    paddingHorizontal: 16,
-    marginBottom: 16,
     alignItems: 'flex-end',
+    flex: 1,
+    flexWrap: 'wrap',
   },
-  filtroGroup: {
+  filtroBarRight: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  filtroField: {
     gap: 4,
   },
-  filtroLabel: {
-    fontSize: 11,
+  filtroFieldLabel: {
+    fontSize: 10,
     fontWeight: '600',
-    color: '#374151',
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   filtroInput: {
-    backgroundColor: '#fff',
+    backgroundColor: '#f8fafc',
     borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: '#e2e8f0',
     borderRadius: 8,
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingVertical: 7,
     fontSize: 13,
     color: '#111827',
-    minWidth: 80,
+    minWidth: 70,
   },
   pickerWrap: {
-    backgroundColor: '#fff',
+    backgroundColor: '#f8fafc',
     borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: '#e2e8f0',
     borderRadius: 8,
     overflow: 'hidden',
     minWidth: 150,
   },
   picker: {
-    height: 38,
+    height: 36,
     fontSize: 13,
     color: '#111827',
   },
-  filtroBtn: {
+  btnFiltrar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     backgroundColor: '#f97316',
-    paddingVertical: 9,
+    paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 8,
   },
-  filtroBtnText: {
+  btnFiltrarText: {
     fontSize: 13,
     fontWeight: '700',
     color: '#fff',
   },
+  btnAtualizar: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    backgroundColor: '#fff',
+  },
+
+  // ── Loading ──────────────────────────────────────────────────────────────
   loadingBox: {
     alignItems: 'center',
     paddingVertical: 60,
     gap: 12,
   },
   loadingText: {
-    fontSize: 15,
-    color: '#666',
+    fontSize: 14,
+    color: '#94a3b8',
   },
+
+  // ── Conteúdo ─────────────────────────────────────────────────────────────
   content: {
-    paddingHorizontal: 16,
     gap: 16,
   },
-  periodoInfo: {
+
+  // ── Barra de resumo ──────────────────────────────────────────────────────
+  resumoBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#f8fafc',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  periodoText: {
-    fontSize: 12,
-    color: '#64748b',
-    fontWeight: '500',
-  },
-  resumoRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  resumoCard: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
     backgroundColor: '#fff',
     borderRadius: 12,
-    padding: 14,
-    borderLeftWidth: 4,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
     borderWidth: 1,
     borderColor: '#e5e7eb',
+    flexWrap: 'wrap',
+    gap: 4,
   },
-  resumoLabel: {
-    fontSize: 11,
-    color: '#6b7280',
-    fontWeight: '500',
+  resumoItem: {
+    alignItems: 'center',
+    paddingHorizontal: 16,
   },
-  resumoValue: {
-    fontSize: 22,
+  resumoNum: {
+    fontSize: 26,
     fontWeight: '800',
+    lineHeight: 30,
+  },
+  resumoLbl: {
+    fontSize: 11,
+    color: '#94a3b8',
+    fontWeight: '500',
     marginTop: 2,
   },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 60,
-    gap: 12,
+  resumoSep: {
+    width: 1,
+    height: 36,
+    backgroundColor: '#e5e7eb',
   },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#111827',
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#6b7280',
-    textAlign: 'center',
-    maxWidth: 300,
-  },
-  secaoHeader: {
+
+  // ── Seção ────────────────────────────────────────────────────────────────
+  secaoDivider: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
+    paddingVertical: 4,
   },
-  secaoIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+  secaoDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   secaoTitulo: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
-    color: '#111827',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  secaoCount: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 20,
+  },
+  secaoCountText: {
+    fontSize: 12,
+    fontWeight: '800',
   },
   secaoDesc: {
     fontSize: 11,
-    color: '#6b7280',
-    marginTop: 1,
+    color: '#94a3b8',
+    flex: 1,
   },
-  contadorBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
-  },
-  contadorText: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
+
+  // ── Card de violação ─────────────────────────────────────────────────────
   violacaoCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
     borderColor: '#e5e7eb',
-    gap: 10,
+    gap: 12,
   },
-  violacaoHeaderRow: {
+  cardTopRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 10,
+    gap: 12,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#475569',
   },
   nomeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
   },
   nomeAluno: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
-    color: '#111827',
+    color: '#0f172a',
   },
-  subInfo: {
+  semanaTag: {
     fontSize: 11,
-    color: '#6b7280',
-    marginTop: 3,
+    color: '#2563eb',
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  tagsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 5,
+    flexWrap: 'wrap',
+  },
+  tag: {
+    backgroundColor: '#f1f5f9',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  tagText: {
+    fontSize: 11,
+    color: '#475569',
+    fontWeight: '600',
   },
   excessoBadge: {
-    backgroundColor: '#fee2e2',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    backgroundColor: '#fef2f2',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     alignItems: 'center',
-    minWidth: 52,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    minWidth: 58,
   },
-  excessoText: {
-    fontSize: 16,
-    fontWeight: '800',
+  excessoNum: {
+    fontSize: 20,
+    fontWeight: '900',
     color: '#ef4444',
+    lineHeight: 24,
   },
   excessoLabel: {
     fontSize: 9,
-    color: '#ef4444',
-    fontWeight: '600',
+    color: '#f87171',
+    fontWeight: '700',
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  camposGrid: {
+  statsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
+    alignItems: 'center',
+    backgroundColor: '#f8fafc',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
   },
-  campoItem: {
-    minWidth: 120,
+  statItem: {
+    flex: 1,
+    alignItems: 'center',
     gap: 2,
   },
-  campoLabel: {
+  statLabel: {
     fontSize: 10,
-    color: '#9ca3af',
+    color: '#94a3b8',
     fontWeight: '500',
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
-  campoValue: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#374151',
+  statValue: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#1e293b',
+  },
+  statDivider: {
+    width: 1,
+    height: 32,
+    backgroundColor: '#e2e8f0',
+    marginHorizontal: 8,
+  },
+
+  // ── Empty state ──────────────────────────────────────────────────────────
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 60,
+    gap: 12,
+  },
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#f0fdf4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  emptySubtext: {
+    fontSize: 13,
+    color: '#6b7280',
+    textAlign: 'center',
+    maxWidth: 280,
+    lineHeight: 20,
   },
 });
