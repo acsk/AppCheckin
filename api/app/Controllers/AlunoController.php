@@ -1211,7 +1211,7 @@ class AlunoController
                 INNER JOIN turmas      t ON t.id = c.turma_id
                 INNER JOIN dias        d ON d.id = t.dia_id
                 INNER JOIN modalidades m ON m.id = t.modalidade_id
-                INNER JOIN alunos      a ON a.usuario_id = c.aluno_id
+                INNER JOIN alunos      a ON a.id = c.aluno_id
                 WHERE {$where}
                 ORDER BY d.data ASC, t.horario_inicio ASC
             ");
@@ -1240,7 +1240,7 @@ class AlunoController
             INNER JOIN turmas      t ON t.id = c.turma_id
             INNER JOIN dias        d ON d.id = t.dia_id
             INNER JOIN modalidades m ON m.id = t.modalidade_id
-            INNER JOIN alunos      a ON a.usuario_id = c.aluno_id
+            INNER JOIN alunos      a ON a.id = c.aluno_id
             WHERE {$where}
             GROUP BY YEAR(d.data), MONTH(d.data)
             ORDER BY YEAR(d.data) DESC, MONTH(d.data) DESC
