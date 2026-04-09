@@ -562,11 +562,26 @@ class PagamentoPlano
 
             if ($pendente) {
                 error_log("[gerarProximoPagamento] Matrícula #{$matriculaId}: já existe pagamento pendente #{$pendente['id']} para {$pendente['data_vencimento']}");
-                // Mesmo assim, garantir que proxima_data_vencimento esteja sincronizado
-                $stmtSync = $this->pdo->prepare("
-                    UPDATE matriculas SET proxima_data_vencimento = ?, updated_at = NOW() WHERE id = ? AND (proxima_data_vencimento IS NULL OR proxima_data_vencimento != ?)
-                ");
-                $stmtSync->execute([$pendente['data_vencimento'], $matriculaId, $pendente['data_vencimento']]);
+                // Verificar se proxima_data_vencimento já foi atualizada para data mais recente (ex: por ativarMatricula)
+                // Se sim, corrigir o pagamento pendente em vez de sobrescrever a data já correta
+                $stmtAtual = $this->pdo->prepare("SELECT proxima_data_vencimento FROM matriculas WHERE id = ?");
+                $stmtAtual->execute([$matriculaId]);
+                $proxAtual = $stmtAtual->fetchColumn();
+
+                if ($proxAtual && $proxAtual > $pendente['data_vencimento']) {
+                    // proxima_data_vencimento já aponta para data mais nova — corrigir o pagamento pendente
+                    $stmtFixPendente = $this->pdo->prepare("
+                        UPDATE pagamentos_plano SET data_vencimento = ?, updated_at = NOW() WHERE id = ?
+                    ");
+                    $stmtFixPendente->execute([$proxAtual, $pendente['id']]);
+                    error_log("[gerarProximoPagamento] Matrícula #{$matriculaId}: corrigida data_vencimento do pendente #{$pendente['id']} de {$pendente['data_vencimento']} para {$proxAtual}");
+                } else {
+                    // Sincronizar proxima_data_vencimento a partir do pagamento pendente
+                    $stmtSync = $this->pdo->prepare("
+                        UPDATE matriculas SET proxima_data_vencimento = ?, updated_at = NOW() WHERE id = ? AND (proxima_data_vencimento IS NULL OR proxima_data_vencimento != ?)
+                    ");
+                    $stmtSync->execute([$pendente['data_vencimento'], $matriculaId, $pendente['data_vencimento']]);
+                }
                 return null;
             }
 
