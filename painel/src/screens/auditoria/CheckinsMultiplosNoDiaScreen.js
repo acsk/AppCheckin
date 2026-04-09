@@ -26,42 +26,71 @@ const formatarData = (iso) => {
   return new Date(iso + 'T12:00:00').toLocaleDateString('pt-BR');
 };
 
-function RegistroCard({ r, onGoAluno }) {
+function RegistroCard({ r, onGoAluno, onGoMatricula }) {
+  const modalidadeStr = r.modalidade || r.modalidades_do_dia || null;
   return (
-    <View style={styles.registroCard}>
-      <View style={styles.registroHeaderRow}>
-        <View style={{ flex: 1 }}>
-          <TouchableOpacity style={styles.nomeRow} onPress={() => onGoAluno(r.aluno_id)}>
-            <Feather name="user" size={13} color="#64748b" />
-            <Text style={styles.nomeAluno}>{r.aluno_nome}</Text>
-            <Feather name="external-link" size={11} color="#9ca3af" />
-          </TouchableOpacity>
-          <Text style={styles.dataInfo}>{formatarData(r.data)}</Text>
+    <TouchableOpacity
+      style={styles.registroCard}
+      onPress={() => onGoAluno(r.aluno_id)}
+      activeOpacity={0.85}
+    >
+      {/* Linha superior: avatar + nome + badge */}
+      <View style={styles.cardTopRow}>
+        <View style={styles.avatar}>
+          <Text style={styles.avatarText}>
+            {(r.aluno_nome || '?')[0].toUpperCase()}
+          </Text>
         </View>
+
+        <View style={{ flex: 1, gap: 4 }}>
+          <View style={styles.nomeRow}>
+            <Text style={styles.nomeAluno} numberOfLines={1}>{r.aluno_nome}</Text>
+            <Feather name="external-link" size={11} color="#94a3b8" />
+          </View>
+
+          {/* IDs: aluno + matrícula */}
+          <View style={styles.idsChipRow}>
+            <View style={styles.idChip}>
+              <Feather name="user" size={10} color="#64748b" />
+              <Text style={styles.idChipText}>Aluno #{r.aluno_id}</Text>
+            </View>
+            {r.matricula_id ? (
+              <TouchableOpacity
+                style={[styles.idChip, styles.idChipLink]}
+                onPress={(e) => { e.stopPropagation?.(); onGoMatricula(r.matricula_id); }}
+                activeOpacity={0.7}
+              >
+                <Feather name="file-text" size={10} color="#2563eb" />
+                <Text style={[styles.idChipText, { color: '#2563eb' }]}>Matrícula #{r.matricula_id}</Text>
+                <Feather name="external-link" size={9} color="#2563eb" />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          {modalidadeStr && (
+            <View style={styles.tagsRow}>
+              <View style={styles.tag}>
+                <Feather name="layers" size={10} color="#475569" />
+                <Text style={styles.tagText}>{modalidadeStr}</Text>
+              </View>
+            </View>
+          )}
+        </View>
+
+        {/* Badge: total + data */}
         <View style={styles.totalBadge}>
           <Text style={styles.totalNum}>{r.total_checkins}</Text>
           <Text style={styles.totalSub}>check-ins</Text>
+          <Text style={styles.totalData}>{formatarData(r.data)}</Text>
         </View>
       </View>
 
-      {r.modalidade && (
-        <View style={styles.modalidadeRow}>
-          <Feather name="layers" size={12} color="#6b7280" />
-          <Text style={styles.modalidadeText}>{r.modalidade}</Text>
-        </View>
-      )}
-      {r.modalidades_do_dia && !r.modalidade && (
-        <View style={styles.modalidadeRow}>
-          <Feather name="layers" size={12} color="#6b7280" />
-          <Text style={styles.modalidadeText}>{r.modalidades_do_dia}</Text>
-        </View>
-      )}
-
-      <View style={styles.idsRow}>
-        <Text style={styles.idsLabel}>IDs dos check-ins:</Text>
-        <Text style={styles.idsValue}>{r.checkin_ids}</Text>
+      {/* Linha inferior: IDs dos check-ins */}
+      <View style={styles.checkinIdsBar}>
+        <Text style={styles.checkinIdsLabel}>IDs dos check-ins</Text>
+        <Text style={styles.checkinIdsValue}>{r.checkin_ids}</Text>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -109,25 +138,15 @@ export default function CheckinsMultiplosNoDiaScreen() {
   };
 
   const irParaAluno = (id) => router.push(`/alunos/${id}`);
+  const irParaMatricula = (id) => router.push(`/matriculas/${id}`);
 
   return (
-    <LayoutBase title="Auditoria" subtitle="Check-ins múltiplos no dia">
+    <LayoutBase title="Check-ins Múltiplos no Dia" subtitle="Auditoria">
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-        {/* Cabeçalho */}
-        <View style={styles.headerRow}>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.push('/auditoria')}>
-            <Feather name="arrow-left" size={18} color="#fff" />
-            <Text style={styles.backButtonText}>Voltar</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.refreshButton} onPress={carregar}>
-            <Feather name="refresh-cw" size={16} color="#f97316" />
-            {!isMobile && <Text style={styles.refreshButtonText}>Atualizar</Text>}
-          </TouchableOpacity>
-        </View>
 
-        {/* Filtros */}
-        <View style={styles.filtrosContainer}>
-          <View style={[styles.filtrosRow, isMobile && { flexDirection: 'column' }]}>
+        {/* ── Filtros ──────────────────────────────────────────────────── */}
+        <View style={styles.filtroCard}>
+          <View style={[styles.filtroTopRow, isMobile && { flexDirection: 'column' }]}>
             <DatePickerInput
               label="Data início"
               value={filtroDataInicio}
@@ -140,20 +159,20 @@ export default function CheckinsMultiplosNoDiaScreen() {
               onChange={setFiltroDataFim}
               placeholder="Selecionar data"
             />
-            <View style={styles.filtroGroup}>
-              <Text style={styles.filtroLabel}>Aluno ID</Text>
+            <View style={styles.filtroField}>
+              <Text style={styles.filtroFieldLabel}>Aluno ID</Text>
               <TextInput
-                style={[styles.filtroInput, { minWidth: 70 }]}
+                style={styles.filtroInput}
                 value={filtroAlunoId}
                 onChangeText={setFiltroAlunoId}
                 keyboardType="numeric"
                 placeholder="Opcional"
               />
             </View>
-            <View style={styles.filtroGroup}>
-              <Text style={styles.filtroLabel}>Modalidade ID</Text>
+            <View style={styles.filtroField}>
+              <Text style={styles.filtroFieldLabel}>Modalidade ID</Text>
               <TextInput
-                style={[styles.filtroInput, { minWidth: 70 }]}
+                style={styles.filtroInput}
                 value={filtroModalidadeId}
                 onChangeText={setFiltroModalidadeId}
                 keyboardType="numeric"
@@ -162,7 +181,7 @@ export default function CheckinsMultiplosNoDiaScreen() {
             </View>
           </View>
 
-          <View style={styles.filtrosSwitchRow}>
+          <View style={styles.filtroBottomRow}>
             <View style={styles.switchGroup}>
               <Switch
                 value={mesmaModalidade}
@@ -170,18 +189,22 @@ export default function CheckinsMultiplosNoDiaScreen() {
                 trackColor={{ false: '#d1d5db', true: '#fed7aa' }}
                 thumbColor={mesmaModalidade ? '#f97316' : '#9ca3af'}
               />
-              <View>
+              <View style={{ flex: 1 }}>
                 <Text style={styles.switchLabel}>Mesma modalidade</Text>
                 <Text style={styles.switchDesc}>
                   Detectar duplicatas apenas quando o aluno fizer check-in na mesma modalidade no mesmo dia
                 </Text>
               </View>
             </View>
-
-            <TouchableOpacity style={styles.filtroBtn} onPress={carregar}>
-              <Feather name="search" size={16} color="#fff" />
-              <Text style={styles.filtroBtnText}>Filtrar</Text>
-            </TouchableOpacity>
+            <View style={styles.filtroActions}>
+              <TouchableOpacity style={styles.btnFiltrar} onPress={carregar}>
+                <Feather name="search" size={15} color="#fff" />
+                <Text style={styles.btnFiltrarText}>Filtrar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.btnAtualizar} onPress={carregar}>
+                <Feather name="refresh-cw" size={15} color="#f97316" />
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
 
@@ -192,38 +215,37 @@ export default function CheckinsMultiplosNoDiaScreen() {
           </View>
         ) : (
           <View style={styles.content}>
-            {/* Info dos filtros aplicados */}
-            {filtrosAplicados && (
-              <View style={styles.filtrosInfo}>
-                <Feather name="filter" size={13} color="#6b7280" />
-                <Text style={styles.filtrosInfoText}>
-                  {formatarData(filtrosAplicados.data_inicio)}
-                  {' '} – {' '}
-                  {formatarData(filtrosAplicados.data_fim)}
-                  {filtrosAplicados.mesma_modalidade ? '  ·  Por modalidade' : '  ·  Qualquer duplicata no dia'}
-                </Text>
-              </View>
-            )}
 
-            {/* Resumo */}
-            <View style={[styles.resumoCard, { borderLeftColor: total > 0 ? '#ef4444' : '#16a34a' }]}>
-              <Feather
-                name={total > 0 ? 'alert-triangle' : 'check-circle'}
-                size={22}
-                color={total > 0 ? '#ef4444' : '#16a34a'}
-              />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.resumoLabel}>Registros encontrados</Text>
-                <Text style={[styles.resumoValue, { color: total > 0 ? '#ef4444' : '#16a34a' }]}>
+            {/* ── Barra de resumo ─────────────────────────────────────── */}
+            <View style={styles.resumoBar}>
+              <View style={styles.resumoItem}>
+                <Text style={[styles.resumoNum, { color: total > 0 ? '#ef4444' : '#16a34a' }]}>
                   {total}
                 </Text>
+                <Text style={styles.resumoLbl}>Ocorrências</Text>
               </View>
+              {filtrosAplicados && (
+                <>
+                  <View style={styles.resumoSep} />
+                  <View style={[styles.resumoItem, { alignItems: 'flex-start', flex: 1 }]}>
+                    <Text style={[styles.resumoLbl, { color: '#94a3b8', fontSize: 10 }]}>Período</Text>
+                    <Text style={[styles.resumoLbl, { fontWeight: '700', color: '#475569' }]}>
+                      {formatarData(filtrosAplicados.data_inicio)} – {formatarData(filtrosAplicados.data_fim)}
+                    </Text>
+                    <Text style={[styles.resumoLbl, { color: filtrosAplicados.mesma_modalidade ? '#f97316' : '#94a3b8' }]}>
+                      {filtrosAplicados.mesma_modalidade ? 'Por modalidade' : 'Qualquer duplicata'}
+                    </Text>
+                  </View>
+                </>
+              )}
             </View>
 
-            {/* Conteúdo */}
+            {/* ── Estado vazio ────────────────────────────────────────── */}
             {total === 0 ? (
               <View style={styles.emptyState}>
-                <Feather name="check-circle" size={52} color="#16a34a" />
+                <View style={styles.emptyIcon}>
+                  <Feather name="check-circle" size={32} color="#16a34a" />
+                </View>
                 <Text style={styles.emptyTitle}>Nenhuma ocorrência</Text>
                 <Text style={styles.emptySubtext}>
                   Não foram encontrados check-ins múltiplos no mesmo dia para o período selecionado.
@@ -231,11 +253,15 @@ export default function CheckinsMultiplosNoDiaScreen() {
               </View>
             ) : (
               <View style={{ gap: 8 }}>
-                <Text style={styles.sectionTitle}>
-                  {total} ocorrência{total !== 1 ? 's' : ''} encontrada{total !== 1 ? 's' : ''}
-                </Text>
+                <View style={styles.secaoDivider}>
+                  <View style={[styles.secaoDot, { backgroundColor: '#ef4444' }]} />
+                  <Text style={[styles.secaoTitulo, { color: '#ef4444' }]}>Registros</Text>
+                  <View style={[styles.secaoCount, { backgroundColor: '#fee2e2' }]}>
+                    <Text style={[styles.secaoCountText, { color: '#ef4444' }]}>{total}</Text>
+                  </View>
+                </View>
                 {registros.map((r, i) => (
-                  <RegistroCard key={i} r={r} onGoAluno={irParaAluno} />
+                  <RegistroCard key={i} r={r} onGoAluno={irParaAluno} onGoMatricula={irParaMatricula} />
                 ))}
               </View>
             )}
@@ -247,79 +273,52 @@ export default function CheckinsMultiplosNoDiaScreen() {
 }
 
 const styles = StyleSheet.create({
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    backgroundColor: '#f97316',
-    borderRadius: 8,
-  },
-  backButtonText: {
-    fontSize: 14,
-    color: '#fff',
-    fontWeight: '600',
-  },
-  refreshButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#f97316',
-    backgroundColor: '#fff7ed',
-  },
-  refreshButtonText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#f97316',
-  },
-  filtrosContainer: {
-    paddingHorizontal: 16,
+  // ── Filtro ──────────────────────────────────────────────────────────────
+  filtroCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
     marginBottom: 16,
     gap: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
   },
-  filtrosRow: {
+  filtroTopRow: {
     flexDirection: 'row',
     gap: 10,
     alignItems: 'flex-end',
     flexWrap: 'wrap',
   },
-  filtroGroup: {
-    gap: 4,
-  },
-  filtroLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  filtroInput: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    fontSize: 13,
-    color: '#111827',
-    minWidth: 110,
-  },
-  filtrosSwitchRow: {
+  filtroBottomRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: 12,
     flexWrap: 'wrap',
+    borderTopWidth: 1,
+    borderTopColor: '#f1f5f9',
+    paddingTop: 12,
+  },
+  filtroField: {
+    gap: 4,
+  },
+  filtroFieldLabel: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: '#94a3b8',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  filtroInput: {
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    fontSize: 13,
+    color: '#111827',
+    minWidth: 70,
   },
   switchGroup: {
     flexDirection: 'row',
@@ -338,169 +337,274 @@ const styles = StyleSheet.create({
     marginTop: 2,
     maxWidth: 280,
   },
-  filtroBtn: {
+  filtroActions: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  btnFiltrar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
     backgroundColor: '#f97316',
-    paddingVertical: 9,
+    paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 8,
-    alignSelf: 'flex-start',
   },
-  filtroBtnText: {
+  btnFiltrarText: {
     fontSize: 13,
     fontWeight: '700',
     color: '#fff',
   },
+  btnAtualizar: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    backgroundColor: '#fff',
+  },
+
+  // ── Loading ──────────────────────────────────────────────────────────────
   loadingBox: {
     alignItems: 'center',
     paddingVertical: 60,
     gap: 12,
   },
   loadingText: {
-    fontSize: 15,
-    color: '#666',
+    fontSize: 14,
+    color: '#94a3b8',
   },
+
+  // ── Conteúdo ─────────────────────────────────────────────────────────────
   content: {
-    paddingHorizontal: 16,
     gap: 16,
   },
-  filtrosInfo: {
+
+  // ── Barra de resumo ──────────────────────────────────────────────────────
+  resumoBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#f8fafc',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  filtrosInfoText: {
-    fontSize: 12,
-    color: '#64748b',
-    fontWeight: '500',
-  },
-  resumoCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
     backgroundColor: '#fff',
     borderRadius: 12,
-    padding: 14,
-    borderLeftWidth: 4,
+    paddingVertical: 14,
+    paddingHorizontal: 18,
     borderWidth: 1,
     borderColor: '#e5e7eb',
+    gap: 4,
   },
-  resumoLabel: {
-    fontSize: 11,
-    color: '#6b7280',
-    fontWeight: '500',
+  resumoItem: {
+    alignItems: 'center',
+    paddingHorizontal: 16,
   },
-  resumoValue: {
+  resumoNum: {
     fontSize: 26,
     fontWeight: '800',
+    lineHeight: 30,
+  },
+  resumoLbl: {
+    fontSize: 11,
+    color: '#94a3b8',
+    fontWeight: '500',
     marginTop: 2,
   },
-  emptyState: {
+  resumoSep: {
+    width: 1,
+    height: 36,
+    backgroundColor: '#e5e7eb',
+  },
+
+  // ── Seção ────────────────────────────────────────────────────────────────
+  secaoDivider: {
+    flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 60,
-    gap: 12,
+    gap: 8,
+    paddingVertical: 4,
   },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#111827',
+  secaoDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#6b7280',
-    textAlign: 'center',
-    maxWidth: 320,
-  },
-  sectionTitle: {
+  secaoTitulo: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#374151',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
+  secaoCount: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 20,
+  },
+  secaoCountText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  // ── Card ─────────────────────────────────────────────────────────────────
   registroCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 14,
     borderWidth: 1,
     borderColor: '#e5e7eb',
-    gap: 8,
+    gap: 10,
   },
-  registroHeaderRow: {
+  cardTopRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 10,
+    gap: 12,
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f1f5f9',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#475569',
   },
   nomeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
   },
   nomeAluno: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
-    color: '#111827',
+    color: '#0f172a',
+    flex: 1,
   },
-  dataInfo: {
-    fontSize: 12,
-    color: '#6b7280',
-    marginTop: 3,
+  idsChipRow: {
+    flexDirection: 'row',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  idChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#f1f5f9',
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  idChipLink: {
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  idChipText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  tagsRow: {
+    flexDirection: 'row',
+    gap: 6,
+    flexWrap: 'wrap',
+  },
+  tag: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#f1f5f9',
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  tagText: {
+    fontSize: 11,
+    color: '#475569',
+    fontWeight: '600',
   },
   totalBadge: {
-    backgroundColor: '#fee2e2',
-    borderRadius: 8,
+    backgroundColor: '#fef2f2',
+    borderRadius: 10,
     paddingHorizontal: 10,
     paddingVertical: 6,
     alignItems: 'center',
-    minWidth: 50,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    minWidth: 58,
+    gap: 1,
   },
   totalNum: {
-    fontSize: 16,
-    fontWeight: '800',
+    fontSize: 20,
+    fontWeight: '900',
     color: '#ef4444',
+    lineHeight: 24,
   },
   totalSub: {
     fontSize: 9,
-    color: '#ef4444',
-    fontWeight: '600',
+    color: '#f87171',
+    fontWeight: '700',
     textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  modalidadeRow: {
+  totalData: {
+    fontSize: 10,
+    color: '#94a3b8',
+    fontWeight: '500',
+    marginTop: 2,
+  },
+  checkinIdsBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingTop: 4,
-    borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
+    gap: 8,
+    backgroundColor: '#faf5ff',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: '#e9d5ff',
   },
-  modalidadeText: {
-    fontSize: 12,
-    color: '#374151',
-    fontWeight: '500',
-    flex: 1,
-  },
-  idsRow: {
-    flexDirection: 'row',
-    gap: 6,
-    alignItems: 'flex-start',
-  },
-  idsLabel: {
+  checkinIdsLabel: {
     fontSize: 10,
-    color: '#9ca3af',
-    fontWeight: '500',
-    paddingTop: 1,
+    color: '#7c3aed',
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    minWidth: 80,
   },
-  idsValue: {
-    fontSize: 11,
-    color: '#6366f1',
+  checkinIdsValue: {
+    fontSize: 12,
+    color: '#6d28d9',
     fontWeight: '600',
     flex: 1,
+  },
+
+  // ── Empty state ──────────────────────────────────────────────────────────
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 60,
+    gap: 12,
+  },
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#f0fdf4',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  emptySubtext: {
+    fontSize: 13,
+    color: '#6b7280',
+    textAlign: 'center',
+    maxWidth: 300,
+    lineHeight: 20,
   },
 });
