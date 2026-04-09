@@ -630,11 +630,11 @@ export default function DetalheAlunoScreen() {
     const { year, month } = calendarDate;
 
     // grade de células
-    const firstDow      = new Date(year, month, 1).getDay();
-    const daysInMonth   = new Date(year, month + 1, 0).getDate();
-    const daysInPrev    = new Date(year, month, 0).getDate();
+    const firstDow    = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const daysInPrev  = new Date(year, month, 0).getDate();
     const cells = [];
-    for (let i = firstDow - 1; i >= 0; i--) cells.push({ day: daysInPrev - i,  current: false, dateStr: null });
+    for (let i = firstDow - 1; i >= 0; i--) cells.push({ day: daysInPrev - i, current: false, dateStr: null });
     for (let d = 1; d <= daysInMonth; d++) {
       const mm = String(month + 1).padStart(2, '0');
       const dd = String(d).padStart(2, '0');
@@ -642,25 +642,43 @@ export default function DetalheAlunoScreen() {
     }
     let nd = 1; while (cells.length < 42) cells.push({ day: nd++, current: false, dateStr: null });
 
-    // dados do mês (via cache)
+    // dados do mês via cache
     const cacheKey      = `${year}-${month + 1}`;
     const monthCheckins = checkinsCache[cacheKey] || [];
-    const checkinDays   = new Set(monthCheckins.map(c => c.data_aula?.slice(0, 10)));
-    const todayStr      = new Date().toISOString().slice(0, 10);
+
+    // status por dia: presente > ausente > pendente
+    const dayStatus = {};
+    for (const c of monthCheckins) {
+      const d = c.data_aula?.slice(0, 10);
+      if (!d) continue;
+      const cur = dayStatus[d];
+      if (c.presente === 1) { dayStatus[d] = 'presente'; }
+      else if (c.presente === 0 && cur !== 'presente') { dayStatus[d] = 'ausente'; }
+      else if (c.presente === null && !cur) { dayStatus[d] = 'pendente'; }
+    }
+
+    const todayStr = new Date().toISOString().slice(0, 10);
     const selectedCheckins = calendarSelected
       ? monthCheckins.filter(c => c.data_aula?.slice(0, 10) === calendarSelected)
       : [];
 
-    // contagem do mês (do summary, ou do cache se já carregado)
     const monthSummary = checkinSummary?.meses?.find(m => m.ano === year && m.mes === month + 1);
     const monthCount   = monthSummary?.total ?? monthCheckins.length;
+    const monthPresentes = monthSummary?.presentes ?? monthCheckins.filter(c => c.presente === 1).length;
+    const monthAusentes  = monthCount - monthPresentes;
 
     const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
                     'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
 
+    const statusCheckin = (presente) => {
+      if (presente === 1)   return { icon: 'check',  color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0', label: 'Presente'  };
+      if (presente === 0)   return { icon: 'x',      color: '#ef4444', bg: '#fef2f2', border: '#fecaca', label: 'Ausente'   };
+      return                       { icon: 'clock',  color: '#d97706', bg: '#fffbeb', border: '#fde68a', label: 'Pendente'  };
+    };
+
     const goToPrev = () => {
       setCalendarSelected(null);
-      const cur = calendarDate;
+      const cur  = calendarDate;
       const next = cur.month === 0 ? { year: cur.year - 1, month: 11 } : { year: cur.year, month: cur.month - 1 };
       loadMonthCheckins(next.year, next.month + 1);
       setCalendarDate(next);
@@ -668,7 +686,7 @@ export default function DetalheAlunoScreen() {
 
     const goToNext = () => {
       setCalendarSelected(null);
-      const cur = calendarDate;
+      const cur  = calendarDate;
       const next = cur.month === 11 ? { year: cur.year + 1, month: 0 } : { year: cur.year, month: cur.month + 1 };
       loadMonthCheckins(next.year, next.month + 1);
       setCalendarDate(next);
@@ -685,6 +703,7 @@ export default function DetalheAlunoScreen() {
 
     return (
       <View style={styles.tabContent}>
+
         {/* Barra de totais */}
         {checkinSummary && (
           <View style={styles.calSummaryBar}>
@@ -694,15 +713,20 @@ export default function DetalheAlunoScreen() {
             </View>
             <View style={styles.calSummarySep} />
             <View style={styles.calSummaryItem}>
-              <Text style={[styles.calSummaryNum, { color: '#16a34a' }]}>{monthCount}</Text>
+              <Text style={[styles.calSummaryNum, { color: '#111827' }]}>{monthCount}</Text>
               <Text style={styles.calSummaryLabel}>Neste mês</Text>
             </View>
-            {monthSummary?.presentes !== undefined && (
+            <View style={styles.calSummarySep} />
+            <View style={styles.calSummaryItem}>
+              <Text style={[styles.calSummaryNum, { color: '#16a34a' }]}>{monthPresentes}</Text>
+              <Text style={styles.calSummaryLabel}>Presentes</Text>
+            </View>
+            {monthAusentes > 0 && (
               <>
                 <View style={styles.calSummarySep} />
                 <View style={styles.calSummaryItem}>
-                  <Text style={[styles.calSummaryNum, { color: '#2563eb' }]}>{monthSummary.presentes}</Text>
-                  <Text style={styles.calSummaryLabel}>Presentes</Text>
+                  <Text style={[styles.calSummaryNum, { color: '#ef4444' }]}>{monthAusentes}</Text>
+                  <Text style={styles.calSummaryLabel}>Aus./Pend.</Text>
                 </View>
               </>
             )}
@@ -711,6 +735,7 @@ export default function DetalheAlunoScreen() {
 
         {/* Calendário */}
         <View style={styles.calCard}>
+
           {/* Navegação */}
           <View style={styles.calNav}>
             <TouchableOpacity style={styles.calNavBtn} onPress={goToPrev}>
@@ -719,7 +744,8 @@ export default function DetalheAlunoScreen() {
             <View style={{ alignItems: 'center' }}>
               <Text style={styles.calNavTitle}>{MONTHS[month]} {year}</Text>
               <Text style={styles.calNavSub}>
-                {monthCount} check-in{monthCount !== 1 ? 's' : ''} no mês
+                {monthPresentes} presente{monthPresentes !== 1 ? 's' : ''}
+                {monthAusentes > 0 ? `  ·  ${monthAusentes} aus./pend.` : ''}
               </Text>
             </View>
             <TouchableOpacity style={styles.calNavBtn} onPress={goToNext}>
@@ -743,7 +769,7 @@ export default function DetalheAlunoScreen() {
           ) : (
             <View style={styles.calGrid}>
               {cells.map((cell, i) => {
-                const hasCheckin = cell.current && checkinDays.has(cell.dateStr);
+                const status     = cell.current ? (dayStatus[cell.dateStr] || null) : null;
                 const isToday    = cell.current && cell.dateStr === todayStr;
                 const isSelected = cell.current && cell.dateStr === calendarSelected;
                 return (
@@ -756,16 +782,20 @@ export default function DetalheAlunoScreen() {
                   >
                     <View style={[
                       styles.calDayCircle,
-                      hasCheckin && styles.calDayHasCheckin,
+                      status === 'presente' && !isSelected && styles.calDayPresente,
+                      status === 'ausente'  && !isSelected && styles.calDayAusente,
+                      status === 'pendente' && !isSelected && styles.calDayPendente,
                       isSelected && styles.calDaySelected,
-                      isToday && !isSelected && styles.calDayToday,
+                      isToday && !isSelected && !status && styles.calDayToday,
+                      isToday && !isSelected && status && styles.calDayTodayWithStatus,
                     ]}>
                       <Text style={[
                         styles.calDayText,
-                        !cell.current                          && styles.calDayTextFaded,
-                        hasCheckin && !isSelected             && styles.calDayTextOnCheckin,
-                        isSelected                            && styles.calDayTextOnSelected,
-                        isToday && !hasCheckin && !isSelected  && styles.calDayTextToday,
+                        !cell.current && styles.calDayTextFaded,
+                        (status === 'presente' || status === 'ausente') && !isSelected && styles.calDayTextOnColor,
+                        status === 'pendente' && !isSelected && styles.calDayTextPendente,
+                        isSelected && styles.calDayTextOnSelected,
+                        isToday && !status && !isSelected && styles.calDayTextToday,
                       ]}>
                         {cell.day}
                       </Text>
@@ -779,11 +809,13 @@ export default function DetalheAlunoScreen() {
           {/* Legenda */}
           <View style={styles.calLegend}>
             <View style={[styles.calLegendDot, { backgroundColor: '#16a34a' }]} />
-            <Text style={styles.calLegendText}>Check-in</Text>
+            <Text style={styles.calLegendText}>Presente</Text>
+            <View style={[styles.calLegendDot, { backgroundColor: '#ef4444' }]} />
+            <Text style={styles.calLegendText}>Ausente</Text>
+            <View style={[styles.calLegendDot, { backgroundColor: '#d97706' }]} />
+            <Text style={styles.calLegendText}>Pendente</Text>
             <View style={[styles.calLegendDot, { borderWidth: 2, borderColor: '#f97316', backgroundColor: 'transparent' }]} />
             <Text style={styles.calLegendText}>Hoje</Text>
-            <View style={[styles.calLegendDot, { backgroundColor: '#f97316' }]} />
-            <Text style={styles.calLegendText}>Selecionado</Text>
           </View>
         </View>
 
@@ -807,32 +839,34 @@ export default function DetalheAlunoScreen() {
               </View>
             ) : (
               <View style={{ padding: 12, gap: 8 }}>
-                {selectedCheckins.map(c => (
-                  <View key={c.id} style={styles.calCheckinItem}>
-                    <View style={[
-                      styles.calCheckinIcon,
-                      c.presente
-                        ? { backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }
-                        : { backgroundColor: '#fef2f2', borderColor: '#fecaca' },
-                    ]}>
-                      <Feather
-                        name={c.presente ? 'check' : 'x'}
-                        size={14}
-                        color={c.presente ? '#16a34a' : '#ef4444'}
-                      />
+                {selectedCheckins.map(c => {
+                  const s = statusCheckin(c.presente);
+                  return (
+                    <View key={c.id} style={styles.calCheckinItem}>
+                      <View style={[
+                        styles.calCheckinIcon,
+                        { backgroundColor: s.bg, borderColor: s.border },
+                      ]}>
+                        <Feather name={s.icon} size={14} color={s.color} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={styles.calCheckinModalidade}>{c.modalidade}</Text>
+                          <View style={[styles.calStatusBadge, { backgroundColor: s.bg, borderColor: s.border }]}>
+                            <Text style={[styles.calStatusBadgeText, { color: s.color }]}>{s.label}</Text>
+                          </View>
+                        </View>
+                        <Text style={styles.calCheckinHorario}>
+                          {c.horario_inicio?.slice(0, 5)} – {c.horario_fim?.slice(0, 5)}
+                          {c.registrado_por_admin ? '  ·  Admin' : ''}
+                        </Text>
+                      </View>
+                      <View style={styles.calCheckinId}>
+                        <Text style={styles.calCheckinIdText}>#{c.id}</Text>
+                      </View>
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.calCheckinModalidade}>{c.modalidade}</Text>
-                      <Text style={styles.calCheckinHorario}>
-                        {c.horario_inicio?.slice(0, 5)} – {c.horario_fim?.slice(0, 5)}
-                        {c.registrado_por_admin ? '  ·  Admin' : ''}
-                      </Text>
-                    </View>
-                    <View style={styles.calCheckinId}>
-                      <Text style={styles.calCheckinIdText}>#{c.id}</Text>
-                    </View>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             )}
           </View>
@@ -1572,6 +1606,39 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  calDayPresente: {
+    backgroundColor: '#16a34a',
+  },
+  calDayAusente: {
+    backgroundColor: '#ef4444',
+  },
+  calDayPendente: {
+    backgroundColor: '#fef3c7',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+  },
+  calDayTodayWithStatus: {
+    borderWidth: 2,
+    borderColor: '#f97316',
+  },
+  calDayTextOnColor: {
+    color: '#fff',
+    fontWeight: '700',
+  },
+  calDayTextPendente: {
+    color: '#92400e',
+    fontWeight: '700',
+  },
+  calStatusBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    borderWidth: 1,
+  },
+  calStatusBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
   },
   calDayHasCheckin: {
     backgroundColor: '#16a34a',
