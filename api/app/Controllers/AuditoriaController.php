@@ -517,12 +517,13 @@ class AuditoriaController
                         COUNT(*)        AS total_checkins,
                         GROUP_CONCAT(c.id ORDER BY c.id SEPARATOR ',') AS checkin_ids
                     FROM checkins c
-                    INNER JOIN alunos  a ON a.id = c.aluno_id
-                    INNER JOIN turmas  t ON t.id = c.turma_id
+                    INNER JOIN alunos  a ON a.id  = c.aluno_id
+                    INNER JOIN turmas  t ON t.id  = c.turma_id
+                    INNER JOIN dias    d ON d.id  = t.dia_id
                     WHERE t.tenant_id = :tenant_id
                       AND (c.presente IS NULL OR c.presente = 1)
-                      AND YEAR(COALESCE(c.data_checkin_date, DATE(c.created_at)))  = :ano
-                      AND MONTH(COALESCE(c.data_checkin_date, DATE(c.created_at))) = :mes
+                      AND YEAR(DATE(d.data))  = :ano
+                      AND MONTH(DATE(d.data)) = :mes
                     GROUP BY a.id, t.modalidade_id
                 ) sub
                 INNER JOIN alunos     a  ON a.id  = sub.aluno_id
@@ -576,9 +577,9 @@ class AuditoriaController
                     u.nome            AS aluno_nome,
                     t.modalidade_id,
                     mo.nome           AS modalidade_nome,
-                    YEARWEEK(COALESCE(c.data_checkin_date, DATE(c.created_at)), 0) AS semana_ano,
-                    MIN(COALESCE(c.data_checkin_date, DATE(c.created_at)))          AS semana_inicio,
-                    MAX(COALESCE(c.data_checkin_date, DATE(c.created_at)))          AS semana_fim,
+                    YEARWEEK(DATE(d.data), 0) AS semana_ano,
+                    MIN(DATE(d.data))          AS semana_inicio,
+                    MAX(DATE(d.data))          AS semana_fim,
                     COUNT(*)          AS total_checkins,
                     GROUP_CONCAT(c.id ORDER BY c.id SEPARATOR ',') AS checkin_ids,
                     p.nome            AS plano_nome,
@@ -587,6 +588,7 @@ class AuditoriaController
                 INNER JOIN alunos     a  ON a.id  = c.aluno_id
                 INNER JOIN usuarios   u  ON u.id  = a.usuario_id
                 INNER JOIN turmas     t  ON t.id  = c.turma_id
+                INNER JOIN dias       d  ON d.id  = t.dia_id
                 INNER JOIN modalidades mo ON mo.id = t.modalidade_id
                 INNER JOIN matriculas  m  ON m.id = (
                     SELECT m2.id FROM matriculas m2
@@ -601,11 +603,11 @@ class AuditoriaController
                 LEFT  JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
                 WHERE t.tenant_id = :tenant_id
                   AND (c.presente IS NULL OR c.presente = 1)
-                  AND YEAR(COALESCE(c.data_checkin_date, DATE(c.created_at)))  = :ano
-                  AND MONTH(COALESCE(c.data_checkin_date, DATE(c.created_at))) = :mes
+                  AND YEAR(DATE(d.data))  = :ano
+                  AND MONTH(DATE(d.data)) = :mes
                   AND COALESCE(pc.permite_reposicao, 0) = 0
                 GROUP BY a.id, u.nome, t.modalidade_id, mo.nome,
-                         YEARWEEK(COALESCE(c.data_checkin_date, DATE(c.created_at)), 0),
+                         YEARWEEK(DATE(d.data), 0),
                          p.nome, p.checkins_semanais
                 HAVING COUNT(*) > p.checkins_semanais
                 ORDER BY u.nome, semana_ano
@@ -688,17 +690,17 @@ class AuditoriaController
         try {
             if ($mesmaModalidade) {
                 $selectExtra = 't.modalidade_id, mo.nome AS modalidade_nome,';
-                $groupBy     = 'a.id, u.nome, COALESCE(c.data_checkin_date, DATE(c.created_at)), t.modalidade_id, mo.nome';
+                $groupBy     = 'a.id, u.nome, DATE(d.data), t.modalidade_id, mo.nome';
             } else {
                 $selectExtra = 'NULL AS modalidade_id, NULL AS modalidade_nome,';
-                $groupBy     = 'a.id, u.nome, COALESCE(c.data_checkin_date, DATE(c.created_at))';
+                $groupBy     = 'a.id, u.nome, DATE(d.data)';
             }
 
             $sql = "
                 SELECT
-                    a.id   AS aluno_id,
-                    u.nome AS aluno_nome,
-                    COALESCE(c.data_checkin_date, DATE(c.created_at)) AS data,
+                    a.id        AS aluno_id,
+                    u.nome      AS aluno_nome,
+                    DATE(d.data) AS data,
                     {$selectExtra}
                     COUNT(*) AS total_checkins,
                     GROUP_CONCAT(c.id      ORDER BY c.created_at SEPARATOR ',')   AS checkin_ids,
@@ -707,10 +709,11 @@ class AuditoriaController
                 INNER JOIN alunos     a  ON a.id  = c.aluno_id
                 INNER JOIN usuarios   u  ON u.id  = a.usuario_id
                 INNER JOIN turmas     t  ON t.id  = c.turma_id
+                INNER JOIN dias       d  ON d.id  = t.dia_id
                 LEFT  JOIN modalidades mo ON mo.id = t.modalidade_id
                 WHERE t.tenant_id = :tenant_id
                   AND (c.presente IS NULL OR c.presente = 1)
-                  AND COALESCE(c.data_checkin_date, DATE(c.created_at)) BETWEEN :data_inicio AND :data_fim
+                  AND DATE(d.data) BETWEEN :data_inicio AND :data_fim
             ";
 
             $queryParams = [
