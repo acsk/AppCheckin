@@ -45,6 +45,51 @@ export default function AuditoriaScreen() {
           </View>
           <Feather name="chevron-right" size={20} color="#9ca3af" />
         </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionButton}
+          activeOpacity={0.7}
+          onPress={() => router.push('/auditoria/reparar-proxima-data-vencimento')}
+        >
+          <View style={[styles.actionIcon, { backgroundColor: '#eef2ff' }]}>
+            <Feather name="tool" size={22} color="#6366f1" />
+          </View>
+          <View style={styles.actionContent}>
+            <Text style={styles.actionLabel}>Reparar Próxima Data de Vencimento</Text>
+            <Text style={styles.actionDesc}>Corrigir matrículas com proxima_data_vencimento divergente da próxima parcela</Text>
+          </View>
+          <Feather name="chevron-right" size={20} color="#9ca3af" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionButton}
+          activeOpacity={0.7}
+          onPress={() => router.push('/auditoria/checkins-acima-do-limite')}
+        >
+          <View style={[styles.actionIcon, { backgroundColor: '#f3e8ff' }]}>
+            <Feather name="trending-up" size={22} color="#7c3aed" />
+          </View>
+          <View style={styles.actionContent}>
+            <Text style={styles.actionLabel}>Check-ins Acima do Limite</Text>
+            <Text style={styles.actionDesc}>Alunos que excederam o limite de check-ins do plano no período</Text>
+          </View>
+          <Feather name="chevron-right" size={20} color="#9ca3af" />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.actionButton}
+          activeOpacity={0.7}
+          onPress={() => router.push('/auditoria/checkins-multiplos-no-dia')}
+        >
+          <View style={[styles.actionIcon, { backgroundColor: '#fef3c7' }]}>
+            <Feather name="repeat" size={22} color="#d97706" />
+          </View>
+          <View style={styles.actionContent}>
+            <Text style={styles.actionLabel}>Check-ins Múltiplos no Dia</Text>
+            <Text style={styles.actionDesc}>Detectar alunos com mais de 1 check-in no mesmo dia (possível fraude ou erro)</Text>
+          </View>
+          <Feather name="chevron-right" size={20} color="#9ca3af" />
+        </TouchableOpacity>
       </View>
     </LayoutBase>
   );

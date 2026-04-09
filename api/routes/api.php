@@ -1090,6 +1090,8 @@ return function ($app) {
         $group->get('/auditoria/pagamentos-duplicados/detalhe', [AuditoriaController::class, 'pagamentosDuplicadosDetalhe']);
         $group->get('/auditoria/anomalias-datas', [AuditoriaController::class, 'anomaliasDatas']);
         $group->post('/auditoria/reparar-proxima-data-vencimento', [AuditoriaController::class, 'repararProximaDataVencimento']);
+        $group->get('/auditoria/checkins-acima-do-limite', [AuditoriaController::class, 'checkinsAcimaDoLimite']);
+        $group->get('/auditoria/checkins-multiplos-no-dia', [AuditoriaController::class, 'checkinsMultiplosNoDia']);
         
         // Contas a Receber
         $group->get('/contas-receber', [ContasReceberController::class, 'index']);

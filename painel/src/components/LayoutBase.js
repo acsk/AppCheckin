@@ -35,6 +35,7 @@ const MENU = [
       { label: 'Professores', path: '/professores', icon: 'user', roles: [3, 4] },
       { label: 'Usuários', path: '/usuarios', icon: 'users', roles: [3, 4] },
       { label: 'Modalidades', path: '/modalidades', icon: 'activity', roles: [3, 4] },
+      { label: 'Planos', path: '/planos', icon: 'package', roles: [3, 4] },
       { label: 'Pacotes', path: '/pacotes', icon: 'archive', roles: [3, 4] },
     ],
   },
@@ -44,11 +45,8 @@ const MENU = [
     roles: [3, 4],
     children: [
       { label: 'Vencimentos', path: '/matriculas/vencimentos', icon: 'clock', roles: [3, 4] },
-      { label: 'Assinaturas', path: '/assinaturas', icon: 'repeat', roles: [3, 4] },
-      { label: 'Planos', path: '/planos', icon: 'package', roles: [3, 4] },
       { label: 'Formas de Pagamento', path: '/formas-pagamento', icon: 'credit-card', roles: [3, 4] },
-      { label: 'Pagamentos MP', path: '/pagamentos-mp', icon: 'dollar-sign', roles: [3, 4] },
-  
+      
     ],
   },
   {
@@ -60,7 +58,7 @@ const MENU = [
       { label: 'Recordes', path: '/recordes', icon: 'award', roles: [3, 4] },
       { label: 'Aulas', path: '/turmas', icon: 'calendar', roles: [3, 4] },
       
-  
+      
     ],
   },
   {
@@ -68,11 +66,33 @@ const MENU = [
     icon: 'tool',
     roles: [3, 4],
     children: [
-           
+      
       { label: 'Planos Sistema', path: '/planos-sistema', icon: 'layers', roles: [4] },
       { label: 'Configurações de Pagamento', path: '/configuracoes-pagamento', icon: 'settings', roles: [3, 4] },
-      { label: 'Auditoria', path: '/auditoria', icon: 'shield', roles: [3, 4] },
-  
+      
+    ],
+  },
+  {
+    label: 'Mercado Pago',
+    icon: 'dollar-sign',
+    roles: [3, 4],
+    children: [
+      
+      { label: 'Assinaturas', path: '/assinaturas', icon: 'repeat', roles: [3, 4] },
+      { label: 'Pagamentos MP', path: '/pagamentos-mp', icon: 'dollar-sign', roles: [3, 4] },
+      
+    ],
+  },
+  {
+    label: 'Auditoria',
+    icon: 'shield',
+    roles: [3, 4],
+    children: [
+      { label: 'Anomalias de Datas', path: '/auditoria/anomalias-datas', icon: 'alert-triangle', roles: [3, 4] },
+      { label: 'Pagamentos Duplicados', path: '/auditoria/pagamentos-duplicados', icon: 'copy', roles: [3, 4] },
+      { label: 'Reparar Próxima Data', path: '/auditoria/reparar-proxima-data-vencimento', icon: 'tool', roles: [3, 4] },
+      { label: 'Check-ins Acima do Limite', path: '/auditoria/checkins-acima-do-limite', icon: 'trending-up', roles: [3, 4] },
+      { label: 'Check-ins Múltiplos no Dia', path: '/auditoria/checkins-multiplos-no-dia', icon: 'repeat', roles: [3, 4] },
     ],
   },
 ];

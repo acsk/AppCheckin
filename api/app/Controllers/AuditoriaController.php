@@ -474,4 +474,294 @@ class AuditoriaController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
     }
+
+    /**
+     * Check-ins acima do limite contratado (mensal e semanal)
+     * GET /admin/auditoria/checkins-acima-do-limite
+     *
+     * Query params:
+     *   ano  (int, default: ano atual)
+     *   mes  (int, default: mês atual)
+     */
+    public function checkinsAcimaDoLimite(Request $request, Response $response): Response
+    {
+        $tenantId = $request->getAttribute('tenant_id');
+        $db = require __DIR__ . '/../../config/database.php';
+
+        $params = $request->getQueryParams();
+        $ano = !empty($params['ano']) ? (int) $params['ano'] : (int) date('Y');
+        $mes = !empty($params['mes']) ? (int) $params['mes'] : (int) date('m');
+
+        // Bônus se o mês tem 5 semanas (domingo–sábado)
+        $primeiroDia = new \DateTime(sprintf('%04d-%02d-01', $ano, $mes));
+        $diaSemanaInicio = (int) $primeiroDia->format('w');
+        $diasNoMes = (int) $primeiroDia->format('t');
+        $bonusCincoSemanas = ((int) ceil(($diasNoMes + $diaSemanaInicio) / 7) >= 5) ? 1 : 0;
+
+        try {
+            // ─── 1. Violações MENSAIS (permite_reposicao = 1) ─────────────────
+            $sqlMensal = "
+                SELECT
+                    sub.aluno_id,
+                    u.nome              AS aluno_nome,
+                    sub.modalidade_id,
+                    mo.nome             AS modalidade_nome,
+                    sub.total_checkins,
+                    sub.checkin_ids,
+                    p.nome              AS plano_nome,
+                    p.checkins_semanais
+                FROM (
+                    SELECT
+                        a.id            AS aluno_id,
+                        t.modalidade_id,
+                        COUNT(*)        AS total_checkins,
+                        GROUP_CONCAT(c.id ORDER BY c.id SEPARATOR ',') AS checkin_ids
+                    FROM checkins c
+                    INNER JOIN alunos  a ON a.id = c.aluno_id
+                    INNER JOIN turmas  t ON t.id = c.turma_id
+                    WHERE t.tenant_id = :tenant_id
+                      AND (c.presente IS NULL OR c.presente = 1)
+                      AND YEAR(COALESCE(c.data_checkin_date, DATE(c.created_at)))  = :ano
+                      AND MONTH(COALESCE(c.data_checkin_date, DATE(c.created_at))) = :mes
+                    GROUP BY a.id, t.modalidade_id
+                ) sub
+                INNER JOIN alunos     a  ON a.id  = sub.aluno_id
+                INNER JOIN usuarios   u  ON u.id  = a.usuario_id
+                INNER JOIN modalidades mo ON mo.id = sub.modalidade_id
+                INNER JOIN matriculas  m  ON m.id = (
+                    SELECT m2.id FROM matriculas m2
+                    INNER JOIN planos p2 ON p2.id = m2.plano_id
+                    WHERE m2.aluno_id    = sub.aluno_id
+                      AND m2.tenant_id  = :tenant_id2
+                      AND p2.modalidade_id = sub.modalidade_id
+                    ORDER BY m2.data_matricula DESC
+                    LIMIT 1
+                )
+                INNER JOIN planos       p  ON p.id  = m.plano_id
+                LEFT  JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+                WHERE COALESCE(pc.permite_reposicao, 0) = 1
+                ORDER BY u.nome
+            ";
+            $stmtM = $db->prepare($sqlMensal);
+            $stmtM->execute([
+                'tenant_id'  => $tenantId,
+                'tenant_id2' => $tenantId,
+                'ano'        => $ano,
+                'mes'        => $mes,
+            ]);
+            $rowsMensal = $stmtM->fetchAll(\PDO::FETCH_ASSOC);
+
+            $violacoesMensais = [];
+            foreach ($rowsMensal as $r) {
+                $limite = (int) $r['checkins_semanais'] * 4 + $bonusCincoSemanas;
+                if ((int) $r['total_checkins'] > $limite) {
+                    $violacoesMensais[] = [
+                        'aluno_id'       => (int) $r['aluno_id'],
+                        'aluno_nome'     => $r['aluno_nome'],
+                        'modalidade_id'  => (int) $r['modalidade_id'],
+                        'modalidade'     => $r['modalidade_nome'],
+                        'plano'          => $r['plano_nome'],
+                        'limite_mensal'  => $limite,
+                        'total_checkins' => (int) $r['total_checkins'],
+                        'excesso'        => (int) $r['total_checkins'] - $limite,
+                        'checkin_ids'    => $r['checkin_ids'],
+                    ];
+                }
+            }
+
+            // ─── 2. Violações SEMANAIS (permite_reposicao = 0) ───────────────
+            $sqlSemanal = "
+                SELECT
+                    a.id              AS aluno_id,
+                    u.nome            AS aluno_nome,
+                    t.modalidade_id,
+                    mo.nome           AS modalidade_nome,
+                    YEARWEEK(COALESCE(c.data_checkin_date, DATE(c.created_at)), 0) AS semana_ano,
+                    MIN(COALESCE(c.data_checkin_date, DATE(c.created_at)))          AS semana_inicio,
+                    MAX(COALESCE(c.data_checkin_date, DATE(c.created_at)))          AS semana_fim,
+                    COUNT(*)          AS total_checkins,
+                    GROUP_CONCAT(c.id ORDER BY c.id SEPARATOR ',') AS checkin_ids,
+                    p.nome            AS plano_nome,
+                    p.checkins_semanais
+                FROM checkins c
+                INNER JOIN alunos     a  ON a.id  = c.aluno_id
+                INNER JOIN usuarios   u  ON u.id  = a.usuario_id
+                INNER JOIN turmas     t  ON t.id  = c.turma_id
+                INNER JOIN modalidades mo ON mo.id = t.modalidade_id
+                INNER JOIN matriculas  m  ON m.id = (
+                    SELECT m2.id FROM matriculas m2
+                    INNER JOIN planos p2 ON p2.id = m2.plano_id
+                    WHERE m2.aluno_id    = a.id
+                      AND m2.tenant_id  = :tenant_id2
+                      AND p2.modalidade_id = t.modalidade_id
+                    ORDER BY m2.data_matricula DESC
+                    LIMIT 1
+                )
+                INNER JOIN planos       p  ON p.id  = m.plano_id
+                LEFT  JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+                WHERE t.tenant_id = :tenant_id
+                  AND (c.presente IS NULL OR c.presente = 1)
+                  AND YEAR(COALESCE(c.data_checkin_date, DATE(c.created_at)))  = :ano
+                  AND MONTH(COALESCE(c.data_checkin_date, DATE(c.created_at))) = :mes
+                  AND COALESCE(pc.permite_reposicao, 0) = 0
+                GROUP BY a.id, u.nome, t.modalidade_id, mo.nome,
+                         YEARWEEK(COALESCE(c.data_checkin_date, DATE(c.created_at)), 0),
+                         p.nome, p.checkins_semanais
+                HAVING COUNT(*) > p.checkins_semanais
+                ORDER BY u.nome, semana_ano
+            ";
+            $stmtS = $db->prepare($sqlSemanal);
+            $stmtS->execute([
+                'tenant_id'  => $tenantId,
+                'tenant_id2' => $tenantId,
+                'ano'        => $ano,
+                'mes'        => $mes,
+            ]);
+            $rowsSemanal = $stmtS->fetchAll(\PDO::FETCH_ASSOC);
+
+            $violacoesSemanais = array_map(fn($r) => [
+                'aluno_id'       => (int) $r['aluno_id'],
+                'aluno_nome'     => $r['aluno_nome'],
+                'modalidade_id'  => (int) $r['modalidade_id'],
+                'modalidade'     => $r['modalidade_nome'],
+                'plano'          => $r['plano_nome'],
+                'semana_ano'     => $r['semana_ano'],
+                'semana_inicio'  => $r['semana_inicio'],
+                'semana_fim'     => $r['semana_fim'],
+                'limite_semanal' => (int) $r['checkins_semanais'],
+                'total_checkins' => (int) $r['total_checkins'],
+                'excesso'        => (int) $r['total_checkins'] - (int) $r['checkins_semanais'],
+                'checkin_ids'    => $r['checkin_ids'],
+            ], $rowsSemanal);
+
+            $response->getBody()->write(json_encode([
+                'periodo' => [
+                    'ano'               => $ano,
+                    'mes'               => $mes,
+                    'bonus_cinco_semanas' => (bool) $bonusCincoSemanas,
+                ],
+                'resumo' => [
+                    'total_violacoes_mensais'  => count($violacoesMensais),
+                    'total_violacoes_semanais' => count($violacoesSemanais),
+                ],
+                'violacoes_mensais'  => $violacoesMensais,
+                'violacoes_semanais' => $violacoesSemanais,
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'type'    => 'error',
+                'message' => 'Erro ao verificar check-ins acima do limite: ' . $e->getMessage(),
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * Check-ins múltiplos no mesmo dia (mesmo aluno, mesma data)
+     * GET /admin/auditoria/checkins-multiplos-no-dia
+     *
+     * Query params:
+     *   data_inicio     (Y-m-d, default: primeiro dia do mês atual)
+     *   data_fim        (Y-m-d, default: hoje)
+     *   aluno_id        (int, opcional)
+     *   modalidade_id   (int, opcional)
+     *   mesma_modalidade (1 = agrupa também por modalidade, detectando dup na mesma modalidade;
+     *                     0 = qualquer dup no mesmo dia, default: 0)
+     */
+    public function checkinsMultiplosNoDia(Request $request, Response $response): Response
+    {
+        $tenantId = $request->getAttribute('tenant_id');
+        $db = require __DIR__ . '/../../config/database.php';
+
+        $params = $request->getQueryParams();
+        $dataInicio      = !empty($params['data_inicio'])    ? $params['data_inicio']           : date('Y-m-01');
+        $dataFim         = !empty($params['data_fim'])       ? $params['data_fim']               : date('Y-m-d');
+        $filtroAlunoId   = !empty($params['aluno_id'])       ? (int) $params['aluno_id']         : null;
+        $filtroModId     = !empty($params['modalidade_id'])  ? (int) $params['modalidade_id']    : null;
+        $mesmaModalidade = isset($params['mesma_modalidade']) && $params['mesma_modalidade'] === '1';
+
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataInicio)) $dataInicio = date('Y-m-01');
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataFim))    $dataFim    = date('Y-m-d');
+
+        try {
+            if ($mesmaModalidade) {
+                $selectExtra = 't.modalidade_id, mo.nome AS modalidade_nome,';
+                $groupBy     = 'a.id, u.nome, COALESCE(c.data_checkin_date, DATE(c.created_at)), t.modalidade_id, mo.nome';
+            } else {
+                $selectExtra = 'NULL AS modalidade_id, NULL AS modalidade_nome,';
+                $groupBy     = 'a.id, u.nome, COALESCE(c.data_checkin_date, DATE(c.created_at))';
+            }
+
+            $sql = "
+                SELECT
+                    a.id   AS aluno_id,
+                    u.nome AS aluno_nome,
+                    COALESCE(c.data_checkin_date, DATE(c.created_at)) AS data,
+                    {$selectExtra}
+                    COUNT(*) AS total_checkins,
+                    GROUP_CONCAT(c.id      ORDER BY c.created_at SEPARATOR ',')   AS checkin_ids,
+                    GROUP_CONCAT(mo.nome   ORDER BY c.created_at SEPARATOR ' | ') AS modalidades_do_dia
+                FROM checkins c
+                INNER JOIN alunos     a  ON a.id  = c.aluno_id
+                INNER JOIN usuarios   u  ON u.id  = a.usuario_id
+                INNER JOIN turmas     t  ON t.id  = c.turma_id
+                LEFT  JOIN modalidades mo ON mo.id = t.modalidade_id
+                WHERE t.tenant_id = :tenant_id
+                  AND (c.presente IS NULL OR c.presente = 1)
+                  AND COALESCE(c.data_checkin_date, DATE(c.created_at)) BETWEEN :data_inicio AND :data_fim
+            ";
+
+            $queryParams = [
+                'tenant_id'   => $tenantId,
+                'data_inicio' => $dataInicio,
+                'data_fim'    => $dataFim,
+            ];
+
+            if ($filtroAlunoId) {
+                $sql .= ' AND a.id = :aluno_id';
+                $queryParams['aluno_id'] = $filtroAlunoId;
+            }
+            if ($filtroModId) {
+                $sql .= ' AND t.modalidade_id = :modalidade_id';
+                $queryParams['modalidade_id'] = $filtroModId;
+            }
+
+            $sql .= " GROUP BY {$groupBy} HAVING COUNT(*) > 1 ORDER BY data DESC, u.nome";
+
+            $stmt = $db->prepare($sql);
+            $stmt->execute($queryParams);
+            $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            $resultados = array_map(fn($r) => [
+                'aluno_id'          => (int) $r['aluno_id'],
+                'aluno_nome'        => $r['aluno_nome'],
+                'data'              => $r['data'],
+                'modalidade_id'     => $r['modalidade_id'] !== null ? (int) $r['modalidade_id'] : null,
+                'modalidade'        => $r['modalidade_nome'] ?? null,
+                'modalidades_do_dia' => $r['modalidades_do_dia'],
+                'total_checkins'    => (int) $r['total_checkins'],
+                'checkin_ids'       => $r['checkin_ids'],
+            ], $rows);
+
+            $response->getBody()->write(json_encode([
+                'filtros' => [
+                    'data_inicio'      => $dataInicio,
+                    'data_fim'         => $dataFim,
+                    'mesma_modalidade' => $mesmaModalidade,
+                ],
+                'total'     => count($resultados),
+                'registros' => $resultados,
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'type'    => 'error',
+                'message' => 'Erro ao verificar check-ins múltiplos no dia: ' . $e->getMessage(),
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
 }
