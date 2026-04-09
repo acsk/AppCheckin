@@ -23,14 +23,14 @@ $stmt = $db->prepare("
            m.data_vencimento, m.proxima_data_vencimento,
            sm.codigo AS status_codigo,
            p.nome AS plano_nome, p.checkins_semanais, p.modalidade_id,
-           mod.nome AS modalidade_nome,
+           modalidade.nome AS modalidade_nome,
            pc.permite_reposicao AS pc_permite_reposicao,
            a.nome AS aluno_nome, a.usuario_id
     FROM matriculas m
     INNER JOIN planos p ON p.id = m.plano_id
     INNER JOIN status_matricula sm ON sm.id = m.status_id
     INNER JOIN alunos a ON a.id = m.aluno_id
-    LEFT JOIN modalidades mod ON mod.id = p.modalidade_id
+    LEFT JOIN modalidades modalidade ON modalidade.id = p.modalidade_id
     LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
     WHERE m.id = :id
 ");
