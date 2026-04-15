@@ -398,7 +398,7 @@ class MatriculaController
             $matriculaAnteriorId = $matriculaMesmaModalidade['id'];
             
             // REGRA: Qualquer nova matrícula (renovação ou troca) só é permitida no dia do vencimento ou após
-            $dataVencimentoAtual = $matriculaMesmaModalidade['data_vencimento'];
+            $dataVencimentoAtual = $matriculaMesmaModalidade['proxima_data_vencimento'] ?? $matriculaMesmaModalidade['data_vencimento'];
             $hoje = date('Y-m-d');
             
             if ($hoje < $dataVencimentoAtual) {
