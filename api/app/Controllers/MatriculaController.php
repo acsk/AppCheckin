@@ -346,7 +346,7 @@ class MatriculaController
                 }
             }
 
-            if ($statusCodigo === 'vencida' || $vencidaPorData) {
+            if ($statusCodigo === 'vencida' || $statusCodigo === 'cancelada' || $vencidaPorData) {
                 $reutilizandoMatricula = true;
             }
         }
