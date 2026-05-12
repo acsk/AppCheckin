@@ -171,19 +171,20 @@ foreach ($matriculas as $m) {
         // 2. Cancelar a matrícula e corrigir data_vencimento
         $sqlMatricula = "
             UPDATE matriculas
-            SET status_id              = :status_id,
-                data_vencimento        = :data_cancelamento,
-                proxima_data_vencimento = :data_cancelamento,
-                updated_at             = NOW()
+            SET status_id               = :status_id,
+                data_vencimento         = :data_venc,
+                proxima_data_vencimento = :data_prox_venc,
+                updated_at              = NOW()
             WHERE id = :id
         ";
         $stmtMatricula = $db->prepare($sqlMatricula);
 
         if (!$dryRun) {
             $stmtMatricula->execute([
-                'status_id'         => $statusCancelada,
-                'data_cancelamento' => $dataCancelamento,
-                'id'                => $matriculaId,
+                'status_id'      => $statusCancelada,
+                'data_venc'      => $dataCancelamento,
+                'data_prox_venc' => $dataCancelamento,
+                'id'             => $matriculaId,
             ]);
         }
 
