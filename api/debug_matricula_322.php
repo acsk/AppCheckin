@@ -16,7 +16,11 @@
 
 require_once __DIR__ . '/vendor/autoload.php';
 
+error_reporting(E_ALL);
+ini_set('display_errors', '1');
+
 $db = require __DIR__ . '/config/database.php';
+$db->setAttribute(\PDO::ATTR_ERRMODE, \PDO::ERRMODE_EXCEPTION);
 $matriculaId = 322;
 
 date_default_timezone_set('America/Sao_Paulo');
@@ -47,14 +51,12 @@ $stmt = $db->prepare("
         mod.nome  AS modalidade_nome,
         pc.meses  AS ciclo_meses,
         pc.valor  AS ciclo_valor,
-        af.nome   AS ciclo_nome,
-        t.nome    AS tenant_nome
+        af.nome   AS ciclo_nome
     FROM matriculas m
     INNER JOIN alunos a            ON a.id  = m.aluno_id
     INNER JOIN usuarios u          ON u.id  = a.usuario_id
     INNER JOIN planos p            ON p.id  = m.plano_id
     INNER JOIN status_matricula sm ON sm.id = m.status_id
-    INNER JOIN tenants t           ON t.id  = m.tenant_id
     LEFT  JOIN modalidades mod     ON mod.id = p.modalidade_id
     LEFT  JOIN plano_ciclos pc     ON pc.id  = m.plano_ciclo_id
     LEFT  JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
@@ -74,7 +76,7 @@ $planoId  = (int)$matricula['plano_id'];
 $duracaoDias = (int)$matricula['duracao_dias'];
 
 echo "ID matrícula:          {$matricula['id']}\n";
-echo "Tenant:                {$matricula['tenant_nome']} (id={$tenantId})\n";
+echo "Tenant:                id={$tenantId}\n";
 echo "Aluno:                 {$matricula['aluno_nome']} (aluno_id={$alunoId}, usuario_id={$matricula['usuario_id']})\n";
 echo "Email:                 {$matricula['aluno_email']}\n";
 echo "Plano:                 {$matricula['plano_nome']} (plano_id={$planoId})\n";
