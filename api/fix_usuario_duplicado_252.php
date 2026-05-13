@@ -238,17 +238,28 @@ try {
 
     title('6) EXECUCAO - CONSOLIDANDO tenant_usuario_papel');
     $sqlInsertTup = "
-        INSERT INTO tenant_usuario_papel (tenant_id, usuario_id, papel_id, ativo, created_at, updated_at)
+        INSERT IGNORE INTO tenant_usuario_papel (tenant_id, usuario_id, papel_id, ativo, created_at, updated_at)
         SELECT tenant_id, :target, papel_id, ativo, created_at, NOW()
         FROM tenant_usuario_papel
         WHERE usuario_id = :source
-        ON DUPLICATE KEY UPDATE
-            ativo = GREATEST(ativo, VALUES(ativo)),
-            updated_at = NOW()
     ";
     $stmtInsertTup = $db->prepare($sqlInsertTup);
     $stmtInsertTup->execute(['target' => $targetUserId, 'source' => $sourceUserId]);
-    echo 'tenant_usuario_papel upsert concluido.\n';
+    echo 'tenant_usuario_papel insert ignore concluido.\n';
+
+    $sqlMergeAtivo = "
+        UPDATE tenant_usuario_papel tgt
+        INNER JOIN tenant_usuario_papel src
+            ON src.tenant_id = tgt.tenant_id
+           AND src.papel_id = tgt.papel_id
+           AND src.usuario_id = :source
+        SET tgt.ativo = GREATEST(tgt.ativo, src.ativo),
+            tgt.updated_at = NOW()
+        WHERE tgt.usuario_id = :target
+    ";
+    $stmtMergeAtivo = $db->prepare($sqlMergeAtivo);
+    $stmtMergeAtivo->execute(['target' => $targetUserId, 'source' => $sourceUserId]);
+    echo 'tenant_usuario_papel merge de ativo concluido.\n';
 
     $stmtDeleteTup = $db->prepare('DELETE FROM tenant_usuario_papel WHERE usuario_id = ?');
     $stmtDeleteTup->execute([$sourceUserId]);
