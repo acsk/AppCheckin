@@ -310,6 +310,10 @@ try {
 
     title('9) EXECUCAO - AJUSTE DE CPF NO target');
     if ($cpfPlan !== null) {
+        // Libera o CPF no source antes de aplicar no target para respeitar unique_cpf.
+        $stmtClearSourceCpf = $db->prepare('UPDATE usuarios SET cpf = NULL, updated_at = NOW() WHERE id = :id');
+        $stmtClearSourceCpf->execute(['id' => $sourceUserId]);
+
         $stmtUpdateCpf = $db->prepare('UPDATE usuarios SET cpf = :cpf, updated_at = NOW() WHERE id = :id');
         $stmtUpdateCpf->execute(['cpf' => $cpfPlan, 'id' => $targetUserId]);
         echo "CPF do target atualizado para {$cpfPlan}.\n";
