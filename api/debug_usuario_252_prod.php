@@ -162,7 +162,7 @@ printRows($dupEmail);
 
 hr('4) DUPLICIDADES POR CPF (normalizado)');
 $stmtDupCpf = $db->prepare(
-    'SELECT
+    "SELECT
         u.id AS usuario_id,
         u.nome,
         u.email,
@@ -175,8 +175,8 @@ $stmtDupCpf = $db->prepare(
      FROM usuarios u
      LEFT JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id
      LEFT JOIN papeis p ON p.id = tup.papel_id
-     WHERE REPLACE(REPLACE(REPLACE(u.cpf, ''.'', ''''), ''-'', ''''), '' '', '''') = :cpf
-     ORDER BY u.id ASC, tup.tenant_id ASC'
+    WHERE REPLACE(REPLACE(REPLACE(u.cpf, '.', ''), '-', ''), ' ', '') = :cpf
+    ORDER BY u.id ASC, tup.tenant_id ASC"
 );
 $stmtDupCpf->execute(['cpf' => normDigits($payload['cpf'])]);
 $dupCpf = $stmtDupCpf->fetchAll(PDO::FETCH_ASSOC);
@@ -184,7 +184,7 @@ printRows($dupCpf);
 
 hr('5) DUPLICIDADES POR TELEFONE (normalizado)');
 $stmtDupFone = $db->prepare(
-    'SELECT
+    "SELECT
         u.id AS usuario_id,
         u.nome,
         u.email,
@@ -197,8 +197,8 @@ $stmtDupFone = $db->prepare(
      FROM usuarios u
      LEFT JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id
      LEFT JOIN papeis p ON p.id = tup.papel_id
-     WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(u.telefone, ''('', ''''), '')'', ''''), ''-'', ''''), '' '', ''''), ''+'', '''') = :telefone
-     ORDER BY u.id ASC, tup.tenant_id ASC'
+    WHERE REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(u.telefone, '(', ''), ')', ''), '-', ''), ' ', ''), '+', '') = :telefone
+    ORDER BY u.id ASC, tup.tenant_id ASC"
 );
 $stmtDupFone->execute(['telefone' => normDigits($payload['telefone'])]);
 $dupFone = $stmtDupFone->fetchAll(PDO::FETCH_ASSOC);
