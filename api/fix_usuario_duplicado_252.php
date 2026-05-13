@@ -243,7 +243,7 @@ try {
         FROM tenant_usuario_papel
         WHERE usuario_id = :source
         ON DUPLICATE KEY UPDATE
-            ativo = GREATEST(tenant_usuario_papel.ativo, VALUES(ativo)),
+            ativo = GREATEST(ativo, VALUES(ativo)),
             updated_at = NOW()
     ";
     $stmtInsertTup = $db->prepare($sqlInsertTup);
