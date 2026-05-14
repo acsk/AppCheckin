@@ -528,7 +528,7 @@ class PagamentoPlano
         try {
             // Buscar informações da matrícula, plano e ciclo
             $stmt = $this->pdo->prepare("
-                SELECT m.id, m.tenant_id, m.aluno_id, m.plano_id, m.plano_ciclo_id, m.valor,
+                SELECT m.id, m.tenant_id, m.aluno_id, m.plano_id, m.plano_ciclo_id, m.tipo_cobranca, m.valor,
                        p.duracao_dias, pc.meses as ciclo_meses, af.meses as frequencia_meses
                 FROM matriculas m
                 INNER JOIN planos p ON p.id = m.plano_id
@@ -541,6 +541,14 @@ class PagamentoPlano
 
             if (!$matricula) {
                 error_log("[gerarProximoPagamento] Matrícula #{$matriculaId} não encontrada");
+                return null;
+            }
+
+            $ehDiariaAvulsa = ($matricula['tipo_cobranca'] ?? '') === 'avulso'
+                && (int) ($matricula['duracao_dias'] ?? 0) === 1;
+
+            if ($ehDiariaAvulsa) {
+                error_log("[gerarProximoPagamento] Matrícula #{$matriculaId} é diária avulsa — próxima parcela não gerada");
                 return null;
             }
 

@@ -2211,8 +2211,8 @@ class MercadoPagoWebhookController
     {
         // Buscar dados da matrícula/plano para calcular vigência somente no approved
         $stmtMatricula = $this->db->prepare("
-            SELECT m.id, m.status_id, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento,
-                   m.plano_id, m.plano_ciclo_id, p.duracao_dias, pc.meses
+             SELECT m.id, m.status_id, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento,
+                 m.plano_id, m.plano_ciclo_id, m.tipo_cobranca, p.duracao_dias, pc.meses
             FROM matriculas m
             INNER JOIN planos p ON p.id = m.plano_id
             LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
@@ -2246,7 +2246,10 @@ class MercadoPagoWebhookController
             $dataBase = new \DateTimeImmutable(date('Y-m-d'));
         }
 
-        $duracaoMeses = (int) ($matricula['meses'] ?? 0);
+        $ehDiariaAvulsa = ($matricula['tipo_cobranca'] ?? '') === 'avulso'
+            && (int) ($matricula['duracao_dias'] ?? 0) === 1;
+
+        $duracaoMeses = $ehDiariaAvulsa ? 0 : (int) ($matricula['meses'] ?? 0);
 
         if ($duracaoMeses > 0) {
             $dataVencimento = $dataBase->modify("+{$duracaoMeses} months")->format('Y-m-d');
