@@ -1,21 +1,19 @@
-# SPA Expo Router — servir em mobile.appcheckin.com.br com DocumentRoot = dist/
+# SPA Expo Router — DocumentRoot = conteúdo de mobile/dist/
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
 
-  # Arquivo ou pasta existente: servir direto
   RewriteCond %{REQUEST_FILENAME} -f [OR]
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
 
-  # Bundles/assets do Expo ausentes: 404 real (evita HTML no lugar de .js)
-  RewriteCond %{REQUEST_URI} ^/_expo/
+  # Bundles Expo (pasta expo-static; não usar _expo na Hostinger)
+  RewriteCond %{REQUEST_URI} ^/expo-static/
   RewriteRule ^ - [R=404,L]
 
   RewriteCond %{REQUEST_URI} ^/fonts/
   RewriteRule ^ - [R=404,L]
 
-  # Rotas do app (client-side)
   RewriteRule ^ index.html [L]
 </IfModule>
 
@@ -29,3 +27,8 @@
     Header set Cache-Control "public, max-age=31536000, immutable"
   </FilesMatch>
 </IfModule>
+
+# MIME explícito (LiteSpeed / Hostinger)
+AddType application/javascript .js
+AddType text/css .css
+AddType font/ttf .ttf

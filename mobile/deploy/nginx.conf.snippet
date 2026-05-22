@@ -1,8 +1,8 @@
-# Trecho para site estático do mobile (colar no server {} do Nginx)
+# Nginx — mobile.appcheckin.com.br (root = conteúdo de dist/)
 #
-#   root /var/www/mobile/dist;
+#   root /var/www/mobile/public_html;
 #
-#   location /_expo/ {
+#   location /expo-static/ {
 #       try_files $uri =404;
 #   }
 #   location /fonts/ {

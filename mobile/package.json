@@ -15,6 +15,7 @@
     "web:dev:clear": "EXPO_PUBLIC_APP_ENV=development EXPO_PUBLIC_API_URL=http://localhost:8080 EXPO_PUBLIC_DEBUG_LOGS=true expo start --web --clear",
     "web:postexport": "bash scripts/post-web-export.sh",
     "web:verify": "bash scripts/verify-web-dist.sh",
+    "web:check-remote": "bash scripts/check-remote-deploy.sh",
     "web:build:dev": "mv .env.production .env.production.bak && cp .env.development .env && expo export --platform web && rm .env && mv .env.production.bak .env.production && npm run web:postexport",
     "web:build:dev:clean": "mv .env.production .env.production.bak && cp .env.development .env && expo export --platform web --clear && rm .env && mv .env.production.bak .env.production && npm run web:postexport",
     "web:prod": "EXPO_PUBLIC_APP_ENV=production EXPO_PUBLIC_API_URL=https://api.appcheckin.com expo start --web",
