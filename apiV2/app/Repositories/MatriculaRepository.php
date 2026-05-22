@@ -215,4 +215,156 @@ class MatriculaRepository
             default => 'MATRICULA_INATIVA',
         };
     }
+
+    public function findDetalhePorUsuario(int $matriculaId, int $userId, int $tenantId): ?array
+    {
+        $row = DB::table('matriculas as m')
+            ->join('alunos as al', 'm.aluno_id', '=', 'al.id')
+            ->leftJoin('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+            ->leftJoin('motivo_matricula as mm', 'mm.id', '=', 'm.motivo_id')
+            ->where('m.id', $matriculaId)
+            ->where('al.usuario_id', $userId)
+            ->where('m.tenant_id', $tenantId)
+            ->select([
+                'm.id',
+                'm.aluno_id',
+                'm.plano_id',
+                'm.data_matricula',
+                'm.data_inicio',
+                'm.data_vencimento',
+                'm.valor',
+                'sm.nome as status',
+                'mm.nome as motivo',
+                'al.nome as usuario_nome',
+            ])
+            ->first();
+
+        return $row ? (array) $row : null;
+    }
+
+    public function findPlanoResumo(int $planoId): ?array
+    {
+        $row = DB::table('planos')
+            ->where('id', $planoId)
+            ->first(['id', 'nome', 'valor', 'duracao_dias', 'checkins_semanais']);
+
+        return $row ? (array) $row : null;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function listarPagamentosMatricula(int $matriculaId): array
+    {
+        return DB::table('pagamentos_plano as pp')
+            ->join('status_pagamento as sp', 'pp.status_pagamento_id', '=', 'sp.id')
+            ->leftJoin('formas_pagamento as fp', 'pp.forma_pagamento_id', '=', 'fp.id')
+            ->where('pp.matricula_id', $matriculaId)
+            ->orderByDesc('pp.data_vencimento')
+            ->get([
+                'pp.id',
+                'pp.valor',
+                'pp.data_vencimento',
+                'pp.data_pagamento',
+                'sp.nome as status_pagamento_nome',
+                'fp.nome as forma_pagamento_nome',
+            ])
+            ->map(fn ($row) => (array) $row)
+            ->all();
+    }
+
+    public function findPendenteReabrir(int $matriculaId, int $userId, int $tenantId): ?array
+    {
+        $row = DB::table('matriculas as m')
+            ->join('alunos as a', 'a.id', '=', 'm.aluno_id')
+            ->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+            ->join('planos as p', 'p.id', '=', 'm.plano_id')
+            ->leftJoin('modalidades as md', 'md.id', '=', 'p.modalidade_id')
+            ->where('m.id', $matriculaId)
+            ->where('m.tenant_id', $tenantId)
+            ->where('a.usuario_id', $userId)
+            ->select([
+                'm.id',
+                'm.plano_id',
+                'm.plano_ciclo_id',
+                'm.valor',
+                'm.data_inicio',
+                'm.data_vencimento',
+                'm.proxima_data_vencimento',
+                'sm.codigo as status_codigo',
+                'p.nome as plano_nome',
+                'md.nome as modalidade_nome',
+            ])
+            ->first();
+
+        return $row ? (array) $row : null;
+    }
+
+    public function findComStatusPorUsuario(int $matriculaId, int $userId, int $tenantId): ?array
+    {
+        $row = DB::table('matriculas as m')
+            ->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+            ->join('alunos as a', 'm.aluno_id', '=', 'a.id')
+            ->where('m.id', $matriculaId)
+            ->where('a.usuario_id', $userId)
+            ->where('m.tenant_id', $tenantId)
+            ->select(['m.*', 'sm.codigo as status_codigo'])
+            ->first();
+
+        return $row ? (array) $row : null;
+    }
+
+    public function ativarSePendente(int $matriculaId): bool
+    {
+        $statusPendenteId = DB::table('status_matricula')->where('codigo', 'pendente')->value('id');
+        $statusAtivaId = DB::table('status_matricula')->where('codigo', 'ativa')->value('id');
+
+        if ($statusPendenteId === null || $statusAtivaId === null) {
+            return false;
+        }
+
+        return DB::table('matriculas')
+            ->where('id', $matriculaId)
+            ->where('status_id', (int) $statusPendenteId)
+            ->update([
+                'status_id' => (int) $statusAtivaId,
+                'updated_at' => now(),
+            ]) > 0;
+    }
+
+    public function findUltimaAssinatura(int $matriculaId, int $tenantId): ?array
+    {
+        $row = DB::table('assinaturas')
+            ->where('matricula_id', $matriculaId)
+            ->where('tenant_id', $tenantId)
+            ->orderByDesc('id')
+            ->first([
+                'id',
+                'gateway_preference_id',
+                'payment_url',
+                'tipo_cobranca',
+                'status_gateway',
+            ]);
+
+        return $row ? (array) $row : null;
+    }
+
+    public function findUltimoPix(int $tenantId, int $matriculaId): ?array
+    {
+        $row = DB::table('pagamentos_pix')
+            ->where('tenant_id', $tenantId)
+            ->where('matricula_id', $matriculaId)
+            ->orderByDesc('id')
+            ->first([
+                'payment_id',
+                'ticket_url',
+                'qr_code',
+                'qr_code_base64',
+                'expires_at',
+                'status',
+            ]);
+
+        return $row ? (array) $row : null;
+    }
 }
+

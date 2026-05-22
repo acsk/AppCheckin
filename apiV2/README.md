@@ -31,8 +31,22 @@ API Laravel em paralelo à API Slim (`api/`), com prefixo **`/v2`** e **JWT comp
 | GET | `/v2/mobile/horarios-disponiveis?data=YYYY-MM-DD` | JWT |
 | POST | `/v2/mobile/checkin` | JWT (`turma_id` no body) |
 | DELETE | `/v2/mobile/checkin/{checkinId}/desfazer` | JWT |
+| GET | `/v2/mobile/planos-disponiveis` | JWT |
+| GET | `/v2/mobile/planos` | JWT (`todas=true` opcional) |
+| GET | `/v2/mobile/planos/{planoId}` | JWT |
+| GET | `/v2/mobile/matriculas/{matriculaId}` | JWT |
+| POST | `/v2/mobile/comprar-plano` | JWT |
+| POST | `/v2/mobile/pagamento/pix` | JWT (`matricula_id`) |
+| POST | `/v2/mobile/verificar-pagamento` | JWT |
+| GET | `/v2/mobile/pagamento/reabrir/{matriculaId}` | JWT |
+| GET | `/v2/mobile/assinaturas` | JWT |
+| GET | `/v2/mobile/assinaturas/aprovadas-hoje` | JWT (`matricula_id`) |
+| POST | `/v2/mobile/assinatura/{id}/cancelar` | JWT |
+| POST | `/v2/mobile/diaria/{matriculaId}/cancelar` | JWT |
 
 Respostas **mobile** usam `{ "success": true/false, "data"?, "error"? }` (igual à Slim), não o formato `ApiError` da auth.
+
+Pagamentos usam `App\Services\MercadoPagoService` (portado da Slim) com credenciais por tenant ou variáveis `MP_*` / `MP_FAKE_API_URL`.
 
 ## Desenvolvimento local (Docker)
 

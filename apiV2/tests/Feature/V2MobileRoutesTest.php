@@ -112,4 +112,34 @@ class V2MobileRoutesTest extends TestCase
             ->assertStatus(400)
             ->assertJsonPath('error', 'checkinId é obrigatório');
     }
+
+    public function test_planos_disponiveis_requires_jwt(): void
+    {
+        $this->getJson('/v2/mobile/planos-disponiveis')
+            ->assertUnauthorized();
+    }
+
+    public function test_comprar_plano_requires_plano_id(): void
+    {
+        $this->postJson('/v2/mobile/comprar-plano', [], [
+            'Authorization' => 'Bearer '.$this->bearerToken(),
+        ])
+            ->assertStatus(400)
+            ->assertJsonPath('code', 'PLANO_OBRIGATORIO');
+    }
+
+    public function test_pagamento_pix_requires_matricula_id(): void
+    {
+        $this->postJson('/v2/mobile/pagamento/pix', [], [
+            'Authorization' => 'Bearer '.$this->bearerToken(),
+        ])
+            ->assertStatus(400)
+            ->assertJsonPath('error', 'matricula_id é obrigatório');
+    }
+
+    public function test_assinaturas_requires_jwt(): void
+    {
+        $this->getJson('/v2/mobile/assinaturas')
+            ->assertUnauthorized();
+    }
 }

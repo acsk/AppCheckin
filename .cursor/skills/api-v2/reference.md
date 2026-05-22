@@ -50,9 +50,14 @@ Login com múltiplos tenants: `token` pode ser `null` e `requires_tenant_selecti
 | Token inválido na v2 | JWT_SECRET diferente da Slim | Alinhar .env |
 | 404 em /api/v2/... | Prefixo errado | Rotas são `/v2/...`, não `/api/v2` |
 
+## Paridade Fase 4 (gaps conhecidos)
+
+Ver seção **Limitações vs Slim (Fase 4)** em [SKILL.md](SKILL.md). Resumo: `comprar-plano` simplificado; `aprovadas-hoje` sem consulta MP; pacotes ainda só na Slim (`:8080`).
+
 ## Não fazer
 
 - `php artisan migrate` no banco `appcheckin` para users/sessions/cache/jobs
 - `composer setup` / scripts do `composer.json` não devem rodar migrate (banco compartilhado com Slim)
 - Alterar `JWT_SECRET` só na v2
 - Mudar formato de erro (`type`/`code`/`message`) sem alinhar clientes
+- Cutover mobile de planos/PIX para v2 sem fechar os gaps da Fase 4 acima

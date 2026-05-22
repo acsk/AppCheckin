@@ -6,6 +6,13 @@ use Illuminate\Support\Facades\DB;
 
 class AlunoRepository
 {
+    public function findIdByUsuario(int $usuarioId): ?int
+    {
+        $id = DB::table('alunos')->where('usuario_id', $usuarioId)->value('id');
+
+        return $id !== null ? (int) $id : null;
+    }
+
     public function findForTenant(int $usuarioId, int $tenantId): ?array
     {
         $row = DB::table('alunos as a')

@@ -81,11 +81,40 @@ Checklist por endpoint:
   - `GET /v2/mobile/ranking/mensal` (`modalidade_id`)
   - `GET /v2/mobile/wod/hoje` (`data`, `modalidade_id`)
   - `GET /v2/mobile/wods/hoje` (`data`)
+  - `GET /v2/mobile/planos-disponiveis` (`modalidade_id`)
+  - `GET /v2/mobile/planos` (`todas`)
+  - `GET /v2/mobile/planos/{planoId}`
+  - `GET /v2/mobile/matriculas/{matriculaId}`
+  - `POST /v2/mobile/comprar-plano`
+  - `POST /v2/mobile/pagamento/pix`
+  - `POST /v2/mobile/verificar-pagamento`
+  - `GET /v2/mobile/pagamento/reabrir/{matriculaId}`
+  - `GET /v2/mobile/assinaturas`
+  - `GET /v2/mobile/assinaturas/aprovadas-hoje` (`matricula_id`)
+  - `POST /v2/mobile/assinatura/{id}/cancelar`
+  - `POST /v2/mobile/diaria/{matriculaId}/cancelar`
+
+## Limitações vs Slim (Fase 4 — planos / pagamentos)
+
+Rotas da Fase 4 existem na v2 com contrato JSON compatível, mas **não fechar cutover** de `planos.tsx`, `plano-detalhes.tsx` e fluxo PIX até resolver os itens abaixo. Referência Slim: `api/app/Controllers/MobileController.php` (`comprarPlano`, `gerarPagamentoPix`, `reabrirPagamentoPendente`) e `api/app/Controllers/AssinaturaController.php` (`aprovadasHoje`).
+
+| Endpoint v2 | Implementação v2 | O que falta vs Slim |
+|-------------|------------------|---------------------|
+| `POST /v2/mobile/comprar-plano` | `MobileCompraPlanoService` | Fluxo principal: nova matrícula + PIX / checkout (preference) / recorrente (preapproval) + reutilizar matrícula **pendente** na mesma escolha (`plano_id` + `plano_ciclo_id`). **Não** cobre: reuso de matrícula **vencida/cancelada** (UPDATE em vez de INSERT), pendência com método diferente (ex.: pendente PIX + novo checkout), histórico de planos, marcação automática vencida antes do reuse, e demais ramos do controller Slim (~1000 linhas). |
+| `GET /v2/mobile/assinaturas/aprovadas-hoje` | `MobileAssinaturaService::aprovadasHoje` | Passos 1–2: assinatura já aprovada localmente ou matrícula já `ativa`. **Falta** passo 3–4 da Slim: consultar Mercado Pago por `external_reference`, chamar `processarPagamentoAprovadoMP` quando `approved` (fallback quando webhook não chegou). Usado em `plano-detalhes.tsx` após pagamento. |
+| Pacotes mobile | — (não migrado) | `GET /mobile/pacotes/contratos`, `GET /mobile/pacotes/pendentes`, `POST /mobile/pacotes/contratos/{contratoId}/pagar` — listados em “Próximos candidatos”. `minhas-assinaturas.tsx` já usa `GET /assinaturas` (v2 ok). |
+
+**Código v2 relevante:** `MobileCompraPlanoService`, `MobilePagamentoService`, `MobileAssinaturaService`, `MercadoPagoService` (portado da Slim).
+
+**Antes de apontar o mobile só para `:9090` em compra/PIX:** validar cenários de matrícula pendente reaberta, renovação pós-vencimento e polling pós-pagamento (`aprovadas-hoje` com MP).
 
 ## Próximos candidatos (ordem sugerida)
 
-1. Mobile: planos, matrículas, pagamento PIX (`MobileController` na Slim)
-2. Mobile: professor (check-in manual, presença, bloqueio turma)
+1. Mobile: professor (check-in manual, presença, bloqueio turma) — `TurmaCheckinBloqueioService` já existe na v2
+2. Fechar paridade Fase 4:
+   - `comprar-plano`: reuso matrícula vencida + ramos pendentes/checkout da Slim
+   - `aprovadas-hoje`: fallback Mercado Pago + ativação (`AssinaturaController::processarPagamentoAprovadoMP`)
+3. Mobile: pacotes (`GET /pacotes/contratos`, `GET /pacotes/pendentes`, `POST /pacotes/contratos/{id}/pagar`)
 
 ## TESTS
 1. Sempre execute testes

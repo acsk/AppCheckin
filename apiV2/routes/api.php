@@ -42,6 +42,19 @@ Route::prefix('v2')->group(function () {
             Route::get('/horarios-disponiveis', [MobileController::class, 'horariosDisponiveis']);
             Route::post('/checkin', [MobileController::class, 'registrarCheckin']);
             Route::delete('/checkin/{checkinId}/desfazer', [MobileController::class, 'desfazerCheckin']);
+
+            Route::get('/planos-disponiveis', [MobileController::class, 'planosDisponiveis']);
+            Route::get('/planos', [MobileController::class, 'planosDoUsuario']);
+            Route::get('/planos/{planoId}', [MobileController::class, 'detalhePlano']);
+            Route::get('/matriculas/{matriculaId}', [MobileController::class, 'detalheMatricula']);
+            Route::post('/comprar-plano', [MobileController::class, 'comprarPlano']);
+            Route::post('/pagamento/pix', [MobileController::class, 'gerarPagamentoPix']);
+            Route::post('/verificar-pagamento', [MobileController::class, 'verificarPagamento']);
+            Route::get('/pagamento/reabrir/{matriculaId}', [MobileController::class, 'reabrirPagamentoPendente']);
+            Route::get('/assinaturas', [MobileController::class, 'minhasAssinaturas']);
+            Route::get('/assinaturas/aprovadas-hoje', [MobileController::class, 'assinaturasAprovadasHoje']);
+            Route::post('/assinatura/{id}/cancelar', [MobileController::class, 'cancelarAssinatura']);
+            Route::post('/diaria/{matriculaId}/cancelar', [MobileController::class, 'cancelarDiaria']);
         });
     });
 });
