@@ -1,22 +1,14 @@
 import { useColorScheme } from "@/hooks/use-color-scheme";
-import { useMatriculaAcesso } from "@/src/hooks/useMatriculaAcesso";
 import { colors } from "@/src/theme/colors";
 import { Feather } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import React from "react";
-import {
-  ActivityIndicator,
-  Platform,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
 
 export default function TabLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
   const isWeb = Platform.OS === "web";
-  const { loading: acessoLoading, bloqueado, mensagem } = useMatriculaAcesso();
 
   return (
     <>
@@ -164,30 +156,6 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
-
-    {!acessoLoading && bloqueado && (
-      <View style={[styles.bloqueioOverlay, { bottom: isWeb ? 82 : 76 }]}>
-        <View style={styles.bloqueioCard}>
-          <View style={styles.bloqueioIconWrap}>
-            <Feather name="lock" size={32} color="#7c3aed" />
-          </View>
-          <Text style={styles.bloqueioTitle}>Acesso bloqueado</Text>
-          <Text style={styles.bloqueioMessage}>
-            {mensagem ||
-              "Sua matrícula está bloqueada. Entre em contato com a academia."}
-          </Text>
-          <Text style={styles.bloqueioHint}>
-            Você ainda pode sair da conta pela aba Sair.
-          </Text>
-        </View>
-      </View>
-    )}
-
-    {acessoLoading && (
-      <View style={styles.acessoLoadingOverlay}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    )}
     </>
   );
 }
@@ -197,56 +165,5 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
     marginTop: 2,
-  },
-  bloqueioOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(15, 23, 42, 0.92)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-    zIndex: 1000,
-  },
-  bloqueioCard: {
-    maxWidth: 360,
-    width: "100%",
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 28,
-    alignItems: "center",
-  },
-  bloqueioIconWrap: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "#ede9fe",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  bloqueioTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#0f172a",
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  bloqueioMessage: {
-    fontSize: 15,
-    color: "#475569",
-    textAlign: "center",
-    lineHeight: 22,
-  },
-  bloqueioHint: {
-    fontSize: 12,
-    color: "#94a3b8",
-    textAlign: "center",
-    marginTop: 16,
-  },
-  acessoLoadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: "rgba(255,255,255,0.6)",
-    justifyContent: "center",
-    alignItems: "center",
-    zIndex: 999,
   },
 });

@@ -377,11 +377,6 @@ class MobileController
         }
 
         try {
-            // Matrícula bloqueada (mais recente) não deve exibir plano de matrículas anteriores
-            if ($this->obterBloqueioMatricula($userId, (int) $tenantId) !== null) {
-                return null;
-            }
-
             // Buscar plano através da matrícula elegível (ativa, pendente ou vencida com check-in)
             $sql = "SELECT p.id, p.nome, p.valor, p.duracao_dias, p.descricao,
                            m.id as matricula_id, m.data_inicio, m.data_vencimento as data_fim, 
@@ -1935,17 +1930,6 @@ class MobileController
             $matricula = $stmtMatricula->fetch(\PDO::FETCH_ASSOC);
             
             if (!$matricula) {
-                $bloqueio = $this->obterBloqueioMatricula((int) $userId, (int) $tenantId);
-                if ($bloqueio) {
-                    $response->getBody()->write(json_encode([
-                        'success' => false,
-                        'error' => $bloqueio['mensagem'],
-                        'code' => $bloqueio['code'],
-                        'status_codigo' => $bloqueio['status_codigo'] ?? 'bloqueado',
-                    ], JSON_UNESCAPED_UNICODE));
-                    return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
-                }
-
                 $erroMatriculaCheckin = $this->montarErroMatriculaIndisponivelCheckin(
                     (int) ($aluno['id'] ?? 0),
                     (int) $tenantId
@@ -1978,6 +1962,9 @@ class MobileController
                 ]));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
             }
+
+            // Check-in usa a matrícula elegível acima (permite_checkin), não a mais recente por created_at.
+            // Uma matrícula cancelada/bloqueada mais nova não invalida outra elegível ainda vigente.
 
             // Validar turma_id
             $turmaId = $body['turma_id'] ?? null;
@@ -7532,7 +7519,8 @@ class MobileController
     }
 
     /**
-     * Mesmas regras de validarMatriculaParaCheckin: null = acesso/check-in permitido.
+     * Regras de restrição para uma matrícula específica (ex.: mensagem de erro no check-in).
+     * null = sem restrição. Não confundir com "matrícula mais recente do aluno".
      */
     private function avaliarRestricaoAcessoMatricula(?array $matricula): ?array
     {
@@ -7587,12 +7575,13 @@ class MobileController
     }
 
     /**
-     * Retorna restrição de acesso da matrícula mais recente, ou null se permitido.
+     * Restrição de matrícula para bloqueio global do app (overlay / planos).
+     * Sempre null: matrícula cancelada/bloqueada/vencida só impede check-in na aula
+     * (ver validarMatriculaParaCheckin, montarErroMatriculaIndisponivelCheckin).
      */
     private function obterBloqueioMatricula(int $userId, int $tenantId): ?array
     {
-        $matricula = $this->buscarMatriculaMaisRecentePorUsuario($userId, $tenantId);
-        return $this->avaliarRestricaoAcessoMatricula($matricula);
+        return null;
     }
 
     /**
