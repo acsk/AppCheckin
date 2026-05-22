@@ -24,7 +24,7 @@ Migração **strangler**: `api/` (Slim) continua em produção; novas rotas vão
 
 1. **JWT compatível** — Mesmo `JWT_SECRET` e claims da Slim: `user_id`, `email`, `tenant_id`, `aluno_id`, `is_super_admin`. Pacote: `firebase/php-jwt` v7, HS256. Serviço: `App\Services\JwtService`.
 2. **Não criar tabelas Laravel no banco compartilhado** — `SESSION_DRIVER=file`, `CACHE_STORE=file`, `QUEUE_CONNECTION=sync`. Não rodar `php artisan migrate` em `appcheckin` sem aprovação explícita.
-3. **Contrato JSON igual à Slim** — Erros via `App\Support\ApiError`: `{ "type": "error", "code": "...", "message": "..." }`. Sucesso: espelhar payload da rota equivalente em `api/`.
+3. **Contrato JSON igual à Slim** — Auth/admin: `App\Support\ApiError` (`type`, `code`, `message`). **Mobile:** `{ "success": true/false, "error"?, "data"? }` via `App\Support\MobileResponse` / controllers mobile.
 4. **Multi-tenant** — Resolver `tenant_id` do JWT (middleware `jwt.auth`). Atributos no request: `userId`, `tenantId`, `tenant_id`, `aluno_id`, `jwt_payload`, `usuario`.
 5. **Escopo mínimo** — Uma rota/módulo por vez; não refatorar Slim nem mobile até a v2 estar paridade.
 
@@ -69,10 +69,14 @@ Checklist por endpoint:
 - `POST /v2/auth/password-recovery/request`, `validate-token`, `reset`
 - `POST /v2/auth/logout`, `GET /v2/auth/tenants` (JWT)
 - `GET /v2/me` (JWT)
+- Mobile (JWT, formato `success`/`data`):
+  - `GET /v2/mobile/horarios-disponiveis?data=YYYY-MM-DD`
+  - `POST /v2/mobile/checkin` (`turma_id`)
+  - `DELETE /v2/mobile/checkin/{checkinId}/desfazer`
 
 ## Próximos candidatos (ordem sugerida)
 
-1. Mobile: horários, check-in (`MobileController` na Slim)
+1. Mobile: perfil, matrículas, planos, WOD (`MobileController` na Slim)
 
 ## TESTS
 1. Sempre execute testes

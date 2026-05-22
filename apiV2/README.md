@@ -20,6 +20,11 @@ API Laravel em paralelo à API Slim (`api/`), com prefixo **`/v2`** e **JWT comp
 | POST | `/v2/auth/logout` | JWT |
 | GET | `/v2/auth/tenants` | JWT |
 | GET | `/v2/me` | JWT |
+| GET | `/v2/mobile/horarios-disponiveis?data=YYYY-MM-DD` | JWT |
+| POST | `/v2/mobile/checkin` | JWT (`turma_id` no body) |
+| DELETE | `/v2/mobile/checkin/{checkinId}/desfazer` | JWT |
+
+Respostas **mobile** usam `{ "success": true/false, "data"?, "error"? }` (igual à Slim), não o formato `ApiError` da auth.
 
 ## Desenvolvimento local (Docker)
 

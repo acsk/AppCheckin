@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V2\AuthController;
 use App\Http\Controllers\Api\V2\HealthController;
 use App\Http\Controllers\Api\V2\MeController;
+use App\Http\Controllers\Api\V2\MobileController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -28,5 +29,11 @@ Route::prefix('v2')->group(function () {
         Route::post('/auth/select-tenant', [AuthController::class, 'selectTenant']);
         Route::get('/auth/tenants', [AuthController::class, 'tenants']);
         Route::get('/me', [MeController::class, 'show']);
+
+        Route::prefix('mobile')->group(function () {
+            Route::get('/horarios-disponiveis', [MobileController::class, 'horariosDisponiveis']);
+            Route::post('/checkin', [MobileController::class, 'registrarCheckin']);
+            Route::delete('/checkin/{checkinId}/desfazer', [MobileController::class, 'desfazerCheckin']);
+        });
     });
 });
