@@ -2,7 +2,7 @@ import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, useSegments } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
@@ -23,8 +23,21 @@ import { colors } from "../../src/theme/colors";
 import { handleAuthError } from "../../src/utils/authHelpers";
 import { normalizeUtf8 } from "../../src/utils/utf8";
 
+const getRouteParam = (value?: string | string[]) => {
+  if (value == null) return undefined;
+  return Array.isArray(value) ? value[0] : value;
+};
+
 export default function CheckinScreen() {
   const router = useRouter();
+  const routeParams = useLocalSearchParams<{
+    turmaId?: string | string[];
+    data?: string | string[];
+  }>();
+  const routeTurmaId = getRouteParam(routeParams.turmaId);
+  const routeData = getRouteParam(routeParams.data);
+  const segments = useSegments();
+  const isTurmaDetailsRoute = segments.includes("checkin-turma");
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [availableSchedules, setAvailableSchedules] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -361,18 +374,90 @@ export default function CheckinScreen() {
     };
   }, []);
 
-  useEffect(() => {
-    console.log("📅 DATA SELECIONADA MUDOU:", selectedDate);
-    // Quando a data muda, limpa os detalhes primeiro
+  const clearParticipantsState = useCallback(() => {
     setParticipantsTurma(null);
     setParticipants([]);
     setCheckinsRecentes([]);
     setAlunosTotal(0);
-    // Depois carrega os horários
+    setManualSearchQuery("");
+    setManualSearchResults([]);
+    setManualSearchError(null);
+    setPresencas({});
+    setUserCheckinId(null);
+  }, []);
+
+  const closeTurmaDetailsNavigation = useCallback(() => {
+    if (isTurmaDetailsRoute) {
+      if (typeof router.canGoBack === "function" && router.canGoBack()) {
+        router.back();
+        return;
+      }
+      router.replace({
+        pathname: "/(tabs)/checkin",
+        params: {
+          data: formatDateParam(selectedDateRef.current || new Date()),
+        },
+      });
+    }
+    clearParticipantsState();
+  }, [isTurmaDetailsRoute, router, clearParticipantsState]);
+
+  const navigateToTurmaDetails = useCallback(
+    (turmaId: number | string, options?: { replace?: boolean }) => {
+      const nav = {
+        pathname: "/(tabs)/checkin-turma" as const,
+        params: {
+          turmaId: String(turmaId),
+          data: formatDateParam(selectedDateRef.current || selectedDate),
+        },
+      };
+      if (options?.replace) {
+        router.replace(nav);
+      } else {
+        router.push(nav);
+      }
+    },
+    [router, selectedDate],
+  );
+
+  useEffect(() => {
+    if (!routeData) return;
+    const parsed = new Date(routeData);
+    if (Number.isNaN(parsed.getTime())) return;
+    const routeKey = formatDateParam(parsed);
+    const currentKey = formatDateParam(selectedDate);
+    if (routeKey !== currentKey) {
+      setSelectedDate(parsed);
+    }
+  }, [routeData]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (isTurmaDetailsRoute) return;
+    if (participantsTurma) {
+      clearParticipantsState();
+    }
+  }, [isTurmaDetailsRoute, participantsTurma, clearParticipantsState]);
+
+  useEffect(() => {
+    if (!isTurmaDetailsRoute) return;
+    if (!routeTurmaId) {
+      router.replace({
+        pathname: "/(tabs)/checkin",
+        params: {
+          data: formatDateParam(selectedDateRef.current || new Date()),
+        },
+      });
+    }
+  }, [isTurmaDetailsRoute, routeTurmaId, router]);
+
+  useEffect(() => {
+    console.log("📅 DATA SELECIONADA MUDOU:", selectedDate);
+    if (isTurmaDetailsRoute) return;
+    clearParticipantsState();
     if (selectedDate) {
       fetchAvailableSchedules(selectedDate);
     }
-  }, [selectedDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedDate, isTurmaDetailsRoute]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const generateCalendarDays = () => {
     console.log("📅 GERANDO CALENDÁRIO");
@@ -618,7 +703,9 @@ export default function CheckinScreen() {
         );
         await Promise.all([
           fetchAvailableSchedules(selectedDate),
-          openParticipants(mergeTurmaFromList(turma.id, turma)),
+          openParticipants(mergeTurmaFromList(turma.id, turma), {
+            replace: true,
+          }),
         ]);
       } else {
         showErrorModal(
@@ -689,7 +776,7 @@ export default function CheckinScreen() {
       setUserCheckinId(null);
       await Promise.all([
         fetchAvailableSchedules(selectedDate),
-        openParticipants(mergeTurmaFromList(turma.id, turma)),
+        openParticipants(mergeTurmaFromList(turma.id, turma), { replace: true }),
       ]);
     } catch (error) {
       console.error("Erro ao desfazer check-in:", error);
@@ -793,6 +880,7 @@ export default function CheckinScreen() {
       // Recarregar os dados da turma
       await openParticipants(
         mergeTurmaFromList(participantsTurma.id, participantsTurma),
+        { skipNavigation: true },
       );
     } catch (error) {
       console.error("Erro ao confirmar presenças:", error);
@@ -959,7 +1047,7 @@ export default function CheckinScreen() {
     currentUserEmail,
   ]);
 
-  const openParticipants = async (turma: any) => {
+  const loadParticipantsForTurma = async (turma: any) => {
     if (!turma?.id) return;
     setParticipantsLoading(true);
     setParticipants([]);
@@ -1035,6 +1123,45 @@ export default function CheckinScreen() {
       setParticipantsLoading(false);
     }
   };
+
+  const openParticipants = async (
+    turma: any,
+    options?: { replace?: boolean; skipNavigation?: boolean },
+  ) => {
+    if (!turma?.id) return;
+    setParticipantsLoading(true);
+    if (!options?.skipNavigation) {
+      navigateToTurmaDetails(turma.id, { replace: options?.replace });
+    }
+    await loadParticipantsForTurma(turma);
+  };
+
+  useEffect(() => {
+    if (!isTurmaDetailsRoute) return;
+    const date = routeData ? new Date(routeData) : selectedDate;
+    if (!Number.isNaN(date.getTime())) {
+      void fetchAvailableSchedules(date);
+    }
+  }, [isTurmaDetailsRoute, routeData]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!isTurmaDetailsRoute || !routeTurmaId) return;
+    if (participantsTurma && String(participantsTurma.id) === routeTurmaId) {
+      return;
+    }
+    if (participantsLoading) return;
+
+    const turmaFromList = availableSchedules.find(
+      (t) => String(t.id) === routeTurmaId,
+    );
+    const turma = turmaFromList ?? { id: routeTurmaId };
+
+    void loadParticipantsForTurma(turma);
+  }, [
+    isTurmaDetailsRoute,
+    routeTurmaId,
+    availableSchedules,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const parseAlunosSearchResponse = (payload: any): any[] => {
     if (!payload) return [];
@@ -1173,6 +1300,7 @@ export default function CheckinScreen() {
       );
       await openParticipants(
         mergeTurmaFromList(participantsTurma.id, participantsTurma),
+        { skipNavigation: true },
       );
     } catch (error) {
       console.error("Erro ao fazer check-in manual:", error);
@@ -1477,19 +1605,16 @@ export default function CheckinScreen() {
         <View
           style={[
             styles.headerTop,
-            participantsTurma && styles.headerTopDetailed,
+            isTurmaDetailsRoute && styles.headerTopDetailed,
           ]}
         >
           <View style={styles.headerTopRow}>
             <View style={styles.headerLeft}>
-              {participantsTurma ? (
+              {isTurmaDetailsRoute ? (
                 <>
                   <TouchableOpacity
                     style={styles.headerBackButton}
-                    onPress={() => {
-                      setParticipantsTurma(null);
-                      setParticipants([]);
-                    }}
+                    onPress={closeTurmaDetailsNavigation}
                   >
                     <Feather name="arrow-left" size={18} color="#fff" />
                   </TouchableOpacity>
@@ -1531,7 +1656,7 @@ export default function CheckinScreen() {
                 <Text style={styles.headerTitle}>Checkin</Text>
               )}
             </View>
-            {!participantsTurma && (
+            {!isTurmaDetailsRoute && (
               <View style={styles.headerRight}>
                 <View style={styles.switchRow}>
                   <Text style={styles.switchLabel}>Só disponíveis</Text>
@@ -1548,7 +1673,7 @@ export default function CheckinScreen() {
               </View>
             )}
           </View>
-          {participantsTurma && (
+          {isTurmaDetailsRoute && participantsTurma && (
             <View style={styles.headerInfoRow}>
               <View style={styles.headerChip}>
                 <Feather name="clock" size={14} color="#fff" />
@@ -1582,7 +1707,7 @@ export default function CheckinScreen() {
               ) : null}
             </View>
           )}
-          {participantsTurma && isProfessorOuAdmin && (
+          {isTurmaDetailsRoute && participantsTurma && isProfessorOuAdmin && (
             <TouchableOpacity
               style={[
                 styles.bloqueioCheckinButton,
@@ -1715,7 +1840,7 @@ export default function CheckinScreen() {
           showsVerticalScrollIndicator={false}
         >
           {/* Calendar */}
-          {!participantsTurma && (
+          {!isTurmaDetailsRoute && (
             <View style={styles.calendarSection} className="notranslate">
               <ScrollView
                 horizontal
@@ -1763,7 +1888,7 @@ export default function CheckinScreen() {
 
           {/* Available Schedules */}
           <View style={styles.schedulesSection}>
-            {participantsTurma ? (
+            {isTurmaDetailsRoute ? (
               <>
                 <View style={styles.participantsTopRow} />
 
@@ -2262,6 +2387,7 @@ export default function CheckinScreen() {
               <View style={styles.schedulesList}>
                 {schedulesToRender.map((turma) => {
                   const isClosed = isTurmaDisabled(turma, selectedDate);
+                  const isCheckinBloqueado = !!turma?.checkin_bloqueado;
                   const disabled = isProfessorOuAdmin ? false : isClosed;
                   const statusColor = isClosed ? "#d9534f" : "#2e7d32";
                   const professorName =
@@ -2289,10 +2415,15 @@ export default function CheckinScreen() {
                       style={[
                         styles.scheduleItem,
                         disabled && styles.scheduleItemDisabled,
+                        isProfessorOuAdmin &&
+                          isCheckinBloqueado &&
+                          styles.scheduleItemBloqueado,
                         {
                           borderLeftColor: disabled
                             ? "#cccccc"
-                            : turma.modalidade?.cor || colors.primary,
+                            : isProfessorOuAdmin && isCheckinBloqueado
+                              ? "#DC2626"
+                              : turma.modalidade?.cor || colors.primary,
                         },
                       ]}
                       onPress={() => openParticipants(turma)}
@@ -2315,32 +2446,47 @@ export default function CheckinScreen() {
                               </Text>
                             )}
                           </View>
-                          {turma.modalidade && (
-                            <View
-                              style={[
-                                styles.modalidadeBadge,
-                                {
-                                  backgroundColor: turma.modalidade.cor + "20",
-                                },
-                              ]}
-                            >
-                              {turma.modalidade.icone ? (
+                          <View style={styles.scheduleHeaderBadges}>
+                            {isProfessorOuAdmin && isCheckinBloqueado ? (
+                              <View style={styles.scheduleBlockedBadge}>
                                 <MaterialCommunityIcons
-                                  name={turma.modalidade.icone as any}
-                                  size={12}
-                                  color={turma.modalidade.cor}
+                                  name="lock"
+                                  size={14}
+                                  color="#B91C1C"
                                 />
-                              ) : null}
-                              <Text
+                                <Text style={styles.scheduleBlockedBadgeText}>
+                                  Bloqueado
+                                </Text>
+                              </View>
+                            ) : null}
+                            {turma.modalidade ? (
+                              <View
                                 style={[
-                                  styles.modalidadeText,
-                                  { color: turma.modalidade.cor },
+                                  styles.modalidadeBadge,
+                                  {
+                                    backgroundColor:
+                                      turma.modalidade.cor + "20",
+                                  },
                                 ]}
                               >
-                                {normalizeUtf8(turma.modalidade.nome)}
-                              </Text>
-                            </View>
-                          )}
+                                {turma.modalidade.icone ? (
+                                  <MaterialCommunityIcons
+                                    name={turma.modalidade.icone as any}
+                                    size={12}
+                                    color={turma.modalidade.cor}
+                                  />
+                                ) : null}
+                                <Text
+                                  style={[
+                                    styles.modalidadeText,
+                                    { color: turma.modalidade.cor },
+                                  ]}
+                                >
+                                  {normalizeUtf8(turma.modalidade.nome)}
+                                </Text>
+                              </View>
+                            ) : null}
+                          </View>
                         </View>
 
                         <View style={styles.scheduleInfoRow}>
@@ -2367,6 +2513,18 @@ export default function CheckinScreen() {
                               <Feather name="clock" size={14} color="#999" />
                               <Text style={styles.infoText}>
                                 Até {horaLimite}
+                              </Text>
+                            </View>
+                          ) : null}
+                          {isProfessorOuAdmin && isCheckinBloqueado ? (
+                            <View style={styles.infoItem}>
+                              <MaterialCommunityIcons
+                                name="lock"
+                                size={14}
+                                color="#B91C1C"
+                              />
+                              <Text style={styles.scheduleBlockedInfoText}>
+                                Check-in bloqueado
                               </Text>
                             </View>
                           ) : null}
@@ -2869,6 +3027,38 @@ const styles = StyleSheet.create({
   },
   scheduleItemDisabled: {
     opacity: 0.5,
+  },
+  scheduleItemBloqueado: {
+    backgroundColor: "#FEF2F2",
+    borderColor: "#FECACA",
+  },
+  scheduleHeaderBadges: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: 6,
+  },
+  scheduleBlockedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: "#FEE2E2",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+  },
+  scheduleBlockedBadgeText: {
+    color: "#B91C1C",
+    fontSize: 11,
+    fontWeight: "800",
+  },
+  scheduleBlockedInfoText: {
+    color: "#B91C1C",
+    fontSize: 12,
+    fontWeight: "700",
   },
   scheduleHeader: {
     flexDirection: "row",

@@ -155,6 +155,13 @@ export default function TabLayout() {
           headerShown: false,
         }}
       />
+      <Tabs.Screen
+        name="checkin-turma"
+        options={{
+          href: null,
+          headerShown: false,
+        }}
+      />
     </Tabs>
     </>
   );
