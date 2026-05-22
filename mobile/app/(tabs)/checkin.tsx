@@ -1569,10 +1569,14 @@ export default function CheckinScreen() {
                 <View
                   style={[
                     styles.headerChip,
-                    { backgroundColor: "rgba(239, 68, 68, 0.35)" },
+                    styles.headerChipBloqueado,
                   ]}
                 >
-                  <Feather name="slash" size={14} color="#fff" />
+                  <MaterialCommunityIcons
+                    name="lock"
+                    size={16}
+                    color="#fff"
+                  />
                   <Text style={styles.headerChipText}>Check-in bloqueado</Text>
                 </View>
               ) : null}
@@ -1582,28 +1586,69 @@ export default function CheckinScreen() {
             <TouchableOpacity
               style={[
                 styles.bloqueioCheckinButton,
-                participantsTurma?.checkin_bloqueado &&
-                  styles.bloqueioCheckinButtonAtivo,
+                participantsTurma?.checkin_bloqueado
+                  ? styles.bloqueioCheckinButtonLiberar
+                  : styles.bloqueioCheckinButtonBloquear,
               ]}
               onPress={handleToggleCheckinBloqueioTurma}
               disabled={turmaCheckinBloqueioLoading}
+              activeOpacity={0.85}
             >
               {turmaCheckinBloqueioLoading ? (
-                <ActivityIndicator size="small" color="#fff" />
+                <ActivityIndicator
+                  size="small"
+                  color={
+                    participantsTurma?.checkin_bloqueado ? "#047857" : "#fff"
+                  }
+                />
               ) : (
                 <>
-                  <Feather
-                    name={
-                      participantsTurma?.checkin_bloqueado ? "unlock" : "lock"
-                    }
-                    size={16}
-                    color="#fff"
-                  />
-                  <Text style={styles.bloqueioCheckinButtonText}>
-                    {participantsTurma?.checkin_bloqueado
-                      ? "Liberar check-in dos alunos"
-                      : "Bloquear check-in dos alunos"}
-                  </Text>
+                  <View
+                    style={[
+                      styles.bloqueioCheckinIconWrap,
+                      participantsTurma?.checkin_bloqueado
+                        ? styles.bloqueioCheckinIconWrapLiberar
+                        : styles.bloqueioCheckinIconWrapBloquear,
+                    ]}
+                  >
+                    <MaterialCommunityIcons
+                      name={
+                        participantsTurma?.checkin_bloqueado
+                          ? "lock-open-variant"
+                          : "lock"
+                      }
+                      size={30}
+                      color={
+                        participantsTurma?.checkin_bloqueado
+                          ? "#047857"
+                          : "#fff"
+                      }
+                    />
+                  </View>
+                  <View style={styles.bloqueioCheckinTextBlock}>
+                    <Text
+                      style={[
+                        styles.bloqueioCheckinButtonText,
+                        participantsTurma?.checkin_bloqueado &&
+                          styles.bloqueioCheckinButtonTextLiberar,
+                      ]}
+                    >
+                      {participantsTurma?.checkin_bloqueado
+                        ? "Liberar check-in dos alunos"
+                        : "Bloquear check-in dos alunos"}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.bloqueioCheckinButtonHint,
+                        participantsTurma?.checkin_bloqueado &&
+                          styles.bloqueioCheckinButtonHintLiberar,
+                      ]}
+                    >
+                      {participantsTurma?.checkin_bloqueado
+                        ? "Toque para permitir check-in nesta aula"
+                        : "Toque para impedir check-in nesta aula"}
+                    </Text>
+                  </View>
                 </>
               )}
             </TouchableOpacity>
@@ -2656,27 +2701,66 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "700",
   },
+  headerChipBloqueado: {
+    backgroundColor: "#B91C1C",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.45)",
+  },
   bloqueioCheckinButton: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    marginTop: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.22)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.35)",
+    gap: 14,
+    marginTop: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    borderWidth: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 4,
   },
-  bloqueioCheckinButtonAtivo: {
-    backgroundColor: "rgba(239, 68, 68, 0.45)",
-    borderColor: "rgba(252, 165, 165, 0.6)",
+  bloqueioCheckinButtonBloquear: {
+    backgroundColor: "#DC2626",
+    borderColor: "#FECACA",
+  },
+  bloqueioCheckinButtonLiberar: {
+    backgroundColor: "#FFFFFF",
+    borderColor: "#059669",
+  },
+  bloqueioCheckinIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bloqueioCheckinIconWrapBloquear: {
+    backgroundColor: "rgba(0,0,0,0.18)",
+  },
+  bloqueioCheckinIconWrapLiberar: {
+    backgroundColor: "#D1FAE5",
+  },
+  bloqueioCheckinTextBlock: {
+    flex: 1,
+    gap: 2,
   },
   bloqueioCheckinButtonText: {
     color: "#fff",
-    fontSize: 13,
-    fontWeight: "700",
+    fontSize: 15,
+    fontWeight: "800",
+  },
+  bloqueioCheckinButtonTextLiberar: {
+    color: "#047857",
+  },
+  bloqueioCheckinButtonHint: {
+    color: "rgba(255,255,255,0.9)",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+  bloqueioCheckinButtonHintLiberar: {
+    color: "#059669",
   },
   headerActions: {
     flexDirection: "row",
