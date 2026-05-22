@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Api\V2;
 
 use App\Http\Controllers\Controller;
 use App\Services\Mobile\MobileCheckinService;
+use App\Services\Mobile\MobileHistoricoService;
 use App\Services\Mobile\MobileHorariosService;
 use App\Services\Mobile\MobilePerfilService;
+use App\Services\Mobile\MobileWodService;
 use App\Support\AcademyDateTime;
 use App\Support\MobileResponse;
 use Illuminate\Http\JsonResponse;
@@ -18,7 +20,99 @@ class MobileController extends Controller
         private readonly MobileHorariosService $horarios,
         private readonly MobileCheckinService $checkin,
         private readonly MobilePerfilService $perfil,
+        private readonly MobileHistoricoService $historico,
+        private readonly MobileWodService $wod,
     ) {}
+
+    public function historicoCheckins(Request $request): JsonResponse
+    {
+        try {
+            $result = $this->historico->historicoCheckins(
+                $this->userId($request),
+                (int) $request->query('limit', 30),
+                (int) $request->query('offset', 0),
+            );
+
+            return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            Log::error('historicoCheckins v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao carregar histórico de check-ins', $e->getMessage());
+        }
+    }
+
+    public function checkinsPorModalidade(Request $request): JsonResponse
+    {
+        try {
+            $result = $this->historico->checkinsPorModalidade(
+                $this->userId($request),
+                $this->tenantId($request),
+                $request->query('data_referencia'),
+                (int) $request->query('offset', 0),
+            );
+
+            return $this->jsonWithOptionalHeaders($result);
+        } catch (\Throwable $e) {
+            Log::error('checkinsPorModalidade v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao carregar check-ins por modalidade', $e->getMessage());
+        }
+    }
+
+    public function rankingMensal(Request $request): JsonResponse
+    {
+        try {
+            $modalidadeId = $request->query('modalidade_id');
+            $result = $this->historico->rankingMensal(
+                $this->tenantId($request),
+                $modalidadeId !== null && $modalidadeId !== '' ? (int) $modalidadeId : null,
+            );
+
+            return $this->jsonWithOptionalHeaders($result);
+        } catch (\Throwable $e) {
+            Log::error('rankingMensal v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao carregar ranking', $e->getMessage());
+        }
+    }
+
+    public function wodHoje(Request $request): JsonResponse
+    {
+        try {
+            $modalidadeQuery = $request->query('modalidade_id');
+            $result = $this->wod->wodDoDia(
+                $this->userId($request),
+                $this->tenantId($request),
+                $request->query('data'),
+                $modalidadeQuery !== null && $modalidadeQuery !== ''
+                    ? (int) $modalidadeQuery
+                    : null,
+                $modalidadeQuery !== null && $modalidadeQuery !== '',
+            );
+
+            return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            Log::error('wodHoje v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao carregar WOD', $e->getMessage());
+        }
+    }
+
+    public function wodsHoje(Request $request): JsonResponse
+    {
+        try {
+            $result = $this->wod->wodsDoDia(
+                $this->tenantId($request),
+                $request->query('data'),
+            );
+
+            return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            Log::error('wodsHoje v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao carregar WODs', $e->getMessage());
+        }
+    }
 
     public function perfil(Request $request): JsonResponse
     {
@@ -140,5 +234,19 @@ class MobileController extends Controller
         $tenantId = $request->attributes->get('tenantId');
 
         return $tenantId ? (int) $tenantId : null;
+    }
+
+    /**
+     * @param  array{status: int, body: array<string, mixed>, headers?: array<string, string>}  $result
+     */
+    private function jsonWithOptionalHeaders(array $result): JsonResponse
+    {
+        $response = response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+
+        foreach ($result['headers'] ?? [] as $name => $value) {
+            $response->headers->set($name, $value);
+        }
+
+        return $response;
     }
 }

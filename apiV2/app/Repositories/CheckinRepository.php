@@ -2,6 +2,7 @@
 
 namespace App\Repositories;
 
+use App\Support\AcademyDateTime;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
@@ -247,5 +248,150 @@ class CheckinRepository
         usort($rankings, static fn ($a, $b) => $a['posicao'] <=> $b['posicao']);
 
         return $rankings;
+    }
+
+    /**
+     * @return array{checkins: list<array<string, mixed>>, total: int}
+     */
+    public function historicoCheckins(int $userId, int $limit, int $offset): array
+    {
+        $base = $this->historicoCheckinsBaseQuery($userId);
+
+        $checkins = (clone $base)
+            ->orderByDesc('d.data')
+            ->orderByDesc('t.horario_inicio')
+            ->offset($offset)
+            ->limit($limit)
+            ->get([
+                'c.id',
+                'c.data_checkin',
+                'c.created_at',
+                'd.data',
+                't.horario_inicio as hora',
+                't.nome as turma_nome',
+            ])
+            ->map(fn ($row) => (array) $row)
+            ->all();
+
+        $total = (int) (clone $base)->count('c.id');
+
+        return ['checkins' => $checkins, 'total' => $total];
+    }
+
+    private function historicoCheckinsBaseQuery(int $userId): \Illuminate\Database\Query\Builder
+    {
+        return DB::table('checkins as c')
+            ->join('alunos as a', 'a.id', '=', 'c.aluno_id')
+            ->join('turmas as t', 'c.turma_id', '=', 't.id')
+            ->join('dias as d', 't.dia_id', '=', 'd.id')
+            ->where('a.usuario_id', $userId)
+            ->where(function ($q) {
+                $q->whereNull('c.presente')->orWhere('c.presente', 1);
+            });
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function checkinsSemanaPorModalidade(
+        int $userId,
+        int $tenantId,
+        string $semanaInicio,
+        string $semanaFim,
+    ): array {
+        return DB::table('checkins as c')
+            ->join('alunos as a', 'a.id', '=', 'c.aluno_id')
+            ->join('turmas as t', 'c.turma_id', '=', 't.id')
+            ->join('dias as d', 't.dia_id', '=', 'd.id')
+            ->leftJoin('modalidades as m', 't.modalidade_id', '=', 'm.id')
+            ->where('a.usuario_id', $userId)
+            ->where('t.tenant_id', $tenantId)
+            ->where('c.tenant_id', $tenantId)
+            ->where(function ($q) {
+                $q->whereNull('c.presente')->orWhere('c.presente', 1);
+            })
+            ->whereBetween('d.data', [$semanaInicio, $semanaFim])
+            ->orderBy('d.data')
+            ->get([
+                'd.data',
+                'm.id as modalidade_id',
+                'm.nome as modalidade_nome',
+                'm.cor as modalidade_cor',
+                'm.icone as modalidade_icone',
+            ])
+            ->map(fn ($row) => (array) $row)
+            ->all();
+    }
+
+    public function contarCheckinsTenantMes(int $tenantId, ?int $mes = null, ?int $ano = null): int
+    {
+        ['mes' => $mes, 'ano' => $ano] = $this->resolveMonthYear($mes, $ano);
+
+        return (int) DB::table('checkins as c')
+            ->where('c.tenant_id', $tenantId)
+            ->whereRaw('MONTH(COALESCE(c.data_checkin_date, DATE(c.created_at))) = ?', [$mes])
+            ->whereRaw('YEAR(COALESCE(c.data_checkin_date, DATE(c.created_at))) = ?', [$ano])
+            ->where(function ($q) {
+                $q->whereNull('c.presente')->orWhere('c.presente', 1);
+            })
+            ->count();
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function rankingMesAtual(
+        int $tenantId,
+        int $limite = 3,
+        ?int $modalidadeId = null,
+        ?int $mes = null,
+        ?int $ano = null,
+    ): array {
+        ['mes' => $mes, 'ano' => $ano] = $this->resolveMonthYear($mes, $ano);
+
+        $query = DB::table('checkins as c')
+            ->join('alunos as a', 'c.aluno_id', '=', 'a.id')
+            ->join('usuarios as u', 'a.usuario_id', '=', 'u.id')
+            ->join('turmas as t', function ($join) {
+                $join->on('c.turma_id', '=', 't.id')
+                    ->on('t.tenant_id', '=', 'c.tenant_id');
+            })
+            ->where('c.tenant_id', $tenantId)
+            ->whereRaw('MONTH(COALESCE(c.data_checkin_date, DATE(c.created_at))) = ?', [$mes])
+            ->whereRaw('YEAR(COALESCE(c.data_checkin_date, DATE(c.created_at))) = ?', [$ano])
+            ->where(function ($q) {
+                $q->whereNull('c.presente')->orWhere('c.presente', 1);
+            });
+
+        if ($modalidadeId) {
+            $query->where('t.modalidade_id', $modalidadeId);
+        }
+
+        return $query
+            ->groupBy('a.id', 'a.nome', 'u.email', 'a.foto_caminho')
+            ->orderByDesc(DB::raw('COUNT(c.id)'))
+            ->limit($limite)
+            ->get([
+                'a.id as aluno_id',
+                'a.nome',
+                'u.email',
+                'a.foto_caminho',
+                DB::raw('COUNT(c.id) as total_checkins'),
+            ])
+            ->map(fn ($row) => (array) $row)
+            ->all();
+    }
+
+    /**
+     * @return array{mes: int, ano: int}
+     */
+    private function resolveMonthYear(?int $mes, ?int $ano): array
+    {
+        $periodo = AcademyDateTime::currentMonthYear();
+
+        return [
+            'mes' => $mes ?? $periodo['mes'],
+            'ano' => $ano ?? $periodo['ano'],
+        ];
     }
 }

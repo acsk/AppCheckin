@@ -43,6 +43,40 @@ class V2MobileRoutesTest extends TestCase
             ->assertUnauthorized();
     }
 
+    public function test_checkins_requires_jwt(): void
+    {
+        $this->getJson('/v2/mobile/checkins')
+            ->assertUnauthorized();
+    }
+
+    public function test_wod_hoje_validates_date_format(): void
+    {
+        $this->getJson('/v2/mobile/wod/hoje?data=invalid', [
+            'Authorization' => 'Bearer '.$this->bearerToken(),
+        ])
+            ->assertStatus(400)
+            ->assertJsonPath('error', 'Formato de data inválido. Use YYYY-MM-DD');
+    }
+
+    public function test_wods_hoje_requires_jwt(): void
+    {
+        $this->getJson('/v2/mobile/wods/hoje')
+            ->assertUnauthorized();
+    }
+
+    public function test_ranking_mensal_returns_success_shape(): void
+    {
+        $this->getJson('/v2/mobile/ranking/mensal', [
+            'Authorization' => 'Bearer '.$this->bearerToken(),
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonStructure([
+                'success',
+                'data' => ['periodo', 'mes', 'ano', 'ranking'],
+            ]);
+    }
+
     public function test_horarios_disponiveis_requires_jwt(): void
     {
         $this->getJson('/v2/mobile/horarios-disponiveis')

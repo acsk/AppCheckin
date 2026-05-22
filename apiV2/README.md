@@ -23,6 +23,11 @@ API Laravel em paralelo à API Slim (`api/`), com prefixo **`/v2`** e **JWT comp
 | GET | `/v2/mobile/perfil` | JWT (+ `tenant_id` no token) |
 | GET | `/v2/mobile/acesso` | JWT |
 | GET | `/v2/mobile/tenants` | JWT |
+| GET | `/v2/mobile/checkins` | JWT (`limit`, `offset`) |
+| GET | `/v2/mobile/checkins/por-modalidade` | JWT |
+| GET | `/v2/mobile/ranking/mensal` | JWT (`modalidade_id` opcional) |
+| GET | `/v2/mobile/wod/hoje` | JWT |
+| GET | `/v2/mobile/wods/hoje` | JWT |
 | GET | `/v2/mobile/horarios-disponiveis?data=YYYY-MM-DD` | JWT |
 | POST | `/v2/mobile/checkin` | JWT (`turma_id` no body) |
 | DELETE | `/v2/mobile/checkin/{checkinId}/desfazer` | JWT |

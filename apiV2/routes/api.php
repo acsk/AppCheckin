@@ -34,6 +34,11 @@ Route::prefix('v2')->group(function () {
             Route::get('/perfil', [MobileController::class, 'perfil']);
             Route::get('/acesso', [MobileController::class, 'verificarAcesso']);
             Route::get('/tenants', [MobileController::class, 'tenants']);
+            Route::get('/checkins', [MobileController::class, 'historicoCheckins']);
+            Route::get('/checkins/por-modalidade', [MobileController::class, 'checkinsPorModalidade']);
+            Route::get('/ranking/mensal', [MobileController::class, 'rankingMensal']);
+            Route::get('/wod/hoje', [MobileController::class, 'wodHoje']);
+            Route::get('/wods/hoje', [MobileController::class, 'wodsHoje']);
             Route::get('/horarios-disponiveis', [MobileController::class, 'horariosDisponiveis']);
             Route::post('/checkin', [MobileController::class, 'registrarCheckin']);
             Route::delete('/checkin/{checkinId}/desfazer', [MobileController::class, 'desfazerCheckin']);

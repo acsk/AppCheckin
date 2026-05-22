@@ -24,6 +24,15 @@ class AcademyDateTimeTest extends TestCase
         $this->assertSame('2026-05-22 18:00:00', $dt->format('Y-m-d H:i:s'));
     }
 
+    public function test_current_month_year_uses_sao_paulo(): void
+    {
+        $periodo = AcademyDateTime::currentMonthYear();
+        $now = AcademyDateTime::now();
+
+        $this->assertSame((int) $now->format('n'), $periodo['mes']);
+        $this->assertSame((int) $now->format('Y'), $periodo['ano']);
+    }
+
     public function test_checkin_window_matches_horarios_logic(): void
     {
         $data = '2026-05-22';

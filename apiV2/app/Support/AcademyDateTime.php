@@ -27,6 +27,29 @@ final class AcademyDateTime
         return self::now()->format('Y-m-d H:i:s');
     }
 
+    public static function currentMonth(): int
+    {
+        return (int) self::now()->format('n');
+    }
+
+    public static function currentYear(): int
+    {
+        return (int) self::now()->format('Y');
+    }
+
+    /**
+     * @return array{mes: int, ano: int}
+     */
+    public static function currentMonthYear(): array
+    {
+        $now = self::now();
+
+        return [
+            'mes' => (int) $now->format('n'),
+            'ano' => (int) $now->format('Y'),
+        ];
+    }
+
     /**
      * Interpreta data (Y-m-d) + hora (H:i:s ou H:i) no fuso da academia.
      */

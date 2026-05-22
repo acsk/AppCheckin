@@ -76,11 +76,16 @@ Checklist por endpoint:
   - `GET /v2/mobile/horarios-disponiveis?data=YYYY-MM-DD`
   - `POST /v2/mobile/checkin` (`turma_id`)
   - `DELETE /v2/mobile/checkin/{checkinId}/desfazer`
+  - `GET /v2/mobile/checkins` (`limit`, `offset`)
+  - `GET /v2/mobile/checkins/por-modalidade` (`offset`, `data_referencia`)
+  - `GET /v2/mobile/ranking/mensal` (`modalidade_id`)
+  - `GET /v2/mobile/wod/hoje` (`data`, `modalidade_id`)
+  - `GET /v2/mobile/wods/hoje` (`data`)
 
 ## Próximos candidatos (ordem sugerida)
 
-1. Mobile: checkins histórico, ranking, WOD (`MobileController` na Slim)
-2. Mobile: planos, matrículas, pagamento PIX
+1. Mobile: planos, matrículas, pagamento PIX (`MobileController` na Slim)
+2. Mobile: professor (check-in manual, presença, bloqueio turma)
 
 ## TESTS
 1. Sempre execute testes
