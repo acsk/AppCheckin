@@ -214,6 +214,27 @@ export const turmaService = {
     }
   },
 
+  async bloquearCheckin(turmaId, motivo = null) {
+    try {
+      const payload = motivo ? { motivo } : {};
+      const response = await api.post(`/admin/turmas/${turmaId}/bloquear-checkin`, payload);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao bloquear check-in da turma:', error);
+      throw error;
+    }
+  },
+
+  async desbloquearCheckin(turmaId) {
+    try {
+      const response = await api.post(`/admin/turmas/${turmaId}/desbloquear-checkin`);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao desbloquear check-in da turma:', error);
+      throw error;
+    }
+  },
+
   // Desativar turmas
   async desativar(turmaId, periodo = 'apenas_esta', mes = null) {
     try {

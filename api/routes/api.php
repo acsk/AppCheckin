@@ -966,6 +966,10 @@ return function ($app) {
         
         // Presença (professor marca se aluno veio ou não)
         $group->post('/turma/{turmaId}/confirmar-presenca', [MobileController::class, 'confirmarPresenca']);
+        $group->post('/turma/{turmaId}/bloquear-checkin', [MobileController::class, 'bloquearCheckinTurma'])
+            ->add(ProfessorMiddleware::class);
+        $group->post('/turma/{turmaId}/desbloquear-checkin', [MobileController::class, 'desbloquearCheckinTurma'])
+            ->add(ProfessorMiddleware::class);
         
         // WOD do dia
         $group->get('/wod/hoje', [MobileController::class, 'wodDodia']);
@@ -1220,6 +1224,8 @@ return function ($app) {
         $group->post('/turmas/replicar-semana', [TurmaController::class, 'replicarSemana']);
         $group->post('/turmas/desativar', [TurmaController::class, 'desativarTurma']);
         $group->put('/turmas/{id}', [TurmaController::class, 'update']);
+        $group->post('/turmas/{id}/bloquear-checkin', [TurmaController::class, 'bloquearCheckin']);
+        $group->post('/turmas/{id}/desbloquear-checkin', [TurmaController::class, 'desbloquearCheckin']);
         $group->delete('/turmas/{id}', [TurmaController::class, 'delete']);
         $group->delete('/turmas/{id}/permanente', [TurmaController::class, 'deletePermanente']);
         $group->get('/turmas/{id}/vagas', [TurmaController::class, 'verificarVagas']);

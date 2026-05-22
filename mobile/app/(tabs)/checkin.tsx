@@ -5,6 +5,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+    ActivityIndicator,
     Animated,
     Image,
     Modal,
@@ -65,6 +66,8 @@ export default function CheckinScreen() {
     {},
   );
   const [confirmandoPresenca, setConfirmandoPresenca] = useState(false);
+  const [turmaCheckinBloqueioLoading, setTurmaCheckinBloqueioLoading] =
+    useState(false);
   const [manualSearchQuery, setManualSearchQuery] = useState("");
   const [manualSearchResults, setManualSearchResults] = useState<any[]>([]);
   const [manualSearchLoading, setManualSearchLoading] = useState(false);
@@ -1283,6 +1286,7 @@ export default function CheckinScreen() {
 
   const isCheckinDisabled = (turma: any): boolean => {
     if (!turma) return true;
+    if (turma.checkin_bloqueado) return true;
     if (isTurmaDisabled(turma, selectedDate)) return true;
     const hasVagasByField =
       typeof turma.vagas_disponiveis === "number"
@@ -1376,10 +1380,85 @@ export default function CheckinScreen() {
     return `${m}min`;
   };
 
-  const schedulesToRender =
-    showOnlyAvailable && !isProfessorOuAdmin
-      ? availableSchedules.filter((turma) => !isCheckinDisabled(turma))
-      : availableSchedules;
+  const schedulesToRender = (() => {
+    let list = availableSchedules;
+    if (!isProfessorOuAdmin) {
+      list = list.filter((turma) => !turma?.checkin_bloqueado);
+    }
+    if (showOnlyAvailable && !isProfessorOuAdmin) {
+      list = list.filter((turma) => !isCheckinDisabled(turma));
+    }
+    return list;
+  })();
+
+  const handleToggleCheckinBloqueioTurma = async () => {
+    if (!participantsTurma?.id || !isProfessorOuAdmin) return;
+
+    const bloquear = !participantsTurma.checkin_bloqueado;
+    setTurmaCheckinBloqueioLoading(true);
+
+    try {
+      const token = await AsyncStorage.getItem("@appcheckin:token");
+      if (!token) {
+        showToast("Token não encontrado", "error");
+        return;
+      }
+
+      const endpoint = bloquear ? "bloquear-checkin" : "desbloquear-checkin";
+      const response = await fetch(
+        `${getApiUrlRuntime()}/mobile/turma/${participantsTurma.id}/${endpoint}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: bloquear ? JSON.stringify({}) : undefined,
+        },
+      );
+
+      const text = await response.text();
+      let data: any = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = {};
+      }
+
+      if (!response.ok) {
+        showToast(
+          data?.error || data?.message || "Não foi possível alterar o bloqueio",
+          "error",
+        );
+        return;
+      }
+
+      const novoEstado = data?.checkin_bloqueado ?? bloquear;
+      setParticipantsTurma((prev: any) =>
+        prev ? { ...prev, checkin_bloqueado: novoEstado } : prev,
+      );
+      setAvailableSchedules((prev) =>
+        prev.map((t) =>
+          Number(t.id) === Number(participantsTurma.id)
+            ? { ...t, checkin_bloqueado: novoEstado }
+            : t,
+        ),
+      );
+
+      showToast(
+        data?.message ||
+          (novoEstado
+            ? "Check-in bloqueado para alunos"
+            : "Check-in liberado para alunos"),
+        "success",
+      );
+    } catch (error) {
+      console.error("Erro ao alterar bloqueio de check-in:", error);
+      showToast("Erro ao alterar bloqueio de check-in", "error");
+    } finally {
+      setTurmaCheckinBloqueioLoading(false);
+    }
+  };
 
   // Debug: Log dos estados para verificar papel do usuário
   console.log(
@@ -1486,7 +1565,48 @@ export default function CheckinScreen() {
                   </Text>
                 </View>
               ) : null}
+              {participantsTurma?.checkin_bloqueado ? (
+                <View
+                  style={[
+                    styles.headerChip,
+                    { backgroundColor: "rgba(239, 68, 68, 0.35)" },
+                  ]}
+                >
+                  <Feather name="slash" size={14} color="#fff" />
+                  <Text style={styles.headerChipText}>Check-in bloqueado</Text>
+                </View>
+              ) : null}
             </View>
+          )}
+          {participantsTurma && isProfessorOuAdmin && (
+            <TouchableOpacity
+              style={[
+                styles.bloqueioCheckinButton,
+                participantsTurma?.checkin_bloqueado &&
+                  styles.bloqueioCheckinButtonAtivo,
+              ]}
+              onPress={handleToggleCheckinBloqueioTurma}
+              disabled={turmaCheckinBloqueioLoading}
+            >
+              {turmaCheckinBloqueioLoading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Feather
+                    name={
+                      participantsTurma?.checkin_bloqueado ? "unlock" : "lock"
+                    }
+                    size={16}
+                    color="#fff"
+                  />
+                  <Text style={styles.bloqueioCheckinButtonText}>
+                    {participantsTurma?.checkin_bloqueado
+                      ? "Liberar check-in dos alunos"
+                      : "Bloquear check-in dos alunos"}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
           )}
         </View>
 
@@ -2534,6 +2654,28 @@ const styles = StyleSheet.create({
   headerChipText: {
     color: "#fff",
     fontSize: 12,
+    fontWeight: "700",
+  },
+  bloqueioCheckinButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    backgroundColor: "rgba(255,255,255,0.22)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.35)",
+  },
+  bloqueioCheckinButtonAtivo: {
+    backgroundColor: "rgba(239, 68, 68, 0.45)",
+    borderColor: "rgba(252, 165, 165, 0.6)",
+  },
+  bloqueioCheckinButtonText: {
+    color: "#fff",
+    fontSize: 13,
     fontWeight: "700",
   },
   headerActions: {

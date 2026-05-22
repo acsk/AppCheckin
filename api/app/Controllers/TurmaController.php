@@ -8,6 +8,7 @@ use App\Models\Turma;
 use App\Models\Professor;
 use App\Models\Modalidade;
 use App\Models\Dia;
+use App\Services\TurmaCheckinBloqueioService;
 use PDO;
 
 class TurmaController
@@ -16,6 +17,7 @@ class TurmaController
     private Professor $professorModel;
     private Modalidade $modalidadeModel;
     private Dia $diaModel;
+    private TurmaCheckinBloqueioService $checkinBloqueioService;
     private PDO $db;
 
     public function __construct()
@@ -25,6 +27,7 @@ class TurmaController
         $this->professorModel = new Professor($this->db);
         $this->modalidadeModel = new Modalidade($this->db);
         $this->diaModel = new Dia($this->db);
+        $this->checkinBloqueioService = new TurmaCheckinBloqueioService($this->db);
     }
 
     /**
@@ -90,6 +93,8 @@ class TurmaController
             }
             $turmas = $this->turmaModel->listarPorDia($tenantId, $dia['id'], $apenasAtivas);
         }
+
+        $turmas = $this->checkinBloqueioService->anexarFlagNasTurmas($turmas, (int) $tenantId);
         
         $response->getBody()->write(json_encode([
             'dia' => $dia,
@@ -118,7 +123,10 @@ class TurmaController
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
         }
         
-        $turmas = $this->turmaModel->listarPorDia($tenantId, $diaId);
+        $turmas = $this->checkinBloqueioService->anexarFlagNasTurmas(
+            $this->turmaModel->listarPorDia($tenantId, $diaId),
+            (int) $tenantId
+        );
         
         $response->getBody()->write(json_encode([
             'dia' => $dia,
@@ -1251,5 +1259,87 @@ class TurmaController
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
         }
+    }
+
+    /**
+     * Bloquear check-in de alunos nesta turma/aula
+     * POST /admin/turmas/{id}/bloquear-checkin
+     */
+    public function bloquearCheckin(Request $request, Response $response, array $args): Response
+    {
+        return $this->alterarBloqueioCheckin($request, $response, $args, true);
+    }
+
+    /**
+     * Liberar check-in de alunos nesta turma/aula
+     * POST /admin/turmas/{id}/desbloquear-checkin
+     */
+    public function desbloquearCheckin(Request $request, Response $response, array $args): Response
+    {
+        return $this->alterarBloqueioCheckin($request, $response, $args, false);
+    }
+
+    private function alterarBloqueioCheckin(
+        Request $request,
+        Response $response,
+        array $args,
+        bool $bloquear
+    ): Response {
+        $tenantId = (int) $request->getAttribute('tenantId');
+        $turmaId = (int) ($args['id'] ?? 0);
+        $userId = (int) $request->getAttribute('userId');
+
+        if ($turmaId <= 0) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'ID da turma inválido',
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+        }
+
+        $turma = $this->turmaModel->findById($turmaId, $tenantId);
+        if (!$turma) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Turma não encontrada',
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(404);
+        }
+
+        $papel = $request->getAttribute('papel');
+        if (!$this->checkinBloqueioService->usuarioPodeGerenciarTurma($userId, $tenantId, $turmaId, is_array($papel) ? $papel : null)) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Sem permissão para gerenciar check-in desta turma',
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(403);
+        }
+
+        if ($bloquear) {
+            $body = $request->getParsedBody() ?? [];
+            $motivo = isset($body['motivo']) ? (string) $body['motivo'] : null;
+            $this->checkinBloqueioService->bloquear($turmaId, $tenantId, $userId ?: null, $motivo);
+            $message = 'Check-in bloqueado para alunos nesta aula';
+        } else {
+            $this->checkinBloqueioService->desbloquear($turmaId, $tenantId);
+            $message = 'Check-in liberado para alunos nesta aula';
+        }
+
+        $turmaAtualizada = $this->turmaModel->findById($turmaId, $tenantId);
+        $turmasComFlag = $this->checkinBloqueioService->anexarFlagNasTurmas(
+            $turmaAtualizada ? [$turmaAtualizada] : [],
+            $tenantId
+        );
+
+        $response->getBody()->write(json_encode([
+            'type' => 'success',
+            'message' => $message,
+            'turma' => $turmasComFlag[0] ?? null,
+            'checkin_bloqueado' => $bloquear,
+        ], JSON_UNESCAPED_UNICODE));
+
+        return $response
+            ->withHeader('Content-Type', 'application/json; charset=utf-8')
+            ->withStatus(200);
     }
 }

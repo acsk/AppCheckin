@@ -12,6 +12,7 @@ use App\Models\WodBloco;
 use App\Models\WodVariacao;
 use App\Models\Parametro;
 use App\Models\RecordePessoal;
+use App\Services\TurmaCheckinBloqueioService;
 use OpenApi\Attributes as OA;
 
 /**
@@ -33,6 +34,7 @@ class MobileController
     private WodBloco $wodBlocoModel;
     private WodVariacao $wodVariacaoModel;
     private RecordePessoal $recordePessoalModel;
+    private TurmaCheckinBloqueioService $checkinBloqueioService;
     private \PDO $db;
     private ?string $dbInitError = null;
 
@@ -47,6 +49,7 @@ class MobileController
             $this->wodBlocoModel = new WodBloco($this->db);
             $this->wodVariacaoModel = new WodVariacao($this->db);
             $this->recordePessoalModel = new RecordePessoal($this->db);
+            $this->checkinBloqueioService = new TurmaCheckinBloqueioService($this->db);
         } catch (\Throwable $e) {
             $this->dbInitError = $e->getMessage();
             error_log('[MobileController::__construct] DB init error: ' . $this->dbInitError);
@@ -2000,6 +2003,15 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
             }
 
+            if ($this->checkinBloqueioService->isBloqueada($turmaId, (int) $tenantId)) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'O check-in desta aula está bloqueado pelo professor ou administrador.',
+                    'code' => 'CHECKIN_TURMA_BLOQUEADO',
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+            }
+
             // Verificar se usuário já fez check-in nesta turma
             if ($this->checkinModel->usuarioTemCheckinNaTurma($userId, $turmaId)) {
                 $response->getBody()->write(json_encode([
@@ -2643,6 +2655,23 @@ class MobileController
                 ];
             }, $turmas);
 
+            $userId = (int) $request->getAttribute('userId');
+            $bloqueadas = $this->checkinBloqueioService->listarTurmaIdsBloqueadas(
+                (int) $tenantId,
+                array_map(static fn (array $t) => (int) $t['id'], $turmasFormatadas)
+            );
+            $ehStaff = $this->checkinBloqueioService->usuarioEhStaffNoTenant($userId, (int) $tenantId);
+
+            $turmasFormatadas = array_values(array_filter(
+                array_map(static function (array $turma) use ($bloqueadas, $ehStaff) {
+                    $id = (int) $turma['id'];
+                    $bloqueado = isset($bloqueadas[$id]);
+                    $turma['checkin_bloqueado'] = $bloqueado;
+                    return $turma;
+                }, $turmasFormatadas),
+                static fn (array $turma) => $ehStaff || empty($turma['checkin_bloqueado'])
+            ));
+
             $response->getBody()->write(json_encode([
                 'success' => true,
                 'data' => [
@@ -3233,6 +3262,7 @@ class MobileController
             $limite = (int) $turma['limite_alunos'];
             $vagasDisponiveis = max(0, $limite - $totalAlunos);
             $percentualOcupacao = $limite > 0 ? round(($totalAlunos / $limite) * 100, 1) : 0;
+            $checkinBloqueado = $this->checkinBloqueioService->isBloqueada($turmaId, (int) $tenantId);
 
             $response->getBody()->write(json_encode([
                 'success' => true,
@@ -3247,6 +3277,7 @@ class MobileController
                         'horario_fim' => $turma['horario_fim'],
                         'dia_aula' => $turma['dia_data'],
                         'ativo' => (bool) $turma['ativo'],
+                        'checkin_bloqueado' => $checkinBloqueado,
                         'limite_alunos' => $limite,
                         'total_alunos_matriculados' => $totalAlunos,
                         'vagas_disponiveis' => $vagasDisponiveis,
@@ -3483,6 +3514,105 @@ class MobileController
                 'success' => false,
                 'error' => 'Erro ao confirmar presença',
                 'message' => $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * Bloquear check-in de alunos na turma (professor/admin)
+     * POST /mobile/turma/{turmaId}/bloquear-checkin
+     */
+    public function bloquearCheckinTurma(Request $request, Response $response, array $args): Response
+    {
+        return $this->alterarBloqueioCheckinTurmaMobile($request, $response, $args, true);
+    }
+
+    /**
+     * Liberar check-in de alunos na turma (professor/admin)
+     * POST /mobile/turma/{turmaId}/desbloquear-checkin
+     */
+    public function desbloquearCheckinTurma(Request $request, Response $response, array $args): Response
+    {
+        return $this->alterarBloqueioCheckinTurmaMobile($request, $response, $args, false);
+    }
+
+    private function alterarBloqueioCheckinTurmaMobile(
+        Request $request,
+        Response $response,
+        array $args,
+        bool $bloquear
+    ): Response {
+        try {
+            $tenantId = (int) $request->getAttribute('tenantId');
+            $userId = (int) $request->getAttribute('userId');
+            $turmaId = (int) ($args['turmaId'] ?? 0);
+            $papel = $request->getAttribute('papel');
+
+            if (!$tenantId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Nenhum tenant selecionado',
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            if ($turmaId <= 0) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'turma_id é obrigatório',
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            $turma = $this->turmaModel->findById($turmaId, $tenantId);
+            if (!$turma) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Turma não encontrada',
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            if (!$this->checkinBloqueioService->usuarioPodeGerenciarTurma(
+                $userId,
+                $tenantId,
+                $turmaId,
+                is_array($papel) ? $papel : null
+            )) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Sem permissão para gerenciar check-in desta turma',
+                    'code' => 'ACCESS_DENIED',
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+            }
+
+            if ($bloquear) {
+                $body = $request->getParsedBody() ?? [];
+                $motivo = isset($body['motivo']) ? (string) $body['motivo'] : null;
+                $this->checkinBloqueioService->bloquear($turmaId, $tenantId, $userId ?: null, $motivo);
+                $message = 'Check-in bloqueado para alunos nesta aula';
+            } else {
+                $this->checkinBloqueioService->desbloquear($turmaId, $tenantId);
+                $message = 'Check-in liberado para alunos nesta aula';
+            }
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'message' => $message,
+                'checkin_bloqueado' => $bloquear,
+                'turma_id' => $turmaId,
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response
+                ->withHeader('Content-Type', 'application/json; charset=utf-8')
+                ->withStatus(200);
+        } catch (\Exception $e) {
+            error_log('[MobileController::alterarBloqueioCheckinTurmaMobile] ' . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao alterar bloqueio de check-in',
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }

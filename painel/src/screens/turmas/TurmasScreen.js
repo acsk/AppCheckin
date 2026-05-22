@@ -68,6 +68,7 @@ export default function TurmasScreen() {
   const [modalidadeWodId, setModalidadeWodId] = useState('');
   const [wodData, setWodData] = useState(null);
   const [loadingWod, setLoadingWod] = useState(false);
+  const [bloqueandoCheckinTurmaId, setBloqueandoCheckinTurmaId] = useState(null);
 
   function obterHoje() {
     const hoje = new Date();
@@ -975,6 +976,32 @@ ${listaTurmas ? `Turmas deletadas:\n${listaTurmas}` : ''}
     setConfirmDeletePermanente({ visible: true, id, nome });
   };
 
+  const handleToggleCheckinBloqueio = async (turma, event) => {
+    event?.stopPropagation?.();
+    if (!turma?.id) return;
+
+    setBloqueandoCheckinTurmaId(turma.id);
+    try {
+      if (turma.checkin_bloqueado) {
+        await turmaService.desbloquearCheckin(turma.id);
+        showSuccess('Check-in liberado para alunos nesta aula');
+      } else {
+        await turmaService.bloquearCheckin(turma.id);
+        showSuccess('Check-in bloqueado para alunos nesta aula');
+      }
+      await carregarDados();
+    } catch (error) {
+      console.error('Erro ao alterar bloqueio de check-in:', error);
+      showError(
+        error?.response?.data?.message ||
+          error?.response?.data?.error ||
+          'Erro ao alterar bloqueio de check-in'
+      );
+    } finally {
+      setBloqueandoCheckinTurmaId(null);
+    }
+  };
+
   const confirmarDeletePermanente = async () => {
     try {
       setSubmitting(true);
@@ -1199,15 +1226,39 @@ ${listaTurmas ? `Turmas deletadas:\n${listaTurmas}` : ''}
                   </Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <View
-                    className={`self-start rounded-full px-2.5 py-1 ${turma.ativo ? 'bg-emerald-100' : 'bg-rose-100'}`}
-                  >
-                    <Text className={`text-[11px] font-bold ${turma.ativo ? 'text-emerald-700' : 'text-rose-700'}`}>
-                      {turma.ativo ? 'Ativo' : 'Inativo'}
-                    </Text>
+                  <View className="gap-1">
+                    <View
+                      className={`self-start rounded-full px-2.5 py-1 ${turma.ativo ? 'bg-emerald-100' : 'bg-rose-100'}`}
+                    >
+                      <Text className={`text-[11px] font-bold ${turma.ativo ? 'text-emerald-700' : 'text-rose-700'}`}>
+                        {turma.ativo ? 'Ativo' : 'Inativo'}
+                      </Text>
+                    </View>
+                    {turma.checkin_bloqueado ? (
+                      <View className="self-start rounded-full bg-violet-100 px-2.5 py-1">
+                        <Text className="text-[11px] font-bold text-violet-700">
+                          Check-in bloqueado
+                        </Text>
+                      </View>
+                    ) : null}
                   </View>
                 </View>
                 <View className="flex-row justify-end gap-2" style={{ flex: 0.8 }}>
+                  <TouchableOpacity
+                    onPress={(e) => handleToggleCheckinBloqueio(turma, e)}
+                    disabled={bloqueandoCheckinTurmaId === turma.id}
+                    className="h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
+                  >
+                    {bloqueandoCheckinTurmaId === turma.id ? (
+                      <ActivityIndicator size="small" color="#7c3aed" />
+                    ) : (
+                      <Feather
+                        name={turma.checkin_bloqueado ? 'unlock' : 'lock'}
+                        size={18}
+                        color={turma.checkin_bloqueado ? '#16a34a' : '#7c3aed'}
+                      />
+                    )}
+                  </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => handleDeletePermanente(turma.id, turma.nome)}
                     className="h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-slate-50"
