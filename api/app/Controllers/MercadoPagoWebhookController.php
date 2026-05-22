@@ -2628,6 +2628,10 @@ class MercadoPagoWebhookController
     )]
     public function simularWebhook(Request $request, Response $response): Response
     {
+        if (!\App\Support\AppEnvironment::isDevelopment()) {
+            return \App\Support\AppEnvironment::developmentOnlyResponse($response);
+        }
+
         try {
             $query = $request->getQueryParams();
             

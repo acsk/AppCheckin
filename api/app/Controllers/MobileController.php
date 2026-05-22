@@ -167,6 +167,8 @@ class MobileController
             $rankingModalidades = $this->checkinModel->rankingUsuarioPorModalidade($userId, $tenantId);
 
             // Montar resposta - dados de perfil vem do aluno, auth vem do usuario
+            $bloqueioAcesso = $this->obterBloqueioMatricula($userId, (int) $tenantId);
+
             $perfil = [
                 'id' => $usuario['id'],
                 'aluno_id' => $aluno['id'] ?? null,
@@ -190,6 +192,7 @@ class MobileController
                 'plano' => $plano,
                 'estatisticas' => $estatisticas,
                 'ranking_modalidades' => $rankingModalidades,
+                'acesso' => $this->montarPayloadAcesso($bloqueioAcesso),
             ];
 
             $response->getBody()->write(json_encode([
@@ -371,7 +374,12 @@ class MobileController
         }
 
         try {
-            // Buscar plano através da matrícula mais recente (ativa, pendente ou vencida)
+            // Matrícula bloqueada (mais recente) não deve exibir plano de matrículas anteriores
+            if ($this->obterBloqueioMatricula($userId, (int) $tenantId) !== null) {
+                return null;
+            }
+
+            // Buscar plano através da matrícula elegível (ativa, pendente ou vencida com check-in)
             $sql = "SELECT p.id, p.nome, p.valor, p.duracao_dias, p.descricao,
                            m.id as matricula_id, m.data_inicio, m.data_vencimento as data_fim, 
                            m.proxima_data_vencimento, m.plano_ciclo_id, m.pacote_contrato_id,
@@ -389,6 +397,7 @@ class MobileController
                     WHERE a.usuario_id = :user_id 
                     AND m.tenant_id = :tenant_id
                     AND sm.codigo IN ('ativa', 'pendente', 'vencida')
+                    AND sm.permite_checkin = 1
                     ORDER BY FIELD(sm.codigo, 'ativa', 'pendente', 'vencida'), m.data_vencimento DESC
                     LIMIT 1";
             
@@ -404,6 +413,7 @@ class MobileController
                     'vencida' => '#DC3545',
                     'cancelada' => '#6C757D',
                     'suspensa' => '#6C757D',
+                    'bloqueado' => '#8B5CF6',
                 ];
                 $plano['matricula_status'] = [
                     'codigo' => $plano['vinculo_status'],
@@ -1922,36 +1932,24 @@ class MobileController
             $matricula = $stmtMatricula->fetch(\PDO::FETCH_ASSOC);
             
             if (!$matricula) {
-                // Buscar matrícula vencida para informar quando expirou
-                $stmtVencida = $this->db->prepare("
-                    SELECT m.id, m.proxima_data_vencimento, sm.codigo as status_codigo, sm.nome as status_nome
-                    FROM matriculas m
-                    INNER JOIN status_matricula sm ON sm.id = m.status_id
-                    WHERE m.aluno_id = :aluno_id
-                    AND m.tenant_id = :tenant_id
-                    AND m.proxima_data_vencimento IS NOT NULL
-                    ORDER BY m.proxima_data_vencimento DESC
-                    LIMIT 1
-                ");
-                $stmtVencida->execute([
-                    'aluno_id' => (int) ($aluno['id'] ?? 0),
-                    'tenant_id' => $tenantId
-                ]);
-                $matriculaVencida = $stmtVencida->fetch(\PDO::FETCH_ASSOC);
-
-                $errorResponse = [
-                    'success' => false,
-                    'code' => 'SEM_MATRICULA'
-                ];
-
-                if ($matriculaVencida) {
-                    $dataVencimento = date('d/m/Y', strtotime($matriculaVencida['proxima_data_vencimento']));
-                    $errorResponse['error'] = "Sua matrícula expirou em {$dataVencimento}. Por favor, renove sua matrícula.";
-                    $errorResponse['data_vencimento'] = $matriculaVencida['proxima_data_vencimento'];
-                    $errorResponse['status'] = $matriculaVencida['status_nome'];
-                } else {
-                    $errorResponse['error'] = 'Você não possui matrícula ativa';
+                $bloqueio = $this->obterBloqueioMatricula((int) $userId, (int) $tenantId);
+                if ($bloqueio) {
+                    $response->getBody()->write(json_encode([
+                        'success' => false,
+                        'error' => $bloqueio['mensagem'],
+                        'code' => $bloqueio['code'],
+                        'status_codigo' => $bloqueio['status_codigo'] ?? 'bloqueado',
+                    ], JSON_UNESCAPED_UNICODE));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
                 }
+
+                $erroMatriculaCheckin = $this->montarErroMatriculaIndisponivelCheckin(
+                    (int) ($aluno['id'] ?? 0),
+                    (int) $tenantId
+                );
+                $errorResponse = array_merge([
+                    'success' => false,
+                ], $erroMatriculaCheckin);
 
                 $errorResponse['debug'] = $this->montarDebugSemMatricula(
                     (int)$tenantId,
@@ -7274,6 +7272,223 @@ class MobileController
         return $meses . ' meses';
     }
     
+    /**
+     * Verifica se o aluno pode acessar o app (matrícula não bloqueada)
+     * GET /mobile/acesso
+     */
+    public function verificarAcesso(Request $request, Response $response): Response
+    {
+        try {
+            $userId = (int) $request->getAttribute('userId');
+            $tenantId = (int) $request->getAttribute('tenantId');
+
+            if (!$tenantId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'code' => 'MISSING_TENANT',
+                    'message' => 'Tenant não informado',
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            $bloqueio = $this->obterBloqueioMatricula($userId, $tenantId);
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'acesso' => $this->montarPayloadAcesso($bloqueio),
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            error_log('[MobileController::verificarAcesso] ' . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'message' => 'Erro ao verificar acesso',
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * Erro de check-in quando não há matrícula elegível (permite_checkin), mas pode existir registro.
+     */
+    private function montarErroMatriculaIndisponivelCheckin(int $alunoId, int $tenantId): array
+    {
+        $ultima = $this->buscarMatriculaMaisRecentePorAluno($alunoId, $tenantId);
+        $restricao = $this->avaliarRestricaoAcessoMatricula($ultima);
+
+        if ($restricao !== null) {
+            $erro = [
+                'code' => $restricao['code'],
+                'error' => $restricao['mensagem'],
+                'matricula_id' => $restricao['matricula_id'],
+                'status_codigo' => $restricao['status_codigo'],
+            ];
+            if (!empty($restricao['data_vencimento'])) {
+                $erro['data_vencimento'] = $restricao['data_vencimento'];
+            }
+            if (!empty($restricao['status'])) {
+                $erro['status'] = $restricao['status'];
+            }
+            return $erro;
+        }
+
+        return [
+            'code' => 'SEM_MATRICULA',
+            'error' => 'Você não possui matrícula ativa',
+            'matricula_id' => $ultima ? (int) $ultima['id'] : null,
+            'status_codigo' => $ultima['status_codigo'] ?? null,
+        ];
+    }
+
+    private function codigoErroPorStatusMatricula(string $statusCodigo): string
+    {
+        return match ($statusCodigo) {
+            'cancelada' => 'MATRICULA_CANCELADA',
+            'finalizada' => 'MATRICULA_FINALIZADA',
+            'pendente' => 'MATRICULA_PENDENTE',
+            'vencida' => 'MATRICULA_VENCIDA',
+            default => 'MATRICULA_INATIVA',
+        };
+    }
+
+    /**
+     * Matrícula mais recente do aluno no tenant (por aluno_id).
+     */
+    private function buscarMatriculaMaisRecentePorAluno(int $alunoId, int $tenantId): ?array
+    {
+        $stmt = $this->db->prepare("
+            SELECT m.id, m.proxima_data_vencimento, m.data_vencimento,
+                   sm.codigo as status_codigo, sm.nome as status_nome,
+                   sm.permite_checkin, sm.ativo as status_ativo
+            FROM matriculas m
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            WHERE m.aluno_id = :aluno_id
+            AND m.tenant_id = :tenant_id
+            ORDER BY m.created_at DESC
+            LIMIT 1
+        ");
+        $stmt->execute([
+            'aluno_id' => $alunoId,
+            'tenant_id' => $tenantId,
+        ]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
+    /**
+     * Matrícula mais recente do usuário no tenant (por usuario_id).
+     */
+    private function buscarMatriculaMaisRecentePorUsuario(int $userId, int $tenantId): ?array
+    {
+        $stmt = $this->db->prepare("
+            SELECT m.id, m.proxima_data_vencimento, m.data_vencimento,
+                   sm.codigo as status_codigo, sm.nome as status_nome,
+                   sm.permite_checkin, sm.ativo as status_ativo
+            FROM matriculas m
+            INNER JOIN alunos a ON a.id = m.aluno_id
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            WHERE a.usuario_id = :usuario_id
+            AND m.tenant_id = :tenant_id
+            ORDER BY m.created_at DESC
+            LIMIT 1
+        ");
+        $stmt->execute([
+            'usuario_id' => $userId,
+            'tenant_id' => $tenantId,
+        ]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
+    /**
+     * Mesmas regras de validarMatriculaParaCheckin: null = acesso/check-in permitido.
+     */
+    private function avaliarRestricaoAcessoMatricula(?array $matricula): ?array
+    {
+        if (!$matricula) {
+            return [
+                'code' => 'SEM_MATRICULA',
+                'mensagem' => 'Você não possui matrícula ativa',
+                'matricula_id' => null,
+                'status_codigo' => null,
+            ];
+        }
+
+        $statusCodigo = $matricula['status_codigo'] ?? '';
+        $statusNome = $matricula['status_nome'] ?? $statusCodigo;
+        $matriculaId = (int) ($matricula['id'] ?? 0);
+
+        if ($statusCodigo === 'bloqueado') {
+            return [
+                'code' => 'MATRICULA_BLOQUEADA',
+                'mensagem' => 'Sua matrícula está bloqueada. Entre em contato com a academia.',
+                'matricula_id' => $matriculaId,
+                'status_codigo' => $statusCodigo,
+                'status' => $statusNome,
+            ];
+        }
+
+        if ((int) ($matricula['permite_checkin'] ?? 0) !== 1 || (int) ($matricula['status_ativo'] ?? 0) !== 1) {
+            return [
+                'code' => $this->codigoErroPorStatusMatricula($statusCodigo),
+                'mensagem' => "Sua matrícula está {$statusNome}. Entre em contato com a academia.",
+                'matricula_id' => $matriculaId,
+                'status_codigo' => $statusCodigo,
+                'status' => $statusNome,
+            ];
+        }
+
+        $hoje = date('Y-m-d');
+        $acessoAte = $matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'] ?? null;
+        if ($acessoAte && $acessoAte < $hoje) {
+            $dataVencimento = date('d/m/Y', strtotime($acessoAte));
+            return [
+                'code' => 'MATRICULA_VENCIDA',
+                'mensagem' => "Seu acesso expirou em {$dataVencimento}. Por favor, renove sua matrícula.",
+                'matricula_id' => $matriculaId,
+                'status_codigo' => $statusCodigo,
+                'status' => $statusNome,
+                'data_vencimento' => $acessoAte,
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Retorna restrição de acesso da matrícula mais recente, ou null se permitido.
+     */
+    private function obterBloqueioMatricula(int $userId, int $tenantId): ?array
+    {
+        $matricula = $this->buscarMatriculaMaisRecentePorUsuario($userId, $tenantId);
+        return $this->avaliarRestricaoAcessoMatricula($matricula);
+    }
+
+    /**
+     * Payload de acesso para perfil e GET /mobile/acesso.
+     */
+    private function montarPayloadAcesso(?array $restricao): array
+    {
+        $payload = [
+            'permitido' => $restricao === null,
+            'bloqueado' => $restricao !== null,
+            'code' => null,
+            'mensagem' => null,
+            'matricula_id' => null,
+            'status_codigo' => null,
+        ];
+
+        if ($restricao !== null) {
+            $payload['code'] = $restricao['code'] ?? null;
+            $payload['mensagem'] = $restricao['mensagem'] ?? null;
+            $payload['matricula_id'] = $restricao['matricula_id'] ?? null;
+            $payload['status_codigo'] = $restricao['status_codigo'] ?? null;
+        }
+
+        return $payload;
+    }
+
     /**
      * Atualiza automaticamente o status das matrículas vencidas do usuário
      * 

@@ -91,6 +91,10 @@ export default function MatriculaDetalheScreen() {
   const [baixaPacoteLoading, setBaixaPacoteLoading] = useState(false);
   const [errorModal, setErrorModal] = useState({ visible: false, title: '', message: '' });
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [modalBloquearVisible, setModalBloquearVisible] = useState(false);
+  const [motivoBloqueio, setMotivoBloqueio] = useState('');
+  const [bloqueandoMatricula, setBloqueandoMatricula] = useState(false);
+  const [desbloqueandoMatricula, setDesbloqueandoMatricula] = useState(false);
 
   // Descontos
   const [descontos, setDescontos] = useState([]);
@@ -239,6 +243,38 @@ export default function MatriculaDetalheScreen() {
       showAlert('Erro', mensagem);
     } finally {
       setBaixaPacoteLoading(false);
+    }
+  };
+
+  const handleConfirmarBloqueio = async () => {
+    if (!matricula?.id) return;
+    try {
+      setBloqueandoMatricula(true);
+      await matriculaService.bloquear(matricula.id, motivoBloqueio.trim() || 'Bloqueado pelo administrador');
+      setModalBloquearVisible(false);
+      setMotivoBloqueio('');
+      showToast('Matrícula bloqueada. O aluno não poderá fazer check-in nem usar o app.');
+      await carregarDados();
+    } catch (error) {
+      const mensagem = obterMensagemErro(error, 'Não foi possível bloquear a matrícula');
+      setErrorModal({ visible: true, title: 'Erro ao bloquear', message: mensagem });
+    } finally {
+      setBloqueandoMatricula(false);
+    }
+  };
+
+  const handleDesbloquearMatricula = async () => {
+    if (!matricula?.id) return;
+    try {
+      setDesbloqueandoMatricula(true);
+      await matriculaService.desbloquear(matricula.id);
+      showToast('Matrícula desbloqueada. O aluno pode voltar a usar o app e fazer check-in.');
+      await carregarDados();
+    } catch (error) {
+      const mensagem = obterMensagemErro(error, 'Não foi possível desbloquear a matrícula');
+      setErrorModal({ visible: true, title: 'Erro ao desbloquear', message: mensagem });
+    } finally {
+      setDesbloqueandoMatricula(false);
     }
   };
 
@@ -847,7 +883,10 @@ export default function MatriculaDetalheScreen() {
   });
   const isPacote = Boolean(matricula?.pacote_contrato_id);
   const isMatriculaCancelada = Number(matricula?.status_id) === 3;
-  const podeExibirAlterarPlano = !isPacote || isMatriculaCancelada;
+  const isMatriculaBloqueada = Number(matricula?.status_id) === 6;
+  const podeBloquearMatricula = matricula && [1, 2, 5].includes(Number(matricula.status_id));
+  const podeDesbloquearMatricula = isMatriculaBloqueada;
+  const podeExibirAlterarPlano = (!isPacote || isMatriculaCancelada) && !isMatriculaBloqueada;
   const isPagamentoPendente = (pagamento) => {
     const statusId = Number(pagamento.status_pagamento_id);
     if (statusId === 3) return true;
@@ -1444,10 +1483,10 @@ export default function MatriculaDetalheScreen() {
             </View>
 
             {/* Ações da matrícula */}
-            {podeExibirAlterarPlano && (
+            {(podeExibirAlterarPlano || podeBloquearMatricula || podeDesbloquearMatricula) && (
               <View className="border-t border-slate-100 px-5 py-3">
-                <View className={`gap-3 ${isDesktop ? 'flex-row' : ''}`}>
-                  {!(matricula?.valor > 0) && (
+                <View className={`gap-3 ${isDesktop ? 'flex-row flex-wrap' : ''}`}>
+                  {podeExibirAlterarPlano && !(matricula?.valor > 0) && (
                     <Pressable
                       onPress={handleAbrirModalEditarVencimento}
                       className="flex-1 flex-row items-center justify-center gap-2 rounded-lg bg-orange-500 py-3"
@@ -1458,15 +1497,54 @@ export default function MatriculaDetalheScreen() {
                     </Pressable>
                   )}
 
-                  <Pressable
-                    onPress={handleAbrirAlterarPlano}
-                    className="flex-1 flex-row items-center justify-center gap-2 rounded-lg bg-slate-800 py-3"
-                    style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                  >
-                    <Feather name="repeat" size={16} color="#fff" />
-                    <Text className="text-sm font-semibold text-white">Alterar Plano</Text>
-                  </Pressable>
+                  {podeExibirAlterarPlano && (
+                    <Pressable
+                      onPress={handleAbrirAlterarPlano}
+                      className="flex-1 flex-row items-center justify-center gap-2 rounded-lg bg-slate-800 py-3"
+                      style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                    >
+                      <Feather name="repeat" size={16} color="#fff" />
+                      <Text className="text-sm font-semibold text-white">Alterar Plano</Text>
+                    </Pressable>
+                  )}
+
+                  {podeBloquearMatricula && (
+                    <Pressable
+                      onPress={() => setModalBloquearVisible(true)}
+                      className="flex-1 flex-row items-center justify-center gap-2 rounded-lg bg-violet-600 py-3"
+                      style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                    >
+                      <Feather name="lock" size={16} color="#fff" />
+                      <Text className="text-sm font-semibold text-white">Bloquear Matrícula</Text>
+                    </Pressable>
+                  )}
+
+                  {podeDesbloquearMatricula && (
+                    <Pressable
+                      onPress={handleDesbloquearMatricula}
+                      disabled={desbloqueandoMatricula}
+                      className="flex-1 flex-row items-center justify-center gap-2 rounded-lg bg-emerald-600 py-3"
+                      style={({ pressed }) => [
+                        pressed && { opacity: 0.8 },
+                        desbloqueandoMatricula && { opacity: 0.6 },
+                      ]}
+                    >
+                      {desbloqueandoMatricula ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Feather name="unlock" size={16} color="#fff" />
+                      )}
+                      <Text className="text-sm font-semibold text-white">
+                        {desbloqueandoMatricula ? 'Desbloqueando...' : 'Desbloquear Matrícula'}
+                      </Text>
+                    </Pressable>
+                  )}
                 </View>
+                {isMatriculaBloqueada && (
+                  <Text className="mt-2 text-center text-[11px] text-violet-700">
+                    Matrícula bloqueada — check-in e app do aluno estão suspensos (a matrícula não foi excluída).
+                  </Text>
+                )}
               </View>
             )}
 
@@ -3322,6 +3400,63 @@ export default function MatriculaDetalheScreen() {
             </TouchableOpacity>
           </Pressable>
         </Pressable>
+      </Modal>
+
+      {/* Modal Bloquear Matrícula */}
+      <Modal
+        visible={modalBloquearVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModalBloquearVisible(false)}
+      >
+        <View className="flex-1 items-center justify-center bg-black/50 px-4">
+          <View className="w-full max-w-md rounded-2xl bg-white shadow-2xl">
+            <View className="items-center border-b border-slate-200 px-6 py-5">
+              <View className="mb-3 h-14 w-14 items-center justify-center rounded-full bg-violet-100">
+                <Feather name="lock" size={24} color="#7c3aed" />
+              </View>
+              <Text className="text-lg font-bold text-slate-800">Bloquear matrícula</Text>
+              <Text className="mt-1 text-center text-xs text-slate-500">
+                O aluno não poderá fazer check-in nem usar o app. A matrícula permanece no sistema.
+              </Text>
+            </View>
+            <View className="px-6 py-4">
+              <Text className="mb-1 text-xs font-semibold text-slate-600">Motivo (opcional)</Text>
+              <TextInput
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-800"
+                placeholder="Ex.: inadimplência, comportamento..."
+                value={motivoBloqueio}
+                onChangeText={setMotivoBloqueio}
+                multiline
+                numberOfLines={3}
+              />
+            </View>
+            <View className="flex-row gap-3 border-t border-slate-200 px-6 py-4">
+              <Pressable
+                onPress={() => {
+                  setModalBloquearVisible(false);
+                  setMotivoBloqueio('');
+                }}
+                disabled={bloqueandoMatricula}
+                className="flex-1 items-center justify-center rounded-lg bg-slate-200 py-3"
+              >
+                <Text className="text-sm font-semibold text-slate-700">Cancelar</Text>
+              </Pressable>
+              <Pressable
+                onPress={handleConfirmarBloqueio}
+                disabled={bloqueandoMatricula}
+                className="flex-1 items-center justify-center rounded-lg bg-violet-600 py-3"
+                style={bloqueandoMatricula && { opacity: 0.6 }}
+              >
+                {bloqueandoMatricula ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text className="text-sm font-semibold text-white">Confirmar bloqueio</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
       </Modal>
     </LayoutBase>
   );

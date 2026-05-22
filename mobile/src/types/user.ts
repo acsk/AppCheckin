@@ -59,4 +59,12 @@ export interface UserProfile {
       cor?: string;
     } | null;
   };
+  acesso?: {
+    permitido?: boolean;
+    bloqueado?: boolean;
+    code?: string | null;
+    mensagem?: string | null;
+    matricula_id?: number | null;
+    status_codigo?: string | null;
+  };
 }

@@ -47,6 +47,8 @@ use App\Middlewares\TenantMiddleware;
 use App\Middlewares\AdminMiddleware;
 use App\Middlewares\SuperAdminMiddleware;
 use App\Middlewares\ProfessorMiddleware;
+use App\Middlewares\MercadoPagoWebhookSignatureMiddleware;
+use App\Support\AppEnvironment;
 
 return function ($app) {
     // Aplicar TenantMiddleware globalmente
@@ -112,46 +114,46 @@ return function ($app) {
             ->withStatus(200);
     });
 
-    // Teste simples de ambiente e conexão (público)
-    $app->get('/php-test', function($request, $response) {
-        $envKeys = ['DB_HOST','DB_NAME','DB_USER','DB_PASS','APP_ENV'];
-        $env = [];
-        foreach ($envKeys as $k) {
-            $val = $_ENV[$k] ?? $_SERVER[$k] ?? getenv($k) ?: null;
-            if ($val !== null) {
-                $env[$k] = $k === 'DB_PASS' ? '***' : $val;
-            } else {
-                $env[$k] = null;
+    // Rotas de diagnóstico — apenas desenvolvimento (não registradas em produção)
+    if (AppEnvironment::isDevelopment()) {
+        $app->get('/php-test', function ($request, $response) {
+            $envKeys = ['DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASS', 'APP_ENV'];
+            $env = [];
+            foreach ($envKeys as $k) {
+                $val = $_ENV[$k] ?? $_SERVER[$k] ?? getenv($k) ?: null;
+                $env[$k] = $val !== null ? ($k === 'DB_PASS' ? '***' : $val) : null;
             }
-        }
 
-        $dbStatus = 'unknown';
-        $dbError = null;
-        try {
-            $db = require __DIR__ . '/../config/database.php';
-            $stmt = $db->query('SELECT 1');
-            $dbStatus = $stmt !== false ? 'connected' : 'disconnected';
-        } catch (\Throwable $e) {
-            $dbStatus = 'error';
-            $dbError = $e->getMessage();
-        }
+            $dbStatus = 'unknown';
+            $dbError = null;
+            try {
+                $db = require __DIR__ . '/../config/database.php';
+                $stmt = $db->query('SELECT 1');
+                $dbStatus = $stmt !== false ? 'connected' : 'disconnected';
+            } catch (\Throwable $e) {
+                $dbStatus = 'error';
+                $dbError = $e->getMessage();
+            }
 
-        $response->getBody()->write(json_encode([
-            'php_version' => phpversion(),
-            'app_env' => $_ENV['APP_ENV'] ?? 'unknown',
-            'timestamp' => date('Y-m-d H:i:s'),
-            'request' => [
-                'method' => $request->getMethod(),
-                'path' => $request->getUri()->getPath(),
-            ],
-            'env' => $env,
-            'database' => [
-                'status' => $dbStatus,
-                'error' => $dbError
-            ]
-        ], JSON_UNESCAPED_UNICODE));
-        return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
-    });
+            $response->getBody()->write(json_encode([
+                'php_version' => phpversion(),
+                'app_env' => AppEnvironment::current(),
+                'timestamp' => date('Y-m-d H:i:s'),
+                'request' => [
+                    'method' => $request->getMethod(),
+                    'path' => $request->getUri()->getPath(),
+                ],
+                'env' => $env,
+                'database' => [
+                    'status' => $dbStatus,
+                    'error' => $dbError,
+                ],
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
+        });
+    }
+
     
     // Status da API - verifica se está online
     $app->get('/status', function($request, $response) {
@@ -258,20 +260,25 @@ return function ($app) {
         }
     });
     
-    // Webhook Mercado Pago (sem autenticação - MP precisa acessar)
-    $app->post('/api/webhooks/mercadopago', [MercadoPagoWebhookController::class, 'processarWebhook']);
-    
-    // Webhook Mercado Pago V2 - usando SDK oficial (sem autenticação)
-    $app->post('/api/webhooks/mercadopago/v2', [\App\Controllers\MercadoPagoWebhookV2Controller::class, 'processar']);
-    
+    // Webhooks Mercado Pago (validação x-signature via middleware)
+    $mpWebhookSignatureMiddleware = MercadoPagoWebhookSignatureMiddleware::class;
+
+    $app->post('/api/webhooks/mercadopago', [MercadoPagoWebhookController::class, 'processarWebhook'])
+        ->add($mpWebhookSignatureMiddleware);
+
+    $app->post('/api/webhooks/mercadopago/v2', [\App\Controllers\MercadoPagoWebhookV2Controller::class, 'processar'])
+        ->add($mpWebhookSignatureMiddleware);
+
     // Endpoint de validação forçada de assinatura (protegido)
     // POST /api/webhooks/mercadopago/recuperar-assinatura
     // Body: { "external_reference": "MAT-158-1771524282" }
     $app->post('/api/webhooks/mercadopago/recuperar-assinatura', [\App\Controllers\MercadoPagoWebhookV2Controller::class, 'recuperarAssinatura'])->add(AuthMiddleware::class);
-    
-    // Webhook Teste - Simular webhook de pagamento (DEV/TEST)
-    // Exemplo: GET /api/webhooks/mercadopago/test?external_reference=MAT-1-1708&status=approved&payment_type=credit_card
-    $app->get('/api/webhooks/mercadopago/test', [MercadoPagoWebhookController::class, 'simularWebhook']);
+
+    if (AppEnvironment::isDevelopment()) {
+        // Webhook Teste - Simular webhook de pagamento (somente DEV)
+        // GET /api/webhooks/mercadopago/test?external_reference=MAT-1-1708&status=approved
+        $app->get('/api/webhooks/mercadopago/test', [MercadoPagoWebhookController::class, 'simularWebhook']);
+    }
     
     // Consultar cobranças no MP por external_reference (protegido por Admin)
     $app->get('/api/webhooks/mercadopago/cobrancas', [MercadoPagoWebhookController::class, 'consultarCobrancas'])->add(AdminMiddleware::class)->add(AuthMiddleware::class);
@@ -505,24 +512,28 @@ return function ($app) {
 
     // Rota alternativa para login (contorno de possíveis bloqueios em /auth)
     $app->post('/signin', [AuthController::class, 'login']);
-    // Diagnóstico de POST (ecoar headers e body)
-    $app->post('/auth/diagnose', function($request, $response) {
-        $rawBody = (string)$request->getBody();
-        $parsed = $request->getParsedBody();
-        $headers = [];
-        foreach ($request->getHeaders() as $name => $values) {
-            $headers[$name] = implode(', ', $values);
-        }
-        $response->getBody()->write(json_encode([
-            'method' => $request->getMethod(),
-            'path' => $request->getUri()->getPath(),
-            'content_type' => $request->getHeaderLine('Content-Type'),
-            'headers' => $headers,
-            'raw_body' => $rawBody,
-            'parsed_body' => is_array($parsed) ? $parsed : null,
-        ], JSON_UNESCAPED_UNICODE));
-        return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
-    });
+
+    if (AppEnvironment::isDevelopment()) {
+        // Diagnóstico de POST (ecoar headers e body) — somente DEV
+        $app->post('/auth/diagnose', function ($request, $response) {
+            $rawBody = (string) $request->getBody();
+            $parsed = $request->getParsedBody();
+            $headers = [];
+            foreach ($request->getHeaders() as $name => $values) {
+                $headers[$name] = implode(', ', $values);
+            }
+            $response->getBody()->write(json_encode([
+                'method' => $request->getMethod(),
+                'path' => $request->getUri()->getPath(),
+                'content_type' => $request->getHeaderLine('Content-Type'),
+                'headers' => $headers,
+                'raw_body' => $rawBody,
+                'parsed_body' => is_array($parsed) ? $parsed : null,
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(200);
+        });
+    }
 
     // =====================
     // Aliases sob /v1
@@ -885,6 +896,7 @@ return function ($app) {
         });
         $group->post('/perfil/foto', [MobileController::class, 'uploadFotoPerfil']);
         $group->get('/perfil/foto', [MobileController::class, 'obterFotoPerfil']);
+        $group->get('/acesso', [MobileController::class, 'verificarAcesso']);
         
         // Tenants do usuário
         $group->get('/tenants', function($request, $response) {
@@ -1108,6 +1120,10 @@ return function ($app) {
         $group->get('/matriculas/{id}/pagamentos', [MatriculaController::class, 'buscarPagamentos']);
         $group->get('/matriculas/{id}/delete-preview', [MatriculaController::class, 'deletePreview']);
         $group->delete('/matriculas/{id}', [MatriculaController::class, 'delete']);
+        $group->post('/matriculas/{id}/bloquear', [MatriculaController::class, 'bloquear']);
+        $group->post('/matriculas/{id}/desbloquear', [MatriculaController::class, 'desbloquear']);
+        $group->post('/matriculas/{id}/suspender', [MatriculaController::class, 'bloquear']);
+        $group->post('/matriculas/{id}/reativar', [MatriculaController::class, 'desbloquear']);
         $group->post('/matriculas/{id}/cancelar', [MatriculaController::class, 'cancelar']);
         $group->get('/matriculas/{id}/simular-cancelamento', [MatriculaController::class, 'simularCancelamento']);
         $group->post('/matriculas/{id}/cancelar-com-credito', [MatriculaController::class, 'cancelarComCredito']);

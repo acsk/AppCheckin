@@ -209,31 +209,34 @@ export const matriculaService = {
    * @param {string} motivo - Motivo da suspensão
    * @returns {Promise} Resultado da suspensão
    */
-  async suspender(id, motivo = '') {
+  async bloquear(id, motivo = '') {
     try {
-      const response = await api.post(`/admin/matriculas/${id}/suspender`, {
-        motivo
-      });
+      const response = await api.post(`/admin/matriculas/${id}/bloquear`, { motivo });
       return response.data;
     } catch (error) {
-      console.error('Erro ao suspender matrícula:', error);
+      console.error('Erro ao bloquear matrícula:', error);
       throw prepararErro(error.response?.data || error);
     }
   },
 
-  /**
-   * Reativar matrícula e sua assinatura associada
-   * @param {number} id - ID da matrícula
-   * @returns {Promise} Resultado da reativação
-   */
-  async reativar(id) {
+  async desbloquear(id) {
     try {
-      const response = await api.post(`/admin/matriculas/${id}/reativar`);
+      const response = await api.post(`/admin/matriculas/${id}/desbloquear`);
       return response.data;
     } catch (error) {
-      console.error('Erro ao reativar matrícula:', error);
+      console.error('Erro ao desbloquear matrícula:', error);
       throw prepararErro(error.response?.data || error);
     }
+  },
+
+  /** @deprecated Use bloquear() */
+  async suspender(id, motivo = '') {
+    return this.bloquear(id, motivo);
+  },
+
+  /** @deprecated Use desbloquear() */
+  async reativar(id) {
+    return this.desbloquear(id);
   },
 
   /**

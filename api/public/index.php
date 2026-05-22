@@ -22,10 +22,13 @@ try {
 
 require __DIR__ . '/../vendor/autoload.php';
 
-// Trace simples: registrar última requisição (para diagnóstico)
+// Trace de requisições — apenas em desenvolvimento (evita vazamento de URIs em produção)
 try {
-    $trace = sprintf("[%s] %s %s\n", date('Y-m-d H:i:s'), $_SERVER['REQUEST_METHOD'] ?? '-', $_SERVER['REQUEST_URI'] ?? '-');
-    @file_put_contents(__DIR__ . '/last_request.txt', $trace, FILE_APPEND);
+    $appEnv = strtolower($_ENV['APP_ENV'] ?? $_SERVER['APP_ENV'] ?? getenv('APP_ENV') ?: 'production');
+    if (in_array($appEnv, ['local', 'development', 'dev', 'testing'], true)) {
+        $trace = sprintf("[%s] %s %s\n", date('Y-m-d H:i:s'), $_SERVER['REQUEST_METHOD'] ?? '-', $_SERVER['REQUEST_URI'] ?? '-');
+        @file_put_contents(__DIR__ . '/last_request.txt', $trace, FILE_APPEND);
+    }
 } catch (\Throwable $e) {
     // silencioso
 }
@@ -77,8 +80,13 @@ $app->addBodyParsingMiddleware();
 // Routing middleware (obrigatório no Slim 4 para resolução de rotas)
 $app->addRoutingMiddleware();
 
-// Middleware de erro com resposta JSON
-$errorMiddleware = $app->addErrorMiddleware(true, true, true);
+// Middleware de erro com resposta JSON (detalhes só em desenvolvimento)
+$settings = require __DIR__ . '/../config/settings.php';
+$errorMiddleware = $app->addErrorMiddleware(
+    (bool) ($settings['displayErrorDetails'] ?? false),
+    (bool) ($settings['logErrors'] ?? true),
+    (bool) ($settings['logErrorDetails'] ?? true)
+);
 $errorMiddleware->setDefaultErrorHandler(function (
     Request $request,
     \Throwable $exception,

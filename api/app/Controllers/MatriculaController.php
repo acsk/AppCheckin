@@ -2223,6 +2223,202 @@ class MatriculaController
             new OA\Response(response: 401, description: "Não autorizado")
         ]
     )]
+    /**
+     * Bloquear matrícula (impede check-in e acesso ao app; não exclui o registro)
+     */
+    public function bloquear(Request $request, Response $response, array $args): Response
+    {
+        $matriculaId = (int) $args['id'];
+        $tenantId = $request->getAttribute('tenantId', 1);
+        $adminId = $request->getAttribute('userId', null);
+        $data = $request->getParsedBody() ?? [];
+        $db = require __DIR__ . '/../../config/database.php';
+
+        $stmt = $db->prepare("
+            SELECT m.*, sm.codigo as status_codigo, sm.permite_checkin
+            FROM matriculas m
+            LEFT JOIN status_matricula sm ON sm.id = m.status_id
+            WHERE m.id = ? AND m.tenant_id = ?
+        ");
+        $stmt->execute([$matriculaId, $tenantId]);
+        $matricula = $stmt->fetch();
+
+        if (!$matricula) {
+            $response->getBody()->write(json_encode(['error' => 'Matrícula não encontrada']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        if ($matricula['status_codigo'] === 'bloqueado') {
+            $response->getBody()->write(json_encode(['error' => 'Matrícula já está bloqueada']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
+
+        if (in_array($matricula['status_codigo'], ['cancelada', 'finalizada'], true)) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Não é possível bloquear matrícula cancelada ou finalizada'
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
+
+        $motivo = trim((string) ($data['motivo'] ?? 'Bloqueado pelo administrador'));
+        if ($motivo === '') {
+            $motivo = 'Bloqueado pelo administrador';
+        }
+
+        $observacoes = trim((string) ($matricula['observacoes'] ?? ''));
+        $observacoesAtualizadas = $observacoes !== ''
+            ? $observacoes . "\n[Bloqueio " . date('d/m/Y H:i') . "] " . $motivo
+            : '[Bloqueio ' . date('d/m/Y H:i') . '] ' . $motivo;
+
+        $statusBloqueadoId = $this->obterIdStatusMatriculaPorCodigo($db, 'bloqueado');
+        if ($statusBloqueadoId === null) {
+            error_log("[MatriculaController] Status 'bloqueado' não encontrado em status_matricula");
+            $response->getBody()->write(json_encode([
+                'error' => "Status 'bloqueado' não configurado no sistema. Execute a migration de status_matricula.",
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+
+        $stmtUpdate = $db->prepare("
+            UPDATE matriculas
+            SET status_id = ?,
+                observacoes = ?,
+                updated_at = NOW()
+            WHERE id = ?
+        ");
+        $stmtUpdate->execute([$statusBloqueadoId, $observacoesAtualizadas, $matriculaId]);
+
+        $matriculaAtualizada = $this->buscarMatriculaResposta($db, $matriculaId);
+        if (!$matriculaAtualizada || ($matriculaAtualizada['status_codigo'] ?? '') !== 'bloqueado') {
+            $response->getBody()->write(json_encode([
+                'error' => 'Falha ao atualizar status da matrícula para bloqueado',
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+
+        error_log("[MatriculaController] Matrícula #{$matriculaId} bloqueada por admin #{$adminId}: {$motivo}");
+
+        $response->getBody()->write(json_encode([
+            'message' => 'Matrícula bloqueada com sucesso',
+            'matricula' => $matriculaAtualizada,
+        ], JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * Desbloquear matrícula (restaura acesso ao app e check-in)
+     */
+    public function desbloquear(Request $request, Response $response, array $args): Response
+    {
+        $matriculaId = (int) $args['id'];
+        $tenantId = $request->getAttribute('tenantId', 1);
+        $adminId = $request->getAttribute('userId', null);
+        $db = require __DIR__ . '/../../config/database.php';
+
+        $stmt = $db->prepare("
+            SELECT m.*, sm.codigo as status_codigo
+            FROM matriculas m
+            LEFT JOIN status_matricula sm ON sm.id = m.status_id
+            WHERE m.id = ? AND m.tenant_id = ?
+        ");
+        $stmt->execute([$matriculaId, $tenantId]);
+        $matricula = $stmt->fetch();
+
+        if (!$matricula) {
+            $response->getBody()->write(json_encode(['error' => 'Matrícula não encontrada']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        if ($matricula['status_codigo'] !== 'bloqueado') {
+            $response->getBody()->write(json_encode(['error' => 'Matrícula não está bloqueada']));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+        }
+
+        $hoje = date('Y-m-d');
+        $acessoAte = $matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'] ?? null;
+        $novoStatus = 'ativa';
+        if ($acessoAte && $acessoAte < $hoje) {
+            $novoStatus = 'vencida';
+        }
+
+        $observacoes = trim((string) ($matricula['observacoes'] ?? ''));
+        $observacoesAtualizadas = $observacoes !== ''
+            ? $observacoes . "\n[Desbloqueio " . date('d/m/Y H:i') . "] Restaurado para {$novoStatus}"
+            : '[Desbloqueio ' . date('d/m/Y H:i') . '] Restaurado para ' . $novoStatus;
+
+        $statusRestauradoId = $this->obterIdStatusMatriculaPorCodigo($db, $novoStatus);
+        if ($statusRestauradoId === null) {
+            error_log("[MatriculaController] Status '{$novoStatus}' não encontrado em status_matricula");
+            $response->getBody()->write(json_encode([
+                'error' => "Status '{$novoStatus}' não configurado no sistema.",
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+
+        $stmtUpdate = $db->prepare("
+            UPDATE matriculas
+            SET status_id = :status_id,
+                observacoes = :observacoes,
+                updated_at = NOW()
+            WHERE id = :matricula_id
+        ");
+        $stmtUpdate->execute([
+            'status_id' => $statusRestauradoId,
+            'observacoes' => $observacoesAtualizadas,
+            'matricula_id' => $matriculaId,
+        ]);
+
+        $matriculaAtualizada = $this->buscarMatriculaResposta($db, $matriculaId);
+        if (!$matriculaAtualizada || ($matriculaAtualizada['status_codigo'] ?? '') !== $novoStatus) {
+            $response->getBody()->write(json_encode([
+                'error' => "Falha ao restaurar status da matrícula para '{$novoStatus}'",
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+
+        error_log("[MatriculaController] Matrícula #{$matriculaId} desbloqueada por admin #{$adminId} → {$novoStatus}");
+
+        $response->getBody()->write(json_encode([
+            'message' => 'Matrícula desbloqueada com sucesso',
+            'matricula' => $matriculaAtualizada,
+            'status_restaurado' => $novoStatus,
+        ], JSON_UNESCAPED_UNICODE));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    private function buscarMatriculaResposta(\PDO $db, int $matriculaId): ?array
+    {
+        $stmt = $db->prepare("
+            SELECT
+                m.*,
+                sm.codigo as status_codigo,
+                sm.nome as status_nome,
+                a.nome as usuario_nome,
+                u.email as usuario_email,
+                p.nome as plano_nome
+            FROM matriculas m
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            INNER JOIN alunos a ON m.aluno_id = a.id
+            INNER JOIN usuarios u ON a.usuario_id = u.id
+            INNER JOIN planos p ON m.plano_id = p.id
+            WHERE m.id = ?
+        ");
+        $stmt->execute([$matriculaId]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
+    private function obterIdStatusMatriculaPorCodigo(\PDO $db, string $codigo): ?int
+    {
+        $stmt = $db->prepare("SELECT id FROM status_matricula WHERE codigo = ? LIMIT 1");
+        $stmt->execute([$codigo]);
+        $id = $stmt->fetchColumn();
+        if ($id === false || $id === null) {
+            return null;
+        }
+        return (int) $id;
+    }
+
     public function cancelar(Request $request, Response $response, array $args): Response
     {
         $matriculaId = (int) $args['id'];

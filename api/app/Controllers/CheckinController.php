@@ -46,45 +46,13 @@ class CheckinController
 
         $turmaId = (int) $data['turma_id'];
 
-        // ✅ VALIDAR SE MATRÍCULA ESTÁ ATIVA E DENTRO DO PRAZO (proxima_data_vencimento)
+        // ✅ VALIDAR matrícula mais recente (status, bloqueio e vencimento)
         $db = require __DIR__ . '/../../config/database.php';
-        $stmtMatricula = $db->prepare("
-            SELECT m.id, m.proxima_data_vencimento, m.periodo_teste,
-                   sm.codigo as status_codigo, sm.nome as status_nome
-            FROM matriculas m
-            INNER JOIN alunos a ON a.id = m.aluno_id
-            INNER JOIN status_matricula sm ON sm.id = m.status_id
-            WHERE a.usuario_id = :usuario_id
-            AND m.tenant_id = :tenant_id
-            AND sm.codigo = 'ativa'
-            ORDER BY m.created_at DESC
-            LIMIT 1
-        ");
-        
         $tenantId = $request->getAttribute('tenantId', 1);
-        $stmtMatricula->execute([
-            'usuario_id' => $userId,
-            'tenant_id' => $tenantId
-        ]);
-        $matricula = $stmtMatricula->fetch(\PDO::FETCH_ASSOC);
-        
-        if (!$matricula) {
-            $response->getBody()->write(json_encode([
-                'error' => 'Você não possui matrícula ativa',
-                'codigo' => 'SEM_MATRICULA'
-            ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
-        }
-        
-        // Verificar se o acesso ainda está válido (proxima_data_vencimento)
-        $hoje = date('Y-m-d');
-        if ($matricula['proxima_data_vencimento'] && $matricula['proxima_data_vencimento'] < $hoje) {
-            $dataVencimento = date('d/m/Y', strtotime($matricula['proxima_data_vencimento']));
-            $response->getBody()->write(json_encode([
-                'error' => "Seu acesso expirou em {$dataVencimento}. Por favor, renove sua matrícula.",
-                'codigo' => 'MATRICULA_VENCIDA',
-                'data_vencimento' => $matricula['proxima_data_vencimento']
-            ]));
+        $matricula = $this->buscarMatriculaMaisRecente($db, $userId, $tenantId);
+        $erroMatricula = $this->validarMatriculaParaCheckin($matricula, true);
+        if ($erroMatricula !== null) {
+            $response->getBody()->write(json_encode($erroMatricula));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
         }
 
@@ -336,46 +304,13 @@ class CheckinController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
         }
 
-        // ✅ VALIDAR SE MATRÍCULA ESTÁ ATIVA E DENTRO DO PRAZO (proxima_data_vencimento)
+        // ✅ VALIDAR matrícula mais recente (status, bloqueio e vencimento)
         $db = require __DIR__ . '/../../config/database.php';
         $tenantId = $request->getAttribute('tenantId', 1);
-        
-        $stmtMatricula = $db->prepare("
-            SELECT m.id, m.proxima_data_vencimento, m.periodo_teste,
-                   sm.codigo as status_codigo, sm.nome as status_nome
-            FROM matriculas m
-            INNER JOIN alunos a ON a.id = m.aluno_id
-            INNER JOIN status_matricula sm ON sm.id = m.status_id
-            WHERE a.usuario_id = :usuario_id
-            AND m.tenant_id = :tenant_id
-            AND sm.codigo = 'ativa'
-            ORDER BY m.created_at DESC
-            LIMIT 1
-        ");
-        
-        $stmtMatricula->execute([
-            'usuario_id' => $usuarioId,
-            'tenant_id' => $tenantId
-        ]);
-        $matricula = $stmtMatricula->fetch(\PDO::FETCH_ASSOC);
-        
-        if (!$matricula) {
-            $response->getBody()->write(json_encode([
-                'error' => 'Aluno não possui matrícula ativa',
-                'codigo' => 'SEM_MATRICULA'
-            ]));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
-        }
-        
-        // Verificar se o acesso ainda está válido (proxima_data_vencimento)
-        $hoje = date('Y-m-d');
-        if ($matricula['proxima_data_vencimento'] && $matricula['proxima_data_vencimento'] < $hoje) {
-            $dataVencimento = date('d/m/Y', strtotime($matricula['proxima_data_vencimento']));
-            $response->getBody()->write(json_encode([
-                'error' => "Acesso do aluno expirou em {$dataVencimento}",
-                'codigo' => 'MATRICULA_VENCIDA',
-                'data_vencimento' => $matricula['proxima_data_vencimento']
-            ]));
+        $matricula = $this->buscarMatriculaMaisRecente($db, $usuarioId, $tenantId);
+        $erroMatricula = $this->validarMatriculaParaCheckin($matricula, false);
+        if ($erroMatricula !== null) {
+            $response->getBody()->write(json_encode($erroMatricula));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
         }
 
@@ -457,5 +392,98 @@ class CheckinController
         ]));
 
         return $response->withHeader('Content-Type', 'application/json')->withStatus(201);
+    }
+
+    /**
+     * Matrícula mais recente do aluno no tenant (sem filtrar por status).
+     */
+    private function buscarMatriculaMaisRecente(\PDO $db, int $usuarioId, int $tenantId): ?array
+    {
+        $stmt = $db->prepare("
+            SELECT m.id, m.proxima_data_vencimento, m.periodo_teste,
+                   sm.codigo as status_codigo, sm.nome as status_nome,
+                   sm.permite_checkin, sm.ativo as status_ativo
+            FROM matriculas m
+            INNER JOIN alunos a ON a.id = m.aluno_id
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            WHERE a.usuario_id = :usuario_id
+            AND m.tenant_id = :tenant_id
+            ORDER BY m.created_at DESC
+            LIMIT 1
+        ");
+        $stmt->execute([
+            'usuario_id' => $usuarioId,
+            'tenant_id' => $tenantId,
+        ]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
+    /**
+     * Valida a matrícula mais recente para check-in.
+     * Retorna payload de erro ou null se permitido.
+     */
+    private function validarMatriculaParaCheckin(?array $matricula, bool $mensagemParaAluno): ?array
+    {
+        if (!$matricula) {
+            return [
+                'error' => $mensagemParaAluno
+                    ? 'Você não possui matrícula ativa'
+                    : 'Aluno não possui matrícula ativa',
+                'codigo' => 'SEM_MATRICULA',
+            ];
+        }
+
+        $statusCodigo = $matricula['status_codigo'] ?? '';
+
+        if ($statusCodigo === 'bloqueado') {
+            return [
+                'error' => $mensagemParaAluno
+                    ? 'Sua matrícula está bloqueada. Entre em contato com a academia.'
+                    : 'Matrícula do aluno está bloqueada',
+                'codigo' => 'MATRICULA_BLOQUEADA',
+            ];
+        }
+
+        if ((int) ($matricula['permite_checkin'] ?? 0) !== 1 || (int) ($matricula['status_ativo'] ?? 0) !== 1) {
+            $statusNome = $matricula['status_nome'] ?? $statusCodigo;
+            return [
+                'error' => $mensagemParaAluno
+                    ? "Sua matrícula está {$statusNome}. Não é possível fazer check-in."
+                    : "Matrícula do aluno está {$statusNome}",
+                'codigo' => $this->codigoErroPorStatusMatricula($statusCodigo),
+                'status' => $statusNome,
+                'status_codigo' => $statusCodigo,
+                'matricula_id' => (int) ($matricula['id'] ?? 0),
+            ];
+        }
+
+        $hoje = date('Y-m-d');
+        if (!empty($matricula['proxima_data_vencimento']) && $matricula['proxima_data_vencimento'] < $hoje) {
+            $dataVencimento = date('d/m/Y', strtotime($matricula['proxima_data_vencimento']));
+            return [
+                'error' => $mensagemParaAluno
+                    ? "Seu acesso expirou em {$dataVencimento}. Por favor, renove sua matrícula."
+                    : "Acesso do aluno expirou em {$dataVencimento}",
+                'codigo' => 'MATRICULA_VENCIDA',
+                'data_vencimento' => $matricula['proxima_data_vencimento'],
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * Código de erro quando a matrícula existe mas não permite check-in.
+     */
+    private function codigoErroPorStatusMatricula(string $statusCodigo): string
+    {
+        return match ($statusCodigo) {
+            'cancelada' => 'MATRICULA_CANCELADA',
+            'finalizada' => 'MATRICULA_FINALIZADA',
+            'pendente' => 'MATRICULA_PENDENTE',
+            'vencida' => 'MATRICULA_VENCIDA',
+            default => 'MATRICULA_INATIVA',
+        };
     }
 }
