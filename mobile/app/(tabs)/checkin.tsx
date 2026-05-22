@@ -2,13 +2,19 @@ import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
-import { useLocalSearchParams, useRouter, useSegments } from "expo-router";
+import {
+  useLocalSearchParams,
+  usePathname,
+  useRouter,
+  useSegments,
+} from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Animated,
     Image,
     Modal,
+    Platform,
     ScrollView,
     StyleSheet,
     Switch,
@@ -28,16 +34,28 @@ const getRouteParam = (value?: string | string[]) => {
   return Array.isArray(value) ? value[0] : value;
 };
 
+const getWebSearchParam = (key: string): string | undefined => {
+  if (Platform.OS !== "web" || typeof window === "undefined") return undefined;
+  return new URLSearchParams(window.location.search).get(key) ?? undefined;
+};
+
 export default function CheckinScreen() {
   const router = useRouter();
   const routeParams = useLocalSearchParams<{
     turmaId?: string | string[];
     data?: string | string[];
   }>();
-  const routeTurmaId = getRouteParam(routeParams.turmaId);
-  const routeData = getRouteParam(routeParams.data);
+  const pathname = usePathname();
   const segments = useSegments();
-  const isTurmaDetailsRoute = segments.includes("checkin-turma");
+  const isTurmaDetailsRoute =
+    (pathname?.includes("checkin-turma") ?? false) ||
+    segments.includes("checkin-turma");
+  const routeTurmaId =
+    getRouteParam(routeParams.turmaId) ??
+    (isTurmaDetailsRoute ? getWebSearchParam("turmaId") : undefined);
+  const routeData =
+    getRouteParam(routeParams.data) ??
+    (isTurmaDetailsRoute ? getWebSearchParam("data") : undefined);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [availableSchedules, setAvailableSchedules] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -404,17 +422,13 @@ export default function CheckinScreen() {
 
   const navigateToTurmaDetails = useCallback(
     (turmaId: number | string, options?: { replace?: boolean }) => {
-      const nav = {
-        pathname: "/(tabs)/checkin-turma" as const,
-        params: {
-          turmaId: String(turmaId),
-          data: formatDateParam(selectedDateRef.current || selectedDate),
-        },
-      };
+      const data = formatDateParam(selectedDateRef.current || selectedDate);
+      const href =
+        `/(tabs)/checkin-turma?turmaId=${encodeURIComponent(String(turmaId))}&data=${encodeURIComponent(data)}`;
       if (options?.replace) {
-        router.replace(nav);
+        router.replace(href);
       } else {
-        router.push(nav);
+        router.push(href);
       }
     },
     [router, selectedDate],
@@ -437,18 +451,6 @@ export default function CheckinScreen() {
       clearParticipantsState();
     }
   }, [isTurmaDetailsRoute, participantsTurma, clearParticipantsState]);
-
-  useEffect(() => {
-    if (!isTurmaDetailsRoute) return;
-    if (!routeTurmaId) {
-      router.replace({
-        pathname: "/(tabs)/checkin",
-        params: {
-          data: formatDateParam(selectedDateRef.current || new Date()),
-        },
-      });
-    }
-  }, [isTurmaDetailsRoute, routeTurmaId, router]);
 
   useEffect(() => {
     console.log("📅 DATA SELECIONADA MUDOU:", selectedDate);
@@ -704,7 +706,7 @@ export default function CheckinScreen() {
         await Promise.all([
           fetchAvailableSchedules(selectedDate),
           openParticipants(mergeTurmaFromList(turma.id, turma), {
-            replace: true,
+            skipNavigation: true,
           }),
         ]);
       } else {
@@ -776,7 +778,9 @@ export default function CheckinScreen() {
       setUserCheckinId(null);
       await Promise.all([
         fetchAvailableSchedules(selectedDate),
-        openParticipants(mergeTurmaFromList(turma.id, turma), { replace: true }),
+        openParticipants(mergeTurmaFromList(turma.id, turma), {
+          skipNavigation: true,
+        }),
       ]);
     } catch (error) {
       console.error("Erro ao desfazer check-in:", error);
@@ -1129,11 +1133,11 @@ export default function CheckinScreen() {
     options?: { replace?: boolean; skipNavigation?: boolean },
   ) => {
     if (!turma?.id) return;
-    setParticipantsLoading(true);
-    if (!options?.skipNavigation) {
-      navigateToTurmaDetails(turma.id, { replace: options?.replace });
+    if (options?.skipNavigation || isTurmaDetailsRoute) {
+      await loadParticipantsForTurma(turma);
+      return;
     }
-    await loadParticipantsForTurma(turma);
+    navigateToTurmaDetails(turma.id, { replace: options?.replace });
   };
 
   useEffect(() => {
@@ -1149,7 +1153,6 @@ export default function CheckinScreen() {
     if (participantsTurma && String(participantsTurma.id) === routeTurmaId) {
       return;
     }
-    if (participantsLoading) return;
 
     const turmaFromList = availableSchedules.find(
       (t) => String(t.id) === routeTurmaId,
@@ -1157,11 +1160,7 @@ export default function CheckinScreen() {
     const turma = turmaFromList ?? { id: routeTurmaId };
 
     void loadParticipantsForTurma(turma);
-  }, [
-    isTurmaDetailsRoute,
-    routeTurmaId,
-    availableSchedules,
-  ]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isTurmaDetailsRoute, routeTurmaId, availableSchedules]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const parseAlunosSearchResponse = (payload: any): any[] => {
     if (!payload) return [];
