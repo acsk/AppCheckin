@@ -6,7 +6,6 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 cp -r assets dist/
-bash scripts/rename-expo-static.sh
 bash scripts/sync-icon-fonts.sh
 bash scripts/inject-fonts.sh
 cp public/fonts.css dist/fonts.css

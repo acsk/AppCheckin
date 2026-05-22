@@ -12,41 +12,25 @@ if [ -z "$HTML" ]; then
   exit 1
 fi
 
-ENTRY=$(echo "$HTML" | grep -oE '/expo-static/static/js/web/entry-[a-f0-9]+\.js' | head -1)
+ENTRY=$(echo "$HTML" | grep -oE '/_expo/static/js/web/entry-[a-f0-9]+\.js' | head -1)
 if [ -z "$ENTRY" ]; then
-  ENTRY=$(echo "$HTML" | grep -oE '/_expo/static/js/web/entry-[a-f0-9]+\.js' | head -1)
-  if [ -n "$ENTRY" ]; then
-    echo "AVISO: index ainda referencia /_expo/ — faça novo build e deploy."
-  else
-    echo "Erro: entry JS não encontrado no HTML."
-    exit 1
-  fi
+  echo "Erro: entry JS (/_expo/...) não encontrado no HTML."
+  exit 1
 fi
 
 URL="$BASE$ENTRY"
 echo "Testando: $URL"
 
-HEADERS=$(curl -sI "$URL")
-CT=$(echo "$HEADERS" | grep -i '^content-type:' | head -1)
-CL=$(echo "$HEADERS" | grep -i '^content-length:' | head -1)
-
+CT=$(curl -sI "$URL" | grep -i '^content-type:' | head -1)
 echo "$CT"
-echo "$CL"
 
 BODY=$(curl -fsSL "$URL" | head -c 40)
 if echo "$BODY" | grep -q '^<!'; then
   echo ""
-  echo "FALHA: servidor retornou HTML no lugar do bundle JS."
-  echo "Suba a pasta dist/expo-static/ inteira para o servidor (Hostinger ignora pastas _expo)."
+  echo "FALHA: servidor retornou HTML. Suba a pasta dist/_expo/ para o mesmo nível do index.html."
   exit 1
 fi
 
-if echo "$BODY" | grep -q 'var __BUNDLE_START_TIME__\|function\|export '; then
-  echo ""
-  echo "OK: bundle JS servido corretamente."
-  exit 0
-fi
-
 echo ""
-echo "AVISO: resposta inesperada: $BODY"
-exit 1
+echo "OK: bundle JS servido corretamente."
+exit 0

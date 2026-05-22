@@ -1,4 +1,4 @@
-# SPA Expo Router — DocumentRoot = conteúdo de mobile/dist/
+# SPA Expo Router — conteúdo de mobile/dist/ na raiz do site (public_html)
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
@@ -7,8 +7,7 @@
   RewriteCond %{REQUEST_FILENAME} -d
   RewriteRule ^ - [L]
 
-  # Bundles Expo (pasta expo-static; não usar _expo na Hostinger)
-  RewriteCond %{REQUEST_URI} ^/expo-static/
+  RewriteCond %{REQUEST_URI} ^/_expo/
   RewriteRule ^ - [R=404,L]
 
   RewriteCond %{REQUEST_URI} ^/fonts/
@@ -28,7 +27,6 @@
   </FilesMatch>
 </IfModule>
 
-# MIME explícito (LiteSpeed / Hostinger)
 AddType application/javascript .js
 AddType text/css .css
 AddType font/ttf .ttf
