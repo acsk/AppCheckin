@@ -12,9 +12,12 @@
     "web:clear": "expo start --web --clear",
     "web:dev": "EXPO_PUBLIC_APP_ENV=development EXPO_PUBLIC_API_URL=http://localhost:8080 EXPO_PUBLIC_DEBUG_LOGS=true expo start --web",
     "web:dev:clear": "EXPO_PUBLIC_APP_ENV=development EXPO_PUBLIC_API_URL=http://localhost:8080 EXPO_PUBLIC_DEBUG_LOGS=true expo start --web --clear",
-    "web:build:dev": "mv .env.production .env.production.bak && cp .env.development .env && expo export --platform web --clear && rm .env && mv .env.production.bak .env.production && cp -r assets dist/ && mkdir -p dist/fonts && cp -r node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/* dist/fonts/ && bash scripts/inject-fonts.sh && cp public/fonts.css dist/fonts.css",
+    "web:postexport": "bash scripts/post-web-export.sh",
+    "web:build:dev": "mv .env.production .env.production.bak && cp .env.development .env && expo export --platform web && rm .env && mv .env.production.bak .env.production && npm run web:postexport",
+    "web:build:dev:clean": "mv .env.production .env.production.bak && cp .env.development .env && expo export --platform web --clear && rm .env && mv .env.production.bak .env.production && npm run web:postexport",
     "web:prod": "EXPO_PUBLIC_APP_ENV=production EXPO_PUBLIC_API_URL=https://api.appcheckin.com expo start --web",
-    "web:build": "[ -f .env.development ] && mv .env.development .env.development.bak || true && cp .env.production .env && expo export --platform web --clear && rm .env && [ -f .env.development.bak ] && mv .env.development.bak .env.development || true && cp -r assets dist/ && mkdir -p dist/fonts && cp -r node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/Fonts/* dist/fonts/ && bash scripts/inject-fonts.sh && cp public/fonts.css dist/fonts.css",
+    "web:build": "[ -f .env.development ] && mv .env.development .env.development.bak || true && cp .env.production .env && expo export --platform web && rm .env && [ -f .env.development.bak ] && mv .env.development.bak .env.development || true && npm run web:postexport",
+    "web:build:clean": "[ -f .env.development ] && mv .env.development .env.development.bak || true && cp .env.production .env && expo export --platform web --clear && rm .env && [ -f .env.development.bak ] && mv .env.development.bak .env.development || true && npm run web:postexport",
     "lint": "expo lint"
   },
   "dependencies": {
@@ -22,7 +25,6 @@
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-community/hooks": "^100.1.0",
     "@react-navigation/bottom-tabs": "^7.9.0",
-    "@react-navigation/drawer": "^7.7.10",
     "@react-navigation/elements": "^2.6.3",
     "@react-navigation/native": "^7.1.26",
     "axios": "^1.13.2",
@@ -40,7 +42,6 @@
     "expo-symbols": "~1.0.8",
     "expo-system-ui": "~6.0.9",
     "expo-web-browser": "~15.0.10",
-    "nativewind": "^4.2.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",
@@ -48,7 +49,6 @@
     "react-native-reanimated": "~4.1.1",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-screens": "~4.16.0",
-    "react-native-vector-icons": "^10.3.0",
     "react-native-web": "~0.21.0",
     "react-native-webview": "13.15.0",
     "react-native-worklets": "0.5.1"
