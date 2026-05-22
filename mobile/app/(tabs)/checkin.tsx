@@ -9,6 +9,8 @@ import {
     Animated,
     Image,
     Modal,
+    Platform,
+    Pressable,
     ScrollView,
     StyleSheet,
     Switch,
@@ -28,11 +30,36 @@ const getRouteParam = (value?: string | string[]) => {
   return Array.isArray(value) ? value[0] : value;
 };
 
+const parseDataParam = (value?: string): Date | null => {
+  if (!value) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value).trim());
+  if (match) {
+    const parsed = new Date(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]),
+    );
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const formatDateParam = (date: Date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
 export default function CheckinScreen() {
   const router = useRouter();
   const routeParams = useLocalSearchParams<{ data?: string | string[] }>();
   const routeData = getRouteParam(routeParams.data);
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [selectedDate, setSelectedDate] = useState<Date>(() => {
+    const parsed = parseDataParam(routeData);
+    return parsed ?? new Date();
+  });
   const [availableSchedules, setAvailableSchedules] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [calendarDays, setCalendarDays] = useState<Date[]>([]);
@@ -392,23 +419,29 @@ export default function CheckinScreen() {
     [router, selectedDate],
   );
 
+  // Sincroniza data vinda da URL (ex.: voltar do detalhe da turma), sem sobrescrever clique no calendário
   useEffect(() => {
     if (!routeData) return;
-    const parsed = new Date(routeData);
-    if (Number.isNaN(parsed.getTime())) return;
+    const parsed = parseDataParam(routeData);
+    if (!parsed) return;
     const routeKey = formatDateParam(parsed);
     const currentKey = formatDateParam(selectedDate);
-    if (routeKey !== currentKey) {
-      setSelectedDate(parsed);
-    }
+    if (routeKey === currentKey) return;
+    selectedDateRef.current = parsed;
+    setSelectedDate(parsed);
+    void fetchAvailableSchedules(parsed);
   }, [routeData]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    console.log("📅 DATA SELECIONADA MUDOU:", selectedDate);
-    if (selectedDate) {
-      fetchAvailableSchedules(selectedDate);
-    }
-  }, [selectedDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  const selectCalendarDay = useCallback((date: Date) => {
+    const parsed = parseDataParam(formatDateParam(date)) ?? new Date(date);
+    selectedDateRef.current = parsed;
+    setSelectedDate(parsed);
+    void fetchAvailableSchedules(parsed);
+    const dataKey = formatDateParam(parsed);
+    router.replace(
+      `/(tabs)/checkin?data=${encodeURIComponent(dataKey)}` as any,
+    );
+  }, [router]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const generateCalendarDays = () => {
     console.log("📅 GERANDO CALENDÁRIO");
@@ -426,22 +459,13 @@ export default function CheckinScreen() {
     setCalendarDays(days);
   };
 
-  const formatDateParam = (date: Date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  };
-
   const fetchAvailableSchedules = async (
     date: Date,
     tenantIdOverride?: number,
   ) => {
-    if (isFetchingSchedulesRef.current) {
-      console.log("⏳ Ignorando fetch duplicado de horários");
-      return;
-    }
     const formattedDate = formatDateParam(date);
+    const reqId = Date.now();
+    latestSchedulesReqRef.current = reqId;
     const tenantIdForCache =
       tenantIdOverride ??
       currentTenant?.tenant?.id ??
@@ -470,8 +494,6 @@ export default function CheckinScreen() {
     setLoading(true);
     try {
       console.log("\n🔄 INICIANDO CARREGAMENTO DE HORÁRIOS");
-      const reqId = Date.now();
-      latestSchedulesReqRef.current = reqId;
 
       const token = await AsyncStorage.getItem("@appcheckin:token");
       if (!token) {
@@ -1588,34 +1610,34 @@ export default function CheckinScreen() {
         <ScrollView
           contentContainerStyle={[styles.scrollContent, styles.scrollGrow]}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
           {/* Calendar */}
           <View style={styles.calendarSection} className="notranslate">
               <ScrollView
                 horizontal
+                nestedScrollEnabled
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.calendarContainer}
+                keyboardShouldPersistTaps="handled"
               >
-                {calendarDays.map((date, index) => {
+                {calendarDays.map((date) => {
                   const { day, dayName } = formatDateDisplay(date);
+                  const dayKey = formatDateParam(date);
                   const isSelected =
                     selectedDate &&
-                    selectedDate.toDateString() === date.toDateString();
+                    formatDateParam(selectedDate) === dayKey;
 
                   return (
-                    <TouchableOpacity
-                      key={index}
-                      style={[
+                    <Pressable
+                      key={dayKey}
+                      focusable={Platform.OS === "web" ? false : undefined}
+                      onPress={() => selectCalendarDay(date)}
+                      style={({ pressed }) => [
                         styles.calendarDay,
                         isSelected && styles.calendarDaySelected,
+                        pressed && styles.calendarDayPressed,
                       ]}
-                      onPress={() => {
-                        const d = new Date(date);
-                        setSelectedDate(d);
-                        router.replace(
-                          `/(tabs)/checkin?data=${encodeURIComponent(formatDateParam(d))}`,
-                        );
-                      }}
                     >
                       <Text
                         style={[
@@ -1634,7 +1656,7 @@ export default function CheckinScreen() {
                       >
                         {day}
                       </Text>
-                    </TouchableOpacity>
+                    </Pressable>
                   );
                 })}
               </ScrollView>
@@ -2161,6 +2183,9 @@ const styles = StyleSheet.create({
   calendarDaySelected: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
+  },
+  calendarDayPressed: {
+    opacity: 0.9,
   },
   calendarDayName: {
     fontSize: 13,
