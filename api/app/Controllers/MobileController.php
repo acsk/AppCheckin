@@ -3121,22 +3121,30 @@ class MobileController
             }
 
             $turmaId = (int) $turmaId;
+            $queryParams = $request->getQueryParams();
+            $dataAulaParam = isset($queryParams['data']) ? trim((string) $queryParams['data']) : null;
 
-            // Buscar turma com detalhes
+            // Buscar turma com detalhes (professor_id referencia tabela professores, não usuarios)
             $sqlTurma = "
                 SELECT 
                     t.id,
                     t.nome,
+                    t.professor_id,
+                    t.modalidade_id,
                     t.limite_alunos,
                     t.horario_inicio,
                     t.horario_fim,
+                    t.tolerancia_minutos,
+                    t.tolerancia_antes_minutos,
                     t.ativo,
                     p.nome as professor_nome,
                     p.email as professor_email,
                     m.nome as modalidade_nome,
+                    m.icone as modalidade_icone,
+                    m.cor as modalidade_cor,
                     d.data as dia_data
                 FROM turmas t
-                LEFT JOIN usuarios p ON t.professor_id = p.id
+                INNER JOIN professores p ON t.professor_id = p.id
                 LEFT JOIN modalidades m ON t.modalidade_id = m.id
                 LEFT JOIN dias d ON t.dia_id = d.id
                 WHERE t.id = :turma_id AND t.tenant_id = :tenant_id
@@ -3251,21 +3259,63 @@ class MobileController
             $percentualOcupacao = $limite > 0 ? round(($totalAlunos / $limite) * 100, 1) : 0;
             $checkinBloqueado = $this->checkinBloqueioService->isBloqueada($turmaId, (int) $tenantId);
 
+            $dataAula = $dataAulaParam ?: ($turma['dia_data'] ?? date('Y-m-d'));
+            $horarioInicio = $turma['horario_inicio'];
+            $toleranciaAntes = (int) ($turma['tolerancia_antes_minutos'] ?? 480);
+            $toleranciaDepois = (int) ($turma['tolerancia_minutos'] ?? 10);
+            $dataHoraTurma = \DateTime::createFromFormat(
+                'Y-m-d H:i:s',
+                $dataAula . ' ' . $horarioInicio,
+                new \DateTimeZone('America/Sao_Paulo')
+            );
+            $dataHoraAtual = new \DateTime('now', new \DateTimeZone('America/Sao_Paulo'));
+            $horarioAberturaCheckin = clone $dataHoraTurma;
+            $horarioAberturaCheckin->modify("-{$toleranciaAntes} minutes");
+            $horarioFechamentoCheckin = clone $dataHoraTurma;
+            $horarioFechamentoCheckin->modify("+{$toleranciaDepois} minutes");
+            $checkinDisponivel = ($dataHoraAtual >= $horarioAberturaCheckin && $dataHoraAtual <= $horarioFechamentoCheckin);
+            $checkinJaAbriu = ($dataHoraAtual >= $horarioAberturaCheckin);
+            $checkinJaFechou = ($dataHoraAtual > $horarioFechamentoCheckin);
+
             $response->getBody()->write(json_encode([
                 'success' => true,
                 'data' => [
                     'turma' => [
                         'id' => (int) $turma['id'],
                         'nome' => $turma['nome'],
-                        'professor' => $turma['professor_nome'],
-                        'professor_email' => $turma['professor_email'],
-                        'modalidade' => $turma['modalidade_nome'],
+                        'professor' => [
+                            'id' => (int) $turma['professor_id'],
+                            'nome' => $turma['professor_nome'],
+                            'email' => $turma['professor_email'] ?? null,
+                        ],
+                        'modalidade' => [
+                            'id' => (int) ($turma['modalidade_id'] ?? 0),
+                            'nome' => $turma['modalidade_nome'],
+                            'icone' => $turma['modalidade_icone'] ?? null,
+                            'cor' => $turma['modalidade_cor'] ?? null,
+                        ],
+                        'horario' => [
+                            'inicio' => $turma['horario_inicio'],
+                            'fim' => $turma['horario_fim'],
+                        ],
+                        'hora_inicio' => $turma['horario_inicio'],
+                        'hora_fim' => $turma['horario_fim'],
                         'horario_inicio' => $turma['horario_inicio'],
                         'horario_fim' => $turma['horario_fim'],
-                        'dia_aula' => $turma['dia_data'],
+                        'dia_aula' => $dataAula,
+                        'checkin' => [
+                            'disponivel' => $checkinDisponivel,
+                            'ja_abriu' => $checkinJaAbriu,
+                            'ja_fechou' => $checkinJaFechou,
+                            'abertura' => $horarioAberturaCheckin->format('Y-m-d H:i:s'),
+                            'fechamento' => $horarioFechamentoCheckin->format('Y-m-d H:i:s'),
+                            'tolerancia_antes_minutos' => $toleranciaAntes,
+                            'tolerancia_depois_minutos' => $toleranciaDepois,
+                        ],
                         'ativo' => (bool) $turma['ativo'],
                         'checkin_bloqueado' => $checkinBloqueado,
                         'limite_alunos' => $limite,
+                        'alunos_inscritos' => $totalAlunos,
                         'total_alunos_matriculados' => $totalAlunos,
                         'vagas_disponiveis' => $vagasDisponiveis,
                         'percentual_ocupacao' => $percentualOcupacao,

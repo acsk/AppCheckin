@@ -9,5 +9,7 @@ cp -r assets dist/
 bash scripts/sync-icon-fonts.sh
 bash scripts/inject-fonts.sh
 cp public/fonts.css dist/fonts.css
+cp deploy/htaccess.dist dist/.htaccess
+bash scripts/verify-web-dist.sh
 
 echo "Pós-export web concluído."

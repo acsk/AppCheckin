@@ -1,0 +1,16 @@
+# Trecho para site estático do mobile (colar no server {} do Nginx)
+#
+#   root /var/www/mobile/dist;
+#
+#   location /_expo/ {
+#       try_files $uri =404;
+#   }
+#   location /fonts/ {
+#       try_files $uri =404;
+#   }
+#   location = /index.html {
+#       add_header Cache-Control "no-cache, no-store, must-revalidate";
+#   }
+#   location / {
+#       try_files $uri $uri/ /index.html;
+#   }

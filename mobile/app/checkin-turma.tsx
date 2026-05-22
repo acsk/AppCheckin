@@ -74,8 +74,14 @@ const getHeaderTitle = (turma: any | null) => {
   const modalidadeNome = normalizeUtf8(
     String(turma?.modalidade?.nome || ""),
   ).trim();
+  const professorRaw = turma?.professor;
   const professorNome = normalizeUtf8(
-    String(turma?.professor?.nome || turma?.professor || ""),
+    String(
+      (professorRaw &&
+        typeof professorRaw === "object" &&
+        professorRaw.nome) ||
+        (typeof professorRaw === "string" ? professorRaw : ""),
+    ),
   ).trim();
   if (modalidadeNome && professorNome) {
     return `${modalidadeNome} - ${professorNome}`;
@@ -324,7 +330,14 @@ export default function CheckinTurmaScreen() {
       setParticipants(alunosLista);
       setCheckinsRecentes(checkinsLista);
       setAlunosTotal(alunosCount);
-      setParticipantsTurma({ ...turma, ...turmaApi });
+      setParticipantsTurma({
+        ...turma,
+        ...turmaApi,
+        professor: turmaApi.professor ?? turma.professor,
+        modalidade: turmaApi.modalidade ?? turma.modalidade,
+        horario: turmaApi.horario ?? turma.horario,
+        checkin: turmaApi.checkin ?? turma.checkin,
+      });
 
       const presencasIniciais: Record<number, boolean | null> = {};
       checkinsLista.forEach((c: any) => {
