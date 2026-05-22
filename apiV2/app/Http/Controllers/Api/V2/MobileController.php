@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api\V2;
 use App\Http\Controllers\Controller;
 use App\Services\Mobile\MobileCheckinService;
 use App\Services\Mobile\MobileHorariosService;
+use App\Services\Mobile\MobilePerfilService;
+use App\Support\AcademyDateTime;
 use App\Support\MobileResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,7 +17,55 @@ class MobileController extends Controller
     public function __construct(
         private readonly MobileHorariosService $horarios,
         private readonly MobileCheckinService $checkin,
+        private readonly MobilePerfilService $perfil,
     ) {}
+
+    public function perfil(Request $request): JsonResponse
+    {
+        try {
+            $result = $this->perfil->perfil($this->userId($request), $this->tenantId($request));
+            $response = response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+
+            foreach ($result['headers'] ?? [] as $name => $value) {
+                $response->headers->set($name, $value);
+            }
+
+            return $response;
+        } catch (\Throwable $e) {
+            Log::error('perfil v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao carregar perfil', $e->getMessage());
+        }
+    }
+
+    public function verificarAcesso(Request $request): JsonResponse
+    {
+        try {
+            $result = $this->perfil->verificarAcesso($this->userId($request), $this->tenantId($request));
+
+            return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            Log::error('verificarAcesso v2: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao verificar acesso',
+            ], 500, [], JSON_UNESCAPED_UNICODE);
+        }
+    }
+
+    public function tenants(Request $request): JsonResponse
+    {
+        try {
+            $result = $this->perfil->tenants($this->userId($request));
+
+            return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            Log::error('tenants v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao listar academias', $e->getMessage());
+        }
+    }
 
     public function horariosDisponiveis(Request $request): JsonResponse
     {
@@ -23,7 +73,7 @@ class MobileController extends Controller
             $result = $this->horarios->horariosDisponiveis(
                 $this->tenantId($request),
                 $this->userId($request),
-                $request->query('data', date('Y-m-d')),
+                $request->query('data', AcademyDateTime::today()),
             );
 
             return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);

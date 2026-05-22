@@ -70,13 +70,17 @@ Checklist por endpoint:
 - `POST /v2/auth/logout`, `GET /v2/auth/tenants` (JWT)
 - `GET /v2/me` (JWT)
 - Mobile (JWT, formato `success`/`data`):
+  - `GET /v2/mobile/perfil`
+  - `GET /v2/mobile/acesso`
+  - `GET /v2/mobile/tenants`
   - `GET /v2/mobile/horarios-disponiveis?data=YYYY-MM-DD`
   - `POST /v2/mobile/checkin` (`turma_id`)
   - `DELETE /v2/mobile/checkin/{checkinId}/desfazer`
 
 ## Próximos candidatos (ordem sugerida)
 
-1. Mobile: perfil, matrículas, planos, WOD (`MobileController` na Slim)
+1. Mobile: checkins histórico, ranking, WOD (`MobileController` na Slim)
+2. Mobile: planos, matrículas, pagamento PIX
 
 ## TESTS
 1. Sempre execute testes

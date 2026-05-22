@@ -19,6 +19,30 @@ class V2MobileRoutesTest extends TestCase
         ], $claims));
     }
 
+    public function test_perfil_requires_jwt(): void
+    {
+        $this->getJson('/v2/mobile/perfil')
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'MISSING_TOKEN');
+    }
+
+    public function test_acesso_returns_payload_with_tenant_in_jwt(): void
+    {
+        $this->getJson('/v2/mobile/acesso', [
+            'Authorization' => 'Bearer '.$this->bearerToken(),
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('acesso.permitido', true)
+            ->assertJsonPath('acesso.bloqueado', false);
+    }
+
+    public function test_tenants_requires_jwt(): void
+    {
+        $this->getJson('/v2/mobile/tenants')
+            ->assertUnauthorized();
+    }
+
     public function test_horarios_disponiveis_requires_jwt(): void
     {
         $this->getJson('/v2/mobile/horarios-disponiveis')

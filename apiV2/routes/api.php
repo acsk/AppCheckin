@@ -31,6 +31,9 @@ Route::prefix('v2')->group(function () {
         Route::get('/me', [MeController::class, 'show']);
 
         Route::prefix('mobile')->group(function () {
+            Route::get('/perfil', [MobileController::class, 'perfil']);
+            Route::get('/acesso', [MobileController::class, 'verificarAcesso']);
+            Route::get('/tenants', [MobileController::class, 'tenants']);
             Route::get('/horarios-disponiveis', [MobileController::class, 'horariosDisponiveis']);
             Route::post('/checkin', [MobileController::class, 'registrarCheckin']);
             Route::delete('/checkin/{checkinId}/desfazer', [MobileController::class, 'desfazerCheckin']);

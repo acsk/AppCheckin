@@ -169,4 +169,83 @@ class CheckinRepository
             'limite_mensal' => $permiteReposicao ? $limite * 4 : null,
         ];
     }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function rankingUsuarioPorModalidade(int $userId, int $tenantId): array
+    {
+        $modalidades = DB::table('checkins as c')
+            ->join('alunos as a', 'c.aluno_id', '=', 'a.id')
+            ->join('turmas as t', function ($join) {
+                $join->on('c.turma_id', '=', 't.id')
+                    ->on('t.tenant_id', '=', 'c.tenant_id');
+            })
+            ->join('modalidades as m', 't.modalidade_id', '=', 'm.id')
+            ->where('a.usuario_id', $userId)
+            ->where('c.tenant_id', $tenantId)
+            ->whereRaw('MONTH(c.data_checkin_date) = MONTH(CURRENT_DATE())')
+            ->whereRaw('YEAR(c.data_checkin_date) = YEAR(CURRENT_DATE())')
+            ->distinct()
+            ->get([
+                't.modalidade_id',
+                'm.nome as modalidade_nome',
+                'm.icone as modalidade_icone',
+                'm.cor as modalidade_cor',
+            ]);
+
+        $alunoId = DB::table('alunos')->where('usuario_id', $userId)->value('id');
+        $rankings = [];
+
+        foreach ($modalidades as $modalidade) {
+            $modalidadeId = (int) $modalidade->modalidade_id;
+
+            $posicao = DB::selectOne(
+                'SELECT aluno_id, total_checkins, posicao FROM (
+                    SELECT c.aluno_id, COUNT(c.id) as total_checkins,
+                           RANK() OVER (ORDER BY COUNT(c.id) DESC) as posicao
+                    FROM checkins c
+                    INNER JOIN turmas t ON c.turma_id = t.id AND t.tenant_id = c.tenant_id
+                    WHERE c.tenant_id = ?
+                      AND t.modalidade_id = ?
+                      AND MONTH(COALESCE(c.data_checkin_date, DATE(c.created_at))) = MONTH(CURRENT_DATE())
+                      AND YEAR(COALESCE(c.data_checkin_date, DATE(c.created_at))) = YEAR(CURRENT_DATE())
+                      AND (c.presente IS NULL OR c.presente = 1)
+                    GROUP BY c.aluno_id
+                ) ranking WHERE aluno_id = ?',
+                [$tenantId, $modalidadeId, $alunoId],
+            );
+
+            $totalParticipantes = (int) DB::table('checkins as c')
+                ->join('turmas as t', function ($join) {
+                    $join->on('c.turma_id', '=', 't.id')
+                        ->on('t.tenant_id', '=', 'c.tenant_id');
+                })
+                ->where('c.tenant_id', $tenantId)
+                ->where('t.modalidade_id', $modalidadeId)
+                ->whereRaw('MONTH(COALESCE(c.data_checkin_date, DATE(c.created_at))) = MONTH(CURRENT_DATE())')
+                ->whereRaw('YEAR(COALESCE(c.data_checkin_date, DATE(c.created_at))) = YEAR(CURRENT_DATE())')
+                ->where(function ($q) {
+                    $q->whereNull('c.presente')->orWhere('c.presente', 1);
+                })
+                ->distinct('c.aluno_id')
+                ->count('c.aluno_id');
+
+            if ($posicao) {
+                $rankings[] = [
+                    'modalidade_id' => $modalidadeId,
+                    'modalidade_nome' => $modalidade->modalidade_nome,
+                    'modalidade_icone' => $modalidade->modalidade_icone,
+                    'modalidade_cor' => $modalidade->modalidade_cor,
+                    'posicao' => (int) $posicao->posicao,
+                    'total_checkins' => (int) $posicao->total_checkins,
+                    'total_participantes' => $totalParticipantes,
+                ];
+            }
+        }
+
+        usort($rankings, static fn ($a, $b) => $a['posicao'] <=> $b['posicao']);
+
+        return $rankings;
+    }
 }
