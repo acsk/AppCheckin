@@ -6,8 +6,6 @@ node_modules/
 # Expo
 .expo/
 web-build/
-dist/
-public/fonts/
 expo-env.d.ts
 
 # Native

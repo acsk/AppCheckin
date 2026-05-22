@@ -1,26 +1,25 @@
 #!/bin/bash
-# Garante link para fonts.css no HTML gerado pelo Expo (idempotente).
 
-set -euo pipefail
+# Script para injetar fontes do vector-icons no HTML gerado pelo Expo
+
+echo "🔧 Injetando fonts.css no dist/index.html..."
 
 HTML_FILE="dist/index.html"
 
+# Verifica se o arquivo existe
 if [ ! -f "$HTML_FILE" ]; then
-  echo "Erro: $HTML_FILE não encontrado"
-  exit 1
+    echo "❌ Erro: $HTML_FILE não encontrado"
+    exit 1
 fi
 
-if grep -q 'href="/fonts.css"' "$HTML_FILE"; then
-  echo "fonts.css já referenciado em dist/index.html"
-  exit 0
-fi
-
-echo "Injetando fonts.css no dist/index.html..."
-
+# Injeta o link para fonts.css após a tag <head>
+# Usa sed para inserir o link antes de <title>
 if [[ "$OSTYPE" == "darwin"* ]]; then
-  sed -i '' 's/<head>/<head><link rel="stylesheet" href="\/fonts.css">/' "$HTML_FILE"
+    # macOS
+    sed -i '' 's/<head>/<head><link rel="stylesheet" href="\/fonts.css">/' "$HTML_FILE"
 else
-  sed -i 's/<head>/<head><link rel="stylesheet" href="\/fonts.css">/' "$HTML_FILE"
+    # Linux
+    sed -i 's/<head>/<head><link rel="stylesheet" href="\/fonts.css">/' "$HTML_FILE"
 fi
 
-echo "Fontes injetadas com sucesso"
+echo "✅ Fontes injetadas com sucesso"

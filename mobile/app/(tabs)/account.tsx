@@ -247,7 +247,7 @@ export default function AccountScreen() {
       }
 
       const response = await fetch(
-        `${getApiUrlRuntime()}/v1/notificacoes/unread`,
+        `${getApiUrlRuntime()}/notificacoes/unread`,
         {
           method: "GET",
           headers: {

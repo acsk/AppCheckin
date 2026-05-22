@@ -1359,14 +1359,6 @@ return function ($app) {
         $group->delete('/turmas/{turmaId}/faltantes', [PresencaController::class, 'removerFaltantes']);
     })->add(ProfessorMiddleware::class)->add(AuthMiddleware::class);
 
-    // Notificações — alias sem /v1 (compatível com mobile/docs legados)
-    $app->get('/notificacoes', [NotificationController::class, 'index'])->add(AuthMiddleware::class);
-    $app->get('/notificacoes/unread', [NotificationController::class, 'unread'])->add(AuthMiddleware::class);
-    $app->get('/notificacoes/{id}', [NotificationController::class, 'show'])->add(AuthMiddleware::class);
-    $app->post('/notificacoes', [NotificationController::class, 'store'])->add(AuthMiddleware::class);
-    $app->post('/notificacoes/{id}/read', [NotificationController::class, 'markAsRead'])->add(AuthMiddleware::class);
-    $app->post('/notificacoes/read-all', [NotificationController::class, 'markAllRead'])->add(AuthMiddleware::class);
-
     // Rota de teste
     $app->get('/', function ($request, $response) {
         $response->getBody()->write(json_encode([
