@@ -2,19 +2,13 @@ import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
-import {
-  useLocalSearchParams,
-  usePathname,
-  useRouter,
-  useSegments,
-} from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Animated,
     Image,
     Modal,
-    Platform,
     ScrollView,
     StyleSheet,
     Switch,
@@ -34,28 +28,10 @@ const getRouteParam = (value?: string | string[]) => {
   return Array.isArray(value) ? value[0] : value;
 };
 
-const getWebSearchParam = (key: string): string | undefined => {
-  if (Platform.OS !== "web" || typeof window === "undefined") return undefined;
-  return new URLSearchParams(window.location.search).get(key) ?? undefined;
-};
-
 export default function CheckinScreen() {
   const router = useRouter();
-  const routeParams = useLocalSearchParams<{
-    turmaId?: string | string[];
-    data?: string | string[];
-  }>();
-  const pathname = usePathname();
-  const segments = useSegments();
-  const isTurmaDetailsRoute =
-    (pathname?.includes("checkin-turma") ?? false) ||
-    segments.includes("checkin-turma");
-  const routeTurmaId =
-    getRouteParam(routeParams.turmaId) ??
-    (isTurmaDetailsRoute ? getWebSearchParam("turmaId") : undefined);
-  const routeData =
-    getRouteParam(routeParams.data) ??
-    (isTurmaDetailsRoute ? getWebSearchParam("data") : undefined);
+  const routeParams = useLocalSearchParams<{ data?: string | string[] }>();
+  const routeData = getRouteParam(routeParams.data);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [availableSchedules, setAvailableSchedules] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -404,32 +380,14 @@ export default function CheckinScreen() {
     setUserCheckinId(null);
   }, []);
 
-  const closeTurmaDetailsNavigation = useCallback(() => {
-    if (isTurmaDetailsRoute) {
-      if (typeof router.canGoBack === "function" && router.canGoBack()) {
-        router.back();
-        return;
-      }
-      router.replace({
-        pathname: "/(tabs)/checkin",
-        params: {
-          data: formatDateParam(selectedDateRef.current || new Date()),
-        },
-      });
-    }
-    clearParticipantsState();
-  }, [isTurmaDetailsRoute, router, clearParticipantsState]);
 
-  const navigateToTurmaDetails = useCallback(
-    (turmaId: number | string, options?: { replace?: boolean }) => {
+  const openTurmaCheckin = useCallback(
+    (turma: any) => {
+      if (!turma?.id) return;
       const data = formatDateParam(selectedDateRef.current || selectedDate);
-      const href =
-        `/(tabs)/checkin-turma?turmaId=${encodeURIComponent(String(turmaId))}&data=${encodeURIComponent(data)}`;
-      if (options?.replace) {
-        router.replace(href);
-      } else {
-        router.push(href);
-      }
+      router.push(
+        `/checkin-turma?turmaId=${encodeURIComponent(String(turma.id))}&data=${encodeURIComponent(data)}`,
+      );
     },
     [router, selectedDate],
   );
@@ -446,20 +404,11 @@ export default function CheckinScreen() {
   }, [routeData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    if (isTurmaDetailsRoute) return;
-    if (participantsTurma) {
-      clearParticipantsState();
-    }
-  }, [isTurmaDetailsRoute, participantsTurma, clearParticipantsState]);
-
-  useEffect(() => {
     console.log("📅 DATA SELECIONADA MUDOU:", selectedDate);
-    if (isTurmaDetailsRoute) return;
-    clearParticipantsState();
     if (selectedDate) {
       fetchAvailableSchedules(selectedDate);
     }
-  }, [selectedDate, isTurmaDetailsRoute]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const generateCalendarDays = () => {
     console.log("📅 GERANDO CALENDÁRIO");
@@ -703,12 +652,7 @@ export default function CheckinScreen() {
           `Check-in realizado para ${normalizeUtf8(turma.nome)}`,
           "success",
         );
-        await Promise.all([
-          fetchAvailableSchedules(selectedDate),
-          openParticipants(mergeTurmaFromList(turma.id, turma), {
-            skipNavigation: true,
-          }),
-        ]);
+        await fetchAvailableSchedules(selectedDate);
       } else {
         showErrorModal(
           normalizeUtf8(
@@ -776,12 +720,7 @@ export default function CheckinScreen() {
 
       showErrorModal(`Check-in desfeito com sucesso`, "warning");
       setUserCheckinId(null);
-      await Promise.all([
-        fetchAvailableSchedules(selectedDate),
-        openParticipants(mergeTurmaFromList(turma.id, turma), {
-          skipNavigation: true,
-        }),
-      ]);
+      await fetchAvailableSchedules(selectedDate);
     } catch (error) {
       console.error("Erro ao desfazer check-in:", error);
       showErrorModal("Falha ao desfazer o check-in.", "error");
@@ -882,9 +821,8 @@ export default function CheckinScreen() {
       showErrorModal(normalizeUtf8(msg), "success");
 
       // Recarregar os dados da turma
-      await openParticipants(
+      await loadParticipantsForTurma(
         mergeTurmaFromList(participantsTurma.id, participantsTurma),
-        { skipNavigation: true },
       );
     } catch (error) {
       console.error("Erro ao confirmar presenças:", error);
@@ -1128,39 +1066,9 @@ export default function CheckinScreen() {
     }
   };
 
-  const openParticipants = async (
-    turma: any,
-    options?: { replace?: boolean; skipNavigation?: boolean },
-  ) => {
-    if (!turma?.id) return;
-    if (options?.skipNavigation || isTurmaDetailsRoute) {
-      await loadParticipantsForTurma(turma);
-      return;
-    }
-    navigateToTurmaDetails(turma.id, { replace: options?.replace });
+  const openParticipants = (turma: any) => {
+    openTurmaCheckin(turma);
   };
-
-  useEffect(() => {
-    if (!isTurmaDetailsRoute) return;
-    const date = routeData ? new Date(routeData) : selectedDate;
-    if (!Number.isNaN(date.getTime())) {
-      void fetchAvailableSchedules(date);
-    }
-  }, [isTurmaDetailsRoute, routeData]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (!isTurmaDetailsRoute || !routeTurmaId) return;
-    if (participantsTurma && String(participantsTurma.id) === routeTurmaId) {
-      return;
-    }
-
-    const turmaFromList = availableSchedules.find(
-      (t) => String(t.id) === routeTurmaId,
-    );
-    const turma = turmaFromList ?? { id: routeTurmaId };
-
-    void loadParticipantsForTurma(turma);
-  }, [isTurmaDetailsRoute, routeTurmaId, availableSchedules]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const parseAlunosSearchResponse = (payload: any): any[] => {
     if (!payload) return [];
@@ -1297,9 +1205,8 @@ export default function CheckinScreen() {
         normalizeUtf8(data?.message || "Check-in manual realizado."),
         "success",
       );
-      await openParticipants(
+      await loadParticipantsForTurma(
         mergeTurmaFromList(participantsTurma.id, participantsTurma),
-        { skipNavigation: true },
       );
     } catch (error) {
       console.error("Erro ao fazer check-in manual:", error);
@@ -1601,182 +1508,26 @@ export default function CheckinScreen() {
     <>
       <SafeAreaView style={styles.container} edges={["top"]}>
         {/* Header com Botão Recarregar */}
-        <View
-          style={[
-            styles.headerTop,
-            isTurmaDetailsRoute && styles.headerTopDetailed,
-          ]}
-        >
+        <View style={styles.headerTop}>
           <View style={styles.headerTopRow}>
             <View style={styles.headerLeft}>
-              {isTurmaDetailsRoute ? (
-                <>
-                  <TouchableOpacity
-                    style={styles.headerBackButton}
-                    onPress={closeTurmaDetailsNavigation}
-                  >
-                    <Feather name="arrow-left" size={18} color="#fff" />
-                  </TouchableOpacity>
-                  <View
-                    style={[
-                      styles.headerIconCircle,
-                      {
-                        backgroundColor: `${participantsTurma?.modalidade?.cor || colors.primary}35`,
-                      },
-                    ]}
-                  >
-                    {participantsTurma?.modalidade?.icone ? (
-                      <MaterialCommunityIcons
-                        name={participantsTurma.modalidade.icone as any}
-                        size={18}
-                        color="#fff"
-                      />
-                    ) : (
-                      <Feather name="activity" size={18} color="#fff" />
-                    )}
-                  </View>
-                  <View style={styles.headerTextBlock}>
-                    <Text style={styles.headerTitle}>
-                      {normalizeUtf8(
-                        participantsTurma?.modalidade?.nome ||
-                          participantsTurma?.nome ||
-                          "Turma",
-                      )}{" "}
-                      -{" "}
-                      {normalizeUtf8(
-                        participantsTurma?.professor?.nome ||
-                          participantsTurma?.professor ||
-                          "",
-                      )}
-                    </Text>
-                  </View>
-                </>
-              ) : (
-                <Text style={styles.headerTitle}>Checkin</Text>
-              )}
+              <Text style={styles.headerTitle}>Checkin</Text>
             </View>
-            {!isTurmaDetailsRoute && (
-              <View style={styles.headerRight}>
-                <View style={styles.switchRow}>
-                  <Text style={styles.switchLabel}>Só disponíveis</Text>
-                  <Switch
-                    value={showOnlyAvailable}
-                    onValueChange={setShowOnlyAvailable}
-                    trackColor={{
-                      false: "rgba(255,255,255,0.25)",
-                      true: "rgba(255,255,255,0.5)",
-                    }}
-                    thumbColor="#fff"
-                  />
-                </View>
-              </View>
-            )}
-          </View>
-          {isTurmaDetailsRoute && participantsTurma && (
-            <View style={styles.headerInfoRow}>
-              <View style={styles.headerChip}>
-                <Feather name="clock" size={14} color="#fff" />
-                <Text style={styles.headerChipText}>
-                  {getHoraInicio(participantsTurma)?.slice(0, 5)} -{" "}
-                  {getHoraFim(participantsTurma)?.slice(0, 5)}
-                </Text>
-              </View>
-              {getHoraLimiteCheckin(participantsTurma) ? (
-                <View style={styles.headerChip}>
-                  <Feather name="clock" size={14} color="#fff" />
-                  <Text style={styles.headerChipText}>
-                    Check-in até {getHoraLimiteCheckin(participantsTurma)}
-                  </Text>
-                </View>
-              ) : null}
-              {participantsTurma?.checkin_bloqueado ? (
-                <View
-                  style={[
-                    styles.headerChip,
-                    styles.headerChipBloqueado,
-                  ]}
-                >
-                  <MaterialCommunityIcons
-                    name="lock"
-                    size={16}
-                    color="#fff"
-                  />
-                  <Text style={styles.headerChipText}>Check-in bloqueado</Text>
-                </View>
-              ) : null}
-            </View>
-          )}
-          {isTurmaDetailsRoute && participantsTurma && isProfessorOuAdmin && (
-            <TouchableOpacity
-              style={[
-                styles.bloqueioCheckinButton,
-                participantsTurma?.checkin_bloqueado
-                  ? styles.bloqueioCheckinButtonLiberar
-                  : styles.bloqueioCheckinButtonBloquear,
-              ]}
-              onPress={handleToggleCheckinBloqueioTurma}
-              disabled={turmaCheckinBloqueioLoading}
-              activeOpacity={0.85}
-            >
-              {turmaCheckinBloqueioLoading ? (
-                <ActivityIndicator
-                  size="small"
-                  color={
-                    participantsTurma?.checkin_bloqueado ? "#047857" : "#fff"
-                  }
+            <View style={styles.headerRight}>
+              <View style={styles.switchRow}>
+                <Text style={styles.switchLabel}>Só disponíveis</Text>
+                <Switch
+                  value={showOnlyAvailable}
+                  onValueChange={setShowOnlyAvailable}
+                  trackColor={{
+                    false: "rgba(255,255,255,0.25)",
+                    true: "rgba(255,255,255,0.5)",
+                  }}
+                  thumbColor="#fff"
                 />
-              ) : (
-                <>
-                  <View
-                    style={[
-                      styles.bloqueioCheckinIconWrap,
-                      participantsTurma?.checkin_bloqueado
-                        ? styles.bloqueioCheckinIconWrapLiberar
-                        : styles.bloqueioCheckinIconWrapBloquear,
-                    ]}
-                  >
-                    <MaterialCommunityIcons
-                      name={
-                        participantsTurma?.checkin_bloqueado
-                          ? "lock-open-variant"
-                          : "lock"
-                      }
-                      size={30}
-                      color={
-                        participantsTurma?.checkin_bloqueado
-                          ? "#047857"
-                          : "#fff"
-                      }
-                    />
-                  </View>
-                  <View style={styles.bloqueioCheckinTextBlock}>
-                    <Text
-                      style={[
-                        styles.bloqueioCheckinButtonText,
-                        participantsTurma?.checkin_bloqueado &&
-                          styles.bloqueioCheckinButtonTextLiberar,
-                      ]}
-                    >
-                      {participantsTurma?.checkin_bloqueado
-                        ? "Liberar check-in dos alunos"
-                        : "Bloquear check-in dos alunos"}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.bloqueioCheckinButtonHint,
-                        participantsTurma?.checkin_bloqueado &&
-                          styles.bloqueioCheckinButtonHintLiberar,
-                      ]}
-                    >
-                      {participantsTurma?.checkin_bloqueado
-                        ? "Toque para permitir check-in nesta aula"
-                        : "Toque para impedir check-in nesta aula"}
-                    </Text>
-                  </View>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
+              </View>
+            </View>
+          </View>
         </View>
 
         {/* Modal para trocar de tenant */}
@@ -1839,8 +1590,7 @@ export default function CheckinScreen() {
           showsVerticalScrollIndicator={false}
         >
           {/* Calendar */}
-          {!isTurmaDetailsRoute && (
-            <View style={styles.calendarSection} className="notranslate">
+          <View style={styles.calendarSection} className="notranslate">
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
@@ -1859,7 +1609,13 @@ export default function CheckinScreen() {
                         styles.calendarDay,
                         isSelected && styles.calendarDaySelected,
                       ]}
-                      onPress={() => setSelectedDate(new Date(date))}
+                      onPress={() => {
+                        const d = new Date(date);
+                        setSelectedDate(d);
+                        router.replace(
+                          `/(tabs)/checkin?data=${encodeURIComponent(formatDateParam(d))}`,
+                        );
+                      }}
                     >
                       <Text
                         style={[
@@ -1883,504 +1639,10 @@ export default function CheckinScreen() {
                 })}
               </ScrollView>
             </View>
-          )}
 
           {/* Available Schedules */}
           <View style={styles.schedulesSection}>
-            {isTurmaDetailsRoute ? (
-              <>
-                <View style={styles.participantsTopRow} />
-
-                <View style={styles.participantsWrapper}>
-                  <View style={styles.participantsContent}>
-                    {participantsLoading ? (
-                      <Text style={styles.loadingText}>Carregando...</Text>
-                    ) : (
-                      <>
-                        {isProfessorOuAdmin && (
-                          <View style={styles.manualCheckinBox}>
-                            <Text style={styles.manualCheckinTitle}>
-                              Adicionar aluno ao check-in
-                            </Text>
-                            <View style={styles.manualCheckinRow}>
-                              <TextInput
-                                style={styles.manualCheckinInput}
-                                placeholder="Nome, CPF ou e-mail"
-                                placeholderTextColor="#9ca3af"
-                                value={manualSearchQuery}
-                                onChangeText={(text) => {
-                                  setManualSearchQuery(text);
-                                  if (manualSearchError) {
-                                    setManualSearchError(null);
-                                  }
-                                  if (!text.trim()) {
-                                    setManualSearchResults([]);
-                                  }
-                                }}
-                                autoCapitalize="none"
-                                autoCorrect={false}
-                                keyboardType="default"
-                                returnKeyType="search"
-                                onSubmitEditing={handleManualSearch}
-                              />
-                              {!!manualSearchQuery.trim() && (
-                                <TouchableOpacity
-                                  style={styles.manualCheckinClearButton}
-                                  onPress={() => {
-                                    setManualSearchQuery("");
-                                    setManualSearchResults([]);
-                                    setManualSearchError(null);
-                                  }}
-                                >
-                                  <Feather name="x" size={16} color="#6b7280" />
-                                </TouchableOpacity>
-                              )}
-                              <TouchableOpacity
-                                style={[
-                                  styles.manualCheckinSearchButton,
-                                  (!manualSearchQuery.trim() ||
-                                    manualSearchLoading) &&
-                                    styles.manualCheckinSearchButtonDisabled,
-                                ]}
-                                onPress={handleManualSearch}
-                                disabled={
-                                  !manualSearchQuery.trim() ||
-                                  manualSearchLoading
-                                }
-                              >
-                                <Feather name="search" size={16} color="#fff" />
-                              </TouchableOpacity>
-                            </View>
-                            {!!manualSearchError && (
-                              <Text style={styles.manualCheckinError}>
-                                {manualSearchError}
-                              </Text>
-                            )}
-                            {manualSearchLoading ? (
-                              <Text style={styles.loadingText}>
-                                Buscando...
-                              </Text>
-                            ) : null}
-                            {manualSearchResults.length > 0 && (
-                              <View style={styles.manualCheckinResults}>
-                                {manualSearchResults.map((aluno, idx) => {
-                                  const alunoId = Number(
-                                    aluno.id ?? aluno.aluno_id ?? 0,
-                                  );
-                                  const alreadyCheckedIn =
-                                    checkinsRecentes.some(
-                                      (c) =>
-                                        Number(c.aluno_id) === Number(alunoId),
-                                    ) ||
-                                    participants.some(
-                                      (p) =>
-                                        Number(p.aluno_id) ===
-                                          Number(alunoId) &&
-                                        Number(p.checkins) > 0,
-                                    );
-                                  const photoUrl = getUserPhotoUrl(
-                                    aluno.foto_caminho || null,
-                                  );
-                                  const isLoading =
-                                    !!manualCheckinLoading[alunoId];
-
-                                  return (
-                                    <View
-                                      key={alunoId || idx}
-                                      style={styles.manualCheckinItem}
-                                    >
-                                      <View style={styles.manualCheckinAvatar}>
-                                        {photoUrl ? (
-                                          <Image
-                                            source={{ uri: photoUrl }}
-                                            style={
-                                              styles.manualCheckinAvatarImage
-                                            }
-                                          />
-                                        ) : (
-                                          <Feather
-                                            name="user"
-                                            size={18}
-                                            color="#9ca3af"
-                                          />
-                                        )}
-                                      </View>
-                                      <View
-                                        style={styles.manualCheckinItemInfo}
-                                      >
-                                        <Text
-                                          style={styles.manualCheckinItemName}
-                                        >
-                                          {normalizeUtf8(
-                                            aluno.nome ||
-                                              aluno.usuario_nome ||
-                                              "Aluno",
-                                          )}
-                                        </Text>
-                                        {!!aluno.email && (
-                                          <Text
-                                            style={styles.manualCheckinItemMeta}
-                                          >
-                                            {normalizeUtf8(aluno.email)}
-                                          </Text>
-                                        )}
-                                        {!!aluno.cpf && (
-                                          <Text
-                                            style={styles.manualCheckinItemMeta}
-                                          >
-                                            {aluno.cpf}
-                                          </Text>
-                                        )}
-                                      </View>
-                                      <TouchableOpacity
-                                        style={[
-                                          styles.manualCheckinAddButton,
-                                          (alreadyCheckedIn || isLoading) &&
-                                            styles.manualCheckinAddButtonDisabled,
-                                        ]}
-                                        onPress={() =>
-                                          openManualConfirm({
-                                            ...aluno,
-                                            id: alunoId || aluno.id,
-                                          })
-                                        }
-                                        disabled={alreadyCheckedIn || isLoading}
-                                      >
-                                        <Text
-                                          style={
-                                            styles.manualCheckinAddButtonText
-                                          }
-                                        >
-                                          {alreadyCheckedIn
-                                            ? "Já incluído"
-                                            : isLoading
-                                              ? "Incluindo..."
-                                              : "Adicionar"}
-                                        </Text>
-                                      </TouchableOpacity>
-                                    </View>
-                                  );
-                                })}
-                              </View>
-                            )}
-                          </View>
-                        )}
-
-                        {/* Lista de check-ins recentes (visível para todos; botões só para professor/admin) */}
-                        {checkinsRecentes.length > 0 && (
-                          <View style={styles.participantsListContainer}>
-                            {checkinsRecentes.map((c, idx) => {
-                              const presencaAtual = presencas[c.checkin_id];
-                              // Foto pode não vir em checkins_recentes; buscar em alunos.lista (participants)
-                              const alunoFoto = participants.find(
-                                (p) =>
-                                  Number(p.aluno_id) === Number(c.aluno_id),
-                              )?.foto_caminho;
-                              const photoUrl = getUserPhotoUrl(
-                                c.foto_caminho || alunoFoto || null,
-                              );
-                              // Borda de status: cinza (não confirmada), verde (presente), vermelha (falta)
-                              const isConfirmed = Boolean(
-                                c.presenca_confirmada_em,
-                              );
-                              let statusBorderColor = "#9ca3af"; // cinza padrão
-                              if (isConfirmed) {
-                                statusBorderColor = c.presente
-                                  ? "#10b981"
-                                  : "#ef4444";
-                              }
-                              return (
-                                <TouchableOpacity
-                                  key={c.checkin_id || idx}
-                                  style={styles.participantItem}
-                                  activeOpacity={0.7}
-                                  onPress={() => {
-                                    const horarioInicio =
-                                      getHoraInicio(participantsTurma)?.slice(
-                                        0,
-                                        5,
-                                      ) || "";
-                                    const horarioFim =
-                                      getHoraFim(participantsTurma)?.slice(
-                                        0,
-                                        5,
-                                      ) || "";
-                                    router.push({
-                                      pathname: "/checkin-detalhes",
-                                      params: {
-                                        checkinId: String(
-                                          c.checkin_id || c.id || "",
-                                        ),
-                                        alunoId: String(c.aluno_id || ""),
-                                        alunoNome: normalizeUtf8(
-                                          c.usuario_nome || "Aluno",
-                                        ),
-                                        foto: c.foto_caminho || alunoFoto || "",
-                                        presente: String(c.presente ?? ""),
-                                        presencaConfirmadaEm:
-                                          c.presenca_confirmada_em || "",
-                                        dataCheckin:
-                                          c.data_checkin || c.created_at || "",
-                                        turmaId: String(
-                                          participantsTurma?.id || "",
-                                        ),
-                                        turmaNome: normalizeUtf8(
-                                          participantsTurma?.nome || "Turma",
-                                        ),
-                                        dataAula: selectedDate
-                                          ? new Date(selectedDate).toISOString()
-                                          : "",
-                                        horario:
-                                          horarioInicio && horarioFim
-                                            ? `${horarioInicio} - ${horarioFim}`
-                                            : "",
-                                      },
-                                    });
-                                  }}
-                                >
-                                  <View
-                                    style={[
-                                      styles.participantAvatar,
-                                      {
-                                        borderWidth: 3,
-                                        borderColor: statusBorderColor,
-                                      },
-                                    ]}
-                                  >
-                                    {photoUrl ? (
-                                      <Image
-                                        source={{ uri: photoUrl }}
-                                        style={styles.participantAvatarImage}
-                                      />
-                                    ) : (
-                                      <Feather
-                                        name="user"
-                                        size={18}
-                                        color="#9ca3af"
-                                      />
-                                    )}
-                                  </View>
-                                  <View style={styles.participantInfo}>
-                                    <Text style={styles.participantName}>
-                                      {formatParticipantName(
-                                        c.usuario_nome || "Aluno",
-                                      ).toUpperCase()}
-                                    </Text>
-                                  </View>
-                                  {/* Botões de presença (somente para professor/admin) */}
-                                  {isProfessorOuAdmin && (
-                                    <View style={styles.presencaButtons}>
-                                      <TouchableOpacity
-                                        style={[
-                                          styles.presencaBtn,
-                                          presencaAtual === true &&
-                                            styles.presencaBtnPresente,
-                                        ]}
-                                        onPress={() =>
-                                          togglePresenca(c.checkin_id)
-                                        }
-                                      >
-                                        <Feather
-                                          name="check"
-                                          size={22}
-                                          color={
-                                            presencaAtual === true
-                                              ? "#fff"
-                                              : "#9ca3af"
-                                          }
-                                        />
-                                      </TouchableOpacity>
-                                      <TouchableOpacity
-                                        style={[
-                                          styles.presencaBtn,
-                                          presencaAtual === false &&
-                                            styles.presencaBtnFalta,
-                                        ]}
-                                        onPress={() => {
-                                          setPresencas((prev) => ({
-                                            ...prev,
-                                            [c.checkin_id]:
-                                              prev[c.checkin_id] === false
-                                                ? null
-                                                : false,
-                                          }));
-                                        }}
-                                      >
-                                        <Feather
-                                          name="x"
-                                          size={22}
-                                          color={
-                                            presencaAtual === false
-                                              ? "#fff"
-                                              : "#9ca3af"
-                                          }
-                                        />
-                                      </TouchableOpacity>
-                                    </View>
-                                  )}
-                                </TouchableOpacity>
-                              );
-                            })}
-                          </View>
-                        )}
-
-                        {/* Mensagem quando não há check-ins */}
-                        {(!isProfessorOuAdmin ||
-                          checkinsRecentes.length === 0) &&
-                          participantsToShow.length === 0 &&
-                          manualSearchResults.length === 0 &&
-                          !manualSearchLoading && (
-                            <Text style={styles.loadingText}>
-                              Nenhum participante ainda
-                            </Text>
-                          )}
-                      </>
-                    )}
-                  </View>
-
-                  {/* Botão de confirmar presenças (professor/admin sempre vê; fora do período alerta ao clicar) */}
-                  {isProfessorOuAdmin &&
-                    checkinsRecentes.length > 0 &&
-                    (() => {
-                      return (
-                        <>
-                          <TouchableOpacity
-                            style={[
-                              styles.checkinButton,
-                              { backgroundColor: "#3b82f6" },
-                              confirmandoPresenca &&
-                                styles.checkinButtonDisabled,
-                            ]}
-                            onPress={() => {
-                              confirmarPresencas();
-                            }}
-                            disabled={confirmandoPresenca}
-                          >
-                            {confirmandoPresenca ? (
-                              <>
-                                <Feather name="loader" size={18} color="#fff" />
-                                <Text style={styles.checkinButtonText}>
-                                  Confirmando...
-                                </Text>
-                              </>
-                            ) : (
-                              <>
-                                <Feather
-                                  name="check-square"
-                                  size={18}
-                                  color="#fff"
-                                />
-                                <Text style={styles.checkinButtonText}>
-                                  Confirmar Presenças
-                                </Text>
-                              </>
-                            )}
-                          </TouchableOpacity>
-                        </>
-                      );
-                    })()}
-
-                  {/* Botão de check-in só aparece para alunos */}
-                  {isAluno &&
-                    (() => {
-                      const minutosParaAbrir =
-                        getMinutosParaAbrirCheckin(participantsTurma);
-                      const checkinNaoAbriu = minutosParaAbrir > 0;
-                      return (
-                        <>
-                          <TouchableOpacity
-                            style={[
-                              styles.checkinButton,
-                              {
-                                backgroundColor:
-                                  participantsTurma?.modalidade?.cor ||
-                                  colors.primary,
-                              },
-                              {
-                                shadowColor:
-                                  participantsTurma?.modalidade?.cor ||
-                                  colors.primary,
-                              },
-                              userCheckinId ? styles.checkinButtonUndo : null,
-                              (checkinLoading ||
-                                checkinNaoAbriu ||
-                                (!userCheckinId &&
-                                  isCheckinDisabled(participantsTurma))) &&
-                                styles.checkinButtonDisabled,
-                            ]}
-                            onPress={() => {
-                              if (userCheckinId) {
-                                handleUndoCheckin(
-                                  userCheckinId,
-                                  participantsTurma,
-                                );
-                              } else {
-                                if (checkinNaoAbriu) {
-                                  const aberturaStr =
-                                    getDataAberturaCheckin(participantsTurma);
-                                  const label =
-                                    aberturaStr instanceof Date
-                                      ? `Abre em ${formatMinutos(
-                                          minutosParaAbrir,
-                                        )}`
-                                      : "Ainda não disponível";
-                                  showErrorModal(label, "warning");
-                                  return;
-                                }
-                                handleCheckin(participantsTurma);
-                              }
-                            }}
-                            disabled={
-                              checkinLoading ||
-                              checkinNaoAbriu ||
-                              (!userCheckinId &&
-                                isCheckinDisabled(participantsTurma))
-                            }
-                          >
-                            {checkinLoading ? (
-                              <>
-                                <Feather name="loader" size={18} color="#fff" />
-                                <Text style={styles.checkinButtonText}>
-                                  Processando...
-                                </Text>
-                              </>
-                            ) : userCheckinId ? (
-                              <>
-                                <Feather
-                                  name="rotate-ccw"
-                                  size={18}
-                                  color="#fff"
-                                />
-                                <Text style={styles.checkinButtonText}>
-                                  Desfazer Check-in
-                                </Text>
-                              </>
-                            ) : (
-                              <>
-                                <Feather
-                                  name="check-circle"
-                                  size={18}
-                                  color="#fff"
-                                />
-                                <Text style={styles.checkinButtonText}>
-                                  Fazer Check-in
-                                </Text>
-                              </>
-                            )}
-                          </TouchableOpacity>
-                          {checkinNaoAbriu ? (
-                            <Text style={styles.outOfPeriodHint}>
-                              Abre em {formatMinutos(minutosParaAbrir)}
-                            </Text>
-                          ) : null}
-                        </>
-                      );
-                    })()}
-
-                  {/* Card 'Meu check-in' removido para manter layout original */}
-                </View>
-              </>
-            ) : loading ? (
+            {loading ? (
               <Text style={styles.loadingText}>Carregando...</Text>
             ) : schedulesToRender.length > 0 ? (
               <View style={styles.schedulesList}>
@@ -2658,86 +1920,6 @@ export default function CheckinScreen() {
                 >
                   <Text style={styles.modalButtonText}>OK, Entendi</Text>
                 </TouchableOpacity>
-              </View>
-            </TouchableOpacity>
-          </Animated.View>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* Modal de confirmação do check-in manual */}
-      <Modal
-        visible={confirmManualModal.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={closeManualConfirm}
-      >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={closeManualConfirm}
-        >
-          <Animated.View
-            style={[
-              styles.modalContainer,
-              {
-                transform: [{ scale: modalScale }],
-              },
-            ]}
-          >
-            <TouchableOpacity
-              activeOpacity={1}
-              onPress={(e) => e.stopPropagation()}
-            >
-              <View style={styles.modalContent}>
-                <View
-                  style={[
-                    styles.modalIconContainer,
-                    styles.modalIconContainerInfo,
-                  ]}
-                >
-                  <Feather
-                    name="help-circle"
-                    size={48}
-                    color={colors.primary}
-                  />
-                </View>
-                <Text style={styles.modalTitle}>Confirmar check-in</Text>
-                <Text style={styles.modalMessage}>
-                  Deseja fazer check-in de{" "}
-                  {normalizeUtf8(
-                    confirmManualModal.aluno?.nome ||
-                      confirmManualModal.aluno?.usuario_nome ||
-                      "Aluno",
-                  )}
-                  ?
-                </Text>
-                <View style={styles.confirmButtonsRow}>
-                  <TouchableOpacity
-                    style={[styles.confirmButton, styles.confirmButtonCancel]}
-                    onPress={closeManualConfirm}
-                  >
-                    <Text style={styles.confirmButtonText}>Cancelar</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.confirmButton, styles.confirmButtonConfirm]}
-                    onPress={async () => {
-                      const aluno = confirmManualModal.aluno;
-                      closeManualConfirm();
-                      if (aluno?.id) {
-                        await handleManualCheckin(aluno);
-                      }
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.confirmButtonText,
-                        styles.confirmButtonTextLight,
-                      ]}
-                    >
-                      Confirmar
-                    </Text>
-                  </TouchableOpacity>
-                </View>
               </View>
             </TouchableOpacity>
           </Animated.View>

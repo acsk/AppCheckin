@@ -1315,11 +1315,25 @@ class TurmaController
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(403);
         }
 
+        $checkinsRemovidos = 0;
         if ($bloquear) {
             $body = $request->getParsedBody() ?? [];
             $motivo = isset($body['motivo']) ? (string) $body['motivo'] : null;
-            $this->checkinBloqueioService->bloquear($turmaId, $tenantId, $userId ?: null, $motivo);
+            $checkinsRemovidos = $this->checkinBloqueioService->bloquear(
+                $turmaId,
+                $tenantId,
+                $userId ?: null,
+                $motivo
+            );
             $message = 'Check-in bloqueado para alunos nesta aula';
+            if ($checkinsRemovidos > 0) {
+                $message .= sprintf(
+                    ' (%d check-in%s removido%s)',
+                    $checkinsRemovidos,
+                    $checkinsRemovidos === 1 ? '' : 's',
+                    $checkinsRemovidos === 1 ? '' : 's'
+                );
+            }
         } else {
             $this->checkinBloqueioService->desbloquear($turmaId, $tenantId);
             $message = 'Check-in liberado para alunos nesta aula';
@@ -1336,6 +1350,7 @@ class TurmaController
             'message' => $message,
             'turma' => $turmasComFlag[0] ?? null,
             'checkin_bloqueado' => $bloquear,
+            'checkins_removidos' => $checkinsRemovidos,
         ], JSON_UNESCAPED_UNICODE));
 
         return $response

@@ -70,7 +70,27 @@ class TurmaCheckinBloqueioService
         }, $turmas);
     }
 
-    public function bloquear(int $turmaId, int $tenantId, ?int $usuarioId, ?string $motivo = null): void
+    /**
+     * Remove todos os check-ins da turma no tenant (ao bloquear a aula).
+     */
+    public function removerCheckinsDaTurma(int $turmaId, int $tenantId): int
+    {
+        $stmt = $this->db->prepare("
+            DELETE FROM checkins
+            WHERE turma_id = :turma_id AND tenant_id = :tenant_id
+        ");
+        $stmt->execute([
+            'turma_id' => $turmaId,
+            'tenant_id' => $tenantId,
+        ]);
+
+        return (int) $stmt->rowCount();
+    }
+
+    /**
+     * @return int Quantidade de check-ins removidos ao bloquear
+     */
+    public function bloquear(int $turmaId, int $tenantId, ?int $usuarioId, ?string $motivo = null): int
     {
         if ($usuarioId !== null && $usuarioId <= 0) {
             $usuarioId = null;
@@ -80,6 +100,8 @@ class TurmaCheckinBloqueioService
         if ($motivo === '') {
             $motivo = null;
         }
+
+        $checkinsRemovidos = $this->removerCheckinsDaTurma($turmaId, $tenantId);
 
         $stmt = $this->db->prepare("
             INSERT INTO turma_checkin_bloqueios (tenant_id, turma_id, bloqueado_por_usuario_id, motivo)
@@ -95,6 +117,8 @@ class TurmaCheckinBloqueioService
             'usuario_id' => $usuarioId,
             'motivo' => $motivo,
         ]);
+
+        return $checkinsRemovidos;
     }
 
     public function desbloquear(int $turmaId, int $tenantId): bool

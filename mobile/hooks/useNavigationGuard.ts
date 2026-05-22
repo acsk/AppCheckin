@@ -21,6 +21,7 @@ const PROTECTED_ROUTES = [
   "turma-detalhes",
   "checkin",
   "checkin-detalhes",
+  "checkin-turma",
 ];
 
 export function useNavigationGuard() {
