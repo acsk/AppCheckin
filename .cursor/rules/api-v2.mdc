@@ -1,0 +1,16 @@
+---
+description: Ao trabalhar na API Laravel v2, ler e seguir a skill api-v2 antes de implementar
+globs: apiV2/**,docker-compose.yml,.cursor/skills/api-v2/**
+alwaysApply: false
+---
+
+# API v2 (Laravel)
+
+Antes de editar, planejar ou responder sobre `apiV2`, migração Slim→Laravel ou rotas `/v2`:
+
+1. **Ler** `.cursor/skills/api-v2/SKILL.md` (obrigatório).
+2. Se precisar de env, papéis ou troubleshooting: ler `.cursor/skills/api-v2/reference.md`.
+3. **Executar** o que a skill exige: paridade com Slim, JWT compatível, prefixo `/v2`, porta 9090, sem `artisan migrate` no banco `appcheckin`, drivers `file`/`sync`.
+4. Ao portar rota: seguir o workflow e checklist da skill; testar em `http://localhost:9090/v2/...`.
+
+Não improvisar convenções fora da skill. Em dúvida, espelhar `api/` (Slim) como fonte da verdade.

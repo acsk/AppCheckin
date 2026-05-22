@@ -39,6 +39,42 @@ services:
     networks:
       - appcheckin_network
 
+  php-v2:
+    build:
+      context: ./apiV2
+      dockerfile: Dockerfile
+    container_name: appcheckin_php_v2
+    restart: unless-stopped
+    ports:
+      - "9090:80"
+    depends_on:
+      - mysql
+    volumes:
+      - ./apiV2:/var/www/html
+    env_file:
+      - path: ./apiV2/.env
+        required: false
+    environment:
+      APP_NAME: AppCheckin
+      APP_ENV: local
+      # Fallback local se apiV2/.env não existir (rode: php artisan key:generate)
+      APP_KEY: ${APP_V2_APP_KEY:-base64:GsqtaMkRaUXt+zNQWSRX0o4iOR/WxoalvHLcgy41mY8=}
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:9090
+      DB_CONNECTION: mysql
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DATABASE: appcheckin
+      DB_USERNAME: root
+      DB_PASSWORD: root
+      JWT_SECRET: seu_secret_super_seguro_aqui_change_me
+      JWT_EXPIRATION: 86400
+      SESSION_DRIVER: file
+      CACHE_STORE: file
+      QUEUE_CONNECTION: sync
+    networks:
+      - appcheckin_network
+
   adminer:
     image: phpmyadmin/phpmyadmin
     container_name: appcheckin_phpmyadmin
