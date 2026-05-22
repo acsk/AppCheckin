@@ -31,6 +31,28 @@ const formatDateParam = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
+/** Evita que YYYY-MM-DD vire dia anterior no fuso ao usar new Date(string). */
+const parseDataParam = (value?: string): Date | null => {
+  if (!value) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value).trim());
+  if (match) {
+    const parsed = new Date(
+      Number(match[1]),
+      Number(match[2]) - 1,
+      Number(match[3]),
+    );
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const startOfLocalDay = (date: Date) => {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
 const cleanTurmaName = (
   nome?: string,
   modalidade?: any,
@@ -101,11 +123,8 @@ export default function CheckinTurmaScreen() {
   const routeData = getRouteParam(routeParams.data);
 
   const [selectedDate, setSelectedDate] = useState<Date>(() => {
-    if (routeData) {
-      const parsed = new Date(routeData);
-      if (!Number.isNaN(parsed.getTime())) return parsed;
-    }
-    return new Date();
+    const parsed = parseDataParam(routeData);
+    return parsed ?? new Date();
   });
 
   const [participants, setParticipants] = useState<any[]>([]);
@@ -273,8 +292,8 @@ export default function CheckinTurmaScreen() {
 
   useEffect(() => {
     if (!routeData) return;
-    const parsed = new Date(routeData);
-    if (Number.isNaN(parsed.getTime())) return;
+    const parsed = parseDataParam(routeData);
+    if (!parsed) return;
     const routeKey = formatDateParam(parsed);
     const currentKey = formatDateParam(selectedDate);
     if (routeKey !== currentKey) {
@@ -492,23 +511,33 @@ export default function CheckinTurmaScreen() {
     return d;
   };
 
+  const getHoraInicio = (turma: any) =>
+    turma?.hora_inicio || turma?.horario?.inicio;
+  const getHoraFim = (turma: any) => turma?.hora_fim || turma?.horario?.fim;
+
+  /** Aula em dia anterior ao calendário (bloqueio só neste caso). */
+  const isAulaEmDataPassada = (refDate: Date = selectedDate): boolean => {
+    const today = startOfLocalDay(new Date());
+    const ref = startOfLocalDay(refDate);
+    return ref.getTime() < today.getTime();
+  };
+
+  /** Check-in: dia passado ou horário de fim já passou no dia da aula. */
   const isTurmaDisabled = (
     turma: any,
     refDate: Date = selectedDate,
   ): boolean => {
     try {
       const now = new Date();
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      const today = startOfLocalDay(new Date());
+      const ref = startOfLocalDay(refDate);
 
-      const ref = new Date(refDate);
-      ref.setHours(0, 0, 0, 0);
+      if (ref.getTime() < today.getTime()) return true;
+      if (ref.getTime() > today.getTime()) return false;
 
-      if (ref < today) return true;
-      if (ref > today) return false;
-
-      if (!turma?.horario?.fim) return false;
-      const end = combineDateTime(refDate, turma?.horario?.fim ?? "00:00:00");
+      const horaFim = getHoraFim(turma);
+      if (!horaFim) return false;
+      const end = combineDateTime(refDate, horaFim);
       return now > end;
     } catch (e) {
       console.warn("Falha ao calcular disponibilidade da turma:", e);
@@ -534,10 +563,6 @@ export default function CheckinTurmaScreen() {
     if (!hasVagasByField && !hasVagasByCount) return true;
     return false;
   };
-
-  const getHoraInicio = (turma: any) =>
-    turma?.hora_inicio || turma?.horario?.inicio;
-  const getHoraFim = (turma: any) => turma?.hora_fim || turma?.horario?.fim;
 
   const getHoraLimiteCheckin = (turma: any): string | null => {
     try {
@@ -1078,11 +1103,11 @@ export default function CheckinTurmaScreen() {
     }
   };
 
-  const turmaAulaEncerrada =
-    !!participantsTurma && isTurmaDisabled(participantsTurma, selectedDate);
+  const bloqueioAulaDesabilitado =
+    !!participantsTurma && isAulaEmDataPassada(selectedDate);
 
   const onPressBloqueioCheckin = () => {
-    if (!participantsTurma?.id || !isProfessorOuAdmin || turmaAulaEncerrada) {
+    if (!participantsTurma?.id || !isProfessorOuAdmin || bloqueioAulaDesabilitado) {
       return;
     }
 
@@ -1216,11 +1241,11 @@ export default function CheckinTurmaScreen() {
                 participantsTurma?.checkin_bloqueado
                   ? styles.bloqueioCheckinButtonCompactLiberar
                   : styles.bloqueioCheckinButtonCompactBloquear,
-                turmaAulaEncerrada && styles.bloqueioCheckinButtonCompactDisabled,
+                bloqueioAulaDesabilitado && styles.bloqueioCheckinButtonCompactDisabled,
               ]}
               onPress={onPressBloqueioCheckin}
-              disabled={turmaCheckinBloqueioLoading || turmaAulaEncerrada}
-              activeOpacity={turmaAulaEncerrada ? 1 : 0.85}
+              disabled={turmaCheckinBloqueioLoading || bloqueioAulaDesabilitado}
+              activeOpacity={bloqueioAulaDesabilitado ? 1 : 0.85}
             >
               {turmaCheckinBloqueioLoading ? (
                 <ActivityIndicator
@@ -1239,7 +1264,7 @@ export default function CheckinTurmaScreen() {
                     }
                     size={22}
                     color={
-                      turmaAulaEncerrada
+                      bloqueioAulaDesabilitado
                         ? "#9ca3af"
                         : participantsTurma?.checkin_bloqueado
                           ? "#047857"
@@ -1251,7 +1276,7 @@ export default function CheckinTurmaScreen() {
                       styles.bloqueioCheckinButtonCompactText,
                       participantsTurma?.checkin_bloqueado &&
                         styles.bloqueioCheckinButtonCompactTextLiberar,
-                      turmaAulaEncerrada &&
+                      bloqueioAulaDesabilitado &&
                         styles.bloqueioCheckinButtonCompactTextDisabled,
                     ]}
                   >
