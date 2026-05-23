@@ -121,7 +121,6 @@ export default function CheckinScreen() {
   const selectedDateRef = useRef<Date | null>(null);
   const isFetchingSchedulesRef = useRef(false);
   const latestSchedulesReqRef = useRef<number>(0);
-  const SCHEDULES_CACHE_TTL_MS = 60 * 1000;
 
   // papel_id: 1 = Aluno, 2 = Professor, 3 = Admin, 4 = Super Admin
   // Regras:
@@ -466,28 +465,9 @@ export default function CheckinScreen() {
     const formattedDate = formatDateParam(date);
     const reqId = Date.now();
     latestSchedulesReqRef.current = reqId;
-    const tenantIdForCache =
-      tenantIdOverride ??
-      currentTenant?.tenant?.id ??
-      currentTenant?.id ??
-      "default";
-    const cacheKey = `@appcheckin:horarios_cache:${tenantIdForCache}:${formattedDate}`;
-    try {
-      const cachedStr = await AsyncStorage.getItem(cacheKey);
-      if (cachedStr) {
-        const cached = JSON.parse(cachedStr);
-        if (
-          cached?.ts &&
-          Array.isArray(cached?.turmas) &&
-          Date.now() - Number(cached.ts) < SCHEDULES_CACHE_TTL_MS
-        ) {
-          console.log("📦 Usando cache de horários (TTL 1 min)");
-          setAvailableSchedules(cached.turmas);
-          return;
-        }
-      }
-    } catch (cacheError) {
-      console.warn("⚠️ Falha ao ler cache de horários", cacheError);
+
+    if (isFetchingSchedulesRef.current) {
+      console.log("⏳ Já existe carregamento de horários em andamento");
     }
 
     isFetchingSchedulesRef.current = true;
@@ -575,14 +555,6 @@ export default function CheckinScreen() {
           );
         });
         setAvailableSchedules(data.data.turmas);
-        try {
-          await AsyncStorage.setItem(
-            cacheKey,
-            JSON.stringify({ ts: Date.now(), turmas: data.data.turmas }),
-          );
-        } catch (cacheError) {
-          console.warn("⚠️ Falha ao gravar cache de horários", cacheError);
-        }
       } else {
         console.warn("⚠️ Resposta inválida ou sem turmas");
         console.log("   success:", data.success);
@@ -604,6 +576,13 @@ export default function CheckinScreen() {
       isFetchingSchedulesRef.current = false;
     }
   };
+
+  const reloadSchedulesList = useCallback(async () => {
+    const dateToLoad = selectedDateRef.current ?? selectedDate;
+    const tenantId =
+      currentTenant?.tenant?.id ?? currentTenant?.id ?? undefined;
+    await fetchAvailableSchedules(dateToLoad, tenantId);
+  }, [selectedDate, currentTenant]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCheckin = async (turma: any) => {
     if (!turma?.id) return;
@@ -1536,6 +1515,18 @@ export default function CheckinScreen() {
               <Text style={styles.headerTitle}>Checkin</Text>
             </View>
             <View style={styles.headerRight}>
+              <TouchableOpacity
+                style={styles.refreshButton}
+                onPress={() => void reloadSchedulesList()}
+                disabled={loading}
+                accessibilityLabel="Recarregar horários"
+              >
+                {loading ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Feather name="refresh-cw" size={22} color="#fff" />
+                )}
+              </TouchableOpacity>
               <View style={styles.switchRow}>
                 <Text style={styles.switchLabel}>Só disponíveis</Text>
                 <Switch
@@ -1712,6 +1703,54 @@ export default function CheckinScreen() {
                       onPress={() => openParticipants(turma)}
                     >
                       <View style={styles.scheduleContent}>
+                        {isCheckinBloqueado ? (
+                          <View style={styles.scheduleCompactBlocked}>
+                            <Text style={styles.scheduleTimeText}>
+                              {turma.horario.inicio.slice(0, 5)} -{" "}
+                              {turma.horario.fim.slice(0, 5)}
+                            </Text>
+                            <View style={styles.scheduleCompactBadges}>
+                              {turma.modalidade ? (
+                                <View
+                                  style={[
+                                    styles.modalidadeBadge,
+                                    {
+                                      backgroundColor:
+                                        turma.modalidade.cor + "20",
+                                    },
+                                  ]}
+                                >
+                                  {turma.modalidade.icone ? (
+                                    <MaterialCommunityIcons
+                                      name={turma.modalidade.icone as any}
+                                      size={12}
+                                      color={turma.modalidade.cor}
+                                    />
+                                  ) : null}
+                                  <Text
+                                    style={[
+                                      styles.modalidadeText,
+                                      { color: turma.modalidade.cor },
+                                    ]}
+                                  >
+                                    {normalizeUtf8(turma.modalidade.nome)}
+                                  </Text>
+                                </View>
+                              ) : null}
+                              <View style={styles.scheduleBlockedBadge}>
+                                <MaterialCommunityIcons
+                                  name="lock"
+                                  size={14}
+                                  color="#B91C1C"
+                                />
+                                <Text style={styles.scheduleBlockedBadgeText}>
+                                  Bloqueado
+                                </Text>
+                              </View>
+                            </View>
+                          </View>
+                        ) : (
+                          <>
                         <View style={styles.scheduleHeader}>
                           <View style={{ flex: 1 }}>
                             <Text style={styles.scheduleTimeText}>
@@ -1730,18 +1769,6 @@ export default function CheckinScreen() {
                             )}
                           </View>
                           <View style={styles.scheduleHeaderBadges}>
-                            {isProfessorOuAdmin && isCheckinBloqueado ? (
-                              <View style={styles.scheduleBlockedBadge}>
-                                <MaterialCommunityIcons
-                                  name="lock"
-                                  size={14}
-                                  color="#B91C1C"
-                                />
-                                <Text style={styles.scheduleBlockedBadgeText}>
-                                  Bloqueado
-                                </Text>
-                              </View>
-                            ) : null}
                             {turma.modalidade ? (
                               <View
                                 style={[
@@ -1799,18 +1826,6 @@ export default function CheckinScreen() {
                               </Text>
                             </View>
                           ) : null}
-                          {isProfessorOuAdmin && isCheckinBloqueado ? (
-                            <View style={styles.infoItem}>
-                              <MaterialCommunityIcons
-                                name="lock"
-                                size={14}
-                                color="#B91C1C"
-                              />
-                              <Text style={styles.scheduleBlockedInfoText}>
-                                Check-in bloqueado
-                              </Text>
-                            </View>
-                          ) : null}
                           {isClosed && (
                             <>
                               <View style={styles.statusDot} />
@@ -1832,6 +1847,8 @@ export default function CheckinScreen() {
                             </>
                           )}
                         </View>
+                          </>
+                        )}
                       </View>
                       <Feather
                         name="chevron-right"
@@ -2025,7 +2042,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerRight: {
-    alignItems: "flex-end",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
     marginLeft: 12,
   },
   headerBackButton: {
@@ -2237,6 +2256,15 @@ const styles = StyleSheet.create({
   scheduleItemBloqueado: {
     backgroundColor: "#FEF2F2",
     borderColor: "#FECACA",
+  },
+  scheduleCompactBlocked: {
+    gap: 8,
+  },
+  scheduleCompactBadges: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 8,
   },
   scheduleHeaderBadges: {
     flexDirection: "row",
