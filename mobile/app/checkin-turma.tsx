@@ -1208,86 +1208,97 @@ export default function CheckinTurmaScreen() {
             </View>
           </View>
 
-          {participantsTurma && (
-            <View style={styles.headerInfoRow}>
-              <View style={styles.headerChip}>
-                <Feather name="clock" size={14} color="#fff" />
-                <Text style={styles.headerChipText}>
-                  {getHoraInicio(participantsTurma)?.slice(0, 5)} -{" "}
-                  {getHoraFim(participantsTurma)?.slice(0, 5)}
-                </Text>
-              </View>
-              {getHoraLimiteCheckin(participantsTurma) ? (
+          {participantsTurma ? (
+            <View style={styles.headerMetaRow}>
+              <View style={styles.headerChipsWrap}>
                 <View style={styles.headerChip}>
                   <Feather name="clock" size={14} color="#fff" />
                   <Text style={styles.headerChipText}>
-                    Check-in até {getHoraLimiteCheckin(participantsTurma)}
+                    {getHoraInicio(participantsTurma)?.slice(0, 5)} -{" "}
+                    {getHoraFim(participantsTurma)?.slice(0, 5)}
                   </Text>
                 </View>
-              ) : null}
-              {participantsTurma?.checkin_bloqueado ? (
-                <View style={[styles.headerChip, styles.headerChipBloqueado]}>
-                  <MaterialCommunityIcons name="lock" size={16} color="#fff" />
-                  <Text style={styles.headerChipText}>Check-in bloqueado</Text>
-                </View>
+                {!participantsTurma.checkin_bloqueado &&
+                getHoraLimiteCheckin(participantsTurma) ? (
+                  <View style={styles.headerChip}>
+                    <Feather name="clock" size={14} color="#fff" />
+                    <Text style={styles.headerChipText}>
+                      Check-in até {getHoraLimiteCheckin(participantsTurma)}
+                    </Text>
+                  </View>
+                ) : null}
+                {participantsTurma.checkin_bloqueado ? (
+                  <View style={[styles.headerChip, styles.headerChipBloqueado]}>
+                    <MaterialCommunityIcons
+                      name="lock"
+                      size={14}
+                      color="#fff"
+                    />
+                    <Text style={styles.headerChipText}>
+                      Check-in bloqueado
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+              {isProfessorOuAdmin ? (
+                <TouchableOpacity
+                  style={[
+                    styles.bloqueioCheckinButtonCompact,
+                    participantsTurma.checkin_bloqueado
+                      ? styles.bloqueioCheckinButtonCompactLiberar
+                      : styles.bloqueioCheckinButtonCompactBloquear,
+                    bloqueioAulaDesabilitado &&
+                      styles.bloqueioCheckinButtonCompactDisabled,
+                  ]}
+                  onPress={onPressBloqueioCheckin}
+                  disabled={
+                    turmaCheckinBloqueioLoading || bloqueioAulaDesabilitado
+                  }
+                  activeOpacity={bloqueioAulaDesabilitado ? 1 : 0.85}
+                >
+                  {turmaCheckinBloqueioLoading ? (
+                    <ActivityIndicator
+                      size="small"
+                      color={
+                        participantsTurma.checkin_bloqueado ? "#047857" : "#fff"
+                      }
+                    />
+                  ) : (
+                    <>
+                      <MaterialCommunityIcons
+                        name={
+                          participantsTurma.checkin_bloqueado
+                            ? "lock-open-variant"
+                            : "lock"
+                        }
+                        size={18}
+                        color={
+                          bloqueioAulaDesabilitado
+                            ? "#9ca3af"
+                            : participantsTurma.checkin_bloqueado
+                              ? "#047857"
+                              : "#fff"
+                        }
+                      />
+                      <Text
+                        style={[
+                          styles.bloqueioCheckinButtonCompactText,
+                          participantsTurma.checkin_bloqueado &&
+                            styles.bloqueioCheckinButtonCompactTextLiberar,
+                          bloqueioAulaDesabilitado &&
+                            styles.bloqueioCheckinButtonCompactTextDisabled,
+                        ]}
+                      >
+                        {participantsTurma.checkin_bloqueado
+                          ? "Liberar"
+                          : "Bloquear"}
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
               ) : null}
             </View>
-          )}
-
-          {participantsTurma && isProfessorOuAdmin && (
-            <TouchableOpacity
-              style={[
-                styles.bloqueioCheckinButtonCompact,
-                participantsTurma?.checkin_bloqueado
-                  ? styles.bloqueioCheckinButtonCompactLiberar
-                  : styles.bloqueioCheckinButtonCompactBloquear,
-                bloqueioAulaDesabilitado && styles.bloqueioCheckinButtonCompactDisabled,
-              ]}
-              onPress={onPressBloqueioCheckin}
-              disabled={turmaCheckinBloqueioLoading || bloqueioAulaDesabilitado}
-              activeOpacity={bloqueioAulaDesabilitado ? 1 : 0.85}
-            >
-              {turmaCheckinBloqueioLoading ? (
-                <ActivityIndicator
-                  size="small"
-                  color={
-                    participantsTurma?.checkin_bloqueado ? "#047857" : "#fff"
-                  }
-                />
-              ) : (
-                <>
-                  <MaterialCommunityIcons
-                    name={
-                      participantsTurma?.checkin_bloqueado
-                        ? "lock-open-variant"
-                        : "lock"
-                    }
-                    size={22}
-                    color={
-                      bloqueioAulaDesabilitado
-                        ? "#9ca3af"
-                        : participantsTurma?.checkin_bloqueado
-                          ? "#047857"
-                          : "#fff"
-                    }
-                  />
-                  <Text
-                    style={[
-                      styles.bloqueioCheckinButtonCompactText,
-                      participantsTurma?.checkin_bloqueado &&
-                        styles.bloqueioCheckinButtonCompactTextLiberar,
-                      bloqueioAulaDesabilitado &&
-                        styles.bloqueioCheckinButtonCompactTextDisabled,
-                    ]}
-                  >
-                    {participantsTurma?.checkin_bloqueado
-                      ? "Liberar"
-                      : "Bloquear"}
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-          )}
+          ) : null}
         </View>
 
         <ScrollView
@@ -1611,11 +1622,30 @@ export default function CheckinTurmaScreen() {
               )}
 
               {isAluno &&
+                !isProfessorOuAdmin &&
                 participantsTurma &&
                 (() => {
                   const minutosParaAbrir =
                     getMinutosParaAbrirCheckin(participantsTurma);
                   const checkinNaoAbriu = minutosParaAbrir > 0;
+                  const checkinBloqueado =
+                    !!participantsTurma.checkin_bloqueado && !userCheckinId;
+
+                  if (checkinBloqueado) {
+                    return (
+                      <View style={styles.checkinBlockedBanner}>
+                        <MaterialCommunityIcons
+                          name="lock"
+                          size={20}
+                          color="#B91C1C"
+                        />
+                        <Text style={styles.checkinBlockedBannerText}>
+                          Check-in bloqueado para esta aula
+                        </Text>
+                      </View>
+                    );
+                  }
+
                   return (
                     <>
                       <TouchableOpacity
@@ -2019,10 +2049,20 @@ const styles = StyleSheet.create({
   headerTextBlock: {
     flexShrink: 1,
   },
-  headerInfoRow: {
+  headerMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    width: "100%",
+  },
+  headerChipsWrap: {
+    flex: 1,
     flexDirection: "row",
     flexWrap: "wrap",
+    alignItems: "center",
     gap: 8,
+    minWidth: 0,
   },
   headerChip: {
     flexDirection: "row",
@@ -2047,11 +2087,10 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    alignSelf: "flex-end",
-    gap: 8,
-    marginTop: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
+    flexShrink: 0,
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
     borderRadius: 999,
     borderWidth: 2,
   },
@@ -2065,8 +2104,26 @@ const styles = StyleSheet.create({
   },
   bloqueioCheckinButtonCompactText: {
     color: "#fff",
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: "800",
+  },
+  checkinBlockedBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+  },
+  checkinBlockedBannerText: {
+    color: "#B91C1C",
+    fontSize: 15,
+    fontWeight: "700",
+    flexShrink: 1,
   },
   bloqueioCheckinButtonCompactTextLiberar: {
     color: "#047857",
