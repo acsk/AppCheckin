@@ -1,48 +1,94 @@
 <?php
 /**
  * Script para ver detalhes completos de um webhook
- * 
- * Uso: 
- *   php database/show_webhook_payload.php 1         # Webhook ID 1
- *   php database/show_webhook_payload.php last      # Último webhook
- *   php database/show_webhook_payload.php last erro # Último com erro
+ *
+ * Uso:
+ *   php database/show_webhook_payload.php 1607              # Webhook ID
+ *   php database/show_webhook_payload.php last              # Último webhook
+ *   php database/show_webhook_payload.php last erro         # Último com erro
+ *   php database/show_webhook_payload.php payment 160879679884
+ *   php database/show_webhook_payload.php mat 337           # Por external_reference MAT-337-*
  */
 
 require_once __DIR__ . '/../config/database.php';
 
 try {
     $db = require __DIR__ . '/../config/database.php';
-    
-    $webhookId = $argv[1] ?? 'last';
-    $filtroStatus = $argv[2] ?? null;
-    
-    // Verificar se tabela existe
+
+    $arg1 = $argv[1] ?? 'last';
+    $arg2 = $argv[2] ?? null;
+
     $checkTable = $db->query("SHOW TABLES LIKE 'webhook_payloads_mercadopago'");
     if ($checkTable->rowCount() === 0) {
         echo "❌ Tabela webhook_payloads_mercadopago não existe!\n";
         exit(1);
     }
-    
-    // Buscar webhook
-    $stmt = $db->prepare("
-        SELECT * FROM webhook_payloads_mercadopago
-        WHERE " . ($webhookId === 'last' ? "1=1" : "id = ?") . "
-        " . ($filtroStatus && $webhookId === 'last' ? "AND status = ?" : "") . "
-        ORDER BY id DESC
-        LIMIT 1
-    ");
-    
+
+    $sql = 'SELECT * FROM webhook_payloads_mercadopago WHERE 1=1';
     $params = [];
-    if ($webhookId !== 'last') {
-        $params[] = (int)$webhookId;
+    $orderLimit = ' ORDER BY id DESC LIMIT 1';
+    $listMode = false;
+
+    if ($arg1 === 'payment' && $arg2 !== null && $arg2 !== '') {
+        $paymentId = preg_replace('/\D/', '', (string) $arg2);
+        $sql .= ' AND (payment_id = ? OR data_id = ? OR payload LIKE ?)';
+        $params = [$paymentId, $paymentId, '%' . $paymentId . '%'];
+        $orderLimit = ' ORDER BY id DESC LIMIT 5';
+        $listMode = true;
+        echo "🔍 Buscando webhooks com payment_id / payload contendo: {$paymentId}\n";
+    } elseif (in_array(strtolower($arg1), ['mat', 'matricula'], true) && $arg2 !== null && $arg2 !== '') {
+        $matriculaId = (int) $arg2;
+        $sql .= ' AND (external_reference LIKE ? OR external_reference LIKE ?)';
+        $params = ["MAT-{$matriculaId}-%", "MAT-{$matriculaId}"];
+        $orderLimit = ' ORDER BY id DESC LIMIT 10';
+        $listMode = true;
+        echo "🔍 Buscando webhooks da matrícula #{$matriculaId}\n";
+    } elseif ($arg1 === 'last') {
+        if ($arg2 !== null && $arg2 !== '') {
+            $sql .= ' AND status = ?';
+            $params[] = $arg2;
+        }
+    } elseif (ctype_digit((string) $arg1)) {
+        $sql .= ' AND id = ?';
+        $params[] = (int) $arg1;
+    } else {
+        echo "Uso:\n";
+        echo "  php database/show_webhook_payload.php last [erro]\n";
+        echo "  php database/show_webhook_payload.php <webhook_id>\n";
+        echo "  php database/show_webhook_payload.php payment <payment_id>\n";
+        echo "  php database/show_webhook_payload.php mat <matricula_id>\n";
+        exit(1);
     }
-    if ($filtroStatus && $webhookId === 'last') {
-        $params[] = $filtroStatus;
-    }
-    
+
+    $stmt = $db->prepare($sql . $orderLimit);
     $stmt->execute($params);
-    $webhook = $stmt->fetch(\PDO::FETCH_ASSOC);
-    
+    $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+    if ($rows === []) {
+        echo "❌ Nenhum webhook encontrado!\n";
+        echo "   Se o PIX foi em 24/05/2026, o MP pode não ter notificado este servidor.\n";
+        exit(1);
+    }
+
+    if ($listMode && count($rows) > 1) {
+        echo "\nEncontrados " . count($rows) . " registro(s):\n";
+        foreach ($rows as $i => $row) {
+            $icon = ($row['status'] ?? '') === 'sucesso' ? '✅' : '❌';
+            echo sprintf(
+                "  [%d] #%s %s | %s | payment=%s | ref=%s\n",
+                $i + 1,
+                $row['id'],
+                $row['created_at'],
+                $icon . ' ' . ($row['status'] ?? '-'),
+                $row['payment_id'] ?? $row['data_id'] ?? '-',
+                $row['external_reference'] ?? '-'
+            );
+        }
+        echo "\nExibindo o mais recente (#{$rows[0]['id']})...\n";
+    }
+
+    $webhook = $rows[0];
+
     if (!$webhook) {
         echo "❌ Webhook não encontrado!\n";
         exit(1);
