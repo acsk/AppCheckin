@@ -278,6 +278,33 @@ class PagamentoPlano
     }
 
     /**
+     * Cancela parcelas aguardando/atrasadas em aberto (troca de plano, upgrade mobile, etc.).
+     */
+    public function cancelarParcelasAbertas(
+        int $tenantId,
+        int $matriculaId,
+        string $motivo = 'Cancelado por alteração de plano'
+    ): int {
+        $stmt = $this->pdo->prepare("
+            UPDATE pagamentos_plano
+            SET status_pagamento_id = 4,
+                observacoes = CONCAT(COALESCE(observacoes, ''), ' [', :motivo, ']'),
+                updated_at = NOW()
+            WHERE tenant_id = :tenant_id
+              AND matricula_id = :matricula_id
+              AND status_pagamento_id IN (1, 3)
+              AND data_pagamento IS NULL
+        ");
+        $stmt->execute([
+            'motivo' => $motivo,
+            'tenant_id' => $tenantId,
+            'matricula_id' => $matriculaId,
+        ]);
+
+        return $stmt->rowCount();
+    }
+
+    /**
      * Atualizar status da matrícula baseado nos pagamentos
      */
     public function atualizarStatusMatricula(int $tenantId, int $matriculaId): void

@@ -1182,17 +1182,18 @@ class MercadoPagoWebhookController
             $dataVencimento = $this->calcularDataVencimentoAssinatura($matriculaId, $assinatura);
             error_log("[Webhook MP] 📅 Data de vencimento calculada: {$dataVencimento}");
             
-            // Buscar o pagamento pendente mais antigo da matrícula (status 1 = Aguardando)
+            $valorAssinatura = (float) $valor;
+
             $stmtBuscar = $this->db->prepare("
                 SELECT pp.id, pp.valor
                 FROM pagamentos_plano pp
                 WHERE pp.matricula_id = ?
                 AND pp.status_pagamento_id IN (1, 3)
                 AND pp.data_pagamento IS NULL
-                ORDER BY pp.data_vencimento ASC
+                ORDER BY ABS(pp.valor - ?) ASC, pp.data_vencimento ASC
                 LIMIT 1
             ");
-            $stmtBuscar->execute([$matriculaId]);
+            $stmtBuscar->execute([$matriculaId, $valorAssinatura]);
             $pagamentoPendente = $stmtBuscar->fetch(\PDO::FETCH_ASSOC);
 
             if (!$pagamentoPendente) {
@@ -2372,17 +2373,19 @@ class MercadoPagoWebhookController
                 }
             }
             
-            // Buscar o pagamento pendente mais antigo da matrícula
+            $valorMp = (float) ($pagamento['transaction_amount'] ?? 0);
+
+            // Parcela pendente com valor mais próximo do MP (evita baixar R$70 quando PIX foi R$120)
             $stmtBuscar = $this->db->prepare("
                 SELECT pp.id, pp.valor
                 FROM pagamentos_plano pp
                 WHERE pp.matricula_id = ?
                 AND pp.status_pagamento_id IN (1, 3)
                 AND pp.data_pagamento IS NULL
-                ORDER BY pp.data_vencimento ASC
+                ORDER BY ABS(pp.valor - ?) ASC, pp.data_vencimento ASC
                 LIMIT 1
             ");
-            $stmtBuscar->execute([$matriculaId]);
+            $stmtBuscar->execute([$matriculaId, $valorMp]);
             $pagamentoPendente = $stmtBuscar->fetch(\PDO::FETCH_ASSOC);
             
             // Buscar forma de pagamento (PIX, cartão, etc)
@@ -2453,6 +2456,7 @@ class MercadoPagoWebhookController
                 if ($proximaParcela) {
                     error_log("[Webhook MP] ✅ Próximo pagamento #{$proximaParcela['id']} gerado para {$proximaParcela['data_vencimento']} (matrícula #{$matriculaId})");
                 }
+                $pagamentoModel->atualizarStatusMatricula((int) $matricula['tenant_id'], $matriculaId);
             } catch (\Exception $e) {
                 error_log("[Webhook MP] ⚠️ Erro ao gerar próximo pagamento matrícula #{$matriculaId}: " . $e->getMessage());
             }

@@ -3,8 +3,10 @@
  * Cancela parcela em pagamentos_plano e recalcula status da matrícula.
  *
  * Uso:
- *   php jobs/cancelar_parcela_plano.php --parcela-id=484 --tenant=3 --motivo="Duplicada após troca de plano"
+ *   php jobs/cancelar_parcela_plano.php --parcela-id=484 --motivo="Duplicada após troca de plano"
  *   php jobs/cancelar_parcela_plano.php --parcela-id=484 --tenant=3 --dry-run
+ *
+ * --tenant é opcional (usa o tenant_id da própria parcela).
  */
 
 declare(strict_types=1);
@@ -13,13 +15,13 @@ require_once __DIR__ . '/../vendor/autoload.php';
 
 $options = getopt('', ['parcela-id:', 'tenant:', 'motivo:', 'dry-run', 'quiet']);
 $parcelaId = isset($options['parcela-id']) ? (int) $options['parcela-id'] : 0;
-$tenantId = isset($options['tenant']) ? (int) $options['tenant'] : 0;
+$tenantIdArg = isset($options['tenant']) ? (int) $options['tenant'] : 0;
 $motivo = isset($options['motivo']) ? trim((string) $options['motivo']) : 'Cancelado via script administrativo';
 $dryRun = isset($options['dry-run']);
 $quiet = isset($options['quiet']);
 
-if ($parcelaId <= 0 || $tenantId <= 0) {
-    fwrite(STDERR, "Uso: php jobs/cancelar_parcela_plano.php --parcela-id=N --tenant=N [--motivo=texto] [--dry-run]\n");
+if ($parcelaId <= 0) {
+    fwrite(STDERR, "Uso: php jobs/cancelar_parcela_plano.php --parcela-id=N [--tenant=N] [--motivo=texto] [--dry-run]\n");
     exit(1);
 }
 
@@ -27,22 +29,37 @@ $pdo = require __DIR__ . '/config/database.php';
 
 $out = static function (string $msg) use ($quiet): void {
     if (!$quiet) {
-        echo $msg . "\n";
+        echo $msg . PHP_EOL;
     }
 };
 
+$out('▶ cancelar_parcela_plano.php iniciado');
+
 $stmt = $pdo->prepare("
-    SELECT pp.id, pp.matricula_id, pp.valor, pp.data_vencimento, pp.status_pagamento_id, sp.nome AS status_nome
+    SELECT pp.id, pp.tenant_id, pp.matricula_id, pp.valor, pp.data_vencimento,
+           pp.status_pagamento_id, sp.nome AS status_nome
     FROM pagamentos_plano pp
     INNER JOIN status_pagamento sp ON sp.id = pp.status_pagamento_id
-    WHERE pp.id = ? AND pp.tenant_id = ?
+    WHERE pp.id = ?
+    LIMIT 1
 ");
-$stmt->execute([$parcelaId, $tenantId]);
+$stmt->execute([$parcelaId]);
 $p = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$p) {
-    fwrite(STDERR, "Parcela #{$parcelaId} não encontrada.\n");
+    fwrite(STDERR, "Parcela #{$parcelaId} não encontrada no banco.\n");
     exit(1);
+}
+
+$tenantId = $tenantIdArg > 0 ? $tenantIdArg : (int) $p['tenant_id'];
+if ($tenantId <= 0) {
+    fwrite(STDERR, "Parcela #{$parcelaId} sem tenant_id — informe --tenant=N\n");
+    exit(1);
+}
+
+if ($tenantIdArg > 0 && (int) $p['tenant_id'] !== $tenantIdArg) {
+    $out("⚠️  tenant informado ({$tenantIdArg}) difere do registro ({$p['tenant_id']}) — usando {$tenantIdArg}");
+    $tenantId = $tenantIdArg;
 }
 
 $matriculaId = (int) $p['matricula_id'];
@@ -72,10 +89,15 @@ try {
             data_pagamento = NULL,
             observacoes = CONCAT(COALESCE(observacoes, ''), ' | ', ?),
             updated_at = NOW()
-        WHERE id = ? AND tenant_id = ?
+        WHERE id = ? AND matricula_id = ?
     ");
-    $stmtUp->execute([$obs, $parcelaId, $tenantId]);
-    $out("✅ Parcela #{$parcelaId} cancelada (rows: {$stmtUp->rowCount()})");
+    $stmtUp->execute([$obs, $parcelaId, $matriculaId]);
+    $rows = $stmtUp->rowCount();
+    $out("✅ Parcela #{$parcelaId} cancelada (rows: {$rows})");
+
+    if ($rows === 0) {
+        throw new RuntimeException("UPDATE não afetou linhas — confira tenant_id={$tenantId} e id={$parcelaId}");
+    }
 
     $model = new \App\Models\PagamentoPlano($pdo);
     $model->atualizarStatusMatricula($tenantId, $matriculaId);

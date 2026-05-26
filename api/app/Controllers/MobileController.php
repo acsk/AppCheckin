@@ -6434,6 +6434,21 @@ class MobileController
                 } catch (\Exception $e) {
                     error_log("[MobileController::comprarPlano] Erro ao registrar histórico: " . $e->getMessage());
                 }
+
+                // Cancelar parcelas abertas do plano anterior (evita #484 R$70 + #575 R$120 simultâneas)
+                try {
+                    $pagamentoPlanoModel = new \App\Models\PagamentoPlano($this->db);
+                    $canceladas = $pagamentoPlanoModel->cancelarParcelasAbertas(
+                        $tenantId,
+                        $matriculaId,
+                        'Cancelado por upgrade/renovação via app'
+                    );
+                    if ($canceladas > 0) {
+                        error_log("[MobileController::comprarPlano] {$canceladas} parcela(s) aberta(s) cancelada(s) na matrícula {$matriculaId}");
+                    }
+                } catch (\Exception $e) {
+                    error_log("[MobileController::comprarPlano] Erro ao cancelar parcelas abertas: " . $e->getMessage());
+                }
             } else {
                 // Criar matrícula com status PENDENTE
                 error_log("[MobileController::comprarPlano] Preparando INSERT - tenantId={$tenantId}, alunoId={$alunoId}, planoId={$planoId}, planoCicloId=" . ($planoCicloId ?? 'null') . ", valorCompra={$valorCompra}, statusId={$statusId}, motivoId={$motivoId}");
@@ -6471,24 +6486,15 @@ class MobileController
                 error_log("[MobileController::comprarPlano] Matrícula criada ID: {$matriculaId}, Ciclo: {$cicloNome}, Valor: {$valorCompra}, Status: pendente");
             }
 
-            // Criar registro de pagamento PENDENTE em pagamentos_plano
+            // Criar registro de pagamento PENDENTE em pagamentos_plano (valor do plano atual)
             try {
                 $stmtPagamento = $this->db->prepare("
                     INSERT INTO pagamentos_plano 
                     (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento, 
                      status_pagamento_id, observacoes, criado_por, created_at, updated_at)
-                    SELECT ?, ?, ?, ?, ?, ?, 
-                           1,
-                           'Aguardando pagamento via Mercado Pago', ?, NOW(), NOW()
-                    WHERE NOT EXISTS (
-                        SELECT 1 FROM pagamentos_plano
-                        WHERE tenant_id = ?
-                          AND matricula_id = ?
-                          AND status_pagamento_id = 1
-                          AND data_pagamento IS NULL
-                    )
+                    VALUES (?, ?, ?, ?, ?, ?, 1, 'Aguardando pagamento via Mercado Pago', ?, NOW(), NOW())
                 ");
-                
+
                 $stmtPagamento->execute([
                     $tenantId,
                     $alunoId,
@@ -6497,16 +6503,10 @@ class MobileController
                     $valorCompra,
                     $dataInicio,
                     $userId,
-                    $tenantId,
-                    $matriculaId
                 ]);
-                
-                if ($stmtPagamento->rowCount() > 0) {
-                    $pagamentoId = (int) $this->db->lastInsertId();
-                    error_log("[MobileController::comprarPlano] Pagamento pendente criado ID: {$pagamentoId}");
-                } else {
-                    error_log("[MobileController::comprarPlano] Pagamento pendente já existente para matrícula {$matriculaId}, não duplicado.");
-                }
+
+                $pagamentoId = (int) $this->db->lastInsertId();
+                error_log("[MobileController::comprarPlano] Pagamento pendente criado ID: {$pagamentoId} (R$ {$valorCompra})");
                 
             } catch (\Exception $e) {
                 error_log("[MobileController::comprarPlano] Erro ao criar pagamento_plano: " . $e->getMessage());

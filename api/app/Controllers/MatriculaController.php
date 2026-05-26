@@ -1946,16 +1946,13 @@ class MatriculaController
         try {
             $db->beginTransaction();
 
-            // 1. Cancelar parcelas pendentes/aguardando do plano anterior
-            $stmtCancelarParcelas = $db->prepare("
-                UPDATE pagamentos_plano
-                SET status_pagamento_id = 4,
-                    observacoes = CONCAT(COALESCE(observacoes, ''), ' [Cancelado por alteração de plano]'),
-                    updated_at = NOW()
-                WHERE matricula_id = ? AND tenant_id = ? AND status_pagamento_id IN (1, 3)
-            ");
-            $stmtCancelarParcelas->execute([$matriculaId, $tenantId]);
-            $parcelasCanceladas = $stmtCancelarParcelas->rowCount();
+            // 1. Cancelar parcelas pendentes/atrasadas do plano anterior (inclui geradas por gerarProximo com valor antigo)
+            $pagamentoPlanoModel = new \App\Models\PagamentoPlano($db);
+            $parcelasCanceladas = $pagamentoPlanoModel->cancelarParcelasAbertas(
+                $tenantId,
+                $matriculaId,
+                'Cancelado por alteração de plano'
+            );
 
             // 2. Atualizar matrícula com novo plano (limpar campos de cancelamento anterior)
             $stmtUpdate = $db->prepare("
