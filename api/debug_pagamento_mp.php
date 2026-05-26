@@ -286,7 +286,7 @@ if ($matriculaId) {
 
     $stmtPp = $pdo->prepare("
         SELECT pp.id, pp.valor, pp.data_vencimento, pp.data_pagamento,
-               sp.codigo AS status_codigo, pp.observacoes, pp.updated_at
+               pp.status_pagamento_id, sp.nome AS status_nome, pp.observacoes, pp.updated_at
         FROM pagamentos_plano pp
         INNER JOIN status_pagamento sp ON sp.id = pp.status_pagamento_id
         WHERE pp.matricula_id = ?
@@ -304,15 +304,15 @@ if ($matriculaId) {
         $marcador = '';
         if (str_contains($obs, $paymentId) || str_contains($obs, "ID: {$paymentId}")) {
             $marcador = ' ← ESTE PAYMENT_ID';
-            $jaBaixadoComEstePayment = $pp['status_codigo'] === 'pago';
+            $jaBaixadoComEstePayment = (int) $pp['status_pagamento_id'] === 2;
         }
-        if ($pp['status_codigo'] !== 'pago' && empty($pp['data_pagamento'])) {
+        if ((int) $pp['status_pagamento_id'] !== 2 && empty($pp['data_pagamento'])) {
             $pendentes[] = $pp;
         }
         echo sprintf(
             "  #%d | %s | R$ %s | venc: %s | pago: %s%s\n",
             $pp['id'],
-            $pp['status_codigo'],
+            $pp['status_nome'],
             number_format((float) $pp['valor'], 2, ',', '.'),
             $pp['data_vencimento'],
             $pp['data_pagamento'] ?: '—',

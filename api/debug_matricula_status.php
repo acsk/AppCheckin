@@ -45,7 +45,7 @@ echo "proxima_data_vencimento: " . ($m['proxima_data_vencimento'] ?? '-') . "\n\
 echo "--- Parcelas (pagamentos_plano) ---\n";
 $stmtPp = $pdo->prepare("
     SELECT pp.id, pp.valor, pp.data_vencimento, pp.data_pagamento,
-           sp.codigo AS status, pp.observacoes,
+           sp.nome AS status, pp.status_pagamento_id, pp.observacoes,
            DATEDIFF(CURDATE(), pp.data_vencimento) AS dias_atraso
     FROM pagamentos_plano pp
     INNER JOIN status_pagamento sp ON sp.id = pp.status_pagamento_id
@@ -56,7 +56,7 @@ $stmtPp = $pdo->prepare("
 $stmtPp->execute([$matriculaId]);
 foreach ($stmtPp->fetchAll(PDO::FETCH_ASSOC) as $p) {
     $flag = '';
-    if (in_array($p['status'], ['pendente', 'atrasado'], true) && (int) $p['dias_atraso'] > 0) {
+    if (in_array((int) $p['status_pagamento_id'], [1, 3], true) && (int) $p['dias_atraso'] > 0) {
         $flag = ' ← ISSO DEIXA A MATRÍCULA VENCIDA';
     }
     echo sprintf(

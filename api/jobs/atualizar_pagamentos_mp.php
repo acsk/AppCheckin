@@ -147,7 +147,7 @@ function atualizarVigenciaMatriculaAprovada(PDO $pdo, int $matriculaId, ?string 
 function logParcelasPendentesMatricula(PDO $pdo, int $matriculaId, bool $quiet): void
 {
     $stmt = $pdo->prepare("
-        SELECT pp.id, pp.valor, pp.data_vencimento, sp.codigo AS status_codigo,
+        SELECT pp.id, pp.valor, pp.data_vencimento, sp.nome AS status_nome,
                DATEDIFF(CURDATE(), pp.data_vencimento) AS dias_atraso
         FROM pagamentos_plano pp
         INNER JOIN status_pagamento sp ON sp.id = pp.status_pagamento_id
@@ -169,7 +169,7 @@ function logParcelasPendentesMatricula(PDO $pdo, int $matriculaId, bool $quiet):
         logMsg(sprintf(
             '   → parcela #%s | %s | R$ %s | venc: %s | atraso: %s dia(s)',
             $row['id'],
-            $row['status_codigo'],
+            $row['status_nome'],
             number_format((float) $row['valor'], 2, ',', '.'),
             $row['data_vencimento'],
             $row['dias_atraso']
