@@ -144,6 +144,39 @@ function atualizarVigenciaMatriculaAprovada(PDO $pdo, int $matriculaId, ?string 
     }
 }
 
+function logParcelasPendentesMatricula(PDO $pdo, int $matriculaId, bool $quiet): void
+{
+    $stmt = $pdo->prepare("
+        SELECT pp.id, pp.valor, pp.data_vencimento, sp.codigo AS status_codigo,
+               DATEDIFF(CURDATE(), pp.data_vencimento) AS dias_atraso
+        FROM pagamentos_plano pp
+        INNER JOIN status_pagamento sp ON sp.id = pp.status_pagamento_id
+        WHERE pp.matricula_id = ?
+          AND pp.status_pagamento_id IN (1, 3)
+          AND pp.data_pagamento IS NULL
+        ORDER BY pp.data_vencimento ASC
+        LIMIT 5
+    ");
+    $stmt->execute([$matriculaId]);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    if ($rows === []) {
+        logMsg("   (sem parcelas pendentes/atrasadas em pagamentos_plano)", $quiet);
+        return;
+    }
+
+    foreach ($rows as $row) {
+        logMsg(sprintf(
+            '   → parcela #%s | %s | R$ %s | venc: %s | atraso: %s dia(s)',
+            $row['id'],
+            $row['status_codigo'],
+            number_format((float) $row['valor'], 2, ',', '.'),
+            $row['data_vencimento'],
+            $row['dias_atraso']
+        ), $quiet);
+    }
+}
+
 function sincronizarPagamentoAprovado(PDO $pdo, int $matriculaId, array $pagamento, string $externalReference, bool $quiet): void
 {
     $paymentId = (string)($pagamento['id'] ?? '');
@@ -259,9 +292,10 @@ function sincronizarPagamentoAprovado(PDO $pdo, int $matriculaId, array $pagamen
     $stmtJaBaixado->execute([$matriculaId, $patternId, $patternLegacy]);
     $pagamentoJaBaixado = $stmtJaBaixado->fetchColumn();
 
+    $obsBaixa = "Pago via Mercado Pago - ID: {$paymentId} (detectado via polling)";
+
     if ($pagamentoJaBaixado) {
         logMsg("ℹ️  Pagamento {$paymentId} já estava baixado em pagamentos_plano", $quiet);
-        atualizarVigenciaMatriculaAprovada($pdo, $matriculaId, $dateApproved, $quiet);
     } elseif ($pagamentoPlanoId) {
         $stmtBaixa = $pdo->prepare("
             UPDATE pagamentos_plano
@@ -276,24 +310,44 @@ function sincronizarPagamentoAprovado(PDO $pdo, int $matriculaId, array $pagamen
         $stmtBaixa->execute([
             $dateApproved ?: date('Y-m-d H:i:s'),
             $formaPagamentoId,
-            "Pago via Mercado Pago - ID: {$paymentId} (detectado via polling)",
+            $obsBaixa,
             $pagamentoPlanoId,
         ]);
         logMsg("✅ pagamentos_plano {$pagamentoPlanoId} baixado como pago", $quiet);
-        atualizarVigenciaMatriculaAprovada($pdo, $matriculaId, $dateApproved, $quiet);
     } else {
         logMsg("ℹ️  Nenhum pagamento_plano pendente encontrado para matrícula {$matriculaId}", $quiet);
     }
 
-    // Gerar próximo pagamento pendente para manter o ciclo de cobrança
+    $tenantIdMat = (int) $matricula['tenant_id'];
+    $pagamentoModel = new \App\Models\PagamentoPlano($pdo);
+
     try {
-        $pagamentoModel = new \App\Models\PagamentoPlano($pdo);
         $proximaParcela = $pagamentoModel->gerarProximoPagamentoAutomatico($matriculaId, $dateApproved);
         if ($proximaParcela) {
-            logMsg("✅ Próximo pagamento #{$proximaParcela['id']} gerado para {$proximaParcela['data_vencimento']} (matrícula {$matriculaId})", $quiet);
+            logMsg("✅ Próximo pagamento #{$proximaParcela['id']} para {$proximaParcela['data_vencimento']} (matrícula {$matriculaId})", $quiet);
         }
     } catch (\Exception $e) {
         logMsg("⚠️  Erro ao gerar próximo pagamento para matrícula {$matriculaId}: " . $e->getMessage(), $quiet);
+    }
+
+    // Status correto (ativa/vencida/cancelada) conforme parcelas pendentes — não forçar ativa antes disso
+    $pagamentoModel->atualizarStatusMatricula($tenantIdMat, $matriculaId);
+
+    $stmtStatusCodigo = $pdo->prepare("
+        SELECT sm.codigo
+        FROM matriculas m
+        INNER JOIN status_matricula sm ON sm.id = m.status_id
+        WHERE m.id = ?
+        LIMIT 1
+    ");
+    $stmtStatusCodigo->execute([$matriculaId]);
+    $statusCodigo = (string) ($stmtStatusCodigo->fetchColumn() ?: '');
+
+    if ($statusCodigo === 'ativa') {
+        atualizarVigenciaMatriculaAprovada($pdo, $matriculaId, $dateApproved, $quiet);
+    } else {
+        logMsg("⚠️  Matrícula {$matriculaId} permanece como '{$statusCodigo}' após sync do payment {$paymentId}", $quiet);
+        logParcelasPendentesMatricula($pdo, $matriculaId, $quiet);
     }
 
     $stmtStatusAss = $pdo->query("SELECT id FROM assinatura_status WHERE codigo IN ('paga', 'ativa') ORDER BY FIELD(codigo, 'paga', 'ativa') LIMIT 1");
