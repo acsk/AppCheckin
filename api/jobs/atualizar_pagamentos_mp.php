@@ -14,6 +14,7 @@
  *  php jobs/atualizar_pagamentos_mp.php --assinatura-id=51             (reprocessa assinatura específica)
  *  php jobs/atualizar_pagamentos_mp.php --days=7                       (últimos 7 dias)
  *  php jobs/atualizar_pagamentos_mp.php --matricula-id=58 --dry-run    (simula)
+ *  php jobs/atualizar_pagamentos_mp.php --payment-id=160879679884      (um PIX específico)
  *
  * ⚠️  IMPORTANTE: Este job depende de webhooks retornarem para atualizar o banco localmente.
  *    Se a webhook falhar, o banco permanecerá desatualizado.
@@ -24,14 +25,15 @@ require_once __DIR__ . '/../vendor/autoload.php';
 define('LOCK_FILE', '/tmp/atualizar_pagamentos_mp.lock');
 define('MAX_EXECUTION_TIME', 300);
 
-$options = getopt('', ['dry-run', 'quiet', 'tenant:','verbose','matricula-id:','assinatura-id:','days:']);
+$options = getopt('', ['dry-run', 'quiet', 'tenant:','verbose','matricula-id:','assinatura-id:','payment-id:','days:']);
 $dryRun = isset($options['dry-run']);
 $quiet = isset($options['quiet']);
 $tenantId = isset($options['tenant']) ? (int)$options['tenant'] : null;
 $verbose = isset($options['verbose']);
 $matriculaId = isset($options['matricula-id']) ? (int)$options['matricula-id'] : null;
 $assinaturaId = isset($options['assinatura-id']) ? (int)$options['assinatura-id'] : null;
-$daysBack = isset($options['days']) ? (int)$options['days'] : 0; // 0 = apenas hoje, 7 = últimos 7 dias
+$paymentIdArg = isset($options['payment-id']) ? preg_replace('/\D/', '', (string)$options['payment-id']) : '';
+$daysBack = isset($options['days']) ? (int)$options['days'] : 0; // 0 = cron padrão (2 dias), 7 = últimos 7 dias
 
 $root = dirname(__DIR__);
 $logFile = $root . '/storage/logs/atualizar_pagamentos_mp.log';
@@ -312,6 +314,140 @@ function sincronizarPagamentoAprovado(PDO $pdo, int $matriculaId, array $pagamen
     }
 }
 
+/**
+ * Sincroniza pagamentos MP de uma matrícula (pending reprocess + approved sem baixa).
+ */
+function processarMatriculaPagamentos(
+    PDO $pdo,
+    int $mId,
+    ?string $externalReference,
+    int $tenantIdAss,
+    bool $dryRun,
+    bool $quiet,
+    ?int $assinaturaIdFilter,
+    int $daysBack,
+    bool $skipDateFilterOnPayments
+): void {
+    $sqlP = "SELECT id, payment_id, status, status_detail, date_created
+             FROM pagamentos_mercadopago
+             WHERE matricula_id = ?
+             AND LOWER(status) = 'pending'";
+
+    $paramsP = [$mId];
+
+    if (!$skipDateFilterOnPayments && $daysBack === 0) {
+        $sqlP .= " AND DATE(date_created) = CURDATE()";
+    } elseif ($daysBack > 0 && !$skipDateFilterOnPayments) {
+        $sqlP .= " AND DATE(date_created) >= DATE_SUB(CURDATE(), INTERVAL ? DAY)";
+        $paramsP[] = $daysBack;
+    }
+
+    $stmtP = $pdo->prepare($sqlP);
+    $stmtP->execute($paramsP);
+    $pagamentos = $stmtP->fetchAll(PDO::FETCH_ASSOC) ?? [];
+
+    $ctx = $assinaturaIdFilter ? "assinatura {$assinaturaIdFilter}" : "matrícula {$mId}";
+    logMsg("{$ctx} — pagamentos_mercadopago pending: " . count($pagamentos), $quiet);
+
+    if (count($pagamentos) === 0 && !empty($externalReference) && $tenantIdAss > 0) {
+        logMsg("ℹ️  Sem pending local; consultando MP por external_reference {$externalReference}", $quiet);
+
+        try {
+            $pagamentoAprovado = buscarPagamentoAprovadoPorExternalReference($tenantIdAss, $externalReference);
+
+            if (!empty($pagamentoAprovado)) {
+                logMsg("✅ Approved no MP: payment {$pagamentoAprovado['id']} (matrícula {$mId})", $quiet);
+                if (!$dryRun) {
+                    sincronizarPagamentoAprovado($pdo, $mId, $pagamentoAprovado, $externalReference, $quiet);
+                } else {
+                    logMsg("[dry-run] Sincronizaria payment {$pagamentoAprovado['id']}", $quiet);
+                }
+            } else {
+                logMsg("ℹ️  Nenhum approved no MP para {$externalReference}", $quiet);
+            }
+        } catch (Throwable $mpError) {
+            logMsg("❌ Erro MP {$externalReference}: {$mpError->getMessage()}", $quiet);
+        }
+    }
+
+    $sqlAprov = "
+        SELECT pm.payment_id, pm.status, pm.status_detail, pm.transaction_amount,
+               pm.payment_method_id, pm.payment_type_id, pm.installments,
+               pm.date_approved, pm.date_created, pm.payer_email
+        FROM pagamentos_mercadopago pm
+        WHERE pm.matricula_id = ?
+          AND LOWER(pm.status) = 'approved'
+          AND NOT EXISTS (
+              SELECT 1 FROM pagamentos_plano pp
+              WHERE pp.matricula_id = pm.matricula_id
+                AND pp.status_pagamento_id = 2
+                AND (pp.observacoes LIKE CONCAT('%ID: ', pm.payment_id, '%')
+                  OR pp.observacoes LIKE CONCAT('%Payment #', pm.payment_id, '%'))
+          )
+    ";
+    $stmtAprov = $pdo->prepare($sqlAprov);
+    $stmtAprov->execute([$mId]);
+    $pagamentosAprovadosNaoSincronizados = $stmtAprov->fetchAll(PDO::FETCH_ASSOC) ?? [];
+
+    foreach ($pagamentosAprovadosNaoSincronizados as $pgAprov) {
+        logMsg("ℹ️  Approved sem baixa em pagamentos_plano: payment {$pgAprov['payment_id']} (matrícula {$mId})", $quiet);
+        if (!$dryRun) {
+            $pagamentoData = [
+                'id'                 => $pgAprov['payment_id'],
+                'status'             => 'approved',
+                'status_detail'      => $pgAprov['status_detail'],
+                'transaction_amount' => $pgAprov['transaction_amount'],
+                'payment_method_id'  => $pgAprov['payment_method_id'],
+                'payment_type_id'    => $pgAprov['payment_type_id'],
+                'installments'       => $pgAprov['installments'],
+                'date_approved'      => $pgAprov['date_approved'],
+                'date_created'       => $pgAprov['date_created'],
+                'payer'              => ['email' => $pgAprov['payer_email']],
+            ];
+            sincronizarPagamentoAprovado($pdo, $mId, $pagamentoData, $externalReference ?? '', $quiet);
+        } else {
+            logMsg("[dry-run] Sincronizaria approved {$pgAprov['payment_id']}", $quiet);
+        }
+    }
+
+    foreach ($pagamentos as $pg) {
+        $paymentId = $pg['payment_id'] ?? null;
+
+        if (empty($paymentId)) {
+            logMsg("Registro pagamentos_mercadopago #{$pg['id']} sem payment_id — pulando", $quiet);
+            continue;
+        }
+
+        $url = "https://api.appcheckin.com.br/api/webhooks/mercadopago/payment/{$paymentId}/reprocess";
+
+        if ($dryRun) {
+            logMsg("[dry-run] POST {$url} [status={$pg['status']}]", $quiet);
+            continue;
+        }
+
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+
+        $resp = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $err = curl_error($ch);
+        curl_close($ch);
+
+        if ($err) {
+            logMsg("❌ Reprocess {$paymentId}: {$err}", $quiet);
+        } elseif ($httpCode >= 200 && $httpCode <= 299) {
+            logMsg("✅ Reprocess {$paymentId} HTTP {$httpCode}", $quiet);
+        } else {
+            logMsg("⚠️  Reprocess {$paymentId} HTTP {$httpCode}: " . substr((string)$resp, 0, 500), $quiet);
+        }
+    }
+}
+
 // Lock
 if (file_exists(LOCK_FILE)) {
     $lockTime = filemtime(LOCK_FILE);
@@ -329,44 +465,107 @@ set_time_limit(MAX_EXECUTION_TIME);
 try {
     logMsg("🚀 Iniciando job: atualizar_pagamentos_mp" . ($dryRun ? ' (dry-run)' : ''), $quiet);
     
+    if ($paymentIdArg !== '') {
+        logMsg("↪️  Modo: Payment ID {$paymentIdArg}", $quiet);
+    }
     if ($matriculaId) {
-        logMsg("↪️  Modo: Reprocessar Matrícula #$matriculaId", $quiet);
+        logMsg("↪️  Modo: Matrícula #{$matriculaId} (sem filtro de data em assinaturas)", $quiet);
     }
     if ($assinaturaId) {
-        logMsg("↪️  Modo: Reprocessar Assinatura #$assinaturaId", $quiet);
+        logMsg("↪️  Modo: Assinatura #{$assinaturaId}", $quiet);
     }
     if ($daysBack > 0) {
         logMsg("↪️  Janela de tempo: últimos $daysBack dias", $quiet);
     }
 
-    // Conectar DB
     require_once __DIR__ . '/../config/database.php';
     if (!isset($pdo) || !$pdo) {
-        // config/database.php retorna PDO, capture em $pdo
         $pdo = require __DIR__ . '/../config/database.php';
     }
-    if (!isset($pdo)) throw new Exception('Erro ao conectar ao banco');
-
-    // Construir query de assinaturas com filtros flexíveis
-    $sqlAss = "SELECT id, tenant_id, matricula_id, gateway_id, gateway_assinatura_id, external_reference, criado_em FROM assinaturas WHERE 1=1";
-    $paramsAss = [];
-    
-    if ($assinaturaId) {
-        $sqlAss .= " AND id = ?";
-        $paramsAss[] = $assinaturaId;
-    } else {
-        // Se não especificou assinatura, filtrar por data (com flexibilidade)
-        if ($daysBack > 0) {
-            $sqlAss .= " AND DATE(criado_em) >= DATE_SUB(CURDATE(), INTERVAL ? DAY)";
-            $paramsAss[] = $daysBack;
-        } else {
-            // Janela padrão: últimos 2 dias (hoje + ontem) para não perder assinaturas criadas no fim do dia anterior
-            $sqlAss .= " AND DATE(criado_em) >= DATE_SUB(CURDATE(), INTERVAL 2 DAY)";
-        }
+    if (!isset($pdo)) {
+        throw new Exception('Erro ao conectar ao banco');
     }
-    
+
+    $skipDateFilter = (bool) ($matriculaId || $assinaturaId || $paymentIdArg !== '');
+
+    // Modo direto por payment_id (ex.: PIX approved sem baixa)
+    if ($paymentIdArg !== '') {
+        $stmtPay = $pdo->prepare("
+            SELECT pm.*, m.tenant_id AS matricula_tenant_id
+            FROM pagamentos_mercadopago pm
+            LEFT JOIN matriculas m ON m.id = pm.matricula_id
+            WHERE pm.payment_id = ?
+            LIMIT 1
+        ");
+        $stmtPay->execute([$paymentIdArg]);
+        $rowPay = $stmtPay->fetch(PDO::FETCH_ASSOC);
+
+        $mIdDirect = (int) ($matriculaId ?: ($rowPay['matricula_id'] ?? 0));
+        $tenantDirect = (int) ($tenantId ?: ($rowPay['tenant_id'] ?? $rowPay['matricula_tenant_id'] ?? 0));
+
+        if ($mIdDirect <= 0) {
+            throw new Exception("payment_id {$paymentIdArg} sem matricula_id — use --matricula-id=N --tenant=N");
+        }
+
+        $pagamentoSync = null;
+        $externalRef = (string) ($rowPay['external_reference'] ?? '');
+
+        if ($rowPay && strtolower((string) $rowPay['status']) === 'approved') {
+            $pagamentoSync = [
+                'id' => $paymentIdArg,
+                'status' => 'approved',
+                'status_detail' => $rowPay['status_detail'],
+                'transaction_amount' => $rowPay['transaction_amount'],
+                'payment_method_id' => $rowPay['payment_method_id'],
+                'payment_type_id' => $rowPay['payment_type_id'],
+                'installments' => $rowPay['installments'] ?? 1,
+                'date_approved' => $rowPay['date_approved'],
+                'date_created' => $rowPay['date_created'],
+                'payer' => ['email' => $rowPay['payer_email'] ?? null],
+            ];
+        } elseif ($tenantDirect > 0) {
+            logMsg("Consultando MP para payment {$paymentIdArg} (tenant {$tenantDirect})", $quiet);
+            $mp = new \App\Services\MercadoPagoService($tenantDirect);
+            $pagamentoSync = $mp->buscarPagamento($paymentIdArg);
+            $externalRef = (string) ($pagamentoSync['external_reference'] ?? $externalRef);
+        }
+
+        if (empty($pagamentoSync) || strtolower((string) ($pagamentoSync['status'] ?? '')) !== 'approved') {
+            throw new Exception("Payment {$paymentIdArg} não está approved no banco nem no MP");
+        }
+
+        if (!$dryRun) {
+            sincronizarPagamentoAprovado($pdo, $mIdDirect, $pagamentoSync, $externalRef, $quiet);
+        } else {
+            logMsg("[dry-run] Sincronizaria payment {$paymentIdArg} na matrícula {$mIdDirect}", $quiet);
+        }
+
+        if (file_exists(LOCK_FILE)) {
+            unlink(LOCK_FILE);
+        }
+        logMsg('Job finalizado (payment-id)', $quiet);
+        exit(0);
+    }
+
+    $sqlAss = "SELECT id, tenant_id, matricula_id, gateway_id, gateway_assinatura_id, external_reference, criado_em
+               FROM assinaturas WHERE 1=1";
+    $paramsAss = [];
+
+    if ($assinaturaId) {
+        $sqlAss .= ' AND id = ?';
+        $paramsAss[] = $assinaturaId;
+    } elseif ($matriculaId) {
+        $sqlAss .= ' AND matricula_id = ?';
+        $paramsAss[] = $matriculaId;
+    } elseif ($daysBack > 0) {
+        $sqlAss .= ' AND DATE(criado_em) >= DATE_SUB(CURDATE(), INTERVAL ? DAY)';
+        $paramsAss[] = $daysBack;
+    } else {
+        $sqlAss .= ' AND DATE(criado_em) >= DATE_SUB(CURDATE(), INTERVAL 2 DAY)';
+    }
+
     if ($tenantId) {
-        $sqlAss .= " AND tenant_id = ?";
+        $sqlAss .= ' AND tenant_id = ?';
         $paramsAss[] = $tenantId;
     }
 
@@ -375,143 +574,57 @@ try {
     $assinaturas = $stmt->fetchAll(PDO::FETCH_ASSOC) ?? [];
     logMsg('Assinaturas encontradas: ' . count($assinaturas), $quiet);
 
+    if ($matriculaId && count($assinaturas) === 0) {
+        logMsg("ℹ️  Nenhuma assinatura listada para matrícula {$matriculaId}; processando matrícula direto", $quiet);
+        $stmtMat = $pdo->prepare('SELECT tenant_id FROM matriculas WHERE id = ? LIMIT 1');
+        $stmtMat->execute([$matriculaId]);
+        $matRow = $stmtMat->fetch(PDO::FETCH_ASSOC);
+        $tenantMat = (int) ($tenantId ?: ($matRow['tenant_id'] ?? 0));
+
+        $stmtRef = $pdo->prepare('
+            SELECT external_reference FROM assinaturas
+            WHERE matricula_id = ? ORDER BY id DESC LIMIT 1
+        ');
+        $stmtRef->execute([$matriculaId]);
+        $externalRef = $stmtRef->fetchColumn() ?: "MAT-{$matriculaId}";
+
+        processarMatriculaPagamentos(
+            $pdo,
+            $matriculaId,
+            $externalRef ? (string) $externalRef : null,
+            $tenantMat,
+            $dryRun,
+            $quiet,
+            null,
+            $daysBack,
+            true
+        );
+    }
+
     foreach ($assinaturas as $ass) {
         $matriculaIdAss = $ass['matricula_id'] ?? null;
-        $assinaturaIdCur = $ass['id'];
+        $assinaturaIdCur = (int) $ass['id'];
         $externalReference = $ass['external_reference'] ?? null;
-        $tenantIdAss = (int)($ass['tenant_id'] ?? 0);
+        $tenantIdAss = (int) ($ass['tenant_id'] ?? 0);
 
         if (empty($matriculaIdAss) && !$matriculaId) {
             logMsg("Assinatura {$assinaturaIdCur} sem matricula_id — pulando", $quiet);
             continue;
         }
 
-        // Se foi especificada uma matrícula via CLI, usar essa
-        $mId = $matriculaId ?? $matriculaIdAss;
+        $mId = $matriculaId ?: (int) $matriculaIdAss;
 
-        // Construir query de pagamentos com filtros flexíveis
-        $sqlP = "SELECT id, payment_id, status, status_detail, date_created 
-                 FROM pagamentos_mercadopago 
-                 WHERE matricula_id = ? 
-                 AND LOWER(status) = 'pending'";
-        
-        $paramsP = [$mId];
-        
-        // Se especificou assinatura ou matrícula, não filtrar por data
-        // Senão, filtrar por data (flexível com --days)
-        if (!$assinaturaId && !$matriculaId && $daysBack == 0) {
-            $sqlP .= " AND DATE(date_created) = CURDATE()";
-        } elseif ($daysBack > 0) {
-            $sqlP .= " AND DATE(date_created) >= DATE_SUB(CURDATE(), INTERVAL ? DAY)";
-            $paramsP[] = $daysBack;
-        }
-        
-        $stmtP = $pdo->prepare($sqlP);
-        $stmtP->execute($paramsP);
-        $pagamentos = $stmtP->fetchAll(PDO::FETCH_ASSOC) ?? [];
-
-        logMsg("Assinatura {$assinaturaIdCur} (matricula {$mId}) - pagamentos pendentes: " . count($pagamentos), $quiet);
-
-        if (count($pagamentos) === 0 && !empty($externalReference) && $tenantIdAss > 0) {
-            logMsg("ℹ️  Sem espelho local em pagamentos_mercadopago para matrícula {$mId}; consultando MP por external_reference {$externalReference}", $quiet);
-
-            try {
-                $pagamentoAprovado = buscarPagamentoAprovadoPorExternalReference($tenantIdAss, $externalReference);
-
-                if (!empty($pagamentoAprovado)) {
-                    logMsg("✅ Pagamento aprovado encontrado no MP para matrícula {$mId}: payment {$pagamentoAprovado['id']}", $quiet);
-                    sincronizarPagamentoAprovado($pdo, (int)$mId, $pagamentoAprovado, $externalReference, $quiet);
-                } else {
-                    logMsg("ℹ️  Nenhum pagamento approved encontrado no MP para external_reference {$externalReference}", $quiet);
-                }
-            } catch (Throwable $mpError) {
-                logMsg("❌ Erro ao consultar MP por external_reference {$externalReference}: {$mpError->getMessage()}", $quiet);
-            }
-        }
-
-        // Verificar pagamentos approved em pagamentos_mercadopago que ainda não foram baixados em pagamentos_plano
-        $sqlAprov = "
-            SELECT pm.payment_id, pm.status, pm.status_detail, pm.transaction_amount,
-                   pm.payment_method_id, pm.payment_type_id, pm.installments,
-                   pm.date_approved, pm.date_created, pm.payer_email
-            FROM pagamentos_mercadopago pm
-            WHERE pm.matricula_id = ?
-              AND LOWER(pm.status) = 'approved'
-              AND NOT EXISTS (
-                  SELECT 1 FROM pagamentos_plano pp
-                  WHERE pp.matricula_id = pm.matricula_id
-                    AND pp.status_pagamento_id = 2
-                    AND (pp.observacoes LIKE CONCAT('%ID: ', pm.payment_id, '%')
-                      OR pp.observacoes LIKE CONCAT('%Payment #', pm.payment_id, '%'))
-              )
-        ";
-        $stmtAprov = $pdo->prepare($sqlAprov);
-        $stmtAprov->execute([$mId]);
-        $pagamentosAprovadosNaoSincronizados = $stmtAprov->fetchAll(PDO::FETCH_ASSOC) ?? [];
-
-        foreach ($pagamentosAprovadosNaoSincronizados as $pgAprov) {
-            logMsg("ℹ️  Pagamento approved não sincronizado para matrícula {$mId}: payment {$pgAprov['payment_id']}", $quiet);
-            if (!$dryRun) {
-                $pagamentoData = [
-                    'id'                 => $pgAprov['payment_id'],
-                    'status'             => 'approved',
-                    'status_detail'      => $pgAprov['status_detail'],
-                    'transaction_amount' => $pgAprov['transaction_amount'],
-                    'payment_method_id'  => $pgAprov['payment_method_id'],
-                    'payment_type_id'    => $pgAprov['payment_type_id'],
-                    'installments'       => $pgAprov['installments'],
-                    'date_approved'      => $pgAprov['date_approved'],
-                    'date_created'       => $pgAprov['date_created'],
-                    'payer'              => ['email' => $pgAprov['payer_email']],
-                ];
-                sincronizarPagamentoAprovado($pdo, (int)$mId, $pagamentoData, $externalReference ?? '', $quiet);
-            } else {
-                logMsg("[dry-run] Sincronizaria pagamento approved {$pgAprov['payment_id']} para matrícula {$mId}", $quiet);
-            }
-        }
-
-        foreach ($pagamentos as $pg) {
-            $paymentId = $pg['payment_id'] ?? null;
-            $statusText = $pg['status'] ?? 'unknown';
-            
-            if (empty($paymentId)) {
-                logMsg("Pagamento registro {$pg['id']} sem payment_id — pulando", $quiet);
-                continue;
-            }
-
-            $url = "https://api.appcheckin.com.br/api/webhooks/mercadopago/payment/{$paymentId}/reprocess";
-
-            if ($dryRun) {
-                logMsg("[dry-run] POST {$url} [status={$statusText}]", $quiet);
-                continue;
-            }
-
-            // Fazer requisição POST (sem payload) com timeout
-            $ch = curl_init($url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 30);
-            curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 10);
-            curl_setopt($ch, CURLOPT_HTTPHEADER, [
-                'Content-Type: application/json'
-            ]);
-            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-
-            $resp = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $err = curl_error($ch);
-            curl_close($ch);
-
-            if ($err) {
-                logMsg("❌ Erro ao chamar reprocess para payment {$paymentId}: {$err}", $quiet);
-            } else {
-                if ($httpCode >= 200 && $httpCode <= 299) {
-                    logMsg("✅ Reprocess payment {$paymentId} - HTTP {$httpCode} OK", $quiet);
-                } else {
-                    logMsg("⚠️  Reprocess payment {$paymentId} - HTTP {$httpCode} - resposta: " . substr($resp ?? '', 0, 500), $quiet);
-                }
-            }
-        }
+        processarMatriculaPagamentos(
+            $pdo,
+            $mId,
+            $externalReference ? (string) $externalReference : null,
+            $tenantIdAss,
+            $dryRun,
+            $quiet,
+            $assinaturaIdCur,
+            $daysBack,
+            $skipDateFilter
+        );
     }
 
     if (file_exists(LOCK_FILE)) unlink(LOCK_FILE);

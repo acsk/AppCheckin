@@ -78,16 +78,31 @@ curl -s -X POST -H "Authorization: Bearer <JWT>" \
 
 ---
 
-## Passo 4 — Corrigir baixa localmente (se matrícula já identificada)
+## Passo 4 — Corrigir baixa (job corrigido)
+
+O cron padrão só olha **assinaturas dos últimos 2 dias**. Matrícula antiga (ex. #337) **não entrava** no job mesmo com PIX approved.
 
 ```bash
-php debug_pagamento_mp.php 160879679884 --mp --tenant=N --fix
+# Um payment_id específico (recomendado para este caso)
+/opt/alt/php83/usr/bin/php jobs/atualizar_pagamentos_mp.php --payment-id=160879679884 --tenant=3
+
+# Ou pela matrícula (sem filtro de data)
+/opt/alt/php83/usr/bin/php jobs/atualizar_pagamentos_mp.php --matricula-id=337 --tenant=3
+
+# Simular antes
+/opt/alt/php83/usr/bin/php jobs/atualizar_pagamentos_mp.php --payment-id=160879679884 --tenant=3 --dry-run
 ```
 
-Ou pelo job (se souber `matricula_id`):
+Alternativa local (sem job):
 
 ```bash
-php jobs/atualizar_pagamentos_mp.php --matricula-id=<ID>
+php debug_pagamento_mp.php 160879679884 --mp --tenant=3 --fix
+```
+
+Ver log do job:
+
+```bash
+tail -50 storage/logs/atualizar_pagamentos_mp.log
 ```
 
 ---
