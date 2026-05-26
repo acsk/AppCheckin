@@ -269,19 +269,22 @@ function sincronizarPagamentoAprovado(PDO $pdo, int $matriculaId, array $pagamen
         default => 8,
     };
 
+    $valorMp = (float) ($pagamento['transaction_amount'] ?? 0);
+
     $stmtPend = $pdo->prepare("
-        SELECT id FROM pagamentos_plano
+        SELECT id, valor FROM pagamentos_plano
         WHERE matricula_id = ?
           AND status_pagamento_id IN (1, 3)
           AND data_pagamento IS NULL
-        ORDER BY data_vencimento ASC
+        ORDER BY ABS(valor - ?) ASC, data_vencimento ASC
         LIMIT 1
     ");
-    $stmtPend->execute([$matriculaId]);
-    $pagamentoPlanoId = $stmtPend->fetchColumn();
+    $stmtPend->execute([$matriculaId, $valorMp]);
+    $pendRow = $stmtPend->fetch(PDO::FETCH_ASSOC);
+    $pagamentoPlanoId = $pendRow['id'] ?? null;
 
     $stmtJaBaixado = $pdo->prepare("
-        SELECT id FROM pagamentos_plano
+        SELECT id, valor FROM pagamentos_plano
         WHERE matricula_id = ?
           AND status_pagamento_id = 2
           AND (observacoes LIKE ? OR observacoes LIKE ?)
@@ -290,12 +293,25 @@ function sincronizarPagamentoAprovado(PDO $pdo, int $matriculaId, array $pagamen
     $patternId = "%ID: {$paymentId}%";
     $patternLegacy = "%Payment #{$paymentId}%";
     $stmtJaBaixado->execute([$matriculaId, $patternId, $patternLegacy]);
-    $pagamentoJaBaixado = $stmtJaBaixado->fetchColumn();
+    $jaBaixadoRow = $stmtJaBaixado->fetch(PDO::FETCH_ASSOC);
+    $pagamentoJaBaixado = $jaBaixadoRow['id'] ?? null;
 
     $obsBaixa = "Pago via Mercado Pago - ID: {$paymentId} (detectado via polling)";
 
     if ($pagamentoJaBaixado) {
-        logMsg("ℹ️  Pagamento {$paymentId} já estava baixado em pagamentos_plano", $quiet);
+        $valorJaBaixado = (float) ($jaBaixadoRow['valor'] ?? 0);
+        $parcelaCorretaPendente = $pendRow && abs((float) $pendRow['valor'] - $valorMp) < abs($valorJaBaixado - $valorMp);
+        if ($parcelaCorretaPendente && (int) $pendRow['id'] !== (int) $pagamentoJaBaixado) {
+            logMsg(
+                "⚠️  Payment {$paymentId} está na parcela #{$pagamentoJaBaixado} (R$ {$valorJaBaixado}) "
+                . "mas parcela #{$pendRow['id']} (R$ {$pendRow['valor']}) combina melhor com o valor MP — "
+                . "use: php jobs/corrigir_baixa_parcela_mp.php --parcela-id={$pendRow['id']} --payment-id={$paymentId} "
+                . "--tenant={$matricula['tenant_id']} --reverter-parcela-errada={$pagamentoJaBaixado}",
+                $quiet
+            );
+        } else {
+            logMsg("ℹ️  Pagamento {$paymentId} já estava baixado em pagamentos_plano (#{$pagamentoJaBaixado})", $quiet);
+        }
     } elseif ($pagamentoPlanoId) {
         $stmtBaixa = $pdo->prepare("
             UPDATE pagamentos_plano
