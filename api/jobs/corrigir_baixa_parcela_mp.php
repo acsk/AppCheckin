@@ -6,17 +6,28 @@
  *   php jobs/corrigir_baixa_parcela_mp.php --parcela-id=575 --payment-id=160879679884 --tenant=3
  *   php jobs/corrigir_baixa_parcela_mp.php --parcela-id=575 --payment-id=160879679884 --tenant=3 --dry-run
  *   php jobs/corrigir_baixa_parcela_mp.php ... --reverter-parcela-errada=484
+ *   php jobs/corrigir_baixa_parcela_mp.php ... --cancelar-parcela-errada=484
+ *     (use cancelar se a parcela errada é duplicata — reverter deixa R$ 70 em aberto e matrícula vencida)
  */
 
 declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-$options = getopt('', ['parcela-id:', 'payment-id:', 'tenant:', 'reverter-parcela-errada:', 'dry-run', 'quiet']);
+$options = getopt('', [
+    'parcela-id:',
+    'payment-id:',
+    'tenant:',
+    'reverter-parcela-errada:',
+    'cancelar-parcela-errada:',
+    'dry-run',
+    'quiet',
+]);
 $parcelaId = isset($options['parcela-id']) ? (int) $options['parcela-id'] : 0;
 $paymentId = isset($options['payment-id']) ? preg_replace('/\D/', '', (string) $options['payment-id']) : '';
 $tenantId = isset($options['tenant']) ? (int) $options['tenant'] : 0;
 $reverterParcelaId = isset($options['reverter-parcela-errada']) ? (int) $options['reverter-parcela-errada'] : 0;
+$cancelarParcelaId = isset($options['cancelar-parcela-errada']) ? (int) $options['cancelar-parcela-errada'] : 0;
 $dryRun = isset($options['dry-run']);
 $quiet = isset($options['quiet']);
 
@@ -85,7 +96,10 @@ $obs = "Pago via Mercado Pago - ID: {$paymentId} (correção parcela #{$parcelaI
 if ($dryRun) {
     out("[dry-run] Baixaria parcela #{$parcelaId}", $quiet);
     if ($reverterParcelaId > 0) {
-        out("[dry-run] Reverteria parcela #{$reverterParcelaId} para atrasado sem data_pagamento", $quiet);
+        out("[dry-run] Reverteria parcela #{$reverterParcelaId} para atrasado", $quiet);
+    }
+    if ($cancelarParcelaId > 0) {
+        out("[dry-run] Cancelaria parcela #{$cancelarParcelaId}", $quiet);
     }
     out("[dry-run] Chamaria atualizarStatusMatricula({$tenantId}, {$matriculaId})", $quiet);
     exit(0);
@@ -94,7 +108,19 @@ if ($dryRun) {
 $pdo->beginTransaction();
 
 try {
-    if ($reverterParcelaId > 0) {
+    if ($cancelarParcelaId > 0) {
+        $stmtCan = $pdo->prepare("
+            UPDATE pagamentos_plano
+            SET status_pagamento_id = 4,
+                data_pagamento = NULL,
+                observacoes = CONCAT(COALESCE(observacoes, ''), ' [Cancelada: MP {$paymentId} realocado para #{$parcelaId}]'),
+                updated_at = NOW()
+            WHERE id = ? AND matricula_id = ? AND tenant_id = ?
+              AND status_pagamento_id IN (1, 3)
+        ");
+        $stmtCan->execute([$cancelarParcelaId, $matriculaId, $tenantId]);
+        out("🚫 Parcela #{$cancelarParcelaId} cancelada (rows: {$stmtCan->rowCount()})", $quiet);
+    } elseif ($reverterParcelaId > 0) {
         $stmtRev = $pdo->prepare("
             UPDATE pagamentos_plano
             SET status_pagamento_id = 3,
@@ -105,6 +131,7 @@ try {
         ");
         $stmtRev->execute([$reverterParcelaId, $matriculaId, $tenantId]);
         out("↩️  Parcela #{$reverterParcelaId} revertida para atrasado (rows: {$stmtRev->rowCount()})", $quiet);
+        out("⚠️  Se essa parcela não era devida, cancele com: php jobs/cancelar_parcela_plano.php --parcela-id={$reverterParcelaId} --tenant={$tenantId}", $quiet);
     }
 
     $stmtBaixa = $pdo->prepare("
@@ -131,6 +158,20 @@ try {
     $stmtSt->execute([$matriculaId]);
     $status = $stmtSt->fetchColumn();
     out("📌 Status matrícula após correção: {$status}", $quiet);
+
+    if ($status === 'vencida') {
+        $stmtPend = $pdo->prepare("
+            SELECT pp.id, sp.nome, pp.valor, pp.data_vencimento,
+                   DATEDIFF(CURDATE(), pp.data_vencimento) AS dias_atraso
+            FROM pagamentos_plano pp
+            INNER JOIN status_pagamento sp ON sp.id = pp.status_pagamento_id
+            WHERE pp.matricula_id = ? AND pp.status_pagamento_id IN (1, 3)
+        ");
+        $stmtPend->execute([$matriculaId]);
+        foreach ($stmtPend->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            out("   → aberta #{$row['id']} | {$row['nome']} | R$ {$row['valor']} | venc {$row['data_vencimento']} | atraso {$row['dias_atraso']}d", $quiet);
+        }
+    }
 
     $pdo->commit();
     out('Concluído.', $quiet);
