@@ -4,6 +4,7 @@ namespace App\Services\Mobile;
 
 use App\Repositories\MatriculaRepository;
 use App\Services\MercadoPagoService;
+use App\Services\PagamentoPlanoService;
 use App\Support\MetodoPagamentoResolver;
 use Illuminate\Support\Facades\DB;
 
@@ -11,6 +12,7 @@ class MobilePagamentoService
 {
     public function __construct(
         private readonly MatriculaRepository $matriculas,
+        private readonly PagamentoPlanoService $pagamentosPlano,
     ) {}
 
     /**
@@ -80,6 +82,17 @@ class MobilePagamentoService
                     ],
                 ];
             }
+
+            $dataVencParcela = $matricula['proxima_data_vencimento'] ?? date('Y-m-d');
+            $this->pagamentosPlano->garantirParcelaPendenteUnica(
+                $tenantId,
+                (int) $matricula['aluno_id'],
+                $matriculaId,
+                (int) $matricula['plano_id'],
+                (float) $matricula['valor'],
+                $dataVencParcela,
+                $userId
+            );
 
             $academiaNome = DB::table('tenants')->where('id', $tenantId)->value('nome') ?? 'Academia';
 

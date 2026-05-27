@@ -305,6 +305,60 @@ class PagamentoPlano
     }
 
     /**
+     * Uma única parcela pendente com o valor atual (evita baixa MP na parcela antiga).
+     */
+    public function garantirParcelaPendenteUnica(
+        int $tenantId,
+        int $alunoId,
+        int $matriculaId,
+        int $planoId,
+        float $valor,
+        string $dataVencimento,
+        int $criadoPor,
+        string $observacoes = 'Aguardando pagamento via Mercado Pago'
+    ): int {
+        $this->cancelarParcelasAbertas($tenantId, $matriculaId, 'Substituída por nova cobrança');
+
+        $stmt = $this->pdo->prepare("
+            SELECT id FROM pagamentos_plano
+            WHERE tenant_id = :tenant_id AND matricula_id = :matricula_id
+              AND status_pagamento_id IN (1, 3) AND data_pagamento IS NULL
+              AND valor = :valor
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+        $stmt->execute([
+            'tenant_id' => $tenantId,
+            'matricula_id' => $matriculaId,
+            'valor' => $valor,
+        ]);
+        $existente = $stmt->fetchColumn();
+        if ($existente) {
+            return (int) $existente;
+        }
+
+        $stmtInsert = $this->pdo->prepare("
+            INSERT INTO pagamentos_plano
+            (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento,
+             status_pagamento_id, observacoes, criado_por, created_at, updated_at)
+            VALUES (:tenant_id, :aluno_id, :matricula_id, :plano_id, :valor, :data_vencimento,
+                    1, :observacoes, :criado_por, NOW(), NOW())
+        ");
+        $stmtInsert->execute([
+            'tenant_id' => $tenantId,
+            'aluno_id' => $alunoId,
+            'matricula_id' => $matriculaId,
+            'plano_id' => $planoId,
+            'valor' => $valor,
+            'data_vencimento' => $dataVencimento,
+            'observacoes' => $observacoes,
+            'criado_por' => $criadoPor,
+        ]);
+
+        return (int) $this->pdo->lastInsertId();
+    }
+
+    /**
      * Atualizar status da matrícula baseado nos pagamentos
      */
     public function atualizarStatusMatricula(int $tenantId, int $matriculaId): void

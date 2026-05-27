@@ -6,9 +6,11 @@ use App\Repositories\AlunoRepository;
 use App\Repositories\MatriculaRepository;
 use App\Repositories\UsuarioRepository;
 use App\Services\MercadoPagoService;
+use App\Services\PagamentoPlanoService;
 use App\Support\MetodoPagamentoResolver;
 use DateTime;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class MobileCompraPlanoService
 {
@@ -16,6 +18,7 @@ class MobileCompraPlanoService
         private readonly UsuarioRepository $usuarios,
         private readonly AlunoRepository $alunos,
         private readonly MatriculaRepository $matriculas,
+        private readonly PagamentoPlanoService $pagamentosPlano,
     ) {}
 
     /**
@@ -172,43 +175,131 @@ class MobileCompraPlanoService
             }
             $proximaDataVencimento = clone $dataVencimento;
 
-            $statusPendenteId = DB::table('status_matricula')->where('codigo', 'pendente')->value('id') ?? 5;
-            $motivoId = DB::table('motivo_matricula')->where('codigo', 'nova')->value('id') ?? 1;
+            $statusPendenteId = (int) (DB::table('status_matricula')->where('codigo', 'pendente')->value('id') ?? 5);
             $tipoCobrancaMatricula = $isRecorrente ? 'recorrente' : 'avulso';
 
-            $matriculaId = DB::table('matriculas')->insertGetId([
-                'tenant_id' => $tenantId,
-                'aluno_id' => $alunoId,
-                'plano_id' => $planoId,
-                'plano_ciclo_id' => $planoCicloId,
-                'tipo_cobranca' => $tipoCobrancaMatricula,
-                'data_matricula' => $dataInicio,
-                'data_inicio' => $dataInicio,
-                'data_vencimento' => $dataVencimento->format('Y-m-d'),
-                'valor' => $valorCompra,
-                'status_id' => $statusPendenteId,
-                'motivo_id' => $motivoId,
-                'dia_vencimento' => $diaVencimento,
-                'periodo_teste' => 0,
-                'proxima_data_vencimento' => $proximaDataVencimento->format('Y-m-d'),
-                'criado_por' => $userId,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+            $matriculaExistente = DB::table('matriculas as m')
+                ->join('planos as p', 'p.id', '=', 'm.plano_id')
+                ->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+                ->where('m.aluno_id', $alunoId)
+                ->where('m.tenant_id', $tenantId)
+                ->where('p.modalidade_id', $modalidadeId)
+                ->orderByDesc('m.updated_at')
+                ->orderByDesc('m.id')
+                ->first([
+                    'm.id', 'm.plano_id', 'm.plano_ciclo_id', 'm.valor',
+                    'm.data_inicio', 'm.data_vencimento', 'm.proxima_data_vencimento',
+                    'sm.codigo as status_codigo',
+                ]);
 
-            DB::insert("
-                INSERT INTO pagamentos_plano
-                (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento,
-                 status_pagamento_id, observacoes, criado_por, created_at, updated_at)
-                SELECT ?, ?, ?, ?, ?, ?, 1, 'Aguardando pagamento via Mercado Pago', ?, NOW(), NOW()
-                WHERE NOT EXISTS (
-                    SELECT 1 FROM pagamentos_plano
-                    WHERE tenant_id = ? AND matricula_id = ? AND status_pagamento_id = 1 AND data_pagamento IS NULL
-                )
-            ", [
-                $tenantId, $alunoId, $matriculaId, $planoId, $valorCompra, $dataInicio, $userId,
-                $tenantId, $matriculaId,
-            ]);
+            $reutilizandoMatricula = false;
+            $planoAnteriorId = null;
+            $motivoCodigo = 'nova';
+
+            if ($matriculaExistente) {
+                $matriculaExistente = (array) $matriculaExistente;
+                $vencimento = $matriculaExistente['proxima_data_vencimento'] ?? $matriculaExistente['data_vencimento'];
+                $vencidaPorData = $vencimento && $vencimento < date('Y-m-d');
+                $statusCodigo = $matriculaExistente['status_codigo'];
+
+                if ($vencidaPorData && $statusCodigo !== 'vencida') {
+                    $statusVencidaId = DB::table('status_matricula')->where('codigo', 'vencida')->value('id');
+                    if ($statusVencidaId) {
+                        DB::table('matriculas')->where('id', $matriculaExistente['id'])->update([
+                            'status_id' => $statusVencidaId,
+                            'updated_at' => now(),
+                        ]);
+                        $statusCodigo = 'vencida';
+                    }
+                }
+
+                if (in_array($statusCodigo, ['vencida', 'cancelada'], true) || $vencidaPorData) {
+                    $reutilizandoMatricula = true;
+                    $planoAnteriorId = (int) $matriculaExistente['plano_id'];
+                    $motivoCodigo = $planoAnteriorId === $planoId
+                        ? 'renovacao'
+                        : ($valorCompra >= (float) $matriculaExistente['valor'] ? 'upgrade' : 'downgrade');
+                }
+            }
+
+            $motivoId = (int) (DB::table('motivo_matricula')->where('codigo', $motivoCodigo)->value('id') ?? 1);
+
+            if ($reutilizandoMatricula && $matriculaExistente) {
+                $matriculaId = (int) $matriculaExistente['id'];
+                Log::info("comprarPlano v2: reutilizando matrícula vencida #{$matriculaId}");
+
+                DB::table('matriculas')->where('id', $matriculaId)->where('tenant_id', $tenantId)->update([
+                    'plano_id' => $planoId,
+                    'plano_ciclo_id' => $planoCicloId,
+                    'tipo_cobranca' => $tipoCobrancaMatricula,
+                    'valor' => $valorCompra,
+                    'status_id' => $statusPendenteId,
+                    'motivo_id' => $motivoId,
+                    'plano_anterior_id' => $planoAnteriorId,
+                    'data_inicio' => $dataInicio,
+                    'data_vencimento' => $dataVencimento->format('Y-m-d'),
+                    'proxima_data_vencimento' => $proximaDataVencimento->format('Y-m-d'),
+                    'dia_vencimento' => $diaVencimento,
+                    'criado_por' => $userId,
+                    'updated_at' => now(),
+                ]);
+
+                try {
+                    DB::table('historico_planos')->insert([
+                        'usuario_id' => $userId,
+                        'plano_anterior_id' => $planoAnteriorId,
+                        'plano_novo_id' => $planoId,
+                        'data_inicio' => $dataInicio,
+                        'data_vencimento' => $dataVencimento->format('Y-m-d'),
+                        'valor_pago' => $valorCompra,
+                        'motivo' => $motivoCodigo,
+                        'observacoes' => 'Atualização de matrícula vencida via app (api v2)',
+                        'criado_por' => $userId,
+                        'created_at' => now(),
+                    ]);
+                } catch (\Throwable $e) {
+                    Log::warning('comprarPlano v2: historico_planos: '.$e->getMessage());
+                }
+
+                $n = $this->pagamentosPlano->cancelarParcelasAbertas(
+                    $tenantId,
+                    $matriculaId,
+                    'Cancelado por upgrade/renovação via app'
+                );
+                if ($n > 0) {
+                    Log::info("comprarPlano v2: {$n} parcela(s) cancelada(s) na matrícula {$matriculaId}");
+                }
+            } else {
+                $matriculaId = (int) DB::table('matriculas')->insertGetId([
+                    'tenant_id' => $tenantId,
+                    'aluno_id' => $alunoId,
+                    'plano_id' => $planoId,
+                    'plano_ciclo_id' => $planoCicloId,
+                    'tipo_cobranca' => $tipoCobrancaMatricula,
+                    'data_matricula' => $dataInicio,
+                    'data_inicio' => $dataInicio,
+                    'data_vencimento' => $dataVencimento->format('Y-m-d'),
+                    'valor' => $valorCompra,
+                    'status_id' => $statusPendenteId,
+                    'motivo_id' => $motivoId,
+                    'dia_vencimento' => $diaVencimento,
+                    'periodo_teste' => 0,
+                    'proxima_data_vencimento' => $proximaDataVencimento->format('Y-m-d'),
+                    'criado_por' => $userId,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+
+            $this->pagamentosPlano->garantirParcelaPendenteUnica(
+                $tenantId,
+                $alunoId,
+                $matriculaId,
+                $planoId,
+                $valorCompra,
+                $dataInicio,
+                $userId
+            );
 
             $academiaNome = DB::table('tenants')->where('id', $tenantId)->value('nome') ?? 'Academia';
             $descricaoCompra = $planoCicloId
@@ -352,6 +443,18 @@ class MobileCompraPlanoService
         int $alunoId,
     ): array {
         $matriculaId = (int) $pendente['id'];
+        $valorPendente = (float) $pendente['valor'];
+
+        $this->pagamentosPlano->garantirParcelaPendenteUnica(
+            $tenantId,
+            $alunoId,
+            $matriculaId,
+            (int) $pendente['plano_id'],
+            $valorPendente,
+            $pendente['data_inicio'] ?? date('Y-m-d'),
+            $userId
+        );
+
         $assinaturaRow = DB::table('assinaturas')
             ->where('matricula_id', $matriculaId)
             ->where('tenant_id', $tenantId)

@@ -6435,20 +6435,6 @@ class MobileController
                     error_log("[MobileController::comprarPlano] Erro ao registrar histórico: " . $e->getMessage());
                 }
 
-                // Cancelar parcelas abertas do plano anterior (evita #484 R$70 + #575 R$120 simultâneas)
-                try {
-                    $pagamentoPlanoModel = new \App\Models\PagamentoPlano($this->db);
-                    $canceladas = $pagamentoPlanoModel->cancelarParcelasAbertas(
-                        $tenantId,
-                        $matriculaId,
-                        'Cancelado por upgrade/renovação via app'
-                    );
-                    if ($canceladas > 0) {
-                        error_log("[MobileController::comprarPlano] {$canceladas} parcela(s) aberta(s) cancelada(s) na matrícula {$matriculaId}");
-                    }
-                } catch (\Exception $e) {
-                    error_log("[MobileController::comprarPlano] Erro ao cancelar parcelas abertas: " . $e->getMessage());
-                }
             } else {
                 // Criar matrícula com status PENDENTE
                 error_log("[MobileController::comprarPlano] Preparando INSERT - tenantId={$tenantId}, alunoId={$alunoId}, planoId={$planoId}, planoCicloId=" . ($planoCicloId ?? 'null') . ", valorCompra={$valorCompra}, statusId={$statusId}, motivoId={$motivoId}");
@@ -6486,31 +6472,21 @@ class MobileController
                 error_log("[MobileController::comprarPlano] Matrícula criada ID: {$matriculaId}, Ciclo: {$cicloNome}, Valor: {$valorCompra}, Status: pendente");
             }
 
-            // Criar registro de pagamento PENDENTE em pagamentos_plano (valor do plano atual)
+            // Uma única parcela pendente com valor atual (evita baixa na parcela errada)
             try {
-                $stmtPagamento = $this->db->prepare("
-                    INSERT INTO pagamentos_plano 
-                    (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento, 
-                     status_pagamento_id, observacoes, criado_por, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, 1, 'Aguardando pagamento via Mercado Pago', ?, NOW(), NOW())
-                ");
-
-                $stmtPagamento->execute([
+                $pagamentoPlanoModel = new \App\Models\PagamentoPlano($this->db);
+                $pagamentoId = $pagamentoPlanoModel->garantirParcelaPendenteUnica(
                     $tenantId,
                     $alunoId,
                     $matriculaId,
                     $planoId,
                     $valorCompra,
                     $dataInicio,
-                    $userId,
-                ]);
-
-                $pagamentoId = (int) $this->db->lastInsertId();
-                error_log("[MobileController::comprarPlano] Pagamento pendente criado ID: {$pagamentoId} (R$ {$valorCompra})");
-                
+                    $userId
+                );
+                error_log("[MobileController::comprarPlano] Parcela pendente ID: {$pagamentoId} (R$ {$valorCompra})");
             } catch (\Exception $e) {
-                error_log("[MobileController::comprarPlano] Erro ao criar pagamento_plano: " . $e->getMessage());
-                // Continua mesmo se falhar (webhook pode criar depois)
+                error_log("[MobileController::comprarPlano] Erro ao garantir pagamento_plano: " . $e->getMessage());
             }
 
             // Gerar link de pagamento com Mercado Pago
@@ -7210,6 +7186,25 @@ class MobileController
             $stmtTenant->execute([$tenantId]);
             $tenantData = $stmtTenant->fetch(\PDO::FETCH_ASSOC);
             $academiaNome = $tenantData['nome'] ?? 'Academia';
+
+            try {
+                $pagamentoPlanoModel = new \App\Models\PagamentoPlano($this->db);
+                $stmtPlano = $this->db->prepare("SELECT plano_id FROM matriculas WHERE id = ? AND tenant_id = ?");
+                $stmtPlano->execute([$matriculaId, $tenantId]);
+                $planoIdPix = (int) ($stmtPlano->fetchColumn() ?: 0);
+                $dataVencParcela = $matricula['proxima_data_vencimento'] ?? date('Y-m-d');
+                $pagamentoPlanoModel->garantirParcelaPendenteUnica(
+                    $tenantId,
+                    (int) $matricula['aluno_id'],
+                    $matriculaId,
+                    $planoIdPix,
+                    (float) $matricula['valor'],
+                    $dataVencParcela,
+                    $userId
+                );
+            } catch (\Exception $e) {
+                error_log("[MobileController::gerarPagamentoPix] Erro ao garantir parcela: " . $e->getMessage());
+            }
 
             $dadosPagamento = [
                 'tenant_id' => $tenantId,
