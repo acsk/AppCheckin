@@ -558,7 +558,7 @@ try {
 
     $skipDateFilter = (bool) ($matriculaId || $assinaturaId || $paymentIdArg !== '');
 
-    // Modo direto por payment_id (ex.: PIX approved sem baixa)
+    // Modo direto por payment_id (ex.: PIX approved sem baixa e sem espelho local)
     if ($paymentIdArg !== '') {
         $stmtPay = $pdo->prepare("
             SELECT pm.*, m.tenant_id AS matricula_tenant_id
@@ -568,14 +568,10 @@ try {
             LIMIT 1
         ");
         $stmtPay->execute([$paymentIdArg]);
-        $rowPay = $stmtPay->fetch(PDO::FETCH_ASSOC);
+        $rowPay = $stmtPay->fetch(PDO::FETCH_ASSOC) ?: null;
 
         $mIdDirect = (int) ($matriculaId ?: ($rowPay['matricula_id'] ?? 0));
         $tenantDirect = (int) ($tenantId ?: ($rowPay['tenant_id'] ?? $rowPay['matricula_tenant_id'] ?? 0));
-
-        if ($mIdDirect <= 0) {
-            throw new Exception("payment_id {$paymentIdArg} sem matricula_id — use --matricula-id=N --tenant=N");
-        }
 
         $pagamentoSync = null;
         $externalRef = (string) ($rowPay['external_reference'] ?? '');
@@ -592,12 +588,30 @@ try {
                 'date_approved' => $rowPay['date_approved'],
                 'date_created' => $rowPay['date_created'],
                 'payer' => ['email' => $rowPay['payer_email'] ?? null],
+                'metadata' => [],
             ];
         } elseif ($tenantDirect > 0) {
             logMsg("Consultando MP para payment {$paymentIdArg} (tenant {$tenantDirect})", $quiet);
             $mp = new \App\Services\MercadoPagoService($tenantDirect);
             $pagamentoSync = $mp->buscarPagamento($paymentIdArg);
             $externalRef = (string) ($pagamentoSync['external_reference'] ?? $externalRef);
+        }
+
+        if ($mIdDirect <= 0 && is_array($pagamentoSync)) {
+            $meta = is_array($pagamentoSync['metadata'] ?? null) ? $pagamentoSync['metadata'] : [];
+            $mIdDirect = (int) ($meta['matricula_id'] ?? 0);
+            if ($mIdDirect <= 0 && preg_match('/MAT-(\d+)-/', $externalRef, $matMatch)) {
+                $mIdDirect = (int) $matMatch[1];
+            }
+            if ($mIdDirect > 0) {
+                logMsg("Matrícula #{$mIdDirect} identificada via MP (metadata/external_reference)", $quiet);
+            }
+        }
+
+        if ($mIdDirect <= 0) {
+            throw new Exception(
+                "payment_id {$paymentIdArg} sem matricula_id local — informe --tenant=N (resolve via MP) ou --matricula-id=N"
+            );
         }
 
         if (empty($pagamentoSync) || strtolower((string) ($pagamentoSync['status'] ?? '')) !== 'approved') {
