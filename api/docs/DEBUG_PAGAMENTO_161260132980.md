@@ -7,7 +7,7 @@
 **Método:** pix  
 **Criado:** 27/05/2026, 16:36:56  
 
-Mesma classe de problema do caso [#235 / payment 160879679884](DEBUG_PAGAMENTO_160879679884.md): parcelas duplicadas ou baixa na parcela errada → matrícula continua **vencida** mesmo com PIX pago.
+**Diagnóstico 27/05 (prod):** webhook **não chegou** (sem `pagamentos_mercadopago`, sem webhook salvo). Parcela **#585 R$ 70** correta e **única** pendente — falta só **baixar** e ativar matrícula. Diferente do [#235](DEBUG_PAGAMENTO_160879679884.md) (baixa na parcela errada).
 
 ---
 

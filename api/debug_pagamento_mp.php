@@ -138,15 +138,15 @@ $webhooks = [];
 try {
     $check = $pdo->query("SHOW TABLES LIKE 'webhook_payloads_mercadopago'");
     if ($check->rowCount() > 0) {
-        $stmtWh = $pdo->prepare("
-            SELECT id, tipo, payment_id, external_reference, status,
-                   erro_processamento, created_at, processed_at
+        $cols = ['id', 'tipo', 'payment_id', 'external_reference', 'status', 'erro_processamento', 'created_at', 'updated_at'];
+        $stmtWh = $pdo->prepare('
+            SELECT ' . implode(', ', $cols) . '
             FROM webhook_payloads_mercadopago
             WHERE payment_id = ?
                OR payload LIKE ?
             ORDER BY created_at DESC
             LIMIT 10
-        ");
+        ');
         $stmtWh->execute([$paymentId, '%' . $paymentId . '%']);
         $webhooks = $stmtWh->fetchAll(PDO::FETCH_ASSOC);
     }
@@ -375,10 +375,11 @@ echo "       \"https://api.appcheckin.com.br/api/webhooks/mercadopago/payment/{$
 echo "  3. Reprocessar via API (após corrigir causa):\n";
 echo "     curl -X POST -H \"Authorization: Bearer <JWT>\" \\\n";
 echo "       \"https://api.appcheckin.com.br/api/webhooks/mercadopago/payment/{$paymentId}/reprocess\"\n\n";
-echo "  4. Ou sincronizar localmente (se matrícula conhecida):\n";
-echo "     php debug_pagamento_mp.php {$paymentId} --fix\n";
+echo "  4. Sincronizar baixa (recomendado quando MP approved e parcela pendente):\n";
+echo "     php jobs/atualizar_pagamentos_mp.php --payment-id={$paymentId} --tenant=3\n";
+echo "     php debug_pagamento_mp.php {$paymentId} --mp --tenant=3 --fix\n";
 if ($matriculaId) {
-    echo "     php jobs/atualizar_pagamentos_mp.php --matricula-id={$matriculaId}\n";
+    echo "     php jobs/atualizar_pagamentos_mp.php --matricula-id={$matriculaId} --tenant=3\n";
 }
 
 // ─── --fix ────────────────────────────────────────────────────────────────
@@ -512,12 +513,14 @@ function executarFixBaixa(
         return;
     }
 
+    $valorMp = (float) ($pagamento['transaction_amount'] ?? 0);
     $stmtPend = $pdo->prepare("
         SELECT id FROM pagamentos_plano
         WHERE matricula_id = ? AND status_pagamento_id IN (1, 3) AND data_pagamento IS NULL
-        ORDER BY data_vencimento ASC LIMIT 1
+        ORDER BY ABS(valor - ?) ASC, data_vencimento ASC
+        LIMIT 1
     ");
-    $stmtPend->execute([$matriculaId]);
+    $stmtPend->execute([$matriculaId, $valorMp]);
     $parcelaId = $stmtPend->fetchColumn();
 
     $paymentType = strtolower((string) ($pagamento['payment_type_id'] ?? $pagamento['payment_method_id'] ?? 'pix'));
@@ -557,11 +560,65 @@ function executarFixBaixa(
         echo '  → pagamentos_plano novo registro pago #' . $pdo->lastInsertId() . "\n";
     }
 
-    $stmtStatusAtiva = $pdo->query("SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1");
-    $statusAtivaId = (int) ($stmtStatusAtiva->fetchColumn() ?: 0);
-    if ($statusAtivaId > 0) {
-        $pdo->prepare('UPDATE matriculas SET status_id = ?, updated_at = NOW() WHERE id = ? AND status_id != ?')
-            ->execute([$statusAtivaId, $matriculaId, $statusAtivaId]);
+    $tenantIdMat = (int) $matricula['tenant_id'];
+    $pagamentoModel = new \App\Models\PagamentoPlano($pdo);
+    try {
+        $proxima = $pagamentoModel->gerarProximoPagamentoAutomatico($matriculaId, $dateApproved);
+        if ($proxima) {
+            echo "  → próxima parcela #{$proxima['id']} venc {$proxima['data_vencimento']}\n";
+        }
+    } catch (Throwable $e) {
+        echo "  ⚠️  gerarProximo: {$e->getMessage()}\n";
+    }
+
+    $pagamentoModel->atualizarStatusMatricula($tenantIdMat, $matriculaId);
+
+    $stmtStatusCodigo = $pdo->prepare("
+        SELECT sm.codigo FROM matriculas m
+        INNER JOIN status_matricula sm ON sm.id = m.status_id
+        WHERE m.id = ? LIMIT 1
+    ");
+    $stmtStatusCodigo->execute([$matriculaId]);
+    $statusCodigo = (string) ($stmtStatusCodigo->fetchColumn() ?: '');
+
+    if ($statusCodigo === 'ativa') {
+        $stmtMat = $pdo->prepare("
+            SELECT m.data_inicio, m.data_vencimento, m.proxima_data_vencimento, p.duracao_dias, pc.meses
+            FROM matriculas m
+            INNER JOIN planos p ON p.id = m.plano_id
+            LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+            WHERE m.id = ? LIMIT 1
+        ");
+        $stmtMat->execute([$matriculaId]);
+        $matRow = $stmtMat->fetch(PDO::FETCH_ASSOC);
+        if ($matRow) {
+            $meses = (int) ($matRow['meses'] ?? 0);
+            $dias = (int) ($matRow['duracao_dias'] ?? 30);
+            $base = DateTimeImmutable::createFromFormat('Y-m-d', date('Y-m-d', strtotime($dateApproved)))
+                ?: new DateTimeImmutable('today');
+            $fim = $meses > 1 ? $base->modify("+{$meses} months") : $base->modify("+{$dias} days");
+            $pdo->prepare('
+                UPDATE matriculas
+                SET data_inicio = ?, data_vencimento = ?, proxima_data_vencimento = ?, updated_at = NOW()
+                WHERE id = ?
+            ')->execute([
+                $base->format('Y-m-d'),
+                $fim->format('Y-m-d'),
+                $fim->format('Y-m-d'),
+                $matriculaId,
+            ]);
+            echo "  → vigência matrícula até {$fim->format('Y-m-d')}\n";
+        }
+    }
+
+    $stmtAss = $pdo->prepare("
+        UPDATE assinaturas
+        SET status_gateway = 'approved', ultima_cobranca = CURDATE(), atualizado_em = NOW()
+        WHERE matricula_id = ? AND status_gateway != 'approved'
+    ");
+    $stmtAss->execute([$matriculaId]);
+    if ($stmtAss->rowCount() > 0) {
+        echo "  → assinatura gateway atualizada para approved\n";
     }
 
     $pdo->commit();
