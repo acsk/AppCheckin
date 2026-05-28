@@ -1,23 +1,15 @@
 <?php
 /**
- * Job: Reprocessar pagamentos para assinaturas
+ * Job: Sincronizar apenas PIX (pagamentos_pix) quando o webhook não baixou a parcela.
  *
- * Regras:
- * - Por padrão: seleciona assinaturas criadas HOJE
- * - Para cada assinatura, busca pagamentos com status 'pending'
- * - Chama endpoint de reprocessamento para cada pagamento
- * - Desvia de pagamentos já com status_id=6 (approved)
+ * Cron padrão: varre pagamentos_pix dos últimos 7 dias, consulta MP e dá baixa local.
+ * Não processa cartão, assinatura recorrente nem reprocessamento HTTP de webhook.
  *
  * Modos de uso:
- *  php jobs/atualizar_pagamentos_mp.php [--dry-run]
- *  php jobs/atualizar_pagamentos_mp.php --matricula-id=58               (reprocessa matrícula específica)
- *  php jobs/atualizar_pagamentos_mp.php --assinatura-id=51             (reprocessa assinatura específica)
- *  php jobs/atualizar_pagamentos_mp.php --days=7                       (últimos 7 dias)
- *  php jobs/atualizar_pagamentos_mp.php --matricula-id=58 --dry-run    (simula)
- *  php jobs/atualizar_pagamentos_mp.php --payment-id=160879679884      (um PIX específico)
- *
- * ⚠️  IMPORTANTE: Este job depende de webhooks retornarem para atualizar o banco localmente.
- *    Se a webhook falhar, o banco permanecerá desatualizado.
+ *  php jobs/atualizar_pagamentos_mp.php [--dry-run] [--tenant=3]
+ *  php jobs/atualizar_pagamentos_mp.php --matricula-id=324 --tenant=3
+ *  php jobs/atualizar_pagamentos_mp.php --payment-id=161301089356 --tenant=3
+ *  php jobs/atualizar_pagamentos_mp.php --days=14 --tenant=3
  */
 
 require_once __DIR__ . '/../vendor/autoload.php';
@@ -33,7 +25,7 @@ $verbose = isset($options['verbose']);
 $matriculaId = isset($options['matricula-id']) ? (int)$options['matricula-id'] : null;
 $assinaturaId = isset($options['assinatura-id']) ? (int)$options['assinatura-id'] : null;
 $paymentIdArg = isset($options['payment-id']) ? preg_replace('/\D/', '', (string)$options['payment-id']) : '';
-$daysBack = isset($options['days']) ? (int)$options['days'] : 0; // 0 = cron padrão (2 dias), 7 = últimos 7 dias
+$daysBack = isset($options['days']) ? (int)$options['days'] : 0; // 0 = cron padrão (7 dias)
 
 $root = dirname(__DIR__);
 $logFile = $root . '/storage/logs/atualizar_pagamentos_mp.log';
@@ -46,6 +38,17 @@ function logMsg($message, $isQuiet = false, $toFile = true) {
         echo $line . "\n";
     }
     if ($toFile) file_put_contents($logFile, $line . "\n", FILE_APPEND);
+}
+
+function pagamentoMercadoPagoEhPix(array $pagamento): bool
+{
+    $method = strtolower((string) ($pagamento['payment_method_id'] ?? ''));
+    $type = strtolower((string) ($pagamento['payment_type_id'] ?? ''));
+
+    return $method === 'pix'
+        || str_contains($method, 'pix')
+        || $type === 'bank_transfer'
+        || str_contains($type, 'pix');
 }
 
 function buscarPagamentoAprovadoPorExternalReference(int $tenantId, string $externalReference): array
@@ -518,6 +521,103 @@ function processarMatriculaPagamentos(
     }
 }
 
+/**
+ * PIX gerados pelo app (pagamentos_pix) sem baixa em pagamentos_plano — cobre webhook ausente.
+ */
+function processarPagamentosPixSemBaixa(
+    PDO $pdo,
+    ?int $tenantFilter,
+    int $daysBack,
+    bool $dryRun,
+    bool $quiet,
+    ?int $matriculaFilter = null
+): void {
+    $check = $pdo->query("SHOW TABLES LIKE 'pagamentos_pix'");
+    if ($check->rowCount() === 0) {
+        logMsg('ℹ️  Tabela pagamentos_pix não existe — pulando varredura PIX', $quiet);
+        return;
+    }
+
+    $sql = "
+        SELECT px.tenant_id, px.matricula_id, px.payment_id, MAX(px.created_at) AS ultimo_pix
+        FROM pagamentos_pix px
+        WHERE px.payment_id IS NOT NULL AND TRIM(px.payment_id) != ''
+          AND px.created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+    ";
+    $params = [$daysBack];
+
+    if ($tenantFilter) {
+        $sql .= ' AND px.tenant_id = ?';
+        $params[] = $tenantFilter;
+    }
+    if ($matriculaFilter) {
+        $sql .= ' AND px.matricula_id = ?';
+        $params[] = $matriculaFilter;
+    }
+
+    $sql .= ' GROUP BY px.tenant_id, px.matricula_id, px.payment_id ORDER BY ultimo_pix DESC';
+
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+    $rows = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+    logMsg('Varredura pagamentos_pix (últimos ' . $daysBack . ' dias): ' . count($rows) . ' payment(s)', $quiet);
+
+    $stmtJaBaixado = $pdo->prepare("
+        SELECT id FROM pagamentos_plano
+        WHERE matricula_id = ?
+          AND status_pagamento_id = 2
+          AND (observacoes LIKE ? OR observacoes LIKE ?)
+        LIMIT 1
+    ");
+
+    foreach ($rows as $row) {
+        $paymentId = preg_replace('/\D/', '', (string) ($row['payment_id'] ?? ''));
+        $mId = (int) ($row['matricula_id'] ?? 0);
+        $tenantPix = (int) ($row['tenant_id'] ?? 0);
+
+        if ($paymentId === '' || $mId <= 0 || $tenantPix <= 0) {
+            continue;
+        }
+
+        $patternId = "%ID: {$paymentId}%";
+        $patternLegacy = "%Payment #{$paymentId}%";
+        $stmtJaBaixado->execute([$mId, $patternId, $patternLegacy]);
+        if ($stmtJaBaixado->fetchColumn()) {
+            continue;
+        }
+
+        logMsg("PIX payment {$paymentId} sem baixa (matrícula {$mId}, tenant {$tenantPix})", $quiet);
+
+        try {
+            $mp = new \App\Services\MercadoPagoService($tenantPix);
+            $pagamento = $mp->buscarPagamento($paymentId);
+        } catch (Throwable $e) {
+            logMsg("❌ MP payment {$paymentId}: {$e->getMessage()}", $quiet);
+            continue;
+        }
+
+        if (strtolower((string) ($pagamento['status'] ?? '')) !== 'approved') {
+            logMsg("ℹ️  Payment {$paymentId} status=" . ($pagamento['status'] ?? '?') . ' — aguardando', $quiet);
+            continue;
+        }
+
+        if (!pagamentoMercadoPagoEhPix($pagamento)) {
+            logMsg("ℹ️  Payment {$paymentId} ignorado (não é PIX)", $quiet);
+            continue;
+        }
+
+        $externalRef = (string) ($pagamento['external_reference'] ?? "MAT-{$mId}");
+
+        if ($dryRun) {
+            logMsg("[dry-run] Sincronizaria PIX {$paymentId} na matrícula {$mId}", $quiet);
+            continue;
+        }
+
+        sincronizarPagamentoAprovado($pdo, $mId, $pagamento, $externalRef, $quiet);
+    }
+}
+
 // Lock
 if (file_exists(LOCK_FILE)) {
     $lockTime = filemtime(LOCK_FILE);
@@ -539,10 +639,10 @@ try {
         logMsg("↪️  Modo: Payment ID {$paymentIdArg}", $quiet);
     }
     if ($matriculaId) {
-        logMsg("↪️  Modo: Matrícula #{$matriculaId} (sem filtro de data em assinaturas)", $quiet);
+        logMsg("↪️  Modo: Matrícula #{$matriculaId} (filtro PIX)", $quiet);
     }
     if ($assinaturaId) {
-        logMsg("↪️  Modo: Assinatura #{$assinaturaId}", $quiet);
+        logMsg('⚠️  --assinatura-id ignorado: este job processa somente PIX (pagamentos_pix)', $quiet);
     }
     if ($daysBack > 0) {
         logMsg("↪️  Janela de tempo: últimos $daysBack dias", $quiet);
@@ -556,9 +656,7 @@ try {
         throw new Exception('Erro ao conectar ao banco');
     }
 
-    $skipDateFilter = (bool) ($matriculaId || $assinaturaId || $paymentIdArg !== '');
-
-    // Modo direto por payment_id (ex.: PIX approved sem baixa e sem espelho local)
+    // Modo direto por payment_id (PIX approved sem baixa e sem espelho local)
     if ($paymentIdArg !== '') {
         $stmtPay = $pdo->prepare("
             SELECT pm.*, m.tenant_id AS matricula_tenant_id
@@ -618,6 +716,10 @@ try {
             throw new Exception("Payment {$paymentIdArg} não está approved no banco nem no MP");
         }
 
+        if (!pagamentoMercadoPagoEhPix($pagamentoSync)) {
+            throw new Exception("Payment {$paymentIdArg} não é PIX — este job só sincroniza PIX");
+        }
+
         if (!$dryRun) {
             sincronizarPagamentoAprovado($pdo, $mIdDirect, $pagamentoSync, $externalRef, $quiet);
         } else {
@@ -627,92 +729,26 @@ try {
         if (file_exists(LOCK_FILE)) {
             unlink(LOCK_FILE);
         }
-        logMsg('Job finalizado (payment-id)', $quiet);
+        logMsg('Job finalizado (payment-id PIX)', $quiet);
         exit(0);
     }
 
-    $sqlAss = "SELECT id, tenant_id, matricula_id, gateway_id, gateway_assinatura_id, external_reference, criado_em
-               FROM assinaturas WHERE 1=1";
-    $paramsAss = [];
+    logMsg('↪️  Modo: somente PIX (pagamentos_pix)', $quiet);
 
-    if ($assinaturaId) {
-        $sqlAss .= ' AND id = ?';
-        $paramsAss[] = $assinaturaId;
-    } elseif ($matriculaId) {
-        $sqlAss .= ' AND matricula_id = ?';
-        $paramsAss[] = $matriculaId;
-    } elseif ($daysBack > 0) {
-        $sqlAss .= ' AND DATE(criado_em) >= DATE_SUB(CURDATE(), INTERVAL ? DAY)';
-        $paramsAss[] = $daysBack;
-    } else {
-        $sqlAss .= ' AND DATE(criado_em) >= DATE_SUB(CURDATE(), INTERVAL 2 DAY)';
+    $janelaPix = $daysBack > 0 ? $daysBack : 7;
+    processarPagamentosPixSemBaixa(
+        $pdo,
+        $tenantId > 0 ? $tenantId : null,
+        $janelaPix,
+        $dryRun,
+        $quiet,
+        $matriculaId > 0 ? $matriculaId : null
+    );
+
+    if (file_exists(LOCK_FILE)) {
+        unlink(LOCK_FILE);
     }
-
-    if ($tenantId) {
-        $sqlAss .= ' AND tenant_id = ?';
-        $paramsAss[] = $tenantId;
-    }
-
-    $stmt = $pdo->prepare($sqlAss);
-    $stmt->execute($paramsAss);
-    $assinaturas = $stmt->fetchAll(PDO::FETCH_ASSOC) ?? [];
-    logMsg('Assinaturas encontradas: ' . count($assinaturas), $quiet);
-
-    if ($matriculaId && count($assinaturas) === 0) {
-        logMsg("ℹ️  Nenhuma assinatura listada para matrícula {$matriculaId}; processando matrícula direto", $quiet);
-        $stmtMat = $pdo->prepare('SELECT tenant_id FROM matriculas WHERE id = ? LIMIT 1');
-        $stmtMat->execute([$matriculaId]);
-        $matRow = $stmtMat->fetch(PDO::FETCH_ASSOC);
-        $tenantMat = (int) ($tenantId ?: ($matRow['tenant_id'] ?? 0));
-
-        $stmtRef = $pdo->prepare('
-            SELECT external_reference FROM assinaturas
-            WHERE matricula_id = ? ORDER BY id DESC LIMIT 1
-        ');
-        $stmtRef->execute([$matriculaId]);
-        $externalRef = $stmtRef->fetchColumn() ?: "MAT-{$matriculaId}";
-
-        processarMatriculaPagamentos(
-            $pdo,
-            $matriculaId,
-            $externalRef ? (string) $externalRef : null,
-            $tenantMat,
-            $dryRun,
-            $quiet,
-            null,
-            $daysBack,
-            true
-        );
-    }
-
-    foreach ($assinaturas as $ass) {
-        $matriculaIdAss = $ass['matricula_id'] ?? null;
-        $assinaturaIdCur = (int) $ass['id'];
-        $externalReference = $ass['external_reference'] ?? null;
-        $tenantIdAss = (int) ($ass['tenant_id'] ?? 0);
-
-        if (empty($matriculaIdAss) && !$matriculaId) {
-            logMsg("Assinatura {$assinaturaIdCur} sem matricula_id — pulando", $quiet);
-            continue;
-        }
-
-        $mId = $matriculaId ?: (int) $matriculaIdAss;
-
-        processarMatriculaPagamentos(
-            $pdo,
-            $mId,
-            $externalReference ? (string) $externalReference : null,
-            $tenantIdAss,
-            $dryRun,
-            $quiet,
-            $assinaturaIdCur,
-            $daysBack,
-            $skipDateFilter
-        );
-    }
-
-    if (file_exists(LOCK_FILE)) unlink(LOCK_FILE);
-    logMsg('Job finalizado', $quiet);
+    logMsg('Job finalizado (PIX)', $quiet);
     exit(0);
 
 } catch (Exception $e) {
