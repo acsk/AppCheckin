@@ -12,6 +12,12 @@
 
 $db = require __DIR__ . '/config/database.php';
 
+// Autoload para podermos usar o model real (Checkin::obterCicloCheckins).
+$autoload = __DIR__ . '/vendor/autoload.php';
+if (file_exists($autoload)) {
+    require_once $autoload;
+}
+
 $matriculaId = isset($argv[1]) ? (int) $argv[1] : 49;
 
 echo "====== DEBUG LIMITE CHECK-INS — Matrícula #{$matriculaId} ======\n";
@@ -171,35 +177,47 @@ foreach ($checkins as $c) {
 echo "  Total de check-ins (presente!=0, modalidade do plano): "
     . array_sum(array_map('count', $porMes)) . "\n\n";
 
-// ─── 4. Análise mês a mês vs limite mensal (caminho permite_reposicao=1) ─────
-echo "4. ANÁLISE MENSAL (limite mensal = checkins_semanais × 4)\n";
+// Helper: limite mensal EFETIVO aplicado pelo app (MobileController),
+// = checkins_semanais × 4 + bônus de mês com 5 semanas (Dom-Sáb).
+// IMPORTANTE: CheckinController (web/admin) NÃO aplica o bônus (usa só ×4).
+$limiteMensalApp = function (string $mesKey) use ($checkinsSemanais): array {
+    [$ano, $mes]     = explode('-', $mesKey);
+    $primeiroDia     = new DateTime("{$ano}-{$mes}-01");
+    $diaSemanaInicio = (int) $primeiroDia->format('w'); // 0=dom
+    $diasNoMes       = (int) $primeiroDia->format('t');
+    $semanasNoMes    = (int) ceil(($diasNoMes + $diaSemanaInicio) / 7);
+    $bonus           = ($semanasNoMes >= 5) ? 1 : 0;
+    return [
+        'base'    => $checkinsSemanais * 4,
+        'bonus'   => $bonus,
+        'efetivo' => $checkinsSemanais * 4 + $bonus,
+        'semanas' => $semanasNoMes,
+    ];
+};
+
+// ─── 4. Análise mês a mês vs limite mensal EFETIVO do app ────────────────────
+echo "4. ANÁLISE MENSAL (limite EFETIVO do app = checkins_semanais × 4 + bônus 5ª semana)\n";
 echo str_repeat('-', 80) . "\n";
-$limiteMensalCodigo = $checkinsSemanais * 4;
-echo "  Limite mensal (regra do código): {$checkinsSemanais} × 4 = {$limiteMensalCodigo}\n\n";
+$limiteBase = $checkinsSemanais * 4;
+echo "  Limite base (×4)         : {$checkinsSemanais} × 4 = {$limiteBase}\n";
+echo "  + bônus em mês de 5 semanas: aplicado pelo MobileController (app do aluno)\n";
+echo "  ⚠️  CheckinController (web/admin) NÃO aplica o bônus → usa só {$limiteBase}\n\n";
 
 ksort($porMes);
 foreach ($porMes as $mesKey => $lista) {
-    [$ano, $mes] = explode('-', $mesKey);
+    $lim    = $limiteMensalApp($mesKey);
+    $total  = count($lista);
+    $excessoApp  = $total - $lim['efetivo'];   // vs regra REAL do app
+    $excessoBase = $total - $lim['base'];       // vs CheckinController (×4)
 
-    // Limite "correto" com bônus de 5ª semana (referência de negócio)
-    $primeiroDia       = new DateTime("{$ano}-{$mes}-01");
-    $diaSemanaInicio   = (int) $primeiroDia->format('w');
-    $diasNoMes         = (int) $primeiroDia->format('t');
-    $semanasNoMes      = (int) ceil(($diasNoMes + $diaSemanaInicio) / 7);
-    $bonus             = ($semanasNoMes >= 5) ? 1 : 0;
-    $limiteComBonus    = $checkinsSemanais * 4 + $bonus;
-
-    $total = count($lista);
-    $excessoCodigo = $total - $limiteMensalCodigo;
-    $excessoBonus  = $total - $limiteComBonus;
-
-    $flag = $excessoCodigo > 0 ? '⚠️ ' : '   ';
+    $flag = $excessoApp > 0 ? '⛔' : ($excessoBase > 0 ? '⚠️ ' : '   ');
     echo "  {$flag}{$mesKey}: {$total} check-ins"
-        . " | limite código={$limiteMensalCodigo}"
-        . " | limite c/ bônus 5ª sem={$limiteComBonus}"
-        . " | excesso(código)=" . ($excessoCodigo > 0 ? "+{$excessoCodigo}" : $excessoCodigo) . "\n";
+        . " | limite app (×4+bônus)={$lim['efetivo']} (base {$lim['base']} + bônus {$lim['bonus']}, {$lim['semanas']} semanas)"
+        . " | excesso vs app=" . ($excessoApp > 0 ? "+{$excessoApp}" : $excessoApp)
+        . " | excesso vs ×4=" . ($excessoBase > 0 ? "+{$excessoBase}" : $excessoBase) . "\n";
 
-    if ($excessoCodigo > 0) {
+    // Lista os check-ins quando há QUALQUER divergência (vs app OU vs ×4).
+    if ($excessoApp > 0 || $excessoBase > 0) {
         foreach ($lista as $i => $c) {
             $st    = $c['presente'] === null ? '⏳ pend' : '✅ pres';
             $admin = $c['registrado_por_admin'] ? ' [ADMIN]' : '';
@@ -217,14 +235,16 @@ foreach ($porMes as $mesKey => $lista) {
     }
 }
 
-// ─── 4b. SIMULAÇÃO PRECISA DA VALIDAÇÃO MENSAL (caminho permite_reposicao=1) ──
-// Reproduz exatamente Checkin::contarCheckinsNoMes: no momento de cada insert,
-// conta os check-ins JÁ existentes cujo MÊS DA AULA (dias.data) é igual ao mês
-// de CURDATE() (= mês em que o check-in foi criado). Bloqueia se contagem >= limite.
-echo "\n4b. SIMULAÇÃO DO INSERT (ordem de criação) — teto mensal = {$limiteMensalCodigo}\n";
+// ─── 4b. SIMULAÇÃO PRECISA DA VALIDAÇÃO MENSAL ──────────────────────────────
+// Reproduz a validação real no insert: no momento de cada check-in, conta os já
+// existentes cujo MÊS DA AULA (dias.data) == mês de CURDATE (mês de criação) e
+// compara com o teto. Mostra os dois tetos: app (×4+bônus) e CheckinController (×4).
+echo "\n4b. SIMULAÇÃO DO INSERT (ordem de criação)\n";
 echo str_repeat('-', 80) . "\n";
+echo "  Compara contra os dois tetos existentes no código:\n";
+echo "    • APP  (MobileController) = ×4 + bônus de mês com 5 semanas\n";
+echo "    • WEB  (CheckinController) = ×4 fixo (sem bônus)\n\n";
 
-// Todos os check-ins contáveis, em ordem de criação real.
 $todosContaveis = [];
 foreach ($porMes as $lista) {
     foreach ($lista as $c) {
@@ -237,12 +257,12 @@ usort($todosContaveis, function ($a, $b) {
     return $ca === $cb ? ($a['id'] <=> $b['id']) : strcmp($ca, $cb);
 });
 
-$inseridos = [];        // check-ins já "persistidos" na simulação
-$passouIndevido = [];   // check-ins que passaram apesar de já haver >= limite
+$inseridos = [];
+$passouApp = [];   // furou ATÉ o teto do app (×4+bônus) → excesso real
+$passouWeb = [];   // furaria o teto do CheckinController (×4), mas o app deixou passar
 foreach ($todosContaveis as $c) {
     $mesRef = $c['created_full'] ? substr($c['created_full'], 0, 7) : substr($c['data_aula'], 0, 7);
 
-    // contagem que a validação veria: check-ins existentes com MÊS DA AULA == mesRef
     $contagem = 0;
     foreach ($inseridos as $j) {
         if (substr($j['data_aula'], 0, 7) === $mesRef) {
@@ -250,27 +270,28 @@ foreach ($todosContaveis as $c) {
         }
     }
 
-    $bloquearia = $contagem >= $limiteMensalCodigo;
-    if ($bloquearia) {
-        $passouIndevido[] = $c;
-        echo "  ❗ #{$c['id']} | aula {$c['data_aula']} | criado {$c['created_full']}"
-            . " | no insert havia {$contagem} check-in(s) no mês {$mesRef} (CURDATE)"
-            . " ≥ {$limiteMensalCodigo} → REGRA DEVERIA BLOQUEAR, mas o check-in existe.\n";
-        $mesAula = substr($c['data_aula'], 0, 7);
-        if ($mesAula !== $mesRef) {
-            echo "       → motivo: aula é de {$mesAula}, mas foi criado em {$mesRef}; a validação\n";
-            echo "         contou o mês ERRADO (CURDATE), então o teto de {$mesAula} não foi checado.\n";
-        }
+    $lim = $limiteMensalApp($mesRef);
+    if ($contagem >= $lim['efetivo']) {
+        $passouApp[] = $c;
+        echo "  ⛔ #{$c['id']} | aula {$c['data_aula']} | criado {$c['created_full']}"
+            . " | havia {$contagem} no mês {$mesRef} ≥ teto APP {$lim['efetivo']}"
+            . " → EXCESSO REAL (furou até a regra do app).\n";
+    } elseif ($contagem >= $lim['base']) {
+        $passouWeb[] = $c;
+        echo "  ⚠️  #{$c['id']} | aula {$c['data_aula']} | criado {$c['created_full']}"
+            . " | havia {$contagem} no mês {$mesRef}: ≥ {$lim['base']} (×4) mas < {$lim['efetivo']} (×4+bônus)"
+            . " → liberado pelo BÔNUS de 5ª semana ({$lim['semanas']} semanas no mês).\n";
     }
 
     $inseridos[] = $c;
 }
 
-if (!$passouIndevido) {
-    echo "  Nenhum check-in 'passou' contra a regra mensal na ordem de criação.\n";
-    echo "  → O excesso vem de check-ins cuja AULA cai num mês diferente do mês de criação\n";
-    echo "    (a validação por CURDATE nunca somou todos no mesmo balde) ou de divergência\n";
-    echo "    entre data_checkin_date e dias.data. Veja as marcações ⚠️ acima.\n";
+if (!$passouApp && !$passouWeb) {
+    echo "  Nenhum check-in atingiu sequer o teto base (×4) na ordem de criação.\n";
+} elseif (!$passouApp) {
+    echo "\n  ✅ NENHUM check-in furou o limite REAL do app (×4 + bônus de 5ª semana).\n";
+    echo "     Os marcados com ⚠️ só ultrapassam o ×4 fixo do CheckinController, mas foram\n";
+    echo "     legitimamente liberados pelo bônus de mês com 5 semanas no app do aluno.\n";
 }
 
 // ─── 5. Análise semanal vs limite semanal (caminho permite_reposicao=0) ──────
@@ -290,6 +311,56 @@ foreach ($porSemana as $semanaKey => $lista) {
     $datas = implode(', ', array_map(fn($c) => $c['data_aula'], $lista));
     echo "  ⚠️  Semana ISO {$ano}-W{$sem}: {$total} check-ins (limite {$checkinsSemanais}, excesso +{$excesso})\n";
     echo "        datas: {$datas}\n";
+}
+
+// ─── 5b. STATUS DE PRESENÇA — aulas sem presença marcada (pendentes) ─────────
+// Pendente (presente=NULL) CONTA no teto; Falta (presente=0) NÃO conta (libera
+// crédito de reposição). Uma aula deixada pendente, em vez de marcada como falta,
+// mantém a vaga ocupada e pode fazer o mês "parecer" 1 a mais.
+echo "\n5b. STATUS DE PRESENÇA POR MÊS (pendente x presente x falta)\n";
+echo str_repeat('-', 80) . "\n";
+
+// Reconta a partir de TODOS os check-ins do aluno na modalidade do plano,
+// agora incluindo as faltas (presente=0) para o panorama de marcação.
+$porMesPresenca = [];
+foreach ($checkins as $c) {
+    if ($modalidade !== null && (int) $c['modalidade_id'] !== $modalidade) {
+        continue;
+    }
+    $mesKey = substr($c['data_aula'], 0, 7);
+    $porMesPresenca[$mesKey][] = $c;
+}
+ksort($porMesPresenca);
+
+$pendentesGlobais = [];
+foreach ($porMesPresenca as $mesKey => $lista) {
+    $pres = $pend = $falt = 0;
+    $pendentesDoMes = [];
+    foreach ($lista as $c) {
+        if ($c['presente'] === null)      { $pend++; $pendentesDoMes[] = $c; $pendentesGlobais[] = $c; }
+        elseif ((int) $c['presente'] === 1) { $pres++; }
+        else                                { $falt++; }
+    }
+    $lim     = $limiteMensalApp($mesKey);
+    $contam  = $pres + $pend;                 // o que entra no teto
+    $semFalt = $pres;                          // se as pendentes virassem falta
+    echo "  {$mesKey}: presentes={$pres} | pendentes(não marcada)={$pend} | faltas={$falt}"
+        . " | conta no teto={$contam}/{$lim['efetivo']}\n";
+    if ($pend > 0) {
+        foreach ($pendentesDoMes as $c) {
+            $admin = $c['registrado_por_admin'] ? ' [ADMIN]' : '';
+            echo "        ⏳ PENDENTE #{$c['id']} | aula {$c['data_aula']} {$c['horario_inicio']}{$admin}"
+                . "  → se marcada como FALTA, mês cairia para {$semFalt} (não contaria).\n";
+        }
+    }
+}
+
+if ($pendentesGlobais) {
+    echo "\n  ⚠️  Há " . count($pendentesGlobais) . " aula(s) com presença NÃO marcada (pendente=NULL).\n";
+    echo "      Pendente conta no teto igual a presente. Marcá-las como FALTA reduz a contagem\n";
+    echo "      do mês e libera crédito de reposição — é provavelmente a 'margem' observada.\n";
+} else {
+    echo "\n  ✅ Nenhuma aula pendente: toda presença foi marcada (presente ou falta).\n";
 }
 
 // ─── 6. Diagnóstico: por que a validação NÃO bloqueou ────────────────────────
@@ -338,30 +409,79 @@ echo "      da aula, abrindo brecha no limite.\n";
 // ─── 7. Resumo ───────────────────────────────────────────────────────────────
 echo "\n7. RESUMO\n";
 echo str_repeat('-', 80) . "\n";
-$mesesExcedidos = [];
+$excedeApp  = [];  // meses acima do teto REAL do app (×4 + bônus)
+$excedeBase = [];  // meses acima só do ×4 (CheckinController), mas dentro do app
 foreach ($porMes as $mesKey => $lista) {
-    if (count($lista) - $limiteMensalCodigo > 0) {
-        $mesesExcedidos[$mesKey] = count($lista) - $limiteMensalCodigo;
-    }
-}
-$semanasExcedidas = 0;
-foreach ($porSemana as $lista) {
-    if (count($lista) - $checkinsSemanais > 0) $semanasExcedidas++;
+    $lim = $limiteMensalApp($mesKey);
+    $t   = count($lista);
+    if ($t - $lim['efetivo'] > 0)      $excedeApp[$mesKey]  = $t - $lim['efetivo'];
+    elseif ($t - $lim['base'] > 0)     $excedeBase[$mesKey] = $t - $lim['base'];
 }
 
 echo "  Matrícula #{$matriculaId} / Aluno {$mat['aluno_nome']} / Plano {$mat['plano_nome']}\n";
 echo "  checkins_semanais={$checkinsSemanais} | permite_reposicao=" . ($permiteReposicao ? 'SIM' : 'NÃO') . "\n";
-echo "  Meses acima do limite mensal (×4): " . (count($mesesExcedidos) ? implode(', ', array_map(
-        fn($k, $v) => "{$k} (+{$v})", array_keys($mesesExcedidos), $mesesExcedidos)) : 'nenhum') . "\n";
-echo "  Semanas acima do limite semanal  : {$semanasExcedidas}\n";
+echo "  Meses acima do limite REAL do app (×4+bônus): " . (count($excedeApp) ? implode(', ', array_map(
+        fn($k, $v) => "{$k} (+{$v})", array_keys($excedeApp), $excedeApp)) : 'NENHUM') . "\n";
+echo "  Meses acima de ×4 mas DENTRO do bônus (5 semanas): " . (count($excedeBase) ? implode(', ', array_map(
+        fn($k, $v) => "{$k} (+{$v})", array_keys($excedeBase), $excedeBase)) : 'nenhum') . "\n";
 
-echo "\n  Causas prováveis (verifique acima qual se aplica):\n";
-echo "   1. Check-ins retroativos/registrados por admin não passam pela validação corrente.\n";
-echo "   2. Em períodos com a matrícula vencida/inativa, obterLimiteCheckinsPlano não retorna\n";
-echo "      plano e o limite deixa de ser aplicado.\n";
-echo "   3. Com permite_reposicao=0 só há teto semanal — o mês pode acumular >semanal×4.\n";
-echo "   4. Limite mensal do código é ×4 fixo (sem bônus de 5ª semana), então um mês com 5\n";
-echo "      semanas pode parecer 'a mais' frente ao esperado de negócio.\n";
+echo "\n  CONCLUSÃO:\n";
+if (!$excedeApp && $excedeBase) {
+    echo "   ✅ O aluno NÃO furou o limite real do app. Os meses sinalizados têm 5 semanas\n";
+    echo "      (Dom-Sáb) e o MobileController concede +1 check-in nesses meses. Logo {$checkinsSemanais}×4+1\n";
+    echo "      check-ins é PERMITIDO pelo app — o 'excesso' só aparece frente ao ×4 fixo.\n\n";
+    echo "   ⚠️  INCONSISTÊNCIA DE CÓDIGO: o limite mensal está implementado em 3 lugares com\n";
+    echo "      regras diferentes:\n";
+    echo "        • MobileController  → ×4 + bônus 5ª semana  (app do aluno) ✅ é o que vale\n";
+    echo "        • CheckinController → ×4 fixo (web/admin)    ✗ bloquearia 1 a menos\n";
+    echo "        • Checkin::obterLimiteCheckinsPlano → expõe limite_mensal = ×4 (sem bônus)\n";
+    echo "      Para o relatório/gestão ficar coerente com o app, alinhe o teto somando o\n";
+    echo "      bônus de 5ª semana também no CheckinController e no limite_mensal do model.\n";
+} elseif ($excedeApp) {
+    echo "   ⛔ Há meses acima até do limite real do app. Ver seção 4b (⛔): check-ins que\n";
+    echo "      passaram apesar do teto. Causas possíveis: faltas (presente=0) liberando\n";
+    echo "      crédito de reposição e depois revertidas, registro retroativo, ou concorrência.\n";
+} else {
+    echo "   ✅ Dentro do limite em todos os meses.\n";
+}
+
+// ─── 8. CICLO DE COBRANÇA (nova regra) — Checkin::obterCicloCheckins ─────────
+echo "\n8. CICLO DE CHECK-IN POR VENCIMENTO (nova regra centralizada)\n";
+echo str_repeat('-', 80) . "\n";
+
+if (class_exists(\App\Models\Checkin::class)) {
+    $checkinModel = new \App\Models\Checkin($db);
+    $ciclo = $checkinModel->obterCicloCheckins($usuarioId, $tenantId, $modalidade);
+
+    if (empty($ciclo['tem_plano'])) {
+        echo "  Sem plano ativo/vigente para o cálculo de ciclo (matrícula vencida?).\n";
+        echo "  → Nesse estado o limite não é aplicado (igual à regra atual).\n";
+    } else {
+        $ini = date('d/m/Y', strtotime($ciclo['ciclo_inicio']));
+        $fim = date('d/m/Y', strtotime($ciclo['ciclo_fim']));
+        echo "  Plano               : {$ciclo['plano_nome']}\n";
+        echo "  Ciclo atual         : {$ini}  →  {$fim}  (fim exclusivo)\n";
+        echo "  Dias no ciclo       : {$ciclo['dias_no_ciclo']}\n";
+        echo "  Semanas (ceil/7)    : {$ciclo['semanas']}" . ($ciclo['bonus_cinco_semanas'] ? "  (+1 bônus 5ª semana)" : "") . "\n";
+        echo "  Limite do ciclo     : {$ciclo['limite_mensal']} ({$ciclo['checkins_semanais']}×4" . ($ciclo['bonus_cinco_semanas'] ? "+1" : "") . ")\n";
+        echo "  Check-ins no ciclo  : {$ciclo['checkins_no_ciclo']}\n";
+        $excesso = $ciclo['checkins_no_ciclo'] - $ciclo['limite_mensal'];
+        echo "  Situação            : " . ($excesso >= 0
+            ? "⛔ atingiu/excedeu o limite (excesso " . ($excesso > 0 ? "+{$excesso}" : "0, no teto") . ")"
+            : "✅ dentro do limite (resta " . abs($excesso) . ")") . "\n";
+
+        if (!empty($ciclo['dias_checkin'])) {
+            echo "\n  Dias contabilizados no ciclo:\n";
+            foreach ($ciclo['dias_checkin'] as $i => $d) {
+                $st = $d['status'] === 'pendente' ? '⏳ pend' : '✅ pres';
+                echo "    " . ($i + 1) . ". {$d['data']}" . ($d['horario'] ? " {$d['horario']}" : "")
+                    . ($d['modalidade'] ? " · {$d['modalidade']}" : "") . " | {$st}\n";
+            }
+        }
+    }
+} else {
+    echo "  (autoload indisponível — não foi possível instanciar o model)\n";
+}
 
 echo "\n" . str_repeat('=', 80) . "\n";
 echo "Fim do diagnóstico.\n";
