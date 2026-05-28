@@ -517,7 +517,7 @@ function executarFixBaixa(
     $stmtPend = $pdo->prepare("
         SELECT id FROM pagamentos_plano
         WHERE matricula_id = ? AND status_pagamento_id IN (1, 3) AND data_pagamento IS NULL
-        ORDER BY ABS(valor - ?) ASC, data_vencimento ASC
+        ORDER BY ABS(valor - ?) ASC, data_vencimento DESC, id DESC
         LIMIT 1
     ");
     $stmtPend->execute([$matriculaId, $valorMp]);
@@ -562,6 +562,17 @@ function executarFixBaixa(
 
     $tenantIdMat = (int) $matricula['tenant_id'];
     $pagamentoModel = new \App\Models\PagamentoPlano($pdo);
+    if ($parcelaId) {
+        $nDup = $pagamentoModel->cancelarParcelasDuplicadasAposBaixa(
+            $tenantIdMat,
+            $matriculaId,
+            (int) $parcelaId,
+            $valorMp
+        );
+        if ($nDup > 0) {
+            echo "  → {$nDup} parcela(s) duplicada(s) cancelada(s)\n";
+        }
+    }
     try {
         $proxima = $pagamentoModel->gerarProximoPagamentoAutomatico($matriculaId, $dateApproved);
         if ($proxima) {

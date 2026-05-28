@@ -305,6 +305,39 @@ class PagamentoPlano
     }
 
     /**
+     * Após baixar uma parcela, cancela outras abertas com o mesmo valor (evita matrícula vencida fantasma).
+     */
+    public function cancelarParcelasDuplicadasAposBaixa(
+        int $tenantId,
+        int $matriculaId,
+        int $parcelaPagaId,
+        float $valorPago,
+        string $motivo = 'Duplicata: outra parcela já quitada com este PIX'
+    ): int {
+        $stmt = $this->pdo->prepare("
+            UPDATE pagamentos_plano
+            SET status_pagamento_id = 4,
+                observacoes = CONCAT(COALESCE(observacoes, ''), ' [', :motivo, ']'),
+                updated_at = NOW()
+            WHERE tenant_id = :tenant_id
+              AND matricula_id = :matricula_id
+              AND id != :parcela_paga_id
+              AND status_pagamento_id IN (1, 3)
+              AND data_pagamento IS NULL
+              AND ABS(valor - :valor) < 0.01
+        ");
+        $stmt->execute([
+            'motivo' => $motivo,
+            'tenant_id' => $tenantId,
+            'matricula_id' => $matriculaId,
+            'parcela_paga_id' => $parcelaPagaId,
+            'valor' => $valorPago,
+        ]);
+
+        return $stmt->rowCount();
+    }
+
+    /**
      * Uma única parcela pendente com o valor atual (evita baixa MP na parcela antiga).
      */
     public function garantirParcelaPendenteUnica(
@@ -402,6 +435,29 @@ class PagamentoPlano
             'tenant_id' => $tenantId,
             'matricula_id' => $matriculaId
         ]);
+
+        if ($novoStatus === 'ativa') {
+            $stmtProx = $this->pdo->prepare("
+                SELECT MIN(data_vencimento) FROM pagamentos_plano
+                WHERE matricula_id = :matricula_id AND status_pagamento_id IN (1, 3)
+            ");
+            $stmtProx->execute(['matricula_id' => $matriculaId]);
+            $proxima = $stmtProx->fetchColumn();
+
+            if ($proxima) {
+                $this->pdo->prepare("
+                    UPDATE matriculas
+                    SET proxima_data_vencimento = ?, updated_at = NOW()
+                    WHERE tenant_id = ? AND id = ?
+                ")->execute([$proxima, $tenantId, $matriculaId]);
+            } else {
+                $this->pdo->prepare("
+                    UPDATE matriculas
+                    SET proxima_data_vencimento = data_vencimento, updated_at = NOW()
+                    WHERE tenant_id = ? AND id = ?
+                ")->execute([$tenantId, $matriculaId]);
+            }
+        }
     }
 
     /**

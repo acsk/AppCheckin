@@ -31,7 +31,8 @@ O PIX **R$ 120** (`160879679884`) foi baixado na **#484** (R$ 70) porque o job/w
 | `MobileController.php` | Cancela parcelas abertas no upgrade; cria sempre 1 pendente com valor novo |
 | `MatriculaController.php` | Usa `cancelarParcelasAbertas()` |
 | `MercadoPagoWebhookController.php` | Baixa por `ABS(valor - transaction_amount)`; `atualizarStatusMatricula` após baixa |
-| `atualizar_pagamentos_mp.php` | Mesma regra de valor + status (já feito na sessão) |
+| `atualizar_pagamentos_mp.php` | Match parcela mais recente + `cancelarParcelasDuplicadasAposBaixa` |
+| `PagamentoPlano.php` | `cancelarParcelasDuplicadasAposBaixa()` após cada baixa PIX |
 
 ## Deploy
 

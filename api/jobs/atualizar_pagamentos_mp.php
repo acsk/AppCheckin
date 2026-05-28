@@ -279,7 +279,7 @@ function sincronizarPagamentoAprovado(PDO $pdo, int $matriculaId, array $pagamen
         WHERE matricula_id = ?
           AND status_pagamento_id IN (1, 3)
           AND data_pagamento IS NULL
-        ORDER BY ABS(valor - ?) ASC, data_vencimento ASC
+        ORDER BY ABS(valor - ?) ASC, data_vencimento DESC, id DESC
         LIMIT 1
     ");
     $stmtPend->execute([$matriculaId, $valorMp]);
@@ -339,6 +339,22 @@ function sincronizarPagamentoAprovado(PDO $pdo, int $matriculaId, array $pagamen
 
     $tenantIdMat = (int) $matricula['tenant_id'];
     $pagamentoModel = new \App\Models\PagamentoPlano($pdo);
+
+    $parcelaReferencia = $pagamentoPlanoId ?: ($pagamentoJaBaixado ? (int) $pagamentoJaBaixado : 0);
+    $valorRef = $parcelaReferencia > 0
+        ? (float) ($pendRow['valor'] ?? $jaBaixadoRow['valor'] ?? $valorMp)
+        : 0.0;
+    if ($parcelaReferencia > 0 && $valorRef > 0) {
+        $nDup = $pagamentoModel->cancelarParcelasDuplicadasAposBaixa(
+            $tenantIdMat,
+            $matriculaId,
+            $parcelaReferencia,
+            $valorRef
+        );
+        if ($nDup > 0) {
+            logMsg("🧹 {$nDup} parcela(s) duplicada(s) cancelada(s) após baixa #{$parcelaReferencia}", $quiet);
+        }
+    }
 
     try {
         $proximaParcela = $pagamentoModel->gerarProximoPagamentoAutomatico($matriculaId, $dateApproved);
@@ -564,12 +580,13 @@ function processarPagamentosPixSemBaixa(
     logMsg('Varredura pagamentos_pix (últimos ' . $daysBack . ' dias): ' . count($rows) . ' payment(s)', $quiet);
 
     $stmtJaBaixado = $pdo->prepare("
-        SELECT id FROM pagamentos_plano
+        SELECT id, valor FROM pagamentos_plano
         WHERE matricula_id = ?
           AND status_pagamento_id = 2
           AND (observacoes LIKE ? OR observacoes LIKE ?)
         LIMIT 1
     ");
+    $pagamentoModelPix = new \App\Models\PagamentoPlano($pdo);
 
     foreach ($rows as $row) {
         $paymentId = preg_replace('/\D/', '', (string) ($row['payment_id'] ?? ''));
@@ -583,7 +600,18 @@ function processarPagamentosPixSemBaixa(
         $patternId = "%ID: {$paymentId}%";
         $patternLegacy = "%Payment #{$paymentId}%";
         $stmtJaBaixado->execute([$mId, $patternId, $patternLegacy]);
-        if ($stmtJaBaixado->fetchColumn()) {
+        $parcelaJaPaga = $stmtJaBaixado->fetch(PDO::FETCH_ASSOC);
+        if ($parcelaJaPaga) {
+            $nDup = $pagamentoModelPix->cancelarParcelasDuplicadasAposBaixa(
+                $tenantPix,
+                $mId,
+                (int) $parcelaJaPaga['id'],
+                (float) $parcelaJaPaga['valor']
+            );
+            if ($nDup > 0) {
+                logMsg("🧹 PIX {$paymentId}: {$nDup} duplicata(s) cancelada(s) (matrícula {$mId})", $quiet);
+                $pagamentoModelPix->atualizarStatusMatricula($tenantPix, $mId);
+            }
             continue;
         }
 

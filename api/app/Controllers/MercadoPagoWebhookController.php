@@ -2382,7 +2382,7 @@ class MercadoPagoWebhookController
                 WHERE pp.matricula_id = ?
                 AND pp.status_pagamento_id IN (1, 3)
                 AND pp.data_pagamento IS NULL
-                ORDER BY ABS(pp.valor - ?) ASC, pp.data_vencimento ASC
+                ORDER BY ABS(pp.valor - ?) ASC, pp.data_vencimento DESC, pp.id DESC
                 LIMIT 1
             ");
             $stmtBuscar->execute([$matriculaId, $valorMp]);
@@ -2390,6 +2390,7 @@ class MercadoPagoWebhookController
             
             // Buscar forma de pagamento (PIX, cartão, etc)
             $formaPagamentoId = $this->obterFormaPagamentoId($pagamento['payment_method_id'] ?? 'pix');
+            $parcelaBaixadaId = null;
             
             if ($pagamentoPendente) {
                 // Atualizar o pagamento existente para "pago"
@@ -2415,6 +2416,7 @@ class MercadoPagoWebhookController
                 
                 if ($stmtUpdate->rowCount() > 0) {
                     error_log("[Webhook MP] ✅ Pagamento #{$pagamentoPendente['id']} atualizado para PAGO");
+                    $parcelaBaixadaId = (int) $pagamentoPendente['id'];
                 }
             } else {
                 // Criar novo registro de pagamento já como PAGO
@@ -2445,13 +2447,25 @@ class MercadoPagoWebhookController
                     'Pago via Mercado Pago - ID: ' . $pagamento['id']
                 ]);
                 
-                $novoPagamentoId = $this->db->lastInsertId();
+                $novoPagamentoId = (int) $this->db->lastInsertId();
+                $parcelaBaixadaId = $novoPagamentoId;
                 error_log("[Webhook MP] ✅ Novo pagamento #{$novoPagamentoId} criado como PAGO");
             }
 
             // Gerar próximo pagamento pendente para manter o ciclo de cobrança
             try {
                 $pagamentoModel = new \App\Models\PagamentoPlano($this->db);
+                if ($parcelaBaixadaId) {
+                    $n = $pagamentoModel->cancelarParcelasDuplicadasAposBaixa(
+                        (int) $matricula['tenant_id'],
+                        $matriculaId,
+                        $parcelaBaixadaId,
+                        $valorMp
+                    );
+                    if ($n > 0) {
+                        error_log("[Webhook MP] 🧹 {$n} parcela(s) duplicada(s) cancelada(s) após baixa #{$parcelaBaixadaId}");
+                    }
+                }
                 $proximaParcela = $pagamentoModel->gerarProximoPagamentoAutomatico($matriculaId, $dateApproved);
                 if ($proximaParcela) {
                     error_log("[Webhook MP] ✅ Próximo pagamento #{$proximaParcela['id']} gerado para {$proximaParcela['data_vencimento']} (matrícula #{$matriculaId})");

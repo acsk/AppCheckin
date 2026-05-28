@@ -70,6 +70,8 @@ tail -50 storage/logs/atualizar_pagamentos_mp.log
 
 ## Minimizar recorrência (checklist deploy)
 
+Checklist completo: [DEPLOY_FIX_PIX.md](DEPLOY_FIX_PIX.md)
+
 1. `jobs/atualizar_pagamentos_mp.php` — **somente PIX** + cron a cada 15 min  
 2. `scripts/relatorio_pix_saude.php` — este relatório  
 3. Painel MP: URL `https://api.appcheckin.com.br/api/webhooks/mercadopago`  
