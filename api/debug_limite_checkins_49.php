@@ -132,7 +132,9 @@ echo str_repeat('-', 80) . "\n";
 $stmt = $db->prepare("
     SELECT c.id, DATE(d.data) AS data_aula, t.horario_inicio,
            t.modalidade_id, m2.nome AS modalidade,
-           c.presente, c.registrado_por_admin, c.data_checkin_date, DATE(c.created_at) AS created_date
+           c.presente, c.registrado_por_admin,
+           c.data_checkin_date,
+           c.created_at AS created_full, DATE(c.created_at) AS created_date
     FROM checkins c
     INNER JOIN turmas      t  ON t.id  = c.turma_id
     INNER JOIN dias        d  ON d.id  = t.dia_id
@@ -201,10 +203,74 @@ foreach ($porMes as $mesKey => $lista) {
         foreach ($lista as $i => $c) {
             $st    = $c['presente'] === null ? '⏳ pend' : '✅ pres';
             $admin = $c['registrado_por_admin'] ? ' [ADMIN]' : '';
-            echo "        " . ($i + 1) . ". #{$c['id']} | {$c['data_aula']} {$c['horario_inicio']}"
-                . " | {$c['modalidade']} | {$st}{$admin}\n";
+
+            $mesAula   = substr($c['data_aula'], 0, 7);
+            $mesCriado = $c['created_full'] ? substr($c['created_full'], 0, 7) : '??';
+            $divMes    = ($mesCriado !== '??' && $mesCriado !== $mesAula)
+                ? " ⚠️ criado em mês diferente da aula" : '';
+
+            echo "        " . ($i + 1) . ". #{$c['id']} | aula {$c['data_aula']} {$c['horario_inicio']}"
+                . " | criado {$c['created_full']}"
+                . " | data_checkin_date=" . ($c['data_checkin_date'] ?? 'NULL')
+                . " | {$st}{$admin}{$divMes}\n";
         }
     }
+}
+
+// ─── 4b. SIMULAÇÃO PRECISA DA VALIDAÇÃO MENSAL (caminho permite_reposicao=1) ──
+// Reproduz exatamente Checkin::contarCheckinsNoMes: no momento de cada insert,
+// conta os check-ins JÁ existentes cujo MÊS DA AULA (dias.data) é igual ao mês
+// de CURDATE() (= mês em que o check-in foi criado). Bloqueia se contagem >= limite.
+echo "\n4b. SIMULAÇÃO DO INSERT (ordem de criação) — teto mensal = {$limiteMensalCodigo}\n";
+echo str_repeat('-', 80) . "\n";
+
+// Todos os check-ins contáveis, em ordem de criação real.
+$todosContaveis = [];
+foreach ($porMes as $lista) {
+    foreach ($lista as $c) {
+        $todosContaveis[] = $c;
+    }
+}
+usort($todosContaveis, function ($a, $b) {
+    $ca = $a['created_full'] ?? '';
+    $cb = $b['created_full'] ?? '';
+    return $ca === $cb ? ($a['id'] <=> $b['id']) : strcmp($ca, $cb);
+});
+
+$inseridos = [];        // check-ins já "persistidos" na simulação
+$passouIndevido = [];   // check-ins que passaram apesar de já haver >= limite
+foreach ($todosContaveis as $c) {
+    $mesRef = $c['created_full'] ? substr($c['created_full'], 0, 7) : substr($c['data_aula'], 0, 7);
+
+    // contagem que a validação veria: check-ins existentes com MÊS DA AULA == mesRef
+    $contagem = 0;
+    foreach ($inseridos as $j) {
+        if (substr($j['data_aula'], 0, 7) === $mesRef) {
+            $contagem++;
+        }
+    }
+
+    $bloquearia = $contagem >= $limiteMensalCodigo;
+    if ($bloquearia) {
+        $passouIndevido[] = $c;
+        echo "  ❗ #{$c['id']} | aula {$c['data_aula']} | criado {$c['created_full']}"
+            . " | no insert havia {$contagem} check-in(s) no mês {$mesRef} (CURDATE)"
+            . " ≥ {$limiteMensalCodigo} → REGRA DEVERIA BLOQUEAR, mas o check-in existe.\n";
+        $mesAula = substr($c['data_aula'], 0, 7);
+        if ($mesAula !== $mesRef) {
+            echo "       → motivo: aula é de {$mesAula}, mas foi criado em {$mesRef}; a validação\n";
+            echo "         contou o mês ERRADO (CURDATE), então o teto de {$mesAula} não foi checado.\n";
+        }
+    }
+
+    $inseridos[] = $c;
+}
+
+if (!$passouIndevido) {
+    echo "  Nenhum check-in 'passou' contra a regra mensal na ordem de criação.\n";
+    echo "  → O excesso vem de check-ins cuja AULA cai num mês diferente do mês de criação\n";
+    echo "    (a validação por CURDATE nunca somou todos no mesmo balde) ou de divergência\n";
+    echo "    entre data_checkin_date e dias.data. Veja as marcações ⚠️ acima.\n";
 }
 
 // ─── 5. Análise semanal vs limite semanal (caminho permite_reposicao=0) ──────
