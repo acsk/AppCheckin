@@ -79,17 +79,13 @@ class CheckinController
         $planoInfo = $this->checkinModel->obterLimiteCheckinsPlano($userId, $tenantId, $modalidadeTurma);
         if ($planoInfo['tem_plano'] && $planoInfo['limite'] > 0) {
             if ($planoInfo['permite_reposicao']) {
-                $limiteMensal = (int) ($planoInfo['limite_mensal'] ?? ($planoInfo['limite'] * 4));
-                $checkinsNoMes = $this->checkinModel->contarCheckinsNoMes($userId, $modalidadeTurma);
-                if ($checkinsNoMes >= $limiteMensal) {
+                // Limite mensal por CICLO DE COBRANÇA (mês a partir do vencimento),
+                // com fallback fail-safe para mês de calendário.
+                $detalhesLimite = $this->checkinModel->avaliarLimiteMensalReposicao($userId, $tenantId, $modalidadeTurma, $planoInfo);
+                if ($detalhesLimite !== null) {
                     $response->getBody()->write(json_encode([
                         'error' => 'Você atingiu o limite de check-ins deste mês',
-                        'detalhes' => [
-                            'plano' => $planoInfo['plano_nome'],
-                            'limite_mensal' => $limiteMensal,
-                            'checkins_mes' => $checkinsNoMes,
-                            'permite_reposicao' => true
-                        ]
+                        'detalhes' => $detalhesLimite
                     ]));
                     return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
                 }
@@ -344,17 +340,13 @@ class CheckinController
         $planoInfo = $this->checkinModel->obterLimiteCheckinsPlano($usuarioId, $tenantId, $modalidadeTurma);
         if ($planoInfo['tem_plano'] && $planoInfo['limite'] > 0) {
             if ($planoInfo['permite_reposicao']) {
-                $limiteMensal = (int) ($planoInfo['limite_mensal'] ?? ($planoInfo['limite'] * 4));
-                $checkinsNoMes = $this->checkinModel->contarCheckinsNoMes($usuarioId, $modalidadeTurma);
-                if ($checkinsNoMes >= $limiteMensal) {
+                // Limite mensal por CICLO DE COBRANÇA (mês a partir do vencimento),
+                // com fallback fail-safe para mês de calendário.
+                $detalhesLimite = $this->checkinModel->avaliarLimiteMensalReposicao($usuarioId, $tenantId, $modalidadeTurma, $planoInfo);
+                if ($detalhesLimite !== null) {
                     $response->getBody()->write(json_encode([
                         'error' => 'Aluno atingiu o limite de check-ins deste mês',
-                        'detalhes' => [
-                            'plano' => $planoInfo['plano_nome'],
-                            'limite_mensal' => $limiteMensal,
-                            'checkins_mes' => $checkinsNoMes,
-                            'permite_reposicao' => true
-                        ]
+                        'detalhes' => $detalhesLimite
                     ]));
                     return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
                 }

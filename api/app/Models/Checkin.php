@@ -349,6 +349,334 @@ class Checkin
     }
 
     /**
+     * Listar os check-ins do usuário no mês atual que CONTAM no limite.
+     * Usa a mesma regra de contarCheckinsNoMes (mês de dias.data = mês de CURDATE,
+     * presente IS NULL ou = 1). Serve para exibir, de forma esclarecedora, quais
+     * dias preencheram o limite mensal.
+     * @return array<int, array{data:string,horario:string,modalidade:?string,presente:?int,status:string,registrado_por_admin:bool}>
+     */
+    public function listarCheckinsDoMes(int $usuarioId, ?int $modalidadeId = null): array
+    {
+        $sql = "SELECT DATE(d.data) AS data_aula,
+                       t.horario_inicio,
+                       moda.nome AS modalidade_nome,
+                       c.presente,
+                       c.registrado_por_admin
+                FROM checkins c
+                INNER JOIN alunos a ON a.id = c.aluno_id
+                INNER JOIN turmas t ON t.id = c.turma_id
+                INNER JOIN dias d ON d.id = t.dia_id
+                LEFT  JOIN modalidades moda ON moda.id = t.modalidade_id
+                WHERE a.usuario_id = :usuario_id
+                  AND YEAR(d.data)  = YEAR(CURDATE())
+                  AND MONTH(d.data) = MONTH(CURDATE())
+                  AND (c.presente IS NULL OR c.presente = 1)";
+
+        $params = ['usuario_id' => $usuarioId];
+        if ($modalidadeId !== null) {
+            $sql .= " AND t.modalidade_id = :modalidade_id";
+            $params['modalidade_id'] = $modalidadeId;
+        }
+        $sql .= " ORDER BY d.data ASC, t.horario_inicio ASC";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        return $this->mapearDiasCheckin($rows);
+    }
+
+    /**
+     * Listar check-ins que CONTAM no limite dentro de um período [inicio, fim).
+     * fim é EXCLUSIVO (dia do próximo vencimento não entra neste ciclo).
+     */
+    public function listarCheckinsPorPeriodo(int $usuarioId, ?int $modalidadeId, string $inicio, string $fim): array
+    {
+        $sql = "SELECT DATE(d.data) AS data_aula,
+                       t.horario_inicio,
+                       moda.nome AS modalidade_nome,
+                       c.presente,
+                       c.registrado_por_admin
+                FROM checkins c
+                INNER JOIN alunos a ON a.id = c.aluno_id
+                INNER JOIN turmas t ON t.id = c.turma_id
+                INNER JOIN dias d ON d.id = t.dia_id
+                LEFT  JOIN modalidades moda ON moda.id = t.modalidade_id
+                WHERE a.usuario_id = :usuario_id
+                  AND d.data >= :inicio
+                  AND d.data <  :fim
+                  AND (c.presente IS NULL OR c.presente = 1)";
+
+        $params = ['usuario_id' => $usuarioId, 'inicio' => $inicio, 'fim' => $fim];
+        if ($modalidadeId !== null) {
+            $sql .= " AND t.modalidade_id = :modalidade_id";
+            $params['modalidade_id'] = $modalidadeId;
+        }
+        $sql .= " ORDER BY d.data ASC, t.horario_inicio ASC";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+
+        return $this->mapearDiasCheckin($stmt->fetchAll(\PDO::FETCH_ASSOC));
+    }
+
+    /**
+     * Contar check-ins que contam no limite dentro de um período [inicio, fim).
+     */
+    public function contarCheckinsNoPeriodo(int $usuarioId, ?int $modalidadeId, string $inicio, string $fim): int
+    {
+        $sql = "SELECT COUNT(*)
+                FROM checkins c
+                INNER JOIN alunos a ON a.id = c.aluno_id
+                INNER JOIN turmas t ON t.id = c.turma_id
+                INNER JOIN dias d ON d.id = t.dia_id
+                WHERE a.usuario_id = :usuario_id
+                  AND d.data >= :inicio
+                  AND d.data <  :fim
+                  AND (c.presente IS NULL OR c.presente = 1)";
+
+        $params = ['usuario_id' => $usuarioId, 'inicio' => $inicio, 'fim' => $fim];
+        if ($modalidadeId !== null) {
+            $sql .= " AND t.modalidade_id = :modalidade_id";
+            $params['modalidade_id'] = $modalidadeId;
+        }
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        return (int) $stmt->fetchColumn();
+    }
+
+    /**
+     * Mapeia linhas cruas de check-in para o formato exibível (data/horario/status).
+     */
+    private function mapearDiasCheckin(array $rows): array
+    {
+        return array_map(function ($r) {
+            $presente = $r['presente'];
+            $status = $presente === null ? 'pendente' : ((int) $presente === 1 ? 'presente' : 'falta');
+            return [
+                'data'                  => $r['data_aula'],
+                'horario'               => $r['horario_inicio'] ? substr((string) $r['horario_inicio'], 0, 5) : null,
+                'modalidade'            => $r['modalidade_nome'],
+                'presente'              => $presente === null ? null : (int) $presente,
+                'status'                => $status,
+                'registrado_por_admin'  => (bool) $r['registrado_por_admin'],
+            ];
+        }, $rows);
+    }
+
+    /**
+     * Data-âncora do ciclo: dia $anchorDay no mês/ano informado, com clamp para
+     * o último dia do mês quando o mês tem menos dias (ex.: âncora 31 em fevereiro).
+     */
+    private function anchorDate(int $year, int $month, int $anchorDay): \DateTime
+    {
+        $primeiro = new \DateTime(sprintf('%04d-%02d-01', $year, $month));
+        $diasNoMes = (int) $primeiro->format('t');
+        $dia = min($anchorDay, $diasNoMes);
+        return new \DateTime(sprintf('%04d-%02d-%02d', $year, $month, $dia));
+    }
+
+    /**
+     * Avança/retrocede $delta meses a partir de uma data-âncora, preservando o
+     * dia-âncora (com clamp). Passo por mês de calendário (não 30 dias fixos).
+     */
+    private function addMonthsAnchor(\DateTime $base, int $delta, int $anchorDay): \DateTime
+    {
+        $y = (int) $base->format('Y');
+        $m = (int) $base->format('n');
+        $idx = ($y * 12 + ($m - 1)) + $delta;
+        // Divisão com PISO: o '%' do PHP devolve resto negativo para $idx < 0
+        // ((-1 % 12) = -1 → mês 0). floor() garante mês sempre em 1..12.
+        $ny = (int) floor($idx / 12);
+        $nm = $idx - $ny * 12 + 1;
+        return $this->anchorDate($ny, $nm, $anchorDay);
+    }
+
+    /**
+     * Calcula o CICLO DE CHECK-IN ("mês de cobrança") da matrícula ativa do usuário,
+     * o limite efetivo (checkins_semanais × 4 + bônus de 5ª semana) e os check-ins
+     * realizados dentro do ciclo.
+     *
+     * O ciclo é ancorado no dia do vencimento (proxima_data_vencimento), com passo
+     * de 1 mês de calendário. Ex.: vencimento dia 26 → ciclo atual [26/05, 26/06)
+     * (fim exclusivo). O bônus de 5ª semana é mantido: ciclo com ceil(dias/7) >= 5
+     * ganha +1 check-in (janelas de 29–31 dias dão 5; fevereiro de 28 dias dá 4).
+     *
+     * Observação: só se aplica a planos com permite_reposicao (limite mensal).
+     * Seleciona a mesma matrícula que obterLimiteCheckinsPlano (ativa, vigente).
+     */
+    public function obterCicloCheckins(int $usuarioId, int $tenantId, ?int $modalidadeId = null): array
+    {
+        $sql = "SELECT p.checkins_semanais, p.nome AS plano_nome, p.modalidade_id,
+                       COALESCE(m.proxima_data_vencimento, m.data_vencimento) AS vencimento,
+                       CASE
+                           WHEN m.plano_ciclo_id IS NOT NULL THEN COALESCE(pc.permite_reposicao, 0)
+                           ELSE COALESCE((
+                               SELECT MAX(pc2.permite_reposicao)
+                               FROM plano_ciclos pc2
+                               WHERE pc2.plano_id = p.id
+                                 AND pc2.tenant_id = m.tenant_id
+                                 AND pc2.ativo = 1
+                           ), 0)
+                       END AS permite_reposicao
+                FROM matriculas m
+                INNER JOIN planos p ON m.plano_id = p.id
+                LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id AND pc.tenant_id = m.tenant_id
+                INNER JOIN alunos a ON a.id = m.aluno_id
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
+                WHERE a.usuario_id = :usuario_id
+                  AND m.tenant_id = :tenant_id
+                  AND sm.codigo = 'ativa'
+                  AND COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= CURDATE()";
+
+        $params = ['usuario_id' => $usuarioId, 'tenant_id' => $tenantId];
+        if ($modalidadeId !== null) {
+            $sql .= " AND p.modalidade_id = :modalidade_id";
+            $params['modalidade_id'] = $modalidadeId;
+        }
+        $sql .= " ORDER BY m.proxima_data_vencimento DESC LIMIT 1";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        // Só "sem plano" quando NÃO existe matrícula ativa/vigente. Se a matrícula
+        // existe mas o vencimento está ausente/inválido (estado inconsistente, raro),
+        // NÃO desistimos: usamos o mês de calendário como janela do ciclo, mantendo
+        // a MESMA contagem por período. Assim evitamos divergir para outra mecânica.
+        if (!$row) {
+            return ['tem_plano' => false];
+        }
+
+        $checkinsSemanais = (int) $row['checkins_semanais'];
+        $hoje = new \DateTime(date('Y-m-d'));
+        $vencRaw = $row['vencimento'] ?? null;
+
+        if (empty($vencRaw) || $vencRaw === '0000-00-00') {
+            // Sem âncora de vencimento utilizável → janela = mês de calendário atual.
+            $inicio = new \DateTime(date('Y-m-01'));
+            $fim    = new \DateTime(date('Y-m-01', strtotime('first day of next month')));
+        } else {
+            $venc = new \DateTime($vencRaw);
+            $anchorDay = (int) $venc->format('j');
+
+            // Encontrar o ciclo [inicio, fim) que contém hoje (fim exclusivo).
+            $fim = clone $venc;
+            if ($fim <= $hoje) {
+                while ($fim <= $hoje) {
+                    $fim = $this->addMonthsAnchor($fim, 1, $anchorDay);
+                }
+            } else {
+                while (true) {
+                    $anterior = $this->addMonthsAnchor($fim, -1, $anchorDay);
+                    if ($anterior > $hoje) {
+                        $fim = $anterior;
+                    } else {
+                        break;
+                    }
+                }
+            }
+            $inicio = $this->addMonthsAnchor($fim, -1, $anchorDay);
+        }
+
+        $diasNoCiclo = (int) $inicio->diff($fim)->days;
+        $semanas = (int) ceil($diasNoCiclo / 7);
+        $bonus = ($semanas >= 5) ? 1 : 0;
+        $limiteMensal = $checkinsSemanais * 4 + $bonus;
+
+        $inicioStr = $inicio->format('Y-m-d');
+        $fimStr = $fim->format('Y-m-d');
+        $modalidade = $row['modalidade_id'] !== null ? (int) $row['modalidade_id'] : null;
+
+        $diasCheckin = $this->listarCheckinsPorPeriodo($usuarioId, $modalidade, $inicioStr, $fimStr);
+
+        return [
+            'tem_plano'           => true,
+            'plano_nome'          => $row['plano_nome'],
+            'permite_reposicao'   => (bool) $row['permite_reposicao'],
+            'checkins_semanais'   => $checkinsSemanais,
+            'modalidade_id'       => $modalidade,
+            'ciclo_inicio'        => $inicioStr,
+            'ciclo_fim'           => $fimStr,
+            'dias_no_ciclo'       => $diasNoCiclo,
+            'semanas'             => $semanas,
+            'bonus_cinco_semanas' => $bonus > 0,
+            'limite_mensal'       => $limiteMensal,
+            'checkins_no_ciclo'   => count($diasCheckin),
+            'dias_checkin'        => $diasCheckin,
+        ];
+    }
+
+    /**
+     * Avalia o limite mensal (planos com reposição) usando o CICLO DE COBRANÇA.
+     *
+     * obterCicloCheckins já trata vencimento ausente/inválido usando o mês de
+     * calendário como janela do ciclo (mesma contagem por período). O fail-safe
+     * abaixo só roda se NÃO houver matrícula no cálculo do ciclo (divergência rara
+     * com o chamador) e também valida por período. NUNCA libera sem validar.
+     *
+     * @param array $planoInfo Retorno de obterLimiteCheckinsPlano (tem_plano + permite_reposicao já validados pelo chamador)
+     * @return array|null null se está DENTRO do limite; array de "detalhes" se o limite foi ATINGIDO.
+     */
+    public function avaliarLimiteMensalReposicao(int $usuarioId, int $tenantId, ?int $modalidadeId, array $planoInfo): ?array
+    {
+        $ciclo = $this->obterCicloCheckins($usuarioId, $tenantId, $modalidadeId);
+
+        if (!empty($ciclo['tem_plano'])) {
+            if ($ciclo['checkins_no_ciclo'] < $ciclo['limite_mensal']) {
+                return null;
+            }
+            return [
+                'plano'               => $ciclo['plano_nome'],
+                'checkins_semanais'   => $ciclo['checkins_semanais'],
+                'limite_mensal'       => $ciclo['limite_mensal'],
+                'checkins_mes'        => $ciclo['checkins_no_ciclo'],
+                'permite_reposicao'   => (bool) ($ciclo['permite_reposicao'] ?? false),
+                'bonus_cinco_semanas' => (bool) $ciclo['bonus_cinco_semanas'],
+                // ciclo_fim é EXCLUSIVO (próximo vencimento). Exibe o último dia
+                // INCLUSIVO (fim - 1 dia) para não confundir o usuário sobre quais
+                // datas contam no limite. Ex.: [26/05, 26/06) → "26/05 a 25/06".
+                'mes_referencia'      => date('d/m', strtotime($ciclo['ciclo_inicio'])) . ' a ' . date('d/m', strtotime($ciclo['ciclo_fim'] . ' -1 day')),
+                'ciclo_inicio'        => $ciclo['ciclo_inicio'],
+                'ciclo_fim'           => $ciclo['ciclo_fim'],
+                'dias_checkin'        => $ciclo['dias_checkin'],
+            ];
+        }
+
+        // Fail-safe: só alcançado se NÃO houver matrícula no cálculo do ciclo
+        // (divergência rara com o chamador). Valida por mês de calendário usando a
+        // MESMA contagem por período [inicio, fim) do caminho normal — uma única
+        // mecânica de contagem, evitando resultados diferentes entre os caminhos.
+        $inicio = date('Y-m-01');
+        $fim    = date('Y-m-01', strtotime('first day of next month'));
+
+        // Mesma fórmula do ciclo (ceil(dias/7)) para o bônus de 5ª semana.
+        $diasNoMes    = (int) (new \DateTime($inicio))->format('t');
+        $semanasNoMes = (int) ceil($diasNoMes / 7);
+        $bonus        = ($semanasNoMes >= 5) ? 1 : 0;
+
+        $limiteMensal  = (int) ($planoInfo['limite_mensal'] ?? ((int) ($planoInfo['limite'] ?? 0) * 4)) + $bonus;
+        $diasCheckin   = $this->listarCheckinsPorPeriodo($usuarioId, $modalidadeId, $inicio, $fim);
+        $checkinsNoMes = count($diasCheckin);
+        if ($checkinsNoMes < $limiteMensal) {
+            return null;
+        }
+        return [
+            'plano'               => $planoInfo['plano_nome'] ?? 'Plano',
+            'checkins_semanais'   => (int) ($planoInfo['limite'] ?? 0),
+            'limite_mensal'       => $limiteMensal,
+            'checkins_mes'        => $checkinsNoMes,
+            'permite_reposicao'   => true,
+            'bonus_cinco_semanas' => $bonus > 0,
+            // Mesmo formato de intervalo do caminho por ciclo ("d/m a d/m"): mês de
+            // calendário inteiro (1º dia ao último dia inclusivo = fim - 1 dia).
+            'mes_referencia'      => date('d/m', strtotime($inicio)) . ' a ' . date('d/m', strtotime($fim . ' -1 day')),
+            'dias_checkin'        => $diasCheckin,
+        ];
+    }
+
+    /**
      * Obter limite de check-ins do plano do usuário
      */
     /**
@@ -385,8 +713,10 @@ class Checkin
             'tenant_id' => $tenantId
         ];
         
-        // Se modalidade foi especificada, filtrar por ela
-        if ($modalidadeId) {
+        // Se modalidade foi especificada, filtrar por ela. Usa !== null (não
+        // truthiness) para tratar o contrato nullable de forma consistente com
+        // obterCicloCheckins — ambos selecionam a MESMA matrícula.
+        if ($modalidadeId !== null) {
             $sql .= " AND p.modalidade_id = :modalidade_id";
             $params['modalidade_id'] = $modalidadeId;
         }

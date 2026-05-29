@@ -492,11 +492,12 @@ class AuditoriaController
         $ano = !empty($params['ano']) ? (int) $params['ano'] : (int) date('Y');
         $mes = !empty($params['mes']) ? (int) $params['mes'] : (int) date('m');
 
-        // Bônus se o mês tem 5 semanas (domingo–sábado)
+        // Bônus de mês "longo" (+1 check-in). Mesma fórmula do enforcement
+        // (Checkin::obterCicloCheckins / avaliarLimiteMensalReposicao): ceil(dias/7)>=5.
+        // Mantém o relatório coerente com o limite efetivamente aplicado no app.
         $primeiroDia = new \DateTime(sprintf('%04d-%02d-01', $ano, $mes));
-        $diaSemanaInicio = (int) $primeiroDia->format('w');
         $diasNoMes = (int) $primeiroDia->format('t');
-        $bonusCincoSemanas = ((int) ceil(($diasNoMes + $diaSemanaInicio) / 7) >= 5) ? 1 : 0;
+        $bonusCincoSemanas = ((int) ceil($diasNoMes / 7) >= 5) ? 1 : 0;
 
         try {
             // ─── 1. Violações MENSAIS (permite_reposicao = 1) ─────────────────

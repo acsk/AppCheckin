@@ -177,15 +177,17 @@ foreach ($checkins as $c) {
 echo "  Total de check-ins (presente!=0, modalidade do plano): "
     . array_sum(array_map('count', $porMes)) . "\n\n";
 
-// Helper: limite mensal EFETIVO aplicado pelo app (MobileController),
-// = checkins_semanais × 4 + bônus de mês com 5 semanas (Dom-Sáb).
-// IMPORTANTE: CheckinController (web/admin) NÃO aplica o bônus (usa só ×4).
+// Helper: limite mensal EFETIVO aplicado pelo app,
+// = checkins_semanais × 4 + bônus de mês "longo" (ceil(dias/7) >= 5).
+// Usa a MESMA fórmula do enforcement (Checkin::obterCicloCheckins /
+// avaliarLimiteMensalReposicao): ceil($diasNoMes / 7). Antes este helper somava
+// $diaSemanaInicio (grade de calendário Dom-Sáb), divergindo do app e relatando
+// bônus incorreto no diagnóstico.
 $limiteMensalApp = function (string $mesKey) use ($checkinsSemanais): array {
     [$ano, $mes]     = explode('-', $mesKey);
     $primeiroDia     = new DateTime("{$ano}-{$mes}-01");
-    $diaSemanaInicio = (int) $primeiroDia->format('w'); // 0=dom
     $diasNoMes       = (int) $primeiroDia->format('t');
-    $semanasNoMes    = (int) ceil(($diasNoMes + $diaSemanaInicio) / 7);
+    $semanasNoMes    = (int) ceil($diasNoMes / 7);
     $bonus           = ($semanasNoMes >= 5) ? 1 : 0;
     return [
         'base'    => $checkinsSemanais * 4,

@@ -144,11 +144,27 @@ export default function CheckinTurmaScreen() {
     title: string;
     message: string;
     type: "error" | "warning" | "success";
+    limite?: {
+      plano?: string;
+      checkins_semanais?: number;
+      limite_mensal?: number;
+      checkins_mes?: number;
+      bonus_cinco_semanas?: boolean;
+      mes_referencia?: string;
+      dias_checkin?: {
+        data: string;
+        horario?: string | null;
+        modalidade?: string | null;
+        status?: string;
+        registrado_por_admin?: boolean;
+      }[];
+    } | null;
   }>({
     visible: false,
     title: "",
     message: "",
     type: "error",
+    limite: null,
   });
   const modalScale = useRef(new Animated.Value(0)).current;
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
@@ -228,6 +244,7 @@ export default function CheckinTurmaScreen() {
   const showErrorModal = (
     message: string,
     type: "error" | "warning" | "success" = "error",
+    limite: typeof errorModal.limite = null,
   ) => {
     const msg = normalizeUtf8(String(message || ""));
     const title =
@@ -238,6 +255,7 @@ export default function CheckinTurmaScreen() {
       title,
       message: msg,
       type,
+      limite: limite ?? null,
     });
 
     Animated.spring(modalScale, {
@@ -254,8 +272,25 @@ export default function CheckinTurmaScreen() {
       duration: 200,
       useNativeDriver: true,
     }).start(() => {
-      setErrorModal({ visible: false, title: "", message: "", type: "error" });
+      setErrorModal({
+        visible: false,
+        title: "",
+        message: "",
+        type: "error",
+        limite: null,
+      });
     });
+  };
+
+  const formatDiaCheckin = (data: string) => {
+    const partes = String(data || "").split("-");
+    if (partes.length !== 3) return data;
+    const [ano, mes, dia] = partes;
+    const dt = new Date(Number(ano), Number(mes) - 1, Number(dia));
+    const semana = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"][
+      dt.getDay()
+    ];
+    return `${semana} ${dia}/${mes}`;
   };
 
   const goBackToCheckin = useCallback(() => {
@@ -974,7 +1009,19 @@ export default function CheckinTurmaScreen() {
           data?.message ||
           text ||
           "Não foi possível adicionar o aluno.";
-        showErrorModal(normalizeUtf8(String(apiMessage)), "error");
+        // Mostra o box de limite sempre que vier o resumo do limite mensal
+        // (identificado por limite_mensal). A lista de dias é opcional — o render
+        // já trata dias_checkin ausente/malformado. Não confundir com outros
+        // erros que trazem 'detalhes' de formato diferente (ex.: limite diário).
+        const limiteDetalhes =
+          data?.detalhes && data.detalhes.limite_mensal !== undefined
+            ? data.detalhes
+            : null;
+        showErrorModal(
+          normalizeUtf8(String(apiMessage)),
+          "warning",
+          limiteDetalhes,
+        );
         return;
       }
 
@@ -1794,6 +1841,67 @@ export default function CheckinTurmaScreen() {
                 </View>
                 <Text style={styles.modalTitle}>{errorModal.title}</Text>
                 <Text style={styles.modalMessage}>{errorModal.message}</Text>
+
+                {errorModal.limite ? (
+                  <View style={styles.limiteBox}>
+                    {!!errorModal.limite.plano && (
+                      <View style={styles.limiteHeaderRow}>
+                        <Feather name="award" size={16} color="#92400e" />
+                        <Text style={styles.limitePlano}>
+                          {normalizeUtf8(errorModal.limite.plano)}
+                        </Text>
+                      </View>
+                    )}
+
+                    <Text style={styles.limiteResumo}>
+                      {errorModal.limite.checkins_mes ?? 0} de{" "}
+                      {errorModal.limite.limite_mensal ?? 0} check-ins
+                      {errorModal.limite.mes_referencia
+                        ? ` no ciclo ${errorModal.limite.mes_referencia}`
+                        : " neste ciclo"}
+                    </Text>
+                    {errorModal.limite.bonus_cinco_semanas && (
+                      <Text style={styles.limiteBonus}>
+                        Inclui +1 bônus (mês com 5 semanas)
+                      </Text>
+                    )}
+
+                    {Array.isArray(errorModal.limite.dias_checkin) &&
+                      errorModal.limite.dias_checkin.length > 0 && (
+                        <View style={styles.limiteDiasList}>
+                          {errorModal.limite.dias_checkin.map((d, idx) => (
+                            <View
+                              key={`${d.data}-${idx}`}
+                              style={styles.limiteDiaRow}
+                            >
+                              <Feather
+                                name={
+                                  d.status === "pendente"
+                                    ? "clock"
+                                    : "check-circle"
+                                }
+                                size={14}
+                                color={
+                                  d.status === "pendente" ? "#f59e0b" : "#16a34a"
+                                }
+                              />
+                              <Text style={styles.limiteDiaTexto}>
+                                {formatDiaCheckin(d.data)}
+                                {d.horario ? `  ${d.horario}` : ""}
+                                {d.modalidade
+                                  ? `  ·  ${normalizeUtf8(d.modalidade)}`
+                                  : ""}
+                                {d.status === "pendente"
+                                  ? "  (presença não marcada)"
+                                  : ""}
+                              </Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                  </View>
+                ) : null}
+
                 <TouchableOpacity
                   style={[
                     styles.modalButton,
@@ -2483,6 +2591,55 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 24,
     lineHeight: 24,
+  },
+  limiteBox: {
+    width: "100%",
+    backgroundColor: "#fffbeb",
+    borderWidth: 1,
+    borderColor: "#fcd34d",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 20,
+  },
+  limiteHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 6,
+  },
+  limitePlano: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#92400e",
+  },
+  limiteResumo: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#b45309",
+    marginBottom: 2,
+  },
+  limiteBonus: {
+    fontSize: 12,
+    color: "#a16207",
+    fontStyle: "italic",
+    marginBottom: 8,
+  },
+  limiteDiasList: {
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#fde68a",
+    paddingTop: 8,
+    gap: 6,
+  },
+  limiteDiaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  limiteDiaTexto: {
+    fontSize: 14,
+    color: "#374151",
+    flexShrink: 1,
   },
   modalButton: {
     width: "100%",

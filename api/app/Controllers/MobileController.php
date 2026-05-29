@@ -1739,26 +1739,14 @@ class MobileController
             $planoInfo = $this->checkinModel->obterLimiteCheckinsPlano($usuarioId, $tenantId, $modalidadeTurma);
             if ($planoInfo['tem_plano'] && $planoInfo['limite'] > 0) {
                 if ($planoInfo['permite_reposicao']) {
-                    // Meses com 5 semanas liberam +1 check-in
-                    $primeiroDiaMes = new \DateTime(date('Y-m-01'));
-                    $diaSemanaInicio = (int) $primeiroDiaMes->format('w');
-                    $diasNoMes = (int) $primeiroDiaMes->format('t');
-                    $semanasNoMes = (int) ceil(($diasNoMes + $diaSemanaInicio) / 7);
-                    $bonusCincoSemanas = ($semanasNoMes >= 5) ? 1 : 0;
-
-                    $limiteMensal = (int) ($planoInfo['limite_mensal'] ?? ($planoInfo['limite'] * 4));
-                    $limiteMensal += $bonusCincoSemanas;
-                    $checkinsNoMes = $this->checkinModel->contarCheckinsNoMes($usuarioId, $modalidadeTurma);
-                    if ($checkinsNoMes >= $limiteMensal) {
+                    // Limite mensal por CICLO DE COBRANÇA (mês a partir do vencimento),
+                    // com fallback fail-safe para mês de calendário.
+                    $detalhesLimite = $this->checkinModel->avaliarLimiteMensalReposicao($usuarioId, $tenantId, $modalidadeTurma, $planoInfo);
+                    if ($detalhesLimite !== null) {
                         $response->getBody()->write(json_encode([
                             'success' => false,
                             'error' => 'Aluno atingiu o limite de check-ins deste mês',
-                            'detalhes' => [
-                                'plano' => $planoInfo['plano_nome'],
-                                'limite_mensal' => $limiteMensal,
-                                'checkins_mes' => $checkinsNoMes,
-                                'permite_reposicao' => true
-                            ]
+                            'detalhes' => $detalhesLimite
                         ]));
                         return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
                     }
@@ -2034,30 +2022,26 @@ class MobileController
             $planoInfo = $this->checkinModel->obterLimiteCheckinsPlano($userId, $tenantId, $modalidadeTurma);
             
             if ($planoInfo['tem_plano'] && $planoInfo['limite'] > 0) {
-                // Verificar se o mês atual tem 5 semanas (Sun-Sat)
-                // Meses com 5 semanas liberam +1 check-in no total
-                $primeiroDiaMes = new \DateTime(date('Y-m-01'));
-                $diaSemanaInicio = (int) $primeiroDiaMes->format('w'); // 0=domingo
-                $diasNoMes = (int) $primeiroDiaMes->format('t');
-                $semanasNoMes = (int) ceil(($diasNoMes + $diaSemanaInicio) / 7);
+                // Bônus de mês "longo" (+1 check-in). Usa a MESMA fórmula do limite
+                // mensal (Checkin::obterCicloCheckins / avaliarLimiteMensalReposicao):
+                // ceil(dias / 7) >= 5. Antes o caminho semanal usava
+                // ceil((dias + diaSemanaInicio) / 7), o que concedia +1 a mais em
+                // fevereiro/meses que começam tarde na semana — divergindo do
+                // caminho mensal. Padronizado para manter permite_reposicao=0 e =1
+                // coerentes.
+                $diasNoMes = (int) (new \DateTime(date('Y-m-01')))->format('t');
+                $semanasNoMes = (int) ceil($diasNoMes / 7);
                 $bonusCincoSemanas = ($semanasNoMes >= 5) ? 1 : 0;
 
                 if ($planoInfo['permite_reposicao']) {
-                    $limiteMensal = (int) ($planoInfo['limite_mensal'] ?? ($planoInfo['limite'] * 4));
-                    $limiteMensal += $bonusCincoSemanas;
-                    $checkinsNoMes = $this->checkinModel->contarCheckinsNoMes($userId, $modalidadeTurma);
-                    
-                    if ($checkinsNoMes >= $limiteMensal) {
+                    // Limite mensal por CICLO DE COBRANÇA (mês a partir do vencimento),
+                    // com fallback fail-safe para mês de calendário.
+                    $detalhes = $this->checkinModel->avaliarLimiteMensalReposicao($userId, $tenantId, $modalidadeTurma, $planoInfo);
+                    if ($detalhes !== null) {
                         $response->getBody()->write(json_encode([
                             'success' => false,
                             'error' => 'Você atingiu o limite de check-ins deste mês',
-                            'detalhes' => [
-                                'plano' => $planoInfo['plano_nome'],
-                                'limite_mensal' => $limiteMensal,
-                                'checkins_mes' => $checkinsNoMes,
-                                'permite_reposicao' => true,
-                                'mensagem' => 'Seu plano (' . $planoInfo['plano_nome'] . ') permite até ' . $limiteMensal . ' check-in(s) por mês. Você já realizou ' . $checkinsNoMes . '.'
-                            ]
+                            'detalhes' => $detalhes
                         ]));
                         return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
                     }
