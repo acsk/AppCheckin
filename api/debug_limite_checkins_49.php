@@ -2,9 +2,11 @@
 /**
  * Debug: por que a matrícula #49 fez MAIS check-ins do que o plano permite?
  *
- * Reproduz a mesma lógica de validação usada em CheckinController::create /
- * registrarPorAdmin (Checkin::obterLimiteCheckinsPlano, contarCheckinsNaSemana,
- * contarCheckinsNoMes) e mostra, mês a mês, onde e por que o limite foi furado.
+ * Enforcement ATUAL (fonte da verdade): limite mensal por CICLO DE COBRANÇA,
+ * centralizado em Checkin::obterCicloCheckins / avaliarLimiteMensalReposicao
+ * (ancorado no vencimento). A Seção 8 reflete essa regra. As Seções 4–7 são uma
+ * VISÃO HISTÓRICA por mês de calendário (contexto) e podem apontar "excesso" que
+ * NÃO existe pela regra por ciclo (ciclos cruzam o mês, ex.: 25→25).
  *
  * Uso: php debug_limite_checkins_49.php [matricula_id]
  *      (matricula_id é opcional; padrão = 49)
@@ -106,10 +108,10 @@ $checkinsSemanais = (int) $mat['checkins_semanais'];
 echo "  permite_reposicao efetivo : " . ($permiteReposicao ? 'SIM → limite MENSAL' : 'NÃO → limite SEMANAL') . "\n";
 echo "  checkins_semanais         : {$checkinsSemanais}\n";
 if ($permiteReposicao) {
-    echo "  → Limite aplicado: MENSAL = checkins_semanais × 4 = " . ($checkinsSemanais * 4) . "\n";
-    echo "    (ATENÇÃO: no código o limite_mensal é fixo em ×4, sem bônus de 5ª semana)\n";
+    echo "  → Limite aplicado: MENSAL por CICLO DE COBRANÇA (vencimento) = checkins_semanais × 4 + bônus 5ª semana.\n";
+    echo "    Enforcement centralizado em Checkin::avaliarLimiteMensalReposicao — veja a Seção 8 (fonte da verdade).\n";
 } else {
-    echo "  → Limite aplicado: SEMANAL = {$checkinsSemanais} por semana (YEARWEEK do mês corrente)\n";
+    echo "  → Limite aplicado: SEMANAL = {$checkinsSemanais} por semana ISO (+ bônus de mês com 5 semanas).\n";
 }
 
 echo "\n  Ciclos do plano {$mat['plano_id']} (tenant {$tenantId}):\n";
@@ -197,25 +199,26 @@ $limiteMensalApp = function (string $mesKey) use ($checkinsSemanais): array {
     ];
 };
 
-// ─── 4. Análise mês a mês vs limite mensal EFETIVO do app ────────────────────
-echo "4. ANÁLISE MENSAL (limite EFETIVO do app = checkins_semanais × 4 + bônus 5ª semana)\n";
+// ─── 4. Análise mês a mês — VISÃO HISTÓRICA (mês de calendário) ──────────────
+echo "4. ANÁLISE MENSAL — VISÃO HISTÓRICA por MÊS DE CALENDÁRIO (NÃO é o enforcement atual)\n";
 echo str_repeat('-', 80) . "\n";
 $limiteBase = $checkinsSemanais * 4;
-echo "  Limite base (×4)         : {$checkinsSemanais} × 4 = {$limiteBase}\n";
-echo "  + bônus em mês de 5 semanas: aplicado pelo MobileController (app do aluno)\n";
-echo "  ⚠️  CheckinController (web/admin) NÃO aplica o bônus → usa só {$limiteBase}\n\n";
+echo "  ⚠️  O enforcement REAL hoje é por CICLO DE COBRANÇA (vencimento) — veja a Seção 8.\n";
+echo "      Esta seção agrupa por mês de calendário só para contexto e pode apontar\n";
+echo "      'excesso' que NÃO existe na regra por ciclo (ciclos cruzam o mês, ex.: 25→25).\n";
+echo "  Limite base (×4): {$checkinsSemanais} × 4 = {$limiteBase}  (+ bônus se ceil(dias/7) >= 5)\n\n";
 
 ksort($porMes);
 foreach ($porMes as $mesKey => $lista) {
     $lim    = $limiteMensalApp($mesKey);
     $total  = count($lista);
-    $excessoApp  = $total - $lim['efetivo'];   // vs regra REAL do app
-    $excessoBase = $total - $lim['base'];       // vs CheckinController (×4)
+    $excessoApp  = $total - $lim['efetivo'];   // vs ×4 + bônus (calendário)
+    $excessoBase = $total - $lim['base'];       // vs ×4 base (calendário)
 
     $flag = $excessoApp > 0 ? '⛔' : ($excessoBase > 0 ? '⚠️ ' : '   ');
     echo "  {$flag}{$mesKey}: {$total} check-ins"
-        . " | limite app (×4+bônus)={$lim['efetivo']} (base {$lim['base']} + bônus {$lim['bonus']}, {$lim['semanas']} semanas)"
-        . " | excesso vs app=" . ($excessoApp > 0 ? "+{$excessoApp}" : $excessoApp)
+        . " | limite calendário (×4+bônus)={$lim['efetivo']} (base {$lim['base']} + bônus {$lim['bonus']}, {$lim['semanas']} semanas)"
+        . " | excesso vs efetivo=" . ($excessoApp > 0 ? "+{$excessoApp}" : $excessoApp)
         . " | excesso vs ×4=" . ($excessoBase > 0 ? "+{$excessoBase}" : $excessoBase) . "\n";
 
     // Lista os check-ins quando há QUALQUER divergência (vs app OU vs ×4).
@@ -241,11 +244,12 @@ foreach ($porMes as $mesKey => $lista) {
 // Reproduz a validação real no insert: no momento de cada check-in, conta os já
 // existentes cujo MÊS DA AULA (dias.data) == mês de CURDATE (mês de criação) e
 // compara com o teto. Mostra os dois tetos: app (×4+bônus) e CheckinController (×4).
-echo "\n4b. SIMULAÇÃO DO INSERT (ordem de criação)\n";
+echo "\n4b. SIMULAÇÃO DO INSERT por MÊS DE CALENDÁRIO (visão histórica/legada)\n";
 echo str_repeat('-', 80) . "\n";
-echo "  Compara contra os dois tetos existentes no código:\n";
-echo "    • APP  (MobileController) = ×4 + bônus de mês com 5 semanas\n";
-echo "    • WEB  (CheckinController) = ×4 fixo (sem bônus)\n\n";
+echo "  ⚠️  Apenas histórico: o enforcement atual conta por CICLO DE COBRANÇA (Seção 8),\n";
+echo "      não por mês de calendário. Tetos abaixo são aproximação por mês:\n";
+echo "    • base    = checkins_semanais × 4\n";
+echo "    • efetivo = base + bônus de mês com 5 semanas (ceil(dias/7) >= 5)\n\n";
 
 $todosContaveis = [];
 foreach ($porMes as $lista) {
@@ -276,24 +280,23 @@ foreach ($todosContaveis as $c) {
     if ($contagem >= $lim['efetivo']) {
         $passouApp[] = $c;
         echo "  ⛔ #{$c['id']} | aula {$c['data_aula']} | criado {$c['created_full']}"
-            . " | havia {$contagem} no mês {$mesRef} ≥ teto APP {$lim['efetivo']}"
-            . " → EXCESSO REAL (furou até a regra do app).\n";
+            . " | havia {$contagem} no mês {$mesRef} ≥ teto efetivo {$lim['efetivo']} (calendário)"
+            . " → confira pela regra por CICLO na Seção 8 (pode não ser furo real).\n";
     } elseif ($contagem >= $lim['base']) {
         $passouWeb[] = $c;
         echo "  ⚠️  #{$c['id']} | aula {$c['data_aula']} | criado {$c['created_full']}"
             . " | havia {$contagem} no mês {$mesRef}: ≥ {$lim['base']} (×4) mas < {$lim['efetivo']} (×4+bônus)"
-            . " → liberado pelo BÔNUS de 5ª semana ({$lim['semanas']} semanas no mês).\n";
+            . " → dentro do mês graças ao bônus de 5ª semana ({$lim['semanas']} semanas no mês).\n";
     }
 
     $inseridos[] = $c;
 }
 
 if (!$passouApp && !$passouWeb) {
-    echo "  Nenhum check-in atingiu sequer o teto base (×4) na ordem de criação.\n";
+    echo "  Nenhum check-in atingiu sequer o teto base (×4) por mês de calendário.\n";
 } elseif (!$passouApp) {
-    echo "\n  ✅ NENHUM check-in furou o limite REAL do app (×4 + bônus de 5ª semana).\n";
-    echo "     Os marcados com ⚠️ só ultrapassam o ×4 fixo do CheckinController, mas foram\n";
-    echo "     legitimamente liberados pelo bônus de mês com 5 semanas no app do aluno.\n";
+    echo "\n  ✅ Nenhum check-in furou o teto efetivo por mês de calendário (×4 + bônus).\n";
+    echo "     Os marcados com ⚠️ só ultrapassam o ×4 base, mas couberam no bônus de 5ª semana.\n";
 }
 
 // ─── 5. Análise semanal vs limite semanal (caminho permite_reposicao=0) ──────
@@ -396,7 +399,8 @@ echo "      check-ins registrados por admin: {$adminCount} de " . count($checkin
 echo "\n  [c] Caminho de validação efetivo desta matrícula: "
     . ($permiteReposicao ? "MENSAL (permite_reposicao=1)" : "SEMANAL (permite_reposicao=0)") . "\n";
 if ($permiteReposicao) {
-    echo "      → o limite mensal usado pelo código é ×4 fixo, sem bônus de 5ª semana.\n";
+    echo "      → limite mensal por CICLO DE COBRANÇA (vencimento) = ×4 + bônus 5ª semana,\n";
+    echo "        contando só os check-ins dentro do ciclo atual. Veja a Seção 8.\n";
 } else {
     echo "      → não há teto mensal: o aluno pode somar muito mais que (semanal×4) ao longo do mês\n";
     echo "        desde que respeite o teto de cada semana individualmente.\n";
@@ -428,23 +432,16 @@ echo "  Meses acima de ×4 mas DENTRO do bônus (5 semanas): " . (count($excedeB
         fn($k, $v) => "{$k} (+{$v})", array_keys($excedeBase), $excedeBase)) : 'nenhum') . "\n";
 
 echo "\n  CONCLUSÃO:\n";
+echo "   ℹ️  Os números acima são por MÊS DE CALENDÁRIO (visão histórica). O enforcement\n";
+echo "       atual é por CICLO DE COBRANÇA — o VEREDITO vale pela Seção 8 abaixo.\n";
 if (!$excedeApp && $excedeBase) {
-    echo "   ✅ O aluno NÃO furou o limite real do app. Os meses sinalizados têm 5 semanas\n";
-    echo "      (Dom-Sáb) e o MobileController concede +1 check-in nesses meses. Logo {$checkinsSemanais}×4+1\n";
-    echo "      check-ins é PERMITIDO pelo app — o 'excesso' só aparece frente ao ×4 fixo.\n\n";
-    echo "   ⚠️  INCONSISTÊNCIA DE CÓDIGO: o limite mensal está implementado em 3 lugares com\n";
-    echo "      regras diferentes:\n";
-    echo "        • MobileController  → ×4 + bônus 5ª semana  (app do aluno) ✅ é o que vale\n";
-    echo "        • CheckinController → ×4 fixo (web/admin)    ✗ bloquearia 1 a menos\n";
-    echo "        • Checkin::obterLimiteCheckinsPlano → expõe limite_mensal = ×4 (sem bônus)\n";
-    echo "      Para o relatório/gestão ficar coerente com o app, alinhe o teto somando o\n";
-    echo "      bônus de 5ª semana também no CheckinController e no limite_mensal do model.\n";
+    echo "   • Meses sinalizados só passam do ×4 base, mas cabem no bônus de 5ª semana — ok.\n";
 } elseif ($excedeApp) {
-    echo "   ⛔ Há meses acima até do limite real do app. Ver seção 4b (⛔): check-ins que\n";
-    echo "      passaram apesar do teto. Causas possíveis: faltas (presente=0) liberando\n";
-    echo "      crédito de reposição e depois revertidas, registro retroativo, ou concorrência.\n";
+    echo "   • Há meses de calendário acima de ×4+bônus, mas isso NÃO implica furo no ciclo:\n";
+    echo "     ciclos ancorados no vencimento cruzam o mês (ex.: 25→25). Confira a Seção 8 —\n";
+    echo "     se lá estiver 'dentro do limite', não houve excesso real.\n";
 } else {
-    echo "   ✅ Dentro do limite em todos os meses.\n";
+    echo "   • Dentro do limite em todos os meses de calendário.\n";
 }
 
 // ─── 8. CICLO DE COBRANÇA (nova regra) — Checkin::obterCicloCheckins ─────────
