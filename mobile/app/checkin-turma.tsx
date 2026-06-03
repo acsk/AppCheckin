@@ -18,6 +18,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../src/theme/colors";
 import { normalizeUtf8 } from "../src/utils/utf8";
+import { weekdayAbbrev } from "../src/utils/weekdayAbbrev";
 
 const getRouteParam = (value?: string | string[]) => {
   if (value == null) return undefined;
@@ -287,9 +288,7 @@ export default function CheckinTurmaScreen() {
     if (partes.length !== 3) return data;
     const [ano, mes, dia] = partes;
     const dt = new Date(Number(ano), Number(mes) - 1, Number(dia));
-    const semana = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"][
-      dt.getDay()
-    ];
+    const semana = weekdayAbbrev(dt);
     return `${semana} ${dia}/${mes}`;
   };
 

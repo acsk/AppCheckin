@@ -16,6 +16,7 @@ import {
     logCompressionInfo,
 } from "@/src/utils/imageCompression";
 import AsyncStorage from "@/src/utils/storage";
+import { weekdayAbbrev } from "@/src/utils/weekdayAbbrev";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
@@ -775,8 +776,6 @@ export default function AccountScreen() {
       dayNumber: number;
       dateStr: string;
     }[] = [];
-    const dayNames = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-
     if (weekSemanaInicio) {
       // Usar data de início da semana da API
       const startDate = new Date(weekSemanaInicio + "T00:00:00");
@@ -786,7 +785,7 @@ export default function AccountScreen() {
         const dateStr = date.toISOString().split("T")[0];
         days.push({
           date,
-          dayName: dayNames[date.getDay()],
+          dayName: weekdayAbbrev(date),
           dayNumber: date.getDate(),
           dateStr,
         });
@@ -804,7 +803,7 @@ export default function AccountScreen() {
         const dateStr = date.toISOString().split("T")[0];
         days.push({
           date,
-          dayName: dayNames[date.getDay()],
+          dayName: weekdayAbbrev(date),
           dayNumber: date.getDate(),
           dateStr,
         });
@@ -1196,6 +1195,7 @@ export default function AccountScreen() {
                         hasCheckin && styles.weekDayNameChecked,
                       ]}
                       className="notranslate"
+                      autoCorrect={false}
                     >
                       {day.dayName}
                     </Text>

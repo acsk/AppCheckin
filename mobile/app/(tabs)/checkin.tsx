@@ -24,6 +24,7 @@ import AuthService from "../../src/services/authService";
 import { colors } from "../../src/theme/colors";
 import { handleAuthError } from "../../src/utils/authHelpers";
 import { normalizeUtf8 } from "../../src/utils/utf8";
+import { weekdayAbbrev } from "../../src/utils/weekdayAbbrev";
 
 const getRouteParam = (value?: string | string[]) => {
   if (value == null) return undefined;
@@ -1339,11 +1340,9 @@ export default function CheckinScreen() {
   };
 
   const formatDateDisplay = (date: Date) => {
-    console.log("📅 Formatando data:", date);
     const day = date.getDate();
-    const dayNames = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-    const dayName = dayNames[date.getDay()] || "";
-    return { day, dayName: dayName.toUpperCase() };
+    const dayName = weekdayAbbrev(date, { uppercase: true });
+    return { day, dayName };
   };
 
   const getHoraInicio = (turma: any) =>
@@ -1636,6 +1635,10 @@ export default function CheckinScreen() {
                           isSelected && styles.calendarDayNameSelected,
                         ]}
                         className="notranslate"
+                        autoCorrect={false}
+                        spellCheck={
+                          Platform.OS === "web" ? false : undefined
+                        }
                       >
                         {dayName}
                       </Text>
