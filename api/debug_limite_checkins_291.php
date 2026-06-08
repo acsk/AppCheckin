@@ -85,7 +85,18 @@ if (empty($ciclo['tem_plano'])) {
     echo "  Bônus 5ª semana    : " . ($ciclo['bonus_cinco_semanas'] ? 'sim (+1)' : 'não') . "\n";
     echo "  Limite no ciclo    : {$ciclo['limite_mensal']} ({$ciclo['checkins_semanais']}×4 + bônus)\n";
     echo "  Check-ins no ciclo : {$ciclo['checkins_no_ciclo']}\n";
-    echo '  Saldo              : ' . max(0, $ciclo['limite_mensal'] - $ciclo['checkins_no_ciclo']) . "\n\n";
+    echo '  Saldo mensal       : ' . max(0, $ciclo['limite_mensal'] - $ciclo['checkins_no_ciclo']) . "\n";
+
+    if (!empty($ciclo['contrato_multimes'])) {
+        $pFimInc = date('Y-m-d', strtotime($ciclo['periodo_fim'] . ' -1 day'));
+        echo "\n  CONTRATO MULTI-MÊS ({$ciclo['meses_ciclo']} meses)\n";
+        echo "  Período contrato   : {$ciclo['periodo_inicio']} a {$pFimInc}\n";
+        echo "  Limite no contrato : {$ciclo['limite_periodo']}\n";
+        echo "  Check-ins contrato : {$ciclo['checkins_no_periodo']}\n";
+        echo '  Saldo contrato     : ' . max(0, $ciclo['limite_periodo'] - $ciclo['checkins_no_periodo']) . "\n";
+        echo '  Último mês?        : ' . (!empty($ciclo['ultimo_mes_contrato']) ? 'sim (teto mensal vale)' : 'não (só trava se estourar total)') . "\n";
+    }
+    echo "\n";
 
     if (!empty($ciclo['dias_checkin'])) {
         echo "  Check-ins contados:\n";
@@ -160,9 +171,8 @@ if ($recentes === []) {
 
 echo "\n6. NOTAS\n";
 echo str_repeat('-', 72) . "\n";
-echo "  • Plano 2x/sem + reposição → até 8 ou 9 check-ins por CICLO (âncora dia do vencimento).\n";
+echo "  • Plano mensal (1 mês): teto de 8–9 check-ins por ciclo (âncora no vencimento).\n";
+echo "  • Plano bimestral+: limite = soma do contrato; teto mensal só no último mês ou se estourar o total.\n";
 echo "  • Ciclo atual usa proxima_data_vencimento ({$mat['proxima_data_vencimento']}) como âncora.\n";
-echo "  • Contrato quadrimestral: se o limite estiver baixo, verifique check-ins [admin] extras.\n";
-echo "  • Se bloqueio injusto: aguardar próximo ciclo OU ajustar check-ins duplicados no período.\n";
 
 echo "\n" . str_repeat('=', 72) . "\n";

@@ -494,6 +494,45 @@ class Checkin
     }
 
     /**
+     * Limite de check-ins para uma janela [inicio, fim) com base em dias/semanas.
+     *
+     * @return array{limite: int, semanas: int, bonus: int}
+     */
+    private function limiteJanelaCheckins(int $checkinsSemanais, int $diasNaJanela): array
+    {
+        $semanas = (int) ceil($diasNaJanela / 7);
+        $bonus = ($semanas >= 5) ? 1 : 0;
+
+        return [
+            'limite'  => $checkinsSemanais * 4 + $bonus,
+            'semanas' => $semanas,
+            'bonus'   => $bonus,
+        ];
+    }
+
+    /**
+     * Soma o limite mensal (×4 + bônus de 5ª semana) de cada sub-janela de 1 mês
+     * ancorada em $anchorDay dentro do contrato [inicio, fim).
+     */
+    private function calcularLimiteContrato(int $checkinsSemanais, \DateTime $inicio, \DateTime $fim, int $anchorDay): int
+    {
+        $total = 0;
+        $cursor = clone $inicio;
+
+        while ($cursor < $fim) {
+            $proximoFim = $this->addMonthsAnchor($cursor, 1, $anchorDay);
+            if ($proximoFim > $fim) {
+                $proximoFim = clone $fim;
+            }
+            $dias = (int) $cursor->diff($proximoFim)->days;
+            $total += $this->limiteJanelaCheckins($checkinsSemanais, $dias)['limite'];
+            $cursor = $proximoFim;
+        }
+
+        return $total;
+    }
+
+    /**
      * Calcula o CICLO DE CHECK-IN ("mês de cobrança") da matrícula ativa do usuário,
      * o limite efetivo (checkins_semanais × 4 + bônus de 5ª semana) e os check-ins
      * realizados dentro do ciclo.
@@ -503,13 +542,20 @@ class Checkin
      * (fim exclusivo). O bônus de 5ª semana é mantido: ciclo com ceil(dias/7) >= 5
      * ganha +1 check-in (janelas de 29–31 dias dão 5; fevereiro de 28 dias dá 4).
      *
+     * Planos bimestrais ou mais (plano_ciclos.meses >= 2): o limite do CONTRATO
+     * inteiro é a soma das janelas mensais entre data_inicio e o vencimento. O teto
+     * mensal só é aplicado no último mês do contrato ou se o total do contrato
+     * estourar antes (ver avaliarLimiteMensalReposicao).
+     *
      * Observação: só se aplica a planos com permite_reposicao (limite mensal).
      * Seleciona a mesma matrícula que obterLimiteCheckinsPlano (ativa, vigente).
      */
     public function obterCicloCheckins(int $usuarioId, int $tenantId, ?int $modalidadeId = null): array
     {
         $sql = "SELECT p.checkins_semanais, p.nome AS plano_nome, p.modalidade_id,
+                       m.data_inicio,
                        COALESCE(m.proxima_data_vencimento, m.data_vencimento) AS vencimento,
+                       COALESCE(NULLIF(pc.meses, 0), 1) AS ciclo_meses,
                        CASE
                            WHEN m.plano_ciclo_id IS NOT NULL THEN COALESCE(pc.permite_reposicao, 0)
                            ELSE COALESCE((
@@ -550,8 +596,10 @@ class Checkin
         }
 
         $checkinsSemanais = (int) $row['checkins_semanais'];
+        $mesesCiclo = max(1, (int) $row['ciclo_meses']);
         $hoje = new \DateTime(date('Y-m-d'));
         $vencRaw = $row['vencimento'] ?? null;
+        $anchorDay = null;
 
         if (empty($vencRaw) || $vencRaw === '0000-00-00') {
             // Sem âncora de vencimento utilizável → janela = mês de calendário atual.
@@ -581,9 +629,8 @@ class Checkin
         }
 
         $diasNoCiclo = (int) $inicio->diff($fim)->days;
-        $semanas = (int) ceil($diasNoCiclo / 7);
-        $bonus = ($semanas >= 5) ? 1 : 0;
-        $limiteMensal = $checkinsSemanais * 4 + $bonus;
+        $janelaMensal = $this->limiteJanelaCheckins($checkinsSemanais, $diasNoCiclo);
+        $limiteMensal = $janelaMensal['limite'];
 
         $inicioStr = $inicio->format('Y-m-d');
         $fimStr = $fim->format('Y-m-d');
@@ -591,21 +638,51 @@ class Checkin
 
         $diasCheckin = $this->listarCheckinsPorPeriodo($usuarioId, $modalidade, $inicioStr, $fimStr);
 
-        return [
+        $resultado = [
             'tem_plano'           => true,
             'plano_nome'          => $row['plano_nome'],
             'permite_reposicao'   => (bool) $row['permite_reposicao'],
             'checkins_semanais'   => $checkinsSemanais,
             'modalidade_id'       => $modalidade,
+            'meses_ciclo'         => $mesesCiclo,
+            'contrato_multimes'   => false,
             'ciclo_inicio'        => $inicioStr,
             'ciclo_fim'           => $fimStr,
             'dias_no_ciclo'       => $diasNoCiclo,
-            'semanas'             => $semanas,
-            'bonus_cinco_semanas' => $bonus > 0,
+            'semanas'             => $janelaMensal['semanas'],
+            'bonus_cinco_semanas' => $janelaMensal['bonus'] > 0,
             'limite_mensal'       => $limiteMensal,
             'checkins_no_ciclo'   => count($diasCheckin),
             'dias_checkin'        => $diasCheckin,
         ];
+
+        if ($mesesCiclo >= 2 && $anchorDay !== null) {
+            $periodoFim = new \DateTime($vencRaw);
+            $periodoInicio = $this->addMonthsAnchor($periodoFim, -$mesesCiclo, $anchorDay);
+
+            $dataInicioRaw = $row['data_inicio'] ?? null;
+            if (!empty($dataInicioRaw) && $dataInicioRaw !== '0000-00-00') {
+                $dataInicio = new \DateTime($dataInicioRaw);
+                if ($dataInicio > $periodoInicio) {
+                    $periodoInicio = $dataInicio;
+                }
+            }
+
+            $periodoInicioStr = $periodoInicio->format('Y-m-d');
+            $periodoFimStr = $periodoFim->format('Y-m-d');
+            $limitePeriodo = $this->calcularLimiteContrato($checkinsSemanais, $periodoInicio, $periodoFim, $anchorDay);
+            $checkinsNoPeriodo = $this->contarCheckinsNoPeriodo($usuarioId, $modalidade, $periodoInicioStr, $periodoFimStr);
+            $ultimoMesInicio = $this->addMonthsAnchor($periodoFim, -1, $anchorDay);
+
+            $resultado['contrato_multimes'] = true;
+            $resultado['periodo_inicio'] = $periodoInicioStr;
+            $resultado['periodo_fim'] = $periodoFimStr;
+            $resultado['limite_periodo'] = $limitePeriodo;
+            $resultado['checkins_no_periodo'] = $checkinsNoPeriodo;
+            $resultado['ultimo_mes_contrato'] = $hoje >= $ultimoMesInicio;
+        }
+
+        return $resultado;
     }
 
     /**
@@ -624,6 +701,29 @@ class Checkin
         $ciclo = $this->obterCicloCheckins($usuarioId, $tenantId, $modalidadeId);
 
         if (!empty($ciclo['tem_plano'])) {
+            if (!empty($ciclo['contrato_multimes'])) {
+                if ($ciclo['checkins_no_periodo'] >= $ciclo['limite_periodo']) {
+                    return [
+                        'plano'               => $ciclo['plano_nome'],
+                        'checkins_semanais'   => $ciclo['checkins_semanais'],
+                        'limite_mensal'       => $ciclo['limite_periodo'],
+                        'checkins_mes'        => $ciclo['checkins_no_periodo'],
+                        'permite_reposicao'   => (bool) ($ciclo['permite_reposicao'] ?? false),
+                        'bonus_cinco_semanas' => false,
+                        'limite_contrato'     => true,
+                        'meses_ciclo'         => $ciclo['meses_ciclo'],
+                        'mes_referencia'      => date('d/m', strtotime($ciclo['periodo_inicio'])) . ' a '
+                            . date('d/m', strtotime($ciclo['periodo_fim'] . ' -1 day')),
+                        'ciclo_inicio'        => $ciclo['periodo_inicio'],
+                        'ciclo_fim'           => $ciclo['periodo_fim'],
+                        'dias_checkin'        => $ciclo['dias_checkin'],
+                    ];
+                }
+                if (empty($ciclo['ultimo_mes_contrato'])) {
+                    return null;
+                }
+            }
+
             if ($ciclo['checkins_no_ciclo'] < $ciclo['limite_mensal']) {
                 return null;
             }
