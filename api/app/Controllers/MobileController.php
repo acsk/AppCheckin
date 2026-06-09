@@ -5646,7 +5646,7 @@ class MobileController
                 $valorMensalBase = (float)$ciclosRaw[0]['valor_mensal_equivalente'];
             }
 
-            $ciclos = array_map(function($c) use ($valorMensalBase) {
+            $ciclos = array_map(function($c) use ($valorMensalBase, $habilitarCartao, $habilitarPix) {
                 $vme = (float)$c['valor_mensal_equivalente'];
                 $economiaPercentual = 0;
                 $economiaValor = 0;
