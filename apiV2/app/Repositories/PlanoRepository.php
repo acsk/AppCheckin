@@ -23,6 +23,33 @@ class PlanoRepository
     /**
      * @return list<array<string, mixed>>
      */
+    public function listarMatriculasAtivasPorUsuario(int $userId, int $tenantId): array
+    {
+        return DB::table('matriculas as m')
+            ->join('alunos as a', 'a.id', '=', 'm.aluno_id')
+            ->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+            ->join('planos as p', 'p.id', '=', 'm.plano_id')
+            ->where('a.usuario_id', $userId)
+            ->where('m.tenant_id', $tenantId)
+            ->where('sm.codigo', 'ativa')
+            ->whereRaw('COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= CURDATE()')
+            ->orderByDesc('m.updated_at')
+            ->orderByDesc('m.id')
+            ->get([
+                'm.id',
+                'm.plano_id',
+                'm.valor',
+                'p.modalidade_id',
+                'p.nome as plano_nome',
+                DB::raw('COALESCE(m.proxima_data_vencimento, m.data_vencimento) as data_vencimento'),
+            ])
+            ->map(fn ($row) => (array) $row)
+            ->all();
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
     public function listarPlanosPagos(int $tenantId, ?int $modalidadeId = null): array
     {
         $query = DB::table('planos as p')

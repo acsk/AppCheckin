@@ -52,8 +52,22 @@ interface Plan {
     nome: string;
   };
   is_plano_atual?: boolean;
+  pode_migrar?: boolean;
   label?: string | null;
   ciclos?: Ciclo[];
+}
+
+interface MigracaoSimulacao {
+  plano_atual?: { nome: string; valor_formatado: string };
+  plano_novo?: { valor_formatado: string };
+  credito?: {
+    valor_formatado: string;
+    valor_consumido_formatado?: string;
+    dias_restantes?: number;
+    tipo?: string;
+  };
+  valor_parcela_formatado?: string;
+  valor_parcela?: number;
 }
 
 interface ApiResponse {
@@ -120,6 +134,15 @@ export default function PlanosScreen() {
     Record<number, number>
   >({});
   const [selectedPlanoId, setSelectedPlanoId] = useState<number | null>(null);
+  const [migracaoModalVisible, setMigracaoModalVisible] = useState(false);
+  const [migracaoSimulacao, setMigracaoSimulacao] =
+    useState<MigracaoSimulacao | null>(null);
+  const [migracaoPendente, setMigracaoPendente] = useState<{
+    plano: Plan;
+    cicloId: number;
+    metodo: "checkout" | "pix";
+  } | null>(null);
+  const [confirmandoMigracao, setConfirmandoMigracao] = useState(false);
 
   useEffect(() => {
     if (planos.length === 0) return;
@@ -422,6 +445,137 @@ export default function PlanosScreen() {
     }
   };
 
+  const abrirConfirmacaoMigracao = React.useCallback(
+    async (plano: Plan, cicloId: number, metodo: "checkout" | "pix") => {
+      const token = await AsyncStorage.getItem("@appcheckin:token");
+      if (!token) throw new Error("Token não encontrado");
+
+      const simResponse = await fetch(`${apiUrl}/mobile/simular-migracao`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          plano_id: plano.id,
+          plano_ciclo_id: cicloId,
+        }),
+      });
+
+      const simText = await simResponse.text();
+      let simData: { success?: boolean; message?: string; data?: MigracaoSimulacao } =
+        {};
+      try {
+        simData = simText ? JSON.parse(simText) : {};
+      } catch {
+        throw new Error("Resposta inválida ao simular migração");
+      }
+
+      if (!simResponse.ok || !simData.success) {
+        throw new Error(simData.message || "Não foi possível simular a migração");
+      }
+
+      setMigracaoSimulacao(simData.data || null);
+      setMigracaoPendente({ plano, cicloId, metodo });
+      setMigracaoModalVisible(true);
+    },
+    [apiUrl],
+  );
+
+  const executarMigracao = React.useCallback(async () => {
+    if (!migracaoPendente) return;
+
+    try {
+      setConfirmandoMigracao(true);
+      const { plano, cicloId, metodo } = migracaoPendente;
+      const token = await AsyncStorage.getItem("@appcheckin:token");
+      if (!token) throw new Error("Token não encontrado");
+
+      const response = await fetch(`${apiUrl}/mobile/migrar-plano`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          plano_id: plano.id,
+          plano_ciclo_id: cicloId,
+          metodo_pagamento: metodo,
+        }),
+      });
+
+      const responseText = await response.text();
+      let data: any = {};
+      try {
+        data = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        throw new Error("Resposta inválida ao migrar plano");
+      }
+
+      setMigracaoModalVisible(false);
+      setMigracaoPendente(null);
+      setMigracaoSimulacao(null);
+
+      if (!response.ok || !data.success) {
+        showErrorModal(
+          "⚠️ Migração não concluída",
+          data.message || "Não foi possível migrar o plano",
+          "error",
+        );
+        return;
+      }
+
+      const valorParcela = Number(data.data?.valor_parcela ?? 0);
+      const paymentUrl = data.data?.payment_url;
+      const status = String(data.data?.status || "").toLowerCase();
+
+      if (status === "ativa" || valorParcela <= 0) {
+        showErrorModal(
+          "✅ Plano migrado",
+          data.message || "Seu plano foi alterado com sucesso.",
+          "success",
+        );
+        await fetchPlanos(apiUrl);
+        return;
+      }
+
+      if (metodo === "pix" && data.data?.pix) {
+        setPixData({
+          matricula_id: data.data.matricula_id,
+          valor: valorParcela,
+          qr_code: data.data.pix.qr_code,
+          qr_code_base64: data.data.pix.qr_code_base64,
+          ticket_url: data.data.pix.ticket_url,
+          expires_at: data.data.pix.expires_at,
+        });
+        setPixModalVisible(true);
+        return;
+      }
+
+      if (!paymentUrl) {
+        showErrorModal(
+          "⚠️ Erro",
+          "Link de pagamento não foi gerado. Tente novamente.",
+          "error",
+        );
+        return;
+      }
+
+      setPaymentUrlToOpen(paymentUrl);
+      setCountdown(3);
+      setRedirectModalVisible(true);
+    } catch (err) {
+      const errorMsg =
+        err instanceof Error ? err.message : "Erro ao migrar plano";
+      showErrorModal("❌ Algo Deu Errado", errorMsg, "error");
+    } finally {
+      setConfirmandoMigracao(false);
+      setComprando(false);
+      setPixLoading(false);
+      setPlanoComprando(null);
+    }
+  }, [apiUrl, migracaoPendente]);
+
   const handleContratar = React.useCallback(
     async (plano: Plan) => {
       try {
@@ -443,6 +597,13 @@ export default function PlanosScreen() {
             "Por favor, selecione um ciclo antes de contratar.",
             "warning",
           );
+          setComprando(false);
+          setPlanoComprando(null);
+          return;
+        }
+
+        if (plano.pode_migrar) {
+          await abrirConfirmacaoMigracao(plano, selectedCiclo.id, "checkout");
           setComprando(false);
           setPlanoComprando(null);
           return;
@@ -587,7 +748,7 @@ export default function PlanosScreen() {
         showErrorModal("❌ Algo Deu Errado", errorMsg, "error");
       }
     },
-    [apiUrl, selectedCicloByPlano],
+    [apiUrl, selectedCicloByPlano, abrirConfirmacaoMigracao],
   );
 
   const handlePagarPix = React.useCallback(
@@ -607,6 +768,13 @@ export default function PlanosScreen() {
             "Por favor, selecione um ciclo antes de pagar.",
             "warning",
           );
+          setPixLoading(false);
+          setPlanoComprando(null);
+          return;
+        }
+
+        if (plano.pode_migrar) {
+          await abrirConfirmacaoMigracao(plano, selectedCiclo.id, "pix");
           setPixLoading(false);
           setPlanoComprando(null);
           return;
@@ -751,7 +919,7 @@ export default function PlanosScreen() {
         setPlanoComprando(null);
       }
     },
-    [apiUrl, selectedCicloByPlano],
+    [apiUrl, selectedCicloByPlano, abrirConfirmacaoMigracao],
   );
 
   const renderPlanCard = ({ item: plano }: { item: Plan }) => {
@@ -891,6 +1059,12 @@ export default function PlanosScreen() {
           const pixDisponivel =
             metodosPagamento.includes("pix") ||
             selectedCiclo?.pix_disponivel === true;
+          const canCheckout = !!selectedCiclo && checkoutDisponivel;
+          const canPix = !!selectedCiclo && pixDisponivel;
+          const canBuy =
+            !!selectedCiclo &&
+            !plano.is_plano_atual &&
+            (canCheckout || canPix);
 
           return (
             <>
@@ -905,15 +1079,20 @@ export default function PlanosScreen() {
                     styles.contratarButtonDisabled,
                   selectedCiclo &&
                     !plano.is_plano_atual &&
-                    !checkoutDisponivel &&
+                    !canBuy &&
                     styles.contratarButtonDisabled,
                 ]}
-                onPress={() => handleContratar(plano)}
+                onPress={
+                  canCheckout
+                    ? () => handleContratar(plano)
+                    : () => handlePagarPix(plano)
+                }
                 disabled={
                   !selectedCiclo ||
                   plano.is_plano_atual ||
                   (comprando && planoComprando === plano.id) ||
-                  (selectedCiclo && !checkoutDisponivel)
+                  (pixLoading && planoComprando === plano.id) ||
+                  !canBuy
                 }
               >
                 {plano.is_plano_atual ? (
@@ -930,19 +1109,32 @@ export default function PlanosScreen() {
                   </>
                 ) : (
                   <>
-                    <Feather name="shopping-cart" size={18} color="#fff" />
+                    <Feather
+                      name={plano.pode_migrar ? "repeat" : "shopping-cart"}
+                      size={18}
+                      color="#fff"
+                    />
                     <Text style={styles.contratarButtonText}>
                       {selectedCiclo
-                        ? checkoutDisponivel
-                          ? `Contratar por ${selectedCiclo.valor_formatado}`
-                          : "Checkout indisponível"
+                        ? canCheckout
+                          ? plano.pode_migrar
+                            ? `Migrar — ${selectedCiclo.valor_formatado}`
+                            : `Contratar por ${selectedCiclo.valor_formatado}`
+                          : canPix
+                            ? plano.pode_migrar
+                              ? `Migrar com PIX — ${selectedCiclo.valor_formatado}`
+                              : `Pagar com PIX • ${selectedCiclo.valor_formatado}`
+                            : "Pagamento indisponível"
                         : "Escolha um ciclo para continuar"}
                     </Text>
                   </>
                 )}
               </TouchableOpacity>
 
-              {!plano.is_plano_atual && selectedCiclo && pixDisponivel && (
+              {!plano.is_plano_atual &&
+                selectedCiclo &&
+                pixDisponivel &&
+                checkoutDisponivel && (
                 <TouchableOpacity
                   style={[
                     styles.pixButton,
@@ -1232,6 +1424,75 @@ export default function PlanosScreen() {
           />
         </View>
       )}
+
+      {/* Confirmação de migração de plano */}
+      <Modal
+        visible={migracaoModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!confirmandoMigracao) {
+            setMigracaoModalVisible(false);
+            setMigracaoPendente(null);
+            setMigracaoSimulacao(null);
+          }
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, styles.modalWarning]}>
+            <View style={[styles.iconCircle, styles.iconCircleWarning]}>
+              <Feather name="repeat" size={36} color="#b26a00" />
+            </View>
+            <Text style={styles.modalTitle}>Migrar de plano</Text>
+            <Text style={styles.modalMessage}>
+              {migracaoSimulacao?.plano_atual?.nome
+                ? `Plano atual: ${migracaoSimulacao.plano_atual.nome} (${migracaoSimulacao.plano_atual.valor_formatado})`
+                : "Você está trocando de plano na mesma modalidade."}
+              {"\n\n"}
+              {migracaoSimulacao?.credito?.valor_formatado
+                ? `Crédito restante: ${migracaoSimulacao.credito.valor_formatado}`
+                : ""}
+              {migracaoSimulacao?.credito?.dias_restantes
+                ? ` (${migracaoSimulacao.credito.dias_restantes} dias restantes)`
+                : ""}
+              {"\n"}
+              {migracaoSimulacao?.plano_novo?.valor_formatado
+                ? `Novo plano: ${migracaoSimulacao.plano_novo.valor_formatado}`
+                : ""}
+              {"\n"}
+              {migracaoSimulacao?.valor_parcela_formatado
+                ? `Você paga: ${migracaoSimulacao.valor_parcela_formatado}`
+                : ""}
+            </Text>
+            <View style={{ flexDirection: "row", gap: 10, width: "100%" }}>
+              <TouchableOpacity
+                style={[styles.modalButton, { flex: 1, backgroundColor: "#e5e7eb" }]}
+                disabled={confirmandoMigracao}
+                onPress={() => {
+                  setMigracaoModalVisible(false);
+                  setMigracaoPendente(null);
+                  setMigracaoSimulacao(null);
+                }}
+              >
+                <Text style={[styles.modalButtonText, { color: "#374151" }]}>
+                  Cancelar
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.buttonWarning, { flex: 1 }]}
+                disabled={confirmandoMigracao}
+                onPress={() => void executarMigracao()}
+              >
+                {confirmandoMigracao ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.modalButtonText}>Confirmar</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Error Modal */}
       <Modal

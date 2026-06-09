@@ -5299,27 +5299,43 @@ class MobileController
             $queryParams = $request->getQueryParams();
             $modalidadeId = isset($queryParams['modalidade_id']) ? (int)$queryParams['modalidade_id'] : null;
 
-            // Buscar plano atual do usuário (matrícula ativa)
+            $pagamentoFlags = \App\Support\MobilePagamentoMetodos::flags($this->db, (int) $tenantId);
+            $habilitarCartao = $pagamentoFlags['habilitar_cartao_credito'];
+            $habilitarPix = $pagamentoFlags['habilitar_pix'];
+
+            // Matrículas ativas do usuário (por modalidade)
             $planoAtualId = null;
+            $matriculasAtivasPorModalidade = [];
             if ($usuarioId) {
-                $stmtPlanoAtual = $this->db->prepare("
-                    SELECT m.plano_id 
+                $stmtMatriculasAtivas = $this->db->prepare("
+                    SELECT m.id, m.plano_id, m.plano_ciclo_id, m.valor, m.data_inicio,
+                           COALESCE(m.proxima_data_vencimento, m.data_vencimento) as data_vencimento,
+                           p.modalidade_id, p.nome as plano_nome
                     FROM matriculas m
                     INNER JOIN alunos a ON a.id = m.aluno_id
                     INNER JOIN status_matricula sm ON sm.id = m.status_id
-                    WHERE a.usuario_id = :usuario_id 
+                    INNER JOIN planos p ON p.id = m.plano_id
+                    WHERE a.usuario_id = :usuario_id
                     AND m.tenant_id = :tenant_id
                     AND sm.codigo = 'ativa'
-                    ORDER BY m.created_at DESC
-                    LIMIT 1
+                    AND COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= CURDATE()
+                    ORDER BY m.updated_at DESC, m.id DESC
                 ");
-                $stmtPlanoAtual->execute([
+                $stmtMatriculasAtivas->execute([
                     'usuario_id' => $usuarioId,
-                    'tenant_id' => $tenantId
+                    'tenant_id' => $tenantId,
                 ]);
-                $planoAtual = $stmtPlanoAtual->fetch(\PDO::FETCH_ASSOC);
-                if ($planoAtual) {
-                    $planoAtualId = (int)$planoAtual['plano_id'];
+                $matriculasAtivas = $stmtMatriculasAtivas->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+
+                foreach ($matriculasAtivas as $matriculaAtiva) {
+                    $modalidadeAtivaId = (int) $matriculaAtiva['modalidade_id'];
+                    if (! isset($matriculasAtivasPorModalidade[$modalidadeAtivaId])) {
+                        $matriculasAtivasPorModalidade[$modalidadeAtivaId] = $matriculaAtiva;
+                    }
+                }
+
+                if (! empty($matriculasAtivas)) {
+                    $planoAtualId = (int) $matriculasAtivas[0]['plano_id'];
                 }
             }
 
@@ -5414,10 +5430,16 @@ class MobileController
                         'desconto_percentual' => $economiaPercentual,
                         'permite_recorrencia' => (bool)$ciclo['permite_recorrencia'],
                         'permite_reposicao' => (bool)$ciclo['permite_reposicao'],
-                        'pix_disponivel' => !(bool)$ciclo['permite_recorrencia'],
-                        'metodos_pagamento' => (bool)$ciclo['permite_recorrencia']
-                            ? ['checkout']
-                            : ['pix'],
+                        'pix_disponivel' => in_array('pix', \App\Support\MobilePagamentoMetodos::metodosPagamentoCiclo(
+                            (bool) $ciclo['permite_recorrencia'],
+                            $habilitarCartao,
+                            $habilitarPix
+                        ), true),
+                        'metodos_pagamento' => \App\Support\MobilePagamentoMetodos::metodosPagamentoCiclo(
+                            (bool) $ciclo['permite_recorrencia'],
+                            $habilitarCartao,
+                            $habilitarPix
+                        ),
                         'economia' => $economiaPercentual > 0 
                             ? 'Economize ' . $economiaPercentual . '%'
                             : null,
@@ -5429,36 +5451,54 @@ class MobileController
             }
 
             // Formatar resposta
-            $planosFormatados = array_map(function($plano) use ($planoAtualId, $ciclosPorPlano) {
-                $isPlanoAtual = $planoAtualId && (int)$plano['id'] === $planoAtualId;
-                $planoId = (int)$plano['id'];
+            $planosFormatados = array_map(function ($plano) use ($planoAtualId, $ciclosPorPlano, $matriculasAtivasPorModalidade) {
+                $isPlanoAtual = $planoAtualId && (int) $plano['id'] === $planoAtualId;
+                $planoId = (int) $plano['id'];
+                $modalidadeId = (int) $plano['modalidade_id'];
+                $matriculaModalidade = $matriculasAtivasPorModalidade[$modalidadeId] ?? null;
+                $podeMigrar = $matriculaModalidade && (int) $matriculaModalidade['plano_id'] !== $planoId;
+
                 return [
                     'id' => $planoId,
                     'nome' => $plano['nome'],
                     'descricao' => $plano['descricao'],
-                    'valor' => (float)$plano['valor'],
-                    'valor_formatado' => 'R$ ' . number_format($plano['valor'], 2, ',', '.'),
-                    'duracao_dias' => (int)$plano['duracao_dias'],
-                    'duracao_texto' => $this->formatarDuracao((int)$plano['duracao_dias']),
-                    'checkins_semanais' => (int)$plano['checkins_semanais'],
+                    'valor' => (float) $plano['valor'],
+                    'valor_formatado' => 'R$ '.number_format($plano['valor'], 2, ',', '.'),
+                    'duracao_dias' => (int) $plano['duracao_dias'],
+                    'duracao_texto' => $this->formatarDuracao((int) $plano['duracao_dias']),
+                    'checkins_semanais' => (int) $plano['checkins_semanais'],
                     'modalidade' => [
-                        'id' => (int)$plano['modalidade_id'],
-                        'nome' => $plano['modalidade_nome']
+                        'id' => $modalidadeId,
+                        'nome' => $plano['modalidade_nome'],
                     ],
                     'is_plano_atual' => $isPlanoAtual,
-                    'label' => $isPlanoAtual ? 'Seu plano atual' : null,
-                    'ciclos' => $ciclosPorPlano[$planoId] ?? []
+                    'pode_migrar' => $podeMigrar,
+                    'label' => $isPlanoAtual ? 'Seu plano atual' : ($podeMigrar ? 'Migrar para este plano' : null),
+                    'ciclos' => $ciclosPorPlano[$planoId] ?? [],
                 ];
             }, $planos);
 
+            $matriculaAtivaResumo = null;
+            if (! empty($matriculasAtivasPorModalidade)) {
+                $primeira = reset($matriculasAtivasPorModalidade);
+                $matriculaAtivaResumo = [
+                    'id' => (int) $primeira['id'],
+                    'plano_id' => (int) $primeira['plano_id'],
+                    'plano_nome' => $primeira['plano_nome'],
+                    'modalidade_id' => (int) $primeira['modalidade_id'],
+                    'valor' => (float) $primeira['valor'],
+                    'data_vencimento' => $primeira['data_vencimento'],
+                ];
+            }
 
             $response->getBody()->write(json_encode([
                 'success' => true,
                 'data' => [
                     'planos' => $planosFormatados,
                     'total' => count($planosFormatados),
-                    'plano_atual_id' => $planoAtualId
-                ]
+                    'plano_atual_id' => $planoAtualId,
+                    'matricula_ativa' => $matriculaAtivaResumo,
+                ],
             ], JSON_UNESCAPED_UNICODE));
             
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
@@ -5555,6 +5595,10 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
 
+            $pagamentoFlags = \App\Support\MobilePagamentoMetodos::flags($this->db, (int) $tenantId);
+            $habilitarCartao = $pagamentoFlags['habilitar_cartao_credito'];
+            $habilitarPix = $pagamentoFlags['habilitar_pix'];
+
             // 1. Buscar dados do plano
             $stmtPlano = $this->db->prepare("
                 SELECT p.id, p.nome, p.descricao, p.valor, p.duracao_dias, p.checkins_semanais, p.ativo,
@@ -5622,10 +5666,16 @@ class MobileController
                     'desconto_percentual' => $economiaPercentual,
                     'permite_recorrencia' => (bool)$c['permite_recorrencia'],
                     'permite_reposicao' => (bool)$c['permite_reposicao'],
-                    'pix_disponivel' => !(bool)$c['permite_recorrencia'],
-                    'metodos_pagamento' => (bool)$c['permite_recorrencia']
-                        ? ['checkout']
-                        : ['pix'],
+                    'pix_disponivel' => in_array('pix', \App\Support\MobilePagamentoMetodos::metodosPagamentoCiclo(
+                        (bool) $c['permite_recorrencia'],
+                        $habilitarCartao,
+                        $habilitarPix
+                    ), true),
+                    'metodos_pagamento' => \App\Support\MobilePagamentoMetodos::metodosPagamentoCiclo(
+                        (bool) $c['permite_recorrencia'],
+                        $habilitarCartao,
+                        $habilitarPix
+                    ),
                     'economia' => $economiaPercentual > 0
                         ? 'Economize ' . $economiaPercentual . '%'
                         : null,
@@ -5689,6 +5739,23 @@ class MobileController
                 }
             }
 
+            $podeMigrar = false;
+            if ($userId && ! empty($plano['modalidade_id'])) {
+                $stmtAlunoDet = $this->db->prepare('SELECT id FROM alunos WHERE usuario_id = ? LIMIT 1');
+                $stmtAlunoDet->execute([$userId]);
+                $alunoDetId = (int) $stmtAlunoDet->fetchColumn();
+                if ($alunoDetId) {
+                    $migracaoSvc = new \App\Services\MatriculaMigracaoService($this->db);
+                    $matriculaModalidade = $migracaoSvc->buscarMatriculaAtivaModalidade(
+                        $alunoDetId,
+                        (int) $tenantId,
+                        (int) $plano['modalidade_id']
+                    );
+                    $podeMigrar = $matriculaModalidade
+                        && (int) $matriculaModalidade['plano_id'] !== $planoId;
+                }
+            }
+
             // Montar resposta
             $data = [
                 'id' => (int)$plano['id'],
@@ -5709,6 +5776,8 @@ class MobileController
                // 'disponibilidade' => $disponibilidade,
                 'matricula_ativa' => $matriculaAtiva,
                 'is_plano_atual' => $matriculaAtiva !== null,
+                'pode_migrar' => $podeMigrar,
+                'label' => $matriculaAtiva ? 'Seu plano atual' : ($podeMigrar ? 'Migrar para este plano' : null),
             ];
 
             $response->getBody()->write(json_encode([
@@ -5924,17 +5993,40 @@ class MobileController
                 $cicloNome = $ciclo['ciclo_nome'];
             }
             
-            // Determinar se é pagamento recorrente ou avulso
-            $isRecorrente = $ciclo ? (bool) $ciclo['permite_recorrencia'] : true;
-            if ($metodoPagamento === 'pix' && $isRecorrente) {
+            $pagamentoFlags = \App\Support\MobilePagamentoMetodos::flags($this->db, (int) $tenantId);
+            $habilitarCartao = $pagamentoFlags['habilitar_cartao_credito'];
+            $habilitarPix = $pagamentoFlags['habilitar_pix'];
+            $metodoPagamento = \App\Support\MobilePagamentoMetodos::normalizarMetodo(
+                $metodoPagamento,
+                $habilitarCartao,
+                $habilitarPix
+            );
+
+            if ($metodoPagamento === 'pix' && ! $habilitarPix) {
                 $response->getBody()->write(json_encode([
                     'success' => false,
                     'type' => 'error',
-                    'code' => 'PIX_NAO_DISPONIVEL_RECORRENTE',
-                    'message' => 'Pagamento PIX não está disponível para planos recorrentes'
+                    'code' => 'PIX_NAO_DISPONIVEL',
+                    'message' => 'Pagamento PIX não está habilitado para esta academia',
                 ]));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
+
+            if ($metodoPagamento === 'checkout' && ! $habilitarCartao) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'CHECKOUT_NAO_DISPONIVEL',
+                    'message' => 'Pagamento por checkout não está disponível. Use PIX.',
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            $permiteRecorrenciaCiclo = $ciclo ? (bool) $ciclo['permite_recorrencia'] : true;
+            $isRecorrente = \App\Support\MobilePagamentoMetodos::isRecorrenteEfetivo(
+                $permiteRecorrenciaCiclo,
+                $habilitarCartao
+            );
 
             // Verificar se valor é maior que zero
             if ($valorCompra <= 0) {
@@ -6836,6 +6928,91 @@ class MobileController
                 ]
             ]));
             
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * Simular migração de plano (preview de crédito e valor a pagar)
+     * POST /mobile/simular-migracao
+     */
+    public function simularMigracaoPlano(Request $request, Response $response): Response
+    {
+        try {
+            $userId = (int) $request->getAttribute('userId');
+            $tenantId = (int) $request->getAttribute('tenantId');
+            $data = $request->getParsedBody() ?? [];
+
+            if (! $tenantId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'TENANT_NAO_SELECIONADO',
+                    'message' => 'Nenhum tenant selecionado',
+                ], JSON_UNESCAPED_UNICODE));
+
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            $planoId = (int) ($data['plano_id'] ?? 0);
+            $planoCicloId = ! empty($data['plano_ciclo_id']) ? (int) $data['plano_ciclo_id'] : null;
+
+            $service = new \App\Services\MatriculaMigracaoService($this->db);
+            $result = $service->simular($userId, $tenantId, $planoId, $planoCicloId);
+
+            $response->getBody()->write(json_encode($result['body'], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json')->withStatus($result['status']);
+        } catch (\Throwable $e) {
+            error_log('[MobileController::simularMigracaoPlano] '.$e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'type' => 'error',
+                'code' => 'ERRO_INTERNO',
+                'message' => 'Erro ao simular migração de plano',
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * Migrar plano com crédito proporcional automático
+     * POST /mobile/migrar-plano
+     */
+    public function migrarPlano(Request $request, Response $response): Response
+    {
+        try {
+            $userId = (int) $request->getAttribute('userId');
+            $tenantId = (int) $request->getAttribute('tenantId');
+            $data = $request->getParsedBody() ?? [];
+
+            if (! $tenantId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'TENANT_NAO_SELECIONADO',
+                    'message' => 'Nenhum tenant selecionado',
+                ], JSON_UNESCAPED_UNICODE));
+
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            $service = new \App\Services\MatriculaMigracaoService($this->db);
+            $result = $service->migrar($userId, $tenantId, $data);
+
+            $response->getBody()->write(json_encode($result['body'], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json')->withStatus($result['status']);
+        } catch (\Throwable $e) {
+            error_log('[MobileController::migrarPlano] '.$e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'type' => 'error',
+                'code' => 'ERRO_INTERNO',
+                'message' => 'Não foi possível migrar o plano. Tente novamente.',
+            ], JSON_UNESCAPED_UNICODE));
+
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
     }

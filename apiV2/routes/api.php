@@ -48,6 +48,8 @@ Route::prefix('v2')->group(function () {
             Route::get('/planos/{planoId}', [MobileController::class, 'detalhePlano']);
             Route::get('/matriculas/{matriculaId}', [MobileController::class, 'detalheMatricula']);
             Route::post('/comprar-plano', [MobileController::class, 'comprarPlano']);
+            Route::post('/simular-migracao', [MobileController::class, 'simularMigracaoPlano']);
+            Route::post('/migrar-plano', [MobileController::class, 'migrarPlano']);
             Route::post('/pagamento/pix', [MobileController::class, 'gerarPagamentoPix']);
             Route::post('/verificar-pagamento', [MobileController::class, 'verificarPagamento']);
             Route::get('/pagamento/reabrir/{matriculaId}', [MobileController::class, 'reabrirPagamentoPendente']);

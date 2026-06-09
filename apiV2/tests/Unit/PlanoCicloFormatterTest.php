@@ -22,8 +22,18 @@ class PlanoCicloFormatterTest extends TestCase
         $this->assertSame(['checkout'], PlanoCicloFormatter::metodosPagamento(true));
     }
 
-    public function test_metodos_pagamento_avulso_checkout_e_pix(): void
+    public function test_metodos_pagamento_avulso_apenas_pix_quando_cartao_desabilitado(): void
     {
-        $this->assertSame(['checkout', 'pix'], PlanoCicloFormatter::metodosPagamento(false));
+        $this->assertSame(['pix'], PlanoCicloFormatter::metodosPagamento(false, false, true));
+    }
+
+    public function test_metodos_pagamento_recorrente_apenas_pix_quando_cartao_desabilitado(): void
+    {
+        $this->assertSame(['pix'], PlanoCicloFormatter::metodosPagamento(true, false, true));
+    }
+
+    public function test_metodos_pagamento_avulso_apenas_pix_com_cartao_habilitado(): void
+    {
+        $this->assertSame(['pix'], PlanoCicloFormatter::metodosPagamento(false, true, true));
     }
 }

@@ -3,7 +3,9 @@
 namespace App\Services\Mobile;
 
 use App\Repositories\PlanoRepository;
+use App\Support\MobilePagamentoMetodos;
 use App\Support\PlanoCicloFormatter;
+use Illuminate\Support\Facades\DB;
 
 class MobilePlanoService
 {
@@ -29,15 +31,32 @@ class MobilePlanoService
         }
 
         $planoAtualId = $this->planos->findPlanoAtivoIdPorUsuario($userId, $tenantId);
+        $matriculasAtivas = $this->planos->listarMatriculasAtivasPorUsuario($userId, $tenantId);
+        $matriculasPorModalidade = [];
+        foreach ($matriculasAtivas as $mat) {
+            $mid = (int) $mat['modalidade_id'];
+            if (! isset($matriculasPorModalidade[$mid])) {
+                $matriculasPorModalidade[$mid] = $mat;
+            }
+        }
+        $pagamentoFlags = MobilePagamentoMetodos::flags($tenantId);
+        $habilitarCartao = $pagamentoFlags['habilitar_cartao_credito'];
+        $habilitarPix = $pagamentoFlags['habilitar_pix'];
+
         $lista = $this->planos->listarPlanosPagos($tenantId, $modalidadeId);
         $planoIds = array_map(fn ($p) => (int) $p['id'], $lista);
         $ciclosPorPlano = PlanoCicloFormatter::agruparPorPlano(
             $this->planos->listarCiclosAtivosPorPlanos($planoIds),
+            $habilitarCartao,
+            $habilitarPix,
         );
 
-        $planosFormatados = array_map(function (array $plano) use ($planoAtualId, $ciclosPorPlano) {
+        $planosFormatados = array_map(function (array $plano) use ($planoAtualId, $ciclosPorPlano, $matriculasPorModalidade) {
             $planoId = (int) $plano['id'];
             $isPlanoAtual = $planoAtualId && $planoId === $planoAtualId;
+            $modalidadeId = (int) $plano['modalidade_id'];
+            $matriculaModalidade = $matriculasPorModalidade[$modalidadeId] ?? null;
+            $podeMigrar = $matriculaModalidade && (int) $matriculaModalidade['plano_id'] !== $planoId;
 
             return [
                 'id' => $planoId,
@@ -53,10 +72,24 @@ class MobilePlanoService
                     'nome' => $plano['modalidade_nome'],
                 ],
                 'is_plano_atual' => $isPlanoAtual,
-                'label' => $isPlanoAtual ? 'Seu plano atual' : null,
+                'pode_migrar' => $podeMigrar,
+                'label' => $isPlanoAtual ? 'Seu plano atual' : ($podeMigrar ? 'Migrar para este plano' : null),
                 'ciclos' => $ciclosPorPlano[$planoId] ?? [],
             ];
         }, $lista);
+
+        $matriculaAtivaResumo = null;
+        if ($matriculasAtivas !== []) {
+            $primeira = $matriculasAtivas[0];
+            $matriculaAtivaResumo = [
+                'id' => (int) $primeira['id'],
+                'plano_id' => (int) $primeira['plano_id'],
+                'plano_nome' => $primeira['plano_nome'],
+                'modalidade_id' => (int) $primeira['modalidade_id'],
+                'valor' => (float) $primeira['valor'],
+                'data_vencimento' => $primeira['data_vencimento'],
+            ];
+        }
 
         return [
             'status' => 200,
@@ -66,6 +99,7 @@ class MobilePlanoService
                     'planos' => $planosFormatados,
                     'total' => count($planosFormatados),
                     'plano_atual_id' => $planoAtualId,
+                    'matricula_ativa' => $matriculaAtivaResumo,
                 ],
             ],
         ];
@@ -113,6 +147,10 @@ class MobilePlanoService
             ];
         }
 
+        $pagamentoFlags = MobilePagamentoMetodos::flags($tenantId);
+        $habilitarCartao = $pagamentoFlags['habilitar_cartao_credito'];
+        $habilitarPix = $pagamentoFlags['habilitar_pix'];
+
         $matriculaAtiva = null;
         $mat = $this->planos->findMatriculaAtivaNoPlano($userId, $planoId, $tenantId);
         if ($mat) {
@@ -159,12 +197,33 @@ class MobilePlanoService
                     ],
                     'ciclos' => PlanoCicloFormatter::formatarLista(
                         $this->planos->listarCiclosDoPlano($planoId),
+                        $habilitarCartao,
+                        $habilitarPix,
                     ),
                     'matricula_ativa' => $matriculaAtiva,
                     'is_plano_atual' => $matriculaAtiva !== null,
+                    'pode_migrar' => ($podeMigrar = $this->resolverPodeMigrar($userId, $tenantId, $planoId, (int) ($plano['modalidade_id'] ?? 0))),
+                    'label' => $matriculaAtiva ? 'Seu plano atual' : ($podeMigrar ? 'Migrar para este plano' : null),
                 ],
             ],
         ];
+    }
+
+    private function resolverPodeMigrar(int $userId, int $tenantId, int $planoId, int $modalidadeId): bool
+    {
+        if ($modalidadeId <= 0) {
+            return false;
+        }
+
+        $alunoId = DB::table('alunos')->where('usuario_id', $userId)->value('id');
+        if (! $alunoId) {
+            return false;
+        }
+
+        $migracao = new MobileMigracaoPlanoService();
+        $matricula = $migracao->buscarMatriculaAtivaModalidade((int) $alunoId, $tenantId, $modalidadeId);
+
+        return $matricula && (int) $matricula['plano_id'] !== $planoId;
     }
 
     /**

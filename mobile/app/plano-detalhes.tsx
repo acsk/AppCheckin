@@ -8,6 +8,7 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Image,
   Linking,
   Modal,
@@ -51,6 +52,7 @@ interface PlanoDetalhes {
     nome: string;
   };
   is_plano_atual?: boolean;
+  pode_migrar?: boolean;
   status_codigo?: string | null;
   status?: {
     codigo?: string;
@@ -445,6 +447,105 @@ export default function PlanoDetalhesScreen() {
     }
   };
 
+  const executarMigracao = async (metodo: "checkout" | "pix") => {
+    if (!plano || !selectedCicloId) return;
+    const token = await AsyncStorage.getItem("@appcheckin:token");
+    if (!token) throw new Error("Token não encontrado");
+
+    const response = await fetch(`${apiUrl}/mobile/migrar-plano`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        plano_id: plano.id,
+        plano_ciclo_id: selectedCicloId,
+        metodo_pagamento: metodo,
+      }),
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || "Não foi possível migrar o plano");
+    }
+
+    const valorParcela = Number(data.data?.valor_parcela ?? 0);
+    const paymentUrl = data.data?.payment_url;
+    const status = String(data.data?.status || "").toLowerCase();
+
+    if (status === "ativa" || valorParcela <= 0) {
+      showErrorModal(
+        "✅ Plano migrado",
+        data.message || "Seu plano foi alterado com sucesso.",
+        "success",
+      );
+      return;
+    }
+
+    if (metodo === "pix" && data.data?.pix) {
+      setPixData({
+        matricula_id: data.data.matricula_id,
+        valor: valorParcela,
+        qr_code: data.data.pix.qr_code,
+        qr_code_base64: data.data.pix.qr_code_base64,
+        ticket_url: data.data.pix.ticket_url,
+        expires_at: data.data.pix.expires_at,
+      });
+      setPixModalVisible(true);
+      return;
+    }
+
+    if (!paymentUrl) {
+      throw new Error("Link de pagamento não foi gerado");
+    }
+
+    setPaymentUrlToOpen(paymentUrl);
+    setCountdown(3);
+    setRedirectModalVisible(true);
+  };
+
+  const confirmarMigracao = async (metodo: "checkout" | "pix") => {
+    const token = await AsyncStorage.getItem("@appcheckin:token");
+    if (!token) throw new Error("Token não encontrado");
+
+    const simResponse = await fetch(`${apiUrl}/mobile/simular-migracao`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        plano_id: plano?.id,
+        plano_ciclo_id: selectedCicloId,
+      }),
+    });
+    const simData = await simResponse.json();
+    if (!simResponse.ok || !simData.success) {
+      throw new Error(simData.message || "Não foi possível simular a migração");
+    }
+
+    const credito = simData.data?.credito?.valor_formatado || "R$ 0,00";
+    const parcela = simData.data?.valor_parcela_formatado || "R$ 0,00";
+    const planoAtual = simData.data?.plano_atual?.nome || "atual";
+
+    return new Promise<void>((resolve, reject) => {
+      Alert.alert(
+        "Migrar de plano",
+        `Plano atual: ${planoAtual}\nCrédito restante: ${credito}\nVocê paga: ${parcela}`,
+        [
+          { text: "Cancelar", style: "cancel", onPress: () => resolve() },
+          {
+            text: "Confirmar",
+            onPress: () => {
+              executarMigracao(metodo).then(resolve).catch(reject);
+            },
+          },
+        ],
+      );
+    });
+  };
+
   const handleContratar = async () => {
     if (!plano || !selectedCicloId) return;
 
@@ -473,6 +574,11 @@ export default function PlanoDetalhesScreen() {
         "Ciclo:",
         selectedCiclo.nome,
       );
+
+      if (plano.pode_migrar) {
+        await confirmarMigracao("checkout");
+        return;
+      }
 
       const token = await AsyncStorage.getItem("@appcheckin:token");
       if (!token) throw new Error("Token não encontrado");
@@ -588,6 +694,12 @@ export default function PlanoDetalhesScreen() {
 
     try {
       setPixLoading(true);
+
+      if (plano.pode_migrar) {
+        await confirmarMigracao("pix");
+        return;
+      }
+
       const token = await AsyncStorage.getItem("@appcheckin:token");
       if (!token) throw new Error("Token não encontrado");
 
@@ -1038,16 +1150,26 @@ export default function PlanoDetalhesScreen() {
               ) : (
                 <>
                   <Feather
-                    name={canCheckout ? "shopping-cart" : "zap"}
+                    name={
+                      plano.pode_migrar
+                        ? "repeat"
+                        : canCheckout
+                          ? "shopping-cart"
+                          : "zap"
+                    }
                     size={18}
                     color="#fff"
                   />
                   <Text style={styles.footerButtonText}>
                     {selectedCiclo
                       ? canCheckout
-                        ? `Contratar por ${selectedCiclo.valor_formatado}`
+                        ? plano.pode_migrar
+                          ? `Migrar — ${selectedCiclo.valor_formatado}`
+                          : `Contratar por ${selectedCiclo.valor_formatado}`
                         : canPix
-                          ? `Pagar com PIX • ${selectedCiclo.valor_formatado}`
+                          ? plano.pode_migrar
+                            ? `Migrar com PIX — ${selectedCiclo.valor_formatado}`
+                            : `Pagar com PIX • ${selectedCiclo.valor_formatado}`
                           : "Pagamento indisponível"
                       : "Escolha um ciclo"}
                   </Text>

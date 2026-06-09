@@ -8,6 +8,7 @@ use App\Repositories\UsuarioRepository;
 use App\Services\MercadoPagoService;
 use App\Services\PagamentoPlanoService;
 use App\Support\MetodoPagamentoResolver;
+use App\Support\MobilePagamentoMetodos;
 use DateTime;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -44,6 +45,23 @@ class MobileCompraPlanoService
             return $this->erro(400, 'METODO_PAGAMENTO_INVALIDO', 'Método de pagamento inválido. Use pix ou checkout.');
         }
 
+        $pagamentoFlags = MobilePagamentoMetodos::flags($tenantId);
+        $habilitarCartao = $pagamentoFlags['habilitar_cartao_credito'];
+        $habilitarPix = $pagamentoFlags['habilitar_pix'];
+        $metodoPagamento = MobilePagamentoMetodos::normalizarMetodo(
+            $metodoPagamento,
+            $habilitarCartao,
+            $habilitarPix
+        );
+
+        if ($metodoPagamento === 'pix' && ! $habilitarPix) {
+            return $this->erro(400, 'PIX_NAO_DISPONIVEL', 'Pagamento PIX não está habilitado para esta academia');
+        }
+
+        if ($metodoPagamento === 'checkout' && ! $habilitarCartao) {
+            return $this->erro(400, 'CHECKOUT_NAO_DISPONIVEL', 'Pagamento por checkout não está disponível. Use PIX.');
+        }
+
         if ($diaVencimento < 1 || $diaVencimento > 31) {
             return $this->erro(400, 'DIA_VENCIMENTO_INVALIDO', 'Dia de vencimento deve estar entre 1 e 31');
         }
@@ -73,7 +91,7 @@ class MobileCompraPlanoService
         $valorCompra = (float) $plano['valor'];
         $duracaoMeses = 1;
         $cicloNome = 'Mensal';
-        $isRecorrente = true;
+        $permiteRecorrenciaCiclo = false;
 
         if ($planoCicloId) {
             $ciclo = DB::table('plano_ciclos as pc')
@@ -92,12 +110,13 @@ class MobileCompraPlanoService
             $valorCompra = (float) $ciclo['valor'];
             $duracaoMeses = (int) $ciclo['meses'];
             $cicloNome = $ciclo['ciclo_nome'];
-            $isRecorrente = (bool) $ciclo['permite_recorrencia'];
+            $permiteRecorrenciaCiclo = (bool) $ciclo['permite_recorrencia'];
         }
 
-        if ($metodoPagamento === 'pix' && $isRecorrente) {
-            return $this->erro(400, 'PIX_NAO_DISPONIVEL_RECORRENTE', 'Pagamento PIX não está disponível para planos recorrentes');
-        }
+        $isRecorrente = MobilePagamentoMetodos::isRecorrenteEfetivo(
+            $permiteRecorrenciaCiclo,
+            $habilitarCartao
+        );
 
         if ($valorCompra <= 0) {
             return $this->erro(400, 'PLANO_INVALIDO', 'Este plano não está disponível para compra');

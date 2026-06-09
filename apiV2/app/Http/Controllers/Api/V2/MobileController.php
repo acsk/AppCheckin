@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Services\Mobile\MobileAssinaturaService;
 use App\Services\Mobile\MobileCheckinService;
 use App\Services\Mobile\MobileCompraPlanoService;
+use App\Services\Mobile\MobileMigracaoPlanoService;
 use App\Services\Mobile\MobileHistoricoService;
 use App\Services\Mobile\MobileHorariosService;
 use App\Services\Mobile\MobileMatriculaService;
@@ -30,6 +31,7 @@ class MobileController extends Controller
         private readonly MobilePlanoService $planos,
         private readonly MobileMatriculaService $matriculas,
         private readonly MobileCompraPlanoService $compra,
+        private readonly MobileMigracaoPlanoService $migracao,
         private readonly MobilePagamentoService $pagamento,
         private readonly MobileAssinaturaService $assinaturas,
     ) {}
@@ -298,6 +300,42 @@ class MobileController extends Controller
             Log::error('comprarPlano v2: '.$e->getMessage());
 
             return MobileResponse::serverError('Erro ao processar compra', $e->getMessage());
+        }
+    }
+
+    public function simularMigracaoPlano(Request $request): JsonResponse
+    {
+        try {
+            $data = $request->all();
+            $result = $this->migracao->simular(
+                $this->userId($request),
+                (int) $this->tenantId($request),
+                (int) ($data['plano_id'] ?? 0),
+                ! empty($data['plano_ciclo_id']) ? (int) $data['plano_ciclo_id'] : null,
+            );
+
+            return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            Log::error('simularMigracaoPlano v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao simular migração', $e->getMessage());
+        }
+    }
+
+    public function migrarPlano(Request $request): JsonResponse
+    {
+        try {
+            $result = $this->migracao->migrar(
+                $this->userId($request),
+                (int) $this->tenantId($request),
+                $request->all(),
+            );
+
+            return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            Log::error('migrarPlano v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao migrar plano', $e->getMessage());
         }
     }
 

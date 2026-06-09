@@ -8,8 +8,11 @@ final class PlanoCicloFormatter
      * @param  list<array<string, mixed>>  $ciclos
      * @return array<int, list<array<string, mixed>>>
      */
-    public static function agruparPorPlano(array $ciclos): array
-    {
+    public static function agruparPorPlano(
+        array $ciclos,
+        bool $habilitarCartao = true,
+        bool $habilitarPix = true,
+    ): array {
         $valorMensalRefPlano = [];
         foreach ($ciclos as $ciclo) {
             $pid = (int) $ciclo['plano_id'];
@@ -50,8 +53,8 @@ final class PlanoCicloFormatter
                 'desconto_percentual' => $economiaPercentual,
                 'permite_recorrencia' => (bool) $ciclo['permite_recorrencia'],
                 'permite_reposicao' => (bool) $ciclo['permite_reposicao'],
-                'pix_disponivel' => ! (bool) $ciclo['permite_recorrencia'],
-                'metodos_pagamento' => self::metodosPagamento((bool) $ciclo['permite_recorrencia']),
+                'pix_disponivel' => in_array('pix', self::metodosPagamento((bool) $ciclo['permite_recorrencia'], $habilitarCartao, $habilitarPix), true),
+                'metodos_pagamento' => self::metodosPagamento((bool) $ciclo['permite_recorrencia'], $habilitarCartao, $habilitarPix),
                 'economia' => $economiaPercentual > 0 ? 'Economize '.$economiaPercentual.'%' : null,
                 'economia_valor' => $economiaValor > 0
                     ? 'R$ '.number_format($economiaValor, 2, ',', '.').' de economia'
@@ -66,8 +69,11 @@ final class PlanoCicloFormatter
      * @param  list<array<string, mixed>>  $ciclosRaw
      * @return list<array<string, mixed>>
      */
-    public static function formatarLista(array $ciclosRaw): array
-    {
+    public static function formatarLista(
+        array $ciclosRaw,
+        bool $habilitarCartao = true,
+        bool $habilitarPix = true,
+    ): array {
         $valorMensalBase = 0.0;
         foreach ($ciclosRaw as $c) {
             if ((int) $c['meses'] === 1) {
@@ -100,8 +106,8 @@ final class PlanoCicloFormatter
                 'desconto_percentual' => $economiaPercentual,
                 'permite_recorrencia' => (bool) $c['permite_recorrencia'],
                 'permite_reposicao' => (bool) $c['permite_reposicao'],
-                'pix_disponivel' => ! (bool) $c['permite_recorrencia'],
-                'metodos_pagamento' => self::metodosPagamento((bool) $c['permite_recorrencia']),
+                'pix_disponivel' => in_array('pix', self::metodosPagamento((bool) $c['permite_recorrencia'], $habilitarCartao, $habilitarPix), true),
+                'metodos_pagamento' => self::metodosPagamento((bool) $c['permite_recorrencia'], $habilitarCartao, $habilitarPix),
                 'economia' => $economiaPercentual > 0 ? 'Economize '.$economiaPercentual.'%' : null,
                 'economia_valor' => $economiaValor > 0
                     ? 'R$ '.number_format($economiaValor, 2, ',', '.').' de economia'
@@ -115,9 +121,16 @@ final class PlanoCicloFormatter
     /**
      * @return list<string>
      */
-    public static function metodosPagamento(bool $permiteRecorrencia): array
-    {
-        return $permiteRecorrencia ? ['checkout'] : ['checkout', 'pix'];
+    public static function metodosPagamento(
+        bool $permiteRecorrencia,
+        bool $habilitarCartao = true,
+        bool $habilitarPix = true,
+    ): array {
+        return MobilePagamentoMetodos::metodosPagamentoCiclo(
+            $permiteRecorrencia,
+            $habilitarCartao,
+            $habilitarPix,
+        );
     }
 
     public static function formatarDuracao(int $dias): string

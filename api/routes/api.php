@@ -925,6 +925,10 @@ return function ($app) {
         
         // Comprar plano (cria matrícula + gera link Mercado Pago)
         $group->post('/comprar-plano', [MobileController::class, 'comprarPlano']);
+
+        // Migrar plano (matrícula ativa → novo plano com crédito proporcional)
+        $group->post('/simular-migracao', [MobileController::class, 'simularMigracaoPlano']);
+        $group->post('/migrar-plano', [MobileController::class, 'migrarPlano']);
         
         // Assinaturas recorrentes
         $group->get('/assinaturas', [AssinaturaController::class, 'minhasAssinaturas']);
