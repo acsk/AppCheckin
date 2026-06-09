@@ -517,6 +517,42 @@ export default function PlanosScreen() {
       setMigracaoSimulacao(null);
 
       if (!response.ok || !data.success) {
+        if (data.code === "ERRO_PAGAMENTO" && metodo === "pix") {
+          const matriculaId = data.matricula_id ?? data.data?.matricula_id;
+          if (matriculaId) {
+            const pixResponse = await fetch(`${apiUrl}/mobile/pagamento/pix`, {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ matricula_id: matriculaId }),
+            });
+            const pixText = await pixResponse.text();
+            let pixJson: any = {};
+            try {
+              pixJson = pixText ? JSON.parse(pixText) : {};
+            } catch {
+              pixJson = {};
+            }
+            if (pixResponse.ok && pixJson.success) {
+              const pix = pixJson.data?.pix || {};
+              setPixData({
+                matricula_id: Number(pixJson.data?.matricula_id || matriculaId),
+                valor: Number(
+                  pixJson.data?.valor || data.data?.valor_parcela || 0,
+                ),
+                qr_code: pix.qr_code || null,
+                qr_code_base64: pix.qr_code_base64 || null,
+                ticket_url: pix.ticket_url || null,
+                expires_at: pix.expires_at || null,
+              });
+              setPixModalVisible(true);
+              return;
+            }
+          }
+        }
+
         showErrorModal(
           "⚠️ Migração não concluída",
           data.message || "Não foi possível migrar o plano",
@@ -604,8 +640,6 @@ export default function PlanosScreen() {
 
         if (plano.pode_migrar) {
           await abrirConfirmacaoMigracao(plano, selectedCiclo.id, "checkout");
-          setComprando(false);
-          setPlanoComprando(null);
           return;
         }
 
@@ -742,10 +776,10 @@ export default function PlanosScreen() {
         const errorMsg =
           err instanceof Error ? err.message : "Erro ao processar compra";
         console.error("❌ Erro na compra:", err);
+        showErrorModal("❌ Algo Deu Errado", errorMsg, "error");
+      } finally {
         setComprando(false);
         setPlanoComprando(null);
-
-        showErrorModal("❌ Algo Deu Errado", errorMsg, "error");
       }
     },
     [apiUrl, selectedCicloByPlano, abrirConfirmacaoMigracao],
@@ -775,8 +809,6 @@ export default function PlanosScreen() {
 
         if (plano.pode_migrar) {
           await abrirConfirmacaoMigracao(plano, selectedCiclo.id, "pix");
-          setPixLoading(false);
-          setPlanoComprando(null);
           return;
         }
 

@@ -11,7 +11,7 @@ import {
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useRef, useState } from "react";
-import { AppState, Platform, StyleSheet, View } from "react-native";
+import { ActivityIndicator, AppState, Platform, StyleSheet, View } from "react-native";
 import {
     SafeAreaProvider,
     useSafeAreaInsets,
@@ -156,7 +156,9 @@ export default function RootLayout() {
         <ThemeProvider
           value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
         >
-          <View style={styles.root} />
+          <View style={[styles.root, styles.bootSplash]}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
         </ThemeProvider>
       </SafeAreaProvider>
     );
@@ -220,6 +222,11 @@ function StatusBarBackground() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
+  },
+  bootSplash: {
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
   },
   statusBarFill: {
     backgroundColor: colors.primary,

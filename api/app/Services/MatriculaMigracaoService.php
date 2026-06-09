@@ -371,7 +371,18 @@ class MatriculaMigracaoService
         );
 
         if (isset($mpResult['erro'])) {
-            return $mpResult['erro'];
+            $erro = $mpResult['erro'];
+            if (($erro['body']['code'] ?? '') === 'ERRO_PAGAMENTO') {
+                $erro['body']['matricula_id'] = $matriculaId;
+                $erro['body']['data'] = [
+                    'matricula_id' => $matriculaId,
+                    'status' => 'pendente',
+                    'valor_parcela' => $valorParcela,
+                    'metodo_pagamento' => $metodoPagamento,
+                ];
+            }
+
+            return $erro;
         }
 
         $body['data'] = array_merge($body['data'], $mpResult['pagamento']);
@@ -698,6 +709,7 @@ class MatriculaMigracaoService
 
             return ['erro' => $this->erro(500, 'ERRO_PAGAMENTO', 'Plano alterado, mas falha ao gerar pagamento. Tente reabrir o pagamento pendente.', [
                 'mp_error' => $e->getMessage(),
+                'matricula_id' => $matriculaId,
             ])];
         }
 
