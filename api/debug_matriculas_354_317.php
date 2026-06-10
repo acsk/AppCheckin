@@ -162,6 +162,43 @@ foreach ($matriculaIds as $mid) {
     } else {
         echo "  ❌ Nenhuma parcela futura pendente — ciclo pode estar quebrado!\n";
     }
+
+    if ($fix && $canceladasFuturas !== []) {
+        $section("Correção (--fix)");
+        $stmtUltPago = $pdo->prepare("
+            SELECT id, data_vencimento FROM pagamentos_plano
+            WHERE matricula_id = ? AND status_pagamento_id = 2
+            ORDER BY data_pagamento DESC, id DESC LIMIT 1
+        ");
+        $stmtUltPago->execute([$mid]);
+        $ultPago = $stmtUltPago->fetch(PDO::FETCH_ASSOC);
+        $vencUltPago = $ultPago['data_vencimento'] ?? null;
+
+        foreach ($canceladasFuturas as $p) {
+            if (!$vencUltPago || $p['data_vencimento'] <= $vencUltPago) {
+                echo "  ⏭️  #{$p['id']}: venc {$p['data_vencimento']} não é posterior ao último pago ({$vencUltPago})\n";
+                continue;
+            }
+            if (!str_contains($p['observacoes'] ?? '', 'Duplicata')) {
+                echo "  ⏭️  #{$p['id']}: cancelamento não é por Duplicata — revisar manualmente\n";
+                continue;
+            }
+
+            $pdo->prepare("
+                UPDATE pagamentos_plano
+                SET status_pagamento_id = 1,
+                    observacoes = CONCAT(COALESCE(observacoes, ''), ' [Reativada: cancelamento Duplicata incorreto]'),
+                    updated_at = NOW()
+                WHERE id = ?
+            ")->execute([$p['id']]);
+
+            $pdo->prepare("
+                UPDATE matriculas SET proxima_data_vencimento = ?, updated_at = NOW() WHERE id = ?
+            ")->execute([$p['data_vencimento'], $mid]);
+
+            echo "  ✅ Parcela #{$p['id']} reativada (venc {$p['data_vencimento']}); proxima_data_vencimento atualizada\n";
+        }
+    }
 }
 
 echo "\n";
