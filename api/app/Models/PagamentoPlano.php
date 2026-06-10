@@ -305,7 +305,8 @@ class PagamentoPlano
     }
 
     /**
-     * Após baixar uma parcela, cancela outras abertas com o mesmo valor (evita matrícula vencida fantasma).
+     * Após baixar uma parcela, cancela outras abertas duplicadas do mesmo ciclo (mesmo valor e vencimento
+     * igual ou anterior ao da parcela paga). Não cancela parcelas futuras legítimas do ciclo recorrente.
      */
     public function cancelarParcelasDuplicadasAposBaixa(
         int $tenantId,
@@ -314,6 +315,17 @@ class PagamentoPlano
         float $valorPago,
         string $motivo = 'Duplicata: outra parcela já quitada com este PIX'
     ): int {
+        $stmtVenc = $this->pdo->prepare("
+            SELECT data_vencimento FROM pagamentos_plano
+            WHERE id = ? AND tenant_id = ? AND matricula_id = ?
+            LIMIT 1
+        ");
+        $stmtVenc->execute([$parcelaPagaId, $tenantId, $matriculaId]);
+        $dataVencimentoPaga = $stmtVenc->fetchColumn();
+        if (!$dataVencimentoPaga) {
+            return 0;
+        }
+
         $stmt = $this->pdo->prepare("
             UPDATE pagamentos_plano
             SET status_pagamento_id = 4,
@@ -325,6 +337,7 @@ class PagamentoPlano
               AND status_pagamento_id IN (1, 3)
               AND data_pagamento IS NULL
               AND ABS(valor - :valor) < 0.01
+              AND data_vencimento <= :data_vencimento_paga
         ");
         $stmt->execute([
             'motivo' => $motivo,
@@ -332,6 +345,7 @@ class PagamentoPlano
             'matricula_id' => $matriculaId,
             'parcela_paga_id' => $parcelaPagaId,
             'valor' => $valorPago,
+            'data_vencimento_paga' => $dataVencimentoPaga,
         ]);
 
         return $stmt->rowCount();
