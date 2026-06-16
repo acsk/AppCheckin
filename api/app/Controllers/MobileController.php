@@ -6471,6 +6471,10 @@ class MobileController
                         motivo_id = ?,
                         plano_anterior_id = ?,
                         dia_vencimento = ?,
+                        data_matricula = ?,
+                        data_inicio = ?,
+                        data_vencimento = ?,
+                        proxima_data_vencimento = ?,
                         criado_por = ?,
                         updated_at = NOW()
                     WHERE id = ? AND tenant_id = ?
@@ -6484,6 +6488,10 @@ class MobileController
                     $motivoId,
                     $planoAnteriorId,
                     $diaVencimento,
+                    $dataMatricula,
+                    $dataInicio,
+                    $dataVencimento->format('Y-m-d'),
+                    $proximaDataVencimento->format('Y-m-d'),
                     $userId,
                     $matriculaId,
                     $tenantId
@@ -7291,7 +7299,7 @@ class MobileController
 
             $stmtMatricula = $this->db->prepare("
                 SELECT m.id, m.valor, m.tipo_cobranca, sm.codigo as status_codigo,
-                       p.nome as plano_nome, p.modalidade_id, m.proxima_data_vencimento,
+                       p.nome as plano_nome, p.duracao_dias, p.modalidade_id, m.proxima_data_vencimento,
                        a.id as aluno_id, u.id as usuario_id, u.nome as aluno_nome, u.email as aluno_email,
                        u.telefone as aluno_telefone, u.cpf as aluno_cpf, md.nome as modalidade_nome
                 FROM matriculas m
@@ -7353,7 +7361,11 @@ class MobileController
                 $stmtPlano = $this->db->prepare("SELECT plano_id FROM matriculas WHERE id = ? AND tenant_id = ?");
                 $stmtPlano->execute([$matriculaId, $tenantId]);
                 $planoIdPix = (int) ($stmtPlano->fetchColumn() ?: 0);
-                $dataVencParcela = $matricula['proxima_data_vencimento'] ?? date('Y-m-d');
+                $ehDiariaPix = ($matricula['tipo_cobranca'] ?? '') === 'avulso'
+                    && (int) ($matricula['duracao_dias'] ?? 0) === 1;
+                $dataVencParcela = $ehDiariaPix
+                    ? date('Y-m-d')
+                    : ($matricula['proxima_data_vencimento'] ?? date('Y-m-d'));
                 $pagamentoPlanoModel->garantirParcelaPendenteUnica(
                     $tenantId,
                     (int) $matricula['aluno_id'],

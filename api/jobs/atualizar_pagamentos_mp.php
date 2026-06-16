@@ -69,7 +69,7 @@ function buscarPagamentoAprovadoPorExternalReference(int $tenantId, string $exte
 function atualizarVigenciaMatriculaAprovada(PDO $pdo, int $matriculaId, ?string $dataReferencia, bool $quiet): void
 {
     $stmtMatricula = $pdo->prepare("
-        SELECT m.id, m.status_id, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento,
+        SELECT m.id, m.status_id, m.tipo_cobranca, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento,
                p.duracao_dias, pc.meses
         FROM matriculas m
         INNER JOIN planos p ON p.id = m.plano_id
@@ -101,7 +101,10 @@ function atualizarVigenciaMatriculaAprovada(PDO $pdo, int $matriculaId, ?string 
         $dataBase = new DateTimeImmutable(date('Y-m-d'));
     }
 
-    $duracaoMeses = (int) ($matricula['meses'] ?? 0);
+    $ehDiariaAvulsa = ($matricula['tipo_cobranca'] ?? '') === 'avulso'
+        && (int) ($matricula['duracao_dias'] ?? 0) === 1;
+
+    $duracaoMeses = $ehDiariaAvulsa ? 0 : (int) ($matricula['meses'] ?? 0);
     if ($duracaoMeses > 0) {
         $dataVencimento = $dataBase->modify("+{$duracaoMeses} months")->format('Y-m-d');
     } else {
@@ -109,7 +112,9 @@ function atualizarVigenciaMatriculaAprovada(PDO $pdo, int $matriculaId, ?string 
         $dataVencimento = $dataBase->modify("+{$duracaoDias} days")->format('Y-m-d');
     }
 
-    $dataInicio = !empty($matricula['data_inicio']) ? $matricula['data_inicio'] : $dataBase->format('Y-m-d');
+    $dataInicio = $ehDiariaAvulsa
+        ? $dataBase->format('Y-m-d')
+        : (!empty($matricula['data_inicio']) ? $matricula['data_inicio'] : $dataBase->format('Y-m-d'));
 
     // Usar a data da próxima parcela pendente real (se existir) como proxima_data_vencimento
     // para evitar divergência com gerarProximoPagamentoAutomatico (que usa ciclo_meses, não duracao_dias)

@@ -381,6 +381,15 @@ class PagamentoPlano
         ]);
         $existente = $stmt->fetchColumn();
         if ($existente) {
+            $this->pdo->prepare("
+                UPDATE pagamentos_plano
+                SET data_vencimento = :data_vencimento, updated_at = NOW()
+                WHERE id = :id
+            ")->execute([
+                'data_vencimento' => $dataVencimento,
+                'id' => $existente,
+            ]);
+
             return (int) $existente;
         }
 

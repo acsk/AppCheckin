@@ -1,225 +1,5 @@
 [
     {
-        "time": "2026-02-28 17:57:50",
-        "method": "GET",
-        "uri": "\/api\/payments",
-        "query": "limit=200",
-        "headers": {
-            "content_type": "",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-28 17:58:32",
-        "method": "GET",
-        "uri": "\/api\/webhook-logs",
-        "query": "limit=10",
-        "headers": {
-            "content_type": "",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-28 18:11:55",
-        "method": "GET",
-        "uri": "\/checkout\/894741707031",
-        "query": "",
-        "headers": {
-            "content_type": "",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-28 18:11:55",
-        "method": "GET",
-        "uri": "\/.well-known\/appspecific\/com.chrome.devtools.json",
-        "query": "",
-        "headers": {
-            "content_type": "",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-28 18:13:28",
-        "method": "POST",
-        "uri": "\/checkout\/preferences",
-        "query": "",
-        "headers": {
-            "content_type": "application\/json",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-28 18:13:28",
-        "method": "GET",
-        "uri": "\/checkout\/935658436129",
-        "query": "",
-        "headers": {
-            "content_type": "",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-28 18:13:33",
-        "method": "GET",
-        "uri": "\/.well-known\/appspecific\/com.chrome.devtools.json",
-        "query": "",
-        "headers": {
-            "content_type": "",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-28 18:13:34",
-        "method": "POST",
-        "uri": "\/checkout\/935658436129\/process",
-        "query": "",
-        "headers": {
-            "content_type": "application\/json",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-28 18:13:34",
-        "method": "GET",
-        "uri": "\/v1\/payments\/935658436129",
-        "query": "",
-        "headers": {
-            "content_type": "application\/json",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-28 18:13:34",
-        "method": "GET",
-        "uri": "\/v1\/payments\/935658436129",
-        "query": "",
-        "headers": {
-            "content_type": "application\/json",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-28 18:16:40",
-        "method": "GET",
-        "uri": "\/api\/webhook-logs",
-        "query": "limit=10",
-        "headers": {
-            "content_type": "",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-28 18:19:17",
-        "method": "GET",
-        "uri": "\/v1\/payments\/935658436129",
-        "query": "",
-        "headers": {
-            "content_type": "",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-02-28 18:19:37",
-        "method": "GET",
-        "uri": "\/v1\/payments\/935658436129",
-        "query": "",
-        "headers": {
-            "content_type": "",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-03-02 13:20:46",
-        "method": "GET",
-        "uri": "\/v1\/payments\/search",
-        "query": "external_reference=PAC-14-1772302408&sort=date_created&criteria=desc",
-        "headers": {
-            "content_type": "application\/json",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-03-02 13:22:20",
-        "method": "POST",
-        "uri": "\/checkout\/preferences",
-        "query": "",
-        "headers": {
-            "content_type": "application\/json",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-03-02 13:22:20",
-        "method": "GET",
-        "uri": "\/checkout\/444847784306",
-        "query": "",
-        "headers": {
-            "content_type": "",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-03-02 13:22:20",
-        "method": "GET",
-        "uri": "\/favicon.ico",
-        "query": "",
-        "headers": {
-            "content_type": "",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-03-02 13:22:22",
-        "method": "POST",
-        "uri": "\/checkout\/444847784306\/process",
-        "query": "",
-        "headers": {
-            "content_type": "application\/json",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-03-02 13:22:22",
-        "method": "GET",
-        "uri": "\/v1\/payments\/444847784306",
-        "query": "",
-        "headers": {
-            "content_type": "application\/json",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-03-02 13:22:22",
-        "method": "GET",
-        "uri": "\/v1\/payments\/444847784306",
-        "query": "",
-        "headers": {
-            "content_type": "application\/json",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-03-02 13:27:06",
-        "method": "POST",
-        "uri": "\/v1\/payments",
-        "query": "",
-        "headers": {
-            "content_type": "application\/json",
-            "authorization": ""
-        }
-    },
-    {
-        "time": "2026-03-02 13:27:06",
-        "method": "GET",
-        "uri": "\/v1\/payments\/612768489554",
-        "query": "",
-        "headers": {
-            "content_type": "application\/json",
-            "authorization": ""
-        }
-    },
-    {
         "time": "2026-03-02 13:27:06",
         "method": "GET",
         "uri": "\/v1\/payments\/612768489554",
@@ -1994,6 +1774,226 @@
         "method": "GET",
         "uri": "\/api\/payments",
         "query": "limit=100",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-06-10 13:46:15",
+        "method": "GET",
+        "uri": "\/api\/payments",
+        "query": "limit=20",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-06-10 13:46:18",
+        "method": "GET",
+        "uri": "\/api\/webhooks",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-06-10 13:46:19",
+        "method": "GET",
+        "uri": "\/api\/webhook-logs",
+        "query": "limit=50",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-06-10 13:46:19",
+        "method": "GET",
+        "uri": "\/api\/test-webhook-receiver",
+        "query": "",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-06-10 13:46:20",
+        "method": "GET",
+        "uri": "\/purchases",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-06-10 13:46:20",
+        "method": "GET",
+        "uri": "\/api\/purchases",
+        "query": "limit=100",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-06-10 13:46:20",
+        "method": "GET",
+        "uri": "\/favicon.ico",
+        "query": "",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-06-11 13:42:44",
+        "method": "GET",
+        "uri": "\/",
+        "query": "state=o53kwIgtxbrZTP4TRMx9IjSgaAC8ld&iss=https:\/\/accounts.google.com&code=4\/0AdkVLPx3KaoIGHYTIukR-k_iEOAkAVzlVQOyHwR0YSElZlPzAbaJJSDQ4p0WBnkgG2ivZQ&scope=email%20openid%20https:\/\/www.googleapis.com\/auth\/userinfo.email%20https:\/\/www.googleapis.com\/auth\/cloud-platform%20https:\/\/www.googleapis.com\/auth\/appengine.admin%20https:\/\/www.googleapis.com\/auth\/sqlservice.login%20https:\/\/www.googleapis.com\/auth\/compute%20https:\/\/www.googleapis.com\/auth\/accounts.reauth&authuser=0&prompt=consent",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-06-11 13:42:44",
+        "method": "GET",
+        "uri": "\/api\/payments",
+        "query": "limit=200",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-06-11 13:42:44",
+        "method": "GET",
+        "uri": "\/api\/webhook-logs",
+        "query": "limit=10",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-06-11 13:43:32",
+        "method": "GET",
+        "uri": "\/",
+        "query": "state=PS7UQoQQXduJn884L4FaIB7R5eUHqw&iss=https:\/\/accounts.google.com&code=4\/0AdkVLPwc4ebSxIPPbKwga1aTAhUMaLXUoUXX6i76LV8XNad_t7xWOPBVxWtlyAixs2_aBg&scope=email%20https:\/\/www.googleapis.com\/auth\/cloud-platform%20https:\/\/www.googleapis.com\/auth\/sqlservice.login%20https:\/\/www.googleapis.com\/auth\/userinfo.email%20openid&authuser=0&prompt=consent",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-06-11 13:43:32",
+        "method": "GET",
+        "uri": "\/api\/payments",
+        "query": "limit=200",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-06-11 13:43:32",
+        "method": "GET",
+        "uri": "\/api\/webhook-logs",
+        "query": "limit=10",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-06-11 13:44:03",
+        "method": "GET",
+        "uri": "\/",
+        "query": "state=PS7UQoQQXduJn884L4FaIB7R5eUHqw&iss=https:\/\/accounts.google.com&code=4\/0AdkVLPyQ0kM6LhTD_9P2pCnt5YsdWG2aZOYXHVQOsoNbBEYjMjnuRSIa4vOJGPokCHNBog&scope=email%20https:\/\/www.googleapis.com\/auth\/cloud-platform%20https:\/\/www.googleapis.com\/auth\/sqlservice.login%20https:\/\/www.googleapis.com\/auth\/userinfo.email%20openid&authuser=0&prompt=consent",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-06-11 13:44:04",
+        "method": "GET",
+        "uri": "\/api\/payments",
+        "query": "limit=200",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-06-11 13:44:04",
+        "method": "GET",
+        "uri": "\/api\/webhook-logs",
+        "query": "limit=10",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-06-11 13:45:30",
+        "method": "GET",
+        "uri": "\/",
+        "query": "state=tZrOzXubAkTdOXrnYtYipyhuz0RPS1&iss=https:\/\/accounts.google.com&code=4\/0AdkVLPzLJxO3VAAlVkyL4tnl4fBtwzJjmmaU0r609WXK459Qg5TToE7x8sW6JV3eSnUYzg&scope=email%20openid%20https:\/\/www.googleapis.com\/auth\/userinfo.email%20https:\/\/www.googleapis.com\/auth\/cloud-platform%20https:\/\/www.googleapis.com\/auth\/appengine.admin%20https:\/\/www.googleapis.com\/auth\/sqlservice.login%20https:\/\/www.googleapis.com\/auth\/compute%20https:\/\/www.googleapis.com\/auth\/accounts.reauth&authuser=0&prompt=consent",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-06-11 13:45:30",
+        "method": "GET",
+        "uri": "\/api\/payments",
+        "query": "limit=200",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-06-11 13:45:30",
+        "method": "GET",
+        "uri": "\/api\/webhook-logs",
+        "query": "limit=10",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-06-11 13:48:34",
+        "method": "GET",
+        "uri": "\/",
+        "query": "state=tZrOzXubAkTdOXrnYtYipyhuz0RPS1&iss=https:\/\/accounts.google.com&code=4\/0AdkVLPy5eeedYSIBUyFSQtlL24xmUOHbvz0XrEtUfKmDzh2179WrY8HeBTpkm5dGMJmm7Q&scope=email%20openid%20https:\/\/www.googleapis.com\/auth\/userinfo.email%20https:\/\/www.googleapis.com\/auth\/cloud-platform%20https:\/\/www.googleapis.com\/auth\/appengine.admin%20https:\/\/www.googleapis.com\/auth\/sqlservice.login%20https:\/\/www.googleapis.com\/auth\/compute%20https:\/\/www.googleapis.com\/auth\/accounts.reauth&authuser=0&prompt=consent",
+        "headers": {
+            "content_type": "",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-06-11 13:48:35",
+        "method": "GET",
+        "uri": "\/api\/payments",
+        "query": "limit=200",
+        "headers": {
+            "content_type": "application\/json",
+            "authorization": ""
+        }
+    },
+    {
+        "time": "2026-06-11 13:48:35",
+        "method": "GET",
+        "uri": "\/api\/webhook-logs",
+        "query": "limit=10",
         "headers": {
             "content_type": "application\/json",
             "authorization": ""
