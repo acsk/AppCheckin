@@ -67,4 +67,6 @@ export interface UserProfile {
     matricula_id?: number | null;
     status_codigo?: string | null;
   };
+  aniversario_hoje?: boolean;
+  idade?: number | null;
 }

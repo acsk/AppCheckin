@@ -12,3 +12,5 @@ public/uploads/
 
 # Arquivos de teste com credenciais
 test_*.php
+config/database.remote.php
+config/database.remote.local.php

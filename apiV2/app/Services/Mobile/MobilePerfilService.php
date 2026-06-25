@@ -6,6 +6,7 @@ use App\Repositories\AlunoRepository;
 use App\Repositories\CheckinRepository;
 use App\Repositories\MobilePerfilRepository;
 use App\Repositories\UsuarioRepository;
+use App\Support\AniversarioUtil;
 
 class MobilePerfilService
 {
@@ -62,6 +63,11 @@ class MobilePerfilService
         $plano = $this->perfilRepo->getPlanoUsuario($userId, $tenantId);
         $rankingModalidades = $this->checkins->rankingUsuarioPorModalidade($userId, $tenantId);
 
+        $dataNascimento = $aluno['data_nascimento'] ?? null;
+        $aniversario = AniversarioUtil::payload(
+            is_string($dataNascimento) ? $dataNascimento : null
+        );
+
         $perfil = [
             'id' => $usuario['id'],
             'aluno_id' => $aluno['id'] ?? null,
@@ -70,6 +76,9 @@ class MobilePerfilService
             'email_global' => $usuario['email'] ?? null,
             'cpf' => $usuario['cpf'] ?? null,
             'telefone' => $usuario['telefone'] ?? null,
+            'data_nascimento' => $dataNascimento,
+            'aniversario_hoje' => $aniversario['aniversario_hoje'],
+            'idade' => $aniversario['idade'],
             'foto_caminho' => $aluno['foto_caminho'] ?? null,
             'cep' => $aluno['cep'] ?? null,
             'logradouro' => $aluno['logradouro'] ?? null,

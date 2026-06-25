@@ -13,6 +13,7 @@ use App\Models\WodVariacao;
 use App\Models\Parametro;
 use App\Models\RecordePessoal;
 use App\Services\TurmaCheckinBloqueioService;
+use App\Support\AniversarioUtil;
 use OpenApi\Attributes as OA;
 
 /**
@@ -147,7 +148,7 @@ class MobileController
             // Buscar dados do aluno (foto fica em alunos, não em usuarios)
             // Aluno é encontrado via tenant_usuario_papel com papel_id=1 (Aluno)
             $stmtAluno = $this->db->prepare(
-                "SELECT a.id, a.foto_caminho, a.cep, a.logradouro, a.numero, a.complemento, a.bairro, a.cidade, a.estado 
+                "SELECT a.id, a.foto_caminho, a.data_nascimento, a.cep, a.logradouro, a.numero, a.complemento, a.bairro, a.cidade, a.estado 
                  FROM alunos a
                  INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = a.usuario_id 
                    AND tup.tenant_id = :tenant_id 
@@ -171,6 +172,8 @@ class MobileController
 
             // Montar resposta - dados de perfil vem do aluno, auth vem do usuario
             $bloqueioAcesso = $this->obterBloqueioMatricula($userId, (int) $tenantId);
+            $dataNascimento = $aluno['data_nascimento'] ?? null;
+            $aniversario = AniversarioUtil::payload($dataNascimento);
 
             $perfil = [
                 'id' => $usuario['id'],
@@ -180,6 +183,9 @@ class MobileController
                 'email_global' => $usuario['email'] ?? null,
                 'cpf' => $usuario['cpf'] ?? null,
                 'telefone' => $usuario['telefone'] ?? null,
+                'data_nascimento' => $dataNascimento,
+                'aniversario_hoje' => $aniversario['aniversario_hoje'],
+                'idade' => $aniversario['idade'],
                 'foto_caminho' => $aluno['foto_caminho'] ?? null, // Foto vem do aluno agora
                 'cep' => $aluno['cep'] ?? null,
                 'logradouro' => $aluno['logradouro'] ?? null,
@@ -1451,7 +1457,8 @@ class MobileController
                     COALESCE(NULLIF(a.nome, ''), u.nome) as nome,
                     u.email,
                     u.cpf,
-                    a.foto_caminho
+                    a.foto_caminho,
+                    a.data_nascimento
                 FROM usuarios u
                 INNER JOIN tenant_usuario_papel tup 
                     ON tup.usuario_id = u.id 
@@ -1473,13 +1480,16 @@ class MobileController
             $alunos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
             $alunosFormatados = array_map(function($a) {
+                $aniversario = AniversarioUtil::payload($a['data_nascimento'] ?? null);
                 return [
                     'aluno_id' => (int) ($a['aluno_id'] ?? 0),
                     'usuario_id' => (int) ($a['usuario_id'] ?? 0),
                     'nome' => $a['nome'] ?? '',
                     'email' => $a['email'] ?? null,
                     'cpf' => $a['cpf'] ?? null,
-                    'foto_caminho' => $a['foto_caminho'] ?? null
+                    'foto_caminho' => $a['foto_caminho'] ?? null,
+                    'aniversario_hoje' => $aniversario['aniversario_hoje'],
+                    'idade' => $aniversario['idade'],
                 ];
             }, $alunos);
 
@@ -2864,6 +2874,7 @@ class MobileController
                     c.id as checkin_id,
                     c.aluno_id,
                     a.nome as usuario_nome,
+                    a.data_nascimento,
                     u.email,
                     c.created_at as data_checkin,
                     TIME_FORMAT(c.created_at, '%H:%i:%s') as hora_checkin,
@@ -2881,6 +2892,7 @@ class MobileController
 
             // Formatar participantes
             $participantesFormatados = array_map(function($p) {
+                $aniversario = AniversarioUtil::payload($p['data_nascimento'] ?? null);
                 return [
                     'checkin_id' => (int) $p['checkin_id'],
                     'aluno_id' => (int) $p['aluno_id'],
@@ -2888,7 +2900,9 @@ class MobileController
                     'email' => $p['email'],
                     'data_checkin' => $p['data_checkin'],
                     'hora_checkin' => $p['hora_checkin'],
-                    'data_checkin_formatada' => $p['data_checkin_formatada']
+                    'data_checkin_formatada' => $p['data_checkin_formatada'],
+                    'aniversario_hoje' => $aniversario['aniversario_hoje'],
+                    'idade' => $aniversario['idade'],
                 ];
             }, $participantes);
 
@@ -3172,6 +3186,7 @@ class MobileController
                 SELECT 
                     a.id,
                     a.nome,
+                    a.data_nascimento,
                     u.email,
                     a.foto_caminho,
                     COUNT(c.id) as checkins_do_aluno
@@ -3179,7 +3194,7 @@ class MobileController
                 INNER JOIN usuarios u ON u.id = a.usuario_id
                 INNER JOIN checkins c ON a.id = c.aluno_id
                 WHERE c.turma_id = :turma_id
-                GROUP BY a.id, a.nome, u.email, a.foto_caminho
+                GROUP BY a.id, a.nome, a.data_nascimento, u.email, a.foto_caminho
                 ORDER BY u.nome ASC
             ";
 
@@ -3189,12 +3204,15 @@ class MobileController
 
             // Formatar alunos
             $alunosFormatados = array_map(function($a) {
+                $aniversario = AniversarioUtil::payload($a['data_nascimento'] ?? null);
                 return [
                     'aluno_id' => (int) $a['id'],
                     'nome' => $a['nome'],
                     'email' => $a['email'],
                     'foto_caminho' => $a['foto_caminho'] ?? null,
-                    'checkins' => (int) $a['checkins_do_aluno']
+                    'checkins' => (int) $a['checkins_do_aluno'],
+                    'aniversario_hoje' => $aniversario['aniversario_hoje'],
+                    'idade' => $aniversario['idade'],
                 ];
             }, $alunos);
 
@@ -3204,6 +3222,7 @@ class MobileController
                     c.id as checkin_id,
                     c.aluno_id,
                     a.nome as usuario_nome,
+                    a.data_nascimento,
                     c.created_at as data_checkin,
                     TIME_FORMAT(c.created_at, '%H:%i:%s') as hora_checkin,
                     DATE_FORMAT(c.created_at, '%d/%m/%Y') as data_checkin_formatada,
@@ -3223,6 +3242,7 @@ class MobileController
 
             // Formatar check-ins
             $checkinsFormatados = array_map(function($c) {
+                $aniversario = AniversarioUtil::payload($c['data_nascimento'] ?? null);
                 return [
                     'checkin_id' => (int) $c['checkin_id'],
                     'aluno_id' => (int) $c['aluno_id'],
@@ -3232,7 +3252,9 @@ class MobileController
                     'data_checkin_formatada' => $c['data_checkin_formatada'],
                     'presente' => $c['presente'] === null ? null : (bool) $c['presente'],
                     'presenca_confirmada_em' => $c['presenca_confirmada_em'],
-                    'presenca_confirmada_por' => $c['presenca_confirmada_por'] ? (int) $c['presenca_confirmada_por'] : null
+                    'presenca_confirmada_por' => $c['presenca_confirmada_por'] ? (int) $c['presenca_confirmada_por'] : null,
+                    'aniversario_hoje' => $aniversario['aniversario_hoje'],
+                    'idade' => $aniversario['idade'],
                 ];
             }, $checkins);
 

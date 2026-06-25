@@ -16,6 +16,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import BirthdayBadge from "../src/components/BirthdayBadge";
 import { colors } from "../src/theme/colors";
 import { normalizeUtf8 } from "../src/utils/utf8";
 import { weekdayAbbrev } from "../src/utils/weekdayAbbrev";
@@ -23,6 +24,19 @@ import { weekdayAbbrev } from "../src/utils/weekdayAbbrev";
 const getRouteParam = (value?: string | string[]) => {
   if (value == null) return undefined;
   return Array.isArray(value) ? value[0] : value;
+};
+
+const isAniversariante = (
+  alunoId: number | string | undefined,
+  flags?: { aniversario_hoje?: boolean },
+  participantsList?: any[],
+): boolean => {
+  if (flags?.aniversario_hoje) return true;
+  if (!alunoId || !participantsList?.length) return false;
+  const p = participantsList.find(
+    (item) => Number(item.aluno_id) === Number(alunoId),
+  );
+  return !!p?.aniversario_hoje;
 };
 
 const formatDateParam = (date: Date) => {
@@ -1469,13 +1483,18 @@ export default function CheckinTurmaScreen() {
                                     )}
                                   </View>
                                   <View style={styles.manualCheckinItemInfo}>
-                                    <Text style={styles.manualCheckinItemName}>
-                                      {normalizeUtf8(
-                                        aluno.nome ||
-                                          aluno.usuario_nome ||
-                                          "Aluno",
-                                      )}
-                                    </Text>
+                                    <View style={styles.participantNameRow}>
+                                      <Text style={styles.manualCheckinItemName}>
+                                        {normalizeUtf8(
+                                          aluno.nome ||
+                                            aluno.usuario_nome ||
+                                            "Aluno",
+                                        )}
+                                      </Text>
+                                      <BirthdayBadge
+                                        show={!!aluno.aniversario_hoje}
+                                      />
+                                    </View>
                                     {!!aluno.email && (
                                       <Text
                                         style={styles.manualCheckinItemMeta}
@@ -1566,11 +1585,20 @@ export default function CheckinTurmaScreen() {
                                 )}
                               </View>
                               <View style={styles.participantInfo}>
-                                <Text style={styles.participantName}>
-                                  {formatParticipantName(
-                                    c.usuario_nome || "Aluno",
-                                  ).toUpperCase()}
-                                </Text>
+                                <View style={styles.participantNameRow}>
+                                  <Text style={styles.participantName}>
+                                    {formatParticipantName(
+                                      c.usuario_nome || "Aluno",
+                                    ).toUpperCase()}
+                                  </Text>
+                                  <BirthdayBadge
+                                    show={isAniversariante(
+                                      c.aluno_id,
+                                      c,
+                                      participants,
+                                    )}
+                                  />
+                                </View>
                               </View>
                               {isProfessorOuAdmin && (
                                 <View style={styles.presencaButtons}>
@@ -2460,6 +2488,12 @@ const styles = StyleSheet.create({
   },
   participantInfo: {
     flex: 1,
+  },
+  participantNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 2,
   },
   participantName: {
     fontSize: 16,

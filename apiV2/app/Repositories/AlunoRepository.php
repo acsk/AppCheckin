@@ -40,6 +40,7 @@ class AlunoRepository
             ->select([
                 'a.id',
                 'a.foto_caminho',
+                'a.data_nascimento',
                 'a.cep',
                 'a.logradouro',
                 'a.numero',

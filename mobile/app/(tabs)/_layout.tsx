@@ -1,4 +1,6 @@
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import BirthdayModal from "@/src/components/BirthdayModal";
+import { useBirthdayGreeting } from "@/src/hooks/useBirthdayGreeting";
 import { colors } from "@/src/theme/colors";
 import { Feather } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
@@ -9,6 +11,7 @@ export default function TabLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === "dark";
   const isWeb = Platform.OS === "web";
+  const birthday = useBirthdayGreeting(true);
 
   return (
     <>
@@ -163,6 +166,12 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+    <BirthdayModal
+      visible={birthday.visible}
+      nome={birthday.nome}
+      idade={birthday.idade}
+      onClose={birthday.dismiss}
+    />
     </>
   );
 }

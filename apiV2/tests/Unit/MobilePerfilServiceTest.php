@@ -49,4 +49,49 @@ class MobilePerfilServiceTest extends TestCase
         $this->assertSame(400, $result['status']);
         $this->assertSame('MISSING_TENANT', $result['body']['code']);
     }
+
+    public function test_perfil_inclui_campos_de_aniversario(): void
+    {
+        $usuarios = Mockery::mock(UsuarioRepository::class);
+        $alunos = Mockery::mock(AlunoRepository::class);
+        $perfilRepo = Mockery::mock(MobilePerfilRepository::class);
+        $checkins = Mockery::mock(CheckinRepository::class);
+
+        $usuarios->shouldReceive('temAcessoTenant')->with(1, 3)->andReturn(true);
+        $usuarios->shouldReceive('findById')->with(1, 3)->andReturn([
+            'id' => 1,
+            'nome' => 'MARIA TESTE',
+            'email' => 'maria@test.com',
+            'cpf' => null,
+            'telefone' => null,
+            'papel_id' => 1,
+            'created_at' => '2026-01-01',
+        ]);
+
+        $alunos->shouldReceive('findPerfilByUsuario')->with(1, 3)->andReturn([
+            'id' => 10,
+            'foto_caminho' => null,
+            'data_nascimento' => '1990-'.date('m-d'),
+            'cep' => null,
+            'logradouro' => null,
+            'numero' => null,
+            'complemento' => null,
+            'bairro' => null,
+            'cidade' => null,
+            'estado' => null,
+        ]);
+
+        $perfilRepo->shouldReceive('getEstatisticasCheckin')->andReturn([]);
+        $perfilRepo->shouldReceive('listarTenantsAtivosDoUsuario')->andReturn([]);
+        $perfilRepo->shouldReceive('getPlanoUsuario')->andReturn(null);
+        $checkins->shouldReceive('rankingUsuarioPorModalidade')->andReturn([]);
+
+        $service = new MobilePerfilService($usuarios, $alunos, $perfilRepo, $checkins);
+        $result = $service->perfil(1, 3);
+
+        $this->assertSame(200, $result['status']);
+        $this->assertTrue($result['body']['data']['aniversario_hoje']);
+        $this->assertNotNull($result['body']['data']['idade']);
+        $this->assertArrayHasKey('data_nascimento', $result['body']['data']);
+    }
 }
