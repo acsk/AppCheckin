@@ -31,7 +31,16 @@ class AniversarioUtil
 
         $ref = self::referencia($referencia);
 
-        return (int) $nasc->diff($ref)->y;
+        $idade = (int) $ref->format('Y') - (int) $nasc->format('Y');
+        $refMonth = (int) $ref->format('m');
+        $refDay = (int) $ref->format('d');
+        $nascMonth = (int) $nasc->format('m');
+        $nascDay = (int) $nasc->format('d');
+        if ($refMonth < $nascMonth || ($refMonth === $nascMonth && $refDay < $nascDay)) {
+            $idade--;
+        }
+
+        return $idade;
     }
 
     /**

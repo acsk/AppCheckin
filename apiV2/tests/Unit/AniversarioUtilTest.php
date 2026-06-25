@@ -26,12 +26,37 @@ class AniversarioUtilTest extends TestCase
         $this->assertSame(36, $payload['idade']);
     }
 
-    public function test_payload_idade_fora_do_aniversario(): void
+    public function test_payload_idade_dia_apos_aniversario(): void
     {
         $ref = new DateTimeImmutable('2026-06-09', new DateTimeZone('America/Sao_Paulo'));
         $payload = AniversarioUtil::payload('1990-06-08', $ref);
 
         $this->assertFalse($payload['aniversario_hoje']);
+        $this->assertSame(36, $payload['idade']);
+    }
+
+    public function test_payload_idade_dia_antes_do_aniversario(): void
+    {
+        $ref = new DateTimeImmutable('2026-06-07', new DateTimeZone('America/Sao_Paulo'));
+        $payload = AniversarioUtil::payload('1990-06-08', $ref);
+
+        $this->assertFalse($payload['aniversario_hoje']);
+        $this->assertSame(35, $payload['idade']);
+    }
+
+    public function test_payload_idade_nascimento_setembro_referencia_novembro(): void
+    {
+        $ref = new DateTimeImmutable('2026-11-01', new DateTimeZone('America/Sao_Paulo'));
+        $payload = AniversarioUtil::payload('1990-09-12', $ref);
+
+        $this->assertSame(36, $payload['idade']);
+    }
+
+    public function test_payload_idade_nascimento_dezembro_referencia_outubro(): void
+    {
+        $ref = new DateTimeImmutable('2026-10-15', new DateTimeZone('America/Sao_Paulo'));
+        $payload = AniversarioUtil::payload('1990-12-01', $ref);
+
         $this->assertSame(35, $payload['idade']);
     }
 
