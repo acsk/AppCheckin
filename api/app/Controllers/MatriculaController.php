@@ -1803,11 +1803,17 @@ class MatriculaController
             }
         }
 
-        // Verificar se é o mesmo plano+ciclo
-        if ((int) $matricula['plano_id'] === $novoPlanoId && (int) ($matricula['plano_ciclo_id'] ?? 0) === ($novoCicloId ?? 0)) {
+        // Mesmo plano+ciclo: permitido apenas para rematrícula (cancelada/vencida)
+        $mesmoPlanoCiclo = (int) $matricula['plano_id'] === $novoPlanoId
+            && (int) ($matricula['plano_ciclo_id'] ?? 0) === ($novoCicloId ?? 0);
+        $podeRenovar = in_array($matricula['status_codigo'], ['cancelada', 'vencida'], true);
+
+        if ($mesmoPlanoCiclo && !$podeRenovar) {
             $response->getBody()->write(json_encode(['error' => 'O plano e ciclo selecionados são iguais aos atuais']));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
+
+        $ehRenovacao = $mesmoPlanoCiclo && $podeRenovar;
 
         // Calcular valor e duração do novo plano
         if ($novoCiclo) {
@@ -1835,15 +1841,19 @@ class MatriculaController
         $dataVencimento = date('Y-m-d', strtotime($dataInicio . " +{$duracaoDias} days"));
         $diaVencimento = $data['dia_vencimento'] ?? $matricula['dia_vencimento'];
 
-        // Determinar motivo (upgrade ou downgrade)
-        $valorAtual = (float) $matricula['valor'];
-        $valorNovoFloat = (float) $valorNovo;
-        if ($valorNovoFloat > $valorAtual) {
-            $motivo = 'upgrade';
-        } elseif ($valorNovoFloat < $valorAtual) {
-            $motivo = 'downgrade';
-        } else {
+        // Determinar motivo (upgrade, downgrade ou renovação)
+        if ($ehRenovacao) {
             $motivo = 'renovacao';
+        } else {
+            $valorAtual = (float) $matricula['valor'];
+            $valorNovoFloat = (float) $valorNovo;
+            if ($valorNovoFloat > $valorAtual) {
+                $motivo = 'upgrade';
+            } elseif ($valorNovoFloat < $valorAtual) {
+                $motivo = 'downgrade';
+            } else {
+                $motivo = 'renovacao';
+            }
         }
 
         $planoAnteriorId = (int) $matricula['plano_id'];

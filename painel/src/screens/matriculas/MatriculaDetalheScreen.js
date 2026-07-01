@@ -402,6 +402,44 @@ export default function MatriculaDetalheScreen() {
     }
   };
 
+  const abrirFluxoRenovacaoMatricula = async (planoAtualId, planoCicloAtualId, diaVencimentoAtual) => {
+    setEtapaAlterarPlano('plano');
+    setSimulacaoCancelamento(null);
+    setModalAlterarPlanoVisible(true);
+
+    setFormAlterarPlano({
+      plano_id: planoAtualId,
+      plano_ciclo_id: planoCicloAtualId,
+      data_inicio: formatarDataParaInput(new Date()),
+      dia_vencimento: diaVencimentoAtual,
+      observacoes: '',
+      tipo_credito: 'nenhum',
+      usar_credito_existente: false,
+      credito: '',
+      motivo_credito: '',
+    });
+    setCiclosAlteracao([]);
+    await carregarPlanosAlteracao();
+    if (planoAtualId) {
+      await carregarCiclosAlteracao(Number(planoAtualId));
+    }
+
+    if (matricula?.aluno_id) {
+      try {
+        setLoadingSaldoCreditos(true);
+        const saldoResp = await creditoService.consultarSaldo(matricula.aluno_id);
+        setSaldoCreditosAluno(saldoResp);
+        if (saldoResp?.saldo_total > 0) {
+          setFormAlterarPlano((prev) => ({ ...prev, usar_credito_existente: true }));
+        }
+      } catch (err) {
+        console.log('Saldo de créditos não disponível:', err);
+      } finally {
+        setLoadingSaldoCreditos(false);
+      }
+    }
+  };
+
   const handleAbrirAlterarPlano = async () => {
     if (!matricula) {
       showAlert('Erro', 'Matrícula não carregada');
@@ -419,41 +457,9 @@ export default function MatriculaDetalheScreen() {
       ? String(Number(dataVencimentoAtual.split('-')[2] || 0) || '')
       : String(new Date().getDate());
 
-    // Se a matrícula já está cancelada, pular direto para seleção de plano (etapa 2)
-    if (Number(matricula?.status_id) === 3) {
-      setEtapaAlterarPlano('plano');
-      setSimulacaoCancelamento(null);
-      setModalAlterarPlanoVisible(true);
-
-      setFormAlterarPlano({
-        plano_id: '',
-        plano_ciclo_id: '',
-        data_inicio: formatarDataParaInput(new Date()),
-        dia_vencimento: diaVencimentoAtual,
-        observacoes: '',
-        tipo_credito: 'nenhum',
-        usar_credito_existente: false,
-        credito: '',
-        motivo_credito: '',
-      });
-      setCiclosAlteracao([]);
-      await carregarPlanosAlteracao();
-
-      // Buscar saldo de créditos
-      if (matricula?.aluno_id) {
-        try {
-          setLoadingSaldoCreditos(true);
-          const saldoResp = await creditoService.consultarSaldo(matricula.aluno_id);
-          setSaldoCreditosAluno(saldoResp);
-          if (saldoResp?.saldo_total > 0) {
-            setFormAlterarPlano((prev) => ({ ...prev, usar_credito_existente: true }));
-          }
-        } catch (err) {
-          console.log('Saldo de créditos não disponível:', err);
-        } finally {
-          setLoadingSaldoCreditos(false);
-        }
-      }
+    // Cancelada ou vencida: rematrícula com o mesmo plano permitida
+    if ([2, 3].includes(Number(matricula?.status_id))) {
+      await abrirFluxoRenovacaoMatricula(planoAtualId, planoCicloAtualId, diaVencimentoAtual);
       return;
     }
 
@@ -546,7 +552,9 @@ export default function MatriculaDetalheScreen() {
       return;
     }
 
-    if (!formAlterarPlano.plano_ciclo_id) {
+    const planoRequerCiclo = ciclosAlteracao.length > 0;
+
+    if (planoRequerCiclo && !formAlterarPlano.plano_ciclo_id) {
       showAlert('Erro', 'Selecione um ciclo de pagamento');
       return;
     }
@@ -572,11 +580,14 @@ export default function MatriculaDetalheScreen() {
       setSalvandoAlteracaoPlano(true);
       const payload = {
         plano_id: Number(formAlterarPlano.plano_id),
-        plano_ciclo_id: Number(formAlterarPlano.plano_ciclo_id),
         data_inicio: formAlterarPlano.data_inicio,
         dia_vencimento: diaVencimento,
         observacoes: formAlterarPlano.observacoes?.trim() || null,
       };
+
+      if (formAlterarPlano.plano_ciclo_id) {
+        payload.plano_ciclo_id = Number(formAlterarPlano.plano_ciclo_id);
+      }
 
       if (formAlterarPlano.tipo_credito === 'abater_plano') {
         payload.abater_plano_anterior = true;
@@ -883,10 +894,12 @@ export default function MatriculaDetalheScreen() {
   });
   const isPacote = Boolean(matricula?.pacote_contrato_id);
   const isMatriculaCancelada = Number(matricula?.status_id) === 3;
+  const isMatriculaVencida = Number(matricula?.status_id) === 2;
+  const isMatriculaRenovavel = isMatriculaCancelada || isMatriculaVencida;
   const isMatriculaBloqueada = Number(matricula?.status_id) === 6;
   const podeBloquearMatricula = matricula && [1, 2, 5].includes(Number(matricula.status_id));
   const podeDesbloquearMatricula = isMatriculaBloqueada;
-  const podeExibirAlterarPlano = (!isPacote || isMatriculaCancelada) && !isMatriculaBloqueada;
+  const podeExibirAlterarPlano = (!isPacote || isMatriculaRenovavel) && !isMatriculaBloqueada;
   const isPagamentoPendente = (pagamento) => {
     const statusId = Number(pagamento.status_pagamento_id);
     if (statusId === 3) return true;
@@ -1504,7 +1517,9 @@ export default function MatriculaDetalheScreen() {
                       style={({ pressed }) => [pressed && { opacity: 0.8 }]}
                     >
                       <Feather name="repeat" size={16} color="#fff" />
-                      <Text className="text-sm font-semibold text-white">Alterar Plano</Text>
+                      <Text className="text-sm font-semibold text-white">
+                        {isMatriculaRenovavel ? 'Renovar Matrícula' : 'Alterar Plano'}
+                      </Text>
                     </Pressable>
                   )}
 
@@ -2668,7 +2683,9 @@ export default function MatriculaDetalheScreen() {
                   </View>
                 ) : formAlterarPlano.plano_id ? (
                   <View className="rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2">
-                    <Text className="text-[10px] text-slate-400">Nenhum ciclo disponível para o plano selecionado.</Text>
+                    <Text className="text-[10px] text-slate-400">
+                      Plano sem ciclo de recorrência — será usado o valor único do plano.
+                    </Text>
                   </View>
                 ) : (
                   <View className="rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-2">
@@ -2719,7 +2736,9 @@ export default function MatriculaDetalheScreen() {
                 const cicloSelecionado = ciclosAlteracao.find(
                   (c) => c.id.toString() === formAlterarPlano.plano_ciclo_id
                 );
-                const valorNovoParcela = cicloSelecionado ? parseFloat(cicloSelecionado.valor || 0) : 0;
+                const valorNovoParcela = cicloSelecionado
+                  ? parseFloat(cicloSelecionado.valor || 0)
+                  : parseFloat(planoSelecionadoAlteracao?.valor || matricula?.valor || 0);
 
                 const creditoEstimado =
                   formAlterarPlano.tipo_credito === 'abater_plano'

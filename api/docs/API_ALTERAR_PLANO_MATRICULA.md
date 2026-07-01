@@ -273,7 +273,9 @@ POST /admin/matriculas/{matriculaId}/alterar-plano
 | 400 | Matrícula finalizada | `{ "error": "Não é possível alterar plano de matrícula finalizada" }` |
 | 404 | Plano não encontrado | `{ "error": "Novo plano não encontrado" }` |
 | 404 | Ciclo inválido | `{ "error": "Ciclo não encontrado ou não pertence ao plano informado" }` |
-| 400 | Mesmo plano/ciclo | `{ "error": "O plano e ciclo selecionados são iguais aos atuais" }` |
+| 400 | Mesmo plano/ciclo (matrícula ativa/pendente) | `{ "error": "O plano e ciclo selecionados são iguais aos atuais" }` |
+
+> **Rematrícula:** Se a matrícula estiver **cancelada** ou **vencida**, o mesmo `plano_id` + `plano_ciclo_id` é aceito como **renovação** (`motivo = renovacao`): datas são reiniciadas, campos de cancelamento limpos e uma nova parcela é gerada.
 | 500 | Erro interno | `{ "error": "Erro ao alterar plano: ..." }` |
 
 ---
