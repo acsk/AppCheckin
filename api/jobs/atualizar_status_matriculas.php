@@ -344,6 +344,12 @@ try {
             $stmt->execute(['tenant_id' => $tenant['id']]);
             $reativadasCanceladas = $stmt->rowCount();
             logMessage("  ✓ Matrículas Reativadas (cancelada→ativa): {$reativadasCanceladas}\n", $quiet);
+
+            $descontoModel = new \App\Models\MatriculaDesconto($db);
+            $descontosDesativados = $descontoModel->desativarDescontosMatriculasEncerradas((int) $tenant['id']);
+            if ($descontosDesativados > 0) {
+                logMessage("  ✓ Descontos desativados (matrículas encerradas): {$descontosDesativados}\n", $quiet);
+            }
             
             // Commit da transação
             $db->commit();

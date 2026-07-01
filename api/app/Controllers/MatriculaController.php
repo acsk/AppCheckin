@@ -448,6 +448,7 @@ class MatriculaController
                 WHERE id = ?
             ");
             $stmtFinalizar->execute([$matriculaMesmaModalidade['id']]);
+            $this->desativarDescontosMatriculaEncerrada($db, $tenantId, (int) $matriculaMesmaModalidade['id']);
         }
 
         // Buscar IDs de status e motivo
@@ -1538,6 +1539,15 @@ class MatriculaController
         
         $stmt = $db->prepare($sqlAtualizarPagamentos);
         $stmt->execute(['tenant_id' => $tenantId]);
+
+        $descontoModel = new \App\Models\MatriculaDesconto($db);
+        $descontoModel->desativarDescontosMatriculasEncerradas((int) $tenantId);
+    }
+
+    private function desativarDescontosMatriculaEncerrada(\PDO $db, int $tenantId, int $matriculaId): void
+    {
+        $descontoModel = new \App\Models\MatriculaDesconto($db);
+        $descontoModel->desativarPorMatriculaEncerrada($tenantId, $matriculaId);
     }
 
     private function buscarMatriculaDuplicadaMesmoPlanoCiclo(
@@ -1955,6 +1965,10 @@ class MatriculaController
 
         try {
             $db->beginTransaction();
+
+            if ($matricula['status_codigo'] === 'cancelada') {
+                $this->desativarDescontosMatriculaEncerrada($db, $tenantId, $matriculaId);
+            }
 
             // 1. Cancelar parcelas pendentes/atrasadas do plano anterior (inclui geradas por gerarProximo com valor antigo)
             $pagamentoPlanoModel = new \App\Models\PagamentoPlano($db);
@@ -2466,6 +2480,8 @@ class MatriculaController
         ");
         
         $stmtUpdate->execute([$adminId, $motivoCancelamento, $matriculaId]);
+
+        $this->desativarDescontosMatriculaEncerrada($db, $tenantId, $matriculaId);
         
         // Remover plano do aluno - buscar usuario_id via aluno
         $stmtAluno = $db->prepare("SELECT usuario_id FROM alunos WHERE id = ?");
@@ -2791,6 +2807,8 @@ class MatriculaController
                 WHERE id = ?
             ");
             $stmtUpdate->execute([$adminId, $motivoCancelamento, $matriculaId]);
+
+            $this->desativarDescontosMatriculaEncerrada($db, $tenantId, $matriculaId);
 
             // 3. Remover plano do usuário
             $stmtAluno = $db->prepare("SELECT usuario_id FROM alunos WHERE id = ?");

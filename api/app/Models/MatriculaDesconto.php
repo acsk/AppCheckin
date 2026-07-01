@@ -119,6 +119,55 @@ class MatriculaDesconto
     }
 
     /**
+     * Desativa todos os descontos ativos quando a matrícula é cancelada ou finalizada.
+     * Recalcula parcelas pendentes para remover descontos já aplicados.
+     */
+    public function desativarPorMatriculaEncerrada(int $tenantId, int $matriculaId): int
+    {
+        $stmt = $this->pdo->prepare("
+            UPDATE matricula_descontos
+            SET ativo = 0, updated_at = NOW()
+            WHERE tenant_id = :tenant_id
+              AND matricula_id = :matricula_id
+              AND ativo = 1
+        ");
+        $stmt->execute([
+            'tenant_id' => $tenantId,
+            'matricula_id' => $matriculaId,
+        ]);
+        $desativados = $stmt->rowCount();
+
+        $this->recalcularDescontosPendentes($tenantId, $matriculaId);
+
+        return $desativados;
+    }
+
+    /**
+     * Desativa descontos ativos em matrículas canceladas/finalizadas (job/sincronização em lote).
+     */
+    public function desativarDescontosMatriculasEncerradas(int $tenantId): int
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT DISTINCT md.matricula_id
+            FROM matricula_descontos md
+            INNER JOIN matriculas m ON m.id = md.matricula_id AND m.tenant_id = md.tenant_id
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            WHERE md.tenant_id = :tenant_id
+              AND md.ativo = 1
+              AND sm.codigo IN ('cancelada', 'finalizada')
+        ");
+        $stmt->execute(['tenant_id' => $tenantId]);
+        $matriculaIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        $total = 0;
+        foreach ($matriculaIds as $matriculaId) {
+            $total += $this->desativarPorMatriculaEncerrada($tenantId, (int) $matriculaId);
+        }
+
+        return $total;
+    }
+
+    /**
      * Excluir fisicamente
      */
     public function excluir(int $tenantId, int $id): bool
