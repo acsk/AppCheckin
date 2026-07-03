@@ -1171,16 +1171,24 @@ class AlunoController
     /**
      * Listar check-ins do aluno por modalidade
      * GET /admin/alunos/{id}/checkins
+     *
+     * Agrupa/filtra pela data efetiva do check-in (data_checkin_date),
+     * com fallback para data_checkin e, por último, data da turma (dias.data).
+     * Assim check-ins feitos após meia-noite ou com fuso diferente da aula
+     * ainda aparecem no mês em que o aluno fez o check-in.
      */
     public function checkins(Request $request, Response $response, array $args): Response
     {
-        $tenantId = $request->getAttribute('tenantId');
+        $tenantId = $request->getAttribute('tenantId') ?? $request->getAttribute('tenant_id');
         $alunoId  = (int) $args['id'];
         $params   = $request->getQueryParams();
 
         $modalidadeId = isset($params['modalidade_id']) ? (int) $params['modalidade_id'] : null;
         $mes          = isset($params['mes']) ? (int) $params['mes'] : null;
         $ano          = isset($params['ano']) ? (int) $params['ano'] : null;
+
+        // Data exibida no calendário do painel: preferir quando o aluno fez o check-in
+        $dataEfetiva = 'COALESCE(c.data_checkin_date, DATE(c.data_checkin), DATE(d.data))';
 
         $where = 'c.tenant_id = :tenant_id AND a.id = :aluno_id';
         $bind  = ['tenant_id' => $tenantId, 'aluno_id' => $alunoId];
@@ -1192,16 +1200,20 @@ class AlunoController
 
         // Com mes+ano: lista detalhada do mês
         if ($mes && $ano) {
-            $where .= ' AND MONTH(d.data) = :mes AND YEAR(d.data) = :ano';
+            $where .= " AND MONTH({$dataEfetiva}) = :mes AND YEAR({$dataEfetiva}) = :ano";
             $bind['mes'] = $mes;
             $bind['ano'] = $ano;
 
             $stmt = $this->db->prepare("
                 SELECT
                     c.id,
-                    DATE(d.data)     AS data_aula,
+                    {$dataEfetiva}   AS data_aula,
+                    DATE(d.data)     AS data_turma,
+                    c.data_checkin,
+                    c.data_checkin_date,
                     t.horario_inicio,
                     t.horario_fim,
+                    t.nome           AS turma_nome,
                     m.id             AS modalidade_id,
                     m.nome           AS modalidade,
                     c.presente,
@@ -1213,7 +1225,7 @@ class AlunoController
                 INNER JOIN modalidades m ON m.id = t.modalidade_id
                 INNER JOIN alunos      a ON a.id = c.aluno_id
                 WHERE {$where}
-                ORDER BY d.data ASC, t.horario_inicio ASC
+                ORDER BY {$dataEfetiva} ASC, t.horario_inicio ASC
             ");
             $stmt->execute($bind);
             $checkins = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -1232,18 +1244,18 @@ class AlunoController
         // Sem filtro de mês: retorna resumo agrupado mês a mês
         $stmt = $this->db->prepare("
             SELECT
-                YEAR(d.data)         AS ano,
-                MONTH(d.data)        AS mes,
-                COUNT(*)             AS total,
-                SUM(c.presente = 1)  AS presentes
+                YEAR({$dataEfetiva})         AS ano,
+                MONTH({$dataEfetiva})        AS mes,
+                COUNT(*)                     AS total,
+                SUM(c.presente = 1)          AS presentes
             FROM checkins c
             INNER JOIN turmas      t ON t.id = c.turma_id
             INNER JOIN dias        d ON d.id = t.dia_id
             INNER JOIN modalidades m ON m.id = t.modalidade_id
             INNER JOIN alunos      a ON a.id = c.aluno_id
             WHERE {$where}
-            GROUP BY YEAR(d.data), MONTH(d.data)
-            ORDER BY YEAR(d.data) DESC, MONTH(d.data) DESC
+            GROUP BY YEAR({$dataEfetiva}), MONTH({$dataEfetiva})
+            ORDER BY YEAR({$dataEfetiva}) DESC, MONTH({$dataEfetiva}) DESC
         ");
         $stmt->execute($bind);
         $meses = $stmt->fetchAll(PDO::FETCH_ASSOC);
