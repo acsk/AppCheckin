@@ -951,6 +951,7 @@ return function ($app) {
         
         // Buscar alunos para check-in manual (professor/admin)
         $group->get('/alunos/buscar', [MobileController::class, 'buscarAlunosParaCheckin'])->add(ProfessorMiddleware::class);
+        $group->get('/alunos/{alunoId}/resumo-financeiro', [MobileController::class, 'resumoFinanceiroAluno'])->add(ProfessorMiddleware::class);
         $group->post('/checkin/manual', [MobileController::class, 'registrarCheckinManual'])->add(ProfessorMiddleware::class);
         $group->delete('/checkin/manual/{checkinId}/desfazer', [MobileController::class, 'desfazerCheckinManual'])->add(ProfessorMiddleware::class);
 

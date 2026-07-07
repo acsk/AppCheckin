@@ -2814,6 +2814,206 @@ class MobileController
     }
 
     /**
+     * Resumo financeiro do aluno para professor/admin (check-in manual)
+     */
+    #[OA\Get(
+        path: "/mobile/alunos/{alunoId}/resumo-financeiro",
+        summary: "Resumo financeiro do aluno",
+        description: "Retorna matrícula principal, resumo financeiro e últimos pagamentos do aluno.",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        parameters: [
+            new OA\Parameter(name: "alunoId", in: "path", required: true, description: "ID do aluno", schema: new OA\Schema(type: "integer"))
+        ],
+        responses: [
+            new OA\Response(response: 200, description: "Resumo retornado com sucesso"),
+            new OA\Response(response: 400, description: "ID não informado"),
+            new OA\Response(response: 403, description: "Sem permissão"),
+            new OA\Response(response: 404, description: "Aluno não encontrado")
+        ]
+    )]
+    public function resumoFinanceiroAluno(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $tenantId = $request->getAttribute('tenantId');
+            $alunoId = isset($args['alunoId']) ? (int) $args['alunoId'] : 0;
+
+            if (!$tenantId) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Nenhum tenant selecionado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            if ($alunoId <= 0) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'ID do aluno não informado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
+
+            $stmtAluno = $this->db->prepare("
+                SELECT a.id, a.usuario_id, COALESCE(a.nome, u.nome) AS nome
+                FROM alunos a
+                INNER JOIN usuarios u ON u.id = a.usuario_id
+                INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = a.usuario_id
+                WHERE a.id = :aluno_id
+                  AND tup.tenant_id = :tenant_id
+                  AND tup.papel_id = 1
+                  AND tup.ativo = 1
+                LIMIT 1
+            ");
+            $stmtAluno->execute([
+                'aluno_id' => $alunoId,
+                'tenant_id' => $tenantId
+            ]);
+            $aluno = $stmtAluno->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$aluno) {
+                $response->getBody()->write(json_encode([
+                    'success' => false,
+                    'error' => 'Aluno não encontrado'
+                ]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+            }
+
+            $sqlMatricula = "
+                SELECT m.id, m.aluno_id, m.plano_id, m.data_matricula, m.data_inicio, m.data_vencimento,
+                       m.valor, sm.nome AS status, mm.nome AS motivo, al.nome AS usuario_nome
+                FROM matriculas m
+                INNER JOIN alunos al ON m.aluno_id = al.id
+                LEFT JOIN status_matricula sm ON sm.id = m.status_id
+                LEFT JOIN motivo_matricula mm ON mm.id = m.motivo_id
+                WHERE m.aluno_id = :aluno_id AND m.tenant_id = :tenant_id
+                ORDER BY
+                    CASE sm.codigo
+                        WHEN 'ativa' THEN 1
+                        WHEN 'pendente' THEN 2
+                        WHEN 'vencida' THEN 3
+                        ELSE 4
+                    END,
+                    m.updated_at DESC
+                LIMIT 1
+            ";
+
+            $stmtMatricula = $this->db->prepare($sqlMatricula);
+            $stmtMatricula->execute([
+                'aluno_id' => $alunoId,
+                'tenant_id' => $tenantId
+            ]);
+            $matricula = $stmtMatricula->fetch(\PDO::FETCH_ASSOC);
+
+            $matriculaFormatada = null;
+            $pagamentosFormatados = [];
+            $resumoFinanceiro = [
+                'total_previsto' => 0.0,
+                'total_pago' => 0.0,
+                'total_pendente' => 0.0,
+                'quantidade_pagamentos' => 0,
+                'pagamentos_realizados' => 0
+            ];
+
+            if ($matricula) {
+                $matriculaId = (int) $matricula['id'];
+
+                $stmtPlano = $this->db->prepare("
+                    SELECT p.id, p.nome, p.valor, p.duracao_dias, p.checkins_semanais
+                    FROM planos p
+                    WHERE p.id = :plano_id
+                ");
+                $stmtPlano->execute(['plano_id' => $matricula['plano_id']]);
+                $plano = $stmtPlano->fetch(\PDO::FETCH_ASSOC);
+
+                $stmtPagamentos = $this->db->prepare("
+                    SELECT pp.id, pp.valor, pp.data_vencimento, pp.data_pagamento,
+                           sp.nome AS status_pagamento_nome, fp.nome AS forma_pagamento_nome
+                    FROM pagamentos_plano pp
+                    INNER JOIN status_pagamento sp ON pp.status_pagamento_id = sp.id
+                    LEFT JOIN formas_pagamento fp ON pp.forma_pagamento_id = fp.id
+                    WHERE pp.matricula_id = :matricula_id
+                    ORDER BY COALESCE(pp.data_pagamento, pp.data_vencimento) DESC, pp.id DESC
+                ");
+                $stmtPagamentos->execute(['matricula_id' => $matriculaId]);
+                $pagamentosMatricula = $stmtPagamentos->fetchAll(\PDO::FETCH_ASSOC);
+                $pagamentos = array_slice($pagamentosMatricula, 0, 8);
+
+                $matriculaFormatada = [
+                    'id' => $matriculaId,
+                    'usuario' => $matricula['usuario_nome'],
+                    'plano' => $plano ? [
+                        'nome' => $plano['nome'],
+                        'valor' => (float) $plano['valor'],
+                        'duracao_dias' => (int) $plano['duracao_dias'],
+                        'checkins_semanais' => (int) $plano['checkins_semanais']
+                    ] : null,
+                    'datas' => [
+                        'matricula' => $matricula['data_matricula'],
+                        'inicio' => $matricula['data_inicio'],
+                        'vencimento' => $matricula['data_vencimento']
+                    ],
+                    'valor_total' => (float) $matricula['valor'],
+                    'status' => $matricula['status'],
+                    'motivo' => $matricula['motivo']
+                ];
+
+                $pagamentosFormatados = array_map(static function ($p) {
+                    return [
+                        'id' => (int) $p['id'],
+                        'valor' => (float) $p['valor'],
+                        'data_vencimento' => $p['data_vencimento'],
+                        'data_pagamento' => $p['data_pagamento'],
+                        'status' => $p['status_pagamento_nome'],
+                        'forma_pagamento' => $p['forma_pagamento_nome'],
+                        'pendente' => $p['data_pagamento'] === null
+                    ];
+                }, $pagamentos);
+
+                $totalPago = array_sum(array_map(static function ($p) {
+                    return $p['data_pagamento'] ? (float) $p['valor'] : 0;
+                }, $pagamentosMatricula));
+
+                $totalPendente = array_sum(array_map(static function ($p) {
+                    return !$p['data_pagamento'] ? (float) $p['valor'] : 0;
+                }, $pagamentosMatricula));
+
+                $resumoFinanceiro = [
+                    'total_previsto' => (float) $matricula['valor'],
+                    'total_pago' => (float) $totalPago,
+                    'total_pendente' => (float) $totalPendente,
+                    'quantidade_pagamentos' => count($pagamentosMatricula),
+                    'pagamentos_realizados' => count(array_filter($pagamentosMatricula, static function ($p) {
+                        return $p['data_pagamento'] !== null;
+                    }))
+                ];
+            }
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'data' => [
+                    'aluno' => [
+                        'id' => (int) $aluno['id'],
+                        'nome' => $aluno['nome']
+                    ],
+                    'matricula' => $matriculaFormatada,
+                    'pagamentos' => $pagamentosFormatados,
+                    'resumo_financeiro' => $resumoFinanceiro
+                ]
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
+        } catch (\Exception $e) {
+            error_log("Erro em resumoFinanceiroAluno: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao carregar resumo financeiro',
+                'message' => $e->getMessage()
+            ]));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
      * Visualizar participantes que fizeram check-in em uma turma
      */
     #[OA\Get(

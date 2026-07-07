@@ -1,3 +1,4 @@
+import { AlunoResumoFinanceiro } from "@/src/components/AlunoResumoFinanceiro";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -36,6 +37,8 @@ export default function CheckinDetalhesScreen() {
   const dataCheckin = normalizeUtf8(String(params.dataCheckin || ""));
   const foto = typeof params.foto === "string" ? params.foto : "";
   const photoUrl = getPhotoUrl(foto);
+  const alunoId = Number(params.alunoId || 0);
+  const showResumoFinanceiro = String(params.showResumoFinanceiro || "") === "1";
 
   return (
     <SafeAreaView style={styles.container} edges={["top"]}>
@@ -98,6 +101,12 @@ export default function CheckinDetalhesScreen() {
             </Text>
           )}
         </View>
+
+        {showResumoFinanceiro && alunoId > 0 && (
+          <View style={styles.financeCard}>
+            <AlunoResumoFinanceiro alunoId={alunoId} />
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -128,6 +137,7 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
+    gap: 12,
   },
   card: {
     backgroundColor: "#fff",
@@ -142,6 +152,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 10,
     elevation: 2,
+  },
+  financeCard: {
+    width: "100%",
   },
   avatarWrap: {
     width: 72,

@@ -1,3 +1,4 @@
+import { AlunoResumoFinanceiro } from "@/src/components/AlunoResumoFinanceiro";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -1203,6 +1204,7 @@ export default function CheckinTurmaScreen() {
           horarioInicio && horarioFim
             ? `${horarioInicio} - ${horarioFim}`
             : "",
+        showResumoFinanceiro: isProfessorOuAdmin ? "1" : "0",
       },
     });
   };
@@ -2065,6 +2067,22 @@ export default function CheckinTurmaScreen() {
                   )}
                   ?
                 </Text>
+                {isProfessorOuAdmin && (
+                  <ScrollView
+                    style={styles.modalFinanceScroll}
+                    nestedScrollEnabled
+                    showsVerticalScrollIndicator={false}
+                  >
+                    <AlunoResumoFinanceiro
+                      compact
+                      alunoId={Number(
+                        confirmManualModal.aluno?.id ??
+                          confirmManualModal.aluno?.aluno_id ??
+                          0,
+                      )}
+                    />
+                  </ScrollView>
+                )}
                 <View style={styles.confirmButtonsRow}>
                   <TouchableOpacity
                     style={[styles.confirmButton, styles.confirmButtonCancel]}
@@ -2624,6 +2642,11 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 24,
     lineHeight: 24,
+  },
+  modalFinanceScroll: {
+    width: "100%",
+    maxHeight: 280,
+    marginBottom: 16,
   },
   limiteBox: {
     width: "100%",
