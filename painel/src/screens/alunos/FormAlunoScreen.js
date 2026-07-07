@@ -17,7 +17,8 @@ import LayoutBase from '../../components/LayoutBase';
 import LoadingOverlay from '../../components/LoadingOverlay';
 import BuscarAlunoCpfModal from '../../components/BuscarAlunoCpfModal';
 import { showSuccess, showError } from '../../utils/toast';
-import { mascaraTelefone } from '../../utils/masks';
+import { mascaraTelefone, mascaraData } from '../../utils/masks';
+import { formatarData } from '../../utils/formatadores';
 import api from '../../services/api';
 import { authService } from '../../services/authService';
 
@@ -37,6 +38,7 @@ export default function FormAlunoScreen() {
     senha: '',
     telefone: '',
     cpf: '',
+    data_nascimento: '',
     cep: '',
     logradouro: '',
     numero: '',
@@ -103,6 +105,9 @@ export default function FormAlunoScreen() {
         senha: '',
         telefone: aluno.telefone ? mascaraTelefone(aluno.telefone) : '',
         cpf: aluno.cpf ? formatCPF(aluno.cpf) : '',
+        data_nascimento: aluno.data_nascimento
+          ? formatarData(String(aluno.data_nascimento).split('T')[0])
+          : '',
         cep: aluno.cep ? formatCEP(aluno.cep) : '',
         logradouro: aluno.logradouro || '',
         numero: aluno.numero || '',
@@ -239,6 +244,27 @@ export default function FormAlunoScreen() {
       newErrors.cpf = 'CPF inválido';
     }
 
+    if (!isEdit && !formData.data_nascimento.trim()) {
+      newErrors.data_nascimento = 'Data de nascimento é obrigatória';
+    } else if (formData.data_nascimento.trim()) {
+      const digits = formData.data_nascimento.replace(/\D/g, '');
+      if (digits.length !== 8) {
+        newErrors.data_nascimento = 'Data inválida (use DD/MM/AAAA)';
+      } else {
+        const dia = parseInt(digits.substring(0, 2), 10);
+        const mes = parseInt(digits.substring(2, 4), 10);
+        const ano = parseInt(digits.substring(4, 8), 10);
+        const date = new Date(ano, mes - 1, dia);
+        if (
+          date.getFullYear() !== ano ||
+          date.getMonth() !== mes - 1 ||
+          date.getDate() !== dia
+        ) {
+          newErrors.data_nascimento = 'Data inválida';
+        }
+      }
+    }
+
     if (formData.cep && formData.cep.replace(/\D/g, '').length !== 8) {
       newErrors.cep = 'CEP inválido';
     }
@@ -270,6 +296,14 @@ export default function FormAlunoScreen() {
         cpf: formData.cpf ? formData.cpf.replace(/\D/g, '') : '',
         cep: formData.cep ? formData.cep.replace(/\D/g, '') : '',
       };
+
+      const dataDigits = (formData.data_nascimento || '').replace(/\D/g, '');
+      delete payload.data_nascimento;
+      if (dataDigits.length === 8) {
+        payload.data_nascimento = `${dataDigits.substring(4, 8)}-${dataDigits.substring(2, 4)}-${dataDigits.substring(0, 2)}`;
+      } else if (isEdit && !formData.data_nascimento.trim()) {
+        payload.data_nascimento = null;
+      }
       
       if (isEdit && !payload.senha) {
         delete payload.senha;
@@ -390,6 +424,27 @@ export default function FormAlunoScreen() {
               />
               {errors.cpf && <Text style={styles.errorText}>{errors.cpf}</Text>}
             </View>
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>
+              Data de Nascimento{isEdit ? '' : ' *'}
+            </Text>
+            <TextInput
+              style={[styles.input, errors.data_nascimento && styles.inputError]}
+              placeholder="DD/MM/AAAA"
+              placeholderTextColor="#aaa"
+              value={formData.data_nascimento}
+              onChangeText={(value) =>
+                handleChange('data_nascimento', mascaraData(value))
+              }
+              keyboardType="numeric"
+              maxLength={10}
+              editable={!saving}
+            />
+            {errors.data_nascimento && (
+              <Text style={styles.errorText}>{errors.data_nascimento}</Text>
+            )}
           </View>
 
           <Text style={styles.sectionTitle}>Endereço</Text>

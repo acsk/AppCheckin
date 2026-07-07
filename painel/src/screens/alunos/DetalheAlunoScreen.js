@@ -18,6 +18,7 @@ import { authService } from '../../services/authService';
 import { creditoService } from '../../services/creditoService';
 import LayoutBase from '../../components/LayoutBase';
 import { showSuccess, showError } from '../../utils/toast';
+import { formatarData } from '../../utils/formatadores';
 
 export default function DetalheAlunoScreen() {
   const router = useRouter();
@@ -371,6 +372,14 @@ export default function DetalheAlunoScreen() {
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>CPF</Text>
             <Text style={styles.infoValue}>{formatCPF(aluno.cpf)}</Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Data de Nascimento</Text>
+            <Text style={styles.infoValue}>
+              {aluno.data_nascimento
+                ? formatarData(String(aluno.data_nascimento).split('T')[0])
+                : '-'}
+            </Text>
           </View>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>ID do Usuário</Text>

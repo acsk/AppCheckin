@@ -223,6 +223,7 @@ export default function CheckinTurmaScreen() {
   const isProfessorOuAdmin = hasRole(2) || hasRole(3) || hasRole(4);
   const isAluno =
     hasRole(1) || currentAlunoId !== null || currentUserPapelId === null;
+  const podeFazerCheckinProprio = isAluno;
 
   const getUserPhotoUrl = (fotoCaminho?: string | null) => {
     if (!fotoCaminho) return null;
@@ -1697,8 +1698,7 @@ export default function CheckinTurmaScreen() {
                 </TouchableOpacity>
               )}
 
-              {isAluno &&
-                !isProfessorOuAdmin &&
+              {podeFazerCheckinProprio &&
                 participantsTurma &&
                 (() => {
                   const minutosParaAbrir =

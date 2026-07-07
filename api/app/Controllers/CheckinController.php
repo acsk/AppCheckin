@@ -27,9 +27,31 @@ class CheckinController
         $userId = $request->getAttribute('userId');
         $data = $request->getParsedBody();
 
-        // Verificar se usuário é admin (admins não podem fazer check-in próprio)
+        // Verificar se usuário é admin/professor sem papel de aluno
         $usuario = $this->usuarioModel->findById($userId);
-        if ($usuario && isset($usuario['papel_id']) && ($usuario['papel_id'] == 2 || $usuario['papel_id'] == 3)) {
+        $tenantId = (int) ($request->getAttribute('tenantId') ?? 1);
+        $db = require __DIR__ . '/../../config/database.php';
+        $temPapelAluno = false;
+        if ($tenantId > 0) {
+            $stmtPapel = $db->prepare("
+                SELECT 1 FROM tenant_usuario_papel
+                WHERE usuario_id = :usuario_id AND tenant_id = :tenant_id
+                  AND papel_id = 1 AND ativo = 1
+                LIMIT 1
+            ");
+            $stmtPapel->execute([
+                'usuario_id' => $userId,
+                'tenant_id' => $tenantId,
+            ]);
+            $temPapelAluno = (bool) $stmtPapel->fetchColumn();
+        }
+
+        if (
+            $usuario
+            && isset($usuario['papel_id'])
+            && ($usuario['papel_id'] == 2 || $usuario['papel_id'] == 3)
+            && !$temPapelAluno
+        ) {
             $response->getBody()->write(json_encode([
                 'error' => 'Administradores não podem fazer check-in próprio. Use o painel admin para registrar check-ins de alunos.'
             ]));
@@ -47,8 +69,6 @@ class CheckinController
         $turmaId = (int) $data['turma_id'];
 
         // ✅ VALIDAR matrícula mais recente (status, bloqueio e vencimento)
-        $db = require __DIR__ . '/../../config/database.php';
-        $tenantId = $request->getAttribute('tenantId', 1);
         $matricula = $this->buscarMatriculaMaisRecente($db, $userId, $tenantId);
         $erroMatricula = $this->validarMatriculaParaCheckin($matricula, true);
         if ($erroMatricula !== null) {

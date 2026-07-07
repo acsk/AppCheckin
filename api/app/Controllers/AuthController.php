@@ -263,6 +263,7 @@ class AuthController
 
             // Inicializar token
             $token = null;
+            $alunoId = null;
 
             // Buscar todos os papéis do usuário via tenant_usuario_papel (sem filtrar por tenant)
             $stmtPapeis = $db->prepare("
@@ -324,16 +325,8 @@ class AuthController
                         return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(403);
                     }
                     
-                    // Buscar aluno_id se o usuário for aluno (papel_id = 1)
-                    $alunoId = null;
-                    if ($papelId === 1) {
-                        $stmtAluno = $db->prepare("SELECT id FROM alunos WHERE usuario_id = ?");
-                        $stmtAluno->execute([$usuario['id']]);
-                        $aluno = $stmtAluno->fetch(\PDO::FETCH_ASSOC);
-                        if ($aluno) {
-                            $alunoId = $aluno['id'];
-                        }
-                    }
+                    // Buscar aluno_id se o usuário também é aluno neste tenant
+                    $alunoId = $this->buscarAlunoIdNoTenant((int) $usuario['id'], $tenantId);
                 
                     // Gerar token com tenant único
                     $token = $this->jwtService->encode([
@@ -358,7 +351,8 @@ class AuthController
                     'email_global' => $usuario['email_global'] ?? $usuario['email'],
                     'foto_base64' => $usuario['foto_base64'] ?? null,
                     'papel_id' => $papelId,
-                    'papeis' => $papeis
+                    'papeis' => $papeis,
+                    'aluno_id' => $alunoId ?? null,
                 ],
                 'tenants' => $tenants,
                 'requires_tenant_selection' => count($tenants) > 1
@@ -527,17 +521,8 @@ class AuthController
         // Buscar dados do usuário
         $usuario = $this->usuarioModel->findById($userId);
         
-        // Buscar aluno_id se o usuário for aluno (papel_id = 1)
-        $alunoId = null;
-        if (($usuario['papel_id'] ?? null) == 1) {
-            $db = require __DIR__ . '/../../config/database.php';
-            $stmtAluno = $db->prepare("SELECT id FROM alunos WHERE usuario_id = ?");
-            $stmtAluno->execute([$usuario['id']]);
-            $aluno = $stmtAluno->fetch(\PDO::FETCH_ASSOC);
-            if ($aluno) {
-                $alunoId = $aluno['id'];
-            }
-        }
+        // Buscar aluno_id se o usuário também é aluno neste tenant
+        $alunoId = $this->buscarAlunoIdNoTenant((int) $usuario['id'], $tenantId);
 
         // Gerar novo token com o tenant selecionado
         $token = $this->jwtService->encode([
@@ -570,7 +555,8 @@ class AuthController
                 'email' => $usuario['email'],
                 'email_global' => $usuario['email_global'] ?? $usuario['email'],
                 'foto_base64' => $usuario['foto_base64'] ?? null,
-                'papel_id' => $usuario['papel_id'] ?? null
+                'papel_id' => $usuario['papel_id'] ?? null,
+                'aluno_id' => $alunoId,
             ],
             'tenant' => $tenantSelecionado
         ]));
@@ -622,17 +608,8 @@ class AuthController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
         }
 
-        // Buscar aluno_id se o usuário for aluno (papel_id = 1)
-        $alunoId = null;
-        if (($usuario['papel_id'] ?? null) == 1) {
-            $db = require __DIR__ . '/../../config/database.php';
-            $stmtAluno = $db->prepare("SELECT id FROM alunos WHERE usuario_id = ?");
-            $stmtAluno->execute([$usuario['id']]);
-            $aluno = $stmtAluno->fetch(\PDO::FETCH_ASSOC);
-            if ($aluno) {
-                $alunoId = $aluno['id'];
-            }
-        }
+        // Buscar aluno_id se o usuário também é aluno neste tenant
+        $alunoId = $this->buscarAlunoIdNoTenant((int) $usuario['id'], $tenantId);
 
         // Gerar token com o tenant selecionado
         $token = $this->jwtService->encode([
@@ -665,13 +642,42 @@ class AuthController
                 'email' => $usuario['email'],
                 'email_global' => $usuario['email_global'] ?? $usuario['email'],
                 'foto_base64' => $usuario['foto_base64'] ?? null,
-                'papel_id' => $usuario['papel_id'] ?? null
+                'papel_id' => $usuario['papel_id'] ?? null,
+                'aluno_id' => $alunoId,
             ],
             'tenant' => $tenantSelecionado,
             'tenants' => $tenants
         ]));
 
         return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * Retorna aluno_id quando o usuário tem papel de aluno no tenant.
+     */
+    private function buscarAlunoIdNoTenant(int $usuarioId, int $tenantId): ?int
+    {
+        if ($this->db === null) {
+            return null;
+        }
+
+        $stmt = $this->db->prepare("
+            SELECT a.id
+            FROM alunos a
+            INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = a.usuario_id
+                AND tup.tenant_id = :tenant_id
+                AND tup.papel_id = 1
+                AND tup.ativo = 1
+            WHERE a.usuario_id = :usuario_id
+            LIMIT 1
+        ");
+        $stmt->execute([
+            'usuario_id' => $usuarioId,
+            'tenant_id' => $tenantId,
+        ]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        return $row ? (int) $row['id'] : null;
     }
 
     /**
