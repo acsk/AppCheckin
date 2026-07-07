@@ -1243,11 +1243,11 @@ export default function PlanoDetalhesScreen() {
                     {selectedCiclo
                       ? canCheckout
                         ? plano.pode_migrar
-                          ? `Migrar — ${selectedCiclo.valor_formatado}`
+                          ? "Migrar de plano"
                           : `Contratar por ${selectedCiclo.valor_formatado}`
                         : canPix
                           ? plano.pode_migrar
-                            ? `Migrar com PIX — ${selectedCiclo.valor_formatado}`
+                            ? "Migrar com PIX"
                             : `Pagar com PIX • ${selectedCiclo.valor_formatado}`
                           : "Pagamento indisponível"
                       : "Escolha um ciclo"}
@@ -1289,18 +1289,18 @@ export default function PlanoDetalhesScreen() {
                 : "Você está trocando de plano na mesma modalidade."}
               {"\n\n"}
               {migracaoSimulacao?.credito?.valor_formatado
-                ? `Crédito restante: ${migracaoSimulacao.credito.valor_formatado}`
+                ? `Crédito do plano atual: ${migracaoSimulacao.credito.valor_formatado}`
                 : ""}
               {migracaoSimulacao?.credito?.dias_restantes
                 ? ` (${migracaoSimulacao.credito.dias_restantes} dias restantes)`
                 : ""}
               {"\n"}
               {migracaoSimulacao?.plano_novo?.valor_formatado
-                ? `Novo plano: ${migracaoSimulacao.plano_novo.valor_formatado}`
+                ? `Valor do novo plano: ${migracaoSimulacao.plano_novo.valor_formatado}`
                 : ""}
               {"\n"}
               {migracaoSimulacao?.valor_parcela_formatado
-                ? `Você paga: ${migracaoSimulacao.valor_parcela_formatado}`
+                ? `Você paga agora: ${migracaoSimulacao.valor_parcela_formatado}`
                 : ""}
             </Text>
             <View style={{ flexDirection: "row", gap: 10, width: "100%" }}>

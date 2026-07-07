@@ -266,7 +266,7 @@ class MatriculaMigracaoService
                     $stmtUtilizar->execute([$novoCredUsado, $statusCreditoId, $creditoId]);
                 }
 
-                if ($pagamentoOrigemId && ($creditoInfo['tipo_credito'] ?? '') === 'valor_cheio') {
+                if ($pagamentoOrigemId && in_array($creditoInfo['tipo_credito'] ?? '', ['valor_cheio', 'valor_cheio_plano'], true)) {
                     $stmtCancelarPago = $this->db->prepare("
                         UPDATE pagamentos_plano
                         SET status_pagamento_id = 4,
@@ -515,8 +515,8 @@ class MatriculaMigracaoService
             return ['erro' => $this->erro(400, 'MESMO_PLANO', 'O plano e ciclo selecionados são iguais ao atual')];
         }
 
-        $credito = $this->calcularCreditoMigracao($matricula, $tenantId, (int) $matricula['id']);
         $valorAtual = (float) $matricula['valor'];
+        $credito = $this->calcularCreditoMigracao($matricula, $tenantId, (int) $matricula['id'], $valorNovo);
         $motivo = $valorNovo > $valorAtual ? 'upgrade' : ($valorNovo < $valorAtual ? 'downgrade' : 'renovacao');
 
         return [
@@ -558,18 +558,43 @@ class MatriculaMigracaoService
     }
 
     /**
+     * Upgrade: crédito do valor cheio do plano atual (paga só a diferença — igual painel "abater_plano").
+     * Downgrade: proporcional aos dias restantes do ciclo vigente (data_vencimento, não proxima_data_vencimento).
+     *
      * @return array<string, mixed>
      */
-    public function calcularCreditoMigracao(array $matricula, int $tenantId, int $matriculaId): array
+    public function calcularCreditoMigracao(array $matricula, int $tenantId, int $matriculaId, ?float $valorNovo = null): array
     {
         date_default_timezone_set('America/Sao_Paulo');
         $valorCicloAtual = (float) $matricula['valor'];
+        $planoNome = (string) ($matricula['plano_nome'] ?? 'plano atual');
+
+        if ($valorNovo !== null && $valorNovo > $valorCicloAtual) {
+            $pagamentoOrigemId = $this->buscarUltimoPagamentoPagoId($matriculaId, $tenantId);
+
+            return [
+                'tipo_credito' => 'valor_cheio_plano',
+                'valor_plano_atual' => $valorCicloAtual,
+                'valor_consumido' => 0.0,
+                'credito' => round($valorCicloAtual, 2),
+                'dias_totais' => 0,
+                'dias_restantes' => 0,
+                'dias_usados' => 0,
+                'pagamento_origem_id' => $pagamentoOrigemId,
+                'motivo' => sprintf(
+                    'Crédito do plano atual (%s — R$%s)',
+                    $planoNome,
+                    number_format($valorCicloAtual, 2, ',', '.')
+                ),
+            ];
+        }
+
         $dataInicio = (string) $matricula['data_inicio'];
-        $dataVencimentoStr = $matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'];
+        // Ciclo vigente = data_vencimento (alinhado ao painel). proxima_data_vencimento é parcela futura.
+        $dataVencimentoStr = (string) ($matricula['data_vencimento'] ?? $matricula['proxima_data_vencimento']);
         $hoje = date('Y-m-d');
 
         $base = self::calcularCreditoProporcional($valorCicloAtual, $dataInicio, $dataVencimentoStr, $hoje);
-        $pagamentoOrigemId = null;
 
         if ($base['dias_restantes'] > 0) {
             $motivo = sprintf(
@@ -606,8 +631,23 @@ class MatriculaMigracaoService
             'dias_restantes' => 0,
             'dias_usados' => $base['dias_totais'],
             'pagamento_origem_id' => $pagamentoOrigemId,
-            'motivo' => 'Crédito do último pagamento (plano encerrado)',
+            'motivo' => 'Crédito do último pagamento (ciclo encerrado)',
         ];
+    }
+
+    private function buscarUltimoPagamentoPagoId(int $matriculaId, int $tenantId): ?int
+    {
+        $stmt = $this->db->prepare('
+            SELECT id
+            FROM pagamentos_plano
+            WHERE matricula_id = ? AND tenant_id = ? AND status_pagamento_id = 2
+            ORDER BY data_vencimento DESC
+            LIMIT 1
+        ');
+        $stmt->execute([$matriculaId, $tenantId]);
+        $id = $stmt->fetchColumn();
+
+        return $id ? (int) $id : null;
     }
 
     /**

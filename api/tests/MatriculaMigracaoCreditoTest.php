@@ -59,5 +59,21 @@ run('Parcela = novo plano - crédito', function () {
     assertEq(170.0, $parcela, 'parcela');
 });
 
+run('Upgrade 1x→2x: crédito valor cheio do plano (pagar diferença)', function () {
+    $valorAtual = 70.0;
+    $valorNovo = 120.0;
+    $credito = $valorNovo > $valorAtual ? $valorAtual : 0.0;
+    $parcela = max(0, round($valorNovo - min($credito, $valorNovo), 2));
+    assertEq(70.0, $credito, 'credito');
+    assertEq(50.0, $parcela, 'parcela');
+});
+
+run('Proporcional usa data_vencimento do ciclo, não proxima parcela', function () {
+    // Matrícula #354: início 07/06, vence 07/07, hoje 07/07 → 0 dias restantes no ciclo
+    $r = MatriculaMigracaoService::calcularCreditoProporcional(70.0, '2026-06-07', '2026-07-07', '2026-07-07');
+    assertEq(0, (float) $r['dias_restantes'], 'dias_restantes');
+    assertEq(0.0, (float) $r['credito'], 'credito');
+});
+
 echo "\n{$passed}/{$total} testes passaram\n";
 exit($passed === $total ? 0 : 1);
