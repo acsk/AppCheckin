@@ -11,9 +11,8 @@ declare(strict_types=1);
  * Requer MySQL (docker-compose: porta 3307, DB appcheckin).
  */
 
-require_once __DIR__.'/../vendor/autoload.php';
+require_once __DIR__.'/bootstrap.php';
 require_once __DIR__.'/Support/MigracaoFunctionalFixture.php';
-require_once __DIR__.'/../app/Services/MatriculaMigracaoService.php';
 
 use App\Services\MatriculaMigracaoService;
 

@@ -13,12 +13,9 @@ declare(strict_types=1);
  * Variáveis opcionais: PROD_DB_HOST, PROD_DB_NAME, PROD_DB_USER, PROD_DB_PASS
  */
 
-require_once __DIR__.'/../vendor/autoload.php';
-require_once __DIR__.'/../app/Services/MatriculaMigracaoService.php';
+require_once __DIR__.'/bootstrap.php';
 
 use App\Services\MatriculaMigracaoService;
-
-date_default_timezone_set('America/Sao_Paulo');
 
 const MATRICULA_ID = 354;
 const PLANO_NOVO_ID = 8;   // 2x por Semana

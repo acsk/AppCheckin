@@ -5,7 +5,7 @@
  * Executar: php api/tests/MatriculaMigracaoCreditoTest.php
  */
 
-require_once __DIR__.'/../app/Services/MatriculaMigracaoService.php';
+require_once __DIR__.'/bootstrap.php';
 
 use App\Services\MatriculaMigracaoService;
 
