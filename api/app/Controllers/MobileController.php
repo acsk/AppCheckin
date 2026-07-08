@@ -1763,19 +1763,54 @@ class MobileController
                 }
             }
 
-            // Registrar check-in manual
-            $stmtInsert = $this->db->prepare("
-                INSERT INTO checkins (aluno_id, turma_id, tenant_id, registrado_por_admin, admin_id)
-                VALUES (:aluno_id, :turma_id, :tenant_id, 1, :admin_id)
-            ");
-            $stmtInsert->execute([
-                'aluno_id' => $alunoId,
-                'turma_id' => $turmaId,
-                'tenant_id' => $tenantId,
-                'admin_id' => $professorId
-            ]);
+            $diaAula = $turma['dia_data'] ?? date('Y-m-d');
+            $erroVagas = $this->validarVagasTurmaParaCheckin($turma, $turmaId, (int) $tenantId, $diaAula);
+            if ($erroVagas !== null) {
+                $response->getBody()->write(json_encode($erroVagas, JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
 
-            $checkinId = (int) $this->db->lastInsertId();
+            // Registrar check-in manual
+            $this->db->beginTransaction();
+            try {
+                $limite = (int) ($turma['limite_alunos'] ?? 0);
+                if ($limite > 0) {
+                    $ocupados = $this->contarCheckinsTurmaComLock($turmaId, (int) $tenantId, $diaAula);
+                    if ($ocupados >= $limite) {
+                        $this->db->rollBack();
+                        $response->getBody()->write(json_encode([
+                            'success' => false,
+                            'error' => 'Sem vagas disponíveis nesta turma',
+                            'code' => 'TURMA_LOTADA',
+                            'detalhes' => [
+                                'limite_alunos' => $limite,
+                                'checkins_no_dia' => $ocupados,
+                                'data_aula' => $diaAula,
+                            ],
+                        ], JSON_UNESCAPED_UNICODE));
+                        return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                    }
+                }
+
+                $stmtInsert = $this->db->prepare("
+                    INSERT INTO checkins (aluno_id, turma_id, tenant_id, registrado_por_admin, admin_id)
+                    VALUES (:aluno_id, :turma_id, :tenant_id, 1, :admin_id)
+                ");
+                $stmtInsert->execute([
+                    'aluno_id' => $alunoId,
+                    'turma_id' => $turmaId,
+                    'tenant_id' => $tenantId,
+                    'admin_id' => $professorId
+                ]);
+
+                $checkinId = (int) $this->db->lastInsertId();
+                $this->db->commit();
+            } catch (\Throwable $e) {
+                if ($this->db->inTransaction()) {
+                    $this->db->rollBack();
+                }
+                throw $e;
+            }
 
             $response->getBody()->write(json_encode([
                 'success' => true,
@@ -2088,13 +2123,10 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
 
-            // Verificar vagas disponíveis
-            $alunosCount = $this->turmaModel->contarAlunos($turmaId);
-            if ($alunosCount >= (int) $turma['limite_alunos']) {
-                $response->getBody()->write(json_encode([
-                    'success' => false,
-                    'error' => 'Sem vagas disponíveis nesta turma'
-                ]));
+            // Verificar vagas disponíveis (check-ins do dia, não inscrições)
+            $erroVagas = $this->validarVagasTurmaParaCheckin($turma, $turmaId, (int) $tenantId, $diaAula);
+            if ($erroVagas !== null) {
+                $response->getBody()->write(json_encode($erroVagas, JSON_UNESCAPED_UNICODE));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
             }
 
@@ -2140,16 +2172,47 @@ class MobileController
                 }
             }
 
-            // Registrar check-in
-            $checkinId = $this->checkinModel->createEmTurma($userId, $turmaId);
+            // Registrar check-in (com lock para respeitar limite mesmo em requisições simultâneas)
+            $this->db->beginTransaction();
+            try {
+                $limite = (int) ($turma['limite_alunos'] ?? 0);
+                if ($limite > 0) {
+                    $ocupados = $this->contarCheckinsTurmaComLock($turmaId, (int) $tenantId, $diaAula);
+                    if ($ocupados >= $limite) {
+                        $this->db->rollBack();
+                        $response->getBody()->write(json_encode([
+                            'success' => false,
+                            'error' => 'Sem vagas disponíveis nesta turma',
+                            'code' => 'TURMA_LOTADA',
+                            'detalhes' => [
+                                'limite_alunos' => $limite,
+                                'checkins_no_dia' => $ocupados,
+                                'data_aula' => $diaAula,
+                            ],
+                        ], JSON_UNESCAPED_UNICODE));
+                        return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                    }
+                }
 
-            if (!$checkinId) {
-                $response->getBody()->write(json_encode([
-                    'success' => false,
-                    'error' => 'Erro ao registrar check-in (Talvez já exista um check-in registrado)'
-                ]));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+                $checkinId = $this->checkinModel->createEmTurma($userId, $turmaId);
+                if (!$checkinId) {
+                    $this->db->rollBack();
+                    $response->getBody()->write(json_encode([
+                        'success' => false,
+                        'error' => 'Erro ao registrar check-in (Talvez já exista um check-in registrado)'
+                    ]));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+                }
+
+                $this->db->commit();
+            } catch (\Throwable $e) {
+                if ($this->db->inTransaction()) {
+                    $this->db->rollBack();
+                }
+                throw $e;
             }
+
+            $alunosCount = $this->turmaModel->contarCheckinsNaTurma($turmaId, (int) $tenantId, $diaAula);
 
             $response->getBody()->write(json_encode([
                 'success' => true,
@@ -2169,7 +2232,7 @@ class MobileController
                         'modalidade' => $turma['modalidade_nome']
                     ],
                     'data_checkin' => date('Y-m-d H:i:s'),
-                    'vagas_atualizadas' => (int) $turma['limite_alunos'] - ($alunosCount + 1)
+                    'vagas_atualizadas' => max(0, (int) $turma['limite_alunos'] - $alunosCount)
                 ]
             ]));
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(201);
@@ -2565,9 +2628,10 @@ class MobileController
             $turmas = $stmtTurmas->fetchAll(\PDO::FETCH_ASSOC);
 
                  // Para cada turma, contar o número de check-ins (alunos que já marcaram presença) restritos ao tenant
-                 $sqlCheckinsCount = "SELECT COUNT(DISTINCT aluno_id) as total_checkins 
+                 $sqlCheckinsCount = "SELECT COUNT(*) as total_checkins 
                              FROM checkins 
-                             WHERE turma_id = :turma_id AND tenant_id = :tenant_id";
+                             WHERE turma_id = :turma_id AND tenant_id = :tenant_id
+                               AND COALESCE(data_checkin_date, DATE(created_at)) = :data_aula";
             $stmtCheckinsCount = $this->db->prepare($sqlCheckinsCount);
 
             // Obter data e hora atuais para calcular disponibilidade de check-in
@@ -2575,8 +2639,12 @@ class MobileController
 
             // Formatar turmas
             $turmasFormatadas = array_map(function($turma) use ($stmtCheckinsCount, $data, $dataHoraAtual, $tenantId) {
-                // Contar check-ins para esta turma
-                $stmtCheckinsCount->execute(['turma_id' => $turma['id'], 'tenant_id' => (int)$tenantId]);
+                // Contar check-ins para esta turma na data da aula
+                $stmtCheckinsCount->execute([
+                    'turma_id' => $turma['id'],
+                    'tenant_id' => (int) $tenantId,
+                    'data_aula' => $data,
+                ]);
                 $checkinsData = $stmtCheckinsCount->fetch(\PDO::FETCH_ASSOC);
                 $checkinsCount = (int) ($checkinsData['total_checkins'] ?? 0);
                 
@@ -3363,21 +3431,31 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
             }
 
-            // Contar alunos matriculados separadamente
+            $dataAula = $dataAulaParam ?: ($turma['dia_data'] ?? date('Y-m-d'));
+
+            // Contar check-ins do dia da aula
             $stmtAlunosCount = $this->db->prepare("
-                SELECT COUNT(DISTINCT aluno_id) as total FROM checkins 
+                SELECT COUNT(*) as total FROM checkins 
                 WHERE turma_id = :turma_id
+                  AND COALESCE(data_checkin_date, DATE(created_at)) = :data_aula
             ");
-            $stmtAlunosCount->execute(['turma_id' => $turmaId]);
+            $stmtAlunosCount->execute([
+                'turma_id' => $turmaId,
+                'data_aula' => $dataAula,
+            ]);
             $alunosCount = $stmtAlunosCount->fetch(\PDO::FETCH_ASSOC);
             $turma['total_alunos_matriculados'] = (int) ($alunosCount['total'] ?? 0);
 
-            // Contar check-ins separadamente
+            // Contar check-ins do dia (mesmo valor; mantido por compatibilidade de payload)
             $stmtCheckinsCount = $this->db->prepare("
                 SELECT COUNT(*) as total FROM checkins 
                 WHERE turma_id = :turma_id
+                  AND COALESCE(data_checkin_date, DATE(created_at)) = :data_aula
             ");
-            $stmtCheckinsCount->execute(['turma_id' => $turmaId]);
+            $stmtCheckinsCount->execute([
+                'turma_id' => $turmaId,
+                'data_aula' => $dataAula,
+            ]);
             $checkinsCount = $stmtCheckinsCount->fetch(\PDO::FETCH_ASSOC);
             $turma['total_checkins'] = (int) ($checkinsCount['total'] ?? 0);
 
@@ -3394,12 +3472,16 @@ class MobileController
                 INNER JOIN usuarios u ON u.id = a.usuario_id
                 INNER JOIN checkins c ON a.id = c.aluno_id
                 WHERE c.turma_id = :turma_id
+                  AND COALESCE(c.data_checkin_date, DATE(c.created_at)) = :data_aula
                 GROUP BY a.id, a.nome, a.data_nascimento, u.email, a.foto_caminho
                 ORDER BY u.nome ASC
             ";
 
             $stmtAlunos = $this->db->prepare($sqlAlunos);
-            $stmtAlunos->execute(['turma_id' => $turmaId]);
+            $stmtAlunos->execute([
+                'turma_id' => $turmaId,
+                'data_aula' => $dataAula,
+            ]);
             $alunos = $stmtAlunos->fetchAll(\PDO::FETCH_ASSOC);
 
             // Formatar alunos
@@ -3432,12 +3514,16 @@ class MobileController
                 FROM checkins c
                 INNER JOIN alunos a ON c.aluno_id = a.id
                 WHERE c.turma_id = :turma_id
+                  AND COALESCE(c.data_checkin_date, DATE(c.created_at)) = :data_aula
                 ORDER BY c.created_at DESC
                 LIMIT 50
             ";
 
             $stmtCheckins = $this->db->prepare($sqlCheckins);
-            $stmtCheckins->execute(['turma_id' => $turmaId]);
+            $stmtCheckins->execute([
+                'turma_id' => $turmaId,
+                'data_aula' => $dataAula,
+            ]);
             $checkins = $stmtCheckins->fetchAll(\PDO::FETCH_ASSOC);
 
             // Formatar check-ins
@@ -3465,7 +3551,6 @@ class MobileController
             $percentualOcupacao = $limite > 0 ? round(($totalAlunos / $limite) * 100, 1) : 0;
             $checkinBloqueado = $this->checkinBloqueioService->isBloqueada($turmaId, (int) $tenantId);
 
-            $dataAula = $dataAulaParam ?: ($turma['dia_data'] ?? date('Y-m-d'));
             $horarioInicio = $turma['horario_inicio'];
             $toleranciaAntes = (int) ($turma['tolerancia_antes_minutos'] ?? 480);
             $toleranciaDepois = (int) ($turma['tolerancia_minutos'] ?? 10);
@@ -3537,13 +3622,9 @@ class MobileController
                     ],
                     'resumo' => [
                         'alunos_ativos' => count($alunosFormatados),
-                        'presentes_hoje' => count(array_filter($checkins, function($c) {
-                            return date('Y-m-d', strtotime($c['data_checkin'])) === date('Y-m-d');
-                        })),
-                        'percentual_presenca' => count($alunosFormatados) > 0 
-                            ? round((count(array_filter($checkins, function($c) {
-                                return date('Y-m-d', strtotime($c['data_checkin'])) === date('Y-m-d');
-                            })) / count($alunosFormatados)) * 100, 1)
+                        'presentes_hoje' => count($checkinsFormatados),
+                        'percentual_presenca' => count($alunosFormatados) > 0
+                            ? round((count($checkinsFormatados) / count($alunosFormatados)) * 100, 1)
                             : 0
                     ]
                 ]
@@ -7879,6 +7960,55 @@ class MobileController
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
+    }
+
+    /**
+     * Conta check-ins da turma na data da aula (com lock para evitar overbooking).
+     */
+    private function contarCheckinsTurmaComLock(int $turmaId, int $tenantId, string $dataAula): int
+    {
+        $stmt = $this->db->prepare("
+            SELECT COUNT(*) FROM checkins
+            WHERE turma_id = :turma_id
+              AND tenant_id = :tenant_id
+              AND COALESCE(data_checkin_date, DATE(created_at)) = :data_aula
+            FOR UPDATE
+        ");
+        $stmt->execute([
+            'turma_id' => $turmaId,
+            'tenant_id' => $tenantId,
+            'data_aula' => $dataAula,
+        ]);
+
+        return (int) ($stmt->fetchColumn() ?: 0);
+    }
+
+    /**
+     * Valida capacidade da turma. Retorna payload de erro ou null se há vaga.
+     */
+    private function validarVagasTurmaParaCheckin(array $turma, int $turmaId, int $tenantId, ?string $dataAula = null): ?array
+    {
+        $limite = (int) ($turma['limite_alunos'] ?? 0);
+        if ($limite <= 0) {
+            return null;
+        }
+
+        $dataAula = $dataAula ?? ($turma['dia_data'] ?? date('Y-m-d'));
+        $ocupados = $this->turmaModel->contarCheckinsNaTurma($turmaId, $tenantId, $dataAula);
+        if ($ocupados >= $limite) {
+            return [
+                'success' => false,
+                'error' => 'Sem vagas disponíveis nesta turma',
+                'code' => 'TURMA_LOTADA',
+                'detalhes' => [
+                    'limite_alunos' => $limite,
+                    'checkins_no_dia' => $ocupados,
+                    'data_aula' => $dataAula,
+                ],
+            ];
+        }
+
+        return null;
     }
 
     /**

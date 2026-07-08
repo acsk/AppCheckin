@@ -271,7 +271,31 @@ class Turma
     }
 
     /**
-     * Verificar se já existe turma com conflito de horário
+     * Contar check-ins realizados na turma (por data da aula, quando informada).
+     */
+    public function contarCheckinsNaTurma(int $turmaId, ?int $tenantId = null, ?string $dataAula = null): int
+    {
+        $sql = 'SELECT COUNT(*) AS total FROM checkins WHERE turma_id = :turma_id';
+        $params = ['turma_id' => $turmaId];
+
+        if ($tenantId !== null) {
+            $sql .= ' AND tenant_id = :tenant_id';
+            $params['tenant_id'] = $tenantId;
+        }
+
+        if ($dataAula !== null && $dataAula !== '') {
+            $sql .= ' AND COALESCE(data_checkin_date, DATE(created_at)) = :data_aula';
+            $params['data_aula'] = $dataAula;
+        }
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->execute($params);
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        return (int) ($result['total'] ?? 0);
+    }
+
+    /**
      * Detecta sobreposição: nova turma começa antes do fim de uma existente E termina depois do início de uma existente
      * @param int $tenantId ID do tenant
      * @param int $diaId ID do dia
