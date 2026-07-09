@@ -106,7 +106,9 @@ class CheckinRepository
      *   tem_plano: bool,
      *   modalidade_id: ?int,
      *   permite_reposicao: bool,
-     *   limite_mensal: ?int
+     *   limite_mensal: ?int,
+     *   eh_diaria: bool,
+     *   duracao_dias: ?int
      * }
      */
     public function obterLimiteCheckinsPlano(int $usuarioId, int $tenantId, ?int $modalidadeId = null): array
@@ -127,6 +129,7 @@ class CheckinRepository
                 'p.checkins_semanais',
                 'p.nome as plano_nome',
                 'p.modalidade_id',
+                'p.duracao_dias',
                 DB::raw("CASE
                     WHEN m.plano_ciclo_id IS NOT NULL THEN COALESCE(pc.permite_reposicao, 0)
                     ELSE COALESCE((
@@ -155,6 +158,22 @@ class CheckinRepository
                 'modalidade_id' => null,
                 'permite_reposicao' => false,
                 'limite_mensal' => null,
+                'eh_diaria' => false,
+                'duracao_dias' => null,
+            ];
+        }
+
+        // Diária (duracao_dias = 1): sem teto semanal/mensal — só vigência.
+        if ((int) ($result->duracao_dias ?? 0) === 1) {
+            return [
+                'limite' => 0,
+                'plano_nome' => (string) $result->plano_nome,
+                'tem_plano' => true,
+                'modalidade_id' => $result->modalidade_id !== null ? (int) $result->modalidade_id : null,
+                'permite_reposicao' => false,
+                'limite_mensal' => null,
+                'eh_diaria' => true,
+                'duracao_dias' => 1,
             ];
         }
 
@@ -165,9 +184,11 @@ class CheckinRepository
             'limite' => $limite,
             'plano_nome' => (string) $result->plano_nome,
             'tem_plano' => true,
-            'modalidade_id' => (int) $result->modalidade_id,
+            'modalidade_id' => $result->modalidade_id !== null ? (int) $result->modalidade_id : null,
             'permite_reposicao' => $permiteReposicao,
             'limite_mensal' => $permiteReposicao ? $limite * 4 : null,
+            'eh_diaria' => false,
+            'duracao_dias' => (int) ($result->duracao_dias ?? 0),
         ];
     }
 
