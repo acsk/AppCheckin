@@ -553,6 +553,7 @@ class Checkin
     public function obterCicloCheckins(int $usuarioId, int $tenantId, ?int $modalidadeId = null): array
     {
         $sql = "SELECT p.checkins_semanais, p.nome AS plano_nome, p.modalidade_id,
+                       p.duracao_dias,
                        m.data_inicio,
                        COALESCE(m.proxima_data_vencimento, m.data_vencimento) AS vencimento,
                        COALESCE(NULLIF(pc.meses, 0), 1) AS ciclo_meses,
@@ -593,6 +594,23 @@ class Checkin
         // a MESMA contagem por período. Assim evitamos divergir para outra mecânica.
         if (!$row) {
             return ['tem_plano' => false];
+        }
+
+        // Diária não usa ciclo mensal de reposição — acesso é só pela vigência.
+        if ((int) ($row['duracao_dias'] ?? 0) === 1) {
+            return [
+                'tem_plano' => true,
+                'eh_diaria' => true,
+                'plano_nome' => $row['plano_nome'],
+                'permite_reposicao' => false,
+                'checkins_semanais' => 0,
+                'modalidade_id' => $row['modalidade_id'] !== null ? (int) $row['modalidade_id'] : null,
+                'meses_ciclo' => 1,
+                'contrato_multimes' => false,
+                'limite_mensal' => PHP_INT_MAX,
+                'checkins_no_ciclo' => 0,
+                'dias_checkin' => [],
+            ];
         }
 
         $checkinsSemanais = (int) $row['checkins_semanais'];
@@ -698,6 +716,11 @@ class Checkin
      */
     public function avaliarLimiteMensalReposicao(int $usuarioId, int $tenantId, ?int $modalidadeId, array $planoInfo): ?array
     {
+        // Diária: sem teto mensal (acesso controlado pela vigência).
+        if (!empty($planoInfo['eh_diaria']) || (int) ($planoInfo['duracao_dias'] ?? 0) === 1) {
+            return null;
+        }
+
         $ciclo = $this->obterCicloCheckins($usuarioId, $tenantId, $modalidadeId);
 
         if (!empty($ciclo['tem_plano'])) {
@@ -788,6 +811,7 @@ class Checkin
     public function obterLimiteCheckinsPlano(int $usuarioId, int $tenantId, ?int $modalidadeId = null): array
     {
         $sql = "SELECT p.checkins_semanais, p.nome as plano_nome, p.modalidade_id,
+                       p.duracao_dias,
                        CASE
                            WHEN m.plano_ciclo_id IS NOT NULL THEN COALESCE(pc.permite_reposicao, 0)
                            ELSE COALESCE((
@@ -827,14 +851,47 @@ class Checkin
         $stmt->execute($params);
         
         $result = $stmt->fetch();
+        if ($result === false) {
+            return [
+                'limite' => 0,
+                'plano_nome' => 'Sem plano',
+                'tem_plano' => false,
+                'modalidade_id' => null,
+                'permite_reposicao' => false,
+                'limite_mensal' => null,
+                'eh_diaria' => false,
+                'duracao_dias' => null,
+            ];
+        }
+
+        // Diária (duracao_dias = 1): não aplica teto semanal/mensal.
+        // O acesso é controlado pela vigência da matrícula (e finalização após presença).
+        $ehDiaria = (int) ($result['duracao_dias'] ?? 0) === 1;
+        if ($ehDiaria) {
+            return [
+                'limite' => 0,
+                'plano_nome' => $result['plano_nome'],
+                'tem_plano' => true,
+                'modalidade_id' => $result['modalidade_id'] !== null ? (int) $result['modalidade_id'] : null,
+                'permite_reposicao' => false,
+                'limite_mensal' => null,
+                'eh_diaria' => true,
+                'duracao_dias' => 1,
+            ];
+        }
+
+        $permiteReposicao = (bool) $result['permite_reposicao'];
+        $checkinsSemanais = (int) $result['checkins_semanais'];
         return [
-            'limite' => $result ? (int) $result['checkins_semanais'] : 0,
-            'plano_nome' => $result ? $result['plano_nome'] : 'Sem plano',
-            'tem_plano' => $result !== false,
-            'modalidade_id' => $result ? (int) $result['modalidade_id'] : null,
-            'permite_reposicao' => $result ? (bool) $result['permite_reposicao'] : false,
+            'limite' => $checkinsSemanais,
+            'plano_nome' => $result['plano_nome'],
+            'tem_plano' => true,
+            'modalidade_id' => $result['modalidade_id'] !== null ? (int) $result['modalidade_id'] : null,
+            'permite_reposicao' => $permiteReposicao,
             // Para planos com reposição, o limite efetivo é mensal (4x o semanal)
-            'limite_mensal' => $result ? ((bool) $result['permite_reposicao'] ? ((int) $result['checkins_semanais'] * 4) : null) : null
+            'limite_mensal' => $permiteReposicao ? ($checkinsSemanais * 4) : null,
+            'eh_diaria' => false,
+            'duracao_dias' => (int) ($result['duracao_dias'] ?? 0),
         ];
     }
 

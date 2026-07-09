@@ -265,6 +265,11 @@ class MobileCheckinService
      */
     private function validarLimitePlano(array $planoInfo, int $userId, ?int $modalidadeTurma, array $turma): ?array
     {
+        // Diária: sem teto semanal/mensal — acesso controlado pela vigência.
+        if (! empty($planoInfo['eh_diaria']) || (int) ($planoInfo['duracao_dias'] ?? 0) === 1) {
+            return null;
+        }
+
         if ($planoInfo['tem_plano'] && $planoInfo['limite'] > 0) {
             $primeiroDiaMes = AcademyDateTime::fromDateAndTime(
                 AcademyDateTime::now()->format('Y-m-01'),
