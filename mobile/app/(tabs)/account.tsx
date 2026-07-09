@@ -11,6 +11,7 @@ import {
 } from "@/src/types";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { getTokenTenantId, handleAuthError } from "@/src/utils/authHelpers";
+import { isSessionExpiredVisible } from "@/src/utils/sessionExpired";
 import {
     compressImage,
     logCompressionInfo,
@@ -334,7 +335,9 @@ export default function AccountScreen() {
       const token = await AsyncStorage.getItem("@appcheckin:token");
       if (!token) {
         console.error("❌ Token não encontrado");
-        router.replace("/(auth)/login");
+        if (!isSessionExpiredVisible()) {
+          router.replace("/(auth)/login");
+        }
         return;
       }
       const profileData = await MobileService.getPerfil();
@@ -377,7 +380,6 @@ export default function AccountScreen() {
       if (status === 401) {
         console.log("🔑 Detectado 401 - Token inválido/expirado");
         await handleAuthError();
-        router.replace("/(auth)/login");
         return;
       }
       if (status === 403) {

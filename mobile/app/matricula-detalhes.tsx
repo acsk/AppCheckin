@@ -1,6 +1,7 @@
 import { colors } from "@/src/theme/colors";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { handleAuthError } from "@/src/utils/authHelpers";
+import { isSessionExpiredVisible } from "@/src/utils/sessionExpired";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -33,7 +34,9 @@ export default function MatriculaDetalhesScreen() {
       const token = await AsyncStorage.getItem("@appcheckin:token");
 
       if (!token) {
-        router.replace("/(auth)/login");
+        if (!isSessionExpiredVisible()) {
+          router.replace("/(auth)/login");
+        }
         return;
       }
 
@@ -52,7 +55,6 @@ export default function MatriculaDetalhesScreen() {
       if (!response.ok) {
         if (response.status === 401) {
           await handleAuthError();
-          router.replace("/(auth)/login");
           return;
         }
         throw new Error(`Erro ao carregar matrícula: ${response.status}`);

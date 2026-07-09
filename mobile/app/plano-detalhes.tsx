@@ -2,6 +2,8 @@ import { useProtectedRoute } from "@/hooks/useProtectedRoute";
 import { getApiUrlRuntime } from "@/src/config/urls";
 import { authService } from "@/src/services/authService";
 import { colors } from "@/src/theme/colors";
+import { handleUnauthorizedResponse } from "@/src/utils/authHelpers";
+import { isSessionExpiredVisible } from "@/src/utils/sessionExpired";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -222,10 +224,7 @@ export default function PlanoDetalhesScreen() {
         const responseText = await response.text();
         console.error("❌ Erro na resposta:", responseText);
 
-        if (response.status === 401) {
-          await AsyncStorage.removeItem("@appcheckin:token");
-          await AsyncStorage.removeItem("@appcheckin:user");
-          router.replace("/(auth)/login");
+        if (await handleUnauthorizedResponse(response)) {
           return;
         }
         if (response.status === 404) {
@@ -304,19 +303,23 @@ export default function PlanoDetalhesScreen() {
         // Verificar se existe token
         const token = await AsyncStorage.getItem("@appcheckin:token");
         if (!token) {
-          console.warn("❌ Token não encontrado - redirecionando para login");
-          router.replace("/(auth)/login");
+          if (!isSessionExpiredVisible()) {
+            console.warn("❌ Token não encontrado - redirecionando para login");
+            router.replace("/(auth)/login");
+          }
           setHasPermission(false);
           return;
         }
 
         const user = await authService.getCurrentUser();
         if (!user) {
-          console.warn(
-            "⚠️ Usuário não autenticado - redirecionando para login",
-          );
-          await AsyncStorage.removeItem("@appcheckin:token");
-          router.replace("/(auth)/login");
+          if (!isSessionExpiredVisible()) {
+            console.warn(
+              "⚠️ Usuário não autenticado - redirecionando para login",
+            );
+            await AsyncStorage.removeItem("@appcheckin:token");
+            router.replace("/(auth)/login");
+          }
           setHasPermission(false);
           return;
         }

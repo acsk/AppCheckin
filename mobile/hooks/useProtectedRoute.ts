@@ -1,10 +1,12 @@
 /**
  * Hook para verificar autenticação em componentes protegidos
- * Se não autenticado, redireciona para login
+ * Se não autenticado, redireciona para login (ou abre modal se a sessão acabou de expirar)
  */
 
+import { handleAuthError } from "@/src/utils/authHelpers";
+import { isSessionExpiredVisible } from "@/src/utils/sessionExpired";
 import AsyncStorage from "@/src/utils/storage";
-import { useNavigation, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 
 interface UseProtectedRouteOptions {
@@ -15,7 +17,6 @@ interface UseProtectedRouteOptions {
 
 export function useProtectedRoute(options: UseProtectedRouteOptions = {}) {
   const router = useRouter();
-  const navigation = useNavigation();
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthorized, setIsAuthorized] = useState(false);
 
@@ -24,15 +25,23 @@ export function useProtectedRoute(options: UseProtectedRouteOptions = {}) {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        // Delay para garantir que layout tenha sido carregado
         if (delayMs > 0) {
           await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
+
+        // Modal global já está tratando o logout — não redirecionar por cima
+        if (isSessionExpiredVisible()) {
+          setIsAuthorized(false);
+          setIsLoading(false);
+          return;
         }
 
         const token = await AsyncStorage.getItem("@appcheckin:token");
 
         if (!token) {
-          console.warn("[useProtectedRoute] Token não encontrado, redirecionando");
+          console.warn(
+            "[useProtectedRoute] Token não encontrado, redirecionando",
+          );
           if (onUnauthorized) {
             onUnauthorized();
           }
@@ -42,17 +51,17 @@ export function useProtectedRoute(options: UseProtectedRouteOptions = {}) {
           return;
         }
 
-        // Se houver função de checagem customizada, executá-la
         if (checkFn) {
           const authorized = await checkFn(token);
           if (!authorized) {
             console.warn("[useProtectedRoute] Autorização customizada falhou");
             if (onUnauthorized) {
               onUnauthorized();
+            } else {
+              await handleAuthError();
             }
             setIsAuthorized(false);
             setIsLoading(false);
-            router.replace("/(auth)/login");
             return;
           }
         }

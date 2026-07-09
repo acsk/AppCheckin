@@ -1,5 +1,6 @@
 import { AlunoResumoFinanceiro } from "@/src/components/AlunoResumoFinanceiro";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
+import { handleUnauthorizedResponse } from "@/src/utils/authHelpers";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
@@ -380,6 +381,9 @@ export default function CheckinTurmaScreen() {
 
       const text = await response.text();
       if (!response.ok) {
+        if (await handleUnauthorizedResponse(response)) {
+          return;
+        }
         console.error("Erro ao carregar participantes:", response.status, text);
         showToast("Falha ao carregar participantes", "error");
         return;
@@ -716,6 +720,9 @@ export default function CheckinTurmaScreen() {
       }
 
       if (!response.ok) {
+        if (await handleUnauthorizedResponse(response)) {
+          return;
+        }
         const apiMessage =
           data?.message ||
           data?.error ||
@@ -789,6 +796,9 @@ export default function CheckinTurmaScreen() {
       }
 
       if (!response.ok) {
+        if (await handleUnauthorizedResponse(response)) {
+          return;
+        }
         const apiMessage =
           data?.error ||
           data?.message ||
@@ -877,6 +887,9 @@ export default function CheckinTurmaScreen() {
       }
 
       if (!response.ok) {
+        if (await handleUnauthorizedResponse(response)) {
+          return;
+        }
         const apiMessage =
           data?.error ||
           data?.message ||
@@ -960,6 +973,9 @@ export default function CheckinTurmaScreen() {
       }
 
       if (!response.ok) {
+        if (await handleUnauthorizedResponse(response)) {
+          return;
+        }
         const apiMessage =
           data?.error ||
           data?.message ||
@@ -1019,6 +1035,9 @@ export default function CheckinTurmaScreen() {
       }
 
       if (!response.ok) {
+        if (await handleUnauthorizedResponse(response)) {
+          return;
+        }
         const apiMessage =
           data?.error ||
           data?.message ||
@@ -1126,6 +1145,9 @@ export default function CheckinTurmaScreen() {
       }
 
       if (!response.ok) {
+        if (await handleUnauthorizedResponse(response)) {
+          return;
+        }
         showToast(
           data?.error || data?.message || "Não foi possível alterar o bloqueio",
           "error",

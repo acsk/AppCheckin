@@ -1,4 +1,5 @@
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
+import { handleUnauthorizedResponse } from "@/src/utils/authHelpers";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
@@ -330,6 +331,9 @@ export default function TurmaDetalhesScreen() {
       const text = await response.text();
 
       if (!response.ok) {
+        if (await handleUnauthorizedResponse(response)) {
+          return;
+        }
         console.error("❌ Erro ao carregar detalhes:", response.status, text);
         showErrorModal("Falha ao carregar detalhes da turma", "error");
         return;
@@ -519,6 +523,9 @@ export default function TurmaDetalhesScreen() {
       }
 
       if (!response.ok) {
+        if (await handleUnauthorizedResponse(response)) {
+          return;
+        }
         const apiMessage =
           responseData?.message ||
           responseData?.error ||
@@ -598,6 +605,9 @@ export default function TurmaDetalhesScreen() {
       }
 
       if (!response.ok) {
+        if (await handleUnauthorizedResponse(response)) {
+          return;
+        }
         const apiMessage =
           responseData?.error ||
           responseData?.message ||

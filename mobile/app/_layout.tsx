@@ -1,7 +1,13 @@
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { setOnUnauthorized as setOnUnauthorizedClient } from "@/src/api/client";
+import SessionExpiredModal from "@/src/components/SessionExpiredModal";
 import { setOnUnauthorized } from "@/src/services/api";
-import { handleAuthError } from "@/src/utils/authHelpers";
+import { clearAuthStorage, handleAuthError } from "@/src/utils/authHelpers";
+import {
+  dismissSessionExpired,
+  isSessionExpiredVisible,
+  subscribeSessionExpired,
+} from "@/src/utils/sessionExpired";
 import AsyncStorage from "@/src/utils/storage";
 import {
     DarkTheme,
@@ -10,7 +16,7 @@ import {
 } from "@react-navigation/native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, AppState, Platform, StyleSheet, View } from "react-native";
 import {
     SafeAreaProvider,
@@ -49,6 +55,10 @@ export default function RootLayout() {
   const segments = useSegments();
   const [isTokenChecked, setIsTokenChecked] = useState(false);
   const [hasToken, setHasToken] = useState(false);
+  const [sessionExpiredVisible, setSessionExpiredVisible] = useState(false);
+  const [sessionExpiredMessage, setSessionExpiredMessage] = useState(
+    "Sua sessão expirou. Por favor, faça login novamente.",
+  );
 
   // Guard: verificar token ao iniciar e redirecionar rotas protegidas
   useEffect(() => {
@@ -61,6 +71,14 @@ export default function RootLayout() {
       const token = await AsyncStorage.getItem("@appcheckin:token");
       const authenticated = !!token;
       setHasToken(authenticated);
+
+      // Enquanto a modal de sessão expirada está aberta, não redirecionar
+      // automaticamente — o usuário confirma e vai para o login.
+      // Usa o flag do módulo (síncrono) para evitar race com o setState do React.
+      if (sessionExpiredVisible || isSessionExpiredVisible()) {
+        setIsTokenChecked(true);
+        return;
+      }
 
       // Obter rota atual (primeiro segment após root)
       const currentSegment = segments?.[0];
@@ -92,7 +110,7 @@ export default function RootLayout() {
     };
 
     checkTokenAndGuard();
-  }, [segments, router]);
+  }, [segments, router, sessionExpiredVisible]);
 
   useEffect(() => {
     if (Platform.OS !== "web") return;
@@ -118,25 +136,28 @@ export default function RootLayout() {
   }, [segments]);
 
   useEffect(() => {
-    // Configurar callback para tratar 401 globalmente
+    const unsubscribe = subscribeSessionExpired((message) => {
+      setHasToken(false);
+      setSessionExpiredMessage(message);
+      setSessionExpiredVisible(true);
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    // Configurar callback para tratar 401 globalmente (abre modal, sem redirect imediato)
     setOnUnauthorized(async () => {
       console.log(
-        "[RootLayout:setOnUnauthorized] Token inválido, redirecionando...",
+        "[RootLayout:setOnUnauthorized] Token inválido — abrindo modal de sessão expirada",
       );
       await handleAuthError();
-      console.log("[RootLayout:setOnUnauthorized] Executando router.replace");
-      router.replace("/(auth)/login");
     });
 
     setOnUnauthorizedClient(async () => {
       console.log(
-        "[RootLayout:setOnUnauthorizedClient] Token inválido, redirecionando...",
+        "[RootLayout:setOnUnauthorizedClient] Token inválido — abrindo modal de sessão expirada",
       );
       await handleAuthError();
-      console.log(
-        "[RootLayout:setOnUnauthorizedClient] Executando router.replace",
-      );
-      router.replace("/(auth)/login");
     });
 
     // Listener para mudanças no AppState
@@ -147,6 +168,14 @@ export default function RootLayout() {
     return () => {
       subscription.remove();
     };
+  }, []);
+
+  const handleSessionExpiredConfirm = useCallback(async () => {
+    dismissSessionExpired();
+    setSessionExpiredVisible(false);
+    setHasToken(false);
+    await clearAuthStorage();
+    router.replace("/(auth)/login");
   }, [router]);
 
   // Não renderizar nada até verificar autenticação
@@ -200,6 +229,11 @@ export default function RootLayout() {
                 options={{ headerShown: false }}
               />
             </Stack>
+            <SessionExpiredModal
+              visible={sessionExpiredVisible}
+              message={sessionExpiredMessage}
+              onConfirm={handleSessionExpiredConfirm}
+            />
           </View>
           <StatusBar style="light" backgroundColor={colors.primary} />
         </ErrorBoundary>

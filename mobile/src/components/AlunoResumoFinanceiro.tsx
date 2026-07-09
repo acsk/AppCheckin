@@ -1,5 +1,6 @@
 import { colors } from "@/src/theme/colors";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
+import { handleUnauthorizedResponse } from "@/src/utils/authHelpers";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useEffect, useState } from "react";
@@ -105,6 +106,9 @@ export function AlunoResumoFinanceiro({ alunoId, compact = false }: Props) {
         );
 
         if (!response.ok) {
+          if (await handleUnauthorizedResponse(response)) {
+            return;
+          }
           if (!cancelled) {
             setError(
               response.status === 404

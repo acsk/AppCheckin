@@ -2,6 +2,8 @@ import { useProtectedRoute } from "@/hooks/useProtectedRoute";
 import { getApiUrlRuntime } from "@/src/config/urls";
 import { authService } from "@/src/services/authService";
 import { colors } from "@/src/theme/colors";
+import { handleUnauthorizedResponse } from "@/src/utils/authHelpers";
+import { isSessionExpiredVisible } from "@/src/utils/sessionExpired";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
@@ -219,11 +221,7 @@ export default function MinhasAssinaturasScreen() {
           const responseText = await response.text();
           console.error("❌ Erro na resposta:", responseText);
 
-          if (response.status === 401) {
-            console.warn("🔑 Token inválido ou expirado");
-            await AsyncStorage.removeItem("@appcheckin:token");
-            await AsyncStorage.removeItem("@appcheckin:user");
-            router.replace("/(auth)/login");
+          if (await handleUnauthorizedResponse(response)) {
             return;
           }
           throw new Error(`HTTP ${response.status}: ${responseText}`);
@@ -268,19 +266,23 @@ export default function MinhasAssinaturasScreen() {
         // Verificar se existe token
         const token = await AsyncStorage.getItem("@appcheckin:token");
         if (!token) {
-          console.warn("❌ Token não encontrado - redirecionando para login");
-          router.replace("/(auth)/login");
+          if (!isSessionExpiredVisible()) {
+            console.warn("❌ Token não encontrado - redirecionando para login");
+            router.replace("/(auth)/login");
+          }
           setIsUserAdmin(false);
           return;
         }
 
         const user = await authService.getCurrentUser();
         if (!user) {
-          console.warn(
-            "⚠️ Usuário não autenticado - redirecionando para login",
-          );
-          await AsyncStorage.removeItem("@appcheckin:token");
-          router.replace("/(auth)/login");
+          if (!isSessionExpiredVisible()) {
+            console.warn(
+              "⚠️ Usuário não autenticado - redirecionando para login",
+            );
+            await AsyncStorage.removeItem("@appcheckin:token");
+            router.replace("/(auth)/login");
+          }
           setIsUserAdmin(false);
           return;
         }
@@ -353,10 +355,7 @@ export default function MinhasAssinaturasScreen() {
           console.error("❌ Erro na resposta:", responseText);
 
           // Tratamento específico para erros comuns
-          if (response.status === 401) {
-            await AsyncStorage.removeItem("@appcheckin:token");
-            await AsyncStorage.removeItem("@appcheckin:user");
-            router.replace("/(auth)/login");
+          if (await handleUnauthorizedResponse(response)) {
             return;
           }
 
@@ -632,10 +631,7 @@ export default function MinhasAssinaturasScreen() {
         }
 
         if (!response.ok || json?.success === false) {
-          if (response.status === 401) {
-            await AsyncStorage.removeItem("@appcheckin:token");
-            await AsyncStorage.removeItem("@appcheckin:user");
-            router.replace("/(auth)/login");
+          if (await handleUnauthorizedResponse(response)) {
             return;
           }
 

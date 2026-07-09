@@ -512,7 +512,6 @@ export default function CheckinScreen() {
         if (response.status === 401) {
           console.log("🔑 Token inválido/expirado no checkin");
           await handleAuthError();
-          router.replace("/(auth)/login");
           return;
         }
 
