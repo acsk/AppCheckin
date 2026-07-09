@@ -455,7 +455,23 @@ class AssinaturaController
                        f.nome as ciclo_nome, f.meses as ciclo_meses,
                        g.nome as gateway_nome,
                        p.nome as plano_nome,
-                       mo.nome as modalidade_nome
+                       mo.nome as modalidade_nome,
+                       m.data_inicio as matricula_data_inicio,
+                       m.proxima_data_vencimento as matricula_proxima_vencimento,
+                       sm.codigo as matricula_status_codigo,
+                       (
+                           SELECT MIN(pp.data_vencimento)
+                           FROM pagamentos_plano pp
+                           WHERE pp.matricula_id = a.matricula_id
+                             AND pp.status_pagamento_id IN (1, 3)
+                       ) as proxima_parcela_vencimento,
+                       (
+                           SELECT MAX(DATE(pp.data_pagamento))
+                           FROM pagamentos_plano pp
+                           WHERE pp.matricula_id = a.matricula_id
+                             AND pp.status_pagamento_id = 2
+                             AND pp.data_pagamento IS NOT NULL
+                       ) as ultima_parcela_pagamento
                 FROM assinaturas a
                 LEFT JOIN assinatura_status s ON s.id = a.status_id
                   LEFT JOIN assinatura_cancelamento_tipos ct ON ct.id = a.cancelado_por_id
@@ -463,6 +479,8 @@ class AssinaturaController
                 LEFT JOIN assinatura_gateways g ON g.id = a.gateway_id
                 LEFT JOIN planos p ON p.id = a.plano_id
                 LEFT JOIN modalidades mo ON mo.id = p.modalidade_id
+                LEFT JOIN matriculas m ON m.id = a.matricula_id AND m.tenant_id = a.tenant_id
+                LEFT JOIN status_matricula sm ON sm.id = m.status_id
                 WHERE a.aluno_id = ? AND a.tenant_id = ?
                 ORDER BY a.data_inicio DESC
             ");
@@ -488,11 +506,35 @@ class AssinaturaController
                     $statusCor = '#DC2626';
                 }
 
+                // Datas oficiais vêm das faturas/matrícula (mesmo fonte do painel).
+                // assinaturas.data_fim/proxima_cobranca ficam desatualizadas após renovação.
+                $datasAlinhadas = $this->alinharDatasAssinaturaComFaturas($row);
+                $dataInicio = $datasAlinhadas['data_inicio'];
+                $dataFim = $datasAlinhadas['data_fim'];
+                $proximaCobranca = $datasAlinhadas['proxima_cobranca'];
+                $ultimaCobranca = $datasAlinhadas['ultima_cobranca'];
+
+                // "PAGA" em avulso só faz sentido se não houver próxima parcela em aberto.
+                // Com parcela aguardando (como no painel), exibir como ativa.
+                $temProximaParcela = !empty($row['proxima_parcela_vencimento']);
+                $matriculaAtiva = ($row['matricula_status_codigo'] ?? '') === 'ativa';
+                if (
+                    !$foiCanceladaPeloUsuario
+                    && in_array(strtolower((string) $statusCodigo), ['paga', 'pago', 'paid', 'approved'], true)
+                    && $temProximaParcela
+                    && $matriculaAtiva
+                ) {
+                    $statusCodigo = 'ativa';
+                    $statusNome = 'Ativa';
+                    $statusCor = '#16A34A';
+                }
+
                 $isPendente = in_array($statusCodigo, ['pendente', 'pending']);
                 $tipoCobranca = $row['tipo_cobranca'] ?? 'recorrente';
                 
                 $assinaturaData = [
                     'id' => (int)$row['id'],
+                    'matricula_id' => isset($row['matricula_id']) ? (int)$row['matricula_id'] : null,
                     'status' => [
                         'id' => (int)$row['status_id'],
                         'codigo' => $statusCodigo,
@@ -507,10 +549,10 @@ class AssinaturaController
                     'valor' => (float)$row['valor'],
                     'tipo_cobranca' => $tipoCobranca,
                     'recorrente' => $tipoCobranca === 'recorrente',
-                    'data_inicio' => $row['data_inicio'],
-                    'data_fim' => $row['data_fim'],
-                    'proxima_cobranca' => $row['proxima_cobranca'],
-                    'ultima_cobranca' => $row['ultima_cobranca'],
+                    'data_inicio' => $dataInicio,
+                    'data_fim' => $dataFim,
+                    'proxima_cobranca' => $proximaCobranca,
+                    'ultima_cobranca' => $ultimaCobranca,
                     'mp_preapproval_id' => $row['mp_preapproval_id'],
                     'preference_id' => $row['gateway_preference_id'],
                     'external_reference' => $row['external_reference'],
@@ -1342,6 +1384,53 @@ class AssinaturaController
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
+    }
+
+    /**
+     * Alinha datas da assinatura com a fonte oficial do painel:
+     * matriculas + pagamentos_plano.
+     *
+     * @param array<string, mixed> $row
+     * @return array{data_inicio: ?string, data_fim: ?string, proxima_cobranca: ?string, ultima_cobranca: ?string}
+     */
+    private function alinharDatasAssinaturaComFaturas(array $row): array
+    {
+        $dataInicio = $row['matricula_data_inicio'] ?? $row['data_inicio'] ?? null;
+        $proximaParcela = $row['proxima_parcela_vencimento'] ?? null;
+        $proximaMatricula = $row['matricula_proxima_vencimento'] ?? null;
+        $proximaOficial = $proximaParcela ?: $proximaMatricula;
+
+        $tipoCobranca = $row['tipo_cobranca'] ?? 'recorrente';
+        $isAvulso = $tipoCobranca === 'avulso';
+
+        // Mobile avulso usa data_fim como "próxima cobrança"; recorrente usa proxima_cobranca.
+        $dataFim = $isAvulso
+            ? ($proximaOficial ?: ($row['data_fim'] ?? null))
+            : ($row['data_fim'] ?? null);
+        $proximaCobranca = $isAvulso
+            ? ($row['proxima_cobranca'] ?? null)
+            : ($proximaOficial ?: ($row['proxima_cobranca'] ?? null));
+
+        // Para avulso, também preenche proxima_cobranca com a data oficial
+        // (alguns clientes leem esse campo independentemente do tipo).
+        if ($isAvulso && $proximaOficial) {
+            $proximaCobranca = $proximaOficial;
+        }
+
+        $ultimaCobranca = $row['ultima_parcela_pagamento']
+            ?? $row['ultima_cobranca']
+            ?? null;
+
+        if (is_string($ultimaCobranca) && str_contains($ultimaCobranca, ' ')) {
+            $ultimaCobranca = substr($ultimaCobranca, 0, 10);
+        }
+
+        return [
+            'data_inicio' => $dataInicio,
+            'data_fim' => $dataFim,
+            'proxima_cobranca' => $proximaCobranca,
+            'ultima_cobranca' => $ultimaCobranca,
+        ];
     }
 
     private function getStatusLabel(string $status): string

@@ -1270,6 +1270,14 @@ class MercadoPagoWebhookController
                 $novoPagamentoId = $this->db->lastInsertId();
                 error_log("[Webhook MP] ✅ Novo pagamento #{$novoPagamentoId} criado como PAGO (Assinatura)");
             }
+
+            try {
+                $pagamentoModel = new \App\Models\PagamentoPlano($this->db);
+                $pagamentoModel->atualizarStatusMatricula((int) $matricula['tenant_id'], $matriculaId);
+                $this->sincronizarDatasAssinaturaComFaturas($matriculaId, $dataPagamento);
+            } catch (\Exception $e) {
+                error_log("[Webhook MP] ⚠️ Erro ao sincronizar assinatura após baixa recorrente #{$matriculaId}: " . $e->getMessage());
+            }
             
         } catch (\Exception $e) {
             error_log("[Webhook MP] ❌ Erro ao baixar pagamento_plano (assinatura): " . $e->getMessage());
@@ -1973,9 +1981,10 @@ class MercadoPagoWebhookController
                 return;
             }
             
-            // Se já está ativa/paga, não atualizar
+            // Se já está ativa/paga, ainda sincroniza datas com as faturas
             if (in_array($assinatura['status_atual'], ['ativa', 'paga'])) {
-                error_log("[Webhook MP] ℹ️ Assinatura #{$assinatura['id']} já está {$assinatura['status_atual']}, ignorando");
+                error_log("[Webhook MP] ℹ️ Assinatura #{$assinatura['id']} já está {$assinatura['status_atual']}, sincronizando datas");
+                $this->sincronizarDatasAssinaturaComFaturas($matriculaId, $pagamento['date_approved'] ?? null);
                 return;
             }
             
@@ -2019,6 +2028,8 @@ class MercadoPagoWebhookController
             if ($stmtUpdate->rowCount() > 0) {
                 error_log("[Webhook MP] ✅ Assinatura #{$assinatura['id']} atualizada para status '{$statusCodigo}'");
             }
+
+            $this->sincronizarDatasAssinaturaComFaturas($matriculaId, $pagamento['date_approved'] ?? null);
             
         } catch (\Exception $e) {
             error_log("[Webhook MP] ⚠️ Erro ao atualizar assinatura avulsa: " . $e->getMessage());
@@ -2473,6 +2484,7 @@ class MercadoPagoWebhookController
                     error_log("[Webhook MP] ✅ Próximo pagamento #{$proximaParcela['id']} gerado para {$proximaParcela['data_vencimento']} (matrícula #{$matriculaId})");
                 }
                 $pagamentoModel->atualizarStatusMatricula((int) $matricula['tenant_id'], $matriculaId);
+                $this->sincronizarDatasAssinaturaComFaturas($matriculaId, $dateApproved);
             } catch (\Exception $e) {
                 error_log("[Webhook MP] ⚠️ Erro ao gerar próximo pagamento matrícula #{$matriculaId}: " . $e->getMessage());
             }
@@ -2480,6 +2492,78 @@ class MercadoPagoWebhookController
         } catch (\Exception $e) {
             error_log("[Webhook MP] ❌ Erro ao baixar pagamento_plano: " . $e->getMessage());
             error_log("[Webhook MP] Stack: " . $e->getTraceAsString());
+        }
+    }
+
+    /**
+     * Mantém assinaturas.data_fim / proxima_cobranca / ultima_cobranca alinhadas
+     * com matriculas + pagamentos_plano (fonte oficial do painel).
+     */
+    private function sincronizarDatasAssinaturaComFaturas(int $matriculaId, ?string $ultimaCobrancaFallback = null): void
+    {
+        try {
+            $stmt = $this->db->prepare("
+                SELECT
+                    a.id,
+                    a.tipo_cobranca,
+                    m.data_inicio as matricula_data_inicio,
+                    m.proxima_data_vencimento,
+                    (
+                        SELECT MIN(pp.data_vencimento)
+                        FROM pagamentos_plano pp
+                        WHERE pp.matricula_id = a.matricula_id
+                          AND pp.status_pagamento_id IN (1, 3)
+                    ) as proxima_parcela,
+                    (
+                        SELECT MAX(DATE(pp.data_pagamento))
+                        FROM pagamentos_plano pp
+                        WHERE pp.matricula_id = a.matricula_id
+                          AND pp.status_pagamento_id = 2
+                          AND pp.data_pagamento IS NOT NULL
+                    ) as ultima_parcela
+                FROM assinaturas a
+                LEFT JOIN matriculas m ON m.id = a.matricula_id AND m.tenant_id = a.tenant_id
+                WHERE a.matricula_id = ?
+                ORDER BY a.id DESC
+                LIMIT 1
+            ");
+            $stmt->execute([$matriculaId]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$row) {
+                return;
+            }
+
+            $proxima = $row['proxima_parcela'] ?: $row['proxima_data_vencimento'];
+            $ultima = $row['ultima_parcela'];
+            if (!$ultima && $ultimaCobrancaFallback) {
+                $ultima = date('Y-m-d', strtotime($ultimaCobrancaFallback));
+            }
+
+            $isAvulso = ($row['tipo_cobranca'] ?? '') === 'avulso';
+            $dataFim = $isAvulso ? $proxima : null;
+            $proximaCobranca = $proxima;
+
+            $stmtUpdate = $this->db->prepare("
+                UPDATE assinaturas
+                SET data_fim = COALESCE(?, data_fim),
+                    proxima_cobranca = COALESCE(?, proxima_cobranca),
+                    ultima_cobranca = COALESCE(?, ultima_cobranca),
+                    atualizado_em = NOW()
+                WHERE id = ?
+            ");
+            $stmtUpdate->execute([
+                $dataFim,
+                $proximaCobranca,
+                $ultima,
+                $row['id'],
+            ]);
+
+            error_log(
+                "[Webhook MP] 🔄 Assinatura #{$row['id']} sincronizada: " .
+                "proxima={$proximaCobranca}, ultima={$ultima}, data_fim={$dataFim}"
+            );
+        } catch (\Exception $e) {
+            error_log("[Webhook MP] ⚠️ Erro ao sincronizar datas da assinatura matrícula #{$matriculaId}: " . $e->getMessage());
         }
     }
     

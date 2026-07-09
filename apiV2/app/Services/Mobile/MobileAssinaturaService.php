@@ -39,6 +39,11 @@ class MobileAssinaturaService
             ->leftJoin('assinatura_gateways as g', 'g.id', '=', 'a.gateway_id')
             ->leftJoin('planos as p', 'p.id', '=', 'a.plano_id')
             ->leftJoin('modalidades as mo', 'mo.id', '=', 'p.modalidade_id')
+            ->leftJoin('matriculas as m', function ($join) {
+                $join->on('m.id', '=', 'a.matricula_id')
+                    ->on('m.tenant_id', '=', 'a.tenant_id');
+            })
+            ->leftJoin('status_matricula as sm', 'sm.id', '=', 'm.status_id')
             ->where('a.aluno_id', $alunoId)
             ->where('a.tenant_id', $tenantId)
             ->orderByDesc('a.data_inicio')
@@ -51,6 +56,9 @@ class MobileAssinaturaService
                 'ct.codigo as cancelado_por_codigo', 'ct.nome as cancelado_por_nome',
                 'f.nome as ciclo_nome', 'f.meses as ciclo_meses', 'g.nome as gateway_nome',
                 'p.nome as plano_nome', 'mo.nome as modalidade_nome',
+                'm.data_inicio as matricula_data_inicio',
+                'm.proxima_data_vencimento as matricula_proxima_vencimento',
+                'sm.codigo as matricula_status_codigo',
             ]);
 
         $assinaturas = [];
@@ -62,15 +70,48 @@ class MobileAssinaturaService
 
             $canceladoPorId = (int) ($row['cancelado_por_id'] ?? 0);
             $canceladoPorCodigo = strtolower((string) ($row['cancelado_por_codigo'] ?? ''));
-            if ($canceladoPorId === 1 || $canceladoPorCodigo === 'usuario') {
+            $foiCanceladaPeloUsuario = $canceladoPorId === 1 || $canceladoPorCodigo === 'usuario';
+            if ($foiCanceladaPeloUsuario) {
                 $statusCodigo = 'cancelada';
                 $statusNome = $row['cancelado_por_nome'] ?: 'Cancelado pelo Usuário';
                 $statusCor = '#DC2626';
             }
 
+            $matriculaId = (int) ($row['matricula_id'] ?? 0);
+            $proximaParcela = null;
+            $ultimaParcela = null;
+            if ($matriculaId > 0) {
+                $proximaParcela = DB::table('pagamentos_plano')
+                    ->where('matricula_id', $matriculaId)
+                    ->whereIn('status_pagamento_id', [1, 3])
+                    ->min('data_vencimento');
+                $ultimaParcela = DB::table('pagamentos_plano')
+                    ->where('matricula_id', $matriculaId)
+                    ->where('status_pagamento_id', 2)
+                    ->whereNotNull('data_pagamento')
+                    ->max(DB::raw('DATE(data_pagamento)'));
+            }
+
+            $datas = $this->alinharDatasAssinaturaComFaturas($row, $proximaParcela, $ultimaParcela);
+
+            $temProximaParcela = ! empty($proximaParcela);
+            $matriculaAtiva = ($row['matricula_status_codigo'] ?? '') === 'ativa';
+            if (
+                ! $foiCanceladaPeloUsuario
+                && in_array(strtolower((string) $statusCodigo), ['paga', 'pago', 'paid', 'approved'], true)
+                && $temProximaParcela
+                && $matriculaAtiva
+            ) {
+                $statusCodigo = 'ativa';
+                $statusNome = 'Ativa';
+                $statusCor = '#16A34A';
+            }
+
             $isPendente = in_array($statusCodigo, ['pendente', 'pending'], true);
+            $tipoCobranca = $row['tipo_cobranca'] ?? 'recorrente';
             $item = [
                 'id' => (int) $row['id'],
+                'matricula_id' => $matriculaId ?: null,
                 'status' => [
                     'id' => (int) $row['status_id'],
                     'codigo' => $statusCodigo,
@@ -83,12 +124,12 @@ class MobileAssinaturaService
                     'cancelado_por_nome' => $row['cancelado_por_nome'] ?? null,
                 ],
                 'valor' => (float) $row['valor'],
-                'tipo_cobranca' => $row['tipo_cobranca'] ?? 'recorrente',
-                'recorrente' => ($row['tipo_cobranca'] ?? '') === 'recorrente',
-                'data_inicio' => $row['data_inicio'],
-                'data_fim' => $row['data_fim'],
-                'proxima_cobranca' => $row['proxima_cobranca'],
-                'ultima_cobranca' => $row['ultima_cobranca'],
+                'tipo_cobranca' => $tipoCobranca,
+                'recorrente' => $tipoCobranca === 'recorrente',
+                'data_inicio' => $datas['data_inicio'],
+                'data_fim' => $datas['data_fim'],
+                'proxima_cobranca' => $datas['proxima_cobranca'],
+                'ultima_cobranca' => $datas['ultima_cobranca'],
                 'mp_preapproval_id' => $row['mp_preapproval_id'],
                 'preference_id' => $row['gateway_preference_id'],
                 'external_reference' => $row['external_reference'],
@@ -315,6 +356,37 @@ class MobileAssinaturaService
                     'status_nome' => $pendente->status_nome ?? 'Pendente',
                 ] : null,
             ],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return array{data_inicio: ?string, data_fim: ?string, proxima_cobranca: ?string, ultima_cobranca: ?string}
+     */
+    private function alinharDatasAssinaturaComFaturas(
+        array $row,
+        mixed $proximaParcela,
+        mixed $ultimaParcela,
+    ): array {
+        $dataInicio = $row['matricula_data_inicio'] ?? $row['data_inicio'] ?? null;
+        $proximaOficial = $proximaParcela ?: ($row['matricula_proxima_vencimento'] ?? null);
+        $isAvulso = ($row['tipo_cobranca'] ?? '') === 'avulso';
+
+        $dataFim = $isAvulso
+            ? ($proximaOficial ?: ($row['data_fim'] ?? null))
+            : ($row['data_fim'] ?? null);
+        $proximaCobranca = $proximaOficial ?: ($row['proxima_cobranca'] ?? null);
+
+        $ultimaCobranca = $ultimaParcela ?: ($row['ultima_cobranca'] ?? null);
+        if (is_string($ultimaCobranca) && str_contains($ultimaCobranca, ' ')) {
+            $ultimaCobranca = substr($ultimaCobranca, 0, 10);
+        }
+
+        return [
+            'data_inicio' => $dataInicio,
+            'data_fim' => $dataFim,
+            'proxima_cobranca' => $proximaCobranca,
+            'ultima_cobranca' => $ultimaCobranca,
         ];
     }
 }

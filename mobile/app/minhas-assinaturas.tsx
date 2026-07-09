@@ -152,6 +152,14 @@ export default function MinhasAssinaturasScreen() {
 
   const formatDate = (value?: string | null) => {
     if (!value) return null;
+    // Preferir parse local de YYYY-MM-DD para evitar shift de timezone (UTC).
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value));
+    if (match) {
+      const year = Number(match[1]);
+      const month = Number(match[2]);
+      const day = Number(match[3]);
+      return `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${year}`;
+    }
     const date = new Date(value);
     return Number.isNaN(date.getTime())
       ? null
