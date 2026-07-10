@@ -1274,7 +1274,7 @@ class MercadoPagoWebhookController
             try {
                 $pagamentoModel = new \App\Models\PagamentoPlano($this->db);
                 $pagamentoModel->atualizarStatusMatricula((int) $matricula['tenant_id'], $matriculaId);
-                $this->sincronizarDatasAssinaturaComFaturas($matriculaId, $dataPagamento);
+                $this->sincronizarDatasAssinaturaComFaturas((int) $matricula['tenant_id'], $matriculaId, $dataPagamento);
             } catch (\Exception $e) {
                 error_log("[Webhook MP] ⚠️ Erro ao sincronizar assinatura após baixa recorrente #{$matriculaId}: " . $e->getMessage());
             }
@@ -1947,7 +1947,7 @@ class MercadoPagoWebhookController
             
             // Buscar assinatura pela matrícula OU pelo preference_id
             $stmtBuscar = $this->db->prepare("
-                SELECT a.id, a.tipo_cobranca, a.gateway_preference_id, a.status_id,
+                SELECT a.id, a.tenant_id, a.tipo_cobranca, a.gateway_preference_id, a.status_id,
                        a.matricula_id,
                        s.codigo as status_atual
                 FROM assinaturas a
@@ -1981,10 +1981,14 @@ class MercadoPagoWebhookController
                 return;
             }
             
+            $tenantId = (int) ($assinatura['tenant_id'] ?? 0);
+
             // Se já está ativa/paga, ainda sincroniza datas com as faturas
             if (in_array($assinatura['status_atual'], ['ativa', 'paga'])) {
                 error_log("[Webhook MP] ℹ️ Assinatura #{$assinatura['id']} já está {$assinatura['status_atual']}, sincronizando datas");
-                $this->sincronizarDatasAssinaturaComFaturas($matriculaId, $pagamento['date_approved'] ?? null);
+                if ($tenantId > 0) {
+                    $this->sincronizarDatasAssinaturaComFaturas($tenantId, $matriculaId, $pagamento['date_approved'] ?? null);
+                }
                 return;
             }
             
@@ -2029,7 +2033,9 @@ class MercadoPagoWebhookController
                 error_log("[Webhook MP] ✅ Assinatura #{$assinatura['id']} atualizada para status '{$statusCodigo}'");
             }
 
-            $this->sincronizarDatasAssinaturaComFaturas($matriculaId, $pagamento['date_approved'] ?? null);
+            if ($tenantId > 0) {
+                $this->sincronizarDatasAssinaturaComFaturas($tenantId, $matriculaId, $pagamento['date_approved'] ?? null);
+            }
             
         } catch (\Exception $e) {
             error_log("[Webhook MP] ⚠️ Erro ao atualizar assinatura avulsa: " . $e->getMessage());
@@ -2484,7 +2490,8 @@ class MercadoPagoWebhookController
                     error_log("[Webhook MP] ✅ Próximo pagamento #{$proximaParcela['id']} gerado para {$proximaParcela['data_vencimento']} (matrícula #{$matriculaId})");
                 }
                 $pagamentoModel->atualizarStatusMatricula((int) $matricula['tenant_id'], $matriculaId);
-                $this->sincronizarDatasAssinaturaComFaturas($matriculaId, $dateApproved);
+                // Datas da assinatura: sincronizadas em atualizarAssinaturaAvulsa()
+                // (chamado em seguida no fluxo approved), para evitar UPDATE duplicado.
             } catch (\Exception $e) {
                 error_log("[Webhook MP] ⚠️ Erro ao gerar próximo pagamento matrícula #{$matriculaId}: " . $e->getMessage());
             }
@@ -2496,71 +2503,120 @@ class MercadoPagoWebhookController
     }
 
     /**
-     * Mantém assinaturas.data_fim / proxima_cobranca / ultima_cobranca alinhadas
-     * com matriculas + pagamentos_plano (fonte oficial do painel).
+     * Mantém assinaturas.data_inicio / data_fim / proxima_cobranca / ultima_cobranca
+     * alinhadas com matriculas + pagamentos_plano (mesma regra de alinharDatasAssinaturaComFaturas).
      */
-    private function sincronizarDatasAssinaturaComFaturas(int $matriculaId, ?string $ultimaCobrancaFallback = null): void
+    private function sincronizarDatasAssinaturaComFaturas(int $tenantId, int $matriculaId, ?string $ultimaCobrancaFallback = null): void
     {
         try {
             $stmt = $this->db->prepare("
                 SELECT
                     a.id,
                     a.tipo_cobranca,
+                    a.data_inicio,
+                    a.data_fim,
+                    a.proxima_cobranca,
+                    a.ultima_cobranca,
                     m.data_inicio as matricula_data_inicio,
-                    m.proxima_data_vencimento,
+                    m.proxima_data_vencimento as matricula_proxima_vencimento,
                     (
                         SELECT MIN(pp.data_vencimento)
                         FROM pagamentos_plano pp
                         WHERE pp.matricula_id = a.matricula_id
+                          AND pp.tenant_id = a.tenant_id
                           AND pp.status_pagamento_id IN (1, 3)
-                    ) as proxima_parcela,
+                    ) as proxima_parcela_vencimento,
+                    (
+                        SELECT MAX(pp.data_vencimento)
+                        FROM pagamentos_plano pp
+                        WHERE pp.matricula_id = a.matricula_id
+                          AND pp.tenant_id = a.tenant_id
+                          AND pp.status_pagamento_id = 2
+                    ) as ultimo_vencimento_pago,
                     (
                         SELECT MAX(DATE(pp.data_pagamento))
                         FROM pagamentos_plano pp
                         WHERE pp.matricula_id = a.matricula_id
+                          AND pp.tenant_id = a.tenant_id
                           AND pp.status_pagamento_id = 2
                           AND pp.data_pagamento IS NOT NULL
-                    ) as ultima_parcela
+                    ) as ultima_parcela_pagamento,
+                    (
+                        SELECT MAX(DATE(pm.date_approved))
+                        FROM pagamentos_mercadopago pm
+                        WHERE pm.matricula_id = a.matricula_id
+                          AND pm.tenant_id = a.tenant_id
+                          AND pm.status = 'approved'
+                          AND pm.date_approved IS NOT NULL
+                    ) as ultima_cobranca_mp
                 FROM assinaturas a
                 LEFT JOIN matriculas m ON m.id = a.matricula_id AND m.tenant_id = a.tenant_id
-                WHERE a.matricula_id = ?
+                WHERE a.matricula_id = ? AND a.tenant_id = ?
                 ORDER BY a.id DESC
                 LIMIT 1
             ");
-            $stmt->execute([$matriculaId]);
+            $stmt->execute([$matriculaId, $tenantId]);
             $row = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (!$row) {
                 return;
             }
 
-            $proxima = $row['proxima_parcela'] ?: $row['proxima_data_vencimento'];
-            $ultima = $row['ultima_parcela'];
-            if (!$ultima && $ultimaCobrancaFallback) {
-                $ultima = date('Y-m-d', strtotime($ultimaCobrancaFallback));
+            $isAvulso = ($row['tipo_cobranca'] ?? '') === 'avulso';
+            // Mesma regra do AssinaturaController::alinharDatasAssinaturaComFaturas
+            $dataInicio = $row['matricula_data_inicio'] ?? $row['data_inicio'] ?? null;
+            $proximaParcela = $row['proxima_parcela_vencimento'] ?? null;
+            $proximaMatricula = $row['matricula_proxima_vencimento'] ?? null;
+            $acessoPago = $proximaMatricula ?: ($row['ultimo_vencimento_pago'] ?? null);
+
+            if ($isAvulso) {
+                // Avulso: fim = período pago; próxima cobrança = parcela aberta.
+                $dataFim = $acessoPago ?: ($row['data_fim'] ?? null);
+                $proximaCobranca = $proximaParcela ?: ($row['proxima_cobranca'] ?? null);
+            } else {
+                $proximaOficial = $proximaParcela ?: $acessoPago;
+                $dataFim = $row['data_fim'] ?? null;
+                $proximaCobranca = $proximaOficial ?: ($row['proxima_cobranca'] ?? null);
             }
 
-            $isAvulso = ($row['tipo_cobranca'] ?? '') === 'avulso';
-            $dataFim = $isAvulso ? $proxima : null;
-            $proximaCobranca = $proxima;
+            $ultima = $row['ultima_parcela_pagamento'] ?? null;
+            if (!$ultima && $ultimaCobrancaFallback) {
+                $parsed = strtotime($ultimaCobrancaFallback);
+                if ($parsed !== false) {
+                    $ultima = date('Y-m-d', $parsed);
+                }
+            } elseif (!$ultima && !empty($row['ultima_cobranca_mp'])) {
+                $parsed = strtotime((string) $row['ultima_cobranca_mp']);
+                if ($parsed !== false) {
+                    $ultima = date('Y-m-d', $parsed);
+                }
+            } elseif (!$ultima) {
+                $ultima = $row['ultima_cobranca'] ?? null;
+            }
+            if (is_string($ultima) && str_contains($ultima, ' ')) {
+                $ultima = substr($ultima, 0, 10);
+            }
 
             $stmtUpdate = $this->db->prepare("
                 UPDATE assinaturas
-                SET data_fim = COALESCE(?, data_fim),
+                SET data_inicio = COALESCE(?, data_inicio),
+                    data_fim = COALESCE(?, data_fim),
                     proxima_cobranca = COALESCE(?, proxima_cobranca),
                     ultima_cobranca = COALESCE(?, ultima_cobranca),
                     atualizado_em = NOW()
-                WHERE id = ?
+                WHERE id = ? AND tenant_id = ?
             ");
             $stmtUpdate->execute([
+                $dataInicio,
                 $dataFim,
                 $proximaCobranca,
                 $ultima,
                 $row['id'],
+                $tenantId,
             ]);
 
             error_log(
                 "[Webhook MP] 🔄 Assinatura #{$row['id']} sincronizada: " .
-                "proxima={$proximaCobranca}, ultima={$ultima}, data_fim={$dataFim}"
+                "inicio={$dataInicio}, fim={$dataFim}, proxima={$proximaCobranca}, ultima={$ultima}"
             );
         } catch (\Exception $e) {
             error_log("[Webhook MP] ⚠️ Erro ao sincronizar datas da assinatura matrícula #{$matriculaId}: " . $e->getMessage());

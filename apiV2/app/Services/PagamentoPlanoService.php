@@ -67,6 +67,17 @@ class PagamentoPlanoService
 
     public function atualizarStatusMatricula(int $tenantId, int $matriculaId): void
     {
+        $matriculaMeta = DB::table('matriculas')
+            ->where('tenant_id', $tenantId)
+            ->where('id', $matriculaId)
+            ->first(['tipo_cobranca', 'data_vencimento']);
+
+        if (! $matriculaMeta) {
+            return;
+        }
+
+        $ehAvulso = ($matriculaMeta->tipo_cobranca ?? '') === 'avulso';
+
         $row = DB::table('pagamentos_plano')
             ->where('tenant_id', $tenantId)
             ->where('matricula_id', $matriculaId)
@@ -81,8 +92,29 @@ class PagamentoPlanoService
         $pendentes = (int) ($row->pendentes ?? 0);
         $diasAtraso = (int) ($row->dias_atraso ?? 0);
 
-        if ($pendentes > 0) {
-            $novoStatus = $diasAtraso >= 5 ? 'cancelada' : ($diasAtraso >= 1 ? 'vencida' : 'ativa');
+        // Avulso: acesso = fim do período PAGO (última parcela paga).
+        // Parcela futura "Aguardando" é só cobrança — não estende vigência.
+        $acessoAte = null;
+        if ($ehAvulso) {
+            $acessoAte = DB::table('pagamentos_plano')
+                ->where('tenant_id', $tenantId)
+                ->where('matricula_id', $matriculaId)
+                ->where('status_pagamento_id', 2)
+                ->max('data_vencimento')
+                ?: ($matriculaMeta->data_vencimento ?? null);
+
+            if ($acessoAte && $acessoAte < date('Y-m-d')) {
+                $diasAtrasoAcesso = (int) ((new \DateTime(date('Y-m-d')))->diff(new \DateTime($acessoAte))->days);
+                $novoStatus = $diasAtrasoAcesso >= 5 ? 'cancelada' : 'vencida';
+            }
+            // Avulso: status/acesso só pelo período pago. Parcelas pendentes
+            // são cobrança futura e não alteram vigência nem status.
+        } elseif ($pendentes > 0) {
+            if ($diasAtraso >= 5) {
+                $novoStatus = 'cancelada';
+            } elseif ($diasAtraso >= 1) {
+                $novoStatus = 'vencida';
+            }
         }
 
         $statusId = DB::table('status_matricula')->where('codigo', $novoStatus)->value('id');
@@ -94,6 +126,17 @@ class PagamentoPlanoService
             ->where('tenant_id', $tenantId)
             ->where('id', $matriculaId)
             ->update(['status_id' => $statusId, 'updated_at' => now()]);
+
+        if ($ehAvulso) {
+            if ($acessoAte) {
+                DB::table('matriculas')
+                    ->where('id', $matriculaId)
+                    ->where('tenant_id', $tenantId)
+                    ->update(['proxima_data_vencimento' => $acessoAte, 'updated_at' => now()]);
+            }
+            // Avulso sem parcela paga: não usar pendentes para proxima_data_vencimento.
+            return;
+        }
 
         if ($novoStatus === 'ativa') {
             $proxima = DB::table('pagamentos_plano')

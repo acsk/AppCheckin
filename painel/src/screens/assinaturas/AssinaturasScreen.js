@@ -42,6 +42,12 @@ const formatCurrency = (value) => {
 
 const formatDate = (date) => {
   if (!date) return '-';
+  // YYYY-MM-DD: parse local para evitar shift UTC (ex.: 02/06 virando 01/06).
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(date));
+  if (match) {
+    const [, y, m, d] = match;
+    return `${d}/${m}/${y}`;
+  }
   const parsed = new Date(date);
   if (Number.isNaN(parsed.getTime())) return '-';
   return parsed.toLocaleDateString('pt-BR');
@@ -49,6 +55,11 @@ const formatDate = (date) => {
 
 const formatDateTime = (date) => {
   if (!date) return '-';
+  const match = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/.exec(String(date));
+  if (match) {
+    const [, y, m, d, hh, mm] = match;
+    return `${d}/${m}/${y}, ${hh}:${mm}`;
+  }
   const parsed = new Date(date);
   if (Number.isNaN(parsed.getTime())) return '-';
   return parsed.toLocaleString('pt-BR');

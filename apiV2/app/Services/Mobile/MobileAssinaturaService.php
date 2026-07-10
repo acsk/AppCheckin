@@ -47,7 +47,7 @@ class MobileAssinaturaService
             ->where('a.aluno_id', $alunoId)
             ->where('a.tenant_id', $tenantId)
             ->orderByDesc('a.data_inicio')
-            ->get([
+            ->select([
                 'a.id', 'a.matricula_id', 'a.status_id', 'a.valor', 'a.data_inicio', 'a.data_fim',
                 'a.proxima_cobranca', 'a.ultima_cobranca', 'a.gateway_assinatura_id as mp_preapproval_id',
                 'a.gateway_preference_id', 'a.external_reference', 'a.payment_url', 'a.tipo_cobranca',
@@ -59,7 +59,38 @@ class MobileAssinaturaService
                 'm.data_inicio as matricula_data_inicio',
                 'm.proxima_data_vencimento as matricula_proxima_vencimento',
                 'sm.codigo as matricula_status_codigo',
-            ]);
+                DB::raw('(
+                    SELECT MIN(pp.data_vencimento)
+                    FROM pagamentos_plano pp
+                    WHERE pp.matricula_id = a.matricula_id
+                      AND pp.tenant_id = a.tenant_id
+                      AND pp.status_pagamento_id IN (1, 3)
+                ) as proxima_parcela_vencimento'),
+                DB::raw('(
+                    SELECT MAX(pp.data_vencimento)
+                    FROM pagamentos_plano pp
+                    WHERE pp.matricula_id = a.matricula_id
+                      AND pp.tenant_id = a.tenant_id
+                      AND pp.status_pagamento_id = 2
+                ) as ultimo_vencimento_pago'),
+                DB::raw('(
+                    SELECT MAX(DATE(pp.data_pagamento))
+                    FROM pagamentos_plano pp
+                    WHERE pp.matricula_id = a.matricula_id
+                      AND pp.tenant_id = a.tenant_id
+                      AND pp.status_pagamento_id = 2
+                      AND pp.data_pagamento IS NOT NULL
+                ) as ultima_parcela_pagamento'),
+                DB::raw('(
+                    SELECT MAX(DATE(pm.date_approved))
+                    FROM pagamentos_mercadopago pm
+                    WHERE pm.matricula_id = a.matricula_id
+                      AND pm.tenant_id = a.tenant_id
+                      AND pm.status = \'approved\'
+                      AND pm.date_approved IS NOT NULL
+                ) as ultima_cobranca_mp'),
+            ])
+            ->get();
 
         $assinaturas = [];
         foreach ($rows as $row) {
@@ -78,23 +109,10 @@ class MobileAssinaturaService
             }
 
             $matriculaId = (int) ($row['matricula_id'] ?? 0);
-            $proximaParcela = null;
-            $ultimaParcela = null;
-            if ($matriculaId > 0) {
-                $proximaParcela = DB::table('pagamentos_plano')
-                    ->where('matricula_id', $matriculaId)
-                    ->whereIn('status_pagamento_id', [1, 3])
-                    ->min('data_vencimento');
-                $ultimaParcela = DB::table('pagamentos_plano')
-                    ->where('matricula_id', $matriculaId)
-                    ->where('status_pagamento_id', 2)
-                    ->whereNotNull('data_pagamento')
-                    ->max(DB::raw('DATE(data_pagamento)'));
-            }
 
-            $datas = $this->alinharDatasAssinaturaComFaturas($row, $proximaParcela, $ultimaParcela);
+            $datas = $this->alinharDatasAssinaturaComFaturas($row);
 
-            $temProximaParcela = ! empty($proximaParcela);
+            $temProximaParcela = ! empty($row['proxima_parcela_vencimento']);
             $matriculaAtiva = ($row['matricula_status_codigo'] ?? '') === 'ativa';
             if (
                 ! $foiCanceladaPeloUsuario
@@ -361,23 +379,41 @@ class MobileAssinaturaService
 
     /**
      * @param  array<string, mixed>  $row
+     * @param  string|null  $ultimaCobrancaFallback  data de pagamento do webhook (date_approved)
      * @return array{data_inicio: ?string, data_fim: ?string, proxima_cobranca: ?string, ultima_cobranca: ?string}
      */
-    private function alinharDatasAssinaturaComFaturas(
-        array $row,
-        mixed $proximaParcela,
-        mixed $ultimaParcela,
-    ): array {
+    private function alinharDatasAssinaturaComFaturas(array $row, ?string $ultimaCobrancaFallback = null): array
+    {
         $dataInicio = $row['matricula_data_inicio'] ?? $row['data_inicio'] ?? null;
-        $proximaOficial = $proximaParcela ?: ($row['matricula_proxima_vencimento'] ?? null);
+        $proximaParcela = $row['proxima_parcela_vencimento'] ?? null;
+        $proximaMatricula = $row['matricula_proxima_vencimento'] ?? null;
+        $acessoPago = $proximaMatricula ?: ($row['ultimo_vencimento_pago'] ?? null);
         $isAvulso = ($row['tipo_cobranca'] ?? '') === 'avulso';
 
-        $dataFim = $isAvulso
-            ? ($proximaOficial ?: ($row['data_fim'] ?? null))
-            : ($row['data_fim'] ?? null);
-        $proximaCobranca = $proximaOficial ?: ($row['proxima_cobranca'] ?? null);
+        if ($isAvulso) {
+            // Avulso: fim = período pago; próxima cobrança = parcela aberta.
+            $dataFim = $acessoPago ?: ($row['data_fim'] ?? null);
+            $proximaCobranca = $proximaParcela ?: ($row['proxima_cobranca'] ?? null);
+        } else {
+            $proximaOficial = $proximaParcela ?: $acessoPago;
+            $dataFim = $row['data_fim'] ?? null;
+            $proximaCobranca = $proximaOficial ?: ($row['proxima_cobranca'] ?? null);
+        }
 
-        $ultimaCobranca = $ultimaParcela ?: ($row['ultima_cobranca'] ?? null);
+        $ultimaCobranca = $row['ultima_parcela_pagamento'] ?? null;
+        if (!$ultimaCobranca && $ultimaCobrancaFallback) {
+            $parsed = strtotime($ultimaCobrancaFallback);
+            if ($parsed !== false) {
+                $ultimaCobranca = date('Y-m-d', $parsed);
+            }
+        } elseif (!$ultimaCobranca && ! empty($row['ultima_cobranca_mp'])) {
+            $parsed = strtotime((string) $row['ultima_cobranca_mp']);
+            if ($parsed !== false) {
+                $ultimaCobranca = date('Y-m-d', $parsed);
+            }
+        } elseif (!$ultimaCobranca) {
+            $ultimaCobranca = $row['ultima_cobranca'] ?? null;
+        }
         if (is_string($ultimaCobranca) && str_contains($ultimaCobranca, ' ')) {
             $ultimaCobranca = substr($ultimaCobranca, 0, 10);
         }

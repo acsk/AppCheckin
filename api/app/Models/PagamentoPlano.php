@@ -419,6 +419,16 @@ class PagamentoPlano
      */
     public function atualizarStatusMatricula(int $tenantId, int $matriculaId): void
     {
+        $stmtTipo = $this->pdo->prepare("
+            SELECT tipo_cobranca, data_vencimento
+            FROM matriculas
+            WHERE tenant_id = :tenant_id AND id = :matricula_id
+            LIMIT 1
+        ");
+        $stmtTipo->execute(['tenant_id' => $tenantId, 'matricula_id' => $matriculaId]);
+        $matriculaMeta = $stmtTipo->fetch(\PDO::FETCH_ASSOC) ?: [];
+        $ehAvulso = ($matriculaMeta['tipo_cobranca'] ?? '') === 'avulso';
+
         // Verificar se ainda há pagamentos pendentes ou atrasados
         $sqlVerifica = "
             SELECT 
@@ -436,7 +446,31 @@ class PagamentoPlano
         $diasAtraso = (int) $resultado['dias_atraso'];
         $pendentes = (int) $resultado['pendentes'];
 
-        if ($pendentes > 0) {
+        // Avulso: acesso = fim do período PAGO (última parcela paga).
+        // Parcela futura "Aguardando" é só cobrança — não estende vigência.
+        $acessoAte = null;
+        if ($ehAvulso) {
+            $stmtPago = $this->pdo->prepare("
+                SELECT MAX(data_vencimento)
+                FROM pagamentos_plano
+                WHERE tenant_id = :tenant_id
+                  AND matricula_id = :matricula_id
+                  AND status_pagamento_id = 2
+            ");
+            $stmtPago->execute(['tenant_id' => $tenantId, 'matricula_id' => $matriculaId]);
+            $acessoAte = $stmtPago->fetchColumn() ?: ($matriculaMeta['data_vencimento'] ?? null);
+
+            if ($acessoAte && $acessoAte < date('Y-m-d')) {
+                $diasAtrasoAcesso = (int) ((new \DateTime(date('Y-m-d')))->diff(new \DateTime($acessoAte))->days);
+                if ($diasAtrasoAcesso >= 5) {
+                    $novoStatus = 'cancelada';
+                } else {
+                    $novoStatus = 'vencida';
+                }
+            }
+            // Avulso: status/acesso só pelo período pago. Parcelas pendentes
+            // são cobrança futura e não alteram vigência nem status.
+        } elseif ($pendentes > 0) {
             if ($diasAtraso >= 5) {
                 $novoStatus = 'cancelada';
             } elseif ($diasAtraso >= 1) {
@@ -458,6 +492,19 @@ class PagamentoPlano
             'tenant_id' => $tenantId,
             'matricula_id' => $matriculaId
         ]);
+
+        if ($ehAvulso) {
+            if ($acessoAte) {
+                // Sempre alinhar "acesso até" ao período pago (não à parcela futura).
+                $this->pdo->prepare("
+                    UPDATE matriculas
+                    SET proxima_data_vencimento = ?, updated_at = NOW()
+                    WHERE tenant_id = ? AND id = ?
+                ")->execute([$acessoAte, $tenantId, $matriculaId]);
+            }
+            // Avulso sem parcela paga: não usar pendentes para proxima_data_vencimento.
+            return;
+        }
 
         if ($novoStatus === 'ativa') {
             $stmtProx = $this->pdo->prepare("
@@ -689,6 +736,7 @@ class PagamentoPlano
             // Buscar informações da matrícula, plano e ciclo
             $stmt = $this->pdo->prepare("
                 SELECT m.id, m.tenant_id, m.aluno_id, m.plano_id, m.plano_ciclo_id, m.tipo_cobranca, m.valor,
+                       m.data_vencimento,
                        p.duracao_dias, pc.meses as ciclo_meses, af.meses as frequencia_meses
                 FROM matriculas m
                 INNER JOIN planos p ON p.id = m.plano_id
@@ -728,6 +776,8 @@ class PagamentoPlano
             $stmtPendente->execute([$matriculaId]);
             $pendente = $stmtPendente->fetch(\PDO::FETCH_ASSOC);
 
+            $ehAvulso = ($matricula['tipo_cobranca'] ?? '') === 'avulso';
+
             if ($pendente) {
                 error_log("[gerarProximoPagamento] Matrícula #{$matriculaId}: já existe pagamento pendente #{$pendente['id']} para {$pendente['data_vencimento']}");
                 // Verificar se proxima_data_vencimento já foi atualizada para data mais recente (ex: por ativarMatricula)
@@ -743,8 +793,9 @@ class PagamentoPlano
                     ");
                     $stmtFixPendente->execute([$proxAtual, $pendente['id']]);
                     error_log("[gerarProximoPagamento] Matrícula #{$matriculaId}: corrigida data_vencimento do pendente #{$pendente['id']} de {$pendente['data_vencimento']} para {$proxAtual}");
-                } else {
-                    // Sincronizar proxima_data_vencimento a partir do pagamento pendente
+                } elseif (!$ehAvulso) {
+                    // Recorrente: sincronizar acesso com a próxima cobrança.
+                    // Avulso: NÃO — parcela futura não paga não estende vigência.
                     $stmtSync = $this->pdo->prepare("
                         UPDATE matriculas SET proxima_data_vencimento = ?, updated_at = NOW() WHERE id = ? AND (proxima_data_vencimento IS NULL OR proxima_data_vencimento != ?)
                     ");
@@ -829,11 +880,30 @@ class PagamentoPlano
                 $descontoModel->decrementarParcelas($infoDesconto['ids']);
             }
 
-            // Atualizar proxima_data_vencimento da matrícula
-            $stmtUpdMat = $this->pdo->prepare("
-                UPDATE matriculas SET proxima_data_vencimento = ?, updated_at = NOW() WHERE id = ?
-            ");
-            $stmtUpdMat->execute([$proximoVencimentoStr, $matriculaId]);
+            // Recorrente: próxima cobrança = acesso até.
+            // Avulso: vigência fica no período já pago; parcela futura é só cobrança.
+            if (!$ehAvulso) {
+                $stmtUpdMat = $this->pdo->prepare("
+                    UPDATE matriculas SET proxima_data_vencimento = ?, updated_at = NOW() WHERE id = ?
+                ");
+                $stmtUpdMat->execute([$proximoVencimentoStr, $matriculaId]);
+            } else {
+                // Mesmo fallback de atualizarStatusMatricula: matricula.data_vencimento.
+                $acessoPago = $dataVencPago ?: ($dataPag ?: ($matricula['data_vencimento'] ?? null));
+                if ($acessoPago) {
+                    $stmtUpdMat = $this->pdo->prepare("
+                        UPDATE matriculas
+                        SET data_vencimento = ?,
+                            proxima_data_vencimento = ?,
+                            updated_at = NOW()
+                        WHERE id = ?
+                    ");
+                    $stmtUpdMat->execute([$acessoPago, $acessoPago, $matriculaId]);
+                    error_log("[gerarProximoPagamento] Matrícula #{$matriculaId} avulsa: vigência mantida em {$acessoPago}, parcela futura #{$novoId} em {$proximoVencimentoStr}");
+                } else {
+                    error_log("[gerarProximoPagamento] Matrícula #{$matriculaId} avulsa: sem data de acesso pago para sincronizar; parcela futura #{$novoId} em {$proximoVencimentoStr}");
+                }
+            }
 
             error_log("[gerarProximoPagamento] ✅ Matrícula #{$matriculaId}: próximo pagamento #{$novoId} criado para {$proximoVencimentoStr} | Desconto: R$" . $infoDesconto['desconto_total']);
 

@@ -463,15 +463,32 @@ class AssinaturaController
                            SELECT MIN(pp.data_vencimento)
                            FROM pagamentos_plano pp
                            WHERE pp.matricula_id = a.matricula_id
+                             AND pp.tenant_id = a.tenant_id
                              AND pp.status_pagamento_id IN (1, 3)
                        ) as proxima_parcela_vencimento,
+                       (
+                           SELECT MAX(pp.data_vencimento)
+                           FROM pagamentos_plano pp
+                           WHERE pp.matricula_id = a.matricula_id
+                             AND pp.tenant_id = a.tenant_id
+                             AND pp.status_pagamento_id = 2
+                       ) as ultimo_vencimento_pago,
                        (
                            SELECT MAX(DATE(pp.data_pagamento))
                            FROM pagamentos_plano pp
                            WHERE pp.matricula_id = a.matricula_id
+                             AND pp.tenant_id = a.tenant_id
                              AND pp.status_pagamento_id = 2
                              AND pp.data_pagamento IS NOT NULL
-                       ) as ultima_parcela_pagamento
+                       ) as ultima_parcela_pagamento,
+                       (
+                           SELECT MAX(DATE(pm.date_approved))
+                           FROM pagamentos_mercadopago pm
+                           WHERE pm.matricula_id = a.matricula_id
+                             AND pm.tenant_id = a.tenant_id
+                             AND pm.status = 'approved'
+                             AND pm.date_approved IS NOT NULL
+                       ) as ultima_cobranca_mp
                 FROM assinaturas a
                 LEFT JOIN assinatura_status s ON s.id = a.status_id
                   LEFT JOIN assinatura_cancelamento_tipos ct ON ct.id = a.cancelado_por_id
@@ -1391,36 +1408,45 @@ class AssinaturaController
      * matriculas + pagamentos_plano.
      *
      * @param array<string, mixed> $row
+     * @param string|null $ultimaCobrancaFallback data de pagamento do webhook (date_approved)
      * @return array{data_inicio: ?string, data_fim: ?string, proxima_cobranca: ?string, ultima_cobranca: ?string}
      */
-    private function alinharDatasAssinaturaComFaturas(array $row): array
+    private function alinharDatasAssinaturaComFaturas(array $row, ?string $ultimaCobrancaFallback = null): array
     {
         $dataInicio = $row['matricula_data_inicio'] ?? $row['data_inicio'] ?? null;
         $proximaParcela = $row['proxima_parcela_vencimento'] ?? null;
         $proximaMatricula = $row['matricula_proxima_vencimento'] ?? null;
-        $proximaOficial = $proximaParcela ?: $proximaMatricula;
+        $acessoPago = $proximaMatricula ?: ($row['ultimo_vencimento_pago'] ?? null);
 
         $tipoCobranca = $row['tipo_cobranca'] ?? 'recorrente';
         $isAvulso = $tipoCobranca === 'avulso';
 
-        // Mobile avulso usa data_fim como "próxima cobrança"; recorrente usa proxima_cobranca.
-        $dataFim = $isAvulso
-            ? ($proximaOficial ?: ($row['data_fim'] ?? null))
-            : ($row['data_fim'] ?? null);
-        $proximaCobranca = $isAvulso
-            ? ($row['proxima_cobranca'] ?? null)
-            : ($proximaOficial ?: ($row['proxima_cobranca'] ?? null));
-
-        // Para avulso, também preenche proxima_cobranca com a data oficial
-        // (alguns clientes leem esse campo independentemente do tipo).
-        if ($isAvulso && $proximaOficial) {
-            $proximaCobranca = $proximaOficial;
+        if ($isAvulso) {
+            // Avulso: fim = período PAGO (vigência da matrícula).
+            // Próxima cobrança = parcela aberta (não estende acesso).
+            $dataFim = $acessoPago ?: ($row['data_fim'] ?? null);
+            $proximaCobranca = $proximaParcela
+                ?: ($row['proxima_cobranca'] ?? null);
+        } else {
+            $proximaOficial = $proximaParcela ?: $acessoPago;
+            $dataFim = $row['data_fim'] ?? null;
+            $proximaCobranca = $proximaOficial ?: ($row['proxima_cobranca'] ?? null);
         }
 
-        $ultimaCobranca = $row['ultima_parcela_pagamento']
-            ?? $row['ultima_cobranca']
-            ?? null;
-
+        $ultimaCobranca = $row['ultima_parcela_pagamento'] ?? null;
+        if (!$ultimaCobranca && $ultimaCobrancaFallback) {
+            $parsed = strtotime($ultimaCobrancaFallback);
+            if ($parsed !== false) {
+                $ultimaCobranca = date('Y-m-d', $parsed);
+            }
+        } elseif (!$ultimaCobranca && !empty($row['ultima_cobranca_mp'])) {
+            $parsed = strtotime((string) $row['ultima_cobranca_mp']);
+            if ($parsed !== false) {
+                $ultimaCobranca = date('Y-m-d', $parsed);
+            }
+        } elseif (!$ultimaCobranca) {
+            $ultimaCobranca = $row['ultima_cobranca'] ?? null;
+        }
         if (is_string($ultimaCobranca) && str_contains($ultimaCobranca, ' ')) {
             $ultimaCobranca = substr($ultimaCobranca, 0, 10);
         }
