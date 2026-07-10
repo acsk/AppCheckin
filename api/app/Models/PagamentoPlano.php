@@ -568,7 +568,7 @@ class PagamentoPlano
         $stmt->execute(['tenant_id' => $tenantId]);
         $marcados = $stmt->rowCount();
 
-        // Avulso: renovação em aberto só fica atrasada quando o período PAGO ATUAL expirou
+        // Avulso: renovação em aberto fica atrasada quando o período PAGO ATUAL expirou
         // (MAX data_vencimento das pagas), não por parcela histórica antiga.
         $sqlAvulso = "
             UPDATE pagamentos_plano pp
@@ -578,13 +578,7 @@ class PagamentoPlano
               AND m.tipo_cobranca = 'avulso'
               AND pp.status_pagamento_id = 1
               AND pp.data_pagamento IS NULL
-              AND COALESCE((
-                  SELECT MAX(pp2.data_vencimento)
-                  FROM pagamentos_plano pp2
-                  WHERE pp2.tenant_id = pp.tenant_id
-                    AND pp2.matricula_id = pp.matricula_id
-                    AND pp2.status_pagamento_id = 2
-              ), '1900-01-01') < CURDATE()
+              AND " . self::sqlAvulsoPeriodoPagoExpirou('pp') . "
         ";
         $stmtAvulso = $this->pdo->prepare($sqlAvulso);
         $stmtAvulso->execute(['tenant_id' => $tenantId]);
@@ -593,8 +587,22 @@ class PagamentoPlano
     }
 
     /**
-     * Parcelas com vencimento futuro não podem permanecer como Atrasado (3).
-     * Ocorre quando data_vencimento é corrigida para frente sem atualizar o status.
+     * Período pago avulso (última parcela paga) já expirou em relação a hoje.
+     */
+    private static function sqlAvulsoPeriodoPagoExpirou(string $ppAlias = 'pp'): string
+    {
+        return "COALESCE((
+            SELECT MAX(pp_acesso.data_vencimento)
+            FROM pagamentos_plano pp_acesso
+            WHERE pp_acesso.tenant_id = {$ppAlias}.tenant_id
+              AND pp_acesso.matricula_id = {$ppAlias}.matricula_id
+              AND pp_acesso.status_pagamento_id = 2
+        ), '1900-01-01') < CURDATE()";
+    }
+
+    /**
+     * Parcelas com vencimento futuro não podem permanecer como Atrasado (3),
+     * exceto renovação avulsa com período pago já expirado.
      */
     public function corrigirParcelasFuturasMarcadasAtrasadas(int $tenantId): int
     {
@@ -607,13 +615,7 @@ class PagamentoPlano
                 AND pp.data_pagamento IS NULL
                 AND NOT (
                     m.tipo_cobranca = 'avulso'
-                    AND COALESCE((
-                        SELECT MAX(pp2.data_vencimento)
-                        FROM pagamentos_plano pp2
-                        WHERE pp2.tenant_id = pp.tenant_id
-                          AND pp2.matricula_id = pp.matricula_id
-                          AND pp2.status_pagamento_id = 2
-                    ), '1900-01-01') < CURDATE()
+                    AND " . self::sqlAvulsoPeriodoPagoExpirou('pp') . "
                 )";
 
         $stmt = $this->pdo->prepare($sql);

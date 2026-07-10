@@ -125,6 +125,7 @@ try {
             $db->beginTransaction();
 
             // 0. Corrigir parcelas futuras erroneamente marcadas como Atrasado
+            // (exceto renovação avulsa com período pago já expirado)
             $sqlCorrigirFuturas = "
                 UPDATE pagamentos_plano pp
                 INNER JOIN matriculas m ON m.id = pp.matricula_id AND m.tenant_id = pp.tenant_id
@@ -168,7 +169,7 @@ try {
             $pagamentosAtualizados = $stmt->rowCount();
             logMessage("  ✓ Pagamentos Atrasados: {$pagamentosAtualizados}\n", $quiet);
 
-            // 1b. Avulso: renovação em aberto só fica atrasada quando o período pago atual expirou
+            // 1b. Avulso: renovação em aberto fica atrasada quando período pago atual expirou
             $sqlAvulsoAtrasado = "
                 UPDATE pagamentos_plano pp
                 INNER JOIN matriculas m ON m.id = pp.matricula_id AND m.tenant_id = pp.tenant_id
@@ -222,12 +223,13 @@ try {
                 logMessage("  ✓ Avulso vigência alinhada ao período pago: {$alinharAvulso}\n", $quiet);
             }
             
-            // 2. Atualizar matrículas para VENCIDA (1-4 dias de atraso)
+            // 2. VENCIDA por parcela vencida 1-4 dias (exceto avulso)
             $sqlVencida = "
                 UPDATE matriculas m
                 SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'vencida' LIMIT 1),
                     m.updated_at = NOW()
                 WHERE m.tenant_id = :tenant_id 
+                AND m.tipo_cobranca != 'avulso'
                 AND m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1)
                 AND EXISTS (
                     SELECT 1 FROM pagamentos_plano pp
@@ -245,12 +247,13 @@ try {
             $vencidasAtualizadas = $stmt->rowCount();
             logMessage("  ✓ Matrículas Vencidas: {$vencidasAtualizadas}\n", $quiet);
             
-            // 3. Atualizar matrículas para CANCELADA (5+ dias de atraso)
+            // 3. CANCELADA por parcela vencida 5+ dias (exceto avulso)
             $sqlCancelada = "
                 UPDATE matriculas m
                 SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'cancelada' LIMIT 1),
                     m.updated_at = NOW()
                 WHERE m.tenant_id = :tenant_id 
+                AND m.tipo_cobranca != 'avulso'
                 AND m.status_id IN (SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'vencida'))
                 AND EXISTS (
                     SELECT 1 FROM pagamentos_plano pp

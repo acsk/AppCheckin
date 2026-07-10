@@ -1111,7 +1111,7 @@ class MatriculaController
         $porPagina = isset($params['por_pagina']) ? max(1, (int) $params['por_pagina']) : 50;
         $usarPaginacao = $pagina !== null || isset($params['por_pagina']);
         
-        // Verificar e atualizar status de matrículas pendentes vencidas
+        // Sincroniza parcelas (atrasado/aguardando) — status da matrícula só no cron diário
         $this->atualizarStatusMatriculasPendentes($db, $tenantId);
 
         $baseSql = "
@@ -1240,7 +1240,7 @@ class MatriculaController
         $tenantId = $request->getAttribute('tenantId', 1);
         $db = require __DIR__ . '/../../config/database.php';
         
-        // Verificar e atualizar status de matrículas pendentes vencidas
+        // Sincroniza parcelas (atrasado/aguardando) — status da matrícula só no cron diário
         $this->atualizarStatusMatriculasPendentes($db, $tenantId);
         
         $sql = "
@@ -1480,86 +1480,15 @@ class MatriculaController
     }
 
     /**
-     * Verificar e marcar como PENDENTE matrículas com qualquer parcela vencida e não paga
+     * Sincroniza apenas status das PARCELAS (atrasado/aguardando).
+     * Mudança de status da MATRÍCULA fica exclusivamente no cron
+     * (jobs/atualizar_status_matriculas.php) para não afetar o tenant inteiro
+     * ao abrir listagem/detalhe no painel.
      */
     private function atualizarStatusMatriculasPendentes($db, $tenantId): void
     {
         $pagamentoModel = new \App\Models\PagamentoPlano($db);
         $pagamentoModel->marcarAtrasados($tenantId);
-
-        // 1. Atualizar para VENCIDA: matrículas com pagamento vencido há mais de 1 dia (mas menos de 5)
-        $sqlVencida = "
-            UPDATE matriculas m
-            SET 
-                m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'vencida' LIMIT 1),
-                m.updated_at = NOW()
-            WHERE m.tenant_id = :tenant_id 
-            AND m.status_id IN (SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'vencida'))
-            AND EXISTS (
-                SELECT 1
-                FROM pagamentos_plano pp
-                WHERE pp.matricula_id = m.id
-                AND pp.status_pagamento_id IN (1, 3)  -- Aguardando ou Atrasado
-                AND pp.data_vencimento < CURDATE()
-                AND DATEDIFF(CURDATE(), pp.data_vencimento) >= 1
-                AND DATEDIFF(CURDATE(), pp.data_vencimento) < 5
-            )
-        ";
-        
-        $stmt = $db->prepare($sqlVencida);
-        $stmt->execute(['tenant_id' => $tenantId]);
-
-        // 2. Atualizar para CANCELADA: matrículas com pagamento vencido há 5+ dias
-        $sqlCancelada = "
-            UPDATE matriculas m
-            SET 
-                m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'cancelada' LIMIT 1),
-                m.updated_at = NOW()
-            WHERE m.tenant_id = :tenant_id 
-            AND m.status_id IN (SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'vencida'))
-            AND EXISTS (
-                SELECT 1
-                FROM pagamentos_plano pp
-                WHERE pp.matricula_id = m.id
-                AND pp.status_pagamento_id IN (1, 3)  -- Aguardando ou Atrasado
-                AND pp.data_vencimento < CURDATE()
-                AND DATEDIFF(CURDATE(), pp.data_vencimento) >= 5
-            )
-        ";
-        
-        $stmt = $db->prepare($sqlCancelada);
-        $stmt->execute(['tenant_id' => $tenantId]);
-
-        // Avulso: cancelar/vencer pelo fim do período pago (não pela parcela futura de renovação)
-        $stmt = $db->prepare("
-            UPDATE matriculas m
-            INNER JOIN (
-                SELECT matricula_id, tenant_id, MAX(data_vencimento) AS acesso_ate
-                FROM pagamentos_plano
-                WHERE status_pagamento_id = 2
-                GROUP BY matricula_id, tenant_id
-            ) pp_acesso ON pp_acesso.matricula_id = m.id AND pp_acesso.tenant_id = m.tenant_id
-            SET m.status_id = (
-                    SELECT id FROM status_matricula
-                    WHERE codigo = CASE
-                        WHEN DATEDIFF(CURDATE(), pp_acesso.acesso_ate) >= 5 THEN 'cancelada'
-                        ELSE 'vencida'
-                    END
-                    LIMIT 1
-                ),
-                m.data_vencimento = pp_acesso.acesso_ate,
-                m.proxima_data_vencimento = pp_acesso.acesso_ate,
-                m.updated_at = NOW()
-            WHERE m.tenant_id = :tenant_id
-              AND m.tipo_cobranca = 'avulso'
-              AND m.status_id IN (SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'pendente', 'vencida'))
-              AND pp_acesso.acesso_ate < CURDATE()
-              AND DATEDIFF(CURDATE(), pp_acesso.acesso_ate) >= 1
-        ");
-        $stmt->execute(['tenant_id' => $tenantId]);
-
-        $descontoModel = new \App\Models\MatriculaDesconto($db);
-        $descontoModel->desativarDescontosMatriculasEncerradas((int) $tenantId);
     }
 
     private function desativarDescontosMatriculaEncerrada(\PDO $db, int $tenantId, int $matriculaId): void
