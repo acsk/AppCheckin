@@ -123,6 +123,23 @@ try {
         try {
             // Iniciar transação para cada tenant (mais seguro)
             $db->beginTransaction();
+
+            // 0. Corrigir parcelas futuras erroneamente marcadas como Atrasado
+            $sqlCorrigirFuturas = "
+                UPDATE pagamentos_plano
+                SET status_pagamento_id = 1, updated_at = NOW()
+                WHERE tenant_id = :tenant_id
+                AND status_pagamento_id = 3
+                AND data_vencimento >= CURDATE()
+                AND data_pagamento IS NULL
+                LIMIT 1000
+            ";
+            $stmt = $db->prepare($sqlCorrigirFuturas);
+            $stmt->execute(['tenant_id' => $tenant['id']]);
+            $corrigidasFuturas = $stmt->rowCount();
+            if ($corrigidasFuturas > 0) {
+                logMessage("  ✓ Parcelas futuras revertidas para Aguardando: {$corrigidasFuturas}\n", $quiet);
+            }
             
             // 1. Marcar pagamentos como ATRASADOS (status_pagamento_id = 3)
             // LIMIT para não travar em tenants com muitos registros

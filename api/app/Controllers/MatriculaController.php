@@ -1482,6 +1482,18 @@ class MatriculaController
      */
     private function atualizarStatusMatriculasPendentes($db, $tenantId): void
     {
+        // 0. Parcelas com vencimento futuro não podem ficar como Atrasado
+        $sqlCorrigirFuturas = "
+            UPDATE pagamentos_plano pp
+            SET pp.status_pagamento_id = 1, pp.updated_at = NOW()
+            WHERE pp.tenant_id = :tenant_id
+            AND pp.status_pagamento_id = 3
+            AND pp.data_vencimento >= CURDATE()
+            AND pp.data_pagamento IS NULL
+        ";
+        $stmt = $db->prepare($sqlCorrigirFuturas);
+        $stmt->execute(['tenant_id' => $tenantId]);
+
         // 1. Atualizar para VENCIDA: matrículas com pagamento vencido há mais de 1 dia (mas menos de 5)
         $sqlVencida = "
             UPDATE matriculas m

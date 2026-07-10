@@ -535,6 +535,8 @@ class PagamentoPlano
      */
     public function marcarAtrasados(int $tenantId): int
     {
+        $this->corrigirParcelasFuturasMarcadasAtrasadas($tenantId);
+
         $sql = "UPDATE pagamentos_plano 
                 SET status_pagamento_id = 3,
                     updated_at = NOW()
@@ -546,6 +548,26 @@ class PagamentoPlano
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute(['tenant_id' => $tenantId]);
         
+        return $stmt->rowCount();
+    }
+
+    /**
+     * Parcelas com vencimento futuro não podem permanecer como Atrasado (3).
+     * Ocorre quando data_vencimento é corrigida para frente sem atualizar o status.
+     */
+    public function corrigirParcelasFuturasMarcadasAtrasadas(int $tenantId): int
+    {
+        $sql = "UPDATE pagamentos_plano
+                SET status_pagamento_id = 1,
+                    updated_at = NOW()
+                WHERE tenant_id = :tenant_id
+                AND status_pagamento_id = 3
+                AND data_vencimento >= CURDATE()
+                AND data_pagamento IS NULL";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(['tenant_id' => $tenantId]);
+
         return $stmt->rowCount();
     }
 
@@ -789,9 +811,13 @@ class PagamentoPlano
                 if ($proxAtual && $proxAtual > $pendente['data_vencimento']) {
                     // proxima_data_vencimento já aponta para data mais nova — corrigir o pagamento pendente
                     $stmtFixPendente = $this->pdo->prepare("
-                        UPDATE pagamentos_plano SET data_vencimento = ?, updated_at = NOW() WHERE id = ?
+                        UPDATE pagamentos_plano
+                        SET data_vencimento = ?,
+                            status_pagamento_id = CASE WHEN ? >= CURDATE() THEN 1 ELSE status_pagamento_id END,
+                            updated_at = NOW()
+                        WHERE id = ?
                     ");
-                    $stmtFixPendente->execute([$proxAtual, $pendente['id']]);
+                    $stmtFixPendente->execute([$proxAtual, $proxAtual, $pendente['id']]);
                     error_log("[gerarProximoPagamento] Matrícula #{$matriculaId}: corrigida data_vencimento do pendente #{$pendente['id']} de {$pendente['data_vencimento']} para {$proxAtual}");
                 } elseif (!$ehAvulso) {
                     // Recorrente: sincronizar acesso com a próxima cobrança.
