@@ -135,13 +135,13 @@ try {
                 AND pp.data_pagamento IS NULL
                 AND NOT (
                     m.tipo_cobranca = 'avulso'
-                    AND EXISTS (
-                        SELECT 1 FROM pagamentos_plano pp2
+                    AND COALESCE((
+                        SELECT MAX(pp2.data_vencimento)
+                        FROM pagamentos_plano pp2
                         WHERE pp2.tenant_id = pp.tenant_id
                           AND pp2.matricula_id = pp.matricula_id
                           AND pp2.status_pagamento_id = 2
-                          AND pp2.data_vencimento < CURDATE()
-                    )
+                    ), '1900-01-01') < CURDATE()
                 )
                 LIMIT 1000
             ";
@@ -168,7 +168,7 @@ try {
             $pagamentosAtualizados = $stmt->rowCount();
             logMessage("  ✓ Pagamentos Atrasados: {$pagamentosAtualizados}\n", $quiet);
 
-            // 1b. Avulso: renovação em aberto fica atrasada quando o período pago já expirou
+            // 1b. Avulso: renovação em aberto só fica atrasada quando o período pago atual expirou
             $sqlAvulsoAtrasado = "
                 UPDATE pagamentos_plano pp
                 INNER JOIN matriculas m ON m.id = pp.matricula_id AND m.tenant_id = pp.tenant_id
@@ -177,13 +177,13 @@ try {
                   AND m.tipo_cobranca = 'avulso'
                   AND pp.status_pagamento_id = 1
                   AND pp.data_pagamento IS NULL
-                  AND EXISTS (
-                      SELECT 1 FROM pagamentos_plano pp2
+                  AND COALESCE((
+                      SELECT MAX(pp2.data_vencimento)
+                      FROM pagamentos_plano pp2
                       WHERE pp2.tenant_id = pp.tenant_id
                         AND pp2.matricula_id = pp.matricula_id
                         AND pp2.status_pagamento_id = 2
-                        AND pp2.data_vencimento < CURDATE()
-                  )
+                  ), '1900-01-01') < CURDATE()
                 LIMIT 1000
             ";
             $stmt = $db->prepare($sqlAvulsoAtrasado);

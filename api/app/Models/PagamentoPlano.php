@@ -568,8 +568,8 @@ class PagamentoPlano
         $stmt->execute(['tenant_id' => $tenantId]);
         $marcados = $stmt->rowCount();
 
-        // Avulso: parcela de renovação com vencimento futuro fica atrasada quando
-        // o período já pago expirou (ex.: pagou até 02/07, hoje 09/07, parcela 02/08 em aberto).
+        // Avulso: renovação em aberto só fica atrasada quando o período PAGO ATUAL expirou
+        // (MAX data_vencimento das pagas), não por parcela histórica antiga.
         $sqlAvulso = "
             UPDATE pagamentos_plano pp
             INNER JOIN matriculas m ON m.id = pp.matricula_id AND m.tenant_id = pp.tenant_id
@@ -578,13 +578,13 @@ class PagamentoPlano
               AND m.tipo_cobranca = 'avulso'
               AND pp.status_pagamento_id = 1
               AND pp.data_pagamento IS NULL
-              AND EXISTS (
-                  SELECT 1 FROM pagamentos_plano pp2
+              AND COALESCE((
+                  SELECT MAX(pp2.data_vencimento)
+                  FROM pagamentos_plano pp2
                   WHERE pp2.tenant_id = pp.tenant_id
                     AND pp2.matricula_id = pp.matricula_id
                     AND pp2.status_pagamento_id = 2
-                    AND pp2.data_vencimento < CURDATE()
-              )
+              ), '1900-01-01') < CURDATE()
         ";
         $stmtAvulso = $this->pdo->prepare($sqlAvulso);
         $stmtAvulso->execute(['tenant_id' => $tenantId]);
@@ -607,13 +607,13 @@ class PagamentoPlano
                 AND pp.data_pagamento IS NULL
                 AND NOT (
                     m.tipo_cobranca = 'avulso'
-                    AND EXISTS (
-                        SELECT 1 FROM pagamentos_plano pp2
+                    AND COALESCE((
+                        SELECT MAX(pp2.data_vencimento)
+                        FROM pagamentos_plano pp2
                         WHERE pp2.tenant_id = pp.tenant_id
                           AND pp2.matricula_id = pp.matricula_id
                           AND pp2.status_pagamento_id = 2
-                          AND pp2.data_vencimento < CURDATE()
-                    )
+                    ), '1900-01-01') < CURDATE()
                 )";
 
         $stmt = $this->pdo->prepare($sql);
