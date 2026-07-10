@@ -46,3 +46,28 @@ echo "  docker exec appcheckin_php php /var/www/html/jobs/limpar_matriculas_dupl
 echo ""
 echo "Para ver logs:"
 echo "  tail -f /var/log/appcheck/limpar_matriculas.log"
+echo ""
+echo "=== JOB: Limpeza de Pagamentos Cancelados ==="
+echo ""
+
+if crontab -l 2>/dev/null | grep -q "limpar_pagamentos_cancelados"; then
+    echo "⚠️  Job limpar_pagamentos_cancelados já existe no crontab"
+    crontab -l | grep "limpar_pagamentos_cancelados"
+else
+    echo "Adicionando limpar_pagamentos_cancelados ao crontab..."
+    mkdir -p /var/log/appcheck/
+    touch /var/log/appcheck/limpar_pagamentos_cancelados.log
+    (crontab -l 2>/dev/null; echo "# Job: Excluir cobranças canceladas - diariamente às 04:30") | crontab -
+    (crontab -l 2>/dev/null; echo "30 4 * * * docker exec appcheckin_php php /var/www/html/jobs/limpar_pagamentos_cancelados.php >> /var/log/appcheck/limpar_pagamentos_cancelados.log 2>&1") | crontab -
+    echo "✅ Job limpar_pagamentos_cancelados adicionado (04:30 diário)"
+fi
+
+echo ""
+echo "Teste dry-run:"
+echo "  docker exec appcheckin_php php /var/www/html/jobs/limpar_pagamentos_cancelados.php --dry-run"
+echo ""
+echo "Executar agora:"
+echo "  docker exec appcheckin_php php /var/www/html/jobs/limpar_pagamentos_cancelados.php"
+echo ""
+echo "Log:"
+echo "  tail -f /var/log/appcheck/limpar_pagamentos_cancelados.log"

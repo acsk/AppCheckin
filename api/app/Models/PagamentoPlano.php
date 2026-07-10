@@ -6,6 +6,9 @@ use PDO;
 
 class PagamentoPlano
 {
+    /** Máximo de linhas por DELETE em lote (proteção ao banco). */
+    public const LIMITE_EXCLUSAO_LOTE = 5000;
+
     private PDO $pdo;
 
     public function __construct(PDO $pdo)
@@ -789,6 +792,49 @@ class PagamentoPlano
         $sql = "DELETE FROM pagamentos_plano WHERE tenant_id = :tenant_id AND id = :id";
         $stmt = $this->pdo->prepare($sql);
         return (bool) $stmt->execute(['tenant_id' => $tenantId, 'id' => $id]);
+    }
+
+    /**
+     * Conta cobranças canceladas elegíveis para exclusão física.
+     */
+    public function contarCanceladosParaExcluir(int $tenantId, int $diasRetencao = 7): int
+    {
+        $sql = "SELECT COUNT(*) FROM pagamentos_plano
+                WHERE tenant_id = :tenant_id
+                  AND status_pagamento_id = 4
+                  AND data_pagamento IS NULL
+                  AND updated_at < DATE_SUB(NOW(), INTERVAL :dias DAY)";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->bindValue('tenant_id', $tenantId, PDO::PARAM_INT);
+        $stmt->bindValue('dias', max(0, $diasRetencao), PDO::PARAM_INT);
+        $stmt->execute();
+
+        return (int) $stmt->fetchColumn();
+    }
+
+    /**
+     * Exclui fisicamente cobranças canceladas (status 4) sem pagamento,
+     * após período de retenção desde o cancelamento (updated_at).
+     */
+    public function excluirCanceladosAntigos(int $tenantId, int $diasRetencao = 7, int $limit = 1000): int
+    {
+        $limit = max(1, min($limit, self::LIMITE_EXCLUSAO_LOTE));
+        $diasRetencao = max(0, $diasRetencao);
+
+        $sql = "DELETE FROM pagamentos_plano
+                WHERE tenant_id = :tenant_id
+                  AND status_pagamento_id = 4
+                  AND data_pagamento IS NULL
+                  AND updated_at < DATE_SUB(NOW(), INTERVAL :dias DAY)
+                LIMIT {$limit}";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->bindValue('tenant_id', $tenantId, PDO::PARAM_INT);
+        $stmt->bindValue('dias', $diasRetencao, PDO::PARAM_INT);
+        $stmt->execute();
+
+        return $stmt->rowCount();
     }
 
     /**
