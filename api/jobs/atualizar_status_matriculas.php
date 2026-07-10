@@ -105,6 +105,13 @@ function sqlFimPeriodoPago(string $tenantExpr, string $matriculaExpr): string
 {
     return "(
         SELECT MAX(CASE
+            WHEN COALESCE(p_acesso.duracao_dias, 0) = 1 THEN
+                CASE
+                    WHEN pp_acesso.data_pagamento IS NULL THEN pp_acesso.data_vencimento
+                    WHEN pp_acesso.data_vencimento >= DATE_ADD(pp_acesso.data_pagamento, INTERVAL 1 DAY)
+                        THEN pp_acesso.data_vencimento
+                    ELSE DATE_ADD(GREATEST(pp_acesso.data_pagamento, pp_acesso.data_vencimento), INTERVAL 1 DAY)
+                END
             WHEN pp_acesso.data_pagamento IS NULL THEN pp_acesso.data_vencimento
             WHEN pp_acesso.data_vencimento >= DATE_ADD(pp_acesso.data_pagamento, INTERVAL COALESCE(pc_acesso.meses, 1) MONTH)
                 THEN pp_acesso.data_vencimento
@@ -113,6 +120,7 @@ function sqlFimPeriodoPago(string $tenantExpr, string $matriculaExpr): string
         FROM pagamentos_plano pp_acesso
         INNER JOIN matriculas m_acesso
             ON m_acesso.id = pp_acesso.matricula_id AND m_acesso.tenant_id = pp_acesso.tenant_id
+        INNER JOIN planos p_acesso ON p_acesso.id = m_acesso.plano_id
         LEFT JOIN plano_ciclos pc_acesso ON pc_acesso.id = m_acesso.plano_ciclo_id
         WHERE pp_acesso.tenant_id = {$tenantExpr}
           AND pp_acesso.matricula_id = {$matriculaExpr}
@@ -394,14 +402,17 @@ try {
             // 6.1 Sincronizar matrículas com assinaturas approved/ativas
             // Corrige inconsistências onde a assinatura já está paga/aprovada,
             // mas a matrícula permaneceu como pendente/vencida.
+            // Diárias avulsas encerradas não devem ser reativadas.
             $sqlSincAssAprovadas = "
                 UPDATE matriculas m
                 INNER JOIN assinaturas a ON a.matricula_id = m.id AND a.tenant_id = m.tenant_id
                 LEFT JOIN assinatura_status ast ON ast.id = a.status_id
+                INNER JOIN planos p ON p.id = m.plano_id
                 SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1),
                     m.updated_at = NOW()
                 WHERE m.tenant_id = :tenant_id
                 AND m.status_id IN (SELECT id FROM status_matricula WHERE codigo IN ('pendente', 'vencida'))
+                AND NOT (m.tipo_cobranca = 'avulso' AND p.duracao_dias = 1)
                 AND (a.status_gateway = 'approved' OR ast.codigo IN ('ativa', 'paga'))
                 AND (m.proxima_data_vencimento IS NULL OR m.proxima_data_vencimento >= CURDATE())
             ";
@@ -468,6 +479,37 @@ try {
             $reativadasCanceladas = $stmt->rowCount();
             logMessage("  ✓ Matrículas Reativadas (cancelada→ativa): {$reativadasCanceladas}\n", $quiet);
 
+            // 9. Encerrar diárias avulsas vencidas ou com check-in (backfill do job cancelar_diarias)
+            $sqlDiariasEncerrar = "
+                UPDATE matriculas m
+                INNER JOIN planos p ON p.id = m.plano_id
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
+                SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'cancelada' LIMIT 1),
+                    m.data_vencimento = COALESCE(m.data_inicio, m.data_vencimento),
+                    m.proxima_data_vencimento = COALESCE(m.data_inicio, m.data_vencimento),
+                    m.updated_at = NOW()
+                WHERE m.tenant_id = :tenant_id
+                AND m.tipo_cobranca = 'avulso'
+                AND p.duracao_dias = 1
+                AND sm.codigo = 'ativa'
+                AND (
+                    COALESCE(m.proxima_data_vencimento, m.data_vencimento, m.data_inicio) < CURDATE()
+                    OR EXISTS (
+                        SELECT 1 FROM checkins c
+                        WHERE c.aluno_id = m.aluno_id
+                          AND c.tenant_id = m.tenant_id
+                          AND DATE(c.created_at) >= m.data_inicio
+                    )
+                )
+                LIMIT 500
+            ";
+            $stmt = $db->prepare($sqlDiariasEncerrar);
+            $stmt->execute(['tenant_id' => $tenant['id']]);
+            $diariasEncerradas = $stmt->rowCount();
+            if ($diariasEncerradas > 0) {
+                logMessage("  ✓ Diárias encerradas (vencidas ou com check-in): {$diariasEncerradas}\n", $quiet);
+            }
+
             $descontoModel = new \App\Models\MatriculaDesconto($db);
             $descontosDesativados = $descontoModel->desativarDescontosMatriculasEncerradas((int) $tenant['id']);
             if ($descontosDesativados > 0) {
@@ -477,7 +519,7 @@ try {
             // Commit da transação
             $db->commit();
             
-            $totalTenant = $vencidasAtualizadas + $canceladasAtualizadas + $vencidasPorData + $canceladasPorData + $sincCanceladas + $sincPausadas + $sincExpiradas + $sincAprovadas + $reativadas + $reativadasCanceladas;
+            $totalTenant = $vencidasAtualizadas + $canceladasAtualizadas + $vencidasPorData + $canceladasPorData + $sincCanceladas + $sincPausadas + $sincExpiradas + $sincAprovadas + $reativadas + $reativadasCanceladas + ($diariasEncerradas ?? 0);
             $totalAtualizado += $totalTenant;
             
             if ($totalTenant > 0) {

@@ -67,16 +67,24 @@ class PagamentoPlanoService
 
     public function atualizarStatusMatricula(int $tenantId, int $matriculaId): void
     {
-        $matriculaMeta = DB::table('matriculas')
-            ->where('tenant_id', $tenantId)
-            ->where('id', $matriculaId)
-            ->first(['tipo_cobranca', 'data_vencimento']);
+        $matriculaMeta = DB::table('matriculas as m')
+            ->leftJoin('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+            ->leftJoin('planos as p', 'p.id', '=', 'm.plano_id')
+            ->where('m.tenant_id', $tenantId)
+            ->where('m.id', $matriculaId)
+            ->first(['m.tipo_cobranca', 'm.data_vencimento', 'sm.codigo as status_codigo', 'p.duracao_dias']);
 
         if (! $matriculaMeta) {
             return;
         }
 
         $ehAvulso = ($matriculaMeta->tipo_cobranca ?? '') === 'avulso';
+        $ehDiariaAvulsa = $ehAvulso && (int) ($matriculaMeta->duracao_dias ?? 0) === 1;
+        $statusAtual = (string) ($matriculaMeta->status_codigo ?? '');
+
+        if ($ehDiariaAvulsa && in_array($statusAtual, ['cancelada', 'concluida', 'finalizada'], true)) {
+            return;
+        }
 
         $row = DB::table('pagamentos_plano')
             ->where('tenant_id', $tenantId)
@@ -103,11 +111,19 @@ class PagamentoPlanoService
                     $join->on('m2.id', '=', 'pg.matricula_id')
                         ->on('m2.tenant_id', '=', 'pg.tenant_id');
                 })
+                ->join('planos as p2', 'p2.id', '=', 'm2.plano_id')
                 ->leftJoin('plano_ciclos as pc', 'pc.id', '=', 'm2.plano_ciclo_id')
                 ->where('pg.tenant_id', $tenantId)
                 ->where('pg.matricula_id', $matriculaId)
                 ->where('pg.status_pagamento_id', 2)
                 ->selectRaw("MAX(CASE
+                    WHEN COALESCE(p2.duracao_dias, 0) = 1 THEN
+                        CASE
+                            WHEN pg.data_pagamento IS NULL THEN pg.data_vencimento
+                            WHEN pg.data_vencimento >= DATE_ADD(pg.data_pagamento, INTERVAL 1 DAY)
+                                THEN pg.data_vencimento
+                            ELSE DATE_ADD(GREATEST(pg.data_pagamento, pg.data_vencimento), INTERVAL 1 DAY)
+                        END
                     WHEN pg.data_pagamento IS NULL THEN pg.data_vencimento
                     WHEN pg.data_vencimento >= DATE_ADD(pg.data_pagamento, INTERVAL COALESCE(pc.meses, 1) MONTH)
                         THEN pg.data_vencimento
@@ -118,7 +134,7 @@ class PagamentoPlanoService
 
             if ($acessoAte && $acessoAte < date('Y-m-d')) {
                 $diasAtrasoAcesso = (int) ((new \DateTime(date('Y-m-d')))->diff(new \DateTime($acessoAte))->days);
-                $novoStatus = $diasAtrasoAcesso >= 5 ? 'cancelada' : 'vencida';
+                $novoStatus = ($ehDiariaAvulsa || $diasAtrasoAcesso >= 5) ? 'cancelada' : 'vencida';
             }
             // Avulso: status/acesso só pelo período pago. Parcelas pendentes
             // são cobrança futura e não alteram vigência nem status.

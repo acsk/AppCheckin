@@ -664,7 +664,7 @@ export default function MatriculaDetalheScreen() {
     }
   };
 
-  // Status de Matrícula: 1=Ativa, 2=Vencida, 3=Cancelada, 4=Finalizada, 5=Pendente, 6=Bloqueado
+  // Status de Matrícula: 1=Ativa, 2=Vencida, 3=Cancelada, 4=Finalizada, 5=Pendente, 6=Bloqueado, 7=Concluída
   const getStatusColor = (statusId) => {
     const id = Number(statusId);
     switch (id) {
@@ -680,6 +680,8 @@ export default function MatriculaDetalheScreen() {
         return '#f59e0b'; // Pendente (amarelo)
       case 6:
         return '#8b5cf6'; // Bloqueado (roxo)
+      case 7:
+        return '#22c55e'; // Concluída (verde)
       default:
         return '#6b7280';
     }
@@ -700,6 +702,8 @@ export default function MatriculaDetalheScreen() {
         return 'Pendente';
       case 6:
         return 'Bloqueado';
+      case 7:
+        return 'Concluída';
       default:
         return 'Desconhecido';
     }

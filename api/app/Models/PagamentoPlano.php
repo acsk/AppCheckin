@@ -437,14 +437,23 @@ class PagamentoPlano
     public function atualizarStatusMatricula(int $tenantId, int $matriculaId): void
     {
         $stmtTipo = $this->pdo->prepare("
-            SELECT tipo_cobranca, data_vencimento
-            FROM matriculas
-            WHERE tenant_id = :tenant_id AND id = :matricula_id
+            SELECT m.tipo_cobranca, m.data_vencimento, sm.codigo AS status_codigo, p.duracao_dias
+            FROM matriculas m
+            LEFT JOIN status_matricula sm ON sm.id = m.status_id
+            LEFT JOIN planos p ON p.id = m.plano_id
+            WHERE m.tenant_id = :tenant_id AND m.id = :matricula_id
             LIMIT 1
         ");
         $stmtTipo->execute(['tenant_id' => $tenantId, 'matricula_id' => $matriculaId]);
         $matriculaMeta = $stmtTipo->fetch(\PDO::FETCH_ASSOC) ?: [];
         $ehAvulso = ($matriculaMeta['tipo_cobranca'] ?? '') === 'avulso';
+        $ehDiariaAvulsa = $ehAvulso && (int) ($matriculaMeta['duracao_dias'] ?? 0) === 1;
+        $statusAtual = (string) ($matriculaMeta['status_codigo'] ?? '');
+
+        // Diária já encerrada (cancelada/concluída): não reativar por recálculo de pagamento.
+        if ($ehDiariaAvulsa && in_array($statusAtual, ['cancelada', 'concluida', 'finalizada'], true)) {
+            return;
+        }
 
         // Verificar se ainda há pagamentos pendentes ou atrasados
         $sqlVerifica = "
@@ -475,7 +484,7 @@ class PagamentoPlano
 
             if ($acessoAte && $acessoAte < date('Y-m-d')) {
                 $diasAtrasoAcesso = (int) ((new \DateTime(date('Y-m-d')))->diff(new \DateTime($acessoAte))->days);
-                if ($diasAtrasoAcesso >= 5) {
+                if ($ehDiariaAvulsa || $diasAtrasoAcesso >= 5) {
                     $novoStatus = 'cancelada';
                 } else {
                     $novoStatus = 'vencida';
@@ -597,6 +606,13 @@ class PagamentoPlano
     {
         return "(
             SELECT MAX(CASE
+                WHEN COALESCE(p_acesso.duracao_dias, 0) = 1 THEN
+                    CASE
+                        WHEN pp_acesso.data_pagamento IS NULL THEN pp_acesso.data_vencimento
+                        WHEN pp_acesso.data_vencimento >= DATE_ADD(pp_acesso.data_pagamento, INTERVAL 1 DAY)
+                            THEN pp_acesso.data_vencimento
+                        ELSE DATE_ADD(GREATEST(pp_acesso.data_pagamento, pp_acesso.data_vencimento), INTERVAL 1 DAY)
+                    END
                 WHEN pp_acesso.data_pagamento IS NULL THEN pp_acesso.data_vencimento
                 WHEN pp_acesso.data_vencimento >= DATE_ADD(pp_acesso.data_pagamento, INTERVAL COALESCE(pc_acesso.meses, 1) MONTH)
                     THEN pp_acesso.data_vencimento
@@ -605,6 +621,7 @@ class PagamentoPlano
             FROM pagamentos_plano pp_acesso
             INNER JOIN matriculas m_acesso
                 ON m_acesso.id = pp_acesso.matricula_id AND m_acesso.tenant_id = pp_acesso.tenant_id
+            INNER JOIN planos p_acesso ON p_acesso.id = m_acesso.plano_id
             LEFT JOIN plano_ciclos pc_acesso ON pc_acesso.id = m_acesso.plano_ciclo_id
             WHERE pp_acesso.tenant_id = {$tenantExpr}
               AND pp_acesso.matricula_id = {$matriculaExpr}
