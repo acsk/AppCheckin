@@ -98,18 +98,17 @@ logMessage("========================================\n\n", $quiet);
 
 $startTime = microtime(true);
 
-// Fim do período pago (avulso) correlacionado a um alias de pagamentos_plano:
-// - parcela paga na data do vencimento ou depois → vencimento é o INÍCIO do período,
-//   acesso vai até vencimento + ciclo (meses do plano_ciclos, padrão 1);
-// - parcela paga adiantado → o vencimento já é o FIM do período.
+// Fim do período pago (avulso), por parcela paga:
+// - venc >= pago + ciclo → parcela já representa o FIM do período (fluxo MP);
+// - senão → venc é a data devida (início); fim = GREATEST(pago, venc) + ciclo.
 function sqlFimPeriodoPago(string $tenantExpr, string $matriculaExpr): string
 {
     return "(
         SELECT MAX(CASE
-            WHEN pp_acesso.data_pagamento IS NOT NULL
-                 AND pp_acesso.data_pagamento >= pp_acesso.data_vencimento
-                THEN DATE_ADD(pp_acesso.data_vencimento, INTERVAL COALESCE(pc_acesso.meses, 1) MONTH)
-            ELSE pp_acesso.data_vencimento
+            WHEN pp_acesso.data_pagamento IS NULL THEN pp_acesso.data_vencimento
+            WHEN pp_acesso.data_vencimento >= DATE_ADD(pp_acesso.data_pagamento, INTERVAL COALESCE(pc_acesso.meses, 1) MONTH)
+                THEN pp_acesso.data_vencimento
+            ELSE DATE_ADD(GREATEST(pp_acesso.data_pagamento, pp_acesso.data_vencimento), INTERVAL COALESCE(pc_acesso.meses, 1) MONTH)
         END)
         FROM pagamentos_plano pp_acesso
         INNER JOIN matriculas m_acesso
@@ -211,9 +210,10 @@ try {
                 INNER JOIN (
                     SELECT pg.matricula_id, pg.tenant_id,
                            MAX(CASE
-                               WHEN pg.data_pagamento IS NOT NULL AND pg.data_pagamento >= pg.data_vencimento
-                                   THEN DATE_ADD(pg.data_vencimento, INTERVAL COALESCE(pc.meses, 1) MONTH)
-                               ELSE pg.data_vencimento
+                               WHEN pg.data_pagamento IS NULL THEN pg.data_vencimento
+                               WHEN pg.data_vencimento >= DATE_ADD(pg.data_pagamento, INTERVAL COALESCE(pc.meses, 1) MONTH)
+                                   THEN pg.data_vencimento
+                               ELSE DATE_ADD(GREATEST(pg.data_pagamento, pg.data_vencimento), INTERVAL COALESCE(pc.meses, 1) MONTH)
                            END) AS acesso_ate
                     FROM pagamentos_plano pg
                     INNER JOIN matriculas m2 ON m2.id = pg.matricula_id AND m2.tenant_id = pg.tenant_id

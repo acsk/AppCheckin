@@ -92,10 +92,10 @@ class PagamentoPlanoService
         $pendentes = (int) ($row->pendentes ?? 0);
         $diasAtraso = (int) ($row->dias_atraso ?? 0);
 
-        // Avulso: acesso = fim do período PAGO.
-        // Parcela paga na data do vencimento (ou depois) → vencimento é o INÍCIO do
-        // período, acesso vai até vencimento + ciclo (meses); paga adiantado → o
-        // vencimento já é o FIM do período. Parcela futura "Aguardando" é só cobrança.
+        // Avulso: acesso = fim do período PAGO, por parcela paga:
+        // venc >= pago + ciclo → parcela já representa o FIM do período (fluxo MP);
+        // senão → venc é a data devida (início); fim = GREATEST(pago, venc) + ciclo.
+        // Parcela futura "Aguardando" é só cobrança — não estende vigência.
         $acessoAte = null;
         if ($ehAvulso) {
             $acessoAte = DB::table('pagamentos_plano as pg')
@@ -108,9 +108,10 @@ class PagamentoPlanoService
                 ->where('pg.matricula_id', $matriculaId)
                 ->where('pg.status_pagamento_id', 2)
                 ->selectRaw("MAX(CASE
-                    WHEN pg.data_pagamento IS NOT NULL AND pg.data_pagamento >= pg.data_vencimento
-                        THEN DATE_ADD(pg.data_vencimento, INTERVAL COALESCE(pc.meses, 1) MONTH)
-                    ELSE pg.data_vencimento
+                    WHEN pg.data_pagamento IS NULL THEN pg.data_vencimento
+                    WHEN pg.data_vencimento >= DATE_ADD(pg.data_pagamento, INTERVAL COALESCE(pc.meses, 1) MONTH)
+                        THEN pg.data_vencimento
+                    ELSE DATE_ADD(GREATEST(pg.data_pagamento, pg.data_vencimento), INTERVAL COALESCE(pc.meses, 1) MONTH)
                 END) as fim_periodo")
                 ->value('fim_periodo')
                 ?: ($matriculaMeta->data_vencimento ?? null);
