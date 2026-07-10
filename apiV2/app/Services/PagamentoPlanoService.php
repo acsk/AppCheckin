@@ -132,7 +132,11 @@ class PagamentoPlanoService
                 DB::table('matriculas')
                     ->where('id', $matriculaId)
                     ->where('tenant_id', $tenantId)
-                    ->update(['proxima_data_vencimento' => $acessoAte, 'updated_at' => now()]);
+                    ->update([
+                        'data_vencimento' => $acessoAte,
+                        'proxima_data_vencimento' => $acessoAte,
+                        'updated_at' => now(),
+                    ]);
             }
             // Avulso sem parcela paga: não usar pendentes para proxima_data_vencimento.
             return;

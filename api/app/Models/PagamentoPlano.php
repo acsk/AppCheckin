@@ -75,15 +75,29 @@ class PagamentoPlano
                 LEFT JOIN usuarios baixador ON p.baixado_por = baixador.id
                 LEFT JOIN tipos_baixa tb ON p.tipo_baixa_id = tb.id
                 WHERE p.tenant_id = :tenant_id AND p.matricula_id = :matricula_id
-                ORDER BY p.data_vencimento ASC";
+                ORDER BY p.data_vencimento ASC, p.id ASC";
         
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([
             'tenant_id' => $tenantId,
             'matricula_id' => $matriculaId
         ]);
-        
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        return self::anexarNumeroParcela($stmt->fetchAll(PDO::FETCH_ASSOC));
+    }
+
+    /**
+     * Numera parcelas pela ordem de vencimento (lista já ordenada por data_vencimento, id).
+     * Independente da ordem de exibição no painel (ex.: ID decrescente).
+     */
+    public static function anexarNumeroParcela(array $pagamentos): array
+    {
+        foreach ($pagamentos as $idx => &$pagamento) {
+            $pagamento['numero_parcela'] = $idx + 1;
+        }
+        unset($pagamento);
+
+        return $pagamentos;
     }
 
     /**
@@ -495,12 +509,14 @@ class PagamentoPlano
 
         if ($ehAvulso) {
             if ($acessoAte) {
-                // Sempre alinhar "acesso até" ao período pago (não à parcela futura).
+                // Sempre alinhar vigência ao período pago (não à parcela futura de cobrança).
                 $this->pdo->prepare("
                     UPDATE matriculas
-                    SET proxima_data_vencimento = ?, updated_at = NOW()
+                    SET data_vencimento = ?,
+                        proxima_data_vencimento = ?,
+                        updated_at = NOW()
                     WHERE tenant_id = ? AND id = ?
-                ")->execute([$acessoAte, $tenantId, $matriculaId]);
+                ")->execute([$acessoAte, $acessoAte, $tenantId, $matriculaId]);
             }
             // Avulso sem parcela paga: não usar pendentes para proxima_data_vencimento.
             return;
@@ -547,8 +563,30 @@ class PagamentoPlano
         
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute(['tenant_id' => $tenantId]);
-        
-        return $stmt->rowCount();
+        $marcados = $stmt->rowCount();
+
+        // Avulso: parcela de renovação com vencimento futuro fica atrasada quando
+        // o período já pago expirou (ex.: pagou até 02/07, hoje 09/07, parcela 02/08 em aberto).
+        $sqlAvulso = "
+            UPDATE pagamentos_plano pp
+            INNER JOIN matriculas m ON m.id = pp.matricula_id AND m.tenant_id = pp.tenant_id
+            SET pp.status_pagamento_id = 3, pp.updated_at = NOW()
+            WHERE pp.tenant_id = :tenant_id
+              AND m.tipo_cobranca = 'avulso'
+              AND pp.status_pagamento_id = 1
+              AND pp.data_pagamento IS NULL
+              AND EXISTS (
+                  SELECT 1 FROM pagamentos_plano pp2
+                  WHERE pp2.tenant_id = pp.tenant_id
+                    AND pp2.matricula_id = pp.matricula_id
+                    AND pp2.status_pagamento_id = 2
+                    AND pp2.data_vencimento < CURDATE()
+              )
+        ";
+        $stmtAvulso = $this->pdo->prepare($sqlAvulso);
+        $stmtAvulso->execute(['tenant_id' => $tenantId]);
+
+        return $marcados + $stmtAvulso->rowCount();
     }
 
     /**
@@ -557,13 +595,23 @@ class PagamentoPlano
      */
     public function corrigirParcelasFuturasMarcadasAtrasadas(int $tenantId): int
     {
-        $sql = "UPDATE pagamentos_plano
-                SET status_pagamento_id = 1,
-                    updated_at = NOW()
-                WHERE tenant_id = :tenant_id
-                AND status_pagamento_id = 3
-                AND data_vencimento >= CURDATE()
-                AND data_pagamento IS NULL";
+        $sql = "UPDATE pagamentos_plano pp
+                INNER JOIN matriculas m ON m.id = pp.matricula_id AND m.tenant_id = pp.tenant_id
+                SET pp.status_pagamento_id = 1, pp.updated_at = NOW()
+                WHERE pp.tenant_id = :tenant_id
+                AND pp.status_pagamento_id = 3
+                AND pp.data_vencimento >= CURDATE()
+                AND pp.data_pagamento IS NULL
+                AND NOT (
+                    m.tipo_cobranca = 'avulso'
+                    AND EXISTS (
+                        SELECT 1 FROM pagamentos_plano pp2
+                        WHERE pp2.tenant_id = pp.tenant_id
+                          AND pp2.matricula_id = pp.matricula_id
+                          AND pp2.status_pagamento_id = 2
+                          AND pp2.data_vencimento < CURDATE()
+                    )
+                )";
 
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute(['tenant_id' => $tenantId]);

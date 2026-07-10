@@ -1406,10 +1406,12 @@ class MatriculaController
             FROM pagamentos_plano pp
             LEFT JOIN formas_pagamento fp ON fp.id = pp.forma_pagamento_id
             WHERE pp.matricula_id = ?
-            ORDER BY pp.data_vencimento ASC
+            ORDER BY pp.data_vencimento ASC, pp.id ASC
         ");
         $stmtPagamentos->execute([$matriculaId]);
-        $matricula['pagamentos'] = $stmtPagamentos->fetchAll() ?? [];
+        $matricula['pagamentos'] = \App\Models\PagamentoPlano::anexarNumeroParcela(
+            $stmtPagamentos->fetchAll() ?? []
+        );
         $matricula['total_pagamentos'] = (float) array_sum(array_column($matricula['pagamentos'], 'valor'));
 
         // Buscar possíveis IDs de pagamentos do Mercado Pago relacionados a esta matrícula
@@ -1482,17 +1484,8 @@ class MatriculaController
      */
     private function atualizarStatusMatriculasPendentes($db, $tenantId): void
     {
-        // 0. Parcelas com vencimento futuro não podem ficar como Atrasado
-        $sqlCorrigirFuturas = "
-            UPDATE pagamentos_plano pp
-            SET pp.status_pagamento_id = 1, pp.updated_at = NOW()
-            WHERE pp.tenant_id = :tenant_id
-            AND pp.status_pagamento_id = 3
-            AND pp.data_vencimento >= CURDATE()
-            AND pp.data_pagamento IS NULL
-        ";
-        $stmt = $db->prepare($sqlCorrigirFuturas);
-        $stmt->execute(['tenant_id' => $tenantId]);
+        $pagamentoModel = new \App\Models\PagamentoPlano($db);
+        $pagamentoModel->marcarAtrasados($tenantId);
 
         // 1. Atualizar para VENCIDA: matrículas com pagamento vencido há mais de 1 dia (mas menos de 5)
         $sqlVencida = "
@@ -1537,19 +1530,32 @@ class MatriculaController
         $stmt = $db->prepare($sqlCancelada);
         $stmt->execute(['tenant_id' => $tenantId]);
 
-        // 3. Também atualizar os pagamentos em atraso para status_pagamento_id = 3 (Atrasado)
-        $sqlAtualizarPagamentos = "
-            UPDATE pagamentos_plano pp
-            SET 
-                pp.status_pagamento_id = 3,  -- Atrasado
-                pp.updated_at = NOW()
-            WHERE pp.tenant_id = :tenant_id
-            AND pp.status_pagamento_id = 1  -- Aguardando
-            AND pp.data_vencimento < CURDATE()
-            AND pp.data_pagamento IS NULL
-        ";
-        
-        $stmt = $db->prepare($sqlAtualizarPagamentos);
+        // Avulso: cancelar/vencer pelo fim do período pago (não pela parcela futura de renovação)
+        $stmt = $db->prepare("
+            UPDATE matriculas m
+            INNER JOIN (
+                SELECT matricula_id, tenant_id, MAX(data_vencimento) AS acesso_ate
+                FROM pagamentos_plano
+                WHERE status_pagamento_id = 2
+                GROUP BY matricula_id, tenant_id
+            ) pp_acesso ON pp_acesso.matricula_id = m.id AND pp_acesso.tenant_id = m.tenant_id
+            SET m.status_id = (
+                    SELECT id FROM status_matricula
+                    WHERE codigo = CASE
+                        WHEN DATEDIFF(CURDATE(), pp_acesso.acesso_ate) >= 5 THEN 'cancelada'
+                        ELSE 'vencida'
+                    END
+                    LIMIT 1
+                ),
+                m.data_vencimento = pp_acesso.acesso_ate,
+                m.proxima_data_vencimento = pp_acesso.acesso_ate,
+                m.updated_at = NOW()
+            WHERE m.tenant_id = :tenant_id
+              AND m.tipo_cobranca = 'avulso'
+              AND m.status_id IN (SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'pendente', 'vencida'))
+              AND pp_acesso.acesso_ate < CURDATE()
+              AND DATEDIFF(CURDATE(), pp_acesso.acesso_ate) >= 1
+        ");
         $stmt->execute(['tenant_id' => $tenantId]);
 
         $descontoModel = new \App\Models\MatriculaDesconto($db);

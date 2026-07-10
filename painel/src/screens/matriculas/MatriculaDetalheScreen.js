@@ -942,6 +942,35 @@ export default function MatriculaDetalheScreen() {
 
   const getPagamentoId = (pagamento) => pagamento?.id || pagamento?.pagamento_id || pagamento?.conta_id;
 
+  /**
+   * Fallback local: numera pela ordem de vencimento (igual ao backend).
+   * A lista exibida pode estar em outra ordem (ex.: ID decrescente) — isso não altera o número.
+   */
+  const buildNumeroParcelaMap = (listaPagamentos) => {
+    const porVencimento = listaPagamentos
+      .slice()
+      .sort((a, b) => {
+        const diff = new Date(a.data_vencimento || 0) - new Date(b.data_vencimento || 0);
+        if (diff !== 0) return diff;
+        return Number(getPagamentoId(a) || 0) - Number(getPagamentoId(b) || 0);
+      });
+
+    return porVencimento.reduce((acc, pagamento, idx) => {
+      const id = getPagamentoId(pagamento);
+      if (id != null && id !== '') {
+        acc.set(String(id), idx + 1);
+      }
+      return acc;
+    }, new Map());
+  };
+
+  const resolveNumeroParcela = (pagamento, numeroParcelaMap) => {
+    if (pagamento.numero_parcela) return pagamento.numero_parcela;
+    const id = getPagamentoId(pagamento);
+    if (id == null || id === '') return null;
+    return numeroParcelaMap.get(String(id)) ?? null;
+  };
+
   const formatarMoedaInput = (valor) => {
     const numero = Number(valor || 0);
     if (!Number.isFinite(numero)) return '';
@@ -1615,24 +1644,21 @@ export default function MatriculaDetalheScreen() {
 
                   return new Date(b.data_vencimento || 0) - new Date(a.data_vencimento || 0);
                 });
-              const numeroFallback = pagamentosOrdenados
-                .slice()
-                .reduce((acc, pagamento, idx) => {
-                  acc.set(getPagamentoId(pagamento), idx + 1);
-                  return acc;
-                }, new Map());
+              const numeroParcelaMap = buildNumeroParcelaMap(pagamentos);
 
               if (!isDesktop) {
                 return (
                   <View className="gap-3 px-4 py-3">
                     {pagamentosOrdenados.map((pagamento, index) => {
-                      const numeroParcela = pagamento.numero_parcela || numeroFallback.get(getPagamentoId(pagamento)) || index + 1;
+                      const numeroParcela = resolveNumeroParcela(pagamento, numeroParcelaMap);
                       return (
                         <View key={pagamento.id || index} className="rounded-xl border border-slate-200 bg-white px-3 py-3">
                           <View className="mb-2 flex-row items-center justify-between">
                             <View>
                               <Text className="text-[12px] text-slate-400">#{pagamento.id || '-'}</Text>
-                              <Text className="text-[14px] font-semibold text-slate-800">Parcela {numeroParcela}</Text>
+                              <Text className="text-[14px] font-semibold text-slate-800">
+                                Parcela {numeroParcela ?? '-'}
+                              </Text>
                             </View>
                             <View
                               className="rounded-full px-2.5 py-1"
@@ -1707,13 +1733,13 @@ export default function MatriculaDetalheScreen() {
                   </View>
 
                   {pagamentosOrdenados.map((pagamento, index) => {
-                    const numeroParcela = pagamento.numero_parcela || numeroFallback.get(getPagamentoId(pagamento)) || index + 1;
+                    const numeroParcela = resolveNumeroParcela(pagamento, numeroParcelaMap);
                     return (
                       <View key={pagamento.id || index} className="flex-row items-center border-b border-slate-100 py-3">
                         <View style={{ flex: 0.7 }}>
                           <Text className="text-[12px] text-slate-400">#{pagamento.id || '-'}</Text>
                           <Text className="text-[13px] font-medium text-slate-700">
-                            Parcela {numeroParcela}
+                            Parcela {numeroParcela ?? '-'}
                           </Text>
                         </View>
                         <Text className="text-[13px] text-slate-600" style={{ flex: 1.1 }}>
