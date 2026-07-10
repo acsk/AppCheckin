@@ -467,13 +467,9 @@ class PagamentoPlano
         // Parcela futura "Aguardando" é só cobrança — não estende vigência.
         $acessoAte = null;
         if ($ehAvulso) {
-            $stmtPago = $this->pdo->prepare("
-                SELECT MAX(data_vencimento)
-                FROM pagamentos_plano
-                WHERE tenant_id = :tenant_id
-                  AND matricula_id = :matricula_id
-                  AND status_pagamento_id = 2
-            ");
+            $stmtPago = $this->pdo->prepare(
+                'SELECT ' . self::sqlFimPeriodoPago(':tenant_id', ':matricula_id')
+            );
             $stmtPago->execute(['tenant_id' => $tenantId, 'matricula_id' => $matriculaId]);
             $acessoAte = $stmtPago->fetchColumn() ?: ($matriculaMeta['data_vencimento'] ?? null);
 
@@ -587,17 +583,38 @@ class PagamentoPlano
     }
 
     /**
-     * Período pago avulso (última parcela paga) já expirou em relação a hoje.
+     * Expressão SQL do fim do período pago (avulso), por parcela paga:
+     * - paga NA data do vencimento ou depois → vencimento é o INÍCIO do período,
+     *   então o acesso vai até vencimento + ciclo (meses do plano_ciclos, padrão 1);
+     * - paga adiantado (antes do vencimento) → o vencimento já é o FIM do período.
+     * Ex.: #364 pagou 04/07 parcela venc 04/07 → acesso até 04/08.
+     *      #347 pagou 02/06 parcela venc 02/07 → acesso até 02/07.
+     */
+    public static function sqlFimPeriodoPago(string $tenantExpr, string $matriculaExpr): string
+    {
+        return "(
+            SELECT MAX(CASE
+                WHEN pp_acesso.data_pagamento IS NOT NULL
+                     AND pp_acesso.data_pagamento >= pp_acesso.data_vencimento
+                    THEN DATE_ADD(pp_acesso.data_vencimento, INTERVAL COALESCE(pc_acesso.meses, 1) MONTH)
+                ELSE pp_acesso.data_vencimento
+            END)
+            FROM pagamentos_plano pp_acesso
+            INNER JOIN matriculas m_acesso
+                ON m_acesso.id = pp_acesso.matricula_id AND m_acesso.tenant_id = pp_acesso.tenant_id
+            LEFT JOIN plano_ciclos pc_acesso ON pc_acesso.id = m_acesso.plano_ciclo_id
+            WHERE pp_acesso.tenant_id = {$tenantExpr}
+              AND pp_acesso.matricula_id = {$matriculaExpr}
+              AND pp_acesso.status_pagamento_id = 2
+        )";
+    }
+
+    /**
+     * Período pago avulso já expirou em relação a hoje.
      */
     private static function sqlAvulsoPeriodoPagoExpirou(string $ppAlias = 'pp'): string
     {
-        return "COALESCE((
-            SELECT MAX(pp_acesso.data_vencimento)
-            FROM pagamentos_plano pp_acesso
-            WHERE pp_acesso.tenant_id = {$ppAlias}.tenant_id
-              AND pp_acesso.matricula_id = {$ppAlias}.matricula_id
-              AND pp_acesso.status_pagamento_id = 2
-        ), '1900-01-01') < CURDATE()";
+        return 'COALESCE(' . self::sqlFimPeriodoPago("{$ppAlias}.tenant_id", "{$ppAlias}.matricula_id") . ", '1900-01-01') < CURDATE()";
     }
 
     /**

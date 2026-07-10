@@ -98,6 +98,29 @@ logMessage("========================================\n\n", $quiet);
 
 $startTime = microtime(true);
 
+// Fim do período pago (avulso) correlacionado a um alias de pagamentos_plano:
+// - parcela paga na data do vencimento ou depois → vencimento é o INÍCIO do período,
+//   acesso vai até vencimento + ciclo (meses do plano_ciclos, padrão 1);
+// - parcela paga adiantado → o vencimento já é o FIM do período.
+function sqlFimPeriodoPago(string $tenantExpr, string $matriculaExpr): string
+{
+    return "(
+        SELECT MAX(CASE
+            WHEN pp_acesso.data_pagamento IS NOT NULL
+                 AND pp_acesso.data_pagamento >= pp_acesso.data_vencimento
+                THEN DATE_ADD(pp_acesso.data_vencimento, INTERVAL COALESCE(pc_acesso.meses, 1) MONTH)
+            ELSE pp_acesso.data_vencimento
+        END)
+        FROM pagamentos_plano pp_acesso
+        INNER JOIN matriculas m_acesso
+            ON m_acesso.id = pp_acesso.matricula_id AND m_acesso.tenant_id = pp_acesso.tenant_id
+        LEFT JOIN plano_ciclos pc_acesso ON pc_acesso.id = m_acesso.plano_ciclo_id
+        WHERE pp_acesso.tenant_id = {$tenantExpr}
+          AND pp_acesso.matricula_id = {$matriculaExpr}
+          AND pp_acesso.status_pagamento_id = 2
+    )";
+}
+
 try {
     // Buscar tenants ativos COM LIMITE para não sobrecarregar
     // Usa ORDER BY RAND() para distribuir a carga ao longo do tempo
@@ -136,13 +159,7 @@ try {
                 AND pp.data_pagamento IS NULL
                 AND NOT (
                     m.tipo_cobranca = 'avulso'
-                    AND COALESCE((
-                        SELECT MAX(pp2.data_vencimento)
-                        FROM pagamentos_plano pp2
-                        WHERE pp2.tenant_id = pp.tenant_id
-                          AND pp2.matricula_id = pp.matricula_id
-                          AND pp2.status_pagamento_id = 2
-                    ), '1900-01-01') < CURDATE()
+                    AND COALESCE(" . sqlFimPeriodoPago('pp.tenant_id', 'pp.matricula_id') . ", '1900-01-01') < CURDATE()
                 )
                 LIMIT 1000
             ";
@@ -178,13 +195,7 @@ try {
                   AND m.tipo_cobranca = 'avulso'
                   AND pp.status_pagamento_id = 1
                   AND pp.data_pagamento IS NULL
-                  AND COALESCE((
-                      SELECT MAX(pp2.data_vencimento)
-                      FROM pagamentos_plano pp2
-                      WHERE pp2.tenant_id = pp.tenant_id
-                        AND pp2.matricula_id = pp.matricula_id
-                        AND pp2.status_pagamento_id = 2
-                  ), '1900-01-01') < CURDATE()
+                  AND COALESCE(" . sqlFimPeriodoPago('pp.tenant_id', 'pp.matricula_id') . ", '1900-01-01') < CURDATE()
                 LIMIT 1000
             ";
             $stmt = $db->prepare($sqlAvulsoAtrasado);
@@ -198,10 +209,17 @@ try {
             $sqlAlinharAvulso = "
                 UPDATE matriculas m
                 INNER JOIN (
-                    SELECT matricula_id, tenant_id, MAX(data_vencimento) AS acesso_ate
-                    FROM pagamentos_plano
-                    WHERE status_pagamento_id = 2
-                    GROUP BY matricula_id, tenant_id
+                    SELECT pg.matricula_id, pg.tenant_id,
+                           MAX(CASE
+                               WHEN pg.data_pagamento IS NOT NULL AND pg.data_pagamento >= pg.data_vencimento
+                                   THEN DATE_ADD(pg.data_vencimento, INTERVAL COALESCE(pc.meses, 1) MONTH)
+                               ELSE pg.data_vencimento
+                           END) AS acesso_ate
+                    FROM pagamentos_plano pg
+                    INNER JOIN matriculas m2 ON m2.id = pg.matricula_id AND m2.tenant_id = pg.tenant_id
+                    LEFT JOIN plano_ciclos pc ON pc.id = m2.plano_ciclo_id
+                    WHERE pg.status_pagamento_id = 2
+                    GROUP BY pg.matricula_id, pg.tenant_id
                 ) pp ON pp.matricula_id = m.id AND pp.tenant_id = m.tenant_id
                 SET m.data_vencimento = pp.acesso_ate,
                     m.proxima_data_vencimento = pp.acesso_ate,
@@ -279,17 +297,13 @@ try {
                 AND m.status_id IN (SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'pendente'))
                 AND (
                     CASE WHEN m.tipo_cobranca = 'avulso' THEN COALESCE(
-                        (SELECT MAX(pp_acesso.data_vencimento) FROM pagamentos_plano pp_acesso
-                         WHERE pp_acesso.matricula_id = m.id AND pp_acesso.tenant_id = m.tenant_id
-                           AND pp_acesso.status_pagamento_id = 2),
+                        " . sqlFimPeriodoPago('m.tenant_id', 'm.id') . ",
                         m.data_vencimento
                     ) ELSE COALESCE(m.proxima_data_vencimento, m.data_vencimento) END
                 ) < CURDATE()
                 AND DATEDIFF(CURDATE(), (
                     CASE WHEN m.tipo_cobranca = 'avulso' THEN COALESCE(
-                        (SELECT MAX(pp_acesso.data_vencimento) FROM pagamentos_plano pp_acesso
-                         WHERE pp_acesso.matricula_id = m.id AND pp_acesso.tenant_id = m.tenant_id
-                           AND pp_acesso.status_pagamento_id = 2),
+                        " . sqlFimPeriodoPago('m.tenant_id', 'm.id') . ",
                         m.data_vencimento
                     ) ELSE COALESCE(m.proxima_data_vencimento, m.data_vencimento) END
                 )) < 5
@@ -309,9 +323,7 @@ try {
                 AND m.status_id IN (SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'pendente', 'vencida'))
                 AND DATEDIFF(CURDATE(), (
                     CASE WHEN m.tipo_cobranca = 'avulso' THEN COALESCE(
-                        (SELECT MAX(pp_acesso.data_vencimento) FROM pagamentos_plano pp_acesso
-                         WHERE pp_acesso.matricula_id = m.id AND pp_acesso.tenant_id = m.tenant_id
-                           AND pp_acesso.status_pagamento_id = 2),
+                        " . sqlFimPeriodoPago('m.tenant_id', 'm.id') . ",
                         m.data_vencimento
                     ) ELSE COALESCE(m.proxima_data_vencimento, m.data_vencimento) END
                 )) >= 5
