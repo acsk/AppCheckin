@@ -12,6 +12,7 @@
  *   php debug_auditoria_credito_alteracao_plano.php --matricula=91
  *   php debug_auditoria_credito_alteracao_plano.php --aluno=43
  *   php debug_auditoria_credito_alteracao_plano.php --resumo   # só matrículas afetadas
+ *   php debug_auditoria_credito_alteracao_plano.php --critico  # só padrão exato da #91
  */
 
 declare(strict_types=1);
@@ -21,6 +22,7 @@ date_default_timezone_set('America/Sao_Paulo');
 $filtroAluno = null;
 $filtroMatricula = null;
 $somenteResumo = in_array('--resumo', $argv, true);
+$somenteCritico = in_array('--critico', $argv, true);
 $limite = 200;
 
 foreach ($argv as $arg) {
@@ -114,6 +116,9 @@ if ($filtroAluno) {
 /** @var array<int, array{aluno: string, problemas: list<string>}> */
 $resumoMatriculas = [];
 
+/** @var array<int, array{aluno: string, problemas: list<string>}> */
+$resumoCritico = [];
+
 function registrarResumo(array &$resumo, int $matriculaId, string $aluno, string $problema): void
 {
     if (!isset($resumo[$matriculaId])) {
@@ -124,9 +129,15 @@ function registrarResumo(array &$resumo, int $matriculaId, string $aluno, string
     }
 }
 
-// ── A) Pagamento pago cancelado / convertido em crédito ─────────────────────
+function registrarCritico(array &$critico, array &$geral, int $matriculaId, string $aluno, string $problema): void
+{
+    registrarResumo($geral, $matriculaId, $aluno, $problema);
+    registrarResumo($critico, $matriculaId, $aluno, $problema);
+}
+
+// ── A) Pagamento MP cancelado e convertido em crédito ───────────────────────
 if (!$somenteResumo) {
-    secao('[A] Pagamentos PAGOS cancelados (MP/integração ou convertidos em crédito)');
+    secao('[A] Pagamento MP/integração cancelado → crédito (valor > 0)');
 }
 
 $paramsA = [];
@@ -139,14 +150,13 @@ $sqlA = "
     LEFT JOIN tipos_baixa tb ON tb.id = pp.tipo_baixa_id
     WHERE pp.status_pagamento_id = 4
       AND pp.data_pagamento IS NOT NULL
+      AND pp.valor > 0
+      AND (pp.observacoes IS NULL OR pp.observacoes NOT LIKE '%DUPLICADO%')
       AND (
-          pp.observacoes LIKE '%Convertido em crédito%'
-          OR pp.observacoes LIKE '%convertido em crédito%'
-          OR pp.observacoes LIKE '%migração de plano%'
-          OR pp.observacoes LIKE '%Migração de plano%'
-          OR pp.observacoes LIKE '%alteração de plano%'
-          OR pp.tipo_baixa_id = 4
-          OR pp.observacoes LIKE '%Mercado Pago%'
+          (pp.observacoes LIKE '%Convertido em crédito%' AND (
+              pp.observacoes LIKE '%migração%' OR pp.observacoes LIKE '%alteração%'
+          ))
+          OR (pp.tipo_baixa_id = 4 AND pp.observacoes LIKE '%Mercado Pago%')
       )
 " . filtroSql('pp', $filtroAluno, $filtroMatricula, $paramsA) . "
     ORDER BY pp.id DESC
@@ -158,12 +168,8 @@ $stmt->execute($paramsA);
 $rowsA = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 foreach ($rowsA as $r) {
-    registrarResumo(
-        $resumoMatriculas,
-        (int) $r['matricula_id'],
-        $r['aluno'],
-        "pp#{$r['id']} pago cancelado (R$ {$r['valor']}, {$r['data_pagamento']})"
-    );
+    $msg = "pp#{$r['id']} MP/integração cancelado → crédito (R$ {$r['valor']}, {$r['data_pagamento']})";
+    registrarCritico($resumoCritico, $resumoMatriculas, (int) $r['matricula_id'], $r['aluno'], $msg);
     if (!$somenteResumo) {
         linha(sprintf(
             '  pp#%d | mat#%d | %s | R$ %s | pago %s | %s',
@@ -182,23 +188,24 @@ if (!$somenteResumo) {
 
 // ── B) Parcelas fantasma da migração (R$ 0 + crédito) ───────────────────────
 if (!$somenteResumo) {
-    secao('[B] Parcelas fantasma de migração (R$ 0 pago com crédito / obs migração)');
+    secao('[B] Parcelas fantasma de migração (R$ 0, obs "Migração de plano —...")');
 }
 
 $paramsB = [];
 $sqlB = "
     SELECT pp.id, pp.matricula_id, pp.aluno_id, a.nome AS aluno,
            pp.valor, pp.credito_aplicado, pp.data_pagamento, pp.data_vencimento,
-           pp.observacoes, sp.nome AS status
+           pp.observacoes, pp.status_pagamento_id, sp.nome AS status
     FROM pagamentos_plano pp
     INNER JOIN alunos a ON a.id = pp.aluno_id
     INNER JOIN status_pagamento sp ON sp.id = pp.status_pagamento_id
-    WHERE (
-          pp.observacoes LIKE '%Migração de plano%'
-          OR pp.observacoes LIKE '%migração de plano%'
-          OR (pp.valor <= 0 AND COALESCE(pp.credito_aplicado, 0) > 0 AND pp.data_pagamento IS NOT NULL)
+    WHERE pp.valor <= 0
+      AND pp.data_pagamento IS NOT NULL
+      AND (
+          pp.observacoes LIKE 'Migração de plano —%'
+          OR (COALESCE(pp.credito_aplicado, 0) > 0 AND pp.observacoes LIKE '%Migração de plano%')
       )
-      AND pp.status_pagamento_id = 2
+      AND pp.status_pagamento_id IN (2, 4)
 " . filtroSql('pp', $filtroAluno, $filtroMatricula, $paramsB) . "
     ORDER BY pp.id DESC
     LIMIT {$limite}
@@ -209,12 +216,9 @@ $stmt->execute($paramsB);
 $rowsB = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 foreach ($rowsB as $r) {
-    registrarResumo(
-        $resumoMatriculas,
-        (int) $r['matricula_id'],
-        $r['aluno'],
-        "pp#{$r['id']} parcela fantasma migração (R$ {$r['valor']}, crédito {$r['credito_aplicado']})"
-    );
+    $st = (int) $r['status_pagamento_id'] === 2 ? 'ativa' : 'cancelada';
+    $msg = "pp#{$r['id']} parcela fantasma migração {$st} (crédito R$ {$r['credito_aplicado']})";
+    registrarCritico($resumoCritico, $resumoMatriculas, (int) $r['matricula_id'], $r['aluno'], $msg);
     if (!$somenteResumo) {
         linha(sprintf(
             '  pp#%d | mat#%d | %s | R$ %s | crédito R$ %s | pago %s | %s',
@@ -232,9 +236,9 @@ if (!$somenteResumo) {
     linha($rowsB ? '  Total: ' . count($rowsB) : '  (nenhum caso encontrado)');
 }
 
-// ── C) Créditos de alteração/migração (ativos ou já cancelados) ─────────────
+// ── C) Créditos bug migração (ciclo encerrado / último pagamento) ───────────
 if (!$somenteResumo) {
-    secao('[C] Créditos gerados na alteração/migração (ciclo encerrado / último pagamento)');
+    secao('[C] Créditos do bug migração (ciclo encerrado / último pagamento)');
 }
 
 $paramsC = [];
@@ -248,10 +252,8 @@ $sqlC = "
       AND (
           ca.motivo LIKE '%ciclo encerrado%'
           OR ca.motivo LIKE '%último pagamento%'
-          OR ca.motivo LIKE '%alteração%'
-          OR ca.motivo LIKE '%migração%'
-          OR ca.motivo LIKE '%cancelamento%'
       )
+      AND ca.motivo NOT LIKE '%proporcional%'
 " . filtroSql('ca', $filtroAluno, $filtroMatricula, $paramsC) . "
     ORDER BY ca.id DESC
     LIMIT {$limite}
@@ -266,12 +268,8 @@ $statusCredito = [1 => 'Ativo', 2 => 'Utilizado', 3 => 'Cancelado'];
 foreach ($rowsC as $r) {
     $st = $statusCredito[(int) $r['status_credito_id']] ?? $r['status_credito_id'];
     $flag = (int) $r['status_credito_id'] === 1 ? ' ⚠️ ATIVO' : '';
-    registrarResumo(
-        $resumoMatriculas,
-        (int) $r['matricula_origem_id'],
-        $r['aluno'],
-        "cr#{$r['id']} crédito {$st} (R$ {$r['valor']}){$flag}"
-    );
+    $msg = "cr#{$r['id']} crédito ciclo encerrado {$st} (R$ {$r['valor']}){$flag}";
+    registrarCritico($resumoCritico, $resumoMatriculas, (int) $r['matricula_origem_id'], $r['aluno'], $msg);
     if (!$somenteResumo) {
         $saldo = (float) $r['valor'] - (float) $r['valor_utilizado'];
         linha(sprintf(
@@ -291,8 +289,8 @@ if (!$somenteResumo) {
     linha($rowsC ? '  Total: ' . count($rowsC) : '  (nenhum caso encontrado)');
 }
 
-// ── D) Matrículas com data_inicio > último pagamento legítimo ───────────────
-if (!$somenteResumo) {
+// ── D/E) Sinais fracos — só modo completo ───────────────────────────────────
+if (!$somenteCritico) {
     secao('[D] Matrículas avulso com data_inicio após último pagamento (renovação suspeita)');
 }
 
@@ -362,7 +360,8 @@ $sqlE = "
     SELECT m.id AS matricula_id, m.aluno_id, a.nome AS aluno,
            m.data_vencimento, m.proxima_data_vencimento, sm.codigo AS status,
            ass.data_inicio AS ass_inicio, ass.data_fim AS ass_fim,
-           ass.gateway_assinatura_id
+           ass.gateway_assinatura_id,
+           ABS(DATEDIFF(m.data_vencimento, ass.data_fim)) AS diff_dias
     FROM matriculas m
     INNER JOIN alunos a ON a.id = m.aluno_id
     INNER JOIN status_matricula sm ON sm.id = m.status_id
@@ -370,8 +369,10 @@ $sqlE = "
     WHERE ass.data_fim IS NOT NULL
       AND ass.status_gateway IN ('approved', 'authorized')
       AND m.data_vencimento != ass.data_fim
+      AND ABS(DATEDIFF(m.data_vencimento, ass.data_fim)) > 3
+      AND NOT (sm.codigo = 'ativa' AND m.data_vencimento > ass.data_fim)
 " . filtroSql('m', $filtroAluno, $filtroMatricula, $paramsE) . "
-    ORDER BY m.id DESC
+    ORDER BY diff_dias DESC, m.id DESC
     LIMIT {$limite}
 ";
 
@@ -407,26 +408,46 @@ foreach ($rowsE as $r) {
     }
 }
 if (!$somenteResumo) {
-    linha($rowsE ? '  Total: ' . count($rowsE) : '  (nenhuma divergência com assinaturas)');
+    linha($rowsE ? '  Total: ' . count($rowsE) : '  (nenhuma divergência relevante com assinaturas)');
 }
+} // fim !somenteCritico
 
-// ── RESUMO: matrículas com um ou mais problemas ─────────────────────────────
-secao('[RESUMO] Matrículas com possível mesmo problema da #91');
+// ── RESUMO CRÍTICO (padrão exato #91) ───────────────────────────────────────
+secao('[CRÍTICO] Mesmo bug da matrícula #91 — ação recomendada');
 
-if (!$resumoMatriculas) {
-    linha('✅ Nenhuma matrícula com padrão detectado.');
+if (!$resumoCritico) {
+    linha('✅ Nenhuma outra matrícula com o padrão crítico detectado.');
 } else {
-    ksort($resumoMatriculas);
-    foreach ($resumoMatriculas as $matId => $info) {
-        $qtd = count($info['problemas']);
-        linha(sprintf('  mat#%d | %s | %d problema(s):', $matId, $info['aluno'], $qtd));
+    ksort($resumoCritico);
+    foreach ($resumoCritico as $matId => $info) {
+        linha(sprintf('  mat#%d | %s | %d problema(s):', $matId, $info['aluno'], count($info['problemas'])));
         foreach ($info['problemas'] as $p) {
             linha('    • ' . $p);
         }
+        linha("    → php debug_corrigir_matricula_91.php --matricula={$matId} [--apply]");
     }
     linha('');
-    linha('Total matrículas afetadas: ' . count($resumoMatriculas));
-    linha('Corrigir uma matrícula: php debug_corrigir_matricula_91.php --matricula=ID [--apply]');
+    linha('Total CRÍTICO: ' . count($resumoCritico) . ' matrícula(s)');
+}
+
+// ── RESUMO GERAL (modo completo) ──────────────────────────────────────────
+if (!$somenteCritico) {
+    secao('[RESUMO] Todas as matrículas com algum sinal (inclui falsos positivos)');
+
+    if (!$resumoMatriculas) {
+        linha('✅ Nenhuma matrícula com padrão detectado.');
+    } else {
+        ksort($resumoMatriculas);
+        foreach ($resumoMatriculas as $matId => $info) {
+            $tag = isset($resumoCritico[$matId]) ? ' ⚠️ CRÍTICO' : '';
+            linha(sprintf('  mat#%d | %s | %d problema(s)%s:', $matId, $info['aluno'], count($info['problemas']), $tag));
+            foreach ($info['problemas'] as $p) {
+                linha('    • ' . $p);
+            }
+        }
+        linha('');
+        linha('Total geral: ' . count($resumoMatriculas) . ' | Crítico: ' . count($resumoCritico));
+    }
 }
 
 linha('');
