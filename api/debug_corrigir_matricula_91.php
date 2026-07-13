@@ -92,6 +92,82 @@ function statusCredito(int $id): string
     };
 }
 
+/** @return list<string> */
+function colunasTabela(PDO $pdo, string $tabela): array
+{
+    static $cache = [];
+    if (!isset($cache[$tabela])) {
+        $stmt = $pdo->query("SHOW COLUMNS FROM `{$tabela}`");
+        $cache[$tabela] = array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'Field');
+    }
+
+    return $cache[$tabela];
+}
+
+function tabelaExiste(PDO $pdo, string $tabela): bool
+{
+    try {
+        $pdo->query("SELECT 1 FROM `{$tabela}` LIMIT 1");
+
+        return true;
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+/**
+ * @return list<array<string, mixed>>
+ */
+function buscarAssinaturas(PDO $pdo, string $tabela, int $matriculaId, ?string $gatewayIdMp, int $limit = 3): array
+{
+    if (!tabelaExiste($pdo, $tabela)) {
+        return [];
+    }
+
+    $cols = colunasTabela($pdo, $tabela);
+    $wheres = [];
+    $params = [];
+
+    if (in_array('matricula_id', $cols, true)) {
+        $wheres[] = 'matricula_id = ?';
+        $params[] = $matriculaId;
+    }
+
+    if ($gatewayIdMp) {
+        foreach (['gateway_assinatura_id', 'mp_preapproval_id', 'mp_payment_id', 'mp_plan_id'] as $col) {
+            if (in_array($col, $cols, true)) {
+                $wheres[] = "{$col} = ?";
+                $params[] = $gatewayIdMp;
+            }
+        }
+        if (in_array('external_reference', $cols, true)) {
+            $wheres[] = 'external_reference LIKE ?';
+            $params[] = "%{$gatewayIdMp}%";
+        }
+    }
+
+    if (!$wheres) {
+        return [];
+    }
+
+    $sql = 'SELECT * FROM `' . $tabela . '` WHERE ' . implode(' OR ', $wheres)
+        . ' ORDER BY id DESC LIMIT ' . max(1, $limit);
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($params);
+
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+function gatewayAssinatura(array $a): string
+{
+    return (string) ($a['gateway_assinatura_id'] ?? $a['mp_preapproval_id'] ?? $a['mp_payment_id'] ?? '-');
+}
+
+function statusAssinatura(array $a): string
+{
+    return (string) ($a['status_gateway'] ?? $a['status'] ?? '-');
+}
+
 try {
     $pdo = conectarPdo();
 } catch (Throwable $e) {
@@ -251,32 +327,15 @@ if ($pagamentosMat) {
 }
 
 foreach (['assinaturas', 'assinaturas_mercadopago'] as $tabelaAss) {
-    try {
-        $pdo->query("SELECT 1 FROM {$tabelaAss} LIMIT 1");
-    } catch (Throwable $e) {
-        continue;
-    }
-
-    $sqlAss = "SELECT * FROM {$tabelaAss} WHERE matricula_id = ?";
-    $paramsAss = [$matriculaId];
-    if ($gatewayIdMp) {
-        $sqlAss .= " OR gateway_assinatura_id = ? OR external_reference LIKE ?";
-        $paramsAss[] = $gatewayIdMp;
-        $paramsAss[] = "%{$gatewayIdMp}%";
-    }
-    $sqlAss .= ' ORDER BY id DESC LIMIT 3';
-
-    $stmt = $pdo->prepare($sqlAss);
-    $stmt->execute($paramsAss);
-    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $a) {
+    foreach (buscarAssinaturas($pdo, $tabelaAss, $matriculaId, $gatewayIdMp) as $a) {
         $dataFim = $a['data_fim'] ?? null;
         linha(sprintf(
             '  [%s] ass#%d | mat=%s | gateway=%s | %s | R$ %s | %s → %s',
             $tabelaAss,
             $a['id'],
             $a['matricula_id'] ?? '-',
-            $a['gateway_assinatura_id'] ?? $a['mp_preapproval_id'] ?? '-',
-            $a['status_gateway'] ?? $a['status'] ?? '-',
+            gatewayAssinatura($a),
+            statusAssinatura($a),
             number_format((float) ($a['valor'] ?? 0), 2, ',', '.'),
             $a['data_inicio'] ?? '-',
             $dataFim ?? '-'
@@ -359,19 +418,10 @@ if ($pagamentoLegitimo) {
 
     if (!$assinatura && preg_match('/ID:\s*(\d+)/', (string) ($pagamentoLegitimo['observacoes'] ?? ''), $mMp)) {
         foreach (['assinaturas', 'assinaturas_mercadopago'] as $tabelaAss) {
-            try {
-                $stmtAss = $pdo->prepare("
-                    SELECT * FROM {$tabelaAss}
-                    WHERE gateway_assinatura_id = ? OR external_reference LIKE ?
-                    ORDER BY id DESC LIMIT 1
-                ");
-                $stmtAss->execute([$mMp[1], '%' . $mMp[1] . '%']);
-                $assinatura = $stmtAss->fetch(PDO::FETCH_ASSOC) ?: $assinatura;
-                if ($assinatura) {
-                    break;
-                }
-            } catch (Throwable $e) {
-                continue;
+            $rows = buscarAssinaturas($pdo, $tabelaAss, $matriculaId, $mMp[1], 1);
+            if ($rows) {
+                $assinatura = $rows[0];
+                break;
             }
         }
     }
