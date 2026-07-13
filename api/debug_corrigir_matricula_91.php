@@ -236,38 +236,59 @@ if (!$creditos) {
     }
 }
 
-// ── 5. Assinatura MP (se existir) ─────────────────────────────────────────
-secao('5. ASSINATURA MERCADO PAGO');
+// ── 5. Assinatura / gateway MP ──────────────────────────────────────────────
+secao('5. ASSINATURA / GATEWAY MERCADO PAGO');
 
 $assinatura = null;
-try {
-    $stmt = $pdo->prepare("
-        SELECT * FROM assinaturas_mercadopago
-        WHERE matricula_id = ? OR (aluno_id = ? AND matricula_id IS NULL)
-        ORDER BY id DESC LIMIT 3
-    ");
-    $stmt->execute([$matriculaId, $alunoId]);
-    $assinaturas = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    foreach ($assinaturas as $a) {
+$gatewayIdMp = null;
+if ($pagamentosMat) {
+    foreach ($pagamentosMat as $p) {
+        if (preg_match('/ID:\s*(\d+)/', (string) ($p['observacoes'] ?? ''), $m)) {
+            $gatewayIdMp = $m[1];
+            break;
+        }
+    }
+}
+
+foreach (['assinaturas', 'assinaturas_mercadopago'] as $tabelaAss) {
+    try {
+        $pdo->query("SELECT 1 FROM {$tabelaAss} LIMIT 1");
+    } catch (Throwable $e) {
+        continue;
+    }
+
+    $sqlAss = "SELECT * FROM {$tabelaAss} WHERE matricula_id = ?";
+    $paramsAss = [$matriculaId];
+    if ($gatewayIdMp) {
+        $sqlAss .= " OR gateway_assinatura_id = ? OR external_reference LIKE ?";
+        $paramsAss[] = $gatewayIdMp;
+        $paramsAss[] = "%{$gatewayIdMp}%";
+    }
+    $sqlAss .= ' ORDER BY id DESC LIMIT 3';
+
+    $stmt = $pdo->prepare($sqlAss);
+    $stmt->execute($paramsAss);
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $a) {
+        $dataFim = $a['data_fim'] ?? null;
         linha(sprintf(
-            '  ass#%d | mat=%s | gateway=%s | %s | R$ %s | %s → %s',
+            '  [%s] ass#%d | mat=%s | gateway=%s | %s | R$ %s | %s → %s',
+            $tabelaAss,
             $a['id'],
             $a['matricula_id'] ?? '-',
-            $a['gateway_assinatura_id'] ?? '-',
-            $a['status_gateway'] ?? '-',
+            $a['gateway_assinatura_id'] ?? $a['mp_preapproval_id'] ?? '-',
+            $a['status_gateway'] ?? $a['status'] ?? '-',
             number_format((float) ($a['valor'] ?? 0), 2, ',', '.'),
             $a['data_inicio'] ?? '-',
-            $a['data_fim'] ?? '-'
+            $dataFim ?? '-'
         ));
-        if ((int) ($a['matricula_id'] ?? 0) === $matriculaId) {
+        if (!$assinatura && !empty($dataFim) && (int) ($a['matricula_id'] ?? 0) === $matriculaId) {
             $assinatura = $a;
         }
     }
-    if (!$assinaturas) {
-        linha('  (nenhuma assinatura MP vinculada)');
-    }
-} catch (Throwable $e) {
-    linha('  (tabela assinaturas_mercadopago indisponível: ' . $e->getMessage() . ')');
+}
+
+if (!$assinatura && !$gatewayIdMp) {
+    linha('  (nenhuma assinatura/gateway vinculada)');
 }
 
 // ── 6. Calcular estado esperado ───────────────────────────────────────────
@@ -311,12 +332,57 @@ if (!$pagamentoLegitimo) {
     }
 }
 
-// Datas esperadas do ciclo pago
+// Datas esperadas do ciclo pago — usar plano do pagamento legítimo (#187), não o plano atual da matrícula
 $dataInicioEsperada = $pagamentoLegitimo['data_pagamento'] ?? $mat['data_inicio'];
 $dataVencEsperada = null;
+$mesesCicloPago = 0;
+
+if ($pagamentoLegitimo) {
+    $stmtCiclo = $pdo->prepare("
+        SELECT COALESCE(pc.meses, af.meses, 0) AS meses_ciclo, pl.nome AS plano_nome
+        FROM pagamentos_plano pp
+        INNER JOIN planos pl ON pl.id = pp.plano_id
+        LEFT JOIN plano_ciclos pc ON pc.plano_id = pp.plano_id
+        LEFT JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
+        WHERE pp.id = ?
+        ORDER BY pc.meses DESC, pc.id DESC
+        LIMIT 1
+    ");
+    $stmtCiclo->execute([(int) $pagamentoLegitimo['id']]);
+    $cicloPago = $stmtCiclo->fetch(PDO::FETCH_ASSOC);
+    if ($cicloPago) {
+        $mesesCicloPago = (int) $cicloPago['meses_ciclo'];
+        if ($mesesCicloPago > 0) {
+            linha("Ciclo do pagamento #{$pagamentoLegitimo['id']} ({$cicloPago['plano_nome']}): {$mesesCicloPago} meses");
+        }
+    }
+
+    if (!$assinatura && preg_match('/ID:\s*(\d+)/', (string) ($pagamentoLegitimo['observacoes'] ?? ''), $mMp)) {
+        foreach (['assinaturas', 'assinaturas_mercadopago'] as $tabelaAss) {
+            try {
+                $stmtAss = $pdo->prepare("
+                    SELECT * FROM {$tabelaAss}
+                    WHERE gateway_assinatura_id = ? OR external_reference LIKE ?
+                    ORDER BY id DESC LIMIT 1
+                ");
+                $stmtAss->execute([$mMp[1], '%' . $mMp[1] . '%']);
+                $assinatura = $stmtAss->fetch(PDO::FETCH_ASSOC) ?: $assinatura;
+                if ($assinatura) {
+                    break;
+                }
+            } catch (Throwable $e) {
+                continue;
+            }
+        }
+    }
+}
 
 if ($assinatura && !empty($assinatura['data_fim'])) {
     $dataVencEsperada = $assinatura['data_fim'];
+} elseif ($pagamentoLegitimo && $mesesCicloPago > 0) {
+    $dt = new DateTime($dataInicioEsperada);
+    $dt->modify("+{$mesesCicloPago} months");
+    $dataVencEsperada = $dt->format('Y-m-d');
 } elseif ($pagamentoLegitimo && $mesesCiclo > 0) {
     $dt = new DateTime($dataInicioEsperada);
     $dt->modify("+{$mesesCiclo} months");
@@ -374,12 +440,33 @@ foreach ($creditos as $c) {
     }
 }
 
-// Parcelas pendentes geradas após alteração indevida
+// Parcelas fantasma da migração de plano (ex.: #818 — R$ 0 pago com crédito)
 foreach ($pagamentosMat as $p) {
+    if ((int) $p['id'] === (int) ($pagamentoLegitimo['id'] ?? 0)) {
+        continue;
+    }
+
+    $obs = (string) ($p['observacoes'] ?? '');
+    $valor = (float) $p['valor'];
+    $creditoAplicado = (float) ($p['credito_aplicado'] ?? 0);
+    $ehMigracao = stripos($obs, 'Migração de plano') !== false
+        || stripos($obs, 'migração de plano') !== false;
+
+    if ($ehMigracao || ($valor <= 0 && $creditoAplicado > 0 && !empty($p['data_pagamento']))) {
+        $anomalias[] = "Parcela #{$p['id']} gerada na migração (R$ {$valor}, crédito R$ {$creditoAplicado}) — não deveria existir.";
+        $acoes[] = [
+            'tipo' => 'remover_parcela_migracao',
+            'id' => (int) $p['id'],
+            'credito_id' => !empty($p['credito_id']) ? (int) $p['credito_id'] : null,
+            'desc' => "Remover parcela #{$p['id']} da migração de plano",
+        ];
+        continue;
+    }
+
     if ((int) $p['status_pagamento_id'] !== 1 && (int) $p['status_pagamento_id'] !== 3) {
         continue;
     }
-    if (empty($p['data_pagamento']) && (int) $p['id'] !== (int) ($pagamentoLegitimo['id'] ?? 0)) {
+    if (empty($p['data_pagamento'])) {
         $anomalias[] = "Parcela pendente #{$p['id']} (venc {$p['data_vencimento']}) — possível renovação indevida.";
         $acoes[] = [
             'tipo' => 'cancelar_parcela',
@@ -451,6 +538,23 @@ foreach ($acoes as $acao) {
                   AND status_pagamento_id IN (1, 3) AND data_pagamento IS NULL
             ")->execute([$acao['id'], $matriculaId]);
             linha("   ✓ Parcela #{$acao['id']} cancelada");
+            break;
+
+        case 'remover_parcela_migracao':
+            $parcelaId = $acao['id'];
+            if (!empty($acao['credito_id'])) {
+                $pdo->prepare("
+                    UPDATE creditos_aluno
+                    SET valor_utilizado = GREATEST(0, valor_utilizado - COALESCE(
+                        (SELECT credito_aplicado FROM pagamentos_plano WHERE id = ?), 0
+                    )),
+                        updated_at = NOW()
+                    WHERE id = ?
+                ")->execute([$parcelaId, $acao['credito_id']]);
+            }
+            $pdo->prepare("DELETE FROM pagamentos_plano WHERE id = ? AND matricula_id = ?")
+                ->execute([$parcelaId, $matriculaId]);
+            linha("   ✓ Parcela #{$parcelaId} removida (migração indevida)");
             break;
 
         case 'corrigir_matricula':
