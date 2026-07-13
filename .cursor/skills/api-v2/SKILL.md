@@ -93,6 +93,32 @@ Checklist por endpoint:
   - `GET /v2/mobile/assinaturas/aprovadas-hoje` (`matricula_id`)
   - `POST /v2/mobile/assinatura/{id}/cancelar`
   - `POST /v2/mobile/diaria/{matriculaId}/cancelar`
+- Admin painel (JWT + `admin.auth`):
+  - `GET/POST /v2/admin/modalidades`
+  - `GET/PUT/DELETE /v2/admin/modalidades/{id}`
+  - `GET/POST /v2/admin/alunos`
+  - `GET /v2/admin/alunos/basico`
+  - `GET /v2/admin/alunos/buscar-cpf/{cpf}`
+  - `POST /v2/admin/alunos/associar`
+  - `GET/PUT/DELETE /v2/admin/alunos/{id}`
+  - `GET /v2/admin/alunos/{id}/historico-planos|checkins|delete-preview`
+  - `DELETE /v2/admin/alunos/{id}/hard`
+  - `GET /v2/planos`, `GET /v2/planos/{id}` (JWT — listagem do painel)
+  - `POST/PUT/DELETE /v2/admin/planos[/{id}]`
+  - `GET /v2/admin/assinatura-frequencias`
+  - `GET/POST /v2/admin/planos/{planoId}/ciclos`, `POST .../gerar`
+  - `PUT/DELETE /v2/admin/planos/{planoId}/ciclos/{id}`
+  - Matrículas Wave A+B+C (`admin.auth`):
+    - `GET /v2/admin/matriculas` (filtros: incluir_inativos, aluno_id, status, pagina, por_pagina, busca)
+    - `GET /v2/admin/matriculas/{id}`, `.../pagamentos`, `.../delete-preview`
+    - `POST /v2/admin/matriculas` (criar plano; `pacote_id` → 501)
+    - `POST /v2/admin/matriculas/contas/{id}/baixa`
+    - `POST .../bloquear|desbloquear|suspender|reativar|cancelar`
+    - `POST .../alterar-plano`
+    - `PUT .../proxima-data-vencimento`
+    - `DELETE /v2/admin/matriculas/{id}` (hard delete)
+    - `GET .../vencimentos/hoje`, `.../vencimentos/proximos`
+    - Ainda não: pacote create, cancelar-com-credito, simular-cancelamento
 
 ## Limitações vs Slim (Fase 4 — planos / pagamentos)
 
@@ -108,13 +134,34 @@ Rotas da Fase 4 existem na v2 com contrato JSON compatível, mas **não fechar c
 
 **Antes de apontar o mobile só para `:9090` em compra/PIX:** validar cenários de matrícula pendente reaberta, renovação pós-vencimento e polling pós-pagamento (`aprovadas-hoje` com MP).
 
+## Painel — backlog de migração (Fase Admin)
+
+Auth/`me` já estão na v2. Paths Slim `/admin/*` → Laravel `/v2/admin/*` + middleware `admin.auth` (papel 3/4).
+
+| Ordem | Módulo | Slim | Status v2 | Notas |
+|------:|--------|------|-----------|-------|
+| 0 | Auth + me | `/auth/*`, `/me` | DONE | Cutover painel pode começar só nisto |
+| 1 | **Modalidades** | `/admin/modalidades` CRUD | **DONE** | Inclui planos embutidos no create/update; toggle ativo no DELETE |
+| 2 | **Alunos** | `/admin/alunos` (+ histórico, checkins, hard delete, CPF/associar) | **DONE** | Paridade com `alunoService.js` do painel |
+| 3 | **Planos + ciclos** | `/planos`, `/admin/planos`, ciclos, frequências | **DONE** | Listagem JWT em `/v2/planos`; CRUD admin; gerar ciclos. Relatório `planos-ciclos` ainda não |
+| 4 | Matrículas | `/admin/matriculas` (+ bloqueio, cancelar, alterar-plano, baixa) | **PARTIAL** (Wave A+B+C) | Wave A+B + alterar-plano + delete/delete-preview. Falta: pacote create, cancelar-com-credito, simular-cancelamento |
+| 5 | Pagamentos plano | `/admin/pagamentos-plano`, contas a receber | TODO | Baixa manual / resumo |
+| 6 | Turmas / dias | `/admin/turmas`, dias, presença | TODO | Agenda |
+| 7 | WOD admin | `/admin/wods` (+ blocos/variações/resultados) | TODO | Grande superfície |
+| 8 | Professores | `/admin/professores` | TODO | |
+| 9 | Pacotes admin | `/admin/pacotes`, pacote-contratos | TODO | |
+| 10 | Auditoria / dashboard | `/admin/dashboard`, `/admin/auditoria/*` | TODO | |
+| 11 | Superadmin | `/superadmin/*` | TODO | Por último |
+
+**Contrato painel:** respostas admin usam `{ type, message, ... }` (não o envelope mobile `success`/`data`). Erros de papel: `{ erro, ... }` como na Slim.
+
+**Cutover sugerido:** apontar `painel` para `:9090` com base `/v2` (ou proxy) módulo a módulo; enquanto um módulo faltar, manter Slim `:8080` para aquele path.
+
 ## Próximos candidatos (ordem sugerida)
 
-1. Mobile: professor (check-in manual, presença, bloqueio turma) — `TurmaCheckinBloqueioService` já existe na v2
-2. Fechar paridade Fase 4:
-   - `comprar-plano`: reuso matrícula vencida + ramos pendentes/checkout da Slim
-   - `aprovadas-hoje`: fallback Mercado Pago + ativação (`AssinaturaController::processarPagamentoAprovadoMP`)
-3. Mobile: pacotes (`GET /pacotes/contratos`, `GET /pacotes/pendentes`, `POST /pacotes/contratos/{id}/pagar`)
+1. **Painel:** Matrículas restante (pacote create, cancelar-com-credito, simular-cancelamento)
+2. Mobile: professor (check-in manual, presença, bloqueio turma) — `TurmaCheckinBloqueioService` já existe na v2
+3. Fechar paridade Fase 4 mobile (comprar-plano / aprovadas-hoje / pacotes)
 
 ## TESTS
 1. Sempre execute testes

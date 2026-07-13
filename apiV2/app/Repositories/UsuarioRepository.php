@@ -320,6 +320,65 @@ class UsuarioRepository
         DB::table('usuarios')->where('id', $usuarioId)->update($update);
     }
 
+    public function emailExists(string $email, ?int $excludeId = null, ?int $tenantId = null): bool
+    {
+        $email = mb_strtolower(trim($email), 'UTF-8');
+
+        if ($tenantId) {
+            $query = DB::table('usuarios as u')
+                ->join('tenant_usuario_papel as tup', 'tup.usuario_id', '=', 'u.id')
+                ->where('u.email', $email)
+                ->where('tup.tenant_id', $tenantId)
+                ->where('tup.ativo', 1);
+
+            if ($excludeId) {
+                $query->where('u.id', '!=', $excludeId);
+            }
+
+            return $query->exists();
+        }
+
+        $query = DB::table('usuarios')->where(function ($q) use ($email) {
+            $q->where('email', $email);
+            if ($this->hasColumn('usuarios', 'email_global')) {
+                $q->orWhere('email_global', $email);
+            }
+        });
+
+        if ($excludeId) {
+            $query->where('id', '!=', $excludeId);
+        }
+
+        return $query->exists();
+    }
+
+    /**
+     * @param  array{email?: string, senha?: string, nome?: string}  $data
+     */
+    public function updateAuthFields(int $id, array $data): void
+    {
+        $update = [];
+        if (isset($data['email'])) {
+            $email = mb_strtolower(trim((string) $data['email']), 'UTF-8');
+            $update['email'] = $email;
+            if ($this->hasColumn('usuarios', 'email_global')) {
+                $update['email_global'] = $email;
+            }
+        }
+        if (! empty($data['senha'])) {
+            $update['senha_hash'] = password_hash((string) $data['senha'], PASSWORD_BCRYPT);
+        }
+        if (isset($data['nome'])) {
+            $update['nome'] = mb_strtoupper(trim((string) $data['nome']), 'UTF-8');
+        }
+
+        if ($update === []) {
+            return;
+        }
+
+        DB::table('usuarios')->where('id', $id)->update($update);
+    }
+
     private function hasColumn(string $table, string $column): bool
     {
         return DB::getSchemaBuilder()->hasColumn($table, $column);

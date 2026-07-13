@@ -185,4 +185,112 @@ class PagamentoPlanoService
             }
         }
     }
+
+    /**
+     * Numera parcelas pela ordem de vencimento (lista já ordenada por data_vencimento, id).
+     * Paridade com Slim PagamentoPlano::anexarNumeroParcela.
+     *
+     * @param  list<array<string, mixed>>  $pagamentos
+     * @return list<array<string, mixed>>
+     */
+    public static function anexarNumeroParcela(array $pagamentos): array
+    {
+        foreach ($pagamentos as $idx => &$pagamento) {
+            $pagamento['numero_parcela'] = $idx + 1;
+        }
+        unset($pagamento);
+
+        return $pagamentos;
+    }
+
+    /**
+     * Marca parcelas pendentes vencidas como atrasado (status 3).
+     * Paridade com Slim PagamentoPlano::marcarAtrasados.
+     */
+    public function marcarAtrasados(int $tenantId): int
+    {
+        $this->corrigirParcelasFuturasMarcadasAtrasadas($tenantId);
+
+        $marcados = DB::update(
+            "UPDATE pagamentos_plano
+             SET status_pagamento_id = 3,
+                 updated_at = NOW()
+             WHERE tenant_id = ?
+             AND status_pagamento_id = 1
+             AND data_vencimento < CURDATE()
+             AND data_pagamento IS NULL",
+            [$tenantId]
+        );
+
+        $sqlAvulso = '
+            UPDATE pagamentos_plano pp
+            INNER JOIN matriculas m ON m.id = pp.matricula_id AND m.tenant_id = pp.tenant_id
+            SET pp.status_pagamento_id = 3, pp.updated_at = NOW()
+            WHERE pp.tenant_id = ?
+              AND m.tipo_cobranca = \'avulso\'
+              AND pp.status_pagamento_id = 1
+              AND pp.data_pagamento IS NULL
+              AND '.self::sqlAvulsoPeriodoPagoExpirou('pp').'
+        ';
+        $marcadosAvulso = DB::update($sqlAvulso, [$tenantId]);
+
+        return $marcados + $marcadosAvulso;
+    }
+
+    /**
+     * Expressão SQL do fim do período pago (avulso).
+     */
+    public static function sqlFimPeriodoPago(string $tenantExpr, string $matriculaExpr): string
+    {
+        return "(
+            SELECT MAX(CASE
+                WHEN COALESCE(p_acesso.duracao_dias, 0) = 1 THEN
+                    CASE
+                        WHEN pp_acesso.data_pagamento IS NULL THEN pp_acesso.data_vencimento
+                        WHEN pp_acesso.data_vencimento >= DATE_ADD(pp_acesso.data_pagamento, INTERVAL 1 DAY)
+                            THEN pp_acesso.data_vencimento
+                        ELSE DATE_ADD(GREATEST(pp_acesso.data_pagamento, pp_acesso.data_vencimento), INTERVAL 1 DAY)
+                    END
+                WHEN pp_acesso.data_pagamento IS NULL THEN pp_acesso.data_vencimento
+                WHEN pp_acesso.data_vencimento >= DATE_ADD(pp_acesso.data_pagamento, INTERVAL COALESCE(pc_acesso.meses, 1) MONTH)
+                    THEN pp_acesso.data_vencimento
+                ELSE DATE_ADD(GREATEST(pp_acesso.data_pagamento, pp_acesso.data_vencimento), INTERVAL COALESCE(pc_acesso.meses, 1) MONTH)
+            END)
+            FROM pagamentos_plano pp_acesso
+            INNER JOIN matriculas m_acesso
+                ON m_acesso.id = pp_acesso.matricula_id AND m_acesso.tenant_id = pp_acesso.tenant_id
+            INNER JOIN planos p_acesso ON p_acesso.id = m_acesso.plano_id
+            LEFT JOIN plano_ciclos pc_acesso ON pc_acesso.id = m_acesso.plano_ciclo_id
+            WHERE pp_acesso.tenant_id = {$tenantExpr}
+              AND pp_acesso.matricula_id = {$matriculaExpr}
+              AND pp_acesso.status_pagamento_id = 2
+        )";
+    }
+
+    private static function sqlAvulsoPeriodoPagoExpirou(string $ppAlias = 'pp'): string
+    {
+        return 'COALESCE('.self::sqlFimPeriodoPago("{$ppAlias}.tenant_id", "{$ppAlias}.matricula_id").", '1900-01-01') < CURDATE()";
+    }
+
+    /**
+     * Parcelas com vencimento futuro não podem permanecer como Atrasado (3),
+     * exceto renovação avulsa com período pago já expirado.
+     */
+    public function corrigirParcelasFuturasMarcadasAtrasadas(int $tenantId): int
+    {
+        $sql = '
+            UPDATE pagamentos_plano pp
+            INNER JOIN matriculas m ON m.id = pp.matricula_id AND m.tenant_id = pp.tenant_id
+            SET pp.status_pagamento_id = 1, pp.updated_at = NOW()
+            WHERE pp.tenant_id = ?
+            AND pp.status_pagamento_id = 3
+            AND pp.data_vencimento >= CURDATE()
+            AND pp.data_pagamento IS NULL
+            AND NOT (
+                m.tipo_cobranca = \'avulso\'
+                AND '.self::sqlAvulsoPeriodoPagoExpirou('pp').'
+            )';
+
+        return DB::update($sql, [$tenantId]);
+    }
 }

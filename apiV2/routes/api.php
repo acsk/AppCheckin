@@ -1,5 +1,10 @@
 <?php
 
+use App\Http\Controllers\Api\V2\Admin\AlunoController as AdminAlunoController;
+use App\Http\Controllers\Api\V2\Admin\MatriculaController as AdminMatriculaController;
+use App\Http\Controllers\Api\V2\Admin\ModalidadeController as AdminModalidadeController;
+use App\Http\Controllers\Api\V2\Admin\PlanoCicloController as AdminPlanoCicloController;
+use App\Http\Controllers\Api\V2\Admin\PlanoController as AdminPlanoController;
 use App\Http\Controllers\Api\V2\AuthController;
 use App\Http\Controllers\Api\V2\HealthController;
 use App\Http\Controllers\Api\V2\MeController;
@@ -30,6 +35,10 @@ Route::prefix('v2')->group(function () {
         Route::get('/auth/tenants', [AuthController::class, 'tenants']);
         Route::get('/me', [MeController::class, 'show']);
 
+        // Planos (JWT) — painel usa GET /planos (não /admin) para listagem
+        Route::get('/planos', [AdminPlanoController::class, 'index']);
+        Route::get('/planos/{id}', [AdminPlanoController::class, 'show']);
+
         Route::prefix('mobile')->group(function () {
             Route::get('/perfil', [MobileController::class, 'perfil']);
             Route::get('/acesso', [MobileController::class, 'verificarAcesso']);
@@ -57,6 +66,58 @@ Route::prefix('v2')->group(function () {
             Route::get('/assinaturas/aprovadas-hoje', [MobileController::class, 'assinaturasAprovadasHoje']);
             Route::post('/assinatura/{id}/cancelar', [MobileController::class, 'cancelarAssinatura']);
             Route::post('/diaria/{matriculaId}/cancelar', [MobileController::class, 'cancelarDiaria']);
+        });
+
+        // Painel admin (contrato Slim /admin/* sob prefixo /v2)
+        Route::prefix('admin')->middleware('admin.auth')->group(function () {
+            Route::get('/modalidades', [AdminModalidadeController::class, 'index']);
+            Route::get('/modalidades/{id}', [AdminModalidadeController::class, 'show']);
+            Route::post('/modalidades', [AdminModalidadeController::class, 'store']);
+            Route::put('/modalidades/{id}', [AdminModalidadeController::class, 'update']);
+            Route::delete('/modalidades/{id}', [AdminModalidadeController::class, 'destroy']);
+
+            Route::get('/alunos', [AdminAlunoController::class, 'index']);
+            Route::get('/alunos/basico', [AdminAlunoController::class, 'listarBasico']);
+            Route::get('/alunos/buscar-cpf/{cpf}', [AdminAlunoController::class, 'buscarPorCpf']);
+            Route::post('/alunos/associar', [AdminAlunoController::class, 'associar']);
+            Route::get('/alunos/{id}', [AdminAlunoController::class, 'show']);
+            Route::get('/alunos/{id}/historico-planos', [AdminAlunoController::class, 'historicoPlanos']);
+            Route::get('/alunos/{id}/checkins', [AdminAlunoController::class, 'checkins']);
+            Route::get('/alunos/{id}/delete-preview', [AdminAlunoController::class, 'deletePreview']);
+            Route::post('/alunos', [AdminAlunoController::class, 'store']);
+            Route::put('/alunos/{id}', [AdminAlunoController::class, 'update']);
+            Route::delete('/alunos/{id}', [AdminAlunoController::class, 'destroy']);
+            Route::delete('/alunos/{id}/hard', [AdminAlunoController::class, 'hardDelete']);
+
+            Route::get('/planos/{id}', [AdminPlanoController::class, 'show']);
+            Route::post('/planos', [AdminPlanoController::class, 'store']);
+            Route::put('/planos/{id}', [AdminPlanoController::class, 'update']);
+            Route::delete('/planos/{id}', [AdminPlanoController::class, 'destroy']);
+
+            Route::get('/assinatura-frequencias', [AdminPlanoCicloController::class, 'listarFrequencias']);
+            Route::get('/planos/{planoId}/ciclos', [AdminPlanoCicloController::class, 'listar']);
+            Route::post('/planos/{planoId}/ciclos', [AdminPlanoCicloController::class, 'store']);
+            Route::post('/planos/{planoId}/ciclos/gerar', [AdminPlanoCicloController::class, 'gerar']);
+            Route::put('/planos/{planoId}/ciclos/{id}', [AdminPlanoCicloController::class, 'update']);
+            Route::delete('/planos/{planoId}/ciclos/{id}', [AdminPlanoCicloController::class, 'destroy']);
+
+            // Matrículas Wave A+B+C — rotas estáticas / específicas antes de {id}
+            Route::get('/matriculas/vencimentos/hoje', [AdminMatriculaController::class, 'vencimentosHoje']);
+            Route::get('/matriculas/vencimentos/proximos', [AdminMatriculaController::class, 'proximosVencimentos']);
+            Route::post('/matriculas/contas/{id}/baixa', [AdminMatriculaController::class, 'darBaixaConta']);
+            Route::get('/matriculas', [AdminMatriculaController::class, 'index']);
+            Route::post('/matriculas', [AdminMatriculaController::class, 'store']);
+            Route::get('/matriculas/{id}/delete-preview', [AdminMatriculaController::class, 'deletePreview']);
+            Route::post('/matriculas/{id}/alterar-plano', [AdminMatriculaController::class, 'alterarPlano']);
+            Route::get('/matriculas/{id}', [AdminMatriculaController::class, 'show']);
+            Route::get('/matriculas/{id}/pagamentos', [AdminMatriculaController::class, 'pagamentos']);
+            Route::post('/matriculas/{id}/bloquear', [AdminMatriculaController::class, 'bloquear']);
+            Route::post('/matriculas/{id}/desbloquear', [AdminMatriculaController::class, 'desbloquear']);
+            Route::post('/matriculas/{id}/suspender', [AdminMatriculaController::class, 'bloquear']);
+            Route::post('/matriculas/{id}/reativar', [AdminMatriculaController::class, 'desbloquear']);
+            Route::post('/matriculas/{id}/cancelar', [AdminMatriculaController::class, 'cancelar']);
+            Route::put('/matriculas/{id}/proxima-data-vencimento', [AdminMatriculaController::class, 'atualizarProximaDataVencimento']);
+            Route::delete('/matriculas/{id}', [AdminMatriculaController::class, 'destroy']);
         });
     });
 });
