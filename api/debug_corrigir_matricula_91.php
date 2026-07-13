@@ -683,13 +683,29 @@ foreach ($acoes as $acao) {
 
         case 'cancelar_assinatura_migracao':
             try {
-                $pdo->prepare("
+                $stmtAssSt = $pdo->prepare("SELECT id FROM assinatura_status WHERE codigo = 'cancelada' LIMIT 1");
+                $stmtAssSt->execute();
+                $statusAssId = (int) $stmtAssSt->fetchColumn();
+
+                $sets = [
+                    "status_gateway = 'cancelled'",
+                    "motivo_cancelamento = 'Cancelada: correção migração indevida'",
+                ];
+                if ($statusAssId > 0) {
+                    $sets[] = "status_id = {$statusAssId}";
+                }
+                $cols = colunasTabela($pdo, 'assinaturas');
+                if (in_array('atualizado_em', $cols, true)) {
+                    $sets[] = 'atualizado_em = NOW()';
+                } elseif (in_array('updated_at', $cols, true)) {
+                    $sets[] = 'updated_at = NOW()';
+                }
+
+                $pdo->prepare('
                     UPDATE assinaturas
-                    SET status_gateway = 'cancelled',
-                        motivo_cancelamento = 'Cancelada: correção migração indevida',
-                        updated_at = NOW()
+                    SET ' . implode(', ', $sets) . '
                     WHERE id = ? AND matricula_id = ?
-                ")->execute([$acao['id'], $matriculaId]);
+                ')->execute([$acao['id'], $matriculaId]);
                 linha("   ✓ Assinatura #{$acao['id']} cancelada");
             } catch (Throwable $e) {
                 linha("   ⚠️  Assinatura #{$acao['id']}: " . $e->getMessage());
