@@ -1850,27 +1850,15 @@ class MatriculaController
             $totalDiasCicloAtual = max(1, (int) $dataInicioAtual->diff($dataVencimentoAtual)->days);
             $diasRestantes = max(0, (int) $hoje->diff($dataVencimentoAtual)->days);
             
-            // Se o ciclo ainda está vigente, creditar o proporcional restante
+            // Ciclo vigente: só o proporcional dos dias restantes.
+            // Ciclo já encerrado: crédito zero (serviço já foi consumido) — NÃO usar o pagamento cheio.
             if ($diasRestantes > 0 && $hoje <= $dataVencimentoAtual) {
                 $creditoValor = round(($valorCicloAtual / $totalDiasCicloAtual) * $diasRestantes, 2);
             } else {
-                // Ciclo já venceu, buscar último pagamento pago como antes
-                $stmtUltimoPago = $db->prepare("
-                    SELECT id, valor, data_pagamento, data_vencimento
-                    FROM pagamentos_plano
-                    WHERE matricula_id = ? AND tenant_id = ? AND status_pagamento_id = 2
-                    ORDER BY data_vencimento DESC
-                    LIMIT 1
-                ");
-                $stmtUltimoPago->execute([$matriculaId, $tenantId]);
-                $ultimoPago = $stmtUltimoPago->fetch(\PDO::FETCH_ASSOC);
-                
-                if ($ultimoPago) {
-                    $creditoValor = (float) $ultimoPago['valor'];
-                    $pagamentoOrigemId = (int) $ultimoPago['id'];
-                }
+                $creditoValor = 0.0;
+                $diasRestantes = 0;
             }
-            
+
             if ($creditoValor > 0) {
                 $creditoGerado = true;
                 $creditoMotivo = $creditoMotivo ?? "Crédito proporcional do plano anterior ({$diasRestantes} dias restantes de R$" . number_format($valorCicloAtual, 2, ',', '.') . ")";

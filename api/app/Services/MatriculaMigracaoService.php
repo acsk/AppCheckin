@@ -8,8 +8,9 @@ use PDO;
 
 /**
  * Migração de plano pelo app mobile com crédito automático:
+ * - Upgrade: valor cheio do plano atual (paga só a diferença)
  * - Ciclo vigente: proporcional aos dias restantes
- * - Ciclo encerrado: valor do último pagamento pago
+ * - Ciclo encerrado: crédito zero (período já consumido)
  */
 class MatriculaMigracaoService
 {
@@ -609,30 +610,11 @@ class MatriculaMigracaoService
             ]);
         }
 
-        $stmtUltimoPago = $this->db->prepare('
-            SELECT id, valor
-            FROM pagamentos_plano
-            WHERE matricula_id = ? AND tenant_id = ? AND status_pagamento_id = 2
-            ORDER BY data_vencimento DESC
-            LIMIT 1
-        ');
-        $stmtUltimoPago->execute([$matriculaId, $tenantId]);
-        $ultimoPago = $stmtUltimoPago->fetch(PDO::FETCH_ASSOC);
-
-        $creditoCheio = $ultimoPago ? (float) $ultimoPago['valor'] : $valorCicloAtual;
-        $pagamentoOrigemId = $ultimoPago ? (int) $ultimoPago['id'] : null;
-
-        return [
-            'tipo_credito' => 'valor_cheio',
-            'valor_plano_atual' => $valorCicloAtual,
-            'valor_consumido' => round(max(0, $valorCicloAtual - $creditoCheio), 2),
-            'credito' => round($creditoCheio, 2),
-            'dias_totais' => $base['dias_totais'],
-            'dias_restantes' => 0,
-            'dias_usados' => $base['dias_totais'],
-            'pagamento_origem_id' => $pagamentoOrigemId,
-            'motivo' => 'Crédito do último pagamento (ciclo encerrado)',
-        ];
+        // Ciclo encerrado: sem crédito — o pagamento cobre o período já utilizado.
+        return array_merge($base, [
+            'pagamento_origem_id' => null,
+            'motivo' => 'Sem crédito: ciclo já encerrado (período consumido)',
+        ]);
     }
 
     private function buscarUltimoPagamentoPagoId(int $matriculaId, int $tenantId): ?int

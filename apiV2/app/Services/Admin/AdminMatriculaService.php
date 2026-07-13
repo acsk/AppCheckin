@@ -1068,14 +1068,13 @@ class AdminMatriculaService
             $totalDiasCicloAtual = max(1, (int) $dataInicioAtual->diff($dataVencimentoAtual)->days);
             $diasRestantes = max(0, (int) $hoje->diff($dataVencimentoAtual)->days);
 
+            // Ciclo vigente: só o proporcional dos dias restantes.
+            // Ciclo já encerrado: crédito zero (serviço já foi consumido) — NÃO usar o pagamento cheio.
             if ($diasRestantes > 0 && $hoje <= $dataVencimentoAtual) {
                 $creditoValor = round(($valorCicloAtual / $totalDiasCicloAtual) * $diasRestantes, 2);
             } else {
-                $ultimoPago = $this->matriculas->ultimoPagamentoPago($id, $tenantId);
-                if ($ultimoPago) {
-                    $creditoValor = (float) $ultimoPago['valor'];
-                    $pagamentoOrigemId = (int) $ultimoPago['id'];
-                }
+                $creditoValor = 0.0;
+                $diasRestantes = 0;
             }
 
             if ($creditoValor > 0) {
