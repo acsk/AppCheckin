@@ -395,10 +395,13 @@ if (!$pagamentoLegitimo) {
 $dataInicioEsperada = $pagamentoLegitimo['data_pagamento'] ?? $mat['data_inicio'];
 $dataVencEsperada = null;
 $mesesCicloPago = 0;
+$duracaoDiasPlano = 0;
+$proxParcelaVenc = null;
 
 if ($pagamentoLegitimo) {
     $stmtCiclo = $pdo->prepare("
-        SELECT COALESCE(pc.meses, af.meses, 0) AS meses_ciclo, pl.nome AS plano_nome
+        SELECT COALESCE(pc.meses, af.meses, 0) AS meses_ciclo,
+               pl.nome AS plano_nome, pl.duracao_dias
         FROM pagamentos_plano pp
         INNER JOIN planos pl ON pl.id = pp.plano_id
         LEFT JOIN plano_ciclos pc ON pc.plano_id = pp.plano_id
@@ -411,9 +414,28 @@ if ($pagamentoLegitimo) {
     $cicloPago = $stmtCiclo->fetch(PDO::FETCH_ASSOC);
     if ($cicloPago) {
         $mesesCicloPago = (int) $cicloPago['meses_ciclo'];
+        $duracaoDiasPlano = (int) ($cicloPago['duracao_dias'] ?? 0);
         if ($mesesCicloPago > 0) {
             linha("Ciclo do pagamento #{$pagamentoLegitimo['id']} ({$cicloPago['plano_nome']}): {$mesesCicloPago} meses");
+        } elseif ($duracaoDiasPlano > 0) {
+            linha("Ciclo do pagamento #{$pagamentoLegitimo['id']} ({$cicloPago['plano_nome']}): {$duracaoDiasPlano} dias");
         }
+    }
+
+    // Próxima parcela gerada na matrícula indica fim do ciclo pago (ex.: #718 venc 22/07)
+    $stmtProx = $pdo->prepare("
+        SELECT data_vencimento FROM pagamentos_plano
+        WHERE matricula_id = ? AND id > ? AND data_vencimento > ?
+        ORDER BY data_vencimento ASC LIMIT 1
+    ");
+    $stmtProx->execute([
+        $matriculaId,
+        (int) $pagamentoLegitimo['id'],
+        $pagamentoLegitimo['data_pagamento'] ?? $pagamentoLegitimo['data_vencimento'],
+    ]);
+    $proxParcelaVenc = $stmtProx->fetchColumn();
+    if ($proxParcelaVenc) {
+        linha("Fim do ciclo pela próxima parcela: {$proxParcelaVenc}");
     }
 
     if (!$assinatura && preg_match('/ID:\s*(\d+)/', (string) ($pagamentoLegitimo['observacoes'] ?? ''), $mMp)) {
@@ -429,16 +451,23 @@ if ($pagamentoLegitimo) {
 
 if ($assinatura && !empty($assinatura['data_fim'])) {
     $dataVencEsperada = $assinatura['data_fim'];
+} elseif (!empty($proxParcelaVenc)) {
+    $dataVencEsperada = (string) $proxParcelaVenc;
 } elseif ($pagamentoLegitimo && $mesesCicloPago > 0) {
     $dt = new DateTime($dataInicioEsperada);
     $dt->modify("+{$mesesCicloPago} months");
+    $dataVencEsperada = $dt->format('Y-m-d');
+} elseif ($pagamentoLegitimo && $duracaoDiasPlano > 0) {
+    $dt = new DateTime($dataInicioEsperada);
+    $dt->modify("+{$duracaoDiasPlano} days");
     $dataVencEsperada = $dt->format('Y-m-d');
 } elseif ($pagamentoLegitimo && $mesesCiclo > 0) {
     $dt = new DateTime($dataInicioEsperada);
     $dt->modify("+{$mesesCiclo} months");
     $dataVencEsperada = $dt->format('Y-m-d');
-} elseif ($pagamentoLegitimo) {
-    $dataVencEsperada = $pagamentoLegitimo['data_vencimento'];
+} elseif ($pagamentoLegitimo && !empty($mat['proxima_data_vencimento'])
+    && ($mat['proxima_data_vencimento'] > $dataInicioEsperada)) {
+    $dataVencEsperada = $mat['proxima_data_vencimento'];
 }
 
 if ($dataVencEsperada) {
