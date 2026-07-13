@@ -77,4 +77,14 @@ export const auditoriaService = {
       throw prepararErro(error.response?.data || error);
     }
   },
+
+  async creditoMigracaoPlano() {
+    try {
+      const response = await api.get('/admin/auditoria/credito-migracao-plano');
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao auditar crédito/migração de plano:', error);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
 };

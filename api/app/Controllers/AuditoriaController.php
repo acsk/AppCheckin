@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use App\Services\AuditoriaCreditoMigracaoService;
 
 class AuditoriaController
 {
@@ -765,6 +766,32 @@ class AuditoriaController
                 'type'    => 'error',
                 'message' => 'Erro ao verificar check-ins múltiplos no dia: ' . $e->getMessage(),
             ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
+
+    /**
+     * Crédito / migração de plano — parcelas fantasma, vencimento deslocado, MP cancelado
+     * GET /admin/auditoria/credito-migracao-plano
+     */
+    public function creditoMigracaoPlano(Request $request, Response $response): Response
+    {
+        $tenantId = $request->getAttribute('tenant_id');
+        $db = require __DIR__ . '/../../config/database.php';
+
+        try {
+            $service = new \App\Services\AuditoriaCreditoMigracaoService($db);
+            $resultado = $service->auditar((int) $tenantId);
+
+            $response->getBody()->write(json_encode($resultado, JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Erro ao auditar crédito/migração de plano: ' . $e->getMessage(),
+            ], JSON_UNESCAPED_UNICODE));
+
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
     }

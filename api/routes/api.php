@@ -1114,6 +1114,7 @@ return function ($app) {
         $group->post('/auditoria/reparar-proxima-data-vencimento', [AuditoriaController::class, 'repararProximaDataVencimento']);
         $group->get('/auditoria/checkins-acima-do-limite', [AuditoriaController::class, 'checkinsAcimaDoLimite']);
         $group->get('/auditoria/checkins-multiplos-no-dia', [AuditoriaController::class, 'checkinsMultiplosNoDia']);
+        $group->get('/auditoria/credito-migracao-plano', [AuditoriaController::class, 'creditoMigracaoPlano']);
         
         // Contas a Receber
         $group->get('/contas-receber', [ContasReceberController::class, 'index']);
