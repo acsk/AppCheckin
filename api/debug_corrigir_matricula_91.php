@@ -168,6 +168,36 @@ function statusAssinatura(array $a): string
     return (string) ($a['status_gateway'] ?? $a['status'] ?? '-');
 }
 
+/** Assinatura criada na migração (não reflete o pagamento original). */
+function assinaturaIndevidaMigracao(?array $assinatura, ?array $pagamentoLegitimo): bool
+{
+    if (!$assinatura || !$pagamentoLegitimo || empty($pagamentoLegitimo['data_pagamento'])) {
+        return false;
+    }
+
+    $pagoEm = (string) $pagamentoLegitimo['data_pagamento'];
+    $assInicio = (string) ($assinatura['data_inicio'] ?? '');
+
+    return $assInicio !== '' && $assInicio > $pagoEm;
+}
+
+function calcularVencimentoEsperado(
+    string $dataInicio,
+    int $mesesCiclo,
+    int $duracaoDias
+): string {
+    $dt = new DateTime($dataInicio);
+    if ($duracaoDias > 0 && $duracaoDias <= 31) {
+        $dt->modify("+{$duracaoDias} days");
+    } elseif ($mesesCiclo > 0) {
+        $dt->modify("+{$mesesCiclo} months");
+    } else {
+        $dt->modify('+30 days');
+    }
+
+    return $dt->format('Y-m-d');
+}
+
 try {
     $pdo = conectarPdo();
 } catch (Throwable $e) {
@@ -399,15 +429,16 @@ $duracaoDiasPlano = 0;
 $proxParcelaVenc = null;
 
 if ($pagamentoLegitimo) {
+    // Ciclo do plano NO MOMENTO DO PAGAMENTO (plano_id da parcela), não o maior ciclo do plano
     $stmtCiclo = $pdo->prepare("
-        SELECT COALESCE(pc.meses, af.meses, 0) AS meses_ciclo,
-               pl.nome AS plano_nome, pl.duracao_dias
+        SELECT pl.nome AS plano_nome, pl.duracao_dias,
+               COALESCE(pc.meses, af.meses, 0) AS meses_ciclo
         FROM pagamentos_plano pp
         INNER JOIN planos pl ON pl.id = pp.plano_id
-        LEFT JOIN plano_ciclos pc ON pc.plano_id = pp.plano_id
+        LEFT JOIN matriculas m ON m.id = pp.matricula_id
+        LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id AND pc.plano_id = pp.plano_id
         LEFT JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
         WHERE pp.id = ?
-        ORDER BY pc.meses DESC, pc.id DESC
         LIMIT 1
     ");
     $stmtCiclo->execute([(int) $pagamentoLegitimo['id']]);
@@ -415,17 +446,19 @@ if ($pagamentoLegitimo) {
     if ($cicloPago) {
         $mesesCicloPago = (int) $cicloPago['meses_ciclo'];
         $duracaoDiasPlano = (int) ($cicloPago['duracao_dias'] ?? 0);
-        if ($mesesCicloPago > 0) {
+        if ($duracaoDiasPlano > 0 && $duracaoDiasPlano <= 31) {
+            linha("Ciclo do pagamento #{$pagamentoLegitimo['id']} ({$cicloPago['plano_nome']}): {$duracaoDiasPlano} dias (mensal)");
+        } elseif ($mesesCicloPago > 0) {
             linha("Ciclo do pagamento #{$pagamentoLegitimo['id']} ({$cicloPago['plano_nome']}): {$mesesCicloPago} meses");
-        } elseif ($duracaoDiasPlano > 0) {
-            linha("Ciclo do pagamento #{$pagamentoLegitimo['id']} ({$cicloPago['plano_nome']}): {$duracaoDiasPlano} dias");
         }
     }
 
-    // Próxima parcela gerada na matrícula indica fim do ciclo pago (ex.: #718 venc 22/07)
+    // Próxima parcela (inclui canceladas) indica fim do ciclo pago original
     $stmtProx = $pdo->prepare("
         SELECT data_vencimento FROM pagamentos_plano
-        WHERE matricula_id = ? AND id > ? AND data_vencimento > ?
+        WHERE matricula_id = ? AND id > ?
+          AND data_vencimento > ?
+          AND observacoes NOT LIKE '%Migração de plano%'
         ORDER BY data_vencimento ASC LIMIT 1
     ");
     $stmtProx->execute([
@@ -449,25 +482,22 @@ if ($pagamentoLegitimo) {
     }
 }
 
-if ($assinatura && !empty($assinatura['data_fim'])) {
+// Prioridade: pagamento + duração do plano (NÃO assinatura da migração)
+if ($pagamentoLegitimo) {
+    if (!empty($proxParcelaVenc)) {
+        $dataVencEsperada = (string) $proxParcelaVenc;
+        linha('Vencimento derivado da próxima parcela do ciclo original.');
+    } else {
+        $dataVencEsperada = calcularVencimentoEsperado(
+            $dataInicioEsperada,
+            $mesesCicloPago,
+            $duracaoDiasPlano
+        );
+        linha('Vencimento derivado do pagamento + duração do plano.');
+    }
+} elseif ($assinatura && !empty($assinatura['data_fim'])
+    && !assinaturaIndevidaMigracao($assinatura, $pagamentoLegitimo)) {
     $dataVencEsperada = $assinatura['data_fim'];
-} elseif (!empty($proxParcelaVenc)) {
-    $dataVencEsperada = (string) $proxParcelaVenc;
-} elseif ($pagamentoLegitimo && $mesesCicloPago > 0) {
-    $dt = new DateTime($dataInicioEsperada);
-    $dt->modify("+{$mesesCicloPago} months");
-    $dataVencEsperada = $dt->format('Y-m-d');
-} elseif ($pagamentoLegitimo && $duracaoDiasPlano > 0) {
-    $dt = new DateTime($dataInicioEsperada);
-    $dt->modify("+{$duracaoDiasPlano} days");
-    $dataVencEsperada = $dt->format('Y-m-d');
-} elseif ($pagamentoLegitimo && $mesesCiclo > 0) {
-    $dt = new DateTime($dataInicioEsperada);
-    $dt->modify("+{$mesesCiclo} months");
-    $dataVencEsperada = $dt->format('Y-m-d');
-} elseif ($pagamentoLegitimo && !empty($mat['proxima_data_vencimento'])
-    && ($mat['proxima_data_vencimento'] > $dataInicioEsperada)) {
-    $dataVencEsperada = $mat['proxima_data_vencimento'];
 }
 
 if ($dataVencEsperada) {
@@ -502,6 +532,21 @@ if ($dataVencEsperada) {
             'desc' => "Corrigir status → {$statusEsperado}",
         ];
     }
+}
+
+// Assinatura gerada na migração (ex.: ass#156 pending 10/07→09/08)
+if ($assinatura && assinaturaIndevidaMigracao($assinatura, $pagamentoLegitimo)) {
+    $anomalias[] = sprintf(
+        'Assinatura #%s da migração (%s → %s) distorce o vencimento real',
+        $assinatura['id'],
+        $assinatura['data_inicio'] ?? '-',
+        $assinatura['data_fim'] ?? '-'
+    );
+    $acoes[] = [
+        'tipo' => 'cancelar_assinatura_migracao',
+        'id' => (int) $assinatura['id'],
+        'desc' => 'Cancelar assinatura #' . $assinatura['id'] . ' criada na migração',
+    ];
 }
 
 // Créditos indevidos desta matrícula
@@ -634,6 +679,21 @@ foreach ($acoes as $acao) {
             $pdo->prepare("DELETE FROM pagamentos_plano WHERE id = ? AND matricula_id = ?")
                 ->execute([$parcelaId, $matriculaId]);
             linha("   ✓ Parcela #{$parcelaId} removida (migração indevida)");
+            break;
+
+        case 'cancelar_assinatura_migracao':
+            try {
+                $pdo->prepare("
+                    UPDATE assinaturas
+                    SET status_gateway = 'cancelled',
+                        motivo_cancelamento = 'Cancelada: correção migração indevida',
+                        updated_at = NOW()
+                    WHERE id = ? AND matricula_id = ?
+                ")->execute([$acao['id'], $matriculaId]);
+                linha("   ✓ Assinatura #{$acao['id']} cancelada");
+            } catch (Throwable $e) {
+                linha("   ⚠️  Assinatura #{$acao['id']}: " . $e->getMessage());
+            }
             break;
 
         case 'corrigir_matricula':
