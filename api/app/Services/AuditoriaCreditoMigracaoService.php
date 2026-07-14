@@ -173,12 +173,14 @@ class AuditoriaCreditoMigracaoService
             );
         }
 
-        // 4) Datas resetadas na migração (data_inicio após último pagamento) + vencimento fora do ciclo
+        // 4) Reset forte de datas (início ≥3 dias após pagamento) e vencimento fora de todos os ciclos válidos
         $stmt = $this->db->prepare("
             SELECT m.id AS matricula_id, a.nome AS aluno_nome,
                    sm.codigo AS status_matricula, m.data_inicio, m.data_vencimento,
                    m.proxima_data_vencimento, pp.id AS pagamento_id, pp.data_pagamento,
-                   pl.duracao_dias, pl.nome AS plano_nome
+                   pp.data_vencimento AS pagamento_vencimento,
+                   pl.duracao_dias, pl.nome AS plano_nome,
+                   DATEDIFF(m.data_inicio, ult.ultimo_pago) AS dias_apos_pago
             FROM matriculas m
             INNER JOIN alunos a ON a.id = m.aluno_id
             INNER JOIN status_matricula sm ON sm.id = m.status_id
@@ -198,9 +200,10 @@ class AuditoriaCreditoMigracaoService
                 AND pp.valor > 0
             INNER JOIN planos pl ON pl.id = pp.plano_id
             WHERE m.tenant_id = ?
-              AND m.data_inicio > ult.ultimo_pago
+              AND DATEDIFF(m.data_inicio, ult.ultimo_pago) >= 3
             GROUP BY m.id, a.nome, sm.codigo, m.data_inicio, m.data_vencimento,
-                     m.proxima_data_vencimento, pp.id, pp.data_pagamento, pl.duracao_dias, pl.nome
+                     m.proxima_data_vencimento, pp.id, pp.data_pagamento, pp.data_vencimento,
+                     pl.duracao_dias, pl.nome, dias_apos_pago
             ORDER BY m.id DESC
             LIMIT 500
         ");
@@ -210,7 +213,9 @@ class AuditoriaCreditoMigracaoService
                 (string) $r['data_pagamento'],
                 (int) ($r['duracao_dias'] ?? 0),
                 (int) $r['matricula_id'],
-                (int) $r['pagamento_id']
+                (int) $r['pagamento_id'],
+                (string) ($r['data_inicio'] ?? ''),
+                (string) ($r['pagamento_vencimento'] ?? '')
             );
             if ($candidatos === []) {
                 continue;
@@ -223,7 +228,7 @@ class AuditoriaCreditoMigracaoService
                 continue;
             }
 
-            // Aceita se vencimento ou próxima já batem com aniversário / +dias / próxima parcela
+            // Aceita aniversário do pagamento, da parcela, do início ou próxima parcela gerada
             if (
                 $this->datasProximas($atual, $melhor['data'])
                 || $this->datasProximas($proxima, $melhor['data'])
@@ -239,9 +244,10 @@ class AuditoriaCreditoMigracaoService
                 'vencimento_divergente',
                 'alta',
                 sprintf(
-                    'Datas resetadas na migração (início %s > pago %s). Vencimento %s / próxima %s — esperado ~%s',
+                    'Datas resetadas na migração (início %s > pago %s, +%s dias). Vencimento %s / próxima %s — esperado ~%s',
                     $r['data_inicio'],
                     $r['data_pagamento'],
+                    $r['dias_apos_pago'],
                     $atual ?: '-',
                     $proxima ?: '-',
                     $melhor['data']
@@ -255,13 +261,14 @@ class AuditoriaCreditoMigracaoService
             );
         }
 
-        // 5) Assinatura criada no reset da migração (só com sinal forte ou datas resetadas)
+        // 5) Assinatura após reset forte — só com sinal forte, ou matrícula ativa com gap ≥3 dias
         try {
             $stmt = $this->db->prepare("
                 SELECT ass.id AS assinatura_id, ass.matricula_id, a.nome AS aluno_nome,
                        ass.data_inicio AS ass_inicio, ass.data_fim AS ass_fim,
                        sm.codigo AS status_matricula, m.data_inicio, m.data_vencimento,
-                       ult.data_pagamento AS ultimo_pago
+                       ult.data_pagamento AS ultimo_pago,
+                       DATEDIFF(m.data_inicio, ult.data_pagamento) AS dias_apos_pago
                 FROM assinaturas ass
                 INNER JOIN matriculas m ON m.id = ass.matricula_id
                 INNER JOIN alunos a ON a.id = m.aluno_id
@@ -276,8 +283,8 @@ class AuditoriaCreditoMigracaoService
                     GROUP BY matricula_id
                 ) ult ON ult.matricula_id = ass.matricula_id
                 WHERE ass.tenant_id = ?
-                  AND ass.data_inicio > ult.data_pagamento
-                  AND m.data_inicio > ult.data_pagamento
+                  AND DATEDIFF(ass.data_inicio, ult.data_pagamento) >= 3
+                  AND DATEDIFF(m.data_inicio, ult.data_pagamento) >= 3
                 ORDER BY ass.id DESC
                 LIMIT 200
             ");
@@ -286,7 +293,6 @@ class AuditoriaCreditoMigracaoService
                 $matId = (int) $r['matricula_id'];
                 $temSinalForte = isset($porMatricula[$matId]) && $this->temSinalForte($porMatricula[$matId]['problemas']);
                 $status = (string) ($r['status_matricula'] ?? '');
-                // Assinatura sozinha em cancelada/finalizada sem outro sinal = ruído pós-correção
                 if (!$temSinalForte && !in_array($status, ['ativa', 'vencida', 'pendente'], true)) {
                     continue;
                 }
@@ -297,11 +303,12 @@ class AuditoriaCreditoMigracaoService
                     'assinatura_migracao',
                     'media',
                     sprintf(
-                        'Assinatura #%s criada após reset (%s → %s); último pago %s',
+                        'Assinatura #%s criada após reset (%s → %s); último pago %s (+%s dias)',
                         $r['assinatura_id'],
                         $r['ass_inicio'],
                         $r['ass_fim'] ?? '-',
-                        $r['ultimo_pago']
+                        $r['ultimo_pago'],
+                        $r['dias_apos_pago']
                     ),
                     [
                         'status' => $r['status_matricula'],
@@ -363,28 +370,47 @@ class AuditoriaCreditoMigracaoService
     /**
      * @return list<string>
      */
-    private function candidatosVencimento(string $dataPagamento, int $duracaoDias, int $matriculaId, int $pagamentoId): array
-    {
+    private function candidatosVencimento(
+        string $dataPagamento,
+        int $duracaoDias,
+        int $matriculaId,
+        int $pagamentoId,
+        string $dataInicio = '',
+        string $pagamentoVencimento = ''
+    ): array {
         if ($dataPagamento === '') {
             return [];
         }
 
         $candidatos = [];
+        $meses = $this->mesesDoCiclo($duracaoDias);
 
         $stmt = $this->db->prepare("
             SELECT data_vencimento FROM pagamentos_plano
-            WHERE matricula_id = ? AND id > ? AND data_vencimento > ?
+            WHERE matricula_id = ? AND id > ? AND data_vencimento IS NOT NULL
               AND (observacoes IS NULL OR observacoes NOT LIKE '%Migração de plano%')
-            ORDER BY data_vencimento ASC LIMIT 1
+            ORDER BY data_vencimento ASC LIMIT 3
         ");
-        $stmt->execute([$matriculaId, $pagamentoId, $dataPagamento]);
-        $prox = $stmt->fetchColumn();
-        if ($prox) {
-            $candidatos[] = (string) $prox;
+        $stmt->execute([$matriculaId, $pagamentoId]);
+        foreach ($stmt->fetchAll(\PDO::FETCH_COLUMN) as $prox) {
+            if ($prox) {
+                $candidatos[] = (string) $prox;
+            }
         }
 
-        $meses = $this->mesesDoCiclo($duracaoDias);
+        // Aniversário do pagamento
         $candidatos[] = $this->somarMeses($dataPagamento, $meses);
+
+        // Aniversário do vencimento da parcela paga (pago antecipado)
+        if ($pagamentoVencimento !== '') {
+            $candidatos[] = $this->somarMeses($pagamentoVencimento, $meses);
+            $candidatos[] = $pagamentoVencimento;
+        }
+
+        // Aniversário do início da matrícula (início depois do pagamento)
+        if ($dataInicio !== '') {
+            $candidatos[] = $this->somarMeses($dataInicio, $meses);
+        }
 
         if ($duracaoDias > 0 && $duracaoDias <= 31) {
             $dt = new \DateTime($dataPagamento);
@@ -396,7 +422,7 @@ class AuditoriaCreditoMigracaoService
         $dt30->modify('+30 days');
         $candidatos[] = $dt30->format('Y-m-d');
 
-        return array_values(array_unique($candidatos));
+        return array_values(array_unique(array_filter($candidatos)));
     }
 
     private function mesesDoCiclo(int $duracaoDias): int
