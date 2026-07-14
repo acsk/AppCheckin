@@ -9,10 +9,11 @@
  *  - Depois o MP gerava "próxima" somando ciclo de novo (ex.: mensal 06/08 → 06/09)
  *
  * Uso:
- *   php debug_auditoria_cobranca_fim_ciclo.php --ativas --resumo
- *   php debug_auditoria_cobranca_fim_ciclo.php --ativas --sql --um          # SQL de UM caso (próximo da fila)
- *   php debug_auditoria_cobranca_fim_ciclo.php --sql --matricula=366          # SQL só dessa matrícula
- *   php debug_auditoria_cobranca_fim_ciclo.php --tenant=3 --limite=100
+ *   php debug_auditoria_cobranca_fim_ciclo.php --resumo
+ *   php debug_auditoria_cobranca_fim_ciclo.php --sql --um          # SQL de UM caso
+ *   php debug_auditoria_cobranca_fim_ciclo.php --sql --matricula=347
+ *   php debug_auditoria_cobranca_fim_ciclo.php --todas             # inclui canceladas
+ *   (padrão: só ativa/vencida/pendente)
  *
  * Produção (env):
  *   PROD_DB_HOST PROD_DB_NAME PROD_DB_USER PROD_DB_PASS [PROD_DB_PORT]
@@ -26,7 +27,9 @@ $filtroMatricula = null;
 $filtroTenant = null;
 $somenteResumo = in_array('--resumo', $argv, true);
 $imprimirSql = in_array('--sql', $argv, true);
-$somenteAtivas = in_array('--ativas', $argv, true);
+$incluirCanceladas = in_array('--todas', $argv, true) || in_array('--incluir-canceladas', $argv, true);
+// --ativas mantido por compatibilidade (agora é o padrão sem --todas)
+$somenteAtivas = !$incluirCanceladas || in_array('--ativas', $argv, true);
 $sqlUmPorVez = in_array('--um', $argv, true);
 $limite = 300;
 
@@ -141,8 +144,10 @@ if ($filtroMatricula) {
 if ($filtroTenant) {
     linha("Filtro: tenant #{$filtroTenant}");
 }
-if ($somenteAtivas) {
-    linha('Filtro: só ativa/vencida/pendente');
+if ($incluirCanceladas) {
+    linha('Filtro: TODAS (inclui canceladas/finalizadas)');
+} else {
+    linha('Filtro: só ativa/vencida/pendente (use --todas para canceladas)');
 }
 
 $params = [];
@@ -312,6 +317,33 @@ $sqlB .= " ORDER BY m.id DESC LIMIT {$limite}";
 $stmtB = $pdo->prepare($sqlB);
 $stmtB->execute($paramsB);
 $casosB = $stmtB->fetchAll(PDO::FETCH_ASSOC);
+
+foreach ($casosB as $r) {
+    $matId = (int) $r['matricula_id'];
+    $status = (string) ($r['status'] ?? '');
+    if (!in_array($status, ['ativa', 'vencida', 'pendente'], true) && $somenteAtivas) {
+        continue;
+    }
+    // Reabrir duplicata como próxima cobrança (no fim do período)
+    $sqlPorCaso[] = [
+        'mat_id' => $matId,
+        'secao' => 'B',
+        'titulo' => "mat#{$matId} {$r['aluno_nome']}: reabrir duplicata #{$r['dup_id']} como aguardando ({$r['dup_venc']})",
+        'stmts' => [
+            "UPDATE pagamentos_plano",
+            "SET status_pagamento_id = 1,",
+            "    data_pagamento = NULL,",
+            "    observacoes = 'Pagamento gerado automaticamente após confirmação MP',",
+            "    updated_at = NOW()",
+            "WHERE id = {$r['dup_id']} AND matricula_id = {$matId} AND status_pagamento_id = 4;",
+            "UPDATE matriculas",
+            "SET data_vencimento = '{$r['pago_venc']}',",
+            "    proxima_data_vencimento = '{$r['pago_venc']}',",
+            "    updated_at = NOW()",
+            "WHERE id = {$matId};",
+        ],
+    ];
+}
 
 // C) Sem parcela aguardando no fim do ciclo, mas deveria ter (após pagar)
 $paramsC = [];
@@ -662,10 +694,10 @@ if ($imprimirSql) {
     // Prioridade: D (próxima inflada) → A (cobrança no fim) → C (criar próxima)
     $fila = array_values(array_filter(
         $sqlPorCaso,
-        static fn (array $c): bool => in_array($c['secao'], ['D', 'A', 'C'], true)
+        static fn (array $c): bool => in_array($c['secao'], ['B', 'D', 'A', 'C'], true)
     ));
     usort($fila, static function (array $a, array $b): int {
-        $prio = ['D' => 1, 'A' => 2, 'C' => 3];
+        $prio = ['B' => 1, 'D' => 2, 'A' => 3, 'C' => 4];
         $pa = $prio[$a['secao']] ?? 9;
         $pb = $prio[$b['secao']] ?? 9;
         if ($pa !== $pb) {
@@ -674,6 +706,18 @@ if ($imprimirSql) {
 
         return $a['mat_id'] <=> $b['mat_id'];
     });
+
+    // Evita C (INSERT) se já houver B (reabrir) para a mesma matrícula
+    $matsComB = [];
+    foreach ($fila as $c) {
+        if ($c['secao'] === 'B') {
+            $matsComB[$c['mat_id']] = true;
+        }
+    }
+    $fila = array_values(array_filter(
+        $fila,
+        static fn (array $c): bool => !($c['secao'] === 'C' && isset($matsComB[$c['mat_id']]))
+    ));
 
     if ($filtroMatricula) {
         $fila = array_values(array_filter(
