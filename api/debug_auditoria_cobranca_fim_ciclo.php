@@ -17,11 +17,21 @@
  *
  * Produção (env):
  *   PROD_DB_HOST PROD_DB_NAME PROD_DB_USER PROD_DB_PASS [PROD_DB_PORT]
+ *
+ * Preferir PHP 8.2 no host:
+ *   /opt/alt/php82/usr/bin/php debug_auditoria_cobranca_fim_ciclo.php --sql --um
  */
 
 declare(strict_types=1);
 
 date_default_timezone_set('America/Sao_Paulo');
+
+if (!function_exists('str_starts_with')) {
+    function str_starts_with(string $haystack, string $needle): bool
+    {
+        return $needle === '' || strncmp($haystack, $needle, strlen($needle)) === 0;
+    }
+}
 
 $filtroMatricula = null;
 $filtroTenant = null;
