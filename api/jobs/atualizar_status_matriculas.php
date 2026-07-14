@@ -99,7 +99,7 @@ logMessage("========================================\n\n", $quiet);
 $startTime = microtime(true);
 
 // Fim do período pago (avulso), por parcela paga:
-// - venc >= pago + ciclo → parcela já representa o FIM do período (fluxo MP);
+// - venc ≈ pagamento + ciclo (tolerância 2 dias p/ +30d vs +1 mês, bug #369);
 // - senão → venc é a data devida (início); fim = GREATEST(pago, venc) + ciclo.
 function sqlFimPeriodoPago(string $tenantExpr, string $matriculaExpr): string
 {
@@ -113,7 +113,10 @@ function sqlFimPeriodoPago(string $tenantExpr, string $matriculaExpr): string
                     ELSE DATE_ADD(GREATEST(pp_acesso.data_pagamento, pp_acesso.data_vencimento), INTERVAL 1 DAY)
                 END
             WHEN pp_acesso.data_pagamento IS NULL THEN pp_acesso.data_vencimento
-            WHEN pp_acesso.data_vencimento >= DATE_ADD(pp_acesso.data_pagamento, INTERVAL COALESCE(pc_acesso.meses, 1) MONTH)
+            WHEN pp_acesso.data_vencimento >= DATE_SUB(
+                    DATE_ADD(pp_acesso.data_pagamento, INTERVAL COALESCE(pc_acesso.meses, 1) MONTH),
+                    INTERVAL 2 DAY
+                )
                 THEN pp_acesso.data_vencimento
             ELSE DATE_ADD(GREATEST(pp_acesso.data_pagamento, pp_acesso.data_vencimento), INTERVAL COALESCE(pc_acesso.meses, 1) MONTH)
         END)

@@ -593,13 +593,15 @@ class PagamentoPlano
 
     /**
      * Expressão SQL do fim do período pago (avulso), por parcela paga:
-     * - venc >= pago + ciclo → parcela já representa o FIM do período
-     *   (fluxo MP grava venc = pagamento + ciclo; pré-paga adiantada idem);
+     * - venc ≈ pagamento + ciclo → parcela já representa o FIM do período
+     *   (fluxo MP: +1 mês OU +30 dias; tolerância de 2 dias evita #369:
+     *    pago 10/07 + 1 mês = 10/08, venc parcela 09/08 → não somar outro mês);
      * - senão → venc é a data devida (início); fim = GREATEST(pago, venc) + ciclo
      *   (pagamento atrasado reinicia o período na data do pagamento).
      * Ex.: #364 manual pagou 04/07 venc 04/07 → fim 04/08.
      *      #69 MP pagou 29/06 venc 29/07 → fim 29/07.
      *      #347 pagou 02/06 venc 02/07 → fim 02/07.
+     *      #369 MP pagou 10/07 venc 09/08 → fim 09/08 (não 09/09).
      * Fallback: parcela paga sem data_pagamento usa o próprio vencimento.
      */
     public static function sqlFimPeriodoPago(string $tenantExpr, string $matriculaExpr): string
@@ -614,7 +616,10 @@ class PagamentoPlano
                         ELSE DATE_ADD(GREATEST(pp_acesso.data_pagamento, pp_acesso.data_vencimento), INTERVAL 1 DAY)
                     END
                 WHEN pp_acesso.data_pagamento IS NULL THEN pp_acesso.data_vencimento
-                WHEN pp_acesso.data_vencimento >= DATE_ADD(pp_acesso.data_pagamento, INTERVAL COALESCE(pc_acesso.meses, 1) MONTH)
+                WHEN pp_acesso.data_vencimento >= DATE_SUB(
+                        DATE_ADD(pp_acesso.data_pagamento, INTERVAL COALESCE(pc_acesso.meses, 1) MONTH),
+                        INTERVAL 2 DAY
+                    )
                     THEN pp_acesso.data_vencimento
                 ELSE DATE_ADD(GREATEST(pp_acesso.data_pagamento, pp_acesso.data_vencimento), INTERVAL COALESCE(pc_acesso.meses, 1) MONTH)
             END)

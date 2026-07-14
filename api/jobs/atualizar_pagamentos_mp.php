@@ -101,8 +101,8 @@ function atualizarVigenciaMatriculaAprovada(PDO $pdo, int $matriculaId, ?string 
         $dataBase = new DateTimeImmutable(date('Y-m-d'));
     }
 
-    $ehDiariaAvulsa = ($matricula['tipo_cobranca'] ?? '') === 'avulso'
-        && (int) ($matricula['duracao_dias'] ?? 0) === 1;
+    $ehAvulso = ($matricula['tipo_cobranca'] ?? '') === 'avulso';
+    $ehDiariaAvulsa = $ehAvulso && (int) ($matricula['duracao_dias'] ?? 0) === 1;
 
     $duracaoMeses = $ehDiariaAvulsa ? 0 : (int) ($matricula['meses'] ?? 0);
     if ($duracaoMeses > 0) {
@@ -116,8 +116,8 @@ function atualizarVigenciaMatriculaAprovada(PDO $pdo, int $matriculaId, ?string 
         ? $dataBase->format('Y-m-d')
         : (!empty($matricula['data_inicio']) ? $matricula['data_inicio'] : $dataBase->format('Y-m-d'));
 
-    // Usar a data da próxima parcela pendente real (se existir) como proxima_data_vencimento
-    // para evitar divergência com gerarProximoPagamentoAutomatico (que usa ciclo_meses, não duracao_dias)
+    // Recorrente: próxima parcela pendente alinha cobrança.
+    // Avulso: vigência = fim do período pago (#369: não usar parcela futura 09/09).
     $stmtPendReal = $pdo->prepare("
         SELECT MIN(data_vencimento) FROM pagamentos_plano
         WHERE matricula_id = ? AND status_pagamento_id IN (1, 3)
@@ -125,7 +125,22 @@ function atualizarVigenciaMatriculaAprovada(PDO $pdo, int $matriculaId, ?string 
     $stmtPendReal->execute([$matriculaId]);
     $proximaParcelaPendente = $stmtPendReal->fetchColumn() ?: null;
 
-    $proximaDataVencimento = $proximaParcelaPendente ?? $dataVencimento;
+    if ($ehAvulso && !$ehDiariaAvulsa) {
+        $stmtMatTid = $pdo->prepare('SELECT tenant_id FROM matriculas WHERE id = ? LIMIT 1');
+        $stmtMatTid->execute([$matriculaId]);
+        $tenantIdMat = (int) $stmtMatTid->fetchColumn();
+        $acessoPago = $pdo->query(
+            'SELECT ' . \App\Models\PagamentoPlano::sqlFimPeriodoPago((string) $tenantIdMat, (string) (int) $matriculaId)
+        )->fetchColumn() ?: null;
+        if ($acessoPago) {
+            $dataVencimento = (string) $acessoPago;
+            $proximaDataVencimento = (string) $acessoPago;
+        } else {
+            $proximaDataVencimento = $proximaParcelaPendente ?? $dataVencimento;
+        }
+    } else {
+        $proximaDataVencimento = $proximaParcelaPendente ?? $dataVencimento;
+    }
 
     if ((int) $matricula['status_id'] === $statusAtivaId
         && $matricula['data_inicio'] === $dataInicio

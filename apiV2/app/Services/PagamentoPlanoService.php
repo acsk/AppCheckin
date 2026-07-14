@@ -239,6 +239,8 @@ class PagamentoPlanoService
 
     /**
      * Expressão SQL do fim do período pago (avulso).
+     * Tolerância de 2 dias evita somar ciclo extra quando vencimento usa +30d
+     * e a comparação usa +1 mês (ex.: pago 10/07, venc 09/08 → fim 09/08).
      */
     public static function sqlFimPeriodoPago(string $tenantExpr, string $matriculaExpr): string
     {
@@ -252,7 +254,10 @@ class PagamentoPlanoService
                         ELSE DATE_ADD(GREATEST(pp_acesso.data_pagamento, pp_acesso.data_vencimento), INTERVAL 1 DAY)
                     END
                 WHEN pp_acesso.data_pagamento IS NULL THEN pp_acesso.data_vencimento
-                WHEN pp_acesso.data_vencimento >= DATE_ADD(pp_acesso.data_pagamento, INTERVAL COALESCE(pc_acesso.meses, 1) MONTH)
+                WHEN pp_acesso.data_vencimento >= DATE_SUB(
+                        DATE_ADD(pp_acesso.data_pagamento, INTERVAL COALESCE(pc_acesso.meses, 1) MONTH),
+                        INTERVAL 2 DAY
+                    )
                     THEN pp_acesso.data_vencimento
                 ELSE DATE_ADD(GREATEST(pp_acesso.data_pagamento, pp_acesso.data_vencimento), INTERVAL COALESCE(pc_acesso.meses, 1) MONTH)
             END)

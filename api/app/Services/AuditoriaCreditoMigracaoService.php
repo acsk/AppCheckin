@@ -321,6 +321,59 @@ class AuditoriaCreditoMigracaoService
             // tabela assinaturas pode não existir em alguns ambientes
         }
 
+        // 6) Acesso além do período pago (avulso): vencimento da matrícula = parcela futura não paga
+        // Caso #369: pago até 09/08, mas data_vencimento/próxima em 09/09 (parcela #807 aguardando)
+        $stmt = $this->db->prepare("
+            SELECT m.id AS matricula_id, a.nome AS aluno_nome, sm.codigo AS status_matricula,
+                   m.data_inicio, m.data_vencimento, m.proxima_data_vencimento,
+                   pago.data_vencimento AS fim_pago, pend.data_vencimento AS prox_pendente
+            FROM matriculas m
+            INNER JOIN alunos a ON a.id = m.aluno_id
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            INNER JOIN (
+                SELECT matricula_id, MAX(data_vencimento) AS data_vencimento
+                FROM pagamentos_plano
+                WHERE tenant_id = ? AND status_pagamento_id = 2 AND valor > 0
+                GROUP BY matricula_id
+            ) pago ON pago.matricula_id = m.id
+            INNER JOIN (
+                SELECT matricula_id, MIN(data_vencimento) AS data_vencimento
+                FROM pagamentos_plano
+                WHERE tenant_id = ? AND status_pagamento_id IN (1, 3) AND data_pagamento IS NULL
+                GROUP BY matricula_id
+            ) pend ON pend.matricula_id = m.id
+            WHERE m.tenant_id = ?
+              AND m.tipo_cobranca = 'avulso'
+              AND sm.codigo IN ('ativa', 'vencida')
+              AND m.data_vencimento > pago.data_vencimento
+              AND DATEDIFF(m.data_vencimento, pago.data_vencimento) > 2
+              AND m.data_vencimento = pend.data_vencimento
+            ORDER BY m.id DESC
+            LIMIT 200
+        ");
+        $stmt->execute([$tenantId, $tenantId, $tenantId]);
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $add(
+                (int) $r['matricula_id'],
+                $r['aluno_nome'],
+                'acesso_alem_periodo_pago',
+                'alta',
+                sprintf(
+                    'Acesso até %s / próxima %s, mas último pago cobre só até %s (parcela futura %s)',
+                    $r['data_vencimento'],
+                    $r['proxima_data_vencimento'] ?: '-',
+                    $r['fim_pago'],
+                    $r['prox_pendente']
+                ),
+                [
+                    'status' => $r['status_matricula'],
+                    'data_inicio' => $r['data_inicio'],
+                    'data_vencimento' => $r['data_vencimento'],
+                    'data_vencimento_esperada' => $r['fim_pago'],
+                ]
+            );
+        }
+
         $registros = array_values($porMatricula);
         usort($registros, fn ($a, $b) => $a['matricula_id'] <=> $b['matricula_id']);
 
@@ -330,6 +383,7 @@ class AuditoriaCreditoMigracaoService
             'credito_indevido_ativo' => 0,
             'vencimento_divergente' => 0,
             'assinatura_migracao' => 0,
+            'acesso_alem_periodo_pago' => 0,
         ];
         foreach ($registros as $reg) {
             foreach ($reg['problemas'] as $p) {

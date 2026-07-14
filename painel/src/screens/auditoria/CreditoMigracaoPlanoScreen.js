@@ -20,6 +20,7 @@ const TIPO_CONFIG = {
   credito_indevido_ativo: { label: 'Crédito ativo', cor: '#b91c1c', icon: 'dollar-sign' },
   vencimento_divergente: { label: 'Vencimento errado', cor: '#f97316', icon: 'calendar' },
   assinatura_migracao: { label: 'Assinatura migração', cor: '#d97706', icon: 'link-2' },
+  acesso_alem_periodo_pago: { label: 'Acesso além do pago', cor: '#ea580c', icon: 'calendar' },
 };
 
 const formatarData = (iso) => {
