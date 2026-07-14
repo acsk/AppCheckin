@@ -86,9 +86,9 @@ export default function CreditoMigracaoPlanoScreen() {
         <View style={styles.infoBox}>
           <Feather name="info" size={16} color="#6366f1" />
           <Text style={styles.infoText}>
-            Detecta matrículas afetadas por migração ou alteração de plano via app: parcelas R$ 0,
-            pagamentos MP cancelados, vencimento deslocado (ex.: 22/06 pago → deveria vencer 22/07)
-            e assinaturas criadas na migração.
+            Foco no padrão do bug: parcela fantasma R$ 0, pagamento MP cancelado → crédito, crédito
+            indevido ativo e datas resetadas (início após o último pagamento) com vencimento fora
+            do ciclo. Diferença de 1–2 dias por aniversário do mês não entra no relatório.
           </Text>
         </View>
 
