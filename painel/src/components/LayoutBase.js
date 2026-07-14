@@ -88,6 +88,7 @@ const MENU = [
     icon: 'shield',
     roles: [3, 4],
     children: [
+      { label: 'Crédito / Migração de Plano', path: '/auditoria/credito-migracao-plano', icon: 'shuffle', roles: [3, 4] },
       { label: 'Anomalias de Datas', path: '/auditoria/anomalias-datas', icon: 'alert-triangle', roles: [3, 4] },
       { label: 'Pagamentos Duplicados', path: '/auditoria/pagamentos-duplicados', icon: 'copy', roles: [3, 4] },
       { label: 'Reparar Próxima Data', path: '/auditoria/reparar-proxima-data-vencimento', icon: 'tool', roles: [3, 4] },
