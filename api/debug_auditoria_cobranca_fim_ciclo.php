@@ -6,13 +6,13 @@
  *  - Parcela paga deveria vencer na data de criação/início da matrícula
  *  - Acesso até / próxima cobrança = início + N meses (ciclo)
  *  - Bug: 1ª parcela recebeu data_vencimento = fim do ciclo (ex.: 07/07 → parcela 07/09)
- *  - Depois o MP gerava "próxima" no mesmo dia → cancelada como duplicata
+ *  - Depois o MP gerava "próxima" somando ciclo de novo (ex.: mensal 06/08 → 06/09)
  *
  * Uso:
  *   php debug_auditoria_cobranca_fim_ciclo.php
  *   php debug_auditoria_cobranca_fim_ciclo.php --resumo
  *   php debug_auditoria_cobranca_fim_ciclo.php --sql          # imprime UPDATEs sugeridos
- *   php debug_auditoria_cobranca_fim_ciclo.php --matricula=368
+ *   php debug_auditoria_cobranca_fim_ciclo.php --matricula=366
  *   php debug_auditoria_cobranca_fim_ciclo.php --tenant=3
  *   php debug_auditoria_cobranca_fim_ciclo.php --limite=100
  *   php debug_auditoria_cobranca_fim_ciclo.php --ativas       # só ativa/vencida/pendente
@@ -112,6 +112,18 @@ function somarMeses(string $data, int $meses): string
     $dt->modify("+{$meses} months");
     $ultimo = (int) $dt->format('t');
     $dt->setDate((int) $dt->format('Y'), (int) $dt->format('m'), min($dia, $ultimo));
+
+    return $dt->format('Y-m-d');
+}
+
+/** Mesma regra de comprarPlano: >1 mês usa months; mensal usa duracao_dias. */
+function fimCiclo(string $inicio, int $meses, int $duracaoDias): string
+{
+    if ($meses > 1) {
+        return somarMeses($inicio, $meses);
+    }
+    $dt = new DateTime($inicio);
+    $dt->modify('+' . max(1, $duracaoDias) . ' days');
 
     return $dt->format('Y-m-d');
 }
@@ -223,9 +235,7 @@ foreach ($rows as $r) {
         continue;
     }
 
-    $fimEsperado = $meses > 1
-        ? somarMeses($inicio, $meses)
-        : (new DateTime($inicio))->modify("+{$duracaoDias} days")->format('Y-m-d');
+    $fimEsperado = fimCiclo($inicio, $meses, $duracaoDias);
     // Também candidato: +N months mesmo no mensal
     $fimMeses = somarMeses($inicio, $meses);
 
@@ -354,7 +364,8 @@ $stmtC->execute($paramsC);
 foreach ($stmtC->fetchAll(PDO::FETCH_ASSOC) as $r) {
     $inicio = (string) $r['data_inicio'];
     $meses = max(1, (int) $r['ciclo_meses']);
-    $fimEsperado = somarMeses($inicio, $meses);
+    $duracaoDias = 30; // C query não traz duracao; fimCiclo mensal ~30; aproxima por mat_venc
+    $fimEsperado = (string) ($r['mat_venc'] ?: $r['mat_prox'] ?: fimCiclo($inicio, $meses, $duracaoDias));
     $pagoVenc = (string) $r['pago_venc'];
     // Só sinaliza se a paga está no início (já corrigida) OU se já está no fim (caso #368 sem próxima)
     $pagaNoInicio = abs(diffDias($pagoVenc, $inicio)) <= 2;
@@ -370,11 +381,114 @@ foreach ($stmtC->fetchAll(PDO::FETCH_ASSOC) as $r) {
         ]);
 
         $matId = (int) $r['matricula_id'];
-        $valor = '/* valor da matrícula */';
         $sqls[] = "-- mat#{$matId}: criar próxima cobrança em {$fimEsperado} (se ainda não existir)";
         $sqls[] = "-- INSERT INTO pagamentos_plano (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento, status_pagamento_id, observacoes, created_at, updated_at)";
         $sqls[] = "-- SELECT tenant_id, aluno_id, id, plano_id, valor, '{$fimEsperado}', 1, 'Pagamento gerado automaticamente após confirmação MP', NOW(), NOW() FROM matriculas WHERE id = {$matId};";
     }
+}
+
+// D) Parcela aguardando com +1 ciclo a mais (padrão #366: mensal → 06/09 em vez de 06/08)
+$casosD = [];
+$paramsD = [];
+$sqlD = "
+    SELECT
+        m.id AS matricula_id,
+        m.tenant_id,
+        a.nome AS aluno_nome,
+        sm.codigo AS status,
+        m.data_inicio,
+        m.data_vencimento AS mat_venc,
+        m.proxima_data_vencimento AS mat_prox,
+        COALESCE(pc.meses, 1) AS ciclo_meses,
+        af.nome AS ciclo_nome,
+        pl.duracao_dias,
+        pago.id AS pago_id,
+        pago.data_vencimento AS pago_venc,
+        pago.data_pagamento,
+        pend.id AS pend_id,
+        pend.data_vencimento AS pend_venc,
+        pend.valor AS pend_valor
+    FROM matriculas m
+    INNER JOIN alunos a ON a.id = m.aluno_id
+    INNER JOIN status_matricula sm ON sm.id = m.status_id
+    INNER JOIN planos pl ON pl.id = m.plano_id
+    LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+    LEFT JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
+    INNER JOIN pagamentos_plano pago ON pago.id = (
+        SELECT pp2.id FROM pagamentos_plano pp2
+        WHERE pp2.matricula_id = m.id AND pp2.status_pagamento_id = 2 AND pp2.valor > 0
+        ORDER BY pp2.data_pagamento DESC, pp2.id DESC
+        LIMIT 1
+    )
+    INNER JOIN pagamentos_plano pend ON pend.id = (
+        SELECT pp3.id FROM pagamentos_plano pp3
+        WHERE pp3.matricula_id = m.id AND pp3.status_pagamento_id IN (1, 3) AND pp3.data_pagamento IS NULL
+        ORDER BY pp3.data_vencimento ASC, pp3.id ASC
+        LIMIT 1
+    )
+    WHERE m.tipo_cobranca = 'avulso'
+      AND (pl.duracao_dias IS NULL OR pl.duracao_dias <> 1)
+";
+if ($filtroTenant) {
+    $sqlD .= ' AND m.tenant_id = ?';
+    $paramsD[] = $filtroTenant;
+}
+if ($filtroMatricula) {
+    $sqlD .= ' AND m.id = ?';
+    $paramsD[] = $filtroMatricula;
+}
+if ($somenteAtivas) {
+    $sqlD .= " AND sm.codigo IN ('ativa', 'vencida', 'pendente')";
+}
+$sqlD .= " ORDER BY m.id DESC LIMIT {$limite}";
+
+$stmtD = $pdo->prepare($sqlD);
+$stmtD->execute($paramsD);
+foreach ($stmtD->fetchAll(PDO::FETCH_ASSOC) as $r) {
+    $inicio = (string) $r['data_inicio'];
+    $meses = max(1, (int) $r['ciclo_meses']);
+    $duracaoDias = (int) ($r['duracao_dias'] ?? 30);
+    $fimEsperado = fimCiclo($inicio, $meses, $duracaoDias);
+    $pagoVenc = (string) $r['pago_venc'];
+    $pendVenc = (string) $r['pend_venc'];
+    $matVenc = (string) ($r['mat_venc'] ?? '');
+
+    // Próxima correta:
+    // - se paga no início → fim do ciclo
+    // - se paga no fim → mesmo fim (não +1 ciclo)
+    $pagaNoInicio = abs(diffDias($pagoVenc, $inicio)) <= 3;
+    $proximaOk = $pagaNoInicio ? $fimEsperado : (
+        abs(diffDias($pagoVenc, $fimEsperado)) <= 2 ? $pagoVenc : $fimEsperado
+    );
+    // Preferir alinhamento com matrícula se já estiver no fim esperado
+    if ($matVenc !== '' && abs(diffDias($matVenc, $fimEsperado)) <= 2) {
+        $proximaOk = $matVenc;
+    }
+
+    if (abs(diffDias($pendVenc, $proximaOk)) <= 2) {
+        continue;
+    }
+    // Só flagra se pendente está claramente além (ex.: +~1 ciclo)
+    if (diffDias($proximaOk, $pendVenc) < 20) {
+        continue;
+    }
+
+    $casosD[] = array_merge($r, [
+        'proxima_esperada' => $proximaOk,
+        'motivo' => sprintf(
+            'Próxima pp#%s em %s — esperada %s (ciclo %s, %d mês/es)',
+            $r['pend_id'],
+            $pendVenc,
+            $proximaOk,
+            $r['ciclo_nome'] ?? '—',
+            $meses
+        ),
+    ]);
+
+    $matId = (int) $r['matricula_id'];
+    $sqls[] = "-- mat#{$matId} {$r['aluno_nome']}: ajustar próxima #{$r['pend_id']} {$pendVenc} → {$proximaOk}";
+    $sqls[] = "UPDATE pagamentos_plano SET data_vencimento = '{$proximaOk}', updated_at = NOW() WHERE id = {$r['pend_id']} AND matricula_id = {$matId};";
+    $sqls[] = "UPDATE matriculas SET data_vencimento = '{$proximaOk}', proxima_data_vencimento = '{$proximaOk}', updated_at = NOW() WHERE id = {$matId};";
 }
 
 // ── Relatório ───────────────────────────────────────────────────────────────
@@ -468,6 +582,30 @@ if (!$casosC) {
     }
 }
 
+secao('[D] Próxima parcela com ciclo a mais (padrão #366: 06/09 em vez de 06/08)');
+if (!$casosD) {
+    linha('✅ Nenhum caso encontrado.');
+} else {
+    linha('Total: ' . count($casosD));
+    foreach ($casosD as $r) {
+        linha(sprintf(
+            '  mat#%d | %s | %s | ciclo %s | paga pp#%d %s | pend pp#%d %s → deveria %s',
+            $r['matricula_id'],
+            $r['aluno_nome'],
+            $r['status'],
+            $r['ciclo_nome'] ?? ($r['ciclo_meses'] . 'm'),
+            $r['pago_id'],
+            br($r['pago_venc']),
+            $r['pend_id'],
+            br($r['pend_venc']),
+            br($r['proxima_esperada'])
+        ));
+        if (!$somenteResumo) {
+            linha('    → ' . $r['motivo']);
+        }
+    }
+}
+
 // IDs únicos afetados
 $ids = [];
 foreach ($casosA as $r) {
@@ -479,12 +617,16 @@ foreach ($casosB as $r) {
 foreach ($casosC as $r) {
     $ids[(int) $r['matricula_id']] = true;
 }
+foreach ($casosD as $r) {
+    $ids[(int) $r['matricula_id']] = true;
+}
 
 secao('[RESUMO]');
 linha('Matrículas únicas afetadas: ' . count($ids));
 linha('  [A] cobrança no fim do ciclo: ' . count($casosA));
 linha('  [B] duplicata MP cancelada:   ' . count($casosB));
 linha('  [C] sem próxima renovação:    ' . count($casosC));
+linha('  [D] próxima com ciclo a mais: ' . count($casosD));
 if ($ids) {
     ksort($ids);
     linha('IDs: ' . implode(', ', array_keys($ids)));

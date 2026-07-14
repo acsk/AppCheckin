@@ -896,7 +896,7 @@ class PagamentoPlano
             // Buscar informações da matrícula, plano e ciclo
             $stmt = $this->pdo->prepare("
                 SELECT m.id, m.tenant_id, m.aluno_id, m.plano_id, m.plano_ciclo_id, m.tipo_cobranca, m.valor,
-                       m.data_vencimento,
+                       m.data_inicio, m.data_vencimento,
                        p.duracao_dias, pc.meses as ciclo_meses, af.meses as frequencia_meses
                 FROM matriculas m
                 INNER JOIN planos p ON p.id = m.plano_id
@@ -968,11 +968,11 @@ class PagamentoPlano
                 return null;
             }
 
-            // Buscar data_vencimento do último pagamento pago para calcular base
+            // Buscar último pagamento pago (prioriza data_pagamento recente)
             $stmtUltimoPago = $this->pdo->prepare("
                 SELECT data_vencimento, data_pagamento FROM pagamentos_plano
-                WHERE matricula_id = ? AND status_pagamento_id = 2
-                ORDER BY data_vencimento DESC
+                WHERE matricula_id = ? AND status_pagamento_id = 2 AND valor > 0
+                ORDER BY data_pagamento DESC, id DESC
                 LIMIT 1
             ");
             $stmtUltimoPago->execute([$matriculaId]);
@@ -987,37 +987,47 @@ class PagamentoPlano
             $dateVenc = $dataVencPago ? new \DateTime($dataVencPago) : new \DateTime();
             $datePag = $dataPag ? new \DateTime($dataPag) : new \DateTime();
 
-            // Próxima cobrança vence no FIM do período pago (mesma regra de sqlFimPeriodoPago):
-            // - parcela paga sem data_pagamento → o venc já é o fim do período;
-            // - venc ≈ pago + ciclo (tolerância 2 dias: +30d vs +1 mês, bug #369)
-            //   → o venc já é o fim; próxima parcela vence nessa data (renovação);
-            // - senão, venc é a data devida (início) → fim = MAX(pago, venc) + ciclo.
+            // Alinhado a MobileController::comprarPlano:
+            // - ciclo > 1 mês → +N months
+            // - mensal (meses=1) → +duracao_dias (ex.: 30 → 07/07 vira 06/08, não 07/08)
+            // Próxima cobrança = FIM do período pago (não somar ciclo de novo se a paga já era o fim — #366/#369).
             $mesesCiclo = (int) ($matricula['ciclo_meses'] ?? $matricula['frequencia_meses'] ?? 0);
-            $baseDate = ($datePag > $dateVenc) ? $datePag : $dateVenc;
+            $duracaoDias = max(1, (int) ($matricula['duracao_dias'] ?? 30));
+            $usaMeses = $mesesCiclo > 1;
+            $inicioRefStr = (string) ($matricula['data_inicio'] ?? $dataPag ?? $dataVencPago ?? date('Y-m-d'));
+            $inicioRef = new \DateTime($inicioRefStr);
+
+            $fimEsperado = clone $inicioRef;
+            if ($usaMeses) {
+                $fimEsperado->modify("+{$mesesCiclo} months");
+            } else {
+                $fimEsperado->add(new \DateInterval("P{$duracaoDias}D"));
+            }
+
+            $diasVencVsInicio = (int) $inicioRef->diff($dateVenc)->format('%r%a');
+            $diasVencVsFim = (int) $fimEsperado->diff($dateVenc)->format('%r%a');
 
             if ($dataPag === null && $dataVencPago) {
+                // Sem data de pagamento: se venc≈início, próxima no fim; se venc≈fim, usa o venc.
+                if (abs($diasVencVsInicio) <= 3) {
+                    $proximoVencimento = clone $fimEsperado;
+                } else {
+                    $proximoVencimento = clone $dateVenc;
+                }
+            } elseif (abs($diasVencVsInicio) <= 3) {
+                // Cobrança correta no início (#366 após correção): próxima = fim do ciclo
+                $proximoVencimento = clone $fimEsperado;
+            } elseif (abs($diasVencVsFim) <= 2 || ($dataVencPago && $dateVenc >= (clone $fimEsperado)->modify('-2 days'))) {
+                // Paga já estava no fim do ciclo (bug antigo): NÃO somar outro ciclo (#366 #783 06/09)
                 $proximoVencimento = clone $dateVenc;
-            } elseif ($mesesCiclo > 0) {
-                $vencJaEhFim = clone $datePag;
-                $vencJaEhFim->modify("+{$mesesCiclo} months");
-                $vencJaEhFim->modify('-2 days');
-                if ($dataVencPago && $dateVenc >= $vencJaEhFim) {
-                    $proximoVencimento = clone $dateVenc;
-                } else {
-                    $proximoVencimento = clone $baseDate;
-                    $proximoVencimento->modify("+{$mesesCiclo} months");
-                }
             } else {
-                $duracaoDias = max(1, (int) ($matricula['duracao_dias'] ?? 30));
-                $vencJaEhFim = clone $datePag;
-                $vencJaEhFim->add(new \DateInterval("P{$duracaoDias}D"));
-                $vencJaEhFim->modify('-2 days');
-                if ($dataVencPago && $dateVenc >= $vencJaEhFim) {
-                    $proximoVencimento = clone $dateVenc;
+                $baseDate = ($datePag > $dateVenc) ? clone $datePag : clone $dateVenc;
+                if ($usaMeses) {
+                    $baseDate->modify("+{$mesesCiclo} months");
                 } else {
-                    $proximoVencimento = clone $baseDate;
-                    $proximoVencimento->add(new \DateInterval("P{$duracaoDias}D"));
+                    $baseDate->add(new \DateInterval("P{$duracaoDias}D"));
                 }
+                $proximoVencimento = $baseDate;
             }
 
             $proximoVencimentoStr = $proximoVencimento->format('Y-m-d');
