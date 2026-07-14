@@ -271,6 +271,105 @@ foreach ($rows as $r) {
         ];
     }
 }
+
+// E) Qualquer parcela PAGA com vencimento ≫ data_pagamento (padrão #347 #826: pagou 13/07, venc 12/08)
+$casosE = [];
+$paramsE = [];
+$sqlE = "
+    SELECT
+        m.id AS matricula_id,
+        m.tenant_id,
+        a.nome AS aluno_nome,
+        sm.codigo AS status,
+        m.data_inicio,
+        m.data_vencimento AS mat_venc,
+        m.proxima_data_vencimento AS mat_prox,
+        COALESCE(pc.meses, 1) AS ciclo_meses,
+        af.nome AS ciclo_nome,
+        pl.duracao_dias,
+        pp.id AS pagamento_id,
+        pp.data_pagamento,
+        pp.data_vencimento AS pp_venc,
+        pp.valor,
+        DATEDIFF(pp.data_vencimento, pp.data_pagamento) AS dias_a_mais
+    FROM pagamentos_plano pp
+    INNER JOIN matriculas m ON m.id = pp.matricula_id
+    INNER JOIN alunos a ON a.id = m.aluno_id
+    INNER JOIN status_matricula sm ON sm.id = m.status_id
+    INNER JOIN planos pl ON pl.id = m.plano_id
+    LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+    LEFT JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
+    WHERE m.tipo_cobranca = 'avulso'
+      AND (pl.duracao_dias IS NULL OR pl.duracao_dias <> 1)
+      AND pp.status_pagamento_id = 2
+      AND pp.valor > 0
+      AND pp.data_pagamento IS NOT NULL
+      AND DATEDIFF(pp.data_vencimento, pp.data_pagamento) >= 20
+";
+if ($filtroTenant) {
+    $sqlE .= ' AND m.tenant_id = ?';
+    $paramsE[] = $filtroTenant;
+}
+if ($filtroMatricula) {
+    $sqlE .= ' AND m.id = ?';
+    $paramsE[] = $filtroMatricula;
+}
+if ($somenteAtivas) {
+    $sqlE .= " AND sm.codigo IN ('ativa', 'vencida', 'pendente')";
+}
+$sqlE .= " ORDER BY m.id DESC, pp.id DESC LIMIT {$limite}";
+
+$stmtE = $pdo->prepare($sqlE);
+$stmtE->execute($paramsE);
+foreach ($stmtE->fetchAll(PDO::FETCH_ASSOC) as $r) {
+    $matId = (int) $r['matricula_id'];
+    $pagoEm = (string) $r['data_pagamento'];
+    $ppVenc = (string) $r['pp_venc'];
+    $meses = max(1, (int) $r['ciclo_meses']);
+    $duracaoDias = (int) ($r['duracao_dias'] ?? 30);
+    $fimEsperado = fimCiclo($pagoEm, $meses, $duracaoDias);
+
+    // Só o padrão: vencimento da parcela ≈ fim do ciclo a partir do pagamento
+    if (abs(diffDias($ppVenc, $fimEsperado)) > 3 && abs(diffDias($ppVenc, somarMeses($pagoEm, $meses))) > 3) {
+        continue;
+    }
+
+    $casosE[] = array_merge($r, [
+        'cobranca_esperada' => $pagoEm,
+        'acesso_esperado' => $fimEsperado,
+        'motivo' => sprintf(
+            'pp#%d paga em %s com venc %s — cobrança deveria ser %s; acesso/próxima %s',
+            $r['pagamento_id'],
+            $pagoEm,
+            $ppVenc,
+            $pagoEm,
+            $fimEsperado
+        ),
+    ]);
+
+    $stmts = [
+        "UPDATE pagamentos_plano SET data_vencimento = '{$pagoEm}', updated_at = NOW() WHERE id = {$r['pagamento_id']} AND matricula_id = {$matId};",
+        "UPDATE matriculas SET data_vencimento = '{$fimEsperado}', proxima_data_vencimento = '{$fimEsperado}', updated_at = NOW() WHERE id = {$matId};",
+        "UPDATE pagamentos_plano pp",
+        "INNER JOIN (",
+        "  SELECT id FROM pagamentos_plano",
+        "  WHERE matricula_id = {$matId}",
+        "    AND status_pagamento_id IN (1, 3)",
+        "    AND data_pagamento IS NULL",
+        "    AND (data_vencimento = '{$ppVenc}' OR data_vencimento > '{$fimEsperado}')",
+        "  ORDER BY data_vencimento ASC, id ASC",
+        "  LIMIT 1",
+        ") x ON x.id = pp.id",
+        "SET pp.data_vencimento = '{$fimEsperado}', pp.updated_at = NOW();",
+    ];
+
+    $sqlPorCaso[] = [
+        'mat_id' => $matId,
+        'secao' => 'E',
+        'titulo' => "mat#{$matId} {$r['aluno_nome']}: pp#{$r['pagamento_id']} venc {$ppVenc} → cobrança {$pagoEm}, acesso {$fimEsperado}",
+        'stmts' => $stmts,
+    ];
+}
 // B) Próxima gerada no mesmo vencimento da paga e cancelada como duplicata
 $paramsB = [];
 $sqlB = "
@@ -662,6 +761,38 @@ if (!$casosD) {
     }
 }
 
+secao('[E] Parcela PAGA com vencimento no fim do ciclo (pagou no mês X, venc no mês X+1) — padrão #347/#826');
+if (!$casosE) {
+    linha('✅ Nenhum caso encontrado.');
+} else {
+    linha('Total: ' . count($casosE));
+    foreach ($casosE as $r) {
+        if ($somenteResumo) {
+            linha(sprintf(
+                '  mat#%d | %s | %s | pp#%d pago %s venc %s → cobrança %s | acesso %s',
+                $r['matricula_id'],
+                $r['aluno_nome'],
+                $r['status'],
+                $r['pagamento_id'],
+                br($r['data_pagamento']),
+                br($r['pp_venc']),
+                br($r['cobranca_esperada']),
+                br($r['acesso_esperado'])
+            ));
+            continue;
+        }
+        linha(sprintf(
+            '  mat#%d | %s | %s | ciclo %s | pp#%d',
+            $r['matricula_id'],
+            $r['aluno_nome'],
+            $r['status'],
+            $r['ciclo_nome'] ?? '—',
+            $r['pagamento_id']
+        ));
+        linha('    → ' . $r['motivo']);
+    }
+}
+
 // IDs únicos afetados
 $ids = [];
 foreach ($casosA as $r) {
@@ -676,13 +807,17 @@ foreach ($casosC as $r) {
 foreach ($casosD as $r) {
     $ids[(int) $r['matricula_id']] = true;
 }
+foreach ($casosE as $r) {
+    $ids[(int) $r['matricula_id']] = true;
+}
 
 secao('[RESUMO]');
 linha('Matrículas únicas afetadas: ' . count($ids));
-linha('  [A] cobrança no fim do ciclo: ' . count($casosA));
-linha('  [B] duplicata MP cancelada:   ' . count($casosB));
-linha('  [C] sem próxima renovação:    ' . count($casosC));
-linha('  [D] próxima com ciclo a mais: ' . count($casosD));
+linha('  [A] cobrança no fim do ciclo (1ª): ' . count($casosA));
+linha('  [B] duplicata MP cancelada:       ' . count($casosB));
+linha('  [C] sem próxima renovação:        ' . count($casosC));
+linha('  [D] próxima com ciclo a mais:     ' . count($casosD));
+linha('  [E] paga com venc ≠ pagamento:    ' . count($casosE));
 if ($ids) {
     ksort($ids);
     linha('IDs: ' . implode(', ', array_keys($ids)));
@@ -694,10 +829,10 @@ if ($imprimirSql) {
     // Prioridade: D (próxima inflada) → A (cobrança no fim) → C (criar próxima)
     $fila = array_values(array_filter(
         $sqlPorCaso,
-        static fn (array $c): bool => in_array($c['secao'], ['B', 'D', 'A', 'C'], true)
+        static fn (array $c): bool => in_array($c['secao'], ['E', 'B', 'D', 'A', 'C'], true)
     ));
     usort($fila, static function (array $a, array $b): int {
-        $prio = ['B' => 1, 'D' => 2, 'A' => 3, 'C' => 4];
+        $prio = ['E' => 1, 'B' => 2, 'D' => 3, 'A' => 4, 'C' => 5];
         $pa = $prio[$a['secao']] ?? 9;
         $pb = $prio[$b['secao']] ?? 9;
         if ($pa !== $pb) {
@@ -707,16 +842,16 @@ if ($imprimirSql) {
         return $a['mat_id'] <=> $b['mat_id'];
     });
 
-    // Evita C (INSERT) se já houver B (reabrir) para a mesma matrícula
-    $matsComB = [];
+    // Evita C (INSERT) se já houver B/E para a mesma matrícula
+    $matsComFix = [];
     foreach ($fila as $c) {
-        if ($c['secao'] === 'B') {
-            $matsComB[$c['mat_id']] = true;
+        if (in_array($c['secao'], ['B', 'E'], true)) {
+            $matsComFix[$c['mat_id']] = true;
         }
     }
     $fila = array_values(array_filter(
         $fila,
-        static fn (array $c): bool => !($c['secao'] === 'C' && isset($matsComB[$c['mat_id']]))
+        static fn (array $c): bool => !($c['secao'] === 'C' && isset($matsComFix[$c['mat_id']]))
     ));
 
     if ($filtroMatricula) {
