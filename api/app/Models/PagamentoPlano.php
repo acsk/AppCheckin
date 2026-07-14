@@ -989,8 +989,8 @@ class PagamentoPlano
 
             // Próxima cobrança vence no FIM do período pago (mesma regra de sqlFimPeriodoPago):
             // - parcela paga sem data_pagamento → o venc já é o fim do período;
-            // - venc >= pago + ciclo (padrão do fluxo MP, que grava venc = pagamento + ciclo)
-            //   → o venc já é o fim, usar o próprio venc;
+            // - venc ≈ pago + ciclo (tolerância 2 dias: +30d vs +1 mês, bug #369)
+            //   → o venc já é o fim; próxima parcela vence nessa data (renovação);
             // - senão, venc é a data devida (início) → fim = MAX(pago, venc) + ciclo.
             $mesesCiclo = (int) ($matricula['ciclo_meses'] ?? $matricula['frequencia_meses'] ?? 0);
             $baseDate = ($datePag > $dateVenc) ? $datePag : $dateVenc;
@@ -1000,6 +1000,7 @@ class PagamentoPlano
             } elseif ($mesesCiclo > 0) {
                 $vencJaEhFim = clone $datePag;
                 $vencJaEhFim->modify("+{$mesesCiclo} months");
+                $vencJaEhFim->modify('-2 days');
                 if ($dataVencPago && $dateVenc >= $vencJaEhFim) {
                     $proximoVencimento = clone $dateVenc;
                 } else {
@@ -1010,6 +1011,7 @@ class PagamentoPlano
                 $duracaoDias = max(1, (int) ($matricula['duracao_dias'] ?? 30));
                 $vencJaEhFim = clone $datePag;
                 $vencJaEhFim->add(new \DateInterval("P{$duracaoDias}D"));
+                $vencJaEhFim->modify('-2 days');
                 if ($dataVencPago && $dateVenc >= $vencJaEhFim) {
                     $proximoVencimento = clone $dateVenc;
                 } else {

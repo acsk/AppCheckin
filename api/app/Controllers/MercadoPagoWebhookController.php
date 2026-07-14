@@ -1354,14 +1354,14 @@ class MercadoPagoWebhookController
             $mat = $stmtMat->fetch(\PDO::FETCH_ASSOC);
             
             if ($mat) {
-                // Usar proxima_data_vencimento se existir
-                if (!empty($mat['proxima_data_vencimento'])) {
-                    error_log("[Webhook MP] 📅 Vencimento via matrícula.proxima_data_vencimento: " . $mat['proxima_data_vencimento']);
-                    return $mat['proxima_data_vencimento'];
-                }
+                // 1ª cobrança: data_inicio (não o fim do ciclo em proxima_data_vencimento — bug #368/#369)
                 if (!empty($mat['data_inicio'])) {
                     error_log("[Webhook MP] 📅 Vencimento via matrícula.data_inicio: " . $mat['data_inicio']);
                     return $mat['data_inicio'];
+                }
+                if (!empty($mat['proxima_data_vencimento'])) {
+                    error_log("[Webhook MP] 📅 Vencimento via matrícula.proxima_data_vencimento: " . $mat['proxima_data_vencimento']);
+                    return $mat['proxima_data_vencimento'];
                 }
             }
             

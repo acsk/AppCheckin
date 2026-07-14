@@ -198,7 +198,8 @@ class MercadoPagoWebhookV2Controller
         
         // Buscar matrícula
         $sql = "
-            SELECT m.id, m.tenant_id, m.aluno_id, m.plano_id, m.valor, m.proxima_data_vencimento
+            SELECT m.id, m.tenant_id, m.aluno_id, m.plano_id, m.valor,
+                   m.data_inicio, m.proxima_data_vencimento
             FROM matriculas m
             WHERE m.id = ?
             LIMIT 1
@@ -266,7 +267,9 @@ class MercadoPagoWebhookV2Controller
         $valorPagamento = isset($payment['transaction_amount'])
             ? (float)$payment['transaction_amount']
             : (float)($matricula['valor'] ?? 0);
-        $dataVencimento = $matricula['proxima_data_vencimento'] ?? date('Y-m-d');
+        $dataVencimento = $matricula['data_inicio']
+            ?? $matricula['proxima_data_vencimento']
+            ?? date('Y-m-d');
 
         $sql_insert = "
             INSERT INTO pagamentos_plano (

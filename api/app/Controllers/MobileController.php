@@ -6579,7 +6579,8 @@ class MobileController
                                         (int) $matriculaPendente['id'],
                                         (int) $matriculaPendente['plano_id'],
                                         (float) $matriculaPendente['valor'],
-                                        $matriculaPendente['proxima_data_vencimento'] ?? $matriculaPendente['data_vencimento'] ?? date('Y-m-d'),
+                                        // Cobrança vence na criação/início; fim do ciclo fica em matricula.data_vencimento
+                                        $matriculaPendente['data_inicio'] ?? date('Y-m-d'),
                                         $tenantId,
                                         (int) $matriculaPendente['id']
                                     ]);
@@ -7666,9 +7667,47 @@ class MobileController
                 $planoIdPix = (int) ($stmtPlano->fetchColumn() ?: 0);
                 $ehDiariaPix = ($matricula['tipo_cobranca'] ?? '') === 'avulso'
                     && (int) ($matricula['duracao_dias'] ?? 0) === 1;
-                $dataVencParcela = $ehDiariaPix
-                    ? date('Y-m-d')
-                    : ($matricula['proxima_data_vencimento'] ?? date('Y-m-d'));
+
+                // Vencimento da cobrança ≠ fim do ciclo (matricula.proxima_data_vencimento).
+                // Caso #369: 1ª parcela era 10/07; regenerar PIX/boleto empurrava para 09/08.
+                if ($ehDiariaPix) {
+                    $dataVencParcela = date('Y-m-d');
+                } else {
+                    $stmtParcAberta = $this->db->prepare("
+                        SELECT data_vencimento FROM pagamentos_plano
+                        WHERE tenant_id = ? AND matricula_id = ?
+                          AND status_pagamento_id IN (1, 3) AND data_pagamento IS NULL
+                        ORDER BY data_vencimento ASC, id ASC
+                        LIMIT 1
+                    ");
+                    $stmtParcAberta->execute([$tenantId, $matriculaId]);
+                    $vencAberta = $stmtParcAberta->fetchColumn() ?: null;
+
+                    if ($vencAberta) {
+                        $dataVencParcela = (string) $vencAberta;
+                    } else {
+                        $stmtTemPago = $this->db->prepare("
+                            SELECT 1 FROM pagamentos_plano
+                            WHERE tenant_id = ? AND matricula_id = ?
+                              AND status_pagamento_id = 2 AND valor > 0
+                            LIMIT 1
+                        ");
+                        $stmtTemPago->execute([$tenantId, $matriculaId]);
+                        if ($stmtTemPago->fetchColumn()) {
+                            // Renovação: cobrança no fim do período já pago
+                            $stmtFim = $this->db->query(
+                                'SELECT ' . \App\Models\PagamentoPlano::sqlFimPeriodoPago((string) (int) $tenantId, (string) (int) $matriculaId)
+                            );
+                            $fimPago = $stmtFim ? ($stmtFim->fetchColumn() ?: null) : null;
+                            $dataVencParcela = $fimPago
+                                ?: ($matricula['data_inicio'] ?? date('Y-m-d'));
+                        } else {
+                            // 1ª cobrança: vence na data de início (não no fim do ciclo)
+                            $dataVencParcela = $matricula['data_inicio'] ?? date('Y-m-d');
+                        }
+                    }
+                }
+
                 $pagamentoPlanoModel->garantirParcelaPendenteUnica(
                     $tenantId,
                     (int) $matricula['aluno_id'],
