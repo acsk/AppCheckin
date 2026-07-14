@@ -9,13 +9,10 @@
  *  - Depois o MP gerava "próxima" somando ciclo de novo (ex.: mensal 06/08 → 06/09)
  *
  * Uso:
- *   php debug_auditoria_cobranca_fim_ciclo.php
- *   php debug_auditoria_cobranca_fim_ciclo.php --resumo
- *   php debug_auditoria_cobranca_fim_ciclo.php --sql          # imprime UPDATEs sugeridos
- *   php debug_auditoria_cobranca_fim_ciclo.php --matricula=366
- *   php debug_auditoria_cobranca_fim_ciclo.php --tenant=3
- *   php debug_auditoria_cobranca_fim_ciclo.php --limite=100
- *   php debug_auditoria_cobranca_fim_ciclo.php --ativas       # só ativa/vencida/pendente
+ *   php debug_auditoria_cobranca_fim_ciclo.php --ativas --resumo
+ *   php debug_auditoria_cobranca_fim_ciclo.php --ativas --sql --um          # SQL de UM caso (próximo da fila)
+ *   php debug_auditoria_cobranca_fim_ciclo.php --sql --matricula=366          # SQL só dessa matrícula
+ *   php debug_auditoria_cobranca_fim_ciclo.php --tenant=3 --limite=100
  *
  * Produção (env):
  *   PROD_DB_HOST PROD_DB_NAME PROD_DB_USER PROD_DB_PASS [PROD_DB_PORT]
@@ -30,6 +27,7 @@ $filtroTenant = null;
 $somenteResumo = in_array('--resumo', $argv, true);
 $imprimirSql = in_array('--sql', $argv, true);
 $somenteAtivas = in_array('--ativas', $argv, true);
+$sqlUmPorVez = in_array('--um', $argv, true);
 $limite = 300;
 
 foreach ($argv as $arg) {
@@ -218,8 +216,8 @@ $casosA = [];
 $casosB = [];
 /** @var list<array<string, mixed>> $casosC */
 $casosC = [];
-/** @var list<string> $sqls */
-$sqls = [];
+/** @var list<array{mat_id:int, secao:string, titulo:string, stmts:list<string>}> */
+$sqlPorCaso = [];
 
 foreach ($rows as $r) {
     $matId = (int) $r['matricula_id'];
@@ -257,12 +255,17 @@ foreach ($rows as $r) {
             'motivo' => '1ª parcela paga com vencimento ≈ fim do ciclo (deveria ser data_inicio)',
         ]);
 
-        $sqls[] = "-- mat#{$matId} {$r['aluno_nome']}: corrigir cobrança #{$r['pagamento_id']}";
-        $sqls[] = "UPDATE pagamentos_plano SET data_vencimento = '{$cobrancaDeveriaSer}', updated_at = NOW() WHERE id = {$r['pagamento_id']} AND matricula_id = {$matId};";
-        $sqls[] = "UPDATE matriculas SET data_vencimento = '{$fimEsperado}', proxima_data_vencimento = '{$fimEsperado}', updated_at = NOW() WHERE id = {$matId};";
+        $sqlPorCaso[] = [
+            'mat_id' => $matId,
+            'secao' => 'A',
+            'titulo' => "mat#{$matId} {$r['aluno_nome']}: corrigir cobrança #{$r['pagamento_id']}",
+            'stmts' => [
+                "UPDATE pagamentos_plano SET data_vencimento = '{$cobrancaDeveriaSer}', updated_at = NOW() WHERE id = {$r['pagamento_id']} AND matricula_id = {$matId};",
+                "UPDATE matriculas SET data_vencimento = '{$fimEsperado}', proxima_data_vencimento = '{$fimEsperado}', updated_at = NOW() WHERE id = {$matId};",
+            ],
+        ];
     }
 }
-
 // B) Próxima gerada no mesmo vencimento da paga e cancelada como duplicata
 $paramsB = [];
 $sqlB = "
@@ -309,14 +312,6 @@ $sqlB .= " ORDER BY m.id DESC LIMIT {$limite}";
 $stmtB = $pdo->prepare($sqlB);
 $stmtB->execute($paramsB);
 $casosB = $stmtB->fetchAll(PDO::FETCH_ASSOC);
-
-foreach ($casosB as $r) {
-    $matId = (int) $r['matricula_id'];
-    // próxima cobrança correta = vencimento da parcela paga se ela já estava no fim;
-    // se ainda vamos corrigir a paga para data_inicio, próxima = fim do ciclo — tratado no --sql do bloco A
-    $sqls[] = "-- mat#{$matId}: reabrir próxima #{$r['dup_id']} (hoje duplicata cancelada em {$r['dup_venc']})";
-    $sqls[] = "-- (Só reabra se após corrigir a paga o vencimento dela != fim do ciclo; senão regenere a próxima)";
-}
 
 // C) Sem parcela aguardando no fim do ciclo, mas deveria ter (após pagar)
 $paramsC = [];
@@ -381,9 +376,20 @@ foreach ($stmtC->fetchAll(PDO::FETCH_ASSOC) as $r) {
         ]);
 
         $matId = (int) $r['matricula_id'];
-        $sqls[] = "-- mat#{$matId}: criar próxima cobrança em {$fimEsperado} (se ainda não existir)";
-        $sqls[] = "-- INSERT INTO pagamentos_plano (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento, status_pagamento_id, observacoes, created_at, updated_at)";
-        $sqls[] = "-- SELECT tenant_id, aluno_id, id, plano_id, valor, '{$fimEsperado}', 1, 'Pagamento gerado automaticamente após confirmação MP', NOW(), NOW() FROM matriculas WHERE id = {$matId};";
+        $sqlPorCaso[] = [
+            'mat_id' => $matId,
+            'secao' => 'C',
+            'titulo' => "mat#{$matId}: criar próxima cobrança em {$fimEsperado}",
+            'stmts' => [
+                "INSERT INTO pagamentos_plano (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento, status_pagamento_id, observacoes, created_at, updated_at)",
+                "SELECT tenant_id, aluno_id, id, plano_id, valor, '{$fimEsperado}', 1, 'Pagamento gerado automaticamente após confirmação MP', NOW(), NOW()",
+                "FROM matriculas WHERE id = {$matId}",
+                "  AND NOT EXISTS (",
+                "    SELECT 1 FROM pagamentos_plano px",
+                "    WHERE px.matricula_id = {$matId} AND px.status_pagamento_id IN (1, 3) AND px.data_pagamento IS NULL",
+                "  );",
+            ],
+        ];
     }
 }
 
@@ -445,30 +451,35 @@ $sqlD .= " ORDER BY m.id DESC LIMIT {$limite}";
 $stmtD = $pdo->prepare($sqlD);
 $stmtD->execute($paramsD);
 foreach ($stmtD->fetchAll(PDO::FETCH_ASSOC) as $r) {
-    $inicio = (string) $r['data_inicio'];
     $meses = max(1, (int) $r['ciclo_meses']);
     $duracaoDias = (int) ($r['duracao_dias'] ?? 30);
-    $fimEsperado = fimCiclo($inicio, $meses, $duracaoDias);
     $pagoVenc = (string) $r['pago_venc'];
+    $pagoEm = (string) ($r['data_pagamento'] ?? '');
     $pendVenc = (string) $r['pend_venc'];
     $matVenc = (string) ($r['mat_venc'] ?? '');
 
-    // Próxima correta:
-    // - se paga no início → fim do ciclo
-    // - se paga no fim → mesmo fim (não +1 ciclo)
-    $pagaNoInicio = abs(diffDias($pagoVenc, $inicio)) <= 3;
-    $proximaOk = $pagaNoInicio ? $fimEsperado : (
-        abs(diffDias($pagoVenc, $fimEsperado)) <= 2 ? $pagoVenc : $fimEsperado
-    );
-    // Preferir alinhamento com matrícula se já estiver no fim esperado
-    if ($matVenc !== '' && abs(diffDias($matVenc, $fimEsperado)) <= 2) {
+    // Âncora = data do pagamento (não data_inicio antiga da matrícula — evita falsos positivos)
+    $ancora = $pagoEm !== '' ? $pagoEm : $pagoVenc;
+    $pagaNoInicio = abs(diffDias($pagoVenc, $ancora)) <= 3;
+    $fimPago = $pagaNoInicio
+        ? fimCiclo($ancora, $meses, $duracaoDias)
+        : $pagoVenc; // venc já representa o fim do período pago
+
+    $proximaOk = $fimPago;
+    // Se matrícula já está no fim pago, usar essa data (compra usou +30d)
+    if ($matVenc !== '' && abs(diffDias($matVenc, $fimPago)) <= 2) {
         $proximaOk = $matVenc;
     }
 
     if (abs(diffDias($pendVenc, $proximaOk)) <= 2) {
         continue;
     }
-    // Só flagra se pendente está claramente além (ex.: +~1 ciclo)
+
+    // Só o padrão clássico: pendente ≈ um ciclo inteiro além do correto (#366: 06/08 → 06/09)
+    $umCicloAMais = fimCiclo($proximaOk, $meses, $duracaoDias);
+    if (abs(diffDias($pendVenc, $umCicloAMais)) > 5) {
+        continue;
+    }
     if (diffDias($proximaOk, $pendVenc) < 20) {
         continue;
     }
@@ -486,9 +497,22 @@ foreach ($stmtD->fetchAll(PDO::FETCH_ASSOC) as $r) {
     ]);
 
     $matId = (int) $r['matricula_id'];
-    $sqls[] = "-- mat#{$matId} {$r['aluno_nome']}: ajustar próxima #{$r['pend_id']} {$pendVenc} → {$proximaOk}";
-    $sqls[] = "UPDATE pagamentos_plano SET data_vencimento = '{$proximaOk}', updated_at = NOW() WHERE id = {$r['pend_id']} AND matricula_id = {$matId};";
-    $sqls[] = "UPDATE matriculas SET data_vencimento = '{$proximaOk}', proxima_data_vencimento = '{$proximaOk}', updated_at = NOW() WHERE id = {$matId};";
+    $stmts = [
+        "UPDATE pagamentos_plano SET data_vencimento = '{$proximaOk}', updated_at = NOW() WHERE id = {$r['pend_id']} AND matricula_id = {$matId};",
+    ];
+    // Só mexe na matrícula se ela estava alinhada à pendente ERRADA
+    if ($matVenc !== '' && abs(diffDias($matVenc, $pendVenc)) <= 2) {
+        $stmts[] = "UPDATE matriculas SET data_vencimento = '{$proximaOk}', proxima_data_vencimento = '{$proximaOk}', updated_at = NOW() WHERE id = {$matId};";
+    } elseif ($matVenc === '' || abs(diffDias($matVenc, $proximaOk)) > 2) {
+        $stmts[] = "UPDATE matriculas SET data_vencimento = '{$proximaOk}', proxima_data_vencimento = '{$proximaOk}', updated_at = NOW() WHERE id = {$matId} AND (data_vencimento IS NULL OR proxima_data_vencimento IS NULL OR data_vencimento = '{$pendVenc}' OR proxima_data_vencimento = '{$pendVenc}');";
+    }
+
+    $sqlPorCaso[] = [
+        'mat_id' => $matId,
+        'secao' => 'D',
+        'titulo' => "mat#{$matId} {$r['aluno_nome']}: ajustar próxima #{$r['pend_id']} {$pendVenc} → {$proximaOk}",
+        'stmts' => $stmts,
+    ];
 }
 
 // ── Relatório ───────────────────────────────────────────────────────────────
@@ -632,10 +656,63 @@ if ($ids) {
     linha('IDs: ' . implode(', ', array_keys($ids)));
 }
 
-if ($imprimirSql && $sqls) {
-    secao('[SQL SUGERIDO] (revisar antes de aplicar)');
-    foreach ($sqls as $s) {
-        linha($s);
+if ($imprimirSql) {
+    secao('[SQL] um caso por vez');
+
+    // Prioridade: D (próxima inflada) → A (cobrança no fim) → C (criar próxima)
+    $fila = array_values(array_filter(
+        $sqlPorCaso,
+        static fn (array $c): bool => in_array($c['secao'], ['D', 'A', 'C'], true)
+    ));
+    usort($fila, static function (array $a, array $b): int {
+        $prio = ['D' => 1, 'A' => 2, 'C' => 3];
+        $pa = $prio[$a['secao']] ?? 9;
+        $pb = $prio[$b['secao']] ?? 9;
+        if ($pa !== $pb) {
+            return $pa <=> $pb;
+        }
+
+        return $a['mat_id'] <=> $b['mat_id'];
+    });
+
+    if ($filtroMatricula) {
+        $fila = array_values(array_filter(
+            $fila,
+            static fn (array $c): bool => $c['mat_id'] === $filtroMatricula
+        ));
+    } elseif ($sqlUmPorVez || !$filtroMatricula) {
+        // Sem --matricula: só imprime O PRIMEIRO (não solta o lote)
+        if (!$sqlUmPorVez && count($fila) > 1) {
+            linha('⚠️  Há ' . count($fila) . ' correções. Não imprime o lote inteiro.');
+            linha('    Use:  --sql --um              → só a 1ª da fila');
+            linha('    Ou:   --sql --matricula=ID     → só essa matrícula');
+            linha('');
+            linha('Fila (próximas):');
+            foreach (array_slice($fila, 0, 15) as $i => $c) {
+                linha(sprintf('  %d) [%s] %s', $i + 1, $c['secao'], $c['titulo']));
+            }
+            if (count($fila) > 15) {
+                linha('  ... +' . (count($fila) - 15) . ' restantes');
+            }
+            $fila = [];
+        } else {
+            $fila = array_slice($fila, 0, 1);
+        }
+    }
+
+    if (!$fila) {
+        linha('(nenhum SQL para imprimir nesta rodada)');
+    } else {
+        foreach ($fila as $c) {
+            linha('-- [' . $c['secao'] . '] ' . $c['titulo']);
+            foreach ($c['stmts'] as $s) {
+                linha($s);
+            }
+            linha('');
+            if ($sqlUmPorVez || $filtroMatricula) {
+                linha('-- Depois de aplicar, rode de novo com --sql --um para o próximo.');
+            }
+        }
     }
 }
 
