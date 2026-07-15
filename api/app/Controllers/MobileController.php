@@ -1715,12 +1715,36 @@ class MobileController
             }
 
             // Verificar se aluno já tem check-in nesta turma
-            if ($this->checkinModel->usuarioTemCheckinNaTurma($usuarioId, $turmaId)) {
+            $stmtJaTem = $this->db->prepare("
+                SELECT c.id, c.aluno_id, c.created_at,
+                       COALESCE(c.data_checkin_date, DATE(c.created_at)) AS data_efetiva,
+                       c.registrado_por_admin
+                FROM checkins c
+                INNER JOIN alunos a ON a.id = c.aluno_id
+                WHERE a.usuario_id = :usuario_id AND c.turma_id = :turma_id
+                ORDER BY c.id DESC
+                LIMIT 1
+            ");
+            $stmtJaTem->execute([
+                'usuario_id' => $usuarioId,
+                'turma_id' => $turmaId,
+            ]);
+            $checkinExistente = $stmtJaTem->fetch(\PDO::FETCH_ASSOC);
+            if ($checkinExistente) {
                 $response->getBody()->write(json_encode([
                     'success' => false,
-                    'error' => 'Aluno já tem check-in nesta turma'
-                ]));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                    'error' => 'Aluno já tem check-in nesta turma',
+                    'code' => 'CHECKIN_DUPLICADO',
+                    'detalhes' => [
+                        'checkin_id' => (int) $checkinExistente['id'],
+                        'aluno_id' => (int) $checkinExistente['aluno_id'],
+                        'created_at' => $checkinExistente['created_at'],
+                        'data_efetiva' => $checkinExistente['data_efetiva'],
+                        'registrado_por_admin' => (bool) $checkinExistente['registrado_por_admin'],
+                        'dica' => 'Se não aparece na lista, o check-in foi feito na véspera (janela de abertura). Use DELETE /mobile/checkin/manual/{checkin_id}/desfazer',
+                    ],
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
             }
 
             // Verificar se aluno já tem check-in na mesma modalidade no mesmo dia
@@ -1793,14 +1817,15 @@ class MobileController
                 }
 
                 $stmtInsert = $this->db->prepare("
-                    INSERT INTO checkins (aluno_id, turma_id, tenant_id, registrado_por_admin, admin_id)
-                    VALUES (:aluno_id, :turma_id, :tenant_id, 1, :admin_id)
+                    INSERT INTO checkins (aluno_id, turma_id, tenant_id, registrado_por_admin, admin_id, data_checkin_date)
+                    VALUES (:aluno_id, :turma_id, :tenant_id, 1, :admin_id, :data_checkin_date)
                 ");
                 $stmtInsert->execute([
                     'aluno_id' => $alunoId,
                     'turma_id' => $turmaId,
                     'tenant_id' => $tenantId,
-                    'admin_id' => $professorId
+                    'admin_id' => $professorId,
+                    'data_checkin_date' => $diaAula,
                 ]);
 
                 $checkinId = (int) $this->db->lastInsertId();
@@ -3433,28 +3458,26 @@ class MobileController
 
             $dataAula = $dataAulaParam ?: ($turma['dia_data'] ?? date('Y-m-d'));
 
-            // Contar check-ins do dia da aula
+            // Contar check-ins da turma (turma_id já é a ocorrência do dia;
+            // NÃO filtrar por DATE(created_at)=dia_aula — check-in na véspera
+            // na janela de abertura sumiria da lista e ainda bloquearia o manual).
             $stmtAlunosCount = $this->db->prepare("
-                SELECT COUNT(*) as total FROM checkins 
+                SELECT COUNT(*) as total FROM checkins
                 WHERE turma_id = :turma_id
-                  AND COALESCE(data_checkin_date, DATE(created_at)) = :data_aula
             ");
             $stmtAlunosCount->execute([
                 'turma_id' => $turmaId,
-                'data_aula' => $dataAula,
             ]);
             $alunosCount = $stmtAlunosCount->fetch(\PDO::FETCH_ASSOC);
             $turma['total_alunos_matriculados'] = (int) ($alunosCount['total'] ?? 0);
 
             // Contar check-ins do dia (mesmo valor; mantido por compatibilidade de payload)
             $stmtCheckinsCount = $this->db->prepare("
-                SELECT COUNT(*) as total FROM checkins 
+                SELECT COUNT(*) as total FROM checkins
                 WHERE turma_id = :turma_id
-                  AND COALESCE(data_checkin_date, DATE(created_at)) = :data_aula
             ");
             $stmtCheckinsCount->execute([
                 'turma_id' => $turmaId,
-                'data_aula' => $dataAula,
             ]);
             $checkinsCount = $stmtCheckinsCount->fetch(\PDO::FETCH_ASSOC);
             $turma['total_checkins'] = (int) ($checkinsCount['total'] ?? 0);
@@ -3472,7 +3495,6 @@ class MobileController
                 INNER JOIN usuarios u ON u.id = a.usuario_id
                 INNER JOIN checkins c ON a.id = c.aluno_id
                 WHERE c.turma_id = :turma_id
-                  AND COALESCE(c.data_checkin_date, DATE(c.created_at)) = :data_aula
                 GROUP BY a.id, a.nome, a.data_nascimento, u.email, a.foto_caminho
                 ORDER BY u.nome ASC
             ";
@@ -3480,7 +3502,6 @@ class MobileController
             $stmtAlunos = $this->db->prepare($sqlAlunos);
             $stmtAlunos->execute([
                 'turma_id' => $turmaId,
-                'data_aula' => $dataAula,
             ]);
             $alunos = $stmtAlunos->fetchAll(\PDO::FETCH_ASSOC);
 
@@ -3514,7 +3535,6 @@ class MobileController
                 FROM checkins c
                 INNER JOIN alunos a ON c.aluno_id = a.id
                 WHERE c.turma_id = :turma_id
-                  AND COALESCE(c.data_checkin_date, DATE(c.created_at)) = :data_aula
                 ORDER BY c.created_at DESC
                 LIMIT 50
             ";
@@ -3522,7 +3542,6 @@ class MobileController
             $stmtCheckins = $this->db->prepare($sqlCheckins);
             $stmtCheckins->execute([
                 'turma_id' => $turmaId,
-                'data_aula' => $dataAula,
             ]);
             $checkins = $stmtCheckins->fetchAll(\PDO::FETCH_ASSOC);
 
