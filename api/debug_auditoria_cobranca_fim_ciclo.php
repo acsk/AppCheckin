@@ -764,10 +764,14 @@ foreach ($stmtF->fetchAll(PDO::FETCH_ASSOC) as $r) {
     ]);
 
     $matId = (int) $r['matricula_id'];
-    $stmts = [
-        "UPDATE pagamentos_plano SET data_vencimento = '{$proximaOk}', status_pagamento_id = 1, observacoes = CONCAT(COALESCE(observacoes, ''), ' [Corrigido: duplicata mesmo venc da paga; próximo ciclo {$proximaOk}]'), updated_at = NOW() WHERE id = {$r['pend_id']} AND matricula_id = {$matId};",
-        "UPDATE matriculas SET status_id = 1, data_vencimento = '{$proximaOk}', proxima_data_vencimento = '{$proximaOk}', data_cancelamento = NULL, motivo_cancelamento = NULL, cancelado_por = NULL, updated_at = NOW() WHERE id = {$matId};",
-    ];
+    $pagoId = (int) $r['pago_id'];
+    $stmts = [];
+    // Se a paga tem venc ≠ pagamento, alinhar cobrança à data do pagamento (evita job reverter)
+    if ($pagoEm !== '' && abs(diffDias($pagoVenc, $pagoEm)) > 2) {
+        $stmts[] = "UPDATE pagamentos_plano SET data_vencimento = '{$pagoEm}', updated_at = NOW() WHERE id = {$pagoId} AND matricula_id = {$matId};";
+    }
+    $stmts[] = "UPDATE pagamentos_plano SET data_vencimento = '{$proximaOk}', status_pagamento_id = CASE WHEN '{$proximaOk}' >= CURDATE() THEN 1 ELSE 3 END, observacoes = 'Pagamento gerado automaticamente após confirmação MP [Corrigido: renovação {$proximaOk}]', updated_at = NOW() WHERE id = {$r['pend_id']} AND matricula_id = {$matId};";
+    $stmts[] = "UPDATE matriculas SET status_id = CASE WHEN '{$proximaOk}' >= CURDATE() THEN 1 WHEN DATEDIFF(CURDATE(), '{$proximaOk}') < 5 THEN 2 ELSE status_id END, data_vencimento = '{$proximaOk}', proxima_data_vencimento = '{$proximaOk}', data_cancelamento = NULL, motivo_cancelamento = NULL, cancelado_por = NULL, updated_at = NOW() WHERE id = {$matId};";
     $sqlPorCaso[] = [
         'mat_id' => $matId,
         'secao' => 'F',

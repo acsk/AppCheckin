@@ -940,6 +940,56 @@ class PagamentoPlano
 
             if ($pendente) {
                 error_log("[gerarProximoPagamento] Matrícula #{$matriculaId}: já existe pagamento pendente #{$pendente['id']} para {$pendente['data_vencimento']}");
+
+                // Avulso: se a aberta está no MESMO venc da última paga (duplicata #327/#92),
+                // avançar a parcela para o fim do período pago — não puxar a matrícula para trás.
+                if ($ehAvulso) {
+                    $stmtUltimoPagoDup = $this->pdo->prepare("
+                        SELECT data_vencimento, data_pagamento FROM pagamentos_plano
+                        WHERE matricula_id = ? AND status_pagamento_id = 2 AND valor > 0
+                        ORDER BY data_pagamento DESC, id DESC
+                        LIMIT 1
+                    ");
+                    $stmtUltimoPagoDup->execute([$matriculaId]);
+                    $ultimoPagoDup = $stmtUltimoPagoDup->fetch(\PDO::FETCH_ASSOC);
+                    if ($ultimoPagoDup) {
+                        $pagoVencDup = (string) ($ultimoPagoDup['data_vencimento'] ?? '');
+                        $pagoEmDup = (string) ($ultimoPagoDup['data_pagamento'] ?? '');
+                        $pendVencDup = (string) $pendente['data_vencimento'];
+                        $diffPendPago = $pagoVencDup !== ''
+                            ? (int) (new \DateTime($pagoVencDup))->diff(new \DateTime($pendVencDup))->format('%r%a')
+                            : 999;
+                        $mesmoVenc = $pagoVencDup !== '' && abs($diffPendPago) <= 2;
+                        if ($mesmoVenc) {
+                            $mesesDup = (int) ($matricula['ciclo_meses'] ?? $matricula['frequencia_meses'] ?? 1);
+                            $diasDup = max(1, (int) ($matricula['duracao_dias'] ?? 30));
+                            $ancoraDup = $pagoEmDup !== '' ? $pagoEmDup : $pagoVencDup;
+                            $dtProx = new \DateTime($ancoraDup);
+                            if ($mesesDup > 1) {
+                                $dtProx->modify("+{$mesesDup} months");
+                            } else {
+                                $dtProx->add(new \DateInterval("P{$diasDup}D"));
+                            }
+                            $proxCorrigida = $dtProx->format('Y-m-d');
+                            $stmtFixPendente = $this->pdo->prepare("
+                                UPDATE pagamentos_plano
+                                SET data_vencimento = ?,
+                                    status_pagamento_id = CASE WHEN ? >= CURDATE() THEN 1 ELSE 3 END,
+                                    updated_at = NOW()
+                                WHERE id = ?
+                            ");
+                            $stmtFixPendente->execute([$proxCorrigida, $proxCorrigida, $pendente['id']]);
+                            $this->pdo->prepare("
+                                UPDATE matriculas
+                                SET data_vencimento = ?, proxima_data_vencimento = ?, updated_at = NOW()
+                                WHERE id = ?
+                            ")->execute([$proxCorrigida, $proxCorrigida, $matriculaId]);
+                            error_log("[gerarProximoPagamento] Matrícula #{$matriculaId}: duplicata aberta #{$pendente['id']} {$pendVencDup} → {$proxCorrigida}");
+                            return null;
+                        }
+                    }
+                }
+
                 // Verificar se proxima_data_vencimento já foi atualizada para data mais recente (ex: por ativarMatricula)
                 // Se sim, corrigir o pagamento pendente em vez de sobrescrever a data já correta
                 $stmtAtual = $this->pdo->prepare("SELECT proxima_data_vencimento FROM matriculas WHERE id = ?");
@@ -1081,8 +1131,22 @@ class PagamentoPlano
                 ");
                 $stmtUpdMat->execute([$proximoVencimentoStr, $matriculaId]);
             } else {
-                // Mesmo fallback de atualizarStatusMatricula: matricula.data_vencimento.
-                $acessoPago = $dataVencPago ?: ($dataPag ?: ($matricula['data_vencimento'] ?? null));
+                // Vigência = fim do período pago (pagamento + ciclo), NÃO o venc da cobrança.
+                // Bug antigo usava data_vencimento da paga (ex.: 09/06) e o job/app
+                // reescrevia a próxima parcela de volta → loop (#327).
+                $ancoraAcesso = $dataPag ?: $dataVencPago;
+                $acessoPago = null;
+                if ($ancoraAcesso) {
+                    $dtAcesso = new \DateTime($ancoraAcesso);
+                    if ($usaMeses) {
+                        $dtAcesso->modify("+{$mesesCiclo} months");
+                    } else {
+                        $dtAcesso->add(new \DateInterval("P{$duracaoDias}D"));
+                    }
+                    $acessoPago = $dtAcesso->format('Y-m-d');
+                } elseif (!empty($matricula['data_vencimento'])) {
+                    $acessoPago = (string) $matricula['data_vencimento'];
+                }
                 if ($acessoPago) {
                     $stmtUpdMat = $this->pdo->prepare("
                         UPDATE matriculas
