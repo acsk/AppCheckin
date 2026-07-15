@@ -13,7 +13,9 @@
  *   php debug_auditoria_cobranca_fim_ciclo.php --sql --um          # SQL de UM caso
  *   php debug_auditoria_cobranca_fim_ciclo.php --sql --matricula=347
  *   php debug_auditoria_cobranca_fim_ciclo.php --todas             # inclui canceladas
- *   (padrão: só ativa/vencida/pendente)
+ *   (padrão: só ativa/vencida/pendente; seção [F] sempre inclui canceladas)
+ *
+ *   [F] próxima aberta no MESMO venc da paga (padrão #92/#166/#193 — multi-mês)
  *
  * Produção (env):
  *   PROD_DB_HOST PROD_DB_NAME PROD_DB_USER PROD_DB_PASS [PROD_DB_PORT]
@@ -656,6 +658,124 @@ foreach ($stmtD->fetchAll(PDO::FETCH_ASSOC) as $r) {
     ];
 }
 
+// F) Próxima parcela ABERTA no mesmo venc da última paga (#92 / #166 / #193)
+//    Job marca como Atrasado → matrícula vira vencida/cancelada mesmo com acesso futuro.
+$casosF = [];
+$paramsF = [];
+$sqlF = "
+    SELECT
+        m.id AS matricula_id,
+        m.tenant_id,
+        a.nome AS aluno_nome,
+        sm.codigo AS status,
+        m.data_inicio,
+        m.data_vencimento AS mat_venc,
+        m.proxima_data_vencimento AS mat_prox,
+        COALESCE(pc.meses, 1) AS ciclo_meses,
+        af.nome AS ciclo_nome,
+        pl.duracao_dias,
+        pago.id AS pago_id,
+        pago.data_vencimento AS pago_venc,
+        pago.data_pagamento,
+        pend.id AS pend_id,
+        pend.data_vencimento AS pend_venc,
+        pend.status_pagamento_id AS pend_status_id,
+        pend.valor AS pend_valor
+    FROM matriculas m
+    INNER JOIN alunos a ON a.id = m.aluno_id
+    INNER JOIN status_matricula sm ON sm.id = m.status_id
+    INNER JOIN planos pl ON pl.id = m.plano_id
+    LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+    LEFT JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
+    INNER JOIN pagamentos_plano pago ON pago.id = (
+        SELECT pp2.id FROM pagamentos_plano pp2
+        WHERE pp2.matricula_id = m.id AND pp2.status_pagamento_id = 2 AND pp2.valor > 0
+        ORDER BY pp2.data_pagamento DESC, pp2.id DESC
+        LIMIT 1
+    )
+    INNER JOIN pagamentos_plano pend ON pend.id = (
+        SELECT pp3.id FROM pagamentos_plano pp3
+        WHERE pp3.matricula_id = m.id
+          AND pp3.status_pagamento_id IN (1, 3)
+          AND pp3.data_pagamento IS NULL
+          AND pp3.id <> (
+            SELECT pp2.id FROM pagamentos_plano pp2
+            WHERE pp2.matricula_id = m.id AND pp2.status_pagamento_id = 2 AND pp2.valor > 0
+            ORDER BY pp2.data_pagamento DESC, pp2.id DESC
+            LIMIT 1
+          )
+        ORDER BY pp3.data_vencimento ASC, pp3.id ASC
+        LIMIT 1
+    )
+    WHERE m.tipo_cobranca = 'avulso'
+      AND (pl.duracao_dias IS NULL OR pl.duracao_dias <> 1)
+      AND sm.codigo IN ('ativa', 'vencida', 'pendente', 'cancelada')
+";
+if ($filtroTenant) {
+    $sqlF .= ' AND m.tenant_id = ?';
+    $paramsF[] = $filtroTenant;
+}
+if ($filtroMatricula) {
+    $sqlF .= ' AND m.id = ?';
+    $paramsF[] = $filtroMatricula;
+}
+$sqlF .= " ORDER BY m.id DESC LIMIT {$limite}";
+
+$stmtF = $pdo->prepare($sqlF);
+$stmtF->execute($paramsF);
+foreach ($stmtF->fetchAll(PDO::FETCH_ASSOC) as $r) {
+    $meses = max(1, (int) $r['ciclo_meses']);
+    $duracaoDias = (int) ($r['duracao_dias'] ?? 30);
+    $pagoVenc = (string) $r['pago_venc'];
+    $pagoEm = (string) ($r['data_pagamento'] ?? '');
+    $pendVenc = (string) $r['pend_venc'];
+    $ancora = $pagoEm !== '' ? $pagoEm : $pagoVenc;
+
+    // Mesmo venc (ou ±2d) da última paga — duplicata aberta
+    if (abs(diffDias($pendVenc, $pagoVenc)) > 2 && abs(diffDias($pendVenc, $ancora)) > 2) {
+        continue;
+    }
+
+    $proximaOk = fimCiclo($ancora, $meses, $duracaoDias);
+    $matVenc = (string) ($r['mat_venc'] ?? '');
+    $matProx = (string) ($r['mat_prox'] ?? '');
+    if ($matProx !== '' && abs(diffDias($matProx, $proximaOk)) <= 3) {
+        $proximaOk = $matProx;
+    } elseif ($matVenc !== '' && abs(diffDias($matVenc, $proximaOk)) <= 3) {
+        $proximaOk = $matVenc;
+    }
+
+    // Próximo ciclo precisa ser claramente no futuro relativo à duplicata
+    if (diffDias($pendVenc, $proximaOk) < 20) {
+        continue;
+    }
+
+    $casosF[] = array_merge($r, [
+        'proxima_esperada' => $proximaOk,
+        'motivo' => sprintf(
+            'Pend/atrasada pp#%s em %s (= paga pp#%s) — deveria %s (ciclo %s); status mat=%s',
+            $r['pend_id'],
+            $pendVenc,
+            $r['pago_id'],
+            $proximaOk,
+            $r['ciclo_nome'] ?? ($meses . 'm'),
+            $r['status']
+        ),
+    ]);
+
+    $matId = (int) $r['matricula_id'];
+    $stmts = [
+        "UPDATE pagamentos_plano SET data_vencimento = '{$proximaOk}', status_pagamento_id = 1, observacoes = CONCAT(COALESCE(observacoes, ''), ' [Corrigido: duplicata mesmo venc da paga; próximo ciclo {$proximaOk}]'), updated_at = NOW() WHERE id = {$r['pend_id']} AND matricula_id = {$matId};",
+        "UPDATE matriculas SET status_id = 1, data_vencimento = '{$proximaOk}', proxima_data_vencimento = '{$proximaOk}', data_cancelamento = NULL, motivo_cancelamento = NULL, cancelado_por = NULL, updated_at = NOW() WHERE id = {$matId};",
+    ];
+    $sqlPorCaso[] = [
+        'mat_id' => $matId,
+        'secao' => 'F',
+        'titulo' => "mat#{$matId} {$r['aluno_nome']}: duplicata aberta #{$r['pend_id']} {$pendVenc} → {$proximaOk} + reativar",
+        'stmts' => $stmts,
+    ];
+}
+
 // ── Relatório ───────────────────────────────────────────────────────────────
 secao('[A] 1ª parcela paga com vencimento no FIM do ciclo (padrão #368 / #369)');
 if (!$casosA) {
@@ -803,6 +923,31 @@ if (!$casosE) {
     }
 }
 
+secao('[F] Próxima ABERTA no mesmo venc da paga (padrão #92/#166/#193 — multi-mês)');
+linha('(inclui canceladas; independente de --todas)');
+if (!$casosF) {
+    linha('✅ Nenhum caso encontrado.');
+} else {
+    linha('Total: ' . count($casosF));
+    foreach ($casosF as $r) {
+        linha(sprintf(
+            '  mat#%d | %s | %s | ciclo %s | paga pp#%d %s | aberta pp#%d %s → deveria %s',
+            $r['matricula_id'],
+            $r['aluno_nome'],
+            $r['status'],
+            $r['ciclo_nome'] ?? ($r['ciclo_meses'] . 'm'),
+            $r['pago_id'],
+            br($r['pago_venc']),
+            $r['pend_id'],
+            br($r['pend_venc']),
+            br($r['proxima_esperada'])
+        ));
+        if (!$somenteResumo) {
+            linha('    → ' . $r['motivo']);
+        }
+    }
+}
+
 // IDs únicos afetados
 $ids = [];
 foreach ($casosA as $r) {
@@ -820,6 +965,9 @@ foreach ($casosD as $r) {
 foreach ($casosE as $r) {
     $ids[(int) $r['matricula_id']] = true;
 }
+foreach ($casosF as $r) {
+    $ids[(int) $r['matricula_id']] = true;
+}
 
 secao('[RESUMO]');
 linha('Matrículas únicas afetadas: ' . count($ids));
@@ -828,6 +976,7 @@ linha('  [B] duplicata MP cancelada:       ' . count($casosB));
 linha('  [C] sem próxima renovação:        ' . count($casosC));
 linha('  [D] próxima com ciclo a mais:     ' . count($casosD));
 linha('  [E] paga com venc ≠ pagamento:    ' . count($casosE));
+linha('  [F] aberta = mesmo venc da paga:  ' . count($casosF));
 if ($ids) {
     ksort($ids);
     linha('IDs: ' . implode(', ', array_keys($ids)));
@@ -836,13 +985,13 @@ if ($ids) {
 if ($imprimirSql) {
     secao('[SQL] um caso por vez');
 
-    // Prioridade: D (próxima inflada) → A (cobrança no fim) → C (criar próxima)
+    // Prioridade: F (duplicata aberta multi-mês) → E → B → D → A → C
     $fila = array_values(array_filter(
         $sqlPorCaso,
-        static fn (array $c): bool => in_array($c['secao'], ['E', 'B', 'D', 'A', 'C'], true)
+        static fn (array $c): bool => in_array($c['secao'], ['F', 'E', 'B', 'D', 'A', 'C'], true)
     ));
     usort($fila, static function (array $a, array $b): int {
-        $prio = ['E' => 1, 'B' => 2, 'D' => 3, 'A' => 4, 'C' => 5];
+        $prio = ['F' => 1, 'E' => 2, 'B' => 3, 'D' => 4, 'A' => 5, 'C' => 6];
         $pa = $prio[$a['secao']] ?? 9;
         $pb = $prio[$b['secao']] ?? 9;
         if ($pa !== $pb) {
@@ -852,10 +1001,10 @@ if ($imprimirSql) {
         return $a['mat_id'] <=> $b['mat_id'];
     });
 
-    // Evita C (INSERT) se já houver B/E para a mesma matrícula
+    // Evita C (INSERT) se já houver B/E/F para a mesma matrícula
     $matsComFix = [];
     foreach ($fila as $c) {
-        if (in_array($c['secao'], ['B', 'E'], true)) {
+        if (in_array($c['secao'], ['B', 'E', 'F'], true)) {
             $matsComFix[$c['mat_id']] = true;
         }
     }
