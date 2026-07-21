@@ -166,8 +166,12 @@ export default function CheckinTurmaScreen() {
       checkins_semanais?: number;
       limite_mensal?: number;
       checkins_mes?: number;
+      direito?: number;
+      usados?: number;
+      excesso?: number;
       bonus_cinco_semanas?: boolean;
       mes_referencia?: string;
+      mensagem?: string;
       dias_checkin?: {
         data: string;
         horario?: string | null;
@@ -728,6 +732,10 @@ export default function CheckinTurmaScreen() {
           data?.error ||
           text ||
           "Não foi possível realizar o check-in.";
+        const limiteDetalhes =
+          data?.detalhes && data.detalhes.limite_mensal !== undefined
+            ? data.detalhes
+            : null;
 
         if (
           String(apiMessage).toLowerCase().includes("já realizou check-in") ||
@@ -735,7 +743,11 @@ export default function CheckinTurmaScreen() {
         ) {
           showErrorModal(normalizeUtf8(String(apiMessage)), "warning");
         } else {
-          showErrorModal(normalizeUtf8(String(apiMessage)), "error");
+          showErrorModal(
+            normalizeUtf8(String(apiMessage)),
+            "error",
+            limiteDetalhes,
+          );
         }
         return;
       }
@@ -1905,15 +1917,35 @@ export default function CheckinTurmaScreen() {
                     )}
 
                     <Text style={styles.limiteResumo}>
-                      {errorModal.limite.checkins_mes ?? 0} de{" "}
-                      {errorModal.limite.limite_mensal ?? 0} check-ins
+                      Ciclo do plano
                       {errorModal.limite.mes_referencia
-                        ? ` no ciclo ${errorModal.limite.mes_referencia}`
-                        : " neste ciclo"}
+                        ? `: ${errorModal.limite.mes_referencia}`
+                        : ""}
+                    </Text>
+                    <Text style={styles.limiteResumo}>
+                      Direito:{" "}
+                      {errorModal.limite.direito ??
+                        errorModal.limite.limite_mensal ??
+                        0}{" "}
+                      | Usados:{" "}
+                      {errorModal.limite.usados ??
+                        errorModal.limite.checkins_mes ??
+                        0}{" "}
+                      | Excedeu:{" "}
+                      {errorModal.limite.excesso ??
+                        Math.max(
+                          0,
+                          (errorModal.limite.usados ??
+                            errorModal.limite.checkins_mes ??
+                            0) -
+                            (errorModal.limite.direito ??
+                              errorModal.limite.limite_mensal ??
+                              0),
+                        )}
                     </Text>
                     {errorModal.limite.bonus_cinco_semanas && (
                       <Text style={styles.limiteBonus}>
-                        Inclui +1 bônus (mês com 5 semanas)
+                        Inclui +1 bônus (ciclo com 5 semanas)
                       </Text>
                     )}
 

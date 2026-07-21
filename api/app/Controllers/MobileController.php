@@ -1777,12 +1777,13 @@ class MobileController
                     // com fallback fail-safe para mês de calendário.
                     $detalhesLimite = $this->checkinModel->avaliarLimiteMensalReposicao($usuarioId, $tenantId, $modalidadeTurma, $planoInfo);
                     if ($detalhesLimite !== null) {
+                        $detalhesLimite = \App\Models\Checkin::formatarDetalhesLimiteMensal($detalhesLimite, false);
                         $response->getBody()->write(json_encode([
                             'success' => false,
-                            'error' => 'Aluno atingiu o limite de check-ins deste mês',
+                            'error' => $detalhesLimite['mensagem'] ?? 'Aluno atingiu o limite de check-ins do ciclo do plano',
                             'detalhes' => $detalhesLimite
-                        ]));
-                        return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                        ], JSON_UNESCAPED_UNICODE));
+                        return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
                     }
                 }
             }
@@ -2110,10 +2111,10 @@ class MobileController
                     if ($detalhes !== null) {
                         $response->getBody()->write(json_encode([
                             'success' => false,
-                            'error' => 'Você atingiu o limite de check-ins deste mês',
+                            'error' => $detalhes['mensagem'] ?? 'Você atingiu o limite de check-ins do ciclo do plano',
                             'detalhes' => $detalhes
-                        ]));
-                        return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                        ], JSON_UNESCAPED_UNICODE));
+                        return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
                     }
                 } else {
                     // Contar check-ins apenas na mesma modalidade

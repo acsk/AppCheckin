@@ -714,6 +714,37 @@ class Checkin
      * @param array $planoInfo Retorno de obterLimiteCheckinsPlano (tem_plano + permite_reposicao já validados pelo chamador)
      * @return array|null null se está DENTRO do limite; array de "detalhes" se o limite foi ATINGIDO.
      */
+    /**
+     * Enriquece o payload de limite mensal com direito/usados/excesso e mensagem
+     * amigável (ciclo do plano, não "mês de calendário").
+     */
+    public static function formatarDetalhesLimiteMensal(array $detalhes, bool $paraAluno = true): array
+    {
+        $direito = (int) ($detalhes['limite_mensal'] ?? 0);
+        $usados = (int) ($detalhes['checkins_mes'] ?? 0);
+        $excesso = max(0, $usados - $direito);
+        $ciclo = (string) ($detalhes['mes_referencia'] ?? '');
+        $plano = (string) ($detalhes['plano'] ?? 'seu plano');
+        $sujeito = $paraAluno ? 'Você' : 'O aluno';
+        $ref = $ciclo !== '' ? $ciclo : $plano;
+
+        $mensagem = sprintf(
+            '%s atingiu o limite de check-ins do ciclo do plano (%s). Direito: %d | Usados: %d | Excedeu: %d.',
+            $sujeito,
+            $ref,
+            $direito,
+            $usados,
+            $excesso
+        );
+
+        $detalhes['direito'] = $direito;
+        $detalhes['usados'] = $usados;
+        $detalhes['excesso'] = $excesso;
+        $detalhes['mensagem'] = $mensagem;
+
+        return $detalhes;
+    }
+
     public function avaliarLimiteMensalReposicao(int $usuarioId, int $tenantId, ?int $modalidadeId, array $planoInfo): ?array
     {
         // Diária: sem teto mensal (acesso controlado pela vigência).
@@ -726,7 +757,7 @@ class Checkin
         if (!empty($ciclo['tem_plano'])) {
             if (!empty($ciclo['contrato_multimes'])) {
                 if ($ciclo['checkins_no_periodo'] >= $ciclo['limite_periodo']) {
-                    return [
+                    return self::formatarDetalhesLimiteMensal([
                         'plano'               => $ciclo['plano_nome'],
                         'checkins_semanais'   => $ciclo['checkins_semanais'],
                         'limite_mensal'       => $ciclo['limite_periodo'],
@@ -740,7 +771,7 @@ class Checkin
                         'ciclo_inicio'        => $ciclo['periodo_inicio'],
                         'ciclo_fim'           => $ciclo['periodo_fim'],
                         'dias_checkin'        => $ciclo['dias_checkin'],
-                    ];
+                    ]);
                 }
                 if (empty($ciclo['ultimo_mes_contrato'])) {
                     return null;
@@ -750,7 +781,7 @@ class Checkin
             if ($ciclo['checkins_no_ciclo'] < $ciclo['limite_mensal']) {
                 return null;
             }
-            return [
+            return self::formatarDetalhesLimiteMensal([
                 'plano'               => $ciclo['plano_nome'],
                 'checkins_semanais'   => $ciclo['checkins_semanais'],
                 'limite_mensal'       => $ciclo['limite_mensal'],
@@ -764,7 +795,7 @@ class Checkin
                 'ciclo_inicio'        => $ciclo['ciclo_inicio'],
                 'ciclo_fim'           => $ciclo['ciclo_fim'],
                 'dias_checkin'        => $ciclo['dias_checkin'],
-            ];
+            ]);
         }
 
         // Fail-safe: só alcançado se NÃO houver matrícula no cálculo do ciclo
@@ -785,7 +816,7 @@ class Checkin
         if ($checkinsNoMes < $limiteMensal) {
             return null;
         }
-        return [
+        return self::formatarDetalhesLimiteMensal([
             'plano'               => $planoInfo['plano_nome'] ?? 'Plano',
             'checkins_semanais'   => (int) ($planoInfo['limite'] ?? 0),
             'limite_mensal'       => $limiteMensal,
@@ -796,7 +827,7 @@ class Checkin
             // calendário inteiro (1º dia ao último dia inclusivo = fim - 1 dia).
             'mes_referencia'      => date('d/m', strtotime($inicio)) . ' a ' . date('d/m', strtotime($fim . ' -1 day')),
             'dias_checkin'        => $diasCheckin,
-        ];
+        ]);
     }
 
     /**

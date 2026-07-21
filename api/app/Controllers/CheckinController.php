@@ -104,10 +104,10 @@ class CheckinController
                 $detalhesLimite = $this->checkinModel->avaliarLimiteMensalReposicao($userId, $tenantId, $modalidadeTurma, $planoInfo);
                 if ($detalhesLimite !== null) {
                     $response->getBody()->write(json_encode([
-                        'error' => 'Você atingiu o limite de check-ins deste mês',
+                        'error' => $detalhesLimite['mensagem'] ?? 'Você atingiu o limite de check-ins do ciclo do plano',
                         'detalhes' => $detalhesLimite
-                    ]));
-                    return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                    ], JSON_UNESCAPED_UNICODE));
+                    return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
                 }
             } else {
                 $checkinsNaSemana = $this->checkinModel->contarCheckinsNaSemana($userId, $modalidadeTurma);
@@ -364,11 +364,12 @@ class CheckinController
                 // com fallback fail-safe para mês de calendário.
                 $detalhesLimite = $this->checkinModel->avaliarLimiteMensalReposicao($usuarioId, $tenantId, $modalidadeTurma, $planoInfo);
                 if ($detalhesLimite !== null) {
+                    $detalhesLimite = \App\Models\Checkin::formatarDetalhesLimiteMensal($detalhesLimite, false);
                     $response->getBody()->write(json_encode([
-                        'error' => 'Aluno atingiu o limite de check-ins deste mês',
+                        'error' => $detalhesLimite['mensagem'] ?? 'Aluno atingiu o limite de check-ins do ciclo do plano',
                         'detalhes' => $detalhesLimite
-                    ]));
-                    return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                    ], JSON_UNESCAPED_UNICODE));
+                    return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
                 }
             } else {
                 $checkinsNaSemana = $this->checkinModel->contarCheckinsNaSemana($usuarioId, $modalidadeTurma);

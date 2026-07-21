@@ -286,17 +286,33 @@ class MobileCheckinService
                 $checkinsNoMes = $this->checkins->contarCheckinsNoMes($userId, $modalidadeTurma);
 
                 if ($checkinsNoMes >= $limiteMensal) {
+                    $direito = $limiteMensal;
+                    $usados = $checkinsNoMes;
+                    $excesso = max(0, $usados - $direito);
+                    $mesRef = date('d/m', strtotime(date('Y-m-01'))) . ' a ' . date('d/m', strtotime(date('Y-m-t')));
+                    $mensagem = sprintf(
+                        'Você atingiu o limite de check-ins do ciclo do plano (%s). Direito: %d | Usados: %d | Excedeu: %d.',
+                        $mesRef,
+                        $direito,
+                        $usados,
+                        $excesso
+                    );
+
                     return [
                         'status' => 400,
                         'body' => [
                             'success' => false,
-                            'error' => 'Você atingiu o limite de check-ins deste mês',
+                            'error' => $mensagem,
                             'detalhes' => [
                                 'plano' => $planoInfo['plano_nome'],
-                                'limite_mensal' => $limiteMensal,
-                                'checkins_mes' => $checkinsNoMes,
+                                'limite_mensal' => $direito,
+                                'checkins_mes' => $usados,
+                                'direito' => $direito,
+                                'usados' => $usados,
+                                'excesso' => $excesso,
+                                'mes_referencia' => $mesRef,
                                 'permite_reposicao' => true,
-                                'mensagem' => 'Seu plano ('.$planoInfo['plano_nome'].') permite até '.$limiteMensal.' check-in(s) por mês. Você já realizou '.$checkinsNoMes.'.',
+                                'mensagem' => $mensagem,
                             ],
                         ],
                     ];
