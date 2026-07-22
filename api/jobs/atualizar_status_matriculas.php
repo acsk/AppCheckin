@@ -9,6 +9,7 @@
  * - Ativa (0 dias): Pagamento em dia
  * - Vencida (1-4 dias): Pagamento vencido, aguardando regularização  
  * - Cancelada (5+ dias): Inadimplência - acesso bloqueado
+ * - Pendente: limite de check-ins do ciclo empatado (planos com reposição)
  * 
  * Uso via cron:
  * 0 6 * * * php /path/to/jobs/atualizar_status_matriculas.php >> /var/log/status_matriculas.log 2>&1
@@ -513,6 +514,46 @@ try {
                 logMessage("  ✓ Diárias encerradas (vencidas ou com check-in): {$diariasEncerradas}\n", $quiet);
             }
 
+            // 10. Matrículas ativas com limite de check-ins do ciclo empatado → pendente
+            // (planos com reposição). Roda por último para não ser desfeito pela
+            // reativação via assinatura approved (passo 6.1).
+            $pendentesPorLimite = 0;
+            $stmtLimite = $db->prepare("
+                SELECT m.id
+                FROM matriculas m
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
+                INNER JOIN planos p ON p.id = m.plano_id
+                LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id AND pc.tenant_id = m.tenant_id
+                WHERE m.tenant_id = :tenant_id
+                  AND sm.codigo = 'ativa'
+                  AND COALESCE(p.duracao_dias, 0) <> 1
+                  AND p.checkins_semanais > 0
+                  AND CASE
+                        WHEN m.plano_ciclo_id IS NOT NULL THEN COALESCE(pc.permite_reposicao, 0)
+                        ELSE COALESCE((
+                            SELECT MAX(pc2.permite_reposicao)
+                            FROM plano_ciclos pc2
+                            WHERE pc2.plano_id = p.id
+                              AND pc2.tenant_id = m.tenant_id
+                              AND pc2.ativo = 1
+                        ), 0)
+                      END = 1
+                LIMIT 500
+            ");
+            $stmtLimite->execute(['tenant_id' => $tenant['id']]);
+            $matriculasLimite = $stmtLimite->fetchAll(PDO::FETCH_COLUMN);
+            if (!empty($matriculasLimite)) {
+                $checkinModel = new \App\Models\Checkin($db);
+                foreach ($matriculasLimite as $matriculaLimiteId) {
+                    if ($checkinModel->marcarPendenteSeLimiteCicloEsgotado((int) $matriculaLimiteId)) {
+                        $pendentesPorLimite++;
+                    }
+                }
+            }
+            if ($pendentesPorLimite > 0) {
+                logMessage("  ✓ Matrículas Pendentes (limite de check-ins empatado): {$pendentesPorLimite}\n", $quiet);
+            }
+
             $descontoModel = new \App\Models\MatriculaDesconto($db);
             $descontosDesativados = $descontoModel->desativarDescontosMatriculasEncerradas((int) $tenant['id']);
             if ($descontosDesativados > 0) {
@@ -522,7 +563,7 @@ try {
             // Commit da transação
             $db->commit();
             
-            $totalTenant = $vencidasAtualizadas + $canceladasAtualizadas + $vencidasPorData + $canceladasPorData + $sincCanceladas + $sincPausadas + $sincExpiradas + $sincAprovadas + $reativadas + $reativadasCanceladas + ($diariasEncerradas ?? 0);
+            $totalTenant = $vencidasAtualizadas + $canceladasAtualizadas + $vencidasPorData + $canceladasPorData + $sincCanceladas + $sincPausadas + $sincExpiradas + $sincAprovadas + $reativadas + $reativadasCanceladas + ($diariasEncerradas ?? 0) + ($pendentesPorLimite ?? 0);
             $totalAtualizado += $totalTenant;
             
             if ($totalTenant > 0) {

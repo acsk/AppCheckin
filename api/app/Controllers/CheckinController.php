@@ -103,8 +103,13 @@ class CheckinController
                 // com fallback fail-safe para mês de calendário.
                 $detalhesLimite = $this->checkinModel->avaliarLimiteMensalReposicao($userId, $tenantId, $modalidadeTurma, $planoInfo);
                 if ($detalhesLimite !== null) {
+                    if (!empty($matricula['id'])) {
+                        $this->checkinModel->marcarPendenteSeLimiteCicloEsgotado((int) $matricula['id']);
+                    }
+                    $msgBase = $detalhesLimite['mensagem'] ?? 'Você atingiu o limite de check-ins do ciclo do plano';
                     $response->getBody()->write(json_encode([
-                        'error' => $detalhesLimite['mensagem'] ?? 'Você atingiu o limite de check-ins do ciclo do plano',
+                        'error' => $msgBase . ' Regularize o pagamento para renovar o ciclo e continuar fazendo check-in.',
+                        'codigo' => 'LIMITE_CHECKINS_CICLO',
                         'detalhes' => $detalhesLimite
                     ], JSON_UNESCAPED_UNICODE));
                     return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
@@ -136,6 +141,11 @@ class CheckinController
         }
 
         $checkin = $this->checkinModel->findById($checkinId);
+
+        // Empatou o limite do ciclo → pendente (próximo check-in recebe o aviso).
+        if (!empty($matricula['id'])) {
+            $this->checkinModel->marcarPendenteSeLimiteCicloEsgotado((int) $matricula['id']);
+        }
 
         $response->getBody()->write(json_encode([
             'message' => 'Check-in realizado com sucesso',
@@ -399,6 +409,10 @@ class CheckinController
 
         $checkin = $this->checkinModel->findById($checkinId);
 
+        if (!empty($matricula['id'])) {
+            $this->checkinModel->marcarPendenteSeLimiteCicloEsgotado((int) $matricula['id']);
+        }
+
         $response->getBody()->write(json_encode([
             'message' => 'Check-in registrado com sucesso',
             'checkin' => $checkin
@@ -464,6 +478,25 @@ class CheckinController
             $vencTxt = ($acessoAte && $acessoAte !== '0000-00-00')
                 ? ' Vencimento: ' . date('d/m/Y', strtotime((string) $acessoAte)) . '.'
                 : '';
+
+            // Pendente por limite de check-ins empatado: aviso específico para renovar.
+            if ($statusCodigo === 'pendente') {
+                $detalhesLimite = $this->checkinModel->avaliarLimiteMensalPorMatricula((int) ($matricula['id'] ?? 0));
+                if ($detalhesLimite !== null) {
+                    $msgBase = $detalhesLimite['mensagem']
+                        ?? 'Você atingiu o limite de check-ins do ciclo do plano';
+                    return [
+                        'error' => $msgBase . ' Regularize o pagamento para renovar o ciclo e continuar fazendo check-in.',
+                        'codigo' => 'LIMITE_CHECKINS_CICLO',
+                        'status' => $statusNome,
+                        'status_codigo' => $statusCodigo,
+                        'matricula_id' => (int) ($matricula['id'] ?? 0),
+                        'data_vencimento' => $acessoAte,
+                        'detalhes' => $detalhesLimite,
+                    ];
+                }
+            }
+
             return [
                 'error' => $mensagemParaAluno
                     ? "Sua matrícula está {$statusNome}.{$vencTxt} Não é possível fazer check-in."

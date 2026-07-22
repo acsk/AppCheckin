@@ -2,6 +2,7 @@
 
 namespace App\Repositories;
 
+use App\Support\AcademyDateTime;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -109,6 +110,9 @@ class MatriculaRepository
             if (! empty($restricao['status'])) {
                 $erro['status'] = $restricao['status'];
             }
+            if (! empty($restricao['detalhes'])) {
+                $erro['detalhes'] = $restricao['detalhes'];
+            }
 
             return $erro;
         }
@@ -183,6 +187,24 @@ class MatriculaRepository
                 ? ' Vencimento: ' . date('d/m/Y', strtotime((string) $acessoAte)) . '.'
                 : '';
 
+            if ($statusCodigo === 'pendente' && $matriculaId > 0) {
+                $detalhesLimite = $this->avaliarLimiteCicloMatricula($matriculaId);
+                if ($detalhesLimite !== null) {
+                    $msgBase = $detalhesLimite['mensagem']
+                        ?? 'Você atingiu o limite de check-ins do ciclo do plano';
+
+                    return [
+                        'code' => 'LIMITE_CHECKINS_CICLO',
+                        'mensagem' => $msgBase.' Regularize o pagamento para renovar o ciclo e continuar fazendo check-in.',
+                        'matricula_id' => $matriculaId,
+                        'status_codigo' => $statusCodigo,
+                        'status' => $statusNome,
+                        'data_vencimento' => $acessoAte,
+                        'detalhes' => $detalhesLimite,
+                    ];
+                }
+            }
+
             return [
                 'code' => $this->codigoErroPorStatusMatricula($statusCodigo),
                 'mensagem' => "Sua matrícula está {$statusNome}.{$vencTxt} Entre em contato com a academia.",
@@ -209,6 +231,136 @@ class MatriculaRepository
         }
 
         return null;
+    }
+
+    /**
+     * Avalia se a matrícula empatou o limite mensal do ciclo (reposição).
+     * Usado no aviso de check-in quando status já está pendente.
+     *
+     * @return ?array<string, mixed>
+     */
+    private function avaliarLimiteCicloMatricula(int $matriculaId): ?array
+    {
+        $row = DB::table('matriculas as m')
+            ->join('planos as p', 'p.id', '=', 'm.plano_id')
+            ->join('alunos as a', 'a.id', '=', 'm.aluno_id')
+            ->leftJoin('plano_ciclos as pc', function ($join) {
+                $join->on('pc.id', '=', 'm.plano_ciclo_id')
+                    ->on('pc.tenant_id', '=', 'm.tenant_id');
+            })
+            ->where('m.id', $matriculaId)
+            ->select([
+                'a.usuario_id',
+                'p.modalidade_id',
+                'p.checkins_semanais',
+                'p.nome as plano_nome',
+                'p.duracao_dias',
+                DB::raw("CASE
+                    WHEN m.plano_ciclo_id IS NOT NULL THEN COALESCE(pc.permite_reposicao, 0)
+                    ELSE COALESCE((
+                        SELECT MAX(pc2.permite_reposicao)
+                        FROM plano_ciclos pc2
+                        WHERE pc2.plano_id = p.id
+                          AND pc2.tenant_id = m.tenant_id
+                          AND pc2.ativo = 1
+                    ), 0)
+                END as permite_reposicao"),
+            ])
+            ->first();
+
+        if (! $row) {
+            return null;
+        }
+
+        if ((int) ($row->duracao_dias ?? 0) === 1) {
+            return null;
+        }
+
+        $permiteReposicao = (int) ($row->permite_reposicao ?? 0) === 1;
+        $checkinsSemanais = (int) ($row->checkins_semanais ?? 0);
+        if (! $permiteReposicao || $checkinsSemanais <= 0) {
+            return null;
+        }
+
+        $usuarioId = (int) $row->usuario_id;
+        $modalidadeId = $row->modalidade_id !== null ? (int) $row->modalidade_id : null;
+
+        $primeiroDiaMes = AcademyDateTime::fromDateAndTime(
+            AcademyDateTime::now()->format('Y-m-01'),
+            '00:00:00',
+        ) ?? AcademyDateTime::now();
+        $diaSemanaInicio = (int) $primeiroDiaMes->format('w');
+        $diasNoMes = (int) $primeiroDiaMes->format('t');
+        $semanasNoMes = (int) ceil(($diasNoMes + $diaSemanaInicio) / 7);
+        $bonusCincoSemanas = $semanasNoMes >= 5 ? 1 : 0;
+        $limiteMensal = ($checkinsSemanais * 4) + $bonusCincoSemanas;
+
+        $checkinsNoMes = (int) DB::table('checkins as c')
+            ->join('alunos as a', 'a.id', '=', 'c.aluno_id')
+            ->join('turmas as t', function ($join) {
+                $join->on('c.turma_id', '=', 't.id')
+                    ->on('t.tenant_id', '=', 'c.tenant_id');
+            })
+            ->where('a.usuario_id', $usuarioId)
+            ->whereRaw('MONTH(COALESCE(c.data_checkin_date, DATE(c.created_at))) = MONTH(CURDATE())')
+            ->whereRaw('YEAR(COALESCE(c.data_checkin_date, DATE(c.created_at))) = YEAR(CURDATE())')
+            ->where(function ($q) {
+                $q->whereNull('c.presente')->orWhere('c.presente', 1);
+            })
+            ->when($modalidadeId !== null, fn ($q) => $q->where('t.modalidade_id', $modalidadeId))
+            ->count();
+
+        if ($checkinsNoMes < $limiteMensal) {
+            return null;
+        }
+
+        $direito = $limiteMensal;
+        $usados = $checkinsNoMes;
+        $excesso = max(0, $usados - $direito);
+        $mesRef = date('d/m', strtotime(date('Y-m-01'))).' a '.date('d/m', strtotime(date('Y-m-t')));
+        $mensagem = sprintf(
+            'Você atingiu o limite de check-ins do ciclo do plano (%s). Direito: %d | Usados: %d | Excedeu: %d.',
+            $mesRef,
+            $direito,
+            $usados,
+            $excesso
+        );
+
+        return [
+            'plano' => (string) $row->plano_nome,
+            'limite_mensal' => $direito,
+            'checkins_mes' => $usados,
+            'direito' => $direito,
+            'usados' => $usados,
+            'excesso' => $excesso,
+            'mes_referencia' => $mesRef,
+            'permite_reposicao' => true,
+            'mensagem' => $mensagem,
+        ];
+    }
+
+    /**
+     * Se o limite do ciclo estiver empatado, marca a matrícula como pendente (só se estiver ativa).
+     */
+    public function marcarPendenteSeLimiteCicloEsgotado(int $matriculaId): bool
+    {
+        if ($this->avaliarLimiteCicloMatricula($matriculaId) === null) {
+            return false;
+        }
+
+        $statusPendenteId = DB::table('status_matricula')->where('codigo', 'pendente')->value('id');
+        $statusAtivaId = DB::table('status_matricula')->where('codigo', 'ativa')->value('id');
+        if (! $statusPendenteId || ! $statusAtivaId) {
+            return false;
+        }
+
+        return DB::table('matriculas')
+            ->where('id', $matriculaId)
+            ->where('status_id', $statusAtivaId)
+            ->update([
+                'status_id' => $statusPendenteId,
+                'updated_at' => now(),
+            ]) > 0;
     }
 
     private function codigoErroPorStatusMatricula(string $statusCodigo): string

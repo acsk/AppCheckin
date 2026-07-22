@@ -134,7 +134,13 @@ class MobileCheckinService
         }
 
         $planoInfo = $this->checkins->obterLimiteCheckinsPlano($userId, $tenantId, $modalidadeTurma);
-        $limiteErro = $this->validarLimitePlano($planoInfo, $userId, $modalidadeTurma, $turma);
+        $limiteErro = $this->validarLimitePlano(
+            $planoInfo,
+            $userId,
+            $modalidadeTurma,
+            $turma,
+            isset($matricula['id']) ? (int) $matricula['id'] : null,
+        );
         if ($limiteErro !== null) {
             return $limiteErro;
         }
@@ -159,6 +165,11 @@ class MobileCheckinService
                 'Erro ao registrar check-in (Talvez já exista um check-in registrado)',
                 500,
             );
+        }
+
+        // Empatou o limite do ciclo → pendente (próximo check-in recebe o aviso).
+        if (! empty($matricula['id'])) {
+            $this->matriculas->marcarPendenteSeLimiteCicloEsgotado((int) $matricula['id']);
         }
 
         return [
@@ -263,8 +274,13 @@ class MobileCheckinService
      * @param  array<string, mixed>  $turma
      * @return ?array{status: int, body: array<string, mixed>}
      */
-    private function validarLimitePlano(array $planoInfo, int $userId, ?int $modalidadeTurma, array $turma): ?array
-    {
+    private function validarLimitePlano(
+        array $planoInfo,
+        int $userId,
+        ?int $modalidadeTurma,
+        array $turma,
+        ?int $matriculaId = null,
+    ): ?array {
         // Diária: sem teto semanal/mensal — acesso controlado pela vigência.
         if (! empty($planoInfo['eh_diaria']) || (int) ($planoInfo['duracao_dias'] ?? 0) === 1) {
             return null;
@@ -286,12 +302,15 @@ class MobileCheckinService
                 $checkinsNoMes = $this->checkins->contarCheckinsNoMes($userId, $modalidadeTurma);
 
                 if ($checkinsNoMes >= $limiteMensal) {
+                    if ($matriculaId) {
+                        $this->matriculas->marcarPendenteSeLimiteCicloEsgotado($matriculaId);
+                    }
                     $direito = $limiteMensal;
                     $usados = $checkinsNoMes;
                     $excesso = max(0, $usados - $direito);
                     $mesRef = date('d/m', strtotime(date('Y-m-01'))) . ' a ' . date('d/m', strtotime(date('Y-m-t')));
                     $mensagem = sprintf(
-                        'Você atingiu o limite de check-ins do ciclo do plano (%s). Direito: %d | Usados: %d | Excedeu: %d.',
+                        'Você atingiu o limite de check-ins do ciclo do plano (%s). Direito: %d | Usados: %d | Excedeu: %d. Regularize o pagamento para renovar o ciclo e continuar fazendo check-in.',
                         $mesRef,
                         $direito,
                         $usados,
@@ -303,6 +322,7 @@ class MobileCheckinService
                         'body' => [
                             'success' => false,
                             'error' => $mensagem,
+                            'code' => 'LIMITE_CHECKINS_CICLO',
                             'detalhes' => [
                                 'plano' => $planoInfo['plano_nome'],
                                 'limite_mensal' => $direito,

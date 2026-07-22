@@ -550,8 +550,12 @@ class Checkin
      * Observação: só se aplica a planos com permite_reposicao (limite mensal).
      * Seleciona a mesma matrícula que obterLimiteCheckinsPlano (ativa, vigente).
      */
-    public function obterCicloCheckins(int $usuarioId, int $tenantId, ?int $modalidadeId = null): array
-    {
+    public function obterCicloCheckins(
+        int $usuarioId,
+        int $tenantId,
+        ?int $modalidadeId = null,
+        ?int $matriculaId = null
+    ): array {
         $sql = "SELECT p.checkins_semanais, p.nome AS plano_nome, p.modalidade_id,
                        p.duracao_dias,
                        m.data_inicio,
@@ -573,11 +577,17 @@ class Checkin
                 INNER JOIN alunos a ON a.id = m.aluno_id
                 INNER JOIN status_matricula sm ON sm.id = m.status_id
                 WHERE a.usuario_id = :usuario_id
-                  AND m.tenant_id = :tenant_id
-                  AND sm.codigo = 'ativa'
-                  AND COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= CURDATE()";
+                  AND m.tenant_id = :tenant_id";
 
         $params = ['usuario_id' => $usuarioId, 'tenant_id' => $tenantId];
+        if ($matriculaId !== null) {
+            // Avaliação pontual (job / aviso com status pendente): não exige ativa/vigente.
+            $sql .= " AND m.id = :matricula_id";
+            $params['matricula_id'] = $matriculaId;
+        } else {
+            $sql .= " AND sm.codigo = 'ativa'
+                  AND COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= CURDATE()";
+        }
         if ($modalidadeId !== null) {
             $sql .= " AND p.modalidade_id = :modalidade_id";
             $params['modalidade_id'] = $modalidadeId;
@@ -745,14 +755,19 @@ class Checkin
         return $detalhes;
     }
 
-    public function avaliarLimiteMensalReposicao(int $usuarioId, int $tenantId, ?int $modalidadeId, array $planoInfo): ?array
-    {
+    public function avaliarLimiteMensalReposicao(
+        int $usuarioId,
+        int $tenantId,
+        ?int $modalidadeId,
+        array $planoInfo,
+        ?int $matriculaId = null
+    ): ?array {
         // Diária: sem teto mensal (acesso controlado pela vigência).
         if (!empty($planoInfo['eh_diaria']) || (int) ($planoInfo['duracao_dias'] ?? 0) === 1) {
             return null;
         }
 
-        $ciclo = $this->obterCicloCheckins($usuarioId, $tenantId, $modalidadeId);
+        $ciclo = $this->obterCicloCheckins($usuarioId, $tenantId, $modalidadeId, $matriculaId);
 
         if (!empty($ciclo['tem_plano'])) {
             if (!empty($ciclo['contrato_multimes'])) {
@@ -828,6 +843,91 @@ class Checkin
             'mes_referencia'      => date('d/m', strtotime($inicio)) . ' a ' . date('d/m', strtotime($fim . ' -1 day')),
             'dias_checkin'        => $diasCheckin,
         ]);
+    }
+
+    /**
+     * Avalia se a matrícula empatou o limite de check-ins do ciclo (reposição).
+     * Funciona com status ativa ou pendente (não exige vigente/ativa no SELECT).
+     *
+     * @return array|null detalhes formatados se esgotado; null se N/A ou dentro do limite
+     */
+    public function avaliarLimiteMensalPorMatricula(int $matriculaId): ?array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT m.id, m.tenant_id, a.usuario_id, p.modalidade_id, p.checkins_semanais,
+                    p.nome AS plano_nome, p.duracao_dias,
+                    CASE
+                        WHEN m.plano_ciclo_id IS NOT NULL THEN COALESCE(pc.permite_reposicao, 0)
+                        ELSE COALESCE((
+                            SELECT MAX(pc2.permite_reposicao)
+                            FROM plano_ciclos pc2
+                            WHERE pc2.plano_id = p.id
+                              AND pc2.tenant_id = m.tenant_id
+                              AND pc2.ativo = 1
+                        ), 0)
+                    END AS permite_reposicao
+             FROM matriculas m
+             INNER JOIN planos p ON p.id = m.plano_id
+             LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id AND pc.tenant_id = m.tenant_id
+             INNER JOIN alunos a ON a.id = m.aluno_id
+             WHERE m.id = :matricula_id
+             LIMIT 1"
+        );
+        $stmt->execute(['matricula_id' => $matriculaId]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!$row) {
+            return null;
+        }
+
+        $ehDiaria = (int) ($row['duracao_dias'] ?? 0) === 1;
+        $permiteReposicao = (bool) ($row['permite_reposicao'] ?? false);
+        $checkinsSemanais = (int) ($row['checkins_semanais'] ?? 0);
+        if ($ehDiaria || !$permiteReposicao || $checkinsSemanais <= 0) {
+            return null;
+        }
+
+        $usuarioId = (int) $row['usuario_id'];
+        $tenantId = (int) $row['tenant_id'];
+        $modalidadeId = $row['modalidade_id'] !== null ? (int) $row['modalidade_id'] : null;
+        $planoInfo = [
+            'tem_plano' => true,
+            'permite_reposicao' => true,
+            'limite' => $checkinsSemanais,
+            'limite_mensal' => $checkinsSemanais * 4,
+            'plano_nome' => $row['plano_nome'],
+            'eh_diaria' => false,
+            'duracao_dias' => (int) ($row['duracao_dias'] ?? 0),
+        ];
+
+        return $this->avaliarLimiteMensalReposicao(
+            $usuarioId,
+            $tenantId,
+            $modalidadeId,
+            $planoInfo,
+            $matriculaId
+        );
+    }
+
+    /**
+     * Se o limite do ciclo estiver empatado, marca a matrícula como pendente (só se estiver ativa).
+     */
+    public function marcarPendenteSeLimiteCicloEsgotado(int $matriculaId): bool
+    {
+        if ($this->avaliarLimiteMensalPorMatricula($matriculaId) === null) {
+            return false;
+        }
+
+        $stmt = $this->db->prepare(
+            "UPDATE matriculas m
+             INNER JOIN status_matricula sm ON sm.id = m.status_id
+             SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'pendente' LIMIT 1),
+                 m.updated_at = NOW()
+             WHERE m.id = :matricula_id
+               AND sm.codigo = 'ativa'"
+        );
+        $stmt->execute(['matricula_id' => $matriculaId]);
+
+        return $stmt->rowCount() > 0;
     }
 
     /**
