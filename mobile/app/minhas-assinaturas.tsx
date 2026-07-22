@@ -8,7 +8,7 @@ import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -127,6 +127,14 @@ interface ErrorModalData {
   message: string;
   type: "error" | "success" | "warning";
 }
+
+/** Um card da lista = um pagamento (ou a assinatura se ainda sem parcelas). */
+type AssinaturaCardItem = {
+  key: string;
+  assinatura: Assinatura;
+  pagamento: PagamentoAssinatura | null;
+  showActions: boolean;
+};
 
 export default function MinhasAssinaturasScreen() {
   const router = useRouter();
@@ -694,37 +702,98 @@ export default function MinhasAssinaturasScreen() {
     [apiUrl, fetchAssinaturasCallback, router],
   );
 
-  const renderAssinatura = ({ item }: { item: Assinatura }) => {
-    const dataInicioText = formatDate(item.data_inicio) || "-";
-    const isAtiva = item.status.codigo === "ativa";
+  const assinaturaCards = useMemo<AssinaturaCardItem[]>(() => {
+    const cards: AssinaturaCardItem[] = [];
+    for (const assinatura of assinaturas) {
+      const pagamentos = Array.isArray(assinatura.pagamentos)
+        ? assinatura.pagamentos
+        : [];
+      if (pagamentos.length === 0) {
+        cards.push({
+          key: `assinatura-${assinatura.id}`,
+          assinatura,
+          pagamento: null,
+          showActions: true,
+        });
+        continue;
+      }
+      pagamentos.forEach((pagamento, index) => {
+        cards.push({
+          key: `pagamento-${assinatura.id}-${pagamento.id}`,
+          assinatura,
+          pagamento,
+          showActions: index === 0,
+        });
+      });
+    }
+    return cards;
+  }, [assinaturas]);
+
+  const renderAssinaturaCard = ({ item }: { item: AssinaturaCardItem }) => {
+    const { assinatura, pagamento, showActions } = item;
+    const dataInicioText = formatDate(assinatura.data_inicio) || "-";
+    const isAtiva = assinatura.status.codigo === "ativa";
     const isCancelada =
-      item.status.codigo === "cancelada" || item.status.codigo === "cancelled";
-    const isPendente = item.status.codigo === "pendente";
+      assinatura.status.codigo === "cancelada" ||
+      assinatura.status.codigo === "cancelled";
+    const isPendente = assinatura.status.codigo === "pendente";
     const statusCodigo =
-      typeof item.status.codigo === "string"
-        ? item.status.codigo.toLowerCase()
+      typeof assinatura.status.codigo === "string"
+        ? assinatura.status.codigo.toLowerCase()
         : "";
-    const isPago =
+    const isAssinaturaPaga =
       statusCodigo === "paga" ||
       statusCodigo === "pago" ||
       statusCodigo === "paid" ||
       statusCodigo === "approved";
     const isAvulso =
-      item.tipo_cobranca === "avulso" || item.recorrente === false;
-    // Próxima cobrança = parcela aberta (API). Fim = vigência paga (data_fim).
-    const proximaCobrancaText = formatDate(item.proxima_cobranca);
-    const fimAcessoText = formatDate(item.data_fim);
-    const ultimaCobrancaText = formatDate(item.ultima_cobranca);
+      assinatura.tipo_cobranca === "avulso" || assinatura.recorrente === false;
+    const proximaCobrancaText = formatDate(assinatura.proxima_cobranca);
+    const fimAcessoText = formatDate(assinatura.data_fim);
+    const ultimaCobrancaText = formatDate(assinatura.ultima_cobranca);
     const podePagar =
-      !!item.pode_pagar &&
-      (isPendente ? !!item.payment_url : true);
-    const paymentIds = Array.isArray(item.mercadopago_payment_ids)
-      ? item.mercadopago_payment_ids
+      !!assinatura.pode_pagar && (isPendente ? !!assinatura.payment_url : true);
+    const paymentIds = Array.isArray(assinatura.mercadopago_payment_ids)
+      ? assinatura.mercadopago_payment_ids
       : [];
     const podeReprocessar =
-      paymentIds.length > 0 || !!item.mercadopago_last_payment_id;
+      paymentIds.length > 0 || !!assinatura.mercadopago_last_payment_id;
 
-    const valorFormatado = formatCurrency(item.valor);
+    const pagamentoPago = pagamento
+      ? String(pagamento.status || "")
+          .toLowerCase()
+          .includes("pago") || !!pagamento.data_pagamento
+      : isAssinaturaPaga;
+    const isManual =
+      !!pagamento &&
+      (pagamento.origem === "manual" ||
+        (!!pagamento.baixado_por_nome &&
+          pagamento.origem !== "mercadopago"));
+    const nomeBaixa = pagamento
+      ? pagamento.baixado_por_nome || pagamento.criado_por_nome || ""
+      : "";
+    const primeiroNome = nomeBaixa.trim().split(/\s+/)[0] || "";
+    const labelBaixa =
+      pagamento && pagamentoPago
+        ? isManual && primeiroNome
+          ? `Baixa manual por ${primeiroNome}`
+          : "Baixa Automática por Integração"
+        : null;
+
+    const statusBadgeLabel = pagamento?.status || assinatura.status.nome;
+    const statusBadgeColor = pagamentoPago
+      ? "#28A745"
+      : pagamento
+        ? "#FFA500"
+        : assinatura.status.cor;
+    const valorExibido = formatCurrency(
+      pagamento ? pagamento.valor : assinatura.valor,
+    );
+    const dataPagamentoText = pagamento
+      ? formatDate(pagamento.data_pagamento) ||
+        formatDate(pagamento.data_vencimento) ||
+        "—"
+      : ultimaCobrancaText || "—";
 
     return (
       <View style={styles.card}>
@@ -732,21 +801,21 @@ export default function MinhasAssinaturasScreen() {
           <View style={styles.planoInfo}>
             <View style={styles.planoTitleRow}>
               <Text style={styles.planoNome} numberOfLines={1}>
-                {item.plano.nome}
+                {assinatura.plano.nome}
               </Text>
               <View
                 style={[
                   styles.statusBadge,
-                  { backgroundColor: item.status.cor },
+                  { backgroundColor: statusBadgeColor },
                 ]}
               >
-                <Text style={styles.statusText}>{item.status.nome}</Text>
+                <Text style={styles.statusText}>{statusBadgeLabel}</Text>
               </View>
             </View>
             <Text style={styles.modalidadeNome} numberOfLines={1}>
-              {item.plano.modalidade}
-              {item.external_reference
-                ? `  ·  ${item.external_reference}`
+              {assinatura.plano.modalidade}
+              {assinatura.external_reference
+                ? `  ·  ${assinatura.external_reference}`
                 : ""}
             </Text>
           </View>
@@ -754,12 +823,12 @@ export default function MinhasAssinaturasScreen() {
 
         <View style={styles.cicloValor}>
           <Text style={styles.cicloValor_text} numberOfLines={1}>
-            {item.ciclo.nome}
-            {item.ciclo.meses > 0
-              ? ` · ${item.ciclo.meses} ${item.ciclo.meses === 1 ? "mês" : "meses"}`
+            {assinatura.ciclo.nome}
+            {assinatura.ciclo.meses > 0
+              ? ` · ${assinatura.ciclo.meses} ${assinatura.ciclo.meses === 1 ? "mês" : "meses"}`
               : ""}
           </Text>
-          <Text style={styles.valorText}>{valorFormatado}</Text>
+          <Text style={styles.valorText}>{valorExibido}</Text>
         </View>
 
         <View style={styles.datasContainer}>
@@ -788,103 +857,87 @@ export default function MinhasAssinaturasScreen() {
           ) : null}
         </View>
 
-        {Array.isArray(item.pagamentos) && item.pagamentos.length > 0 && (
-          <View style={styles.historicoPagamentos}>
-            <Text style={styles.historicoTitulo}>Histórico</Text>
-            {item.pagamentos.slice(0, 4).map((pagamento) => {
-              const quem =
-                pagamento.baixado_por_nome ||
-                pagamento.criado_por_nome ||
-                null;
-              const dataRef =
-                formatDate(pagamento.data_pagamento) ||
-                formatDate(pagamento.data_vencimento) ||
-                "—";
-              return (
-                <View key={pagamento.id} style={styles.historicoItem}>
-                  <View style={styles.historicoLeft}>
-                    <Text style={styles.historicoValor}>
-                      {formatCurrency(pagamento.valor)}
-                    </Text>
-                    <Text style={styles.historicoMeta} numberOfLines={1}>
-                      {pagamento.status || "—"} · {dataRef}
-                      {pagamento.forma_pagamento
-                        ? ` · ${pagamento.forma_pagamento}`
-                        : ""}
-                    </Text>
-                    {quem ? (
-                      <Text style={styles.historicoMeta} numberOfLines={1}>
-                        por {quem}
+        {pagamento ? (
+          <View style={styles.pagamentoDetalheBox}>
+            <View style={styles.pagamentoDetalheRow}>
+              <Text style={styles.pagamentoDetalheLabel}>Pagamento</Text>
+              <Text style={styles.pagamentoDetalheValue}>
+                {dataPagamentoText}
+                {pagamento.forma_pagamento
+                  ? ` · ${pagamento.forma_pagamento}`
+                  : ""}
+              </Text>
+            </View>
+            {labelBaixa ? (
+              <Text style={styles.historicoBaixa} numberOfLines={2}>
+                {labelBaixa}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+
+        {showActions &&
+          (podePagar ||
+            podeReprocessar ||
+            (!isAvulso && (isAtiva || isPendente))) && (
+            <View style={styles.actionStack}>
+              {podePagar && (
+                <TouchableOpacity
+                  style={styles.botaoPagar}
+                  onPress={() => handlePagarAssinatura(assinatura)}
+                  activeOpacity={0.8}
+                >
+                  <Feather name="credit-card" size={15} color="#fff" />
+                  <Text style={styles.botaoPagarTexto}>
+                    {assinatura.pode_renovar ? "Renovar agora" : "Pagar agora"}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              {podeReprocessar && (
+                <TouchableOpacity
+                  style={styles.botaoReprocessar}
+                  onPress={() => {
+                    setAssinaturaParaReprocessar(assinatura);
+                    setReprocessModalVisible(true);
+                  }}
+                  disabled={reprocessando === assinatura.id}
+                  activeOpacity={0.8}
+                >
+                  {reprocessando === assinatura.id ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Feather name="rotate-cw" size={15} color="#fff" />
+                      <Text style={styles.botaoReprocessarTexto}>
+                        Reprocessar
                       </Text>
-                    ) : null}
-                  </View>
-                </View>
-              );
-            })}
-          </View>
-        )}
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
 
-        {(podePagar ||
-          podeReprocessar ||
-          (!isAvulso && (isAtiva || isPendente))) && (
-          <View style={styles.actionStack}>
-            {podePagar && (
-              <TouchableOpacity
-                style={styles.botaoPagar}
-                onPress={() => handlePagarAssinatura(item)}
-                activeOpacity={0.8}
-              >
-                <Feather name="credit-card" size={15} color="#fff" />
-                <Text style={styles.botaoPagarTexto}>
-                  {item.pode_renovar ? "Renovar agora" : "Pagar agora"}
-                </Text>
-              </TouchableOpacity>
-            )}
-
-            {podeReprocessar && (
-              <TouchableOpacity
-                style={styles.botaoReprocessar}
-                onPress={() => {
-                  setAssinaturaParaReprocessar(item);
-                  setReprocessModalVisible(true);
-                }}
-                disabled={reprocessando === item.id}
-                activeOpacity={0.8}
-              >
-                {reprocessando === item.id ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <>
-                    <Feather name="rotate-cw" size={15} color="#fff" />
-                    <Text style={styles.botaoReprocessarTexto}>
-                      Reprocessar
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            )}
-
-            {!isAvulso && (isAtiva || isPendente) && (
-              <TouchableOpacity
-                style={styles.botaoCancelar}
-                onPress={() => handleCancelarAssinatura(item)}
-                disabled={cancelando === item.id}
-                activeOpacity={0.7}
-              >
-                {cancelando === item.id ? (
-                  <ActivityIndicator color="#DC3545" size="small" />
-                ) : (
-                  <>
-                    <Feather name="trash-2" size={15} color="#DC3545" />
-                    <Text style={styles.botaoCancelarTexto}>
-                      Cancelar Assinatura
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
+              {!isAvulso && (isAtiva || isPendente) && (
+                <TouchableOpacity
+                  style={styles.botaoCancelar}
+                  onPress={() => handleCancelarAssinatura(assinatura)}
+                  disabled={cancelando === assinatura.id}
+                  activeOpacity={0.7}
+                >
+                  {cancelando === assinatura.id ? (
+                    <ActivityIndicator color="#DC3545" size="small" />
+                  ) : (
+                    <>
+                      <Feather name="trash-2" size={15} color="#DC3545" />
+                      <Text style={styles.botaoCancelarTexto}>
+                        Cancelar Assinatura
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
       </View>
     );
   };
@@ -1091,9 +1144,9 @@ export default function MinhasAssinaturasScreen() {
         renderEmptyState()
       ) : (
         <FlatList
-          data={assinaturas}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={renderAssinatura}
+          data={assinaturaCards}
+          keyExtractor={(item) => item.key}
+          renderItem={renderAssinaturaCard}
           ListHeaderComponent={
             <View style={styles.sectionsWrapper}>
               {pacotes.length > 0 && (
@@ -1684,37 +1737,37 @@ const styles = StyleSheet.create({
     color: "#111827",
   },
 
-  historicoPagamentos: {
-    marginTop: 8,
-    marginBottom: 2,
-    gap: 6,
+  historicoBaixa: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#475569",
+    marginTop: 2,
   },
-  historicoTitulo: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: colors.textMuted,
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
-  },
-  historicoItem: {
+
+  pagamentoDetalheBox: {
+    marginTop: 10,
     backgroundColor: "#f8fafc",
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: "#eef2f7",
+    gap: 4,
   },
-  historicoLeft: {
+  pagamentoDetalheRow: {
     gap: 2,
   },
-  historicoValor: {
-    fontSize: 13,
+  pagamentoDetalheLabel: {
+    fontSize: 10,
     fontWeight: "700",
-    color: colors.text,
+    color: "#9ca3af",
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
   },
-  historicoMeta: {
-    fontSize: 11,
-    color: colors.textMuted,
+  pagamentoDetalheValue: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: colors.text,
   },
 
   actionStack: {
