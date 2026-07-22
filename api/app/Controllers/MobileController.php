@@ -6377,7 +6377,8 @@ class MobileController
 
             // Verificar se já existe matrícula ativa na mesma modalidade
             $stmtAtiva = $this->db->prepare("
-                SELECT m.id, m.status_id, m.proxima_data_vencimento, p.modalidade_id, sm.codigo
+                SELECT m.id, m.status_id, m.valor, m.proxima_data_vencimento, m.data_vencimento,
+                       p.modalidade_id, sm.codigo
                 FROM matriculas m
                 INNER JOIN planos p ON p.id = m.plano_id
                 INNER JOIN status_matricula sm ON sm.id = m.status_id
@@ -6393,13 +6394,58 @@ class MobileController
             $matriculaAtiva = $stmtAtiva->fetch(\PDO::FETCH_ASSOC);
 
             if ($matriculaAtiva) {
+                // Renovação antecipada/no vencimento: libera fluxo PIX da matrícula existente
+                // (limite de check-ins do ciclo esgotado ou data de vencimento).
+                if ($metodoPagamento === 'pix') {
+                    $stmtParcRen = $this->db->prepare("
+                        SELECT data_vencimento FROM pagamentos_plano
+                        WHERE tenant_id = ? AND matricula_id = ?
+                          AND status_pagamento_id IN (1, 3) AND data_pagamento IS NULL
+                        ORDER BY data_vencimento ASC, id ASC
+                        LIMIT 1
+                    ");
+                    $stmtParcRen->execute([$tenantId, (int) $matriculaAtiva['id']]);
+                    $parcelaVencRen = $stmtParcRen->fetchColumn() ?: null;
+
+                    $liberacao = $this->checkinModel->avaliarLiberacaoPagamentoRenovacao(
+                        (int) $userId,
+                        (int) $tenantId,
+                        isset($plano['modalidade_id']) ? (int) $plano['modalidade_id'] : null,
+                        $matriculaAtiva['proxima_data_vencimento'] ?? $matriculaAtiva['data_vencimento'] ?? null,
+                        $parcelaVencRen ? (string) $parcelaVencRen : null
+                    );
+
+                    if ($liberacao['liberar']) {
+                        $response->getBody()->write(json_encode([
+                            'success' => true,
+                            'code' => 'RENOVACAO_PIX',
+                            'message' => 'Renovação liberada. Gere o PIX para continuar.',
+                            'data' => [
+                                'matricula_id' => (int) $matriculaAtiva['id'],
+                                'metodo_pagamento' => 'pix',
+                                'valor' => (float) ($matriculaAtiva['valor'] ?? $valorCompra),
+                                'renovacao' => true,
+                                'motivo_liberacao' => $liberacao['motivo'],
+                            ],
+                        ], JSON_UNESCAPED_UNICODE));
+                        return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(200);
+                    }
+                }
+
+                $acessoAte = $matriculaAtiva['proxima_data_vencimento'] ?? $matriculaAtiva['data_vencimento'] ?? null;
+                $vencTxt = ($acessoAte && $acessoAte !== '0000-00-00')
+                    ? ' Vencimento: ' . date('d/m/Y', strtotime((string) $acessoAte)) . '.'
+                    : '';
                 $response->getBody()->write(json_encode([
                     'success' => false,
                     'type' => 'error',
                     'code' => 'MATRICULA_ATIVA_EXISTENTE',
-                    'message' => 'Você já possui uma matrícula ativa nesta modalidade'
-                ]));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+                    'message' => 'Você já possui uma matrícula ativa nesta modalidade.' . $vencTxt
+                        . ' Pode renovar quando o limite de check-ins do ciclo acabar ou no vencimento.',
+                    'matricula_id' => (int) $matriculaAtiva['id'],
+                    'data_vencimento' => $acessoAte,
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
             }
 
             // Se já existe matrícula pendente na mesma modalidade, reutilizar o pagamento anterior

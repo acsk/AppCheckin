@@ -146,10 +146,76 @@ class MobileCompraPlanoService
             ->where('p.modalidade_id', $modalidadeId)
             ->where('sm.codigo', 'ativa')
             ->whereRaw('COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= CURDATE()')
-            ->exists();
+            ->orderByDesc('m.created_at')
+            ->first([
+                'm.id',
+                'm.valor',
+                'm.proxima_data_vencimento',
+                'm.data_vencimento',
+                'p.modalidade_id',
+                'p.checkins_semanais',
+            ]);
 
         if ($matriculaAtiva) {
-            return $this->erro(400, 'MATRICULA_ATIVA_EXISTENTE', 'Você já possui uma matrícula ativa nesta modalidade');
+            $matriculaAtiva = (array) $matriculaAtiva;
+            $acessoAte = $matriculaAtiva['proxima_data_vencimento'] ?? $matriculaAtiva['data_vencimento'] ?? null;
+
+            // Renovação: libera fluxo PIX da matrícula existente (limite do ciclo ou vencimento).
+            if ($metodoPagamento === 'pix') {
+                $parcelaVencRen = DB::table('pagamentos_plano')
+                    ->where('tenant_id', $tenantId)
+                    ->where('matricula_id', (int) $matriculaAtiva['id'])
+                    ->whereIn('status_pagamento_id', [1, 3])
+                    ->whereNull('data_pagamento')
+                    ->orderBy('data_vencimento')
+                    ->orderBy('id')
+                    ->value('data_vencimento');
+
+                $liberacao = $this->avaliarLiberacaoRenovacao(
+                    $userId,
+                    $tenantId,
+                    isset($modalidadeId) ? (int) $modalidadeId : null,
+                    $acessoAte ? (string) $acessoAte : null,
+                    $parcelaVencRen ? (string) $parcelaVencRen : null,
+                    (int) ($matriculaAtiva['checkins_semanais'] ?? 0),
+                    (int) $matriculaAtiva['id']
+                );
+
+                if ($liberacao['liberar']) {
+                    return [
+                        'status' => 200,
+                        'body' => [
+                            'success' => true,
+                            'code' => 'RENOVACAO_PIX',
+                            'message' => 'Renovação liberada. Gere o PIX para continuar.',
+                            'data' => [
+                                'matricula_id' => (int) $matriculaAtiva['id'],
+                                'metodo_pagamento' => 'pix',
+                                'valor' => (float) ($matriculaAtiva['valor'] ?? $valorCompra),
+                                'renovacao' => true,
+                                'motivo_liberacao' => $liberacao['motivo'],
+                            ],
+                        ],
+                    ];
+                }
+            }
+
+            $vencTxt = ($acessoAte && $acessoAte !== '0000-00-00')
+                ? ' Vencimento: '.date('d/m/Y', strtotime((string) $acessoAte)).'.'
+                : '';
+
+            return [
+                'status' => 400,
+                'body' => [
+                    'success' => false,
+                    'type' => 'error',
+                    'code' => 'MATRICULA_ATIVA_EXISTENTE',
+                    'message' => 'Você já possui uma matrícula ativa nesta modalidade.'.$vencTxt
+                        .' Pode renovar quando o limite de check-ins do ciclo acabar ou no vencimento.',
+                    'matricula_id' => (int) $matriculaAtiva['id'],
+                    'data_vencimento' => $acessoAte,
+                ],
+            ];
         }
 
         $pendente = DB::table('matriculas as m')
@@ -614,6 +680,110 @@ class MobileCompraPlanoService
                 : null,
             'status' => $pixData['status'] ?? 'pending',
         ]);
+    }
+
+    /**
+     * Espelha Checkin::avaliarLiberacaoPagamentoRenovacao da API Slim.
+     *
+     * @return array{liberar: bool, motivo: string}
+     */
+    private function avaliarLiberacaoRenovacao(
+        int $userId,
+        int $tenantId,
+        ?int $modalidadeId,
+        ?string $acessoAte,
+        ?string $parcelaVencimento,
+        int $checkinsSemanais,
+        int $matriculaId
+    ): array {
+        $hoje = date('Y-m-d');
+
+        if ($acessoAte && $acessoAte !== '0000-00-00' && $acessoAte <= $hoje) {
+            return ['liberar' => true, 'motivo' => 'acesso_vencido'];
+        }
+
+        if ($parcelaVencimento && $parcelaVencimento <= $hoje) {
+            return ['liberar' => true, 'motivo' => 'parcela_vencida'];
+        }
+
+        $permiteReposicao = (int) DB::table('matriculas as m')
+            ->leftJoin('plano_ciclos as pc', function ($join) {
+                $join->on('pc.id', '=', 'm.plano_ciclo_id')
+                    ->on('pc.tenant_id', '=', 'm.tenant_id');
+            })
+            ->where('m.id', $matriculaId)
+            ->where('m.tenant_id', $tenantId)
+            ->value(DB::raw('CASE WHEN m.plano_ciclo_id IS NOT NULL THEN COALESCE(pc.permite_reposicao, 0) ELSE 1 END'));
+
+        if ($permiteReposicao !== 1 || $checkinsSemanais <= 0 || ! $acessoAte || $acessoAte === '0000-00-00') {
+            return ['liberar' => false, 'motivo' => 'ciclo_em_andamento'];
+        }
+
+        try {
+            $addMonthsAnchor = static function (\DateTime $base, int $months, int $anchorDay): \DateTime {
+                $y = (int) $base->format('Y');
+                $m = (int) $base->format('m') + $months;
+                while ($m > 12) {
+                    $m -= 12;
+                    $y++;
+                }
+                while ($m < 1) {
+                    $m += 12;
+                    $y--;
+                }
+                $ultimo = (int) (new \DateTime(sprintf('%04d-%02d-01', $y, $m)))->format('t');
+                $dt = new \DateTime();
+                $dt->setDate($y, $m, min($anchorDay, $ultimo));
+
+                return $dt;
+            };
+
+            $vencDt = new \DateTime($acessoAte);
+            $anchorDay = (int) $vencDt->format('j');
+            $hojeDt = new \DateTime($hoje);
+            $fim = clone $vencDt;
+            if ($fim <= $hojeDt) {
+                while ($fim <= $hojeDt) {
+                    $fim = $addMonthsAnchor($fim, 1, $anchorDay);
+                }
+            } else {
+                while (true) {
+                    $anterior = $addMonthsAnchor($fim, -1, $anchorDay);
+                    if ($anterior > $hojeDt) {
+                        $fim = $anterior;
+                    } else {
+                        break;
+                    }
+                }
+            }
+            $inicio = $addMonthsAnchor($fim, -1, $anchorDay);
+            $dias = (int) $inicio->diff($fim)->days;
+            $semanas = (int) ceil(max(1, $dias) / 7);
+            $bonus = ($semanas >= 5) ? 1 : 0;
+            $limite = $checkinsSemanais * 4 + $bonus;
+
+            $q = DB::table('checkins as c')
+                ->join('alunos as a', 'a.id', '=', 'c.aluno_id')
+                ->join('turmas as t', 't.id', '=', 'c.turma_id')
+                ->join('dias as d', 'd.id', '=', 't.dia_id')
+                ->where('a.usuario_id', $userId)
+                ->where('d.data', '>=', $inicio->format('Y-m-d'))
+                ->where('d.data', '<', $fim->format('Y-m-d'))
+                ->where(function ($w) {
+                    $w->whereNull('c.presente')->orWhere('c.presente', 1);
+                });
+            if ($modalidadeId) {
+                $q->where('t.modalidade_id', $modalidadeId);
+            }
+
+            if ((int) $q->count() >= $limite) {
+                return ['liberar' => true, 'motivo' => 'limite_checkins_ciclo'];
+            }
+        } catch (\Throwable $e) {
+            Log::warning('avaliarLiberacaoRenovacao: '.$e->getMessage());
+        }
+
+        return ['liberar' => false, 'motivo' => 'ciclo_em_andamento'];
     }
 
     /**

@@ -839,6 +839,50 @@ export default function PlanosScreen() {
           const errorText = await matriculaResponse.text();
           try {
             const errorData = JSON.parse(errorText);
+            // Se a API já liberou renovação em outro formato de erro, tenta PIX
+            if (
+              errorData.code === "RENOVACAO_PIX" &&
+              errorData.data?.matricula_id
+            ) {
+              const matriculaIdRenov = Number(errorData.data.matricula_id);
+              const pixResponseRenov = await fetch(
+                `${apiUrl}/mobile/pagamento/pix`,
+                {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${token}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({ matricula_id: matriculaIdRenov }),
+                },
+              );
+              const pixTextRenov = await pixResponseRenov.text();
+              let pixJsonRenov: any = {};
+              try {
+                pixJsonRenov = pixTextRenov ? JSON.parse(pixTextRenov) : {};
+              } catch {
+                pixJsonRenov = {};
+              }
+              if (pixResponseRenov.ok && pixJsonRenov.success) {
+                const pix = pixJsonRenov.data?.pix || {};
+                setPixData({
+                  matricula_id: Number(
+                    pixJsonRenov.data?.matricula_id || matriculaIdRenov,
+                  ),
+                  valor: Number(
+                    pixJsonRenov.data?.valor || selectedCiclo.valor || 0,
+                  ),
+                  qr_code: pix.qr_code || null,
+                  qr_code_base64: pix.qr_code_base64 || null,
+                  ticket_url: pix.ticket_url || null,
+                  expires_at: pix.expires_at || null,
+                });
+                setPixModalVisible(true);
+                setPixLoading(false);
+                setPlanoComprando(null);
+                return;
+              }
+            }
             showErrorModal(
               "⚠️ Problema na Compra",
               errorData.message || "Não foi possível processar sua compra",
@@ -862,6 +906,74 @@ export default function PlanosScreen() {
           const errorMessage =
             matriculaData.message || "Erro desconhecido ao processar compra";
           showErrorModal("❌ Não foi Possível Comprar", errorMessage, "error");
+          setPixLoading(false);
+          setPlanoComprando(null);
+          return;
+        }
+
+        // Renovação liberada: segue direto para gerar PIX da matrícula ativa
+        if (
+          matriculaData.code === "RENOVACAO_PIX" ||
+          matriculaData.data?.renovacao
+        ) {
+          const matriculaIdRenov = Number(matriculaData.data?.matricula_id);
+          if (!matriculaIdRenov) {
+            showErrorModal(
+              "⚠️ Erro",
+              "Não foi possível identificar a matrícula para renovar.",
+              "error",
+            );
+            setPixLoading(false);
+            setPlanoComprando(null);
+            return;
+          }
+          const pixResponseRenov = await fetch(
+            `${apiUrl}/mobile/pagamento/pix`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ matricula_id: matriculaIdRenov }),
+            },
+          );
+          const pixTextRenov = await pixResponseRenov.text();
+          let pixJsonRenov: any = {};
+          try {
+            pixJsonRenov = pixTextRenov ? JSON.parse(pixTextRenov) : {};
+          } catch {
+            pixJsonRenov = {};
+          }
+          if (!pixResponseRenov.ok || !pixJsonRenov.success) {
+            showErrorModal(
+              "⚠️ Erro ao Gerar PIX",
+              pixJsonRenov?.error ||
+                pixJsonRenov?.message ||
+                "Não foi possível gerar o PIX da renovação.",
+              "error",
+            );
+            setPixLoading(false);
+            setPlanoComprando(null);
+            return;
+          }
+          const pixRenov = pixJsonRenov.data?.pix || {};
+          setPixData({
+            matricula_id: Number(
+              pixJsonRenov.data?.matricula_id || matriculaIdRenov,
+            ),
+            valor: Number(
+              pixJsonRenov.data?.valor ||
+                matriculaData.data?.valor ||
+                selectedCiclo.valor ||
+                0,
+            ),
+            qr_code: pixRenov.qr_code || null,
+            qr_code_base64: pixRenov.qr_code_base64 || null,
+            ticket_url: pixRenov.ticket_url || null,
+            expires_at: pixRenov.expires_at || null,
+          });
+          setPixModalVisible(true);
           setPixLoading(false);
           setPlanoComprando(null);
           return;
