@@ -972,6 +972,11 @@ class AdminMatriculaService
             return $this->error('Não é possível alterar plano de matrícula finalizada', 400);
         }
 
+        $migracao = new \App\Services\Mobile\MobileMigracaoPlanoService();
+        if ($migracao->temParcelaAtrasada($id, $tenantId)) {
+            return $this->error('Há parcela em atraso. Quite o débito antes de alterar o plano.', 400);
+        }
+
         $novoPlano = $this->matriculas->findPlano($novoPlanoId, $tenantId);
         if (! $novoPlano) {
             return $this->error('Novo plano não encontrado', 404);
@@ -1051,15 +1056,18 @@ class AdminMatriculaService
         $creditoGerado = false;
         $diasRestantes = 0;
 
+        $aptidaoCredito = $migracao->avaliarAptidaoMigracao($matricula, $tenantId);
+        $podeGerarCreditoMigracao = (bool) ($aptidaoCredito['gera_credito'] ?? false);
+
         $usarCreditoExistente = ! empty($data['usar_credito_existente']) && $saldoCreditosExistentes > 0;
 
-        if (! empty($data['abater_plano_anterior'])) {
+        if ($podeGerarCreditoMigracao && ! empty($data['abater_plano_anterior'])) {
             $creditoValor = (float) $matricula['valor'];
             if ($creditoValor > 0) {
                 $creditoGerado = true;
                 $creditoMotivo = $creditoMotivo ?? ('Crédito do plano anterior ('.$matricula['plano_nome'].' - R$'.number_format($creditoValor, 2, ',', '.').')');
             }
-        } elseif (! empty($data['abater_pagamento_anterior'])) {
+        } elseif ($podeGerarCreditoMigracao && ! empty($data['abater_pagamento_anterior'])) {
             $valorCicloAtual = (float) $matricula['valor'];
             $hoje = new \DateTime;
             $dataVencimentoAtual = new \DateTime((string) $matricula['data_vencimento']);
@@ -1081,7 +1089,7 @@ class AdminMatriculaService
                 $creditoGerado = true;
                 $creditoMotivo = $creditoMotivo ?? ("Crédito proporcional do plano anterior ({$diasRestantes} dias restantes de R$".number_format($valorCicloAtual, 2, ',', '.').')');
             }
-        } elseif (isset($data['credito'])) {
+        } elseif ($podeGerarCreditoMigracao && isset($data['credito'])) {
             $creditoValor = (float) $data['credito'];
             $creditoGerado = true;
             $creditoMotivo = $creditoMotivo ?? 'Crédito manual na alteração de plano';

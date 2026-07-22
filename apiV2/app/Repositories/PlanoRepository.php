@@ -38,11 +38,15 @@ class PlanoRepository
             ->get([
                 'm.id',
                 'm.plano_id',
+                'm.plano_ciclo_id',
                 'm.valor',
+                'm.data_inicio',
+                'm.data_vencimento',
+                'm.proxima_data_vencimento',
                 'p.modalidade_id',
                 'p.nome as plano_nome',
                 'p.checkins_semanais',
-                DB::raw('COALESCE(m.proxima_data_vencimento, m.data_vencimento) as data_vencimento'),
+                'sm.codigo as status_codigo',
             ])
             ->map(fn ($row) => (array) $row)
             ->all();
@@ -174,6 +178,7 @@ class PlanoRepository
                 'm.data_inicio',
                 'm.data_vencimento',
                 'm.proxima_data_vencimento',
+                'm.plano_ciclo_id',
                 'm.valor',
                 'sm.nome as status',
                 'sm.codigo as status_codigo',

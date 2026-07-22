@@ -1,5 +1,5 @@
 import { useProtectedRoute } from "@/hooks/useProtectedRoute";
-import { getApiUrlRuntime } from "@/src/config/urls";
+import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { authService } from "@/src/services/authService";
 import { colors } from "@/src/theme/colors";
 import { handleUnauthorizedResponse } from "@/src/utils/authHelpers";
@@ -58,17 +58,37 @@ interface Plan {
   pode_renovar?: boolean;
   pode_pagar?: boolean;
   label?: string | null;
+  matricula_ativa?: {
+    id?: number;
+    plano_id?: number;
+    plano_ciclo_id?: number | null;
+    valor?: number;
+  } | null;
   ciclos?: Ciclo[];
 }
 
 interface MigracaoSimulacao {
-  plano_atual?: { nome: string; valor_formatado: string };
-  plano_novo?: { valor_formatado: string };
+  plano_atual?: {
+    nome: string;
+    valor_formatado: string;
+    ciclo_nome?: string | null;
+  };
+  plano_novo?: {
+    nome?: string;
+    valor_formatado: string;
+    ciclo_nome?: string | null;
+  };
+  ciclo?: {
+    atual?: string | null;
+    novo?: string | null;
+    texto?: string | null;
+  };
   credito?: {
     valor_formatado: string;
     valor_consumido_formatado?: string;
     dias_restantes?: number;
     tipo?: string;
+    motivo?: string;
   };
   valor_parcela_formatado?: string;
   valor_parcela?: number;
@@ -489,11 +509,24 @@ export default function PlanosScreen() {
   const executarMigracao = React.useCallback(async () => {
     if (!migracaoPendente) return;
 
+    const pendente = migracaoPendente;
     try {
       setConfirmandoMigracao(true);
-      const { plano, cicloId, metodo } = migracaoPendente;
+      // Fecha confirmação antes da API para o feedback ficar visível
+      setMigracaoModalVisible(false);
+      setMigracaoPendente(null);
+      setMigracaoSimulacao(null);
+
+      const { plano, cicloId, metodo } = pendente;
       const token = await AsyncStorage.getItem("@appcheckin:token");
       if (!token) throw new Error("Token não encontrado");
+
+      console.log("🔄 [Migrar] Enviando...", {
+        plano_id: plano.id,
+        plano_ciclo_id: cicloId,
+        metodo_pagamento: metodo,
+        apiUrl,
+      });
 
       const response = await fetch(`${apiUrl}/mobile/migrar-plano`, {
         method: "POST",
@@ -516,9 +549,7 @@ export default function PlanosScreen() {
         throw new Error("Resposta inválida ao migrar plano");
       }
 
-      setMigracaoModalVisible(false);
-      setMigracaoPendente(null);
-      setMigracaoSimulacao(null);
+      console.log("🔄 [Migrar] Resposta:", response.status, data);
 
       if (!response.ok || !data.success) {
         if (data.code === "ERRO_PAGAMENTO" && metodo === "pix") {
@@ -559,7 +590,9 @@ export default function PlanosScreen() {
 
         showErrorModal(
           "⚠️ Migração não concluída",
-          data.message || "Não foi possível migrar o plano",
+          data.message ||
+            data.error ||
+            `Não foi possível migrar o plano (${data.code || response.status})`,
           "error",
         );
         return;
@@ -572,7 +605,8 @@ export default function PlanosScreen() {
       if (status === "ativa" || valorParcela <= 0) {
         showErrorModal(
           "✅ Plano migrado",
-          data.message || "Seu plano foi alterado com sucesso.",
+          data.message ||
+            "Migração concluída. O crédito cobriu o valor — nada a pagar.",
           "success",
         );
         await fetchPlanos(apiUrl);
@@ -607,6 +641,7 @@ export default function PlanosScreen() {
     } catch (err) {
       const errorMsg =
         err instanceof Error ? err.message : "Erro ao migrar plano";
+      console.error("❌ [Migrar] Falha:", errorMsg);
       showErrorModal("❌ Algo Deu Errado", errorMsg, "error");
     } finally {
       setConfirmandoMigracao(false);
@@ -614,7 +649,7 @@ export default function PlanosScreen() {
       setPixLoading(false);
       setPlanoComprando(null);
     }
-  }, [apiUrl, migracaoPendente]);
+  }, [apiUrl, migracaoPendente, fetchPlanos]);
 
   const handleContratar = React.useCallback(
     async (plano: Plan) => {
@@ -643,6 +678,16 @@ export default function PlanosScreen() {
         }
 
         if (plano.pode_migrar) {
+          await abrirConfirmacaoMigracao(plano, selectedCiclo.id, "checkout");
+          return;
+        }
+
+        const cicloAtualMatricula = plano.matricula_ativa?.plano_ciclo_id ?? null;
+        if (
+          plano.is_plano_atual &&
+          (cicloAtualMatricula == null ||
+            Number(cicloAtualMatricula) !== Number(selectedCiclo.id))
+        ) {
           await abrirConfirmacaoMigracao(plano, selectedCiclo.id, "checkout");
           return;
         }
@@ -692,17 +737,27 @@ export default function PlanosScreen() {
         if (!matriculaResponse.ok) {
           const errorText = await matriculaResponse.text();
           console.error("❌ Erro ao criar matrícula:", errorText);
-          setComprando(false);
-          setPlanoComprando(null);
 
           try {
             const errorData = JSON.parse(errorText);
+            if (errorData.code === "MIGRACAO_NECESSARIA") {
+              await abrirConfirmacaoMigracao(
+                plano,
+                selectedCiclo.id,
+                "checkout",
+              );
+              return;
+            }
+            setComprando(false);
+            setPlanoComprando(null);
             showErrorModal(
               "⚠️ Problema na Compra",
               errorData.message || "Não foi possível processar sua compra",
               "error",
             );
           } catch {
+            setComprando(false);
+            setPlanoComprando(null);
             showErrorModal(
               "⚠️ Problema na Compra",
               "Não foi possível processar sua compra. Tente novamente.",
@@ -816,6 +871,17 @@ export default function PlanosScreen() {
           return;
         }
 
+        const cicloAtualMatriculaPix =
+          plano.matricula_ativa?.plano_ciclo_id ?? null;
+        if (
+          plano.is_plano_atual &&
+          (cicloAtualMatriculaPix == null ||
+            Number(cicloAtualMatriculaPix) !== Number(selectedCiclo.id))
+        ) {
+          await abrirConfirmacaoMigracao(plano, selectedCiclo.id, "pix");
+          return;
+        }
+
         const token = await AsyncStorage.getItem("@appcheckin:token");
         if (!token) {
           throw new Error("Token não encontrado");
@@ -841,6 +907,10 @@ export default function PlanosScreen() {
           const errorText = await matriculaResponse.text();
           try {
             const errorData = JSON.parse(errorText);
+            if (errorData.code === "MIGRACAO_NECESSARIA") {
+              await abrirConfirmacaoMigracao(plano, selectedCiclo.id, "pix");
+              return;
+            }
             // Se a API já liberou renovação em outro formato de erro, tenta PIX
             if (
               errorData.code === "RENOVACAO_PIX" &&
@@ -1371,7 +1441,13 @@ export default function PlanosScreen() {
             )}
           </View>
           <View style={styles.planListCta}>
-            <Text style={styles.planListCtaText}>Ver detalhes</Text>
+            <Text style={styles.planListCtaText}>
+              {plano.pode_migrar
+                ? "Migrar"
+                : plano.is_plano_atual
+                  ? "Ver plano"
+                  : "Ver detalhes"}
+            </Text>
             <Feather name="arrow-right" size={16} color="#fff" />
           </View>
         </View>
@@ -1607,27 +1683,74 @@ export default function PlanosScreen() {
             <View style={[styles.iconCircle, styles.iconCircleWarning]}>
               <Feather name="repeat" size={36} color="#b26a00" />
             </View>
-            <Text style={styles.modalTitle}>Migrar de plano</Text>
-            <Text style={styles.modalMessage}>
-              {migracaoSimulacao?.plano_atual?.nome
-                ? `Plano atual: ${migracaoSimulacao.plano_atual.nome} (${migracaoSimulacao.plano_atual.valor_formatado})`
-                : "Você está trocando de plano na mesma modalidade."}
-              {"\n\n"}
-              {migracaoSimulacao?.credito?.valor_formatado
-                ? `Crédito do plano atual: ${migracaoSimulacao.credito.valor_formatado}`
-                : ""}
-              {migracaoSimulacao?.credito?.dias_restantes
-                ? ` (${migracaoSimulacao.credito.dias_restantes} dias restantes)`
-                : ""}
-              {"\n"}
-              {migracaoSimulacao?.plano_novo?.valor_formatado
-                ? `Valor do novo plano: ${migracaoSimulacao.plano_novo.valor_formatado}`
-                : ""}
-              {"\n"}
-              {migracaoSimulacao?.valor_parcela_formatado
-                ? `Você paga agora: ${migracaoSimulacao.valor_parcela_formatado}`
-                : ""}
-            </Text>
+            <Text style={styles.modalTitle}>Migrar plano</Text>
+            <View style={styles.migracaoResumo}>
+              <Text style={styles.migracaoLinha}>
+                {migracaoSimulacao?.plano_atual?.nome
+                  ? `De: ${migracaoSimulacao.plano_atual.nome}${
+                      migracaoSimulacao.plano_atual.ciclo_nome ||
+                      migracaoSimulacao.ciclo?.atual
+                        ? ` · ${
+                            migracaoSimulacao.plano_atual.ciclo_nome ||
+                            migracaoSimulacao.ciclo?.atual
+                          }`
+                        : ""
+                    } (${migracaoSimulacao.plano_atual.valor_formatado})`
+                  : "Troca na mesma modalidade"}
+              </Text>
+              <Text style={styles.migracaoLinha}>
+                {migracaoSimulacao?.plano_novo?.nome ||
+                migracaoPendente?.plano?.nome
+                  ? `Para: ${
+                      migracaoSimulacao?.plano_novo?.nome ||
+                      migracaoPendente?.plano?.nome
+                    }${
+                      migracaoSimulacao?.plano_novo?.ciclo_nome ||
+                      migracaoSimulacao?.ciclo?.novo
+                        ? ` · ${
+                            migracaoSimulacao?.plano_novo?.ciclo_nome ||
+                            migracaoSimulacao?.ciclo?.novo
+                          }`
+                        : ""
+                    }${
+                      migracaoSimulacao?.plano_novo?.valor_formatado
+                        ? ` (${migracaoSimulacao.plano_novo.valor_formatado})`
+                        : ""
+                    }`
+                  : "Novo plano"}
+              </Text>
+              {(migracaoSimulacao?.ciclo?.texto ||
+                (migracaoSimulacao?.ciclo?.atual &&
+                  migracaoSimulacao?.ciclo?.novo)) && (
+                <View style={styles.migracaoCicloBox}>
+                  <Text style={styles.migracaoCicloLabel}>Ciclo</Text>
+                  <Text style={styles.migracaoCicloTexto}>
+                    {migracaoSimulacao?.ciclo?.texto ||
+                      `${migracaoSimulacao?.ciclo?.atual} → ${migracaoSimulacao?.ciclo?.novo}`}
+                  </Text>
+                </View>
+              )}
+              {!!migracaoSimulacao?.credito?.valor_formatado && (
+                <Text style={styles.migracaoLinha}>
+                  Crédito: {migracaoSimulacao.credito.valor_formatado}
+                  {migracaoSimulacao.credito.dias_restantes
+                    ? ` · ${migracaoSimulacao.credito.dias_restantes} dias`
+                    : ""}
+                </Text>
+              )}
+              {!!migracaoSimulacao?.credito?.motivo &&
+                migracaoSimulacao.credito.tipo === "sem_credito" && (
+                  <Text style={[styles.migracaoLinha, { color: "#6b7280", fontSize: 13 }]}>
+                    {migracaoSimulacao.credito.motivo}
+                  </Text>
+                )}
+              <View style={styles.migracaoPagarBox}>
+                <Text style={styles.migracaoPagarLabel}>Você paga agora</Text>
+                <Text style={styles.migracaoPagarValor}>
+                  {migracaoSimulacao?.valor_parcela_formatado || "R$ 0,00"}
+                </Text>
+              </View>
+            </View>
             <View style={{ flexDirection: "row", gap: 10, width: "100%" }}>
               <TouchableOpacity
                 style={[styles.modalButton, { flex: 1, backgroundColor: "#e5e7eb" }]}
@@ -1643,14 +1766,24 @@ export default function PlanosScreen() {
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalButton, styles.buttonWarning, { flex: 1 }]}
+                style={[
+                  styles.modalButton,
+                  styles.buttonWarning,
+                  { flex: 1.35 },
+                ]}
                 disabled={confirmandoMigracao}
                 onPress={() => void executarMigracao()}
               >
                 {confirmandoMigracao ? (
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
-                  <Text style={styles.modalButtonText}>Confirmar</Text>
+                  <Text style={styles.modalButtonText} numberOfLines={1}>
+                    {Number(migracaoSimulacao?.valor_parcela ?? 0) <= 0
+                      ? "Confirmar migração"
+                      : migracaoSimulacao?.valor_parcela_formatado
+                        ? `Pagar ${migracaoSimulacao.valor_parcela_formatado}`
+                        : "Confirmar"}
+                  </Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -2504,6 +2637,65 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 28,
     lineHeight: 24,
+  },
+  migracaoResumo: {
+    width: "100%",
+    alignItems: "center",
+    marginBottom: 22,
+    gap: 8,
+  },
+  migracaoLinha: {
+    fontSize: 16,
+    color: "#4b5563",
+    textAlign: "center",
+    lineHeight: 22,
+    fontWeight: "500",
+  },
+  migracaoCicloBox: {
+    marginTop: 4,
+    width: "100%",
+    backgroundColor: "#f3f4f6",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    alignItems: "center",
+  },
+  migracaoCicloLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#6b7280",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    marginBottom: 2,
+  },
+  migracaoCicloTexto: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#111827",
+    textAlign: "center",
+  },
+  migracaoPagarBox: {
+    marginTop: 10,
+    width: "100%",
+    backgroundColor: "rgba(178, 106, 0, 0.1)",
+    borderRadius: 14,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    alignItems: "center",
+  },
+  migracaoPagarLabel: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#9a6700",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    marginBottom: 4,
+  },
+  migracaoPagarValor: {
+    fontSize: 32,
+    fontWeight: "800",
+    color: "#b26a00",
+    letterSpacing: -0.5,
   },
   modalButton: {
     width: "100%",

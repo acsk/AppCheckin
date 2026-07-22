@@ -400,11 +400,18 @@ class MatriculaMigracaoService
         $valorNovo = (float) $ctx['valor_novo'];
         $valorParcela = max(0, round($valorNovo - min((float) $credito['credito'], $valorNovo), 2));
 
+        $cicloAtualNome = $this->resolverNomeCicloMatricula($ctx['matricula'], (int) ($ctx['matricula']['tenant_id'] ?? 0));
+        $cicloNovoNome = (string) ($ctx['ciclo_nome'] ?? 'Mensal');
+
         return [
             'matricula_origem_id' => (int) $ctx['matricula']['id'],
             'plano_atual' => [
                 'id' => (int) $ctx['matricula']['plano_id'],
                 'nome' => $ctx['matricula']['plano_nome'],
+                'plano_ciclo_id' => ! empty($ctx['matricula']['plano_ciclo_id'])
+                    ? (int) $ctx['matricula']['plano_ciclo_id']
+                    : null,
+                'ciclo_nome' => $cicloAtualNome,
                 'valor' => (float) $ctx['matricula']['valor'],
                 'valor_formatado' => 'R$ '.number_format((float) $ctx['matricula']['valor'], 2, ',', '.'),
             ],
@@ -412,9 +419,16 @@ class MatriculaMigracaoService
                 'id' => (int) $ctx['novo_plano']['id'],
                 'nome' => $ctx['novo_plano']['nome'],
                 'plano_ciclo_id' => $ctx['novo_ciclo'] ? (int) $ctx['novo_ciclo']['id'] : null,
-                'ciclo_nome' => $ctx['ciclo_nome'],
+                'ciclo_nome' => $cicloNovoNome,
                 'valor' => $valorNovo,
                 'valor_formatado' => 'R$ '.number_format($valorNovo, 2, ',', '.'),
+            ],
+            'ciclo' => [
+                'atual' => $cicloAtualNome,
+                'novo' => $cicloNovoNome,
+                'texto' => $cicloAtualNome && $cicloAtualNome !== $cicloNovoNome
+                    ? "{$cicloAtualNome} → {$cicloNovoNome}"
+                    : $cicloNovoNome,
             ],
             'credito' => [
                 'tipo' => $credito['tipo_credito'],
@@ -433,6 +447,30 @@ class MatriculaMigracaoService
             'tipo_cobranca' => $ctx['is_recorrente'] ? 'recorrente' : 'avulso',
             'recorrente' => (bool) $ctx['is_recorrente'],
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $matricula
+     */
+    private function resolverNomeCicloMatricula(array $matricula, int $tenantId): ?string
+    {
+        $cicloId = ! empty($matricula['plano_ciclo_id']) ? (int) $matricula['plano_ciclo_id'] : 0;
+        if ($cicloId <= 0) {
+            return null;
+        }
+
+        $tenant = $tenantId > 0 ? $tenantId : (int) ($matricula['tenant_id'] ?? 0);
+        $stmt = $this->db->prepare('
+            SELECT af.nome
+            FROM plano_ciclos pc
+            INNER JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
+            WHERE pc.id = ? AND (? = 0 OR pc.tenant_id = ?)
+            LIMIT 1
+        ');
+        $stmt->execute([$cicloId, $tenant, $tenant]);
+        $nome = $stmt->fetchColumn();
+
+        return $nome ? (string) $nome : null;
     }
 
     /**
@@ -511,6 +549,14 @@ class MatriculaMigracaoService
             return ['erro' => $this->erro(400, 'SEM_MATRICULA_ATIVA', 'Não há matrícula ativa nesta modalidade para migrar. Use a contratação normal.')];
         }
 
+        $aptidao = $this->avaliarAptidaoMigracao($matricula, $tenantId);
+        if (! $aptidao['apto']) {
+            return ['erro' => $this->erro(400, $aptidao['code'], $aptidao['message'], [
+                'motivo' => $aptidao['motivo'] ?? null,
+                'gera_credito' => false,
+            ])];
+        }
+
         if ((int) $matricula['plano_id'] === $planoId
             && (int) ($matricula['plano_ciclo_id'] ?? 0) === (int) ($planoCicloId ?? 0)) {
             return ['erro' => $this->erro(400, 'MESMO_PLANO', 'O plano e ciclo selecionados são iguais ao atual')];
@@ -533,7 +579,135 @@ class MatriculaMigracaoService
             'is_recorrente' => $isRecorrente,
             'credito' => $credito,
             'motivo' => $motivo,
+            'aptidao' => $aptidao,
         ];
+    }
+
+    /**
+     * Matrícula apta a migrar:
+     * - status ativa e acesso vigente
+     * - sem parcela aberta atrasada
+     * Cancelada/vencida/finalizada: não apta (e sem crédito).
+     * Limite de check-ins do ciclo esgotado: apta, mas sem crédito.
+     *
+     * @param  array<string, mixed>  $matricula
+     * @return array{apto: bool, gera_credito: bool, code: string, message: string, motivo: string|null}
+     */
+    public function avaliarAptidaoMigracao(array $matricula, int $tenantId): array
+    {
+        $status = strtolower(trim((string) ($matricula['status_codigo'] ?? '')));
+        $matriculaId = (int) ($matricula['id'] ?? 0);
+        $acessoAte = (string) ($matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'] ?? '');
+        $hoje = date('Y-m-d');
+
+        if (in_array($status, ['cancelada', 'vencida', 'finalizada'], true)) {
+            return [
+                'apto' => false,
+                'gera_credito' => false,
+                'code' => 'MATRICULA_NAO_ATIVA',
+                'message' => 'Matrícula cancelada, vencida ou finalizada não pode migrar com crédito. Regularize com uma nova contratação.',
+                'motivo' => $status,
+            ];
+        }
+
+        if ($status !== 'ativa') {
+            return [
+                'apto' => false,
+                'gera_credito' => false,
+                'code' => 'MATRICULA_NAO_ATIVA',
+                'message' => 'Só é possível migrar com matrícula ativa e em dia.',
+                'motivo' => $status !== '' ? $status : 'status_invalido',
+            ];
+        }
+
+        if ($acessoAte !== '' && $acessoAte !== '0000-00-00' && $acessoAte < $hoje) {
+            return [
+                'apto' => false,
+                'gera_credito' => false,
+                'code' => 'MATRICULA_VENCIDA',
+                'message' => 'Matrícula vencida não gera crédito de migração. Regularize o pagamento primeiro.',
+                'motivo' => 'acesso_vencido',
+            ];
+        }
+
+        if ($matriculaId > 0 && $this->temParcelaAtrasada($matriculaId, $tenantId)) {
+            return [
+                'apto' => false,
+                'gera_credito' => false,
+                'code' => 'MATRICULA_EM_ATRASO',
+                'message' => 'Há parcela em atraso. Quite o débito antes de migrar de plano.',
+                'motivo' => 'parcela_atrasada',
+            ];
+        }
+
+        // Limite de check-ins do ciclo esgotado: pode migrar, mas sem crédito
+        // (o benefício do ciclo já foi consumido).
+        if ($this->limiteCheckinsCicloEsgotado($matricula, $tenantId)) {
+            return [
+                'apto' => true,
+                'gera_credito' => false,
+                'code' => 'LIMITE_CHECKINS_ESGOTADO',
+                'message' => 'Limite de check-ins do ciclo esgotado: migração sem crédito.',
+                'motivo' => 'limite_checkins_ciclo',
+            ];
+        }
+
+        return [
+            'apto' => true,
+            'gera_credito' => true,
+            'code' => 'OK',
+            'message' => 'Matrícula apta para migração',
+            'motivo' => null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $matricula
+     */
+    public function limiteCheckinsCicloEsgotado(array $matricula, int $tenantId): bool
+    {
+        $alunoId = (int) ($matricula['aluno_id'] ?? 0);
+        if ($alunoId <= 0) {
+            return false;
+        }
+
+        $stmtUser = $this->db->prepare('SELECT usuario_id FROM alunos WHERE id = ? LIMIT 1');
+        $stmtUser->execute([$alunoId]);
+        $usuarioId = (int) $stmtUser->fetchColumn();
+        if ($usuarioId <= 0) {
+            return false;
+        }
+
+        $modalidadeId = isset($matricula['modalidade_id']) ? (int) $matricula['modalidade_id'] : null;
+        $acessoAte = $matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'] ?? null;
+
+        $checkin = new \App\Models\Checkin($this->db);
+        $liberacao = $checkin->avaliarLiberacaoPagamentoRenovacao(
+            $usuarioId,
+            $tenantId,
+            $modalidadeId,
+            $acessoAte ? (string) $acessoAte : null,
+            null
+        );
+
+        return ($liberacao['motivo'] ?? '') === 'limite_checkins_ciclo';
+    }
+
+    public function temParcelaAtrasada(int $matriculaId, int $tenantId): bool
+    {
+        $stmt = $this->db->prepare('
+            SELECT 1
+            FROM pagamentos_plano
+            WHERE tenant_id = ?
+              AND matricula_id = ?
+              AND status_pagamento_id IN (1, 3)
+              AND data_pagamento IS NULL
+              AND data_vencimento < CURDATE()
+            LIMIT 1
+        ');
+        $stmt->execute([$tenantId, $matriculaId]);
+
+        return (bool) $stmt->fetchColumn();
     }
 
     public function buscarMatriculaAtivaModalidade(int $alunoId, int $tenantId, int $modalidadeId): ?array
@@ -561,6 +735,7 @@ class MatriculaMigracaoService
     /**
      * Upgrade: crédito do valor cheio do plano atual (paga só a diferença — igual painel "abater_plano").
      * Downgrade: proporcional aos dias restantes do ciclo vigente (data_vencimento, não proxima_data_vencimento).
+     * Cancelada/vencida/atrasada/limite de check-ins esgotado: crédito zero.
      *
      * @return array<string, mixed>
      */
@@ -569,6 +744,22 @@ class MatriculaMigracaoService
         date_default_timezone_set('America/Sao_Paulo');
         $valorCicloAtual = (float) $matricula['valor'];
         $planoNome = (string) ($matricula['plano_nome'] ?? 'plano atual');
+
+        $aptidao = $this->avaliarAptidaoMigracao($matricula, $tenantId);
+        if (! $aptidao['gera_credito']) {
+            return [
+                'tipo_credito' => 'sem_credito',
+                'valor_plano_atual' => $valorCicloAtual,
+                'valor_consumido' => $valorCicloAtual,
+                'credito' => 0.0,
+                'dias_totais' => 0,
+                'dias_restantes' => 0,
+                'dias_usados' => 0,
+                'pagamento_origem_id' => null,
+                'motivo' => 'Sem crédito: '.$aptidao['message'],
+                'aptidao' => $aptidao,
+            ];
+        }
 
         if ($valorNovo !== null && $valorNovo > $valorCicloAtual) {
             $pagamentoOrigemId = $this->buscarUltimoPagamentoPagoId($matriculaId, $tenantId);

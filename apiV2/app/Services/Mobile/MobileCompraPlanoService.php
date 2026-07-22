@@ -149,6 +149,8 @@ class MobileCompraPlanoService
             ->orderByDesc('m.created_at')
             ->first([
                 'm.id',
+                'm.plano_id',
+                'm.plano_ciclo_id',
                 'm.valor',
                 'm.proxima_data_vencimento',
                 'm.data_vencimento',
@@ -159,6 +161,28 @@ class MobileCompraPlanoService
         if ($matriculaAtiva) {
             $matriculaAtiva = (array) $matriculaAtiva;
             $acessoAte = $matriculaAtiva['proxima_data_vencimento'] ?? $matriculaAtiva['data_vencimento'] ?? null;
+
+            // Troca de plano/ciclo ≠ renovação (evita PIX no valor antigo, ex. mensal vs bimestral).
+            $cicloAtivoId = ! empty($matriculaAtiva['plano_ciclo_id'])
+                ? (int) $matriculaAtiva['plano_ciclo_id']
+                : null;
+            $mesmoPlanoCiclo = (int) $matriculaAtiva['plano_id'] === $planoId
+                && ($cicloAtivoId ?? 0) === ($planoCicloId ?? 0);
+
+            if (! $mesmoPlanoCiclo) {
+                return [
+                    'status' => 400,
+                    'body' => [
+                        'success' => false,
+                        'type' => 'error',
+                        'code' => 'MIGRACAO_NECESSARIA',
+                        'message' => 'Para trocar de ciclo ou plano, use a migração. A renovação PIX mantém o ciclo atual.',
+                        'matricula_id' => (int) $matriculaAtiva['id'],
+                        'plano_ciclo_id_atual' => $cicloAtivoId,
+                        'plano_ciclo_id_solicitado' => $planoCicloId,
+                    ],
+                ];
+            }
 
             // Renovação: libera fluxo PIX da matrícula existente (limite do ciclo ou vencimento).
             if ($metodoPagamento === 'pix') {

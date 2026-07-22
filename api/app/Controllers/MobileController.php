@@ -5632,8 +5632,9 @@ class MobileController
             if ($usuarioId) {
                 $stmtMatriculasAtivas = $this->db->prepare("
                     SELECT m.id, m.plano_id, m.plano_ciclo_id, m.valor, m.data_inicio,
-                           COALESCE(m.proxima_data_vencimento, m.data_vencimento) as data_vencimento,
-                           p.modalidade_id, p.nome as plano_nome
+                           m.data_vencimento, m.proxima_data_vencimento,
+                           COALESCE(m.proxima_data_vencimento, m.data_vencimento) as data_vencimento_acesso,
+                           p.modalidade_id, p.nome as plano_nome, sm.codigo as status_codigo
                     FROM matriculas m
                     INNER JOIN alunos a ON a.id = m.aluno_id
                     INNER JOIN status_matricula sm ON sm.id = m.status_id
@@ -5797,12 +5798,17 @@ class MobileController
             }
 
             // Formatar resposta
-            $planosFormatados = array_map(function ($plano) use ($planoAtualId, $ciclosPorPlano, $matriculasAtivasPorModalidade, $renovacaoPorModalidade) {
+            $planosFormatados = array_map(function ($plano) use ($planoAtualId, $ciclosPorPlano, $matriculasAtivasPorModalidade, $renovacaoPorModalidade, $tenantId) {
                 $isPlanoAtual = $planoAtualId && (int) $plano['id'] === $planoAtualId;
                 $planoId = (int) $plano['id'];
                 $modalidadeId = (int) $plano['modalidade_id'];
                 $matriculaModalidade = $matriculasAtivasPorModalidade[$modalidadeId] ?? null;
-                $podeMigrar = $matriculaModalidade && (int) $matriculaModalidade['plano_id'] !== $planoId;
+                $podeMigrar = false;
+                if ($matriculaModalidade && (int) $matriculaModalidade['plano_id'] !== $planoId) {
+                    $migracaoSvc = new \App\Services\MatriculaMigracaoService($this->db);
+                    $aptidao = $migracaoSvc->avaliarAptidaoMigracao($matriculaModalidade, (int) $tenantId);
+                    $podeMigrar = !empty($aptidao['apto']);
+                }
                 $liberacaoMod = $renovacaoPorModalidade[$modalidadeId] ?? null;
                 $podeRenovar = $isPlanoAtual
                     && is_array($liberacaoMod)
@@ -5829,6 +5835,14 @@ class MobileController
                     'label' => $podeRenovar
                         ? 'Renovação disponível'
                         : ($isPlanoAtual ? 'Seu plano atual' : ($podeMigrar ? 'Migrar para este plano' : null)),
+                    'matricula_ativa' => ($isPlanoAtual && $matriculaModalidade) ? [
+                        'id' => (int) $matriculaModalidade['id'],
+                        'plano_id' => (int) $matriculaModalidade['plano_id'],
+                        'plano_ciclo_id' => ! empty($matriculaModalidade['plano_ciclo_id'])
+                            ? (int) $matriculaModalidade['plano_ciclo_id']
+                            : null,
+                        'valor' => (float) $matriculaModalidade['valor'],
+                    ] : null,
                     'ciclos' => $ciclosPorPlano[$planoId] ?? [],
                 ];
             }, $planos);
@@ -5839,10 +5853,11 @@ class MobileController
                 $matriculaAtivaResumo = [
                     'id' => (int) $primeira['id'],
                     'plano_id' => (int) $primeira['plano_id'],
+                    'plano_ciclo_id' => !empty($primeira['plano_ciclo_id']) ? (int) $primeira['plano_ciclo_id'] : null,
                     'plano_nome' => $primeira['plano_nome'],
                     'modalidade_id' => (int) $primeira['modalidade_id'],
                     'valor' => (float) $primeira['valor'],
-                    'data_vencimento' => $primeira['data_vencimento'],
+                    'data_vencimento' => $primeira['data_vencimento_acesso'] ?? $primeira['data_vencimento'],
                 ];
             }
 
@@ -6044,8 +6059,8 @@ class MobileController
             $matriculaAtiva = null;
             if ($userId) {
                 $stmtMat = $this->db->prepare("
-                          SELECT m.id, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento, 
-                              m.valor, sm.nome as status, sm.codigo as status_codigo,
+                          SELECT m.id, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento,
+                              m.plano_ciclo_id, m.valor, sm.nome as status, sm.codigo as status_codigo,
                               (
                                SELECT a.status_gateway
                                FROM assinaturas a
@@ -6089,6 +6104,7 @@ class MobileController
                         'status_codigo' => $statusCodigoExibicao,
                         'data_inicio' => $mat['data_inicio'],
                         'data_vencimento' => $mat['data_vencimento'] ?? $mat['proxima_data_vencimento'],
+                        'plano_ciclo_id' => !empty($mat['plano_ciclo_id']) ? (int) $mat['plano_ciclo_id'] : null,
                         'valor' => (float)$mat['valor'],
                     ];
                 }
@@ -6106,8 +6122,10 @@ class MobileController
                         (int) $tenantId,
                         (int) $plano['modalidade_id']
                     );
-                    $podeMigrar = $matriculaModalidade
-                        && (int) $matriculaModalidade['plano_id'] !== $planoId;
+                    if ($matriculaModalidade && (int) $matriculaModalidade['plano_id'] !== $planoId) {
+                        $aptidao = $migracaoSvc->avaliarAptidaoMigracao($matriculaModalidade, (int) $tenantId);
+                        $podeMigrar = !empty($aptidao['apto']);
+                    }
                 }
             }
 
@@ -6442,7 +6460,8 @@ class MobileController
 
             // Verificar se já existe matrícula ativa na mesma modalidade
             $stmtAtiva = $this->db->prepare("
-                SELECT m.id, m.status_id, m.valor, m.proxima_data_vencimento, m.data_vencimento,
+                SELECT m.id, m.plano_id, m.plano_ciclo_id, m.status_id, m.valor,
+                       m.proxima_data_vencimento, m.data_vencimento,
                        p.modalidade_id, sm.codigo
                 FROM matriculas m
                 INNER JOIN planos p ON p.id = m.plano_id
@@ -6459,6 +6478,27 @@ class MobileController
             $matriculaAtiva = $stmtAtiva->fetch(\PDO::FETCH_ASSOC);
 
             if ($matriculaAtiva) {
+                // Troca de plano/ciclo ≠ renovação: renovar usaria o valor antigo (ex.: mensal R$120
+                // com bimestral R$200 selecionado). Cliente deve usar migrar-plano.
+                $cicloAtivoId = ! empty($matriculaAtiva['plano_ciclo_id'])
+                    ? (int) $matriculaAtiva['plano_ciclo_id']
+                    : null;
+                $mesmoPlanoCiclo = (int) $matriculaAtiva['plano_id'] === $planoId
+                    && ($cicloAtivoId ?? 0) === ($planoCicloId ?? 0);
+
+                if (! $mesmoPlanoCiclo) {
+                    $response->getBody()->write(json_encode([
+                        'success' => false,
+                        'type' => 'error',
+                        'code' => 'MIGRACAO_NECESSARIA',
+                        'message' => 'Para trocar de ciclo ou plano, use a migração. A renovação PIX mantém o ciclo atual.',
+                        'matricula_id' => (int) $matriculaAtiva['id'],
+                        'plano_ciclo_id_atual' => $cicloAtivoId,
+                        'plano_ciclo_id_solicitado' => $planoCicloId,
+                    ], JSON_UNESCAPED_UNICODE));
+                    return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+                }
+
                 // Renovação antecipada/no vencimento: libera fluxo PIX da matrícula existente
                 // (limite de check-ins do ciclo esgotado ou data de vencimento).
                 if ($metodoPagamento === 'pix') {

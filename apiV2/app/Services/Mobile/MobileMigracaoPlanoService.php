@@ -36,4 +36,18 @@ class MobileMigracaoPlanoService
     {
         return $this->core->buscarMatriculaAtivaModalidade($alunoId, $tenantId, $modalidadeId);
     }
+
+    public function temParcelaAtrasada(int $matriculaId, int $tenantId): bool
+    {
+        return $this->core->temParcelaAtrasada($matriculaId, $tenantId);
+    }
+
+    /**
+     * @param  array<string, mixed>  $matricula
+     * @return array{apto: bool, gera_credito: bool, code: string, message: string, motivo: string|null}
+     */
+    public function avaliarAptidaoMigracao(array $matricula, int $tenantId): array
+    {
+        return $this->core->avaliarAptidaoMigracao($matricula, $tenantId);
+    }
 }

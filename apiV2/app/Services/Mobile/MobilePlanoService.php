@@ -74,12 +74,17 @@ class MobilePlanoService
             $habilitarPix,
         );
 
-        $planosFormatados = array_map(function (array $plano) use ($planoAtualId, $ciclosPorPlano, $matriculasPorModalidade, $renovacaoPorModalidade) {
+        $planosFormatados = array_map(function (array $plano) use ($planoAtualId, $ciclosPorPlano, $matriculasPorModalidade, $renovacaoPorModalidade, $tenantId) {
             $planoId = (int) $plano['id'];
             $isPlanoAtual = $planoAtualId && $planoId === $planoAtualId;
             $modalidadeId = (int) $plano['modalidade_id'];
             $matriculaModalidade = $matriculasPorModalidade[$modalidadeId] ?? null;
-            $podeMigrar = $matriculaModalidade && (int) $matriculaModalidade['plano_id'] !== $planoId;
+            $podeMigrar = false;
+            if ($matriculaModalidade && (int) $matriculaModalidade['plano_id'] !== $planoId) {
+                $migracao = new MobileMigracaoPlanoService();
+                $aptidao = $migracao->avaliarAptidaoMigracao($matriculaModalidade, $tenantId);
+                $podeMigrar = ! empty($aptidao['apto']);
+            }
             $liberacaoMod = $renovacaoPorModalidade[$modalidadeId] ?? null;
             $podeRenovar = $isPlanoAtual
                 && is_array($liberacaoMod)
@@ -106,6 +111,14 @@ class MobilePlanoService
                 'label' => $podeRenovar
                     ? 'Renovação disponível'
                     : ($isPlanoAtual ? 'Seu plano atual' : ($podeMigrar ? 'Migrar para este plano' : null)),
+                'matricula_ativa' => ($isPlanoAtual && $matriculaModalidade) ? [
+                    'id' => (int) $matriculaModalidade['id'],
+                    'plano_id' => (int) $matriculaModalidade['plano_id'],
+                    'plano_ciclo_id' => ! empty($matriculaModalidade['plano_ciclo_id'])
+                        ? (int) $matriculaModalidade['plano_ciclo_id']
+                        : null,
+                    'valor' => (float) $matriculaModalidade['valor'],
+                ] : null,
                 'ciclos' => $ciclosPorPlano[$planoId] ?? [],
             ];
         }, $lista);
@@ -116,10 +129,11 @@ class MobilePlanoService
             $matriculaAtivaResumo = [
                 'id' => (int) $primeira['id'],
                 'plano_id' => (int) $primeira['plano_id'],
+                'plano_ciclo_id' => ! empty($primeira['plano_ciclo_id']) ? (int) $primeira['plano_ciclo_id'] : null,
                 'plano_nome' => $primeira['plano_nome'],
                 'modalidade_id' => (int) $primeira['modalidade_id'],
                 'valor' => (float) $primeira['valor'],
-                'data_vencimento' => $primeira['data_vencimento'],
+                'data_vencimento' => $primeira['proxima_data_vencimento'] ?? $primeira['data_vencimento'],
             ];
         }
 
@@ -204,6 +218,7 @@ class MobilePlanoService
                 'status_codigo' => $statusCodigoExibicao,
                 'data_inicio' => $mat['data_inicio'],
                 'data_vencimento' => $mat['data_vencimento'] ?? $mat['proxima_data_vencimento'],
+                'plano_ciclo_id' => ! empty($mat['plano_ciclo_id']) ? (int) $mat['plano_ciclo_id'] : null,
                 'valor' => (float) $mat['valor'],
             ];
         }
@@ -387,8 +402,13 @@ class MobilePlanoService
 
         $migracao = new MobileMigracaoPlanoService();
         $matricula = $migracao->buscarMatriculaAtivaModalidade((int) $alunoId, $tenantId, $modalidadeId);
+        if (! $matricula || (int) $matricula['plano_id'] === $planoId) {
+            return false;
+        }
 
-        return $matricula && (int) $matricula['plano_id'] !== $planoId;
+        $aptidao = $migracao->avaliarAptidaoMigracao($matricula, $tenantId);
+
+        return ! empty($aptidao['apto']);
     }
 
     /**

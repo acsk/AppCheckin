@@ -1732,6 +1732,16 @@ class MatriculaController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
 
+        // Em atraso: não permite alteração/migração com crédito
+        $migracaoSvc = new \App\Services\MatriculaMigracaoService($db);
+        if ($migracaoSvc->temParcelaAtrasada($matriculaId, (int) $tenantId)) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Há parcela em atraso. Quite o débito antes de alterar o plano.',
+                'code' => 'MATRICULA_EM_ATRASO',
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
+        }
+
         // Buscar novo plano
         $stmtPlano = $db->prepare("SELECT * FROM planos WHERE id = ? AND tenant_id = ?");
         $stmtPlano->execute([$novoPlanoId, $tenantId]);
@@ -1816,6 +1826,10 @@ class MatriculaController
         $planoAnteriorId = (int) $matricula['plano_id'];
 
         // ===== LÓGICA DE CRÉDITO =====
+        // Cancelada/vencida, atraso ou limite de check-ins esgotado: sem crédito de migração
+        $aptidaoCredito = $migracaoSvc->avaliarAptidaoMigracao($matricula, (int) $tenantId);
+        $podeGerarCreditoMigracao = (bool) ($aptidaoCredito['gera_credito'] ?? false);
+
         // 1. Buscar créditos existentes (ativos com saldo > 0) do aluno
         $creditoModel = new \App\Models\CreditoAluno($db);
         $saldoCreditosExistentes = $creditoModel->saldoTotal($tenantId, (int) $matricula['aluno_id']);
@@ -1830,7 +1844,7 @@ class MatriculaController
         // Opção A: Usar créditos já existentes do aluno (saldo > 0)
         $usarCreditoExistente = !empty($data['usar_credito_existente']) && $saldoCreditosExistentes > 0;
 
-        if (!empty($data['abater_plano_anterior'])) {
+        if ($podeGerarCreditoMigracao && !empty($data['abater_plano_anterior'])) {
             // Opção B: Usar o valor CHEIO do plano/ciclo atual como crédito
             $creditoValor = (float) $matricula['valor'];
             
@@ -1838,7 +1852,7 @@ class MatriculaController
                 $creditoGerado = true;
                 $creditoMotivo = $creditoMotivo ?? "Crédito do plano anterior (" . $matricula['plano_nome'] . " - R$" . number_format($creditoValor, 2, ',', '.') . ")";
             }
-        } elseif (!empty($data['abater_pagamento_anterior'])) {
+        } elseif ($podeGerarCreditoMigracao && !empty($data['abater_pagamento_anterior'])) {
             // Opção C: Gerar novo crédito PROPORCIONAL aos dias restantes do ciclo atual
             $valorCicloAtual = (float) $matricula['valor'];
             
@@ -1863,7 +1877,7 @@ class MatriculaController
                 $creditoGerado = true;
                 $creditoMotivo = $creditoMotivo ?? "Crédito proporcional do plano anterior ({$diasRestantes} dias restantes de R$" . number_format($valorCicloAtual, 2, ',', '.') . ")";
             }
-        } elseif (isset($data['credito'])) {
+        } elseif ($podeGerarCreditoMigracao && isset($data['credito'])) {
             $creditoValor = (float) $data['credito'];
             $creditoGerado = true;
             $creditoMotivo = $creditoMotivo ?? "Crédito manual na alteração de plano";
