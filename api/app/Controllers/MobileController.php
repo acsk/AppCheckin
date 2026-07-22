@@ -8218,12 +8218,17 @@ class MobileController
         }
 
         if ((int) ($matricula['permite_checkin'] ?? 0) !== 1 || (int) ($matricula['status_ativo'] ?? 0) !== 1) {
+            $acessoAte = $matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'] ?? null;
+            $vencTxt = ($acessoAte && $acessoAte !== '0000-00-00')
+                ? ' Vencimento: ' . date('d/m/Y', strtotime((string) $acessoAte)) . '.'
+                : '';
             return [
                 'code' => $this->codigoErroPorStatusMatricula($statusCodigo),
-                'mensagem' => "Sua matrícula está {$statusNome}. Entre em contato com a academia.",
+                'mensagem' => "Sua matrícula está {$statusNome}.{$vencTxt} Entre em contato com a academia.",
                 'matricula_id' => $matriculaId,
                 'status_codigo' => $statusCodigo,
                 'status' => $statusNome,
+                'data_vencimento' => $acessoAte,
             ];
         }
 

@@ -460,14 +460,19 @@ class CheckinController
 
         if ((int) ($matricula['permite_checkin'] ?? 0) !== 1 || (int) ($matricula['status_ativo'] ?? 0) !== 1) {
             $statusNome = $matricula['status_nome'] ?? $statusCodigo;
+            $acessoAte = $matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'] ?? null;
+            $vencTxt = ($acessoAte && $acessoAte !== '0000-00-00')
+                ? ' Vencimento: ' . date('d/m/Y', strtotime((string) $acessoAte)) . '.'
+                : '';
             return [
                 'error' => $mensagemParaAluno
-                    ? "Sua matrícula está {$statusNome}. Não é possível fazer check-in."
-                    : "Matrícula do aluno está {$statusNome}",
+                    ? "Sua matrícula está {$statusNome}.{$vencTxt} Não é possível fazer check-in."
+                    : "Matrícula do aluno está {$statusNome}.{$vencTxt}",
                 'codigo' => $this->codigoErroPorStatusMatricula($statusCodigo),
                 'status' => $statusNome,
                 'status_codigo' => $statusCodigo,
                 'matricula_id' => (int) ($matricula['id'] ?? 0),
+                'data_vencimento' => $acessoAte,
             ];
         }
 
