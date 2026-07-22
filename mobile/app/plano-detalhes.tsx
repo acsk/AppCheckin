@@ -54,6 +54,8 @@ interface PlanoDetalhes {
   };
   is_plano_atual?: boolean;
   pode_migrar?: boolean;
+  pode_renovar?: boolean;
+  pode_pagar?: boolean;
   status_codigo?: string | null;
   status?: {
     codigo?: string;
@@ -998,7 +1000,10 @@ export default function PlanoDetalhesScreen() {
     typeof statusNomeRaw === "string" ? statusNomeRaw.toLowerCase() : "";
   const isPendente =
     statusCodigo === "pendente" || statusNome.includes("pendente");
+  const podeRenovar = !!(plano.pode_renovar || plano.pode_pagar);
   const isPlanoAtivo = !!plano.is_plano_atual && !isPendente;
+  // Plano ativo sem renovação liberada: botão estático. Com renovação: permite pagar.
+  const bloquearCompraPorAtivo = isPlanoAtivo && !podeRenovar;
   const qrSize = Math.min(320, Math.round(screenWidth * 0.72));
   return (
     <SafeAreaView style={styles.container}>
@@ -1208,7 +1213,7 @@ export default function PlanoDetalhesScreen() {
 
       {/* Footer fixo com botão */}
       <View style={styles.footer}>
-        {isPlanoAtivo ? (
+        {bloquearCompraPorAtivo ? (
           <View style={styles.footerButtonAtivo}>
             <Feather name="check" size={18} color="#fff" />
             <Text style={styles.footerButtonText}>Plano Ativo</Text>
@@ -1220,7 +1225,9 @@ export default function PlanoDetalhesScreen() {
                 styles.footerButton,
                 !canBuy && styles.footerButtonDisabled,
               ]}
-              onPress={canCheckout ? handleContratar : handlePagarPix}
+              onPress={
+                podeRenovar || !canCheckout ? handlePagarPix : handleContratar
+              }
               disabled={!canBuy}
               activeOpacity={0.8}
             >
@@ -1233,26 +1240,32 @@ export default function PlanoDetalhesScreen() {
                 <>
                   <Feather
                     name={
-                      plano.pode_migrar
-                        ? "repeat"
-                        : canCheckout
-                          ? "shopping-cart"
-                          : "zap"
+                      podeRenovar
+                        ? "refresh-cw"
+                        : plano.pode_migrar
+                          ? "repeat"
+                          : canCheckout
+                            ? "shopping-cart"
+                            : "zap"
                     }
                     size={18}
                     color="#fff"
                   />
                   <Text style={styles.footerButtonText}>
                     {selectedCiclo
-                      ? canCheckout
-                        ? plano.pode_migrar
-                          ? "Migrar de plano"
-                          : `Contratar por ${selectedCiclo.valor_formatado}`
-                        : canPix
+                      ? podeRenovar
+                        ? canPix
+                          ? `Renovar com PIX • ${selectedCiclo.valor_formatado}`
+                          : `Renovar • ${selectedCiclo.valor_formatado}`
+                        : canCheckout
                           ? plano.pode_migrar
-                            ? "Migrar com PIX"
-                            : `Pagar com PIX • ${selectedCiclo.valor_formatado}`
-                          : "Pagamento indisponível"
+                            ? "Migrar de plano"
+                            : `Contratar por ${selectedCiclo.valor_formatado}`
+                          : canPix
+                            ? plano.pode_migrar
+                              ? "Migrar com PIX"
+                              : `Pagar com PIX • ${selectedCiclo.valor_formatado}`
+                            : "Pagamento indisponível"
                       : "Escolha um ciclo"}
                   </Text>
                 </>

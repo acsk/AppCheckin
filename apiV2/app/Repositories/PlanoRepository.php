@@ -41,6 +41,7 @@ class PlanoRepository
                 'm.valor',
                 'p.modalidade_id',
                 'p.nome as plano_nome',
+                'p.checkins_semanais',
                 DB::raw('COALESCE(m.proxima_data_vencimento, m.data_vencimento) as data_vencimento'),
             ])
             ->map(fn ($row) => (array) $row)

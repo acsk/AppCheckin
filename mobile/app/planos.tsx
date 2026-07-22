@@ -55,6 +55,8 @@ interface Plan {
   };
   is_plano_atual?: boolean;
   pode_migrar?: boolean;
+  pode_renovar?: boolean;
+  pode_pagar?: boolean;
   label?: string | null;
   ciclos?: Ciclo[];
 }
@@ -1207,9 +1209,11 @@ export default function PlanosScreen() {
             selectedCiclo?.pix_disponivel === true;
           const canCheckout = !!selectedCiclo && checkoutDisponivel;
           const canPix = !!selectedCiclo && pixDisponivel;
+          const podeRenovar = !!(plano.pode_renovar || plano.pode_pagar);
+          const bloquearPorAtivo = !!plano.is_plano_atual && !podeRenovar;
           const canBuy =
             !!selectedCiclo &&
-            !plano.is_plano_atual &&
+            !bloquearPorAtivo &&
             (canCheckout || canPix);
 
           return (
@@ -1221,32 +1225,35 @@ export default function PlanosScreen() {
                     ? styles.contratarButtonLoading
                     : null,
                   !selectedCiclo &&
+                    bloquearPorAtivo &&
+                    styles.contratarButtonDisabled,
+                  !selectedCiclo &&
                     !plano.is_plano_atual &&
                     styles.contratarButtonDisabled,
                   selectedCiclo &&
-                    !plano.is_plano_atual &&
                     !canBuy &&
                     styles.contratarButtonDisabled,
                 ]}
                 onPress={
-                  canCheckout
-                    ? () => handleContratar(plano)
-                    : () => handlePagarPix(plano)
+                  podeRenovar || !canCheckout
+                    ? () => handlePagarPix(plano)
+                    : () => handleContratar(plano)
                 }
                 disabled={
                   !selectedCiclo ||
-                  plano.is_plano_atual ||
+                  bloquearPorAtivo ||
                   (comprando && planoComprando === plano.id) ||
                   (pixLoading && planoComprando === plano.id) ||
                   !canBuy
                 }
               >
-                {plano.is_plano_atual ? (
+                {bloquearPorAtivo ? (
                   <>
                     <Feather name="check" size={18} color="#fff" />
                     <Text style={styles.contratarButtonText}>Plano Ativo</Text>
                   </>
-                ) : comprando && planoComprando === plano.id ? (
+                ) : (comprando || pixLoading) &&
+                  planoComprando === plano.id ? (
                   <>
                     <ActivityIndicator color="#fff" size="small" />
                     <Text style={styles.contratarButtonText}>
@@ -1256,28 +1263,39 @@ export default function PlanosScreen() {
                 ) : (
                   <>
                     <Feather
-                      name={plano.pode_migrar ? "repeat" : "shopping-cart"}
+                      name={
+                        podeRenovar
+                          ? "refresh-cw"
+                          : plano.pode_migrar
+                            ? "repeat"
+                            : "shopping-cart"
+                      }
                       size={18}
                       color="#fff"
                     />
                     <Text style={styles.contratarButtonText}>
                       {selectedCiclo
-                        ? canCheckout
-                          ? plano.pode_migrar
-                            ? "Migrar de plano"
-                            : `Contratar por ${selectedCiclo.valor_formatado}`
-                          : canPix
+                        ? podeRenovar
+                          ? canPix
+                            ? `Renovar com PIX • ${selectedCiclo.valor_formatado}`
+                            : `Renovar • ${selectedCiclo.valor_formatado}`
+                          : canCheckout
                             ? plano.pode_migrar
-                              ? "Migrar com PIX"
-                              : `Pagar com PIX • ${selectedCiclo.valor_formatado}`
-                            : "Pagamento indisponível"
+                              ? "Migrar de plano"
+                              : `Contratar por ${selectedCiclo.valor_formatado}`
+                            : canPix
+                              ? plano.pode_migrar
+                                ? "Migrar com PIX"
+                                : `Pagar com PIX • ${selectedCiclo.valor_formatado}`
+                              : "Pagamento indisponível"
                         : "Escolha um ciclo para continuar"}
                     </Text>
                   </>
                 )}
               </TouchableOpacity>
 
-              {!plano.is_plano_atual &&
+              {!bloquearPorAtivo &&
+                !podeRenovar &&
                 selectedCiclo &&
                 pixDisponivel &&
                 checkoutDisponivel && (

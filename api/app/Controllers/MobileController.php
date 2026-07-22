@@ -5662,6 +5662,29 @@ class MobileController
                 }
             }
 
+            // Liberação de renovação por modalidade (limite do ciclo ou vencimento)
+            $renovacaoPorModalidade = [];
+            foreach ($matriculasAtivasPorModalidade as $modalidadeAtivaId => $matAtiva) {
+                $stmtParcRen = $this->db->prepare("
+                    SELECT data_vencimento FROM pagamentos_plano
+                    WHERE tenant_id = ? AND matricula_id = ?
+                      AND status_pagamento_id IN (1, 3) AND data_pagamento IS NULL
+                    ORDER BY data_vencimento ASC, id ASC
+                    LIMIT 1
+                ");
+                $stmtParcRen->execute([(int) $tenantId, (int) $matAtiva['id']]);
+                $parcelaVencRen = $stmtParcRen->fetchColumn() ?: null;
+
+                $liberacao = $this->checkinModel->avaliarLiberacaoPagamentoRenovacao(
+                    (int) $usuarioId,
+                    (int) $tenantId,
+                    (int) $modalidadeAtivaId,
+                    $matAtiva['data_vencimento'] ?? null,
+                    $parcelaVencRen ? (string) $parcelaVencRen : null
+                );
+                $renovacaoPorModalidade[(int) $modalidadeAtivaId] = $liberacao;
+            }
+
             // Buscar planos ativos do tenant com valor > 0 (planos pagos)
             $sql = "SELECT p.id, p.nome, p.descricao, p.valor, p.duracao_dias, p.checkins_semanais,
                            m.id as modalidade_id, m.nome as modalidade_nome
@@ -5774,12 +5797,16 @@ class MobileController
             }
 
             // Formatar resposta
-            $planosFormatados = array_map(function ($plano) use ($planoAtualId, $ciclosPorPlano, $matriculasAtivasPorModalidade) {
+            $planosFormatados = array_map(function ($plano) use ($planoAtualId, $ciclosPorPlano, $matriculasAtivasPorModalidade, $renovacaoPorModalidade) {
                 $isPlanoAtual = $planoAtualId && (int) $plano['id'] === $planoAtualId;
                 $planoId = (int) $plano['id'];
                 $modalidadeId = (int) $plano['modalidade_id'];
                 $matriculaModalidade = $matriculasAtivasPorModalidade[$modalidadeId] ?? null;
                 $podeMigrar = $matriculaModalidade && (int) $matriculaModalidade['plano_id'] !== $planoId;
+                $liberacaoMod = $renovacaoPorModalidade[$modalidadeId] ?? null;
+                $podeRenovar = $isPlanoAtual
+                    && is_array($liberacaoMod)
+                    && !empty($liberacaoMod['liberar']);
 
                 return [
                     'id' => $planoId,
@@ -5796,7 +5823,12 @@ class MobileController
                     ],
                     'is_plano_atual' => $isPlanoAtual,
                     'pode_migrar' => $podeMigrar,
-                    'label' => $isPlanoAtual ? 'Seu plano atual' : ($podeMigrar ? 'Migrar para este plano' : null),
+                    'pode_renovar' => $podeRenovar,
+                    'pode_pagar' => $podeRenovar,
+                    'motivo_renovacao' => $podeRenovar ? ($liberacaoMod['motivo'] ?? null) : null,
+                    'label' => $podeRenovar
+                        ? 'Renovação disponível'
+                        : ($isPlanoAtual ? 'Seu plano atual' : ($podeMigrar ? 'Migrar para este plano' : null)),
                     'ciclos' => $ciclosPorPlano[$planoId] ?? [],
                 ];
             }, $planos);
@@ -6079,6 +6111,34 @@ class MobileController
                 }
             }
 
+            $podeRenovar = false;
+            $motivoRenovacao = null;
+            if (
+                $userId
+                && $matriculaAtiva
+                && ($matriculaAtiva['status_codigo'] ?? '') === 'ativa'
+            ) {
+                $stmtParcRenDet = $this->db->prepare("
+                    SELECT data_vencimento FROM pagamentos_plano
+                    WHERE tenant_id = ? AND matricula_id = ?
+                      AND status_pagamento_id IN (1, 3) AND data_pagamento IS NULL
+                    ORDER BY data_vencimento ASC, id ASC
+                    LIMIT 1
+                ");
+                $stmtParcRenDet->execute([(int) $tenantId, (int) $matriculaAtiva['id']]);
+                $parcelaVencDet = $stmtParcRenDet->fetchColumn() ?: null;
+
+                $liberacaoDet = $this->checkinModel->avaliarLiberacaoPagamentoRenovacao(
+                    (int) $userId,
+                    (int) $tenantId,
+                    isset($plano['modalidade_id']) ? (int) $plano['modalidade_id'] : null,
+                    $matriculaAtiva['data_vencimento'] ?? null,
+                    $parcelaVencDet ? (string) $parcelaVencDet : null
+                );
+                $podeRenovar = !empty($liberacaoDet['liberar']);
+                $motivoRenovacao = $liberacaoDet['motivo'] ?? null;
+            }
+
             // Montar resposta
             $data = [
                 'id' => (int)$plano['id'],
@@ -6100,7 +6160,12 @@ class MobileController
                 'matricula_ativa' => $matriculaAtiva,
                 'is_plano_atual' => $matriculaAtiva !== null,
                 'pode_migrar' => $podeMigrar,
-                'label' => $matriculaAtiva ? 'Seu plano atual' : ($podeMigrar ? 'Migrar para este plano' : null),
+                'pode_renovar' => $podeRenovar,
+                'pode_pagar' => $podeRenovar,
+                'motivo_renovacao' => $podeRenovar ? $motivoRenovacao : null,
+                'label' => $podeRenovar
+                    ? 'Renovação disponível'
+                    : ($matriculaAtiva ? 'Seu plano atual' : ($podeMigrar ? 'Migrar para este plano' : null)),
             ];
 
             $response->getBody()->write(json_encode([
