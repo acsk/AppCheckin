@@ -145,7 +145,20 @@ class AdminMatriculaService
             $this->matriculas->listarPagamentosResumo($id)
         );
         $matricula['pagamentos'] = $pagamentos;
-        $matricula['total_pagamentos'] = (float) array_sum(array_column($pagamentos, 'valor'));
+        $matricula['total_pagamentos'] = (float) array_sum(array_map(
+            static fn ($p) => (int) ($p['status_pagamento_id'] ?? 0) === 4 ? 0.0 : (float) ($p['valor'] ?? 0),
+            $pagamentos
+        ));
+        $matricula['total_pago'] = (float) array_sum(array_map(
+            static fn ($p) => (int) ($p['status_pagamento_id'] ?? 0) === 2 ? (float) ($p['valor'] ?? 0) : 0.0,
+            $pagamentos
+        ));
+        $matricula['total_pendente'] = (float) array_sum(array_map(
+            static fn ($p) => in_array((int) ($p['status_pagamento_id'] ?? 0), [1, 3], true)
+                ? (float) ($p['valor'] ?? 0)
+                : 0.0,
+            $pagamentos
+        ));
 
         $matricula['mercadopago_payment_ids'] = [];
         $matricula['mercadopago_last_payment_id'] = null;
@@ -163,6 +176,8 @@ class AdminMatriculaService
                 'matricula' => $matricula,
                 'pagamentos' => $pagamentos,
                 'total' => $matricula['total_pagamentos'],
+                'total_pago' => $matricula['total_pago'],
+                'total_pendente' => $matricula['total_pendente'],
                 'creditos' => [
                     'saldo_total' => $creditos['saldo_total'],
                     'creditos_ativos' => $creditos['creditos_ativos'],

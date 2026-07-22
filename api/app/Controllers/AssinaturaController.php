@@ -1453,14 +1453,22 @@ class AssinaturaController
         $dataInicio = $row['matricula_data_inicio'] ?? $row['data_inicio'] ?? null;
         $proximaParcela = $row['proxima_parcela_vencimento'] ?? null;
         $proximaMatricula = $row['matricula_proxima_vencimento'] ?? null;
-        $acessoPago = $proximaMatricula ?: ($row['ultimo_vencimento_pago'] ?? null);
+        $ultimoPago = $row['ultimo_vencimento_pago'] ?? null;
+        $matriculaStatus = strtolower((string) ($row['matricula_status_codigo'] ?? ''));
 
         $tipoCobranca = $row['tipo_cobranca'] ?? 'recorrente';
         $isAvulso = $tipoCobranca === 'avulso';
 
+        // Vigência "paga": com matrícula pendente não usar proxima_data_vencimento
+        // (migração pode ter trocado o ciclo sem pagamento ainda).
+        if ($matriculaStatus === 'pendente') {
+            $acessoPago = $ultimoPago ?: null;
+        } else {
+            $acessoPago = $proximaMatricula ?: $ultimoPago;
+        }
+
         if ($isAvulso) {
-            // Avulso: fim = período PAGO (vigência da matrícula).
-            // Próxima cobrança = parcela aberta (não estende acesso).
+            // Avulso: fim = período PAGO. Próxima cobrança = parcela aberta.
             $dataFim = $acessoPago ?: ($row['data_fim'] ?? null);
             $proximaCobranca = $proximaParcela
                 ?: ($row['proxima_cobranca'] ?? null);

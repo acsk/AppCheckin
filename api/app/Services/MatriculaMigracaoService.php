@@ -206,14 +206,34 @@ class MatriculaMigracaoService
                     updated_at = NOW()
                 WHERE id = ? AND tenant_id = ?
             ');
+
+            // Pendente: mantém vigência atual até o pagamento confirmar o novo ciclo.
+            // Ativa direto (crédito cobriu): aplica datas do novo ciclo agora.
+            if ($ativarDireto) {
+                $dataInicioPersistir = $dataInicio;
+                $dataVencimentoPersistir = $dataVencimento;
+                $proximaPersistir = $dataVencimento;
+            } else {
+                $dataInicioPersistir = (string) ($matricula['data_inicio'] ?? $dataInicio);
+                $dataVencimentoPersistir = (string) (
+                    $matricula['data_vencimento']
+                    ?? $matricula['proxima_data_vencimento']
+                    ?? $dataVencimento
+                );
+                $proximaPersistir = (string) (
+                    $matricula['proxima_data_vencimento']
+                    ?? $dataVencimentoPersistir
+                );
+            }
+
             $stmtUpdate->execute([
                 $novoPlanoId,
                 $novoCicloId,
                 $planoAnteriorId,
                 $valorNovo,
-                $dataInicio,
-                $dataVencimento,
-                $dataVencimento,
+                $dataInicioPersistir,
+                $dataVencimentoPersistir,
+                $proximaPersistir,
                 $diaVencimento,
                 $statusNovoId,
                 $motivoId,

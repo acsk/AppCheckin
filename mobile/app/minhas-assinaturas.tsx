@@ -759,8 +759,9 @@ export default function MinhasAssinaturasScreen() {
       statusCodigo === "approved";
     const isAvulso =
       item.tipo_cobranca === "avulso" || item.recorrente === false;
-    const proximaCobrancaRaw = isAvulso ? item.data_fim : item.proxima_cobranca;
-    const proximaCobrancaText = formatDate(proximaCobrancaRaw);
+    // Próxima cobrança = parcela aberta (API). Fim = vigência paga (data_fim).
+    const proximaCobrancaText = formatDate(item.proxima_cobranca);
+    const fimAcessoText = formatDate(item.data_fim);
     const ultimaCobrancaText = formatDate(item.ultima_cobranca);
     const podePagar =
       !!item.pode_pagar &&
@@ -776,76 +777,64 @@ export default function MinhasAssinaturasScreen() {
 
     return (
       <View style={styles.card}>
-        <View style={styles.cardHero}>
-          {/* Header com nome do plano e status */}
-          <View style={styles.cardHeader}>
-            <View style={styles.planoInfo}>
-              <Text style={styles.planoNome}>{item.plano.nome}</Text>
-              <Text style={styles.modalidadeNome}>{item.plano.modalidade}</Text>
-            </View>
-            <View
-              style={[styles.statusBadge, { backgroundColor: item.status.cor }]}
-            >
-              <Text style={styles.statusText}>{item.status.nome}</Text>
-            </View>
-          </View>
-          {item.external_reference && (
-            <View style={styles.externalRefBadge}>
-              <Feather name="hash" size={12} color="#fff" />
-              <Text style={styles.externalRefText}>
-                {`Ref: ${item.external_reference}`}
+        <View style={styles.cardHeader}>
+          <View style={styles.planoInfo}>
+            <View style={styles.planoTitleRow}>
+              <Text style={styles.planoNome} numberOfLines={1}>
+                {item.plano.nome}
               </Text>
+              <View
+                style={[
+                  styles.statusBadge,
+                  { backgroundColor: item.status.cor },
+                ]}
+              >
+                <Text style={styles.statusText}>{item.status.nome}</Text>
+              </View>
             </View>
-          )}
-
-          <View style={styles.heroDivider} />
-
-          {/* Ciclo e Valor */}
-          <View style={styles.cicloValor}>
-            <View>
-              <Text style={styles.cicloLabel}>Período</Text>
-              <Text style={styles.cicloValor_text}>
-                {item.ciclo.nome} ({item.ciclo.meses}{" "}
-                {item.ciclo.meses === 1 ? "mês" : "meses"})
-              </Text>
-            </View>
-            <View style={styles.divider} />
-            <View>
-              <Text style={styles.valorLabel}>Valor</Text>
-              <Text style={styles.valorText}>{valorFormatado}</Text>
-            </View>
+            <Text style={styles.modalidadeNome} numberOfLines={1}>
+              {item.plano.modalidade}
+              {item.external_reference
+                ? `  ·  ${item.external_reference}`
+                : ""}
+            </Text>
           </View>
         </View>
 
-        {/* Datas */}
+        <View style={styles.cicloValor}>
+          <Text style={styles.cicloValor_text} numberOfLines={1}>
+            {item.ciclo.nome}
+            {item.ciclo.meses > 0
+              ? ` · ${item.ciclo.meses} ${item.ciclo.meses === 1 ? "mês" : "meses"}`
+              : ""}
+          </Text>
+          <Text style={styles.valorText}>{valorFormatado}</Text>
+        </View>
+
         <View style={styles.datasContainer}>
           <View style={styles.dataItem}>
-            <Feather name="calendar" size={16} color={colors.primary} />
-            <View style={styles.dataContent}>
-              <Text style={styles.dataLabel}>Início</Text>
-              <Text style={styles.dataValor}>{dataInicioText}</Text>
-            </View>
+            <Text style={styles.dataLabel}>Início</Text>
+            <Text style={styles.dataValor}>{dataInicioText}</Text>
           </View>
-
-          {!isCancelada && proximaCobrancaText && (
+          {!isCancelada && proximaCobrancaText ? (
             <View style={styles.dataItem}>
-              <Feather name="clock" size={16} color={colors.primary} />
-              <View style={styles.dataContent}>
-                <Text style={styles.dataLabel}>Próxima Cobrança</Text>
-                <Text style={styles.dataValor}>{proximaCobrancaText}</Text>
-              </View>
+              <Text style={styles.dataLabel}>Próxima</Text>
+              <Text style={styles.dataValor}>{proximaCobrancaText}</Text>
             </View>
-          )}
-
-          {ultimaCobrancaText && (
+          ) : fimAcessoText ? (
             <View style={styles.dataItem}>
-              <Feather name="check-circle" size={16} color={colors.primary} />
-              <View style={styles.dataContent}>
-                <Text style={styles.dataLabel}>Última Cobrança</Text>
-                <Text style={styles.dataValor}>{ultimaCobrancaText}</Text>
-              </View>
+              <Text style={styles.dataLabel}>
+                {isAvulso ? "Válido até" : "Fim"}
+              </Text>
+              <Text style={styles.dataValor}>{fimAcessoText}</Text>
             </View>
-          )}
+          ) : null}
+          {ultimaCobrancaText ? (
+            <View style={styles.dataItem}>
+              <Text style={styles.dataLabel}>Última</Text>
+              <Text style={styles.dataValor}>{ultimaCobrancaText}</Text>
+            </View>
+          ) : null}
         </View>
 
         {(podePagar ||
@@ -859,7 +848,7 @@ export default function MinhasAssinaturasScreen() {
                 onPress={() => handlePagarAssinatura(item)}
                 activeOpacity={0.8}
               >
-                <Feather name="credit-card" size={16} color="#fff" />
+                <Feather name="credit-card" size={15} color="#fff" />
                 <Text style={styles.botaoPagarTexto}>
                   {item.pode_renovar ? "Renovar agora" : "Pagar agora"}
                 </Text>
@@ -877,7 +866,7 @@ export default function MinhasAssinaturasScreen() {
                   <ActivityIndicator color="#fff" size="small" />
                 ) : (
                   <>
-                    <Feather name="x-circle" size={16} color="#fff" />
+                    <Feather name="x-circle" size={15} color="#fff" />
                     <Text style={styles.botaoCancelarDiariaTexto}>
                       Cancelar diária
                     </Text>
@@ -900,7 +889,7 @@ export default function MinhasAssinaturasScreen() {
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
                   <>
-                    <Feather name="rotate-cw" size={16} color="#fff" />
+                    <Feather name="rotate-cw" size={15} color="#fff" />
                     <Text style={styles.botaoReprocessarTexto}>
                       Reprocessar
                     </Text>
@@ -909,7 +898,6 @@ export default function MinhasAssinaturasScreen() {
               </TouchableOpacity>
             )}
 
-            {/* Botão Cancelar */}
             {!isAvulso && (isAtiva || isPendente) && (
               <TouchableOpacity
                 style={styles.botaoCancelar}
@@ -921,7 +909,7 @@ export default function MinhasAssinaturasScreen() {
                   <ActivityIndicator color="#DC3545" size="small" />
                 ) : (
                   <>
-                    <Feather name="trash-2" size={16} color="#DC3545" />
+                    <Feather name="trash-2" size={15} color="#DC3545" />
                     <Text style={styles.botaoCancelarTexto}>
                       Cancelar Assinatura
                     </Text>
@@ -1411,13 +1399,13 @@ const styles = StyleSheet.create({
 
   /* List */
   listContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    paddingBottom: 32,
-    gap: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    paddingBottom: 28,
+    gap: 10,
   },
   sectionsWrapper: {
-    gap: 16,
+    gap: 12,
   },
 
   /* Pacotes */
@@ -1468,66 +1456,62 @@ const styles = StyleSheet.create({
   },
   assinaturasSectionHeader: {
     backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 14,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderWidth: 1,
     borderColor: "#eef2f7",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    elevation: 2,
-    gap: 4,
+    gap: 2,
   },
   assinaturasTitle: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: "800",
     color: colors.primary,
   },
   assinaturasSubtitle: {
-    fontSize: 12,
+    fontSize: 11,
     color: colors.textMuted,
   },
   pacoteCard: {
     backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 14,
+    padding: 12,
     borderWidth: 1,
     borderColor: "#eff2f6",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
-    shadowRadius: 12,
+    shadowRadius: 8,
     elevation: 2,
-    gap: 12,
+    gap: 10,
   },
   pacoteHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    gap: 12,
+    gap: 10,
   },
   pacoteInfo: {
     flex: 1,
-    gap: 4,
+    gap: 2,
   },
   pacoteNome: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "800",
     color: colors.text,
   },
   pacoteDescricao: {
-    fontSize: 12,
+    fontSize: 11,
     color: colors.textMuted,
   },
   pacoteStatusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 999,
   },
   pacoteStatusText: {
     color: "#fff",
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "700",
     textTransform: "uppercase",
   },
@@ -1535,48 +1519,48 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#f8fafc",
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
     borderWidth: 1,
     borderColor: "#eef2f7",
   },
   pacoteMetaItem: {
     flex: 1,
-    gap: 4,
+    gap: 2,
   },
   pacoteMetaLabel: {
-    fontSize: 11,
+    fontSize: 10,
     color: colors.textMuted,
     fontWeight: "600",
   },
   pacoteMetaValue: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "700",
     color: colors.text,
   },
   pacoteMetaDivider: {
     width: 1,
-    height: 36,
+    height: 28,
     backgroundColor: "#e5e7eb",
-    marginHorizontal: 8,
+    marginHorizontal: 6,
   },
   pacoteDatesRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 6,
   },
   pacoteDateText: {
-    fontSize: 12,
+    fontSize: 11,
     color: colors.textSecondary,
     fontWeight: "600",
   },
   pacoteBeneficiarios: {
-    gap: 8,
+    gap: 6,
   },
   pacoteBeneficiariosTitle: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: "700",
     color: colors.text,
   },
@@ -1586,8 +1570,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   pacoteBeneficiarioChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
     borderRadius: 999,
     backgroundColor: "#eef2ff",
   },
@@ -1601,13 +1585,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 12,
-    gap: 8,
+    borderRadius: 10,
+    paddingVertical: 10,
+    gap: 6,
   },
   pacotePagarButtonText: {
     color: "#fff",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "700",
   },
   assinaturasEmptyNote: {
@@ -1615,9 +1599,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 8,
     backgroundColor: "#eef2f7",
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
   },
   assinaturasEmptyNoteText: {
     fontSize: 12,
@@ -1625,162 +1609,117 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 
-  /* Card */
   card: {
     backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 18,
+    borderRadius: 14,
+    padding: 12,
     borderWidth: 1,
     borderColor: "#eff2f6",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
-    shadowRadius: 12,
-    elevation: 3,
-  },
-  cardHero: {
-    backgroundColor: "#f8fafc",
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: "#eef2f7",
+    shadowRadius: 8,
+    elevation: 2,
+    gap: 8,
   },
 
   cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    gap: 12,
   },
 
   planoInfo: {
     flex: 1,
-    gap: 4,
+    gap: 2,
+  },
+
+  planoTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 8,
   },
 
   planoNome: {
-    fontSize: 18,
+    flex: 1,
+    fontSize: 15,
     fontWeight: "800",
     color: colors.text,
   },
 
   modalidadeNome: {
-    fontSize: 12,
+    fontSize: 11,
     color: colors.textMuted,
     fontWeight: "500",
   },
 
   statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
     borderRadius: 999,
   },
 
   statusText: {
     color: "#fff",
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: "700",
     textTransform: "uppercase",
-  },
-
-  externalRefBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 10,
-    backgroundColor: colors.primary,
-    alignSelf: "flex-start",
-    marginTop: 10,
-  },
-  externalRefText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "700",
-  },
-
-  heroDivider: {
-    height: 1,
-    backgroundColor: "#eef2f7",
-    marginVertical: 12,
   },
 
   /* Ciclo e Valor */
   cicloValor: {
     flexDirection: "row",
     alignItems: "center",
-  },
-
-  cicloLabel: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginBottom: 4,
-    fontWeight: "600",
+    justifyContent: "space-between",
+    gap: 8,
   },
 
   cicloValor_text: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#111827",
-  },
-
-  divider: {
     flex: 1,
-  },
-
-  valorLabel: {
-    fontSize: 12,
-    color: colors.textMuted,
-    marginBottom: 4,
-    textAlign: "right",
+    fontSize: 13,
     fontWeight: "600",
+    color: "#374151",
   },
 
   valorText: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "700",
     color: colors.primary,
-    textAlign: "right",
   },
 
   /* Datas */
   datasContainer: {
+    flexDirection: "row",
     backgroundColor: "#f8fafc",
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 14,
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
     borderWidth: 1,
     borderColor: "#eef2f7",
+    gap: 4,
   },
 
   dataItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-
-  dataContent: {
-    marginLeft: 12,
     flex: 1,
+    alignItems: "flex-start",
+    gap: 2,
   },
 
   dataLabel: {
-    fontSize: 12,
+    fontSize: 10,
     color: "#9ca3af",
-    marginBottom: 3,
     fontWeight: "600",
   },
 
   dataValor: {
-    fontSize: 14,
-    fontWeight: "600",
+    fontSize: 12,
+    fontWeight: "700",
     color: "#111827",
   },
 
   actionStack: {
-    gap: 10,
+    gap: 6,
   },
 
   /* Botão Pagar */
@@ -1789,14 +1728,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    gap: 8,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    gap: 6,
   },
   botaoPagarTexto: {
     color: "#fff",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "700",
   },
 
@@ -1805,14 +1744,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#dc2626",
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    gap: 8,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    gap: 6,
   },
   botaoCancelarDiariaTexto: {
     color: "#fff",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "700",
   },
 
@@ -1821,14 +1760,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#2563eb",
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    gap: 8,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    gap: 6,
   },
   botaoReprocessarTexto: {
     color: "#fff",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "700",
   },
 
@@ -1839,15 +1778,15 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderWidth: 1.5,
     borderColor: "#dc2626",
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    gap: 8,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    gap: 6,
   },
 
   botaoCancelarTexto: {
     color: "#dc2626",
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "600",
   },
 

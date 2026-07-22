@@ -437,8 +437,15 @@ class MobileAssinaturaService
         $dataInicio = $row['matricula_data_inicio'] ?? $row['data_inicio'] ?? null;
         $proximaParcela = $row['proxima_parcela_vencimento'] ?? null;
         $proximaMatricula = $row['matricula_proxima_vencimento'] ?? null;
-        $acessoPago = $proximaMatricula ?: ($row['ultimo_vencimento_pago'] ?? null);
+        $ultimoPago = $row['ultimo_vencimento_pago'] ?? null;
+        $matriculaStatus = strtolower((string) ($row['matricula_status_codigo'] ?? ''));
         $isAvulso = ($row['tipo_cobranca'] ?? '') === 'avulso';
+
+        if ($matriculaStatus === 'pendente') {
+            $acessoPago = $ultimoPago ?: null;
+        } else {
+            $acessoPago = $proximaMatricula ?: $ultimoPago;
+        }
 
         if ($isAvulso) {
             // Avulso: fim = período pago; próxima cobrança = parcela aberta.

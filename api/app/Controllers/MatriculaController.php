@@ -1412,7 +1412,20 @@ class MatriculaController
         $matricula['pagamentos'] = \App\Models\PagamentoPlano::anexarNumeroParcela(
             $stmtPagamentos->fetchAll() ?? []
         );
-        $matricula['total_pagamentos'] = (float) array_sum(array_column($matricula['pagamentos'], 'valor'));
+        $matricula['total_pagamentos'] = (float) array_sum(array_map(
+            static fn ($p) => (int) ($p['status_pagamento_id'] ?? 0) === 4 ? 0.0 : (float) ($p['valor'] ?? 0),
+            $matricula['pagamentos']
+        ));
+        $matricula['total_pago'] = (float) array_sum(array_map(
+            static fn ($p) => (int) ($p['status_pagamento_id'] ?? 0) === 2 ? (float) ($p['valor'] ?? 0) : 0.0,
+            $matricula['pagamentos']
+        ));
+        $matricula['total_pendente'] = (float) array_sum(array_map(
+            static fn ($p) => in_array((int) ($p['status_pagamento_id'] ?? 0), [1, 3], true)
+                ? (float) ($p['valor'] ?? 0)
+                : 0.0,
+            $matricula['pagamentos']
+        ));
 
         // Buscar possíveis IDs de pagamentos do Mercado Pago relacionados a esta matrícula
         // Somente expor quando a matrícula ainda estiver pendente — evita oferecer reprocessar matrículas já pagas/ativas
@@ -1471,6 +1484,8 @@ class MatriculaController
             'matricula' => $matricula,
             'pagamentos' => $matricula['pagamentos'],
             'total' => $matricula['total_pagamentos'],
+            'total_pago' => $matricula['total_pago'] ?? 0,
+            'total_pendente' => $matricula['total_pendente'] ?? 0,
             'creditos' => [
                 'saldo_total' => $saldoCreditos,
                 'creditos_ativos' => $creditosAtivos

@@ -36,6 +36,7 @@ export default function MatriculaDetalheScreen() {
   const [loading, setLoading] = useState(true);
   const [matricula, setMatricula] = useState(null);
   const [pagamentos, setPagamentos] = useState([]);
+  const [mostrarCancelados, setMostrarCancelados] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [modalConfirmVisible, setModalConfirmVisible] = useState(false);
   const [pagamentoSelecionado, setPagamentoSelecionado] = useState(null);
@@ -1608,17 +1609,34 @@ export default function MatriculaDetalheScreen() {
                 <View>
                   <Text className="text-sm font-semibold text-slate-800">Faturas da Matrícula</Text>
                   <Text className="text-xs text-slate-500">
-                    {pagamentosPendentes.length} atrasado(s) • {pagamentos.length} total
+                    {pagamentosPendentes.length} atrasado(s) •{' '}
+                    {pagamentos.filter((p) => Number(p.status_pagamento_id) !== 4).length} ativos
+                    {pagamentos.some((p) => Number(p.status_pagamento_id) === 4)
+                      ? ` • ${pagamentos.filter((p) => Number(p.status_pagamento_id) === 4).length} cancelado(s)`
+                      : ''}
                   </Text>
                 </View>
               </View>
-              <Pressable
-                className="items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5"
-                style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                onPress={carregarDados}
-              >
-                <Text className="text-[11px] font-semibold text-slate-600">Recarregar</Text>
-              </Pressable>
+              <View className="flex-row items-center gap-2">
+                {pagamentos.some((p) => Number(p.status_pagamento_id) === 4) && (
+                  <Pressable
+                    className="items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5"
+                    style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                    onPress={() => setMostrarCancelados((v) => !v)}
+                  >
+                    <Text className="text-[11px] font-semibold text-slate-600">
+                      {mostrarCancelados ? 'Ocultar cancelados' : 'Mostrar cancelados'}
+                    </Text>
+                  </Pressable>
+                )}
+                <Pressable
+                  className="items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5"
+                  style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                  onPress={carregarDados}
+                >
+                  <Text className="text-[11px] font-semibold text-slate-600">Recarregar</Text>
+                </Pressable>
+              </View>
             </View>
 
             {pagamentos.length === 0 ? (
@@ -1636,7 +1654,19 @@ export default function MatriculaDetalheScreen() {
                 </View>
               </View>
             ) : (() => {
-              const pagamentosOrdenados = pagamentos
+              const pagamentosVisiveis = mostrarCancelados
+                ? pagamentos
+                : pagamentos.filter((p) => Number(p.status_pagamento_id) !== 4);
+              if (pagamentosVisiveis.length === 0) {
+                return (
+                  <View className="px-5 py-6">
+                    <Text className="text-sm text-slate-600">
+                      Só há faturas canceladas. Use &quot;Mostrar cancelados&quot; para vê-las.
+                    </Text>
+                  </View>
+                );
+              }
+              const pagamentosOrdenados = pagamentosVisiveis
                 .slice()
                 .sort((a, b) => {
                   const pagamentoBId = Number(getPagamentoId(b) || 0);
