@@ -1391,7 +1391,7 @@ class MatriculaController
             $matricula['pacote_valor_total']
         );
 
-        // Buscar pagamentos da matrícula
+        // Buscar pagamentos da matrícula (inclui baixa manual: quem fez + tipo)
         $stmtPagamentos = $db->prepare("
             SELECT 
                 pp.id,
@@ -1402,9 +1402,18 @@ class MatriculaController
                 (SELECT nome FROM status_pagamento WHERE id = pp.status_pagamento_id) as status,
                 pp.forma_pagamento_id,
                 fp.nome as forma_pagamento_nome,
-                pp.observacoes
+                pp.observacoes,
+                pp.criado_por,
+                criador.nome as criado_por_nome,
+                pp.baixado_por,
+                baixador.nome as baixado_por_nome,
+                pp.tipo_baixa_id,
+                tb.nome as tipo_baixa_nome
             FROM pagamentos_plano pp
             LEFT JOIN formas_pagamento fp ON fp.id = pp.forma_pagamento_id
+            LEFT JOIN usuarios criador ON pp.criado_por = criador.id
+            LEFT JOIN usuarios baixador ON pp.baixado_por = baixador.id
+            LEFT JOIN tipos_baixa tb ON pp.tipo_baixa_id = tb.id
             WHERE pp.matricula_id = ?
             ORDER BY pp.data_vencimento ASC, pp.id ASC
         ");
@@ -1480,6 +1489,38 @@ class MatriculaController
             error_log("[MatriculaController] Erro ao buscar créditos: " . $e->getMessage());
         }
 
+        // Outras matrículas do mesmo aluno (ex.: diária + plano mensal)
+        $outrasMatriculas = [];
+        try {
+            $stmtOutras = $db->prepare("
+                SELECT
+                    m.id,
+                    m.valor,
+                    m.data_inicio,
+                    m.data_vencimento,
+                    m.tipo_cobranca,
+                    p.nome as plano_nome,
+                    p.duracao_dias,
+                    modalidade.nome as modalidade_nome,
+                    sm.codigo as status_codigo,
+                    sm.nome as status_nome
+                FROM matriculas m
+                INNER JOIN planos p ON p.id = m.plano_id
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
+                LEFT JOIN modalidades modalidade ON modalidade.id = p.modalidade_id
+                WHERE m.aluno_id = ? AND m.tenant_id = ? AND m.id <> ?
+                ORDER BY m.created_at DESC
+            ");
+            $stmtOutras->execute([
+                (int) $matricula['aluno_id'],
+                $tenantId,
+                $matriculaId,
+            ]);
+            $outrasMatriculas = $stmtOutras->fetchAll() ?: [];
+        } catch (\Exception $e) {
+            error_log("[MatriculaController] Erro ao buscar outras matrículas: " . $e->getMessage());
+        }
+
         $response->getBody()->write(json_encode([
             'matricula' => $matricula,
             'pagamentos' => $matricula['pagamentos'],
@@ -1489,7 +1530,8 @@ class MatriculaController
             'creditos' => [
                 'saldo_total' => $saldoCreditos,
                 'creditos_ativos' => $creditosAtivos
-            ]
+            ],
+            'outras_matriculas' => $outrasMatriculas,
         ]));
         return $response->withHeader('Content-Type', 'application/json');
     }

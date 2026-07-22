@@ -169,6 +169,11 @@ class AdminMatriculaService
         }
 
         $creditos = $this->matriculas->creditosAluno($tenantId, (int) $matricula['aluno_id']);
+        $outrasMatriculas = $this->matriculas->listarOutrasMatriculasDoAluno(
+            (int) $matricula['aluno_id'],
+            $tenantId,
+            $id,
+        );
 
         return [
             'status' => 200,
@@ -182,6 +187,7 @@ class AdminMatriculaService
                     'saldo_total' => $creditos['saldo_total'],
                     'creditos_ativos' => $creditos['creditos_ativos'],
                 ],
+                'outras_matriculas' => $outrasMatriculas,
             ],
         ];
     }

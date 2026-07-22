@@ -43,6 +43,19 @@ interface PlanoAssinatura {
   modalidade: string;
 }
 
+interface PagamentoAssinatura {
+  id: number;
+  valor: number;
+  data_vencimento?: string | null;
+  data_pagamento?: string | null;
+  status?: string | null;
+  forma_pagamento?: string | null;
+  baixado_por_nome?: string | null;
+  criado_por_nome?: string | null;
+  tipo_baixa_nome?: string | null;
+  origem?: string | null;
+}
+
 interface Assinatura {
   id: number;
   matricula_id?: number | null;
@@ -66,6 +79,7 @@ interface Assinatura {
   pode_pagar?: boolean;
   pode_renovar?: boolean;
   motivo_pode_pagar?: string | null;
+  pagamentos?: PagamentoAssinatura[] | null;
 }
 
 interface PacoteBeneficiario {
@@ -127,7 +141,6 @@ export default function MinhasAssinaturasScreen() {
   const [apiUrl, setApiUrl] = useState("");
   const [isUserAdmin, setIsUserAdmin] = useState(false);
   const [cancelando, setCancelando] = useState<number | null>(null);
-  const [cancelandoDiaria, setCancelandoDiaria] = useState<number | null>(null);
   const [pagandoPacoteId, setPagandoPacoteId] = useState<number | null>(null);
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
   const [assinaturaParaCancelar, setAssinaturaParaCancelar] =
@@ -518,67 +531,6 @@ export default function MinhasAssinaturasScreen() {
     [confirmarCancelamento],
   );
 
-  const handleCancelarDiaria = useCallback(
-    async (assinatura: Assinatura) => {
-      if (!assinatura.matricula_id) {
-        showErrorModal(
-          "⚠️ Matrícula não encontrada",
-          "Não foi possível identificar a matrícula para cancelar a diária.",
-          "warning",
-        );
-        return;
-      }
-
-      try {
-        setCancelandoDiaria(assinatura.matricula_id);
-        const token = await AsyncStorage.getItem("@appcheckin:token");
-        if (!token) {
-          throw new Error("Token não encontrado");
-        }
-
-        const url = `${apiUrl}/mobile/diaria/${assinatura.matricula_id}/cancelar`;
-        const response = await fetch(url, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        });
-
-        const text = await response.text();
-        let json: any = {};
-        try {
-          json = text ? JSON.parse(text) : {};
-        } catch {
-          json = {};
-        }
-
-        if (!response.ok || json?.success === false) {
-          const msg = json?.message || text || "Erro ao cancelar diária";
-          showErrorModal("⚠️ Erro ao cancelar diária", msg, "warning");
-          return;
-        }
-
-        showErrorModal(
-          "✅ Diária cancelada",
-          json?.message || "Compra da diária cancelada com sucesso.",
-          "success",
-        );
-
-        setTimeout(() => {
-          fetchAssinaturasCallback(apiUrl);
-        }, 1200);
-      } catch (err) {
-        const errorMsg =
-          err instanceof Error ? err.message : "Erro ao cancelar diária";
-        showErrorModal("❌ Erro ao cancelar diária", errorMsg, "error");
-      } finally {
-        setCancelandoDiaria(null);
-      }
-    },
-    [apiUrl, fetchAssinaturasCallback],
-  );
-
   const handlePagarPacote = useCallback(
     async (pacote: PacoteContrato) => {
       try {
@@ -766,7 +718,6 @@ export default function MinhasAssinaturasScreen() {
     const podePagar =
       !!item.pode_pagar &&
       (isPendente ? !!item.payment_url : true);
-    const podeCancelarDiaria = isAvulso && isPago && !!item.matricula_id;
     const paymentIds = Array.isArray(item.mercadopago_payment_ids)
       ? item.mercadopago_payment_ids
       : [];
@@ -837,9 +788,44 @@ export default function MinhasAssinaturasScreen() {
           ) : null}
         </View>
 
+        {Array.isArray(item.pagamentos) && item.pagamentos.length > 0 && (
+          <View style={styles.historicoPagamentos}>
+            <Text style={styles.historicoTitulo}>Histórico</Text>
+            {item.pagamentos.slice(0, 4).map((pagamento) => {
+              const quem =
+                pagamento.baixado_por_nome ||
+                pagamento.criado_por_nome ||
+                null;
+              const dataRef =
+                formatDate(pagamento.data_pagamento) ||
+                formatDate(pagamento.data_vencimento) ||
+                "—";
+              return (
+                <View key={pagamento.id} style={styles.historicoItem}>
+                  <View style={styles.historicoLeft}>
+                    <Text style={styles.historicoValor}>
+                      {formatCurrency(pagamento.valor)}
+                    </Text>
+                    <Text style={styles.historicoMeta} numberOfLines={1}>
+                      {pagamento.status || "—"} · {dataRef}
+                      {pagamento.forma_pagamento
+                        ? ` · ${pagamento.forma_pagamento}`
+                        : ""}
+                    </Text>
+                    {quem ? (
+                      <Text style={styles.historicoMeta} numberOfLines={1}>
+                        por {quem}
+                      </Text>
+                    ) : null}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        )}
+
         {(podePagar ||
           podeReprocessar ||
-          podeCancelarDiaria ||
           (!isAvulso && (isAtiva || isPendente))) && (
           <View style={styles.actionStack}>
             {podePagar && (
@@ -852,26 +838,6 @@ export default function MinhasAssinaturasScreen() {
                 <Text style={styles.botaoPagarTexto}>
                   {item.pode_renovar ? "Renovar agora" : "Pagar agora"}
                 </Text>
-              </TouchableOpacity>
-            )}
-
-            {podeCancelarDiaria && (
-              <TouchableOpacity
-                style={styles.botaoCancelarDiaria}
-                onPress={() => handleCancelarDiaria(item)}
-                disabled={cancelandoDiaria === item.matricula_id}
-                activeOpacity={0.7}
-              >
-                {cancelandoDiaria === item.matricula_id ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <>
-                    <Feather name="x-circle" size={15} color="#fff" />
-                    <Text style={styles.botaoCancelarDiariaTexto}>
-                      Cancelar diária
-                    </Text>
-                  </>
-                )}
               </TouchableOpacity>
             )}
 
@@ -1718,6 +1684,39 @@ const styles = StyleSheet.create({
     color: "#111827",
   },
 
+  historicoPagamentos: {
+    marginTop: 8,
+    marginBottom: 2,
+    gap: 6,
+  },
+  historicoTitulo: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: colors.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
+  historicoItem: {
+    backgroundColor: "#f8fafc",
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: "#eef2f7",
+  },
+  historicoLeft: {
+    gap: 2,
+  },
+  historicoValor: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: colors.text,
+  },
+  historicoMeta: {
+    fontSize: 11,
+    color: colors.textMuted,
+  },
+
   actionStack: {
     gap: 6,
   },
@@ -1734,22 +1733,6 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   botaoPagarTexto: {
-    color: "#fff",
-    fontSize: 13,
-    fontWeight: "700",
-  },
-
-  botaoCancelarDiaria: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#dc2626",
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    gap: 6,
-  },
-  botaoCancelarDiariaTexto: {
     color: "#fff",
     fontSize: 13,
     fontWeight: "700",

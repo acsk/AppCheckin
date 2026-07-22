@@ -2832,8 +2832,32 @@ class MobileController
             $stmtPlano->execute(['plano_id' => $matricula['plano_id']]);
             $plano = $stmtPlano->fetch(\PDO::FETCH_ASSOC);
 
-            // Buscar pagamentos da matrícula
-            $sqlPagamentos = "SELECT pp.id, pp.valor, pp.data_vencimento, pp.data_pagamento, sp.nome as status_pagamento_nome, fp.nome as forma_pagamento_nome FROM pagamentos_plano pp INNER JOIN status_pagamento sp ON pp.status_pagamento_id = sp.id LEFT JOIN formas_pagamento fp ON pp.forma_pagamento_id = fp.id WHERE pp.matricula_id = :matricula_id ORDER BY pp.data_vencimento DESC";
+            // Buscar pagamentos da matrícula (manuais + MP, com quem baixou)
+            $sqlPagamentos = "
+                SELECT
+                    pp.id,
+                    pp.valor,
+                    pp.data_vencimento,
+                    pp.data_pagamento,
+                    pp.status_pagamento_id,
+                    sp.nome as status_pagamento_nome,
+                    fp.nome as forma_pagamento_nome,
+                    pp.criado_por,
+                    criador.nome as criado_por_nome,
+                    pp.baixado_por,
+                    baixador.nome as baixado_por_nome,
+                    pp.tipo_baixa_id,
+                    tb.nome as tipo_baixa_nome,
+                    pp.observacoes
+                FROM pagamentos_plano pp
+                INNER JOIN status_pagamento sp ON pp.status_pagamento_id = sp.id
+                LEFT JOIN formas_pagamento fp ON pp.forma_pagamento_id = fp.id
+                LEFT JOIN usuarios criador ON pp.criado_por = criador.id
+                LEFT JOIN usuarios baixador ON pp.baixado_por = baixador.id
+                LEFT JOIN tipos_baixa tb ON pp.tipo_baixa_id = tb.id
+                WHERE pp.matricula_id = :matricula_id
+                ORDER BY pp.data_vencimento DESC, pp.id DESC
+            ";
             
             $stmtPagamentos = $this->db->prepare($sqlPagamentos);
             $stmtPagamentos->execute(['matricula_id' => $matriculaId]);
@@ -2859,25 +2883,52 @@ class MobileController
                 'motivo' => $matricula['motivo']
             ];
 
+            $pagamentosVisiveis = array_values(array_filter(
+                $pagamentos,
+                static fn ($p) => (int) ($p['status_pagamento_id'] ?? 0) !== 4
+            ));
+
             $pagamentosFormatados = array_map(function($p) {
+                $obs = (string) ($p['observacoes'] ?? '');
+                $forma = $p['forma_pagamento_nome'] ?? null;
+                $origem = null;
+                if (!empty($p['baixado_por'])) {
+                    $origem = 'manual';
+                } elseif ($forma && (stripos((string) $forma, 'Mercado') !== false || stripos($obs, 'Mercado Pago') !== false)) {
+                    $origem = 'mercadopago';
+                } elseif ($forma) {
+                    $origem = 'manual';
+                } elseif (stripos($obs, 'Mercado Pago') !== false) {
+                    $origem = 'mercadopago';
+                }
+
                 return [
                     'id' => (int) $p['id'],
                     'valor' => (float) $p['valor'],
                     'data_vencimento' => $p['data_vencimento'],
                     'data_pagamento' => $p['data_pagamento'],
                     'status' => $p['status_pagamento_nome'],
-                    'forma_pagamento' => $p['forma_pagamento_nome'],
+                    'status_pagamento_id' => (int) ($p['status_pagamento_id'] ?? 0),
+                    'forma_pagamento' => $forma,
+                    'baixado_por' => $p['baixado_por'] !== null ? (int) $p['baixado_por'] : null,
+                    'baixado_por_nome' => $p['baixado_por_nome'] ?? null,
+                    'criado_por' => $p['criado_por'] !== null ? (int) $p['criado_por'] : null,
+                    'criado_por_nome' => $p['criado_por_nome'] ?? null,
+                    'tipo_baixa_nome' => $p['tipo_baixa_nome'] ?? null,
+                    'origem' => $origem,
                     'pendente' => $p['data_pagamento'] === null
                 ];
-            }, $pagamentos);
+            }, $pagamentosVisiveis);
 
-            $totalPago = array_sum(array_map(function($p) {
-                return $p['data_pagamento'] ? (float) $p['valor'] : 0;
-            }, $pagamentos));
+            $totalPago = array_sum(array_map(static function ($p) {
+                return (int) ($p['status_pagamento_id'] ?? 0) === 2 ? (float) $p['valor'] : 0;
+            }, $pagamentosVisiveis));
 
-            $totalPendente = array_sum(array_map(function($p) {
-                return !$p['data_pagamento'] ? (float) $p['valor'] : 0;
-            }, $pagamentos));
+            $totalPendente = array_sum(array_map(static function ($p) {
+                return in_array((int) ($p['status_pagamento_id'] ?? 0), [1, 3], true)
+                    ? (float) $p['valor']
+                    : 0;
+            }, $pagamentosVisiveis));
 
             $response->getBody()->write(json_encode([
                 'success' => true,
@@ -2888,9 +2939,9 @@ class MobileController
                         'total_previsto' => (float) $matricula['valor'],
                         'total_pago' => (float) $totalPago,
                         'total_pendente' => (float) $totalPendente,
-                        'quantidade_pagamentos' => count($pagamentos),
-                        'pagamentos_realizados' => count(array_filter($pagamentos, function($p) {
-                            return $p['data_pagamento'] !== null;
+                        'quantidade_pagamentos' => count($pagamentosVisiveis),
+                        'pagamentos_realizados' => count(array_filter($pagamentosVisiveis, static function ($p) {
+                            return (int) ($p['status_pagamento_id'] ?? 0) === 2;
                         }))
                     ]
                 ]
@@ -3022,16 +3073,37 @@ class MobileController
 
                 $stmtPagamentos = $this->db->prepare("
                     SELECT pp.id, pp.valor, pp.data_vencimento, pp.data_pagamento,
-                           sp.nome AS status_pagamento_nome, fp.nome AS forma_pagamento_nome
+                           pp.status_pagamento_id,
+                           sp.nome AS status_pagamento_nome, fp.nome AS forma_pagamento_nome,
+                           pp.criado_por, criador.nome AS criado_por_nome,
+                           pp.baixado_por, baixador.nome AS baixado_por_nome,
+                           tb.nome AS tipo_baixa_nome, pp.observacoes
                     FROM pagamentos_plano pp
                     INNER JOIN status_pagamento sp ON pp.status_pagamento_id = sp.id
                     LEFT JOIN formas_pagamento fp ON pp.forma_pagamento_id = fp.id
+                    LEFT JOIN usuarios criador ON pp.criado_por = criador.id
+                    LEFT JOIN usuarios baixador ON pp.baixado_por = baixador.id
+                    LEFT JOIN tipos_baixa tb ON pp.tipo_baixa_id = tb.id
                     WHERE pp.matricula_id = :matricula_id
+                      AND pp.status_pagamento_id <> 4
                     ORDER BY COALESCE(pp.data_pagamento, pp.data_vencimento) DESC, pp.id DESC
+                    LIMIT 12
                 ");
                 $stmtPagamentos->execute(['matricula_id' => $matriculaId]);
-                $pagamentosMatricula = $stmtPagamentos->fetchAll(\PDO::FETCH_ASSOC);
-                $pagamentos = array_slice($pagamentosMatricula, 0, 8);
+                $pagamentos = $stmtPagamentos->fetchAll(\PDO::FETCH_ASSOC);
+
+                $stmtTotais = $this->db->prepare("
+                    SELECT
+                        COALESCE(SUM(CASE WHEN status_pagamento_id = 2 THEN valor ELSE 0 END), 0) AS total_pago,
+                        COALESCE(SUM(CASE WHEN status_pagamento_id IN (1, 3) THEN valor ELSE 0 END), 0) AS total_pendente,
+                        COUNT(*) AS quantidade_pagamentos,
+                        SUM(CASE WHEN status_pagamento_id = 2 THEN 1 ELSE 0 END) AS pagamentos_realizados
+                    FROM pagamentos_plano
+                    WHERE matricula_id = :matricula_id
+                      AND status_pagamento_id <> 4
+                ");
+                $stmtTotais->execute(['matricula_id' => $matriculaId]);
+                $totais = $stmtTotais->fetch(\PDO::FETCH_ASSOC) ?: [];
 
                 $matriculaFormatada = [
                     'id' => $matriculaId,
@@ -3053,33 +3125,43 @@ class MobileController
                 ];
 
                 $pagamentosFormatados = array_map(static function ($p) {
+                    $obs = (string) ($p['observacoes'] ?? '');
+                    $forma = $p['forma_pagamento_nome'] ?? null;
+                    $origem = null;
+                    if (!empty($p['baixado_por'])) {
+                        $origem = 'manual';
+                    } elseif ($forma && (stripos((string) $forma, 'Mercado') !== false || stripos($obs, 'Mercado Pago') !== false)) {
+                        $origem = 'mercadopago';
+                    } elseif ($forma) {
+                        $origem = 'manual';
+                    } elseif (stripos($obs, 'Mercado Pago') !== false) {
+                        $origem = 'mercadopago';
+                    }
+
                     return [
                         'id' => (int) $p['id'],
                         'valor' => (float) $p['valor'],
                         'data_vencimento' => $p['data_vencimento'],
                         'data_pagamento' => $p['data_pagamento'],
                         'status' => $p['status_pagamento_nome'],
-                        'forma_pagamento' => $p['forma_pagamento_nome'],
+                        'status_pagamento_id' => (int) ($p['status_pagamento_id'] ?? 0),
+                        'forma_pagamento' => $forma,
+                        'baixado_por' => $p['baixado_por'] !== null ? (int) $p['baixado_por'] : null,
+                        'baixado_por_nome' => $p['baixado_por_nome'] ?? null,
+                        'criado_por' => $p['criado_por'] !== null ? (int) $p['criado_por'] : null,
+                        'criado_por_nome' => $p['criado_por_nome'] ?? null,
+                        'tipo_baixa_nome' => $p['tipo_baixa_nome'] ?? null,
+                        'origem' => $origem,
                         'pendente' => $p['data_pagamento'] === null
                     ];
                 }, $pagamentos);
 
-                $totalPago = array_sum(array_map(static function ($p) {
-                    return $p['data_pagamento'] ? (float) $p['valor'] : 0;
-                }, $pagamentosMatricula));
-
-                $totalPendente = array_sum(array_map(static function ($p) {
-                    return !$p['data_pagamento'] ? (float) $p['valor'] : 0;
-                }, $pagamentosMatricula));
-
                 $resumoFinanceiro = [
                     'total_previsto' => (float) $matricula['valor'],
-                    'total_pago' => (float) $totalPago,
-                    'total_pendente' => (float) $totalPendente,
-                    'quantidade_pagamentos' => count($pagamentosMatricula),
-                    'pagamentos_realizados' => count(array_filter($pagamentosMatricula, static function ($p) {
-                        return $p['data_pagamento'] !== null;
-                    }))
+                    'total_pago' => (float) ($totais['total_pago'] ?? 0),
+                    'total_pendente' => (float) ($totais['total_pendente'] ?? 0),
+                    'quantidade_pagamentos' => (int) ($totais['quantidade_pagamentos'] ?? 0),
+                    'pagamentos_realizados' => (int) ($totais['pagamentos_realizados'] ?? 0)
                 ];
             }
 

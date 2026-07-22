@@ -265,15 +265,27 @@ class MatriculaRepository
         return DB::table('pagamentos_plano as pp')
             ->join('status_pagamento as sp', 'pp.status_pagamento_id', '=', 'sp.id')
             ->leftJoin('formas_pagamento as fp', 'pp.forma_pagamento_id', '=', 'fp.id')
+            ->leftJoin('usuarios as criador', 'pp.criado_por', '=', 'criador.id')
+            ->leftJoin('usuarios as baixador', 'pp.baixado_por', '=', 'baixador.id')
+            ->leftJoin('tipos_baixa as tb', 'pp.tipo_baixa_id', '=', 'tb.id')
             ->where('pp.matricula_id', $matriculaId)
             ->orderByDesc('pp.data_vencimento')
+            ->orderByDesc('pp.id')
             ->get([
                 'pp.id',
                 'pp.valor',
                 'pp.data_vencimento',
                 'pp.data_pagamento',
+                'pp.status_pagamento_id',
                 'sp.nome as status_pagamento_nome',
                 'fp.nome as forma_pagamento_nome',
+                'pp.criado_por',
+                'criador.nome as criado_por_nome',
+                'pp.baixado_por',
+                'baixador.nome as baixado_por_nome',
+                'pp.tipo_baixa_id',
+                'tb.nome as tipo_baixa_nome',
+                'pp.observacoes',
             ])
             ->map(fn ($row) => (array) $row)
             ->all();

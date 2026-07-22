@@ -45,23 +45,42 @@ class MobileMatriculaService
         $plano = $this->matriculas->findPlanoResumo((int) $matricula['plano_id']);
         $pagamentos = $this->matriculas->listarPagamentosMatricula($matriculaId);
 
+        $pagamentosVisiveis = array_values(array_filter(
+            $pagamentos,
+            static fn (array $p) => (int) ($p['status_pagamento_id'] ?? 0) !== 4,
+        ));
+
         $pagamentosFormatados = array_map(fn (array $p) => [
             'id' => (int) $p['id'],
             'valor' => (float) $p['valor'],
             'data_vencimento' => $p['data_vencimento'],
             'data_pagamento' => $p['data_pagamento'],
             'status' => $p['status_pagamento_nome'],
+            'status_pagamento_id' => (int) ($p['status_pagamento_id'] ?? 0),
             'forma_pagamento' => $p['forma_pagamento_nome'],
+            'baixado_por' => $p['baixado_por'] !== null ? (int) $p['baixado_por'] : null,
+            'baixado_por_nome' => $p['baixado_por_nome'] ?? null,
+            'criado_por' => $p['criado_por'] !== null ? (int) $p['criado_por'] : null,
+            'criado_por_nome' => $p['criado_por_nome'] ?? null,
+            'tipo_baixa_nome' => $p['tipo_baixa_nome'] ?? null,
+            'origem' => ! empty($p['baixado_por']) ? 'manual' : (
+                stripos((string) ($p['observacoes'] ?? ''), 'Mercado Pago') !== false
+                || stripos((string) ($p['forma_pagamento_nome'] ?? ''), 'Mercado') !== false
+                    ? 'mercadopago'
+                    : (! empty($p['forma_pagamento_nome']) ? 'manual' : null)
+            ),
             'pendente' => $p['data_pagamento'] === null,
-        ], $pagamentos);
+        ], $pagamentosVisiveis);
 
         $totalPago = array_sum(array_map(
-            fn ($p) => $p['data_pagamento'] ? (float) $p['valor'] : 0,
-            $pagamentos,
+            fn ($p) => (int) ($p['status_pagamento_id'] ?? 0) === 2 ? (float) $p['valor'] : 0,
+            $pagamentosVisiveis,
         ));
         $totalPendente = array_sum(array_map(
-            fn ($p) => ! $p['data_pagamento'] ? (float) $p['valor'] : 0,
-            $pagamentos,
+            fn ($p) => in_array((int) ($p['status_pagamento_id'] ?? 0), [1, 3], true)
+                ? (float) $p['valor']
+                : 0,
+            $pagamentosVisiveis,
         ));
 
         return [
@@ -92,10 +111,10 @@ class MobileMatriculaService
                         'total_previsto' => (float) $matricula['valor'],
                         'total_pago' => (float) $totalPago,
                         'total_pendente' => (float) $totalPendente,
-                        'quantidade_pagamentos' => count($pagamentos),
+                        'quantidade_pagamentos' => count($pagamentosVisiveis),
                         'pagamentos_realizados' => count(array_filter(
-                            $pagamentos,
-                            fn ($p) => $p['data_pagamento'] !== null,
+                            $pagamentosVisiveis,
+                            fn ($p) => (int) ($p['status_pagamento_id'] ?? 0) === 2,
                         )),
                     ],
                 ],

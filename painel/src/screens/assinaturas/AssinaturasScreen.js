@@ -566,6 +566,10 @@ export default function AssinaturasScreen() {
                         <Text className="text-xs text-slate-500">Matrícula: {pagamento.matricula_id}</Text>
                         <Text className="text-xs text-slate-500">Valor: {formatCurrency(pagamento.valor)}</Text>
                         <Text className="text-xs text-slate-500">Status: {pagamento.status_pagamento_id}</Text>
+                        <Text className="text-xs text-slate-500">Forma: {pagamento.forma_pagamento_nome || '-'}</Text>
+                        <Text className="text-xs text-slate-500">
+                          Baixado por: {pagamento.baixado_por_nome || pagamento.criado_por_nome || '-'}
+                        </Text>
                         <Text className="text-xs text-slate-500">Vencimento: {formatDate(pagamento.data_vencimento)}</Text>
                       </View>
                     ))

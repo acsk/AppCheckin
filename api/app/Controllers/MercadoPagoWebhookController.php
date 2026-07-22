@@ -629,9 +629,16 @@ class MercadoPagoWebhookController
                         SELECT pp.id, pp.tenant_id, pp.matricula_id, pp.aluno_id, pp.plano_id,
                                pp.valor, pp.status_pagamento_id,
                                pp.data_pagamento, pp.data_vencimento,
-                               pp.forma_pagamento_id, pp.tipo_baixa_id,
+                               pp.forma_pagamento_id, fp.nome as forma_pagamento_nome,
+                               pp.tipo_baixa_id, tb.nome as tipo_baixa_nome,
+                               pp.baixado_por, baixador.nome as baixado_por_nome,
+                               pp.criado_por, criador.nome as criado_por_nome,
                                pp.observacoes, pp.created_at, pp.updated_at
                         FROM pagamentos_plano pp
+                        LEFT JOIN formas_pagamento fp ON fp.id = pp.forma_pagamento_id
+                        LEFT JOIN tipos_baixa tb ON tb.id = pp.tipo_baixa_id
+                        LEFT JOIN usuarios baixador ON baixador.id = pp.baixado_por
+                        LEFT JOIN usuarios criador ON criador.id = pp.criado_por
                         WHERE pp.matricula_id = ? AND (pp.tenant_id = ? OR pp.tenant_id IS NULL)
                         ORDER BY pp.created_at DESC
                     ");

@@ -35,6 +35,7 @@ export default function MatriculaDetalheScreen() {
 
   const [loading, setLoading] = useState(true);
   const [matricula, setMatricula] = useState(null);
+  const [outrasMatriculas, setOutrasMatriculas] = useState([]);
   const [pagamentos, setPagamentos] = useState([]);
   const [mostrarCancelados, setMostrarCancelados] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -179,6 +180,7 @@ export default function MatriculaDetalheScreen() {
       const pagamentosDaMatricula = responseMatricula?.pagamentos || dadosMatricula?.pagamentos || [];
       console.log('📌 Pagamentos da matrícula:', pagamentosDaMatricula);
       setMatricula(dadosMatricula);
+      setOutrasMatriculas(responseMatricula?.outras_matriculas || []);
       setAjustePlano(responseMatricula?.ajuste_plano || null);
 
       // Buscar histórico de pagamentos (se existir endpoint)
@@ -1599,6 +1601,59 @@ export default function MatriculaDetalheScreen() {
 
           </View>
 
+          {outrasMatriculas.length > 0 && (
+            <View className="mb-6 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
+              <View className="flex-row items-center gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4">
+                <View className="h-9 w-9 items-center justify-center rounded-full bg-blue-100">
+                  <Feather name="layers" size={18} color="#2563eb" />
+                </View>
+                <View>
+                  <Text className="text-sm font-semibold text-slate-800">Outras matrículas do aluno</Text>
+                  <Text className="text-xs text-slate-500">
+                    Inclui diárias e planos paralelos deste aluno
+                  </Text>
+                </View>
+              </View>
+              <View className="px-4 py-3 gap-2">
+                {outrasMatriculas.map((outra) => (
+                  <Pressable
+                    key={outra.id}
+                    className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-3"
+                    style={({ pressed }) => [pressed && { opacity: 0.85 }]}
+                    onPress={() => router.push(`/matriculas/detalhe?id=${outra.id}`)}
+                  >
+                    <View className="flex-row items-start justify-between gap-3">
+                      <View className="flex-1">
+                        <Text className="text-sm font-semibold text-slate-800">
+                          {outra.plano_nome || 'Plano'}
+                          {outra.modalidade_nome ? ` • ${outra.modalidade_nome}` : ''}
+                        </Text>
+                        <Text className="mt-0.5 text-xs text-slate-500">
+                          #{outra.id}
+                          {Number(outra.duracao_dias) === 1 ? ' • Diária' : ''}
+                          {outra.tipo_cobranca ? ` • ${outra.tipo_cobranca}` : ''}
+                        </Text>
+                        <Text className="mt-1 text-xs text-slate-500">
+                          {formatDate(outra.data_inicio)} → {formatDate(outra.data_vencimento)}
+                        </Text>
+                      </View>
+                      <View className="items-end gap-1">
+                        <Text className="text-sm font-semibold text-orange-500">
+                          {formatCurrency(outra.valor)}
+                        </Text>
+                        <View className="rounded-full bg-slate-200 px-2 py-0.5">
+                          <Text className="text-[11px] font-semibold text-slate-700">
+                            {outra.status_nome || outra.status_codigo || '-'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )}
+
           {/* Faturas (todas as parcelas em uma tabela única) */}
           <View className="mb-6 overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm">
             <View className="flex-row flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-5 py-4">
@@ -1739,9 +1794,15 @@ export default function MatriculaDetalheScreen() {
 
                           <View className="mb-3 rounded-lg bg-slate-50 px-2.5 py-2">
                             <Text className="text-[11px] text-slate-500">Baixado por</Text>
-                            <Text className="text-[12px] font-semibold text-slate-700">{pagamento.baixado_por_nome || '-'}</Text>
-                            {pagamento.tipo_baixa_nome && (
-                              <Text className="mt-0.5 text-[11px] text-slate-500">{pagamento.tipo_baixa_nome}</Text>
+                            <Text className="text-[12px] font-semibold text-slate-700">
+                              {pagamento.baixado_por_nome || pagamento.criado_por_nome || '-'}
+                            </Text>
+                            {(pagamento.tipo_baixa_nome || pagamento.forma_pagamento_nome) && (
+                              <Text className="mt-0.5 text-[11px] text-slate-500">
+                                {[pagamento.tipo_baixa_nome, pagamento.forma_pagamento_nome]
+                                  .filter(Boolean)
+                                  .join(' • ')}
+                              </Text>
                             )}
                           </View>
 
@@ -1784,11 +1845,13 @@ export default function MatriculaDetalheScreen() {
                         </Text>
                         <View style={{ flex: 1.3 }}>
                           <Text className="text-[13px] font-medium text-slate-700">
-                            {pagamento.baixado_por_nome || '-'}
+                            {pagamento.baixado_por_nome || pagamento.criado_por_nome || '-'}
                           </Text>
-                          {pagamento.tipo_baixa_nome && (
+                          {(pagamento.tipo_baixa_nome || pagamento.forma_pagamento_nome) && (
                             <Text className="mt-0.5 text-[11px] text-slate-500">
-                              {pagamento.tipo_baixa_nome}
+                              {[pagamento.tipo_baixa_nome, pagamento.forma_pagamento_nome]
+                                .filter(Boolean)
+                                .join(' • ')}
                             </Text>
                           )}
                         </View>

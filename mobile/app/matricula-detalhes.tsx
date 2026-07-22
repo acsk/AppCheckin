@@ -368,6 +368,14 @@ export default function MatriculaDetalhesScreen() {
                           • {pagamento.forma_pagamento}
                         </Text>
                       )}
+                      {(pagamento.baixado_por_nome ||
+                        pagamento.criado_por_nome) && (
+                        <Text style={styles.pagamentoDetail}>
+                          • por{" "}
+                          {pagamento.baixado_por_nome ||
+                            pagamento.criado_por_nome}
+                        </Text>
+                      )}
                     </View>
                   )}
 

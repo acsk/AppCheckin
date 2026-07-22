@@ -220,6 +220,84 @@ class MobileAssinaturaService
             $assinaturas[] = $item;
         }
 
+        // Histórico de pagamentos (manual + MP) por matrícula
+        $matriculaIds = array_values(array_unique(array_filter(array_map(
+            static fn ($a) => (int) ($a['matricula_id'] ?? 0),
+            $assinaturas
+        ))));
+        $pagamentosPorMatricula = [];
+        if ($matriculaIds !== []) {
+            $rowsPag = DB::table('pagamentos_plano as pp')
+                ->join('status_pagamento as sp', 'sp.id', '=', 'pp.status_pagamento_id')
+                ->leftJoin('formas_pagamento as fp', 'fp.id', '=', 'pp.forma_pagamento_id')
+                ->leftJoin('usuarios as baixador', 'baixador.id', '=', 'pp.baixado_por')
+                ->leftJoin('usuarios as criador', 'criador.id', '=', 'pp.criado_por')
+                ->leftJoin('tipos_baixa as tb', 'tb.id', '=', 'pp.tipo_baixa_id')
+                ->where('pp.tenant_id', $tenantId)
+                ->whereIn('pp.matricula_id', $matriculaIds)
+                ->where('pp.status_pagamento_id', '<>', 4)
+                ->orderByRaw('COALESCE(pp.data_pagamento, pp.data_vencimento) DESC')
+                ->orderByDesc('pp.id')
+                ->get([
+                    'pp.id',
+                    'pp.matricula_id',
+                    'pp.valor',
+                    'pp.data_vencimento',
+                    'pp.data_pagamento',
+                    'pp.status_pagamento_id',
+                    'sp.nome as status',
+                    'fp.nome as forma_pagamento_nome',
+                    'pp.baixado_por',
+                    'baixador.nome as baixado_por_nome',
+                    'pp.criado_por',
+                    'criador.nome as criado_por_nome',
+                    'tb.nome as tipo_baixa_nome',
+                    'pp.observacoes',
+                ]);
+
+            foreach ($rowsPag as $pag) {
+                $pag = (array) $pag;
+                $mid = (int) $pag['matricula_id'];
+                if (! isset($pagamentosPorMatricula[$mid])) {
+                    $pagamentosPorMatricula[$mid] = [];
+                }
+                if (count($pagamentosPorMatricula[$mid]) >= 8) {
+                    continue;
+                }
+                $obs = (string) ($pag['observacoes'] ?? '');
+                $forma = $pag['forma_pagamento_nome'] ?? null;
+                $origem = null;
+                if (! empty($pag['baixado_por'])) {
+                    $origem = 'manual';
+                } elseif ($forma && (stripos((string) $forma, 'Mercado') !== false || stripos($obs, 'Mercado Pago') !== false)) {
+                    $origem = 'mercadopago';
+                } elseif ($forma) {
+                    $origem = 'manual';
+                } elseif (stripos($obs, 'Mercado Pago') !== false) {
+                    $origem = 'mercadopago';
+                }
+                $pagamentosPorMatricula[$mid][] = [
+                    'id' => (int) $pag['id'],
+                    'valor' => (float) $pag['valor'],
+                    'data_vencimento' => $pag['data_vencimento'],
+                    'data_pagamento' => $pag['data_pagamento'],
+                    'status' => $pag['status'],
+                    'status_pagamento_id' => (int) $pag['status_pagamento_id'],
+                    'forma_pagamento' => $forma,
+                    'baixado_por_nome' => $pag['baixado_por_nome'] ?? null,
+                    'criado_por_nome' => $pag['criado_por_nome'] ?? null,
+                    'tipo_baixa_nome' => $pag['tipo_baixa_nome'] ?? null,
+                    'origem' => $origem,
+                ];
+            }
+        }
+
+        foreach ($assinaturas as &$assinaturaRef) {
+            $mid = (int) ($assinaturaRef['matricula_id'] ?? 0);
+            $assinaturaRef['pagamentos'] = $pagamentosPorMatricula[$mid] ?? [];
+        }
+        unset($assinaturaRef);
+
         $pacotes = DB::table('pacote_contratos as pc')
             ->join('pacotes as p', 'p.id', '=', 'pc.pacote_id')
             ->where('pc.tenant_id', $tenantId)

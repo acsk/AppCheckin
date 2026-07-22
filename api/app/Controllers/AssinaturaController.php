@@ -677,6 +677,87 @@ class AssinaturaController
                 $assinaturas[] = $assinaturaData;
             }
 
+            // Anexar histórico de pagamentos (manual + MP) por matrícula
+            try {
+                $matriculaIds = array_values(array_unique(array_filter(array_map(
+                    static fn ($a) => (int) ($a['matricula_id'] ?? 0),
+                    $assinaturas
+                ))));
+                $pagamentosPorMatricula = [];
+                if (!empty($matriculaIds)) {
+                    $placeholders = implode(',', array_fill(0, count($matriculaIds), '?'));
+                    $stmtHist = $this->db->prepare("
+                        SELECT
+                            pp.id,
+                            pp.matricula_id,
+                            pp.valor,
+                            pp.data_vencimento,
+                            pp.data_pagamento,
+                            pp.status_pagamento_id,
+                            sp.nome AS status,
+                            fp.nome AS forma_pagamento_nome,
+                            pp.baixado_por,
+                            baixador.nome AS baixado_por_nome,
+                            pp.criado_por,
+                            criador.nome AS criado_por_nome,
+                            tb.nome AS tipo_baixa_nome,
+                            pp.observacoes
+                        FROM pagamentos_plano pp
+                        INNER JOIN status_pagamento sp ON sp.id = pp.status_pagamento_id
+                        LEFT JOIN formas_pagamento fp ON fp.id = pp.forma_pagamento_id
+                        LEFT JOIN usuarios baixador ON baixador.id = pp.baixado_por
+                        LEFT JOIN usuarios criador ON criador.id = pp.criado_por
+                        LEFT JOIN tipos_baixa tb ON tb.id = pp.tipo_baixa_id
+                        WHERE pp.tenant_id = ?
+                          AND pp.matricula_id IN ($placeholders)
+                          AND pp.status_pagamento_id <> 4
+                        ORDER BY COALESCE(pp.data_pagamento, pp.data_vencimento) DESC, pp.id DESC
+                    ");
+                    $stmtHist->execute(array_merge([$tenantId], $matriculaIds));
+                    foreach ($stmtHist->fetchAll(\PDO::FETCH_ASSOC) as $pag) {
+                        $mid = (int) $pag['matricula_id'];
+                        if (!isset($pagamentosPorMatricula[$mid])) {
+                            $pagamentosPorMatricula[$mid] = [];
+                        }
+                        if (count($pagamentosPorMatricula[$mid]) >= 8) {
+                            continue;
+                        }
+                        $obs = (string) ($pag['observacoes'] ?? '');
+                        $forma = $pag['forma_pagamento_nome'] ?? null;
+                        $origem = null;
+                        if (!empty($pag['baixado_por'])) {
+                            $origem = 'manual';
+                        } elseif ($forma && (stripos((string) $forma, 'Mercado') !== false || stripos($obs, 'Mercado Pago') !== false)) {
+                            $origem = 'mercadopago';
+                        } elseif ($forma) {
+                            $origem = 'manual';
+                        } elseif (stripos($obs, 'Mercado Pago') !== false) {
+                            $origem = 'mercadopago';
+                        }
+                        $pagamentosPorMatricula[$mid][] = [
+                            'id' => (int) $pag['id'],
+                            'valor' => (float) $pag['valor'],
+                            'data_vencimento' => $pag['data_vencimento'],
+                            'data_pagamento' => $pag['data_pagamento'],
+                            'status' => $pag['status'],
+                            'status_pagamento_id' => (int) $pag['status_pagamento_id'],
+                            'forma_pagamento' => $forma,
+                            'baixado_por_nome' => $pag['baixado_por_nome'] ?? null,
+                            'criado_por_nome' => $pag['criado_por_nome'] ?? null,
+                            'tipo_baixa_nome' => $pag['tipo_baixa_nome'] ?? null,
+                            'origem' => $origem,
+                        ];
+                    }
+                }
+                foreach ($assinaturas as &$assinaturaRef) {
+                    $mid = (int) ($assinaturaRef['matricula_id'] ?? 0);
+                    $assinaturaRef['pagamentos'] = $pagamentosPorMatricula[$mid] ?? [];
+                }
+                unset($assinaturaRef);
+            } catch (\Exception $e) {
+                error_log("[minhasAssinaturas] Erro ao anexar pagamentos: " . $e->getMessage());
+            }
+
             // Pacotes onde o usuário é pagante (ver beneficiários)
             $pacotes = [];
             try {

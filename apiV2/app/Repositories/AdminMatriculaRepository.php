@@ -170,6 +170,9 @@ class AdminMatriculaRepository
     {
         return DB::table('pagamentos_plano as pp')
             ->leftJoin('formas_pagamento as fp', 'fp.id', '=', 'pp.forma_pagamento_id')
+            ->leftJoin('usuarios as criador', 'pp.criado_por', '=', 'criador.id')
+            ->leftJoin('usuarios as baixador', 'pp.baixado_por', '=', 'baixador.id')
+            ->leftJoin('tipos_baixa as tb', 'pp.tipo_baixa_id', '=', 'tb.id')
             ->where('pp.matricula_id', $matriculaId)
             ->orderBy('pp.data_vencimento')
             ->orderBy('pp.id')
@@ -182,7 +185,13 @@ class AdminMatriculaRepository
                 (SELECT nome FROM status_pagamento WHERE id = pp.status_pagamento_id) as status,
                 pp.forma_pagamento_id,
                 fp.nome as forma_pagamento_nome,
-                pp.observacoes
+                pp.observacoes,
+                pp.criado_por,
+                criador.nome as criado_por_nome,
+                pp.baixado_por,
+                baixador.nome as baixado_por_nome,
+                pp.tipo_baixa_id,
+                tb.nome as tipo_baixa_nome
             ")
             ->get()
             ->map(fn ($r) => (array) $r)
@@ -503,6 +512,37 @@ class AdminMatriculaRepository
     /**
      * @return array{saldo_total: float, creditos_ativos: list<array<string, mixed>>}
      */
+    /**
+     * Outras matrículas do mesmo aluno (ex.: diária + plano).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function listarOutrasMatriculasDoAluno(int $alunoId, int $tenantId, int $excetoMatriculaId): array
+    {
+        return DB::table('matriculas as m')
+            ->join('planos as p', 'p.id', '=', 'm.plano_id')
+            ->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+            ->leftJoin('modalidades as modalidade', 'modalidade.id', '=', 'p.modalidade_id')
+            ->where('m.aluno_id', $alunoId)
+            ->where('m.tenant_id', $tenantId)
+            ->where('m.id', '<>', $excetoMatriculaId)
+            ->orderByDesc('m.created_at')
+            ->get([
+                'm.id',
+                'm.valor',
+                'm.data_inicio',
+                'm.data_vencimento',
+                'm.tipo_cobranca',
+                'p.nome as plano_nome',
+                'p.duracao_dias',
+                'modalidade.nome as modalidade_nome',
+                'sm.codigo as status_codigo',
+                'sm.nome as status_nome',
+            ])
+            ->map(fn ($r) => (array) $r)
+            ->all();
+    }
+
     public function creditosAluno(int $tenantId, int $alunoId): array
     {
         try {

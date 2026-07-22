@@ -18,6 +18,10 @@ type Pagamento = {
   data_pagamento: string | null;
   status: string;
   forma_pagamento?: string | null;
+  baixado_por_nome?: string | null;
+  criado_por_nome?: string | null;
+  tipo_baixa_nome?: string | null;
+  origem?: string | null;
   pendente: boolean;
 };
 
@@ -237,6 +241,20 @@ export function AlunoResumoFinanceiro({ alunoId, compact = false }: Props) {
                     ? ` · Pago ${formatDate(pagamento.data_pagamento)}`
                     : ""}
                 </Text>
+                {(pagamento.forma_pagamento ||
+                  pagamento.baixado_por_nome ||
+                  pagamento.criado_por_nome) && (
+                  <Text style={styles.pagamentoData}>
+                    {[
+                      pagamento.forma_pagamento,
+                      pagamento.baixado_por_nome || pagamento.criado_por_nome
+                        ? `por ${pagamento.baixado_por_nome || pagamento.criado_por_nome}`
+                        : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </Text>
+                )}
               </View>
               <View
                 style={[
