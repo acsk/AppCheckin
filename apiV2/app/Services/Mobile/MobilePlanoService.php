@@ -118,6 +118,7 @@ class MobilePlanoService
                         ? (int) $matriculaModalidade['plano_ciclo_id']
                         : null,
                     'valor' => (float) $matriculaModalidade['valor'],
+                    'status_codigo' => $matriculaModalidade['status_codigo'] ?? null,
                 ] : null,
                 'ciclos' => $ciclosPorPlano[$planoId] ?? [],
             ];

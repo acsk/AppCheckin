@@ -597,7 +597,10 @@ class MatriculaMigracaoService
     {
         $status = strtolower(trim((string) ($matricula['status_codigo'] ?? '')));
         $matriculaId = (int) ($matricula['id'] ?? 0);
+        // Acesso operacional (pode ser parcela futura).
         $acessoAte = (string) ($matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'] ?? '');
+        // Ciclo vigente pago — base do crédito (não usar proxima_data_vencimento).
+        $cicloVigenteAte = (string) ($matricula['data_vencimento'] ?? $matricula['proxima_data_vencimento'] ?? '');
         $hoje = date('Y-m-d');
 
         if (in_array($status, ['cancelada', 'vencida', 'finalizada'], true)) {
@@ -640,6 +643,17 @@ class MatriculaMigracaoService
             ];
         }
 
+        // Ciclo vigente encerrado (data_vencimento): pode migrar, sem crédito.
+        if ($cicloVigenteAte !== '' && $cicloVigenteAte !== '0000-00-00' && $cicloVigenteAte <= $hoje) {
+            return [
+                'apto' => true,
+                'gera_credito' => false,
+                'code' => 'CICLO_ENCERRADO',
+                'message' => 'Ciclo vigente encerrado: migração sem crédito.',
+                'motivo' => 'ciclo_encerrado',
+            ];
+        }
+
         // Limite de check-ins do ciclo esgotado: pode migrar, mas sem crédito
         // (o benefício do ciclo já foi consumido).
         if ($this->limiteCheckinsCicloEsgotado($matricula, $tenantId)) {
@@ -649,6 +663,17 @@ class MatriculaMigracaoService
                 'code' => 'LIMITE_CHECKINS_ESGOTADO',
                 'message' => 'Limite de check-ins do ciclo esgotado: migração sem crédito.',
                 'motivo' => 'limite_checkins_ciclo',
+            ];
+        }
+
+        // Sem pagamento pago no ciclo: nada a abater.
+        if ($matriculaId > 0 && $this->buscarUltimoPagamentoPagoId($matriculaId, $tenantId) === null) {
+            return [
+                'apto' => true,
+                'gera_credito' => false,
+                'code' => 'SEM_PAGAMENTO_PAGO',
+                'message' => 'Sem pagamento quitado neste ciclo: migração sem crédito.',
+                'motivo' => 'sem_pagamento_pago',
             ];
         }
 
@@ -662,6 +687,9 @@ class MatriculaMigracaoService
     }
 
     /**
+     * Verifica o teto de check-ins do ciclo vigente (não usa liberação de renovação,
+     * que prioriza acesso_vencido e mascara o limite esgotado).
+     *
      * @param  array<string, mixed>  $matricula
      */
     public function limiteCheckinsCicloEsgotado(array $matricula, int $tenantId): bool
@@ -679,18 +707,25 @@ class MatriculaMigracaoService
         }
 
         $modalidadeId = isset($matricula['modalidade_id']) ? (int) $matricula['modalidade_id'] : null;
-        $acessoAte = $matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'] ?? null;
 
         $checkin = new \App\Models\Checkin($this->db);
-        $liberacao = $checkin->avaliarLiberacaoPagamentoRenovacao(
+        $planoInfo = $checkin->obterLimiteCheckinsPlano($usuarioId, $tenantId, $modalidadeId);
+        if (
+            empty($planoInfo['tem_plano'])
+            || empty($planoInfo['permite_reposicao'])
+            || (int) ($planoInfo['limite'] ?? 0) <= 0
+        ) {
+            return false;
+        }
+
+        $detalhes = $checkin->avaliarLimiteMensalReposicao(
             $usuarioId,
             $tenantId,
             $modalidadeId,
-            $acessoAte ? (string) $acessoAte : null,
-            null
+            $planoInfo
         );
 
-        return ($liberacao['motivo'] ?? '') === 'limite_checkins_ciclo';
+        return $detalhes !== null;
     }
 
     public function temParcelaAtrasada(int $matriculaId, int $tenantId): bool
@@ -761,6 +796,25 @@ class MatriculaMigracaoService
             ];
         }
 
+        $dataInicio = (string) $matricula['data_inicio'];
+        // Ciclo vigente = data_vencimento (alinhado ao painel). proxima_data_vencimento é parcela futura.
+        $dataVencimentoStr = (string) ($matricula['data_vencimento'] ?? $matricula['proxima_data_vencimento']);
+        $hoje = date('Y-m-d');
+        $base = self::calcularCreditoProporcional($valorCicloAtual, $dataInicio, $dataVencimentoStr, $hoje);
+
+        // Ciclo sem dias restantes: sem crédito (upgrade inclusive).
+        if ($base['dias_restantes'] <= 0 || $dataVencimentoStr <= $hoje) {
+            return array_merge($base, [
+                'tipo_credito' => 'sem_credito',
+                'pagamento_origem_id' => null,
+                'credito' => 0.0,
+                'valor_consumido' => $valorCicloAtual,
+                'motivo' => 'Sem crédito: ciclo já encerrado (período consumido)',
+                'aptidao' => $aptidao,
+            ]);
+        }
+
+        // Upgrade com ciclo ainda vigente: crédito do valor cheio do plano atual.
         if ($valorNovo !== null && $valorNovo > $valorCicloAtual) {
             $pagamentoOrigemId = $this->buscarUltimoPagamentoPagoId($matriculaId, $tenantId);
 
@@ -769,42 +823,29 @@ class MatriculaMigracaoService
                 'valor_plano_atual' => $valorCicloAtual,
                 'valor_consumido' => 0.0,
                 'credito' => round($valorCicloAtual, 2),
-                'dias_totais' => 0,
-                'dias_restantes' => 0,
-                'dias_usados' => 0,
+                'dias_totais' => (int) $base['dias_totais'],
+                'dias_restantes' => (int) $base['dias_restantes'],
+                'dias_usados' => (int) $base['dias_usados'],
                 'pagamento_origem_id' => $pagamentoOrigemId,
                 'motivo' => sprintf(
                     'Crédito do plano atual (%s — R$%s)',
                     $planoNome,
                     number_format($valorCicloAtual, 2, ',', '.')
                 ),
+                'aptidao' => $aptidao,
             ];
         }
 
-        $dataInicio = (string) $matricula['data_inicio'];
-        // Ciclo vigente = data_vencimento (alinhado ao painel). proxima_data_vencimento é parcela futura.
-        $dataVencimentoStr = (string) ($matricula['data_vencimento'] ?? $matricula['proxima_data_vencimento']);
-        $hoje = date('Y-m-d');
+        $motivo = sprintf(
+            'Crédito proporcional (%d dias restantes de R$%s)',
+            $base['dias_restantes'],
+            number_format($valorCicloAtual, 2, ',', '.')
+        );
 
-        $base = self::calcularCreditoProporcional($valorCicloAtual, $dataInicio, $dataVencimentoStr, $hoje);
-
-        if ($base['dias_restantes'] > 0) {
-            $motivo = sprintf(
-                'Crédito proporcional (%d dias restantes de R$%s)',
-                $base['dias_restantes'],
-                number_format($valorCicloAtual, 2, ',', '.')
-            );
-
-            return array_merge($base, [
-                'pagamento_origem_id' => null,
-                'motivo' => $motivo,
-            ]);
-        }
-
-        // Ciclo encerrado: sem crédito — o pagamento cobre o período já utilizado.
         return array_merge($base, [
             'pagamento_origem_id' => null,
-            'motivo' => 'Sem crédito: ciclo já encerrado (período consumido)',
+            'motivo' => $motivo,
+            'aptidao' => $aptidao,
         ]);
     }
 

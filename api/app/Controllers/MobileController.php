@@ -5835,14 +5835,15 @@ class MobileController
                     'label' => $podeRenovar
                         ? 'Renovação disponível'
                         : ($isPlanoAtual ? 'Seu plano atual' : ($podeMigrar ? 'Migrar para este plano' : null)),
-                    'matricula_ativa' => ($isPlanoAtual && $matriculaModalidade) ? [
-                        'id' => (int) $matriculaModalidade['id'],
-                        'plano_id' => (int) $matriculaModalidade['plano_id'],
-                        'plano_ciclo_id' => ! empty($matriculaModalidade['plano_ciclo_id'])
-                            ? (int) $matriculaModalidade['plano_ciclo_id']
-                            : null,
-                        'valor' => (float) $matriculaModalidade['valor'],
-                    ] : null,
+                'matricula_ativa' => ($isPlanoAtual && $matriculaModalidade) ? [
+                    'id' => (int) $matriculaModalidade['id'],
+                    'plano_id' => (int) $matriculaModalidade['plano_id'],
+                    'plano_ciclo_id' => ! empty($matriculaModalidade['plano_ciclo_id'])
+                        ? (int) $matriculaModalidade['plano_ciclo_id']
+                        : null,
+                    'valor' => (float) $matriculaModalidade['valor'],
+                    'status_codigo' => $matriculaModalidade['status_codigo'] ?? null,
+                ] : null,
                     'ciclos' => $ciclosPorPlano[$planoId] ?? [],
                 ];
             }, $planos);

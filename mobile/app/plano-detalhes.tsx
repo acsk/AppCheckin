@@ -713,8 +713,12 @@ export default function PlanoDetalhesScreen() {
       }
 
       // Mesmo plano, outro ciclo → migração com crédito/diferença
+      const statusMatriculaCheckout = String(
+        plano.matricula_ativa?.status_codigo || "",
+      ).toLowerCase();
       const cicloAtualMatricula = plano.matricula_ativa?.plano_ciclo_id ?? null;
       if (
+        statusMatriculaCheckout !== "pendente" &&
         plano.is_plano_atual &&
         (cicloAtualMatricula == null ||
           Number(cicloAtualMatricula) !== Number(selectedCiclo.id))
@@ -847,8 +851,13 @@ export default function PlanoDetalhesScreen() {
         return;
       }
 
+      const statusMatricula = String(
+        plano.matricula_ativa?.status_codigo || "",
+      ).toLowerCase();
+      // Pendente: não migrar (evita crédito indevido). Segue compra/PIX da pendência.
       const cicloAtualMatricula = plano.matricula_ativa?.plano_ciclo_id ?? null;
       if (
+        statusMatricula !== "pendente" &&
         plano.is_plano_atual &&
         (cicloAtualMatricula == null ||
           Number(cicloAtualMatricula) !== Number(selectedCiclo.id))

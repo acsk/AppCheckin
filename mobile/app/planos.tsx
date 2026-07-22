@@ -63,6 +63,7 @@ interface Plan {
     plano_id?: number;
     plano_ciclo_id?: number | null;
     valor?: number;
+    status_codigo?: string;
   } | null;
   ciclos?: Ciclo[];
 }
@@ -683,7 +684,11 @@ export default function PlanosScreen() {
         }
 
         const cicloAtualMatricula = plano.matricula_ativa?.plano_ciclo_id ?? null;
+        const statusMatricula = String(
+          plano.matricula_ativa?.status_codigo || "",
+        ).toLowerCase();
         if (
+          statusMatricula !== "pendente" &&
           plano.is_plano_atual &&
           (cicloAtualMatricula == null ||
             Number(cicloAtualMatricula) !== Number(selectedCiclo.id))
@@ -873,7 +878,11 @@ export default function PlanosScreen() {
 
         const cicloAtualMatriculaPix =
           plano.matricula_ativa?.plano_ciclo_id ?? null;
+        const statusMatriculaPix = String(
+          plano.matricula_ativa?.status_codigo || "",
+        ).toLowerCase();
         if (
+          statusMatriculaPix !== "pendente" &&
           plano.is_plano_atual &&
           (cicloAtualMatriculaPix == null ||
             Number(cicloAtualMatriculaPix) !== Number(selectedCiclo.id))
