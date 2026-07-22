@@ -1000,7 +1000,12 @@ class MatriculaMigracaoService
         string $dataVencimento,
     ): void {
         $gatewayId = $this->lookupId('assinatura_gateways', 'mercadopago', 1);
-        $statusId = $this->lookupId('assinatura_status', 'pendente', 1);
+        $statusPendenteId = $this->lookupId('assinatura_status', 'pendente', 1);
+        $statusPagaId = $this->lookupId(
+            'assinatura_status',
+            'paga',
+            $this->lookupId('assinatura_status', 'ativa', $statusPendenteId)
+        );
         $frequenciaId = $this->lookupId('assinatura_frequencias', strtolower($cicloNome), 4);
 
         $metodoPagamentoId = null;
@@ -1018,7 +1023,7 @@ class MatriculaMigracaoService
             'gateway_preference_id' => ! $isRecorrente ? $preferenceId : null,
             'external_reference' => $externalReference,
             'payment_url' => $paymentUrl,
-            'status_id' => $statusId,
+            'status_id' => $statusPendenteId,
             'status_gateway' => 'pending',
             'valor' => $valor,
             'frequencia_id' => $frequenciaId,
@@ -1034,28 +1039,66 @@ class MatriculaMigracaoService
             $payload['metodo_pagamento_id'] = $metodoPagamentoId;
         }
 
-        $assinaturaId = $this->db->prepare('SELECT id FROM assinaturas WHERE matricula_id = ? AND tenant_id = ?');
-        $assinaturaId->execute([$matriculaId, $tenantId]);
-        $existingId = $assinaturaId->fetchColumn();
+        // Reutilizar só assinatura PENDENTE da matrícula.
+        // Assinatura já paga/ativa NÃO deve ser sobrescrita — senão some da tela.
+        $stmtPend = $this->db->prepare("
+            SELECT a.id
+            FROM assinaturas a
+            INNER JOIN assinatura_status s ON s.id = a.status_id
+            WHERE a.matricula_id = ? AND a.tenant_id = ?
+              AND s.codigo IN ('pendente', 'pending')
+            ORDER BY a.id DESC
+            LIMIT 1
+        ");
+        $stmtPend->execute([$matriculaId, $tenantId]);
+        $pendenteId = $stmtPend->fetchColumn();
 
-        if ($existingId) {
+        if ($pendenteId) {
             $sets = [];
             $params = [];
             foreach ($payload as $col => $val) {
                 $sets[] = "{$col} = ?";
                 $params[] = $val;
             }
-            $params[] = $matriculaId;
-            $params[] = $tenantId;
-            $this->db->prepare('UPDATE assinaturas SET '.implode(', ', $sets).' WHERE matricula_id = ? AND tenant_id = ?')
+            $params[] = (int) $pendenteId;
+            $this->db->prepare('UPDATE assinaturas SET '.implode(', ', $sets).' WHERE id = ?')
                 ->execute($params);
-        } else {
-            $cols = array_merge(['tenant_id', 'matricula_id', 'criado_em'], array_keys($payload));
-            $placeholders = implode(', ', array_fill(0, count($cols), '?'));
-            $values = array_merge([$tenantId, $matriculaId, date('Y-m-d H:i:s')], array_values($payload));
-            $this->db->prepare('INSERT INTO assinaturas ('.implode(', ', $cols).") VALUES ({$placeholders})")
-                ->execute($values);
+
+            return;
         }
+
+        // Encerrar a assinatura vigente (paga/ativa) preservando histórico na listagem.
+        $stmtVigente = $this->db->prepare("
+            SELECT a.id
+            FROM assinaturas a
+            INNER JOIN assinatura_status s ON s.id = a.status_id
+            WHERE a.matricula_id = ? AND a.tenant_id = ?
+              AND s.codigo NOT IN ('pendente', 'pending', 'cancelada', 'cancelled')
+            ORDER BY a.id DESC
+            LIMIT 1
+        ");
+        $stmtVigente->execute([$matriculaId, $tenantId]);
+        $vigenteId = $stmtVigente->fetchColumn();
+        if ($vigenteId && $statusPagaId > 0) {
+            $this->db->prepare("
+                UPDATE assinaturas
+                SET status_id = ?,
+                    status_gateway = CASE
+                        WHEN status_gateway IS NULL OR status_gateway = '' OR status_gateway = 'pending'
+                        THEN 'approved'
+                        ELSE status_gateway
+                    END,
+                    data_fim = COALESCE(data_fim, ?),
+                    atualizado_em = NOW()
+                WHERE id = ?
+            ")->execute([$statusPagaId, date('Y-m-d'), (int) $vigenteId]);
+        }
+
+        $cols = array_merge(['tenant_id', 'matricula_id', 'criado_em'], array_keys($payload));
+        $placeholders = implode(', ', array_fill(0, count($cols), '?'));
+        $values = array_merge([$tenantId, $matriculaId, date('Y-m-d H:i:s')], array_values($payload));
+        $this->db->prepare('INSERT INTO assinaturas ('.implode(', ', $cols).") VALUES ({$placeholders})")
+            ->execute($values);
     }
 
     /**
