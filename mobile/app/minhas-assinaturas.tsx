@@ -795,8 +795,27 @@ export default function MinhasAssinaturasScreen() {
         "—"
       : ultimaCobrancaText || "—";
 
+    const statusPagamentoLower = String(
+      pagamento?.status || assinatura.status.nome || "",
+    ).toLowerCase();
+    const isPagamentoPendente =
+      !pagamentoPago &&
+      (statusPagamentoLower.includes("aguard") ||
+        statusPagamentoLower.includes("pendente") ||
+        (!pagamento && (isPendente || !!podePagar)));
+
     return (
-      <View style={styles.card}>
+      <View
+        style={[styles.card, isPagamentoPendente && styles.cardPendente]}
+      >
+        {isPagamentoPendente ? (
+          <View style={styles.pendenteBanner}>
+            <Feather name="alert-circle" size={14} color="#c2410c" />
+            <Text style={styles.pendenteBannerText}>
+              Pagamento pendente — regularize para manter o acesso
+            </Text>
+          </View>
+        ) : null}
         <View style={styles.cardHeader}>
           <View style={styles.planoInfo}>
             <View style={styles.planoTitleRow}>
@@ -807,6 +826,7 @@ export default function MinhasAssinaturasScreen() {
                 style={[
                   styles.statusBadge,
                   { backgroundColor: statusBadgeColor },
+                  isPagamentoPendente && styles.statusBadgePendente,
                 ]}
               >
                 <Text style={styles.statusText}>{statusBadgeLabel}</Text>
@@ -828,7 +848,14 @@ export default function MinhasAssinaturasScreen() {
               ? ` · ${assinatura.ciclo.meses} ${assinatura.ciclo.meses === 1 ? "mês" : "meses"}`
               : ""}
           </Text>
-          <Text style={styles.valorText}>{valorExibido}</Text>
+          <Text
+            style={[
+              styles.valorText,
+              isPagamentoPendente && styles.valorTextPendente,
+            ]}
+          >
+            {valorExibido}
+          </Text>
         </View>
 
         <View style={styles.datasContainer}>
@@ -1640,6 +1667,39 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
     gap: 8,
+  },
+  cardPendente: {
+    backgroundColor: "#fff7ed",
+    borderColor: "#fb923c",
+    borderWidth: 2,
+    shadowColor: "#ea580c",
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  pendenteBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#ffedd5",
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+  },
+  pendenteBannerText: {
+    flex: 1,
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#c2410c",
+    lineHeight: 16,
+  },
+  statusBadgePendente: {
+    borderWidth: 1,
+    borderColor: "#ea580c",
+  },
+  valorTextPendente: {
+    fontSize: 18,
+    fontWeight: "800",
   },
 
   cardHeader: {
