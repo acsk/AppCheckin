@@ -455,6 +455,7 @@ class AssinaturaController
                        f.nome as ciclo_nome, f.meses as ciclo_meses,
                        g.nome as gateway_nome,
                        p.nome as plano_nome,
+                       p.modalidade_id,
                        mo.nome as modalidade_nome,
                        m.data_inicio as matricula_data_inicio,
                        m.proxima_data_vencimento as matricula_proxima_vencimento,
@@ -587,9 +588,45 @@ class AssinaturaController
                 ];
                 
                 // Se está pendente, incluir payment_url para recuperação do pagamento
+                // Ativa (avulso): libera pagamento de renovação quando limite de check-ins
+                // do ciclo acabou ou no vencimento.
+                $podePagarRenovacao = false;
+                $motivoPodePagar = null;
+                if (
+                    !$isPendente
+                    && !$foiCanceladaPeloUsuario
+                    && $tipoCobranca === 'avulso'
+                    && $matriculaAtiva
+                    && !empty($row['matricula_id'])
+                ) {
+                    try {
+                        $checkinModel = new \App\Models\Checkin($this->db);
+                        $liberacao = $checkinModel->avaliarLiberacaoPagamentoRenovacao(
+                            (int) $usuarioId,
+                            (int) $tenantId,
+                            isset($row['modalidade_id']) ? (int) $row['modalidade_id'] : null,
+                            $dataFim ?: ($row['matricula_proxima_vencimento'] ?? null),
+                            $row['proxima_parcela_vencimento'] ?? null
+                        );
+                        if ($liberacao['liberar']) {
+                            $podePagarRenovacao = true;
+                            $motivoPodePagar = $liberacao['motivo'];
+                        }
+                    } catch (\Throwable $e) {
+                        error_log('[minhasAssinaturas] Erro ao avaliar renovação: ' . $e->getMessage());
+                    }
+                }
+
                 if ($isPendente && !empty($row['payment_url'])) {
                     $assinaturaData['payment_url'] = $row['payment_url'];
                     $assinaturaData['pode_pagar'] = true;
+                } elseif ($podePagarRenovacao) {
+                    $assinaturaData['pode_pagar'] = true;
+                    $assinaturaData['pode_renovar'] = true;
+                    $assinaturaData['motivo_pode_pagar'] = $motivoPodePagar;
+                    if (!empty($row['payment_url'])) {
+                        $assinaturaData['payment_url'] = $row['payment_url'];
+                    }
                 } else {
                     $assinaturaData['pode_pagar'] = false;
                 }

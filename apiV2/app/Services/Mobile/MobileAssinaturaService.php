@@ -55,7 +55,9 @@ class MobileAssinaturaService
                 's.codigo as status_codigo', 's.nome as status_nome', 's.cor as status_cor',
                 'ct.codigo as cancelado_por_codigo', 'ct.nome as cancelado_por_nome',
                 'f.nome as ciclo_nome', 'f.meses as ciclo_meses', 'g.nome as gateway_nome',
-                'p.nome as plano_nome', 'mo.nome as modalidade_nome',
+                'p.nome as plano_nome', 'p.modalidade_id', 'p.checkins_semanais',
+                'mo.nome as modalidade_nome',
+                DB::raw('CASE WHEN m.plano_ciclo_id IS NOT NULL THEN COALESCE((SELECT pc.permite_reposicao FROM plano_ciclos pc WHERE pc.id = m.plano_ciclo_id AND pc.tenant_id = m.tenant_id LIMIT 1), 0) ELSE 1 END as permite_reposicao'),
                 'm.data_inicio as matricula_data_inicio',
                 'm.proxima_data_vencimento as matricula_proxima_vencimento',
                 'sm.codigo as matricula_status_codigo',
@@ -160,11 +162,59 @@ class MobileAssinaturaService
                     'nome' => $row['plano_nome'] ?? '',
                     'modalidade' => $row['modalidade_nome'] ?? '',
                 ],
-                'pode_pagar' => $isPendente && ! empty($row['payment_url']),
+                'pode_pagar' => false,
             ];
 
             if ($isPendente && ! empty($row['payment_url'])) {
                 $item['payment_url'] = $row['payment_url'];
+                $item['pode_pagar'] = true;
+            } elseif (
+                ! $isPendente
+                && ! $foiCanceladaPeloUsuario
+                && $tipoCobranca === 'avulso'
+                && $matriculaAtiva
+                && $matriculaId > 0
+            ) {
+                $hoje = date('Y-m-d');
+                $acessoAte = $datas['data_fim'] ?? ($row['matricula_proxima_vencimento'] ?? null);
+                $parcelaVenc = $row['proxima_parcela_vencimento'] ?? null;
+                $liberar = ($acessoAte && $acessoAte <= $hoje) || ($parcelaVenc && $parcelaVenc <= $hoje);
+
+                if (! $liberar && ! empty($row['modalidade_id'])) {
+                    // Espelho simples: se atingiu limite ×4 no ciclo [venc-1mês, venc)
+                    $checkinsSemanais = (int) ($row['checkins_semanais'] ?? 0);
+                    $permiteReposicao = (int) ($row['permite_reposicao'] ?? 0) === 1;
+                    if ($permiteReposicao && $checkinsSemanais > 0 && $acessoAte) {
+                        try {
+                            $vencDt = new \DateTime((string) $acessoAte);
+                            $inicio = (clone $vencDt)->modify('-1 month');
+                            $limite = $checkinsSemanais * 4 + 1; // margem bônus
+                            $usados = (int) DB::table('checkins as c')
+                                ->join('alunos as a', 'a.id', '=', 'c.aluno_id')
+                                ->join('turmas as t', 't.id', '=', 'c.turma_id')
+                                ->join('dias as d', 'd.id', '=', 't.dia_id')
+                                ->where('a.usuario_id', $userId)
+                                ->where('t.modalidade_id', (int) $row['modalidade_id'])
+                                ->where('d.data', '>=', $inicio->format('Y-m-d'))
+                                ->where('d.data', '<', $vencDt->format('Y-m-d'))
+                                ->where(function ($w) {
+                                    $w->whereNull('c.presente')->orWhere('c.presente', 1);
+                                })
+                                ->count();
+                            $liberar = $usados >= ($checkinsSemanais * 4);
+                        } catch (\Throwable $e) {
+                            // ignora — mantém liberar=false
+                        }
+                    }
+                }
+
+                if ($liberar) {
+                    $item['pode_pagar'] = true;
+                    $item['pode_renovar'] = true;
+                    if (! empty($row['payment_url'])) {
+                        $item['payment_url'] = $row['payment_url'];
+                    }
+                }
             }
 
             $assinaturas[] = $item;

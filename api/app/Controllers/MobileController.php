@@ -7659,11 +7659,37 @@ class MobileController
             }
 
             if (($matricula['status_codigo'] ?? '') === 'ativa') {
-                $response->getBody()->write(json_encode([
-                    'success' => false,
-                    'error' => 'Matrícula já está ativa'
-                ]));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+                $stmtParcRen = $this->db->prepare("
+                    SELECT id, data_vencimento FROM pagamentos_plano
+                    WHERE tenant_id = ? AND matricula_id = ?
+                      AND status_pagamento_id IN (1, 3) AND data_pagamento IS NULL
+                    ORDER BY data_vencimento ASC, id ASC
+                    LIMIT 1
+                ");
+                $stmtParcRen->execute([$tenantId, $matriculaId]);
+                $parcelaRen = $stmtParcRen->fetch(\PDO::FETCH_ASSOC) ?: null;
+
+                $liberacao = $this->checkinModel->avaliarLiberacaoPagamentoRenovacao(
+                    (int) $userId,
+                    (int) $tenantId,
+                    isset($matricula['modalidade_id']) ? (int) $matricula['modalidade_id'] : null,
+                    $matricula['proxima_data_vencimento'] ?? null,
+                    $parcelaRen['data_vencimento'] ?? null
+                );
+
+                if (!$liberacao['liberar']) {
+                    $response->getBody()->write(json_encode([
+                        'success' => false,
+                        'code' => 'RENOVACAO_AINDA_NAO_LIBERADA',
+                        'error' => 'Sua matrícula ainda está ativa neste ciclo. Você pode renovar quando o limite de check-ins do ciclo acabar ou no vencimento.',
+                        'detalhes' => [
+                            'motivo' => $liberacao['motivo'],
+                            'acesso_ate' => $matricula['proxima_data_vencimento'] ?? null,
+                            'parcela_vencimento' => $parcelaRen['data_vencimento'] ?? null,
+                        ],
+                    ], JSON_UNESCAPED_UNICODE));
+                    return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(403);
+                }
             }
 
             $cpfPix = preg_replace('/[^0-9]/', '', $matricula['aluno_cpf'] ?? '');

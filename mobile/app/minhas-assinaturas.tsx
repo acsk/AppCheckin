@@ -64,6 +64,8 @@ interface Assinatura {
   plano: PlanoAssinatura;
   payment_url?: string | null;
   pode_pagar?: boolean;
+  pode_renovar?: boolean;
+  motivo_pode_pagar?: string | null;
 }
 
 interface PacoteBeneficiario {
@@ -176,6 +178,73 @@ export default function MinhasAssinaturasScreen() {
   };
 
   const handlePagarAssinatura = async (assinatura: Assinatura) => {
+    // Renovação de matrícula ativa: gera PIX sob demanda
+    if (
+      assinatura.pode_pagar &&
+      !assinatura.payment_url &&
+      assinatura.matricula_id
+    ) {
+      try {
+        const token = await AsyncStorage.getItem("@appcheckin:token");
+        if (!token) {
+          showErrorModal(
+            "⚠️ Sessão expirada",
+            "Faça login novamente para pagar.",
+            "error",
+          );
+          return;
+        }
+        const apiUrl = getApiUrlRuntime();
+        const pixResponse = await fetch(`${apiUrl}/mobile/pagamento/pix`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ matricula_id: assinatura.matricula_id }),
+        });
+        const pixText = await pixResponse.text();
+        let pixJson: any = {};
+        try {
+          pixJson = pixText ? JSON.parse(pixText) : {};
+        } catch {
+          pixJson = {};
+        }
+        if (!pixResponse.ok || !pixJson.success) {
+          showErrorModal(
+            "⚠️ Não foi possível gerar o pagamento",
+            pixJson.error ||
+              pixJson.message ||
+              "Tente novamente em instantes.",
+            "error",
+          );
+          return;
+        }
+        const ticketUrl =
+          pixJson.data?.pix?.ticket_url || pixJson.data?.payment_url;
+        if (ticketUrl) {
+          const supported = await Linking.canOpenURL(ticketUrl);
+          if (supported) {
+            await Linking.openURL(ticketUrl);
+            return;
+          }
+        }
+        showErrorModal(
+          "✅ PIX gerado",
+          "Abra Minhas Assinaturas novamente ou use o QR Code no comprovante.",
+          "success",
+        );
+        return;
+      } catch (e) {
+        showErrorModal(
+          "⚠️ Erro ao gerar pagamento",
+          "Tente novamente em instantes.",
+          "error",
+        );
+        return;
+      }
+    }
+
     if (!assinatura.payment_url) {
       showErrorModal(
         "⚠️ Pagamento indisponível",
@@ -694,7 +763,8 @@ export default function MinhasAssinaturasScreen() {
     const proximaCobrancaText = formatDate(proximaCobrancaRaw);
     const ultimaCobrancaText = formatDate(item.ultima_cobranca);
     const podePagar =
-      isPendente && !!item.payment_url && item.pode_pagar !== false;
+      !!item.pode_pagar &&
+      (isPendente ? !!item.payment_url : true);
     const podeCancelarDiaria = isAvulso && isPago && !!item.matricula_id;
     const paymentIds = Array.isArray(item.mercadopago_payment_ids)
       ? item.mercadopago_payment_ids
@@ -790,7 +860,9 @@ export default function MinhasAssinaturasScreen() {
                 activeOpacity={0.8}
               >
                 <Feather name="credit-card" size={16} color="#fff" />
-                <Text style={styles.botaoPagarTexto}>Pagar agora</Text>
+                <Text style={styles.botaoPagarTexto}>
+                  {item.pode_renovar ? "Renovar agora" : "Pagar agora"}
+                </Text>
               </TouchableOpacity>
             )}
 

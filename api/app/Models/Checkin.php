@@ -831,6 +831,57 @@ class Checkin
     }
 
     /**
+     * Libera renovação/pagamento antecipado em matrícula ainda ativa quando:
+     * - o limite de check-ins do ciclo (reposição) foi atingido, ou
+     * - o acesso / parcela em aberto já venceu (ou vence hoje).
+     *
+     * @return array{liberar: bool, motivo: string, detalhes_limite: ?array}
+     */
+    public function avaliarLiberacaoPagamentoRenovacao(
+        int $usuarioId,
+        int $tenantId,
+        ?int $modalidadeId = null,
+        ?string $acessoAte = null,
+        ?string $parcelaVencimento = null
+    ): array {
+        $hoje = date('Y-m-d');
+
+        if ($acessoAte && $acessoAte <= $hoje) {
+            return [
+                'liberar' => true,
+                'motivo' => 'acesso_vencido',
+                'detalhes_limite' => null,
+            ];
+        }
+
+        if ($parcelaVencimento && $parcelaVencimento <= $hoje) {
+            return [
+                'liberar' => true,
+                'motivo' => 'parcela_vencida',
+                'detalhes_limite' => null,
+            ];
+        }
+
+        $planoInfo = $this->obterLimiteCheckinsPlano($usuarioId, $tenantId, $modalidadeId);
+        if (!empty($planoInfo['tem_plano']) && !empty($planoInfo['permite_reposicao']) && (int) ($planoInfo['limite'] ?? 0) > 0) {
+            $detalhes = $this->avaliarLimiteMensalReposicao($usuarioId, $tenantId, $modalidadeId, $planoInfo);
+            if ($detalhes !== null) {
+                return [
+                    'liberar' => true,
+                    'motivo' => 'limite_checkins_ciclo',
+                    'detalhes_limite' => $detalhes,
+                ];
+            }
+        }
+
+        return [
+            'liberar' => false,
+            'motivo' => 'ciclo_em_andamento',
+            'detalhes_limite' => null,
+        ];
+    }
+
+    /**
      * Obter limite de check-ins do plano do usuário
      */
     /**
