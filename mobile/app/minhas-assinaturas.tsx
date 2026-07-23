@@ -49,6 +49,7 @@ interface PagamentoAssinatura {
   data_vencimento?: string | null;
   data_pagamento?: string | null;
   status?: string | null;
+  status_pagamento_id?: number | null;
   forma_pagamento?: string | null;
   baixado_por_nome?: string | null;
   criado_por_nome?: string | null;
@@ -622,26 +623,86 @@ export default function MinhasAssinaturasScreen() {
   );
 
   const assinaturaCards = useMemo<AssinaturaCardItem[]>(() => {
+    // Mesmo fuso do backend (America/Sao_Paulo) — evita divergência perto da meia-noite.
+    const hojeIso = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+
+    const isPagamentoPago = (pagamento: PagamentoAssinatura) => {
+      const statusId = Number(pagamento.status_pagamento_id ?? 0);
+      const status = String(pagamento.status || "").toLowerCase();
+      return (
+        statusId === 2 ||
+        !!pagamento.data_pagamento ||
+        status.includes("pago")
+      );
+    };
+
+    const isParcelaFuturaAberta = (pagamento: PagamentoAssinatura) => {
+      if (isPagamentoPago(pagamento)) return false;
+      const venc = String(pagamento.data_vencimento || "").slice(0, 10);
+      if (!venc) return false;
+      return venc > hojeIso;
+    };
+
     const cards: AssinaturaCardItem[] = [];
     for (const assinatura of assinaturas) {
       const pagamentos = Array.isArray(assinatura.pagamentos)
-        ? assinatura.pagamentos
+        ? assinatura.pagamentos.filter((p) => !isParcelaFuturaAberta(p))
         : [];
-      if (pagamentos.length === 0) {
+      const pagos = pagamentos.filter(isPagamentoPago);
+      const abertos = pagamentos.filter((pagamento) => {
+        if (isPagamentoPago(pagamento)) return false;
+        const statusId = Number(pagamento.status_pagamento_id ?? 0);
+        // Alinhado ao backend: só Aguardando (1) ou Atrasado (3).
+        return statusId === 1 || statusId === 3;
+      });
+
+      // Pagos + abertos/vencidos juntos (igual backend). Parcelas futuras já filtradas.
+      const lista = [...pagos, ...abertos].sort((a, b) => {
+        const da = String(a.data_pagamento || a.data_vencimento || "");
+        const db = String(b.data_pagamento || b.data_vencimento || "");
+        if (da === db) {
+          return Number(b.id ?? 0) - Number(a.id ?? 0);
+        }
+        return db.localeCompare(da);
+      });
+
+      if (lista.length === 0) {
+        const statusCodigo = String(assinatura.status?.codigo || "").toLowerCase();
+        if (statusCodigo === "pendente" || statusCodigo === "pending") {
+          continue;
+        }
         cards.push({
           key: `assinatura-${assinatura.id}`,
           assinatura,
           pagamento: null,
+          // Ações no card da assinatura: cancelar (recorrente) e/ou pagar.
+          // O render já filtra por podePagar / isAvulso / status.
           showActions: true,
         });
         continue;
       }
-      pagamentos.forEach((pagamento, index) => {
+
+      // Action stack num único card: prioriza fatura em aberto (pagar + cancelar);
+      // senão o primeiro da lista (histórico pago / cancelar).
+      let actionIndex = 0;
+      if (assinatura.pode_pagar) {
+        const unpaidIdx = lista.findIndex((p) => !isPagamentoPago(p));
+        if (unpaidIdx >= 0) {
+          actionIndex = unpaidIdx;
+        }
+      }
+
+      lista.forEach((pagamento, index) => {
         cards.push({
           key: `pagamento-${assinatura.id}-${pagamento.id}`,
           assinatura,
           pagamento,
-          showActions: index === 0,
+          showActions: index === actionIndex,
         });
       });
     }
@@ -670,14 +731,19 @@ export default function MinhasAssinaturasScreen() {
     const proximaCobrancaText = formatDate(assinatura.proxima_cobranca);
     const fimAcessoText = formatDate(assinatura.data_fim);
     const ultimaCobrancaText = formatDate(assinatura.ultima_cobranca);
-    const podePagar =
-      !!assinatura.pode_pagar && (isPendente ? !!assinatura.payment_url : true);
-
-    const pagamentoPago = pagamento
+    const estePagamentoEstaPago = pagamento
       ? String(pagamento.status || "")
           .toLowerCase()
           .includes("pago") || !!pagamento.data_pagamento
-      : isAssinaturaPaga;
+      : false;
+    // Badge/UI: sem pagamento individual, usa status da assinatura.
+    const pagamentoPago = pagamento ? estePagamentoEstaPago : isAssinaturaPaga;
+    // Pagar: respeita pode_pagar do backend; só bloqueia se ESTE card for um pagamento já pago.
+    // Não usar isAssinaturaPaga aqui — quebraria renovação/avulso em card sem pagamento.
+    const podePagar =
+      !!assinatura.pode_pagar &&
+      (isPendente ? !!assinatura.payment_url : true) &&
+      !estePagamentoEstaPago;
     const isManual =
       !!pagamento &&
       (pagamento.origem === "manual" ||

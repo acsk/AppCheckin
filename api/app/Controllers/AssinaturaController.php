@@ -446,10 +446,10 @@ class AssinaturaController
             }
             
             $stmt = $this->db->prepare("
-                  SELECT a.id, a.matricula_id, a.status_id, a.valor, a.data_inicio, a.data_fim, a.proxima_cobranca,
+                  SELECT a.id, a.matricula_id, a.plano_id, a.status_id, a.valor, a.data_inicio, a.data_fim, a.proxima_cobranca,
                        a.ultima_cobranca, a.gateway_assinatura_id as mp_preapproval_id,
                        a.gateway_preference_id, a.external_reference, a.payment_url, a.tipo_cobranca,
-                      a.status_gateway, a.cancelado_por_id,
+                      a.status_gateway, a.cancelado_por_id, a.criado_em,
                        s.codigo as status_codigo, s.nome as status_nome, s.cor as status_cor,
                       ct.codigo as cancelado_por_codigo, ct.nome as cancelado_por_nome,
                        f.nome as ciclo_nome, f.meses as ciclo_meses,
@@ -553,6 +553,7 @@ class AssinaturaController
                 $assinaturaData = [
                     'id' => (int)$row['id'],
                     'matricula_id' => isset($row['matricula_id']) ? (int)$row['matricula_id'] : null,
+                    'modalidade_id' => isset($row['modalidade_id']) ? (int)$row['modalidade_id'] : null,
                     'status' => [
                         'id' => (int)$row['status_id'],
                         'codigo' => $statusCodigo,
@@ -714,8 +715,19 @@ class AssinaturaController
                         ORDER BY COALESCE(pp.data_pagamento, pp.data_vencimento) DESC, pp.id DESC
                     ");
                     $stmtHist->execute(array_merge([$tenantId], $matriculaIds));
+                    // Fuso da academia (não depender só do php.ini / UTC do container).
+                    $hoje = (new \DateTimeImmutable('now', new \DateTimeZone('America/Sao_Paulo')))->format('Y-m-d');
                     foreach ($stmtHist->fetchAll(\PDO::FETCH_ASSOC) as $pag) {
                         $mid = (int) $pag['matricula_id'];
+                        $statusPagamentoId = (int) ($pag['status_pagamento_id'] ?? 0);
+                        $vencimento = $pag['data_vencimento'] ?? null;
+
+                        // Parcela futura em aberto (próximo ciclo) não vira card no mobile —
+                        // só aparece em proxima_cobranca. Exibe apenas pagos e dívidas vencidas/hoje.
+                        if (in_array($statusPagamentoId, [1, 3], true) && is_string($vencimento) && $vencimento > $hoje) {
+                            continue;
+                        }
+
                         if (!isset($pagamentosPorMatricula[$mid])) {
                             $pagamentosPorMatricula[$mid] = [];
                         }
@@ -740,7 +752,7 @@ class AssinaturaController
                             'data_vencimento' => $pag['data_vencimento'],
                             'data_pagamento' => $pag['data_pagamento'],
                             'status' => $pag['status'],
-                            'status_pagamento_id' => (int) $pag['status_pagamento_id'],
+                            'status_pagamento_id' => $statusPagamentoId,
                             'forma_pagamento' => $forma,
                             'baixado_por_nome' => $pag['baixado_por_nome'] ?? null,
                             'criado_por_nome' => $pag['criado_por_nome'] ?? null,
@@ -757,6 +769,8 @@ class AssinaturaController
             } catch (\Exception $e) {
                 error_log("[minhasAssinaturas] Erro ao anexar pagamentos: " . $e->getMessage());
             }
+
+            $assinaturas = $this->sanitizarAssinaturasFinanceiroMobile($assinaturas);
 
             // Pacotes onde o usuário é pagante (ver beneficiários)
             $pacotes = [];
@@ -1529,6 +1543,117 @@ class AssinaturaController
      * @param string|null $ultimaCobrancaFallback data de pagamento do webhook (date_approved)
      * @return array{data_inicio: ?string, data_fim: ?string, proxima_cobranca: ?string, ultima_cobranca: ?string}
      */
+    /**
+     * Financeiro do mobile: histórico focado em pagos.
+     * - Esconde checkouts pendentes abandonados quando já existe ativa/paga na mesma modalidade.
+     * - Em pendente com histórico pago (ex.: migração), mostra só pagos e remove "Pagar agora".
+     * - Em ativa/paga, omite parcelas futuras (Aguardando com vencimento > hoje).
+     *
+     * @param list<array<string, mixed>> $assinaturas
+     * @return list<array<string, mixed>>
+     */
+    private function sanitizarAssinaturasFinanceiroMobile(array $assinaturas): array
+    {
+        $hoje = (new \DateTimeImmutable('now', new \DateTimeZone('America/Sao_Paulo')))->format('Y-m-d');
+        $modalidadesComAcesso = [];
+
+        foreach ($assinaturas as $assinatura) {
+            $codigo = strtolower((string) ($assinatura['status']['codigo'] ?? ''));
+            if (in_array($codigo, ['ativa', 'paga', 'pago', 'paid', 'approved'], true)) {
+                $modId = (int) ($assinatura['modalidade_id'] ?? 0);
+                if ($modId > 0) {
+                    $modalidadesComAcesso[$modId] = true;
+                }
+            }
+        }
+
+        $resultado = [];
+        foreach ($assinaturas as $assinatura) {
+            $codigo = strtolower((string) ($assinatura['status']['codigo'] ?? ''));
+            $isPendente = in_array($codigo, ['pendente', 'pending'], true);
+            $modId = (int) ($assinatura['modalidade_id'] ?? 0);
+            $pagamentos = is_array($assinatura['pagamentos'] ?? null) ? $assinatura['pagamentos'] : [];
+
+            $pagos = [];
+            $abertosVencidos = [];
+            foreach ($pagamentos as $pagamento) {
+                $statusId = (int) ($pagamento['status_pagamento_id'] ?? 0);
+                $statusNome = strtolower((string) ($pagamento['status'] ?? ''));
+                $estaPago = $statusId === 2
+                    || !empty($pagamento['data_pagamento'])
+                    || str_contains($statusNome, 'pago');
+
+                if ($estaPago) {
+                    $pagos[] = $pagamento;
+                    continue;
+                }
+
+                if (!in_array($statusId, [1, 3], true)) {
+                    continue;
+                }
+
+                $venc = $pagamento['data_vencimento'] ?? null;
+                // Atrasado (3) sempre; Aguardando (1) se vencido/hoje ou sem data (não some no limbo).
+                // Parcelas futuras (venc > hoje) já foram filtradas antes ou ficam de fora aqui.
+                if ($statusId === 3 || $venc === null || $venc === '' || $venc <= $hoje) {
+                    $abertosVencidos[] = $pagamento;
+                }
+            }
+
+            $temPago = $pagos !== [];
+            $temAcessoMesmaModalidade = $modId > 0 && !empty($modalidadesComAcesso[$modId]);
+
+            if ($isPendente) {
+                if ($temPago) {
+                    $assinatura['pagamentos'] = $pagos;
+                    $assinatura['pode_pagar'] = false;
+                    unset($assinatura['payment_url'], $assinatura['pode_renovar'], $assinatura['motivo_pode_pagar']);
+                    $resultado[] = $assinatura;
+                    continue;
+                }
+
+                if ($temAcessoMesmaModalidade) {
+                    continue;
+                }
+
+                // Primeira compra: só inclui se houver fatura aberta/vencida para exibir.
+                // Evita enviar pendente com pagamentos vazios (frontend descartaria).
+                if ($abertosVencidos === []) {
+                    continue;
+                }
+
+                $assinatura['pagamentos'] = $abertosVencidos;
+                $resultado[] = $assinatura;
+                continue;
+            }
+
+            $visiveis = array_merge($pagos, $abertosVencidos);
+            usort($visiveis, static function ($a, $b) {
+                $da = $a['data_pagamento'] ?? $a['data_vencimento'] ?? '';
+                $db = $b['data_pagamento'] ?? $b['data_vencimento'] ?? '';
+                if ($da === $db) {
+                    return ((int) ($b['id'] ?? 0)) <=> ((int) ($a['id'] ?? 0));
+                }
+                return strcmp((string) $db, (string) $da);
+            });
+
+            $assinatura['pagamentos'] = $visiveis;
+
+            if ($abertosVencidos === [] && empty($assinatura['pode_renovar'])) {
+                $assinatura['pode_pagar'] = false;
+                unset($assinatura['payment_url']);
+            }
+
+            if ($visiveis === [] && !in_array($codigo, ['ativa', 'paga', 'pago', 'paid', 'approved'], true)) {
+                continue;
+            }
+
+            $resultado[] = $assinatura;
+        }
+
+        return $resultado;
+    }
+
     private function alinharDatasAssinaturaComFaturas(array $row, ?string $ultimaCobrancaFallback = null): array
     {
         $dataInicio = $row['matricula_data_inicio'] ?? $row['data_inicio'] ?? null;
