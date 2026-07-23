@@ -162,6 +162,13 @@ class MobileCompraPlanoService
             $matriculaAtiva = (array) $matriculaAtiva;
             $acessoAte = $matriculaAtiva['proxima_data_vencimento'] ?? $matriculaAtiva['data_vencimento'] ?? null;
 
+            $this->cancelarMatriculasPendentesOrfasMesmaModalidade(
+                $tenantId,
+                $alunoId,
+                (int) $modalidadeId,
+                (int) $matriculaAtiva['id']
+            );
+
             // Troca de plano/ciclo ≠ renovação (evita PIX no valor antigo, ex. mensal vs bimestral).
             $cicloAtivoId = ! empty($matriculaAtiva['plano_ciclo_id'])
                 ? (int) $matriculaAtiva['plano_ciclo_id']
@@ -242,25 +249,39 @@ class MobileCompraPlanoService
             ];
         }
 
-        $pendente = DB::table('matriculas as m')
+        $pendenteRow = DB::table('matriculas as m')
             ->join('planos as p', 'p.id', '=', 'm.plano_id')
             ->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
             ->where('m.aluno_id', $alunoId)
             ->where('m.tenant_id', $tenantId)
             ->where('p.modalidade_id', $modalidadeId)
             ->where('sm.codigo', 'pendente')
-            ->orderByDesc('m.updated_at')
-            ->orderByDesc('m.id')
+            ->orderByRaw('(
+                SELECT COUNT(*) FROM pagamentos_plano pp
+                WHERE pp.matricula_id = m.id
+                  AND (pp.status_pagamento_id = 2 OR pp.data_pagamento IS NOT NULL)
+            ) DESC')
+            ->orderBy('m.id')
             ->first([
                 'm.id', 'm.plano_id', 'm.plano_ciclo_id', 'm.valor', 'm.data_inicio',
                 'm.data_vencimento', 'm.proxima_data_vencimento',
             ]);
 
+        $pendente = $pendenteRow ? (array) $pendenteRow : null;
+        $mesmaEscolha = false;
+
         if ($pendente) {
-            $pendente = (array) $pendente;
             $mesmaEscolha = (int) $pendente['plano_id'] === $planoId
                 && ((int) ($pendente['plano_ciclo_id'] ?? 0) === (int) ($planoCicloId ?? 0));
 
+            $this->cancelarMatriculasPendentesOrfasMesmaModalidade(
+                $tenantId,
+                $alunoId,
+                (int) $modalidadeId,
+                (int) $pendente['id']
+            );
+
+            // Mesmo plano/ciclo: reabre cobrança na matrícula existente.
             if ($mesmaEscolha) {
                 return $this->respostaPendenteExistente(
                     $tenantId,
@@ -272,6 +293,7 @@ class MobileCompraPlanoService
                     $alunoId,
                 );
             }
+            // Ciclo/plano diferente: cai no UPDATE abaixo (nunca INSERT irmão).
         }
 
         try {
@@ -287,47 +309,57 @@ class MobileCompraPlanoService
             $statusPendenteId = (int) (DB::table('status_matricula')->where('codigo', 'pendente')->value('id') ?? 5);
             $tipoCobrancaMatricula = $isRecorrente ? 'recorrente' : 'avulso';
 
-            $matriculaExistente = DB::table('matriculas as m')
-                ->join('planos as p', 'p.id', '=', 'm.plano_id')
-                ->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
-                ->where('m.aluno_id', $alunoId)
-                ->where('m.tenant_id', $tenantId)
-                ->where('p.modalidade_id', $modalidadeId)
-                ->orderByDesc('m.updated_at')
-                ->orderByDesc('m.id')
-                ->first([
-                    'm.id', 'm.plano_id', 'm.plano_ciclo_id', 'm.valor',
-                    'm.data_inicio', 'm.data_vencimento', 'm.proxima_data_vencimento',
-                    'sm.codigo as status_codigo',
-                ]);
-
             $reutilizandoMatricula = false;
             $planoAnteriorId = null;
             $motivoCodigo = 'nova';
+            $matriculaExistente = null;
 
-            if ($matriculaExistente) {
-                $matriculaExistente = (array) $matriculaExistente;
-                $vencimento = $matriculaExistente['proxima_data_vencimento'] ?? $matriculaExistente['data_vencimento'];
-                $vencidaPorData = $vencimento && $vencimento < date('Y-m-d');
-                $statusCodigo = $matriculaExistente['status_codigo'];
+            if ($pendente) {
+                $matriculaExistente = $pendente + ['status_codigo' => 'pendente'];
+                $reutilizandoMatricula = true;
+                $planoAnteriorId = (int) $pendente['plano_id'];
+                $motivoCodigo = $planoAnteriorId === $planoId
+                    ? 'renovacao'
+                    : ($valorCompra >= (float) $pendente['valor'] ? 'upgrade' : 'downgrade');
+            } else {
+                $matriculaExistenteRow = DB::table('matriculas as m')
+                    ->join('planos as p', 'p.id', '=', 'm.plano_id')
+                    ->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+                    ->where('m.aluno_id', $alunoId)
+                    ->where('m.tenant_id', $tenantId)
+                    ->where('p.modalidade_id', $modalidadeId)
+                    ->orderByDesc('m.updated_at')
+                    ->orderByDesc('m.id')
+                    ->first([
+                        'm.id', 'm.plano_id', 'm.plano_ciclo_id', 'm.valor',
+                        'm.data_inicio', 'm.data_vencimento', 'm.proxima_data_vencimento',
+                        'sm.codigo as status_codigo',
+                    ]);
 
-                if ($vencidaPorData && $statusCodigo !== 'vencida') {
-                    $statusVencidaId = DB::table('status_matricula')->where('codigo', 'vencida')->value('id');
-                    if ($statusVencidaId) {
-                        DB::table('matriculas')->where('id', $matriculaExistente['id'])->update([
-                            'status_id' => $statusVencidaId,
-                            'updated_at' => now(),
-                        ]);
-                        $statusCodigo = 'vencida';
+                if ($matriculaExistenteRow) {
+                    $matriculaExistente = (array) $matriculaExistenteRow;
+                    $vencimento = $matriculaExistente['proxima_data_vencimento'] ?? $matriculaExistente['data_vencimento'];
+                    $vencidaPorData = $vencimento && $vencimento < date('Y-m-d');
+                    $statusCodigo = $matriculaExistente['status_codigo'];
+
+                    if ($vencidaPorData && $statusCodigo !== 'vencida') {
+                        $statusVencidaId = DB::table('status_matricula')->where('codigo', 'vencida')->value('id');
+                        if ($statusVencidaId) {
+                            DB::table('matriculas')->where('id', $matriculaExistente['id'])->update([
+                                'status_id' => $statusVencidaId,
+                                'updated_at' => now(),
+                            ]);
+                            $statusCodigo = 'vencida';
+                        }
                     }
-                }
 
-                if (in_array($statusCodigo, ['vencida', 'cancelada'], true) || $vencidaPorData) {
-                    $reutilizandoMatricula = true;
-                    $planoAnteriorId = (int) $matriculaExistente['plano_id'];
-                    $motivoCodigo = $planoAnteriorId === $planoId
-                        ? 'renovacao'
-                        : ($valorCompra >= (float) $matriculaExistente['valor'] ? 'upgrade' : 'downgrade');
+                    if (in_array($statusCodigo, ['vencida', 'cancelada', 'pendente'], true) || $vencidaPorData) {
+                        $reutilizandoMatricula = true;
+                        $planoAnteriorId = (int) $matriculaExistente['plano_id'];
+                        $motivoCodigo = $planoAnteriorId === $planoId
+                            ? 'renovacao'
+                            : ($valorCompra >= (float) $matriculaExistente['valor'] ? 'upgrade' : 'downgrade');
+                    }
                 }
             }
 
@@ -335,7 +367,7 @@ class MobileCompraPlanoService
 
             if ($reutilizandoMatricula && $matriculaExistente) {
                 $matriculaId = (int) $matriculaExistente['id'];
-                Log::info("comprarPlano v2: reutilizando matrícula vencida #{$matriculaId}");
+                Log::info("comprarPlano v2: reutilizando matrícula #{$matriculaId} (motivo={$motivoCodigo})");
 
                 DB::table('matriculas')->where('id', $matriculaId)->where('tenant_id', $tenantId)->update([
                     'plano_id' => $planoId,
@@ -362,7 +394,7 @@ class MobileCompraPlanoService
                         'data_vencimento' => $dataVencimento->format('Y-m-d'),
                         'valor_pago' => $valorCompra,
                         'motivo' => $motivoCodigo,
-                        'observacoes' => 'Atualização de matrícula vencida via app (api v2)',
+                        'observacoes' => 'Atualização de matrícula via app (api v2)',
                         'criado_por' => $userId,
                         'created_at' => now(),
                     ]);
@@ -813,6 +845,82 @@ class MobileCompraPlanoService
     /**
      * @return array{status: int, body: array<string, mixed>}
      */
+    /**
+     * Cancela matrículas pendentes órfãs na mesma modalidade, mantendo só a canônica.
+     */
+    private function cancelarMatriculasPendentesOrfasMesmaModalidade(
+        int $tenantId,
+        int $alunoId,
+        int $modalidadeId,
+        int $manterMatriculaId
+    ): void {
+        try {
+            $statusCanceladaId = (int) (DB::table('status_matricula')->where('codigo', 'cancelada')->value('id') ?? 0);
+            if ($statusCanceladaId <= 0) {
+                return;
+            }
+
+            $orfas = DB::table('matriculas as m')
+                ->join('planos as p', 'p.id', '=', 'm.plano_id')
+                ->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+                ->where('m.aluno_id', $alunoId)
+                ->where('m.tenant_id', $tenantId)
+                ->where('p.modalidade_id', $modalidadeId)
+                ->where('sm.codigo', 'pendente')
+                ->where('m.id', '<>', $manterMatriculaId)
+                ->pluck('m.id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+
+            if ($orfas === []) {
+                return;
+            }
+
+            DB::table('matriculas')
+                ->where('tenant_id', $tenantId)
+                ->whereIn('id', $orfas)
+                ->update([
+                    'status_id' => $statusCanceladaId,
+                    'updated_at' => now(),
+                ]);
+
+            $statusAssCanceladaId = (int) (DB::table('assinatura_status')->where('codigo', 'cancelada')->value('id') ?? 0);
+            if ($statusAssCanceladaId > 0) {
+                $statusAssPendentes = DB::table('assinatura_status')
+                    ->whereIn('codigo', ['pendente', 'pending'])
+                    ->pluck('id')
+                    ->all();
+                if ($statusAssPendentes !== []) {
+                    DB::table('assinaturas')
+                        ->where('tenant_id', $tenantId)
+                        ->whereIn('matricula_id', $orfas)
+                        ->whereIn('status_id', $statusAssPendentes)
+                        ->update([
+                            'status_id' => $statusAssCanceladaId,
+                            'status_gateway' => 'cancelled',
+                            'atualizado_em' => now(),
+                        ]);
+                }
+            }
+
+            foreach ($orfas as $orfanId) {
+                $this->pagamentosPlano->cancelarParcelasAbertas(
+                    $tenantId,
+                    $orfanId,
+                    'Cancelado: matrícula pendente órfã'
+                );
+            }
+
+            Log::info('comprarPlano v2: pendentes órfãs canceladas', [
+                'modalidade_id' => $modalidadeId,
+                'manter' => $manterMatriculaId,
+                'orfas' => $orfas,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('comprarPlano v2: erro ao cancelar pendentes órfãs: '.$e->getMessage());
+        }
+    }
+
     private function erro(int $status, string $code, string $message): array
     {
         return [

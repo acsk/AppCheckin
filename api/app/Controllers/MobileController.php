@@ -6571,6 +6571,14 @@ class MobileController
             $matriculaAtiva = $stmtAtiva->fetch(\PDO::FETCH_ASSOC);
 
             if ($matriculaAtiva) {
+                // Há ativa: limpa checkouts pendentes órfãos na mesma modalidade.
+                $this->cancelarMatriculasPendentesOrfasMesmaModalidade(
+                    (int) $tenantId,
+                    (int) $alunoId,
+                    (int) $plano['modalidade_id'],
+                    (int) $matriculaAtiva['id']
+                );
+
                 // Troca de plano/ciclo ≠ renovação: renovar usaria o valor antigo (ex.: mensal R$120
                 // com bimestral R$200 selecionado). Cliente deve usar migrar-plano.
                 $cicloAtivoId = ! empty($matriculaAtiva['plano_ciclo_id'])
@@ -6646,10 +6654,16 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
             }
 
-            // Se já existe matrícula pendente na mesma modalidade, reutilizar o pagamento anterior
+            // Pendente na modalidade: reaproveitar a matrícula canônica (histórico pago, senão a mais antiga).
+            // Evita criar #383/#384 quando o aluno troca de ciclo ou renova com status já pendente.
             $stmtPendente = $this->db->prepare("
                 SELECT m.id, m.plano_id, m.plano_ciclo_id, m.valor, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento,
-                       sm.codigo as status_codigo
+                       sm.codigo as status_codigo,
+                       (
+                         SELECT COUNT(*) FROM pagamentos_plano pp
+                         WHERE pp.matricula_id = m.id
+                           AND (pp.status_pagamento_id = 2 OR pp.data_pagamento IS NOT NULL)
+                       ) AS qtd_pagos
                 FROM matriculas m
                 INNER JOIN planos p ON p.id = m.plano_id
                 INNER JOIN status_matricula sm ON sm.id = m.status_id
@@ -6657,7 +6671,7 @@ class MobileController
                   AND m.tenant_id = ?
                   AND p.modalidade_id = ?
                   AND sm.codigo = 'pendente'
-                ORDER BY m.updated_at DESC, m.id DESC
+                ORDER BY qtd_pagos DESC, m.id ASC
                 LIMIT 1
             ");
             $stmtPendente->execute([$alunoId, $tenantId, $plano['modalidade_id']]);
@@ -6667,7 +6681,14 @@ class MobileController
             if ($matriculaPendente) {
                 $planoPendenteId = (int) ($matriculaPendente['plano_id'] ?? 0);
                 $cicloPendenteId = !empty($matriculaPendente['plano_ciclo_id']) ? (int) $matriculaPendente['plano_ciclo_id'] : null;
-                $pendenciaMesmaEscolha = $planoPendenteId === $planoId && $cicloPendenteId === $planoCicloId;
+                $pendenciaMesmaEscolha = $planoPendenteId === $planoId
+                    && ($cicloPendenteId ?? 0) === ($planoCicloId ?? 0);
+                $this->cancelarMatriculasPendentesOrfasMesmaModalidade(
+                    (int) $tenantId,
+                    (int) $alunoId,
+                    (int) $plano['modalidade_id'],
+                    (int) $matriculaPendente['id']
+                );
             }
 
             if ($matriculaPendente && $metodoPagamento === 'pix' && $pendenciaMesmaEscolha) {
@@ -6929,15 +6950,15 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json; charset=utf-8');
             }
 
-            // Se existe matrícula pendente e o método é checkout, reutilizar para gerar novo pagamento
+            // Pendente (mesmo ciclo ou troca de ciclo): sempre UPDATE na mesma matrícula — nunca INSERT irmão.
             $matriculaExistente = null;
             $reutilizandoMatricula = false;
-            if ($matriculaPendente && $metodoPagamento !== 'pix') {
+            if ($matriculaPendente) {
                 $matriculaExistente = $matriculaPendente;
                 $reutilizandoMatricula = true;
             }
 
-            // Verificar se existe matrícula vencida na mesma modalidade para reutilizar (apenas se não já reutilizou pendente)
+            // Sem pendente: reutilizar vencida/cancelada (ou expirada por data) na modalidade
             if (!$matriculaExistente) {
                 $stmtVencida = $this->db->prepare("
                     SELECT m.id, m.plano_id, m.plano_ciclo_id, m.valor, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento,
@@ -6955,7 +6976,7 @@ class MobileController
                 $matriculaExistente = $stmtVencida->fetch(\PDO::FETCH_ASSOC) ?: null;
                 $reutilizandoMatricula = false;
             }
-            if ($matriculaExistente) {
+            if ($matriculaExistente && !$reutilizandoMatricula) {
                 $statusCodigo = $matriculaExistente['status_codigo'] ?? null;
                 $vencimento = $matriculaExistente['proxima_data_vencimento'] ?? $matriculaExistente['data_vencimento'];
                 $vencidaPorData = $vencimento && $vencimento < date('Y-m-d');
@@ -6975,7 +6996,7 @@ class MobileController
                     }
                 }
 
-                if ($statusCodigo === 'vencida' || $statusCodigo === 'cancelada' || $vencidaPorData) {
+                if ($statusCodigo === 'vencida' || $statusCodigo === 'cancelada' || $statusCodigo === 'pendente' || $vencidaPorData) {
                     $reutilizandoMatricula = true;
                 }
             }
@@ -7027,7 +7048,7 @@ class MobileController
 
             if ($reutilizandoMatricula && $matriculaExistente) {
                 $matriculaId = (int) $matriculaExistente['id'];
-                error_log("[MobileController::comprarPlano] Reutilizando matrícula vencida ID: {$matriculaId}");
+                error_log("[MobileController::comprarPlano] Reutilizando matrícula ID: {$matriculaId} (motivo={$motivoCodigo})");
 
                 $stmtUpdateMat = $this->db->prepare("
                     UPDATE matriculas
@@ -8512,6 +8533,86 @@ class MobileController
         }
 
         return null;
+    }
+
+    /**
+     * Cancela matrículas pendentes órfãs na mesma modalidade, mantendo só a canônica.
+     * Evita que a "mais recente" bloqueie o reuso e gere duplicatas no próximo comprar-plano.
+     */
+    private function cancelarMatriculasPendentesOrfasMesmaModalidade(
+        int $tenantId,
+        int $alunoId,
+        int $modalidadeId,
+        int $manterMatriculaId
+    ): void {
+        try {
+            $stmtStatus = $this->db->prepare("SELECT id FROM status_matricula WHERE codigo = 'cancelada' LIMIT 1");
+            $stmtStatus->execute();
+            $statusCanceladaId = (int) ($stmtStatus->fetchColumn() ?: 0);
+            if ($statusCanceladaId <= 0) {
+                return;
+            }
+
+            $stmtIds = $this->db->prepare("
+                SELECT m.id
+                FROM matriculas m
+                INNER JOIN planos p ON p.id = m.plano_id
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
+                WHERE m.aluno_id = ?
+                  AND m.tenant_id = ?
+                  AND p.modalidade_id = ?
+                  AND sm.codigo = 'pendente'
+                  AND m.id <> ?
+            ");
+            $stmtIds->execute([$alunoId, $tenantId, $modalidadeId, $manterMatriculaId]);
+            $orfas = $stmtIds->fetchAll(\PDO::FETCH_COLUMN);
+            if (!$orfas) {
+                return;
+            }
+
+            $placeholders = implode(',', array_fill(0, count($orfas), '?'));
+            $params = array_merge([$statusCanceladaId], $orfas, [$tenantId]);
+            $stmtCancel = $this->db->prepare("
+                UPDATE matriculas
+                SET status_id = ?, updated_at = NOW()
+                WHERE id IN ({$placeholders}) AND tenant_id = ?
+            ");
+            $stmtCancel->execute($params);
+
+            $stmtAss = $this->db->prepare("SELECT id FROM assinatura_status WHERE codigo = 'cancelada' LIMIT 1");
+            $stmtAss->execute();
+            $statusAssCanceladaId = (int) ($stmtAss->fetchColumn() ?: 0);
+            if ($statusAssCanceladaId > 0) {
+                $stmtCancelAss = $this->db->prepare("
+                    UPDATE assinaturas
+                    SET status_id = ?, status_gateway = 'cancelled', atualizado_em = NOW()
+                    WHERE tenant_id = ? AND matricula_id IN ({$placeholders})
+                      AND status_id IN (SELECT id FROM assinatura_status WHERE codigo IN ('pendente', 'pending'))
+                ");
+                $stmtCancelAss->execute(array_merge([$statusAssCanceladaId, $tenantId], $orfas));
+            }
+
+            $stmtCancelPag = $this->db->prepare("
+                UPDATE pagamentos_plano
+                SET status_pagamento_id = 4,
+                    observacoes = CONCAT(COALESCE(observacoes, ''), ' | Cancelado: matrícula pendente órfã'),
+                    updated_at = NOW()
+                WHERE tenant_id = ?
+                  AND matricula_id IN ({$placeholders})
+                  AND status_pagamento_id IN (1, 3)
+                  AND data_pagamento IS NULL
+            ");
+            // status 4 = cancelado if exists; check what statuses exist
+            $stmtCancelPag->execute(array_merge([$tenantId], $orfas));
+
+            error_log(
+                '[MobileController::comprarPlano] Pendentes órfãs canceladas (modalidade='
+                . $modalidadeId . ', manter=#' . $manterMatriculaId . '): '
+                . implode(',', $orfas)
+            );
+        } catch (\Throwable $e) {
+            error_log('[MobileController] Erro ao cancelar pendentes órfãs: ' . $e->getMessage());
+        }
     }
 
     /**
