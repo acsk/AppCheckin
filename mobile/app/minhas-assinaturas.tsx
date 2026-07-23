@@ -769,11 +769,13 @@ export default function MinhasAssinaturasScreen() {
     const valorExibido = formatCurrency(
       pagamento ? pagamento.valor : assinatura.valor,
     );
-    const dataPagamentoText = pagamento
-      ? formatDate(pagamento.data_pagamento) ||
-        formatDate(pagamento.data_vencimento) ||
-        "—"
-      : ultimaCobrancaText || "—";
+    // Não misturar vencimento sob o rótulo "Pagamento" — confunde quando ainda não pagou.
+    const dataReferenciaLabel = pagamentoPago ? "Pago em" : "Vencimento";
+    const dataReferenciaText = pagamento
+      ? pagamentoPago
+        ? formatDate(pagamento.data_pagamento) || "—"
+        : formatDate(pagamento.data_vencimento) || "—"
+      : null;
 
     const statusPagamentoLower = String(
       pagamento?.status || assinatura.status.nome || "",
@@ -840,37 +842,45 @@ export default function MinhasAssinaturasScreen() {
 
         <View style={styles.datasContainer}>
           <View style={styles.dataItem}>
-            <Text style={styles.dataLabel}>Início</Text>
+            <Text style={styles.dataLabel} numberOfLines={2}>
+              Início do plano
+            </Text>
             <Text style={styles.dataValor}>{dataInicioText}</Text>
           </View>
           {!isCancelada && proximaCobrancaText ? (
             <View style={styles.dataItem}>
-              <Text style={styles.dataLabel}>Próxima</Text>
+              <Text style={styles.dataLabel} numberOfLines={2}>
+                Próx. cobrança
+              </Text>
               <Text style={styles.dataValor}>{proximaCobrancaText}</Text>
             </View>
           ) : fimAcessoText ? (
             <View style={styles.dataItem}>
-              <Text style={styles.dataLabel}>
-                {isAvulso ? "Válido até" : "Fim"}
+              <Text style={styles.dataLabel} numberOfLines={2}>
+                {isAvulso ? "Válido até" : "Fim do acesso"}
               </Text>
               <Text style={styles.dataValor}>{fimAcessoText}</Text>
             </View>
           ) : null}
           {ultimaCobrancaText ? (
             <View style={styles.dataItem}>
-              <Text style={styles.dataLabel}>Última</Text>
+              <Text style={styles.dataLabel} numberOfLines={2}>
+                Últ. cobrança
+              </Text>
               <Text style={styles.dataValor}>{ultimaCobrancaText}</Text>
             </View>
           ) : null}
         </View>
 
-        {pagamento ? (
+        {pagamento && dataReferenciaText ? (
           <View style={styles.pagamentoDetalheBox}>
             <View style={styles.pagamentoDetalheRow}>
-              <Text style={styles.pagamentoDetalheLabel}>Pagamento</Text>
+              <Text style={styles.pagamentoDetalheLabel}>
+                {dataReferenciaLabel}
+              </Text>
               <Text style={styles.pagamentoDetalheValue}>
-                {dataPagamentoText}
-                {pagamento.forma_pagamento
+                {dataReferenciaText}
+                {pagamentoPago && pagamento.forma_pagamento
                   ? ` · ${pagamento.forma_pagamento}`
                   : ""}
               </Text>
