@@ -108,10 +108,7 @@ class CheckinController
                     }
                     $usados = (int) ($detalhesLimite['usados'] ?? $detalhesLimite['checkins_mes'] ?? 0);
                     $direito = (int) ($detalhesLimite['direito'] ?? $detalhesLimite['limite_mensal'] ?? 0);
-                    $cicloRef = (string) ($detalhesLimite['mes_referencia'] ?? '');
-                    $mensagem = 'Você atingiu o limite de check-ins do ciclo do seu plano'
-                        . ($direito > 0 ? " ({$usados}/{$direito}" . ($cicloRef !== '' ? " em {$cicloRef}" : '') . ')' : '')
-                        . '. Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.';
+                    $mensagem = \App\Models\Checkin::montarMensagemLimiteCicloParaAluno($detalhesLimite);
                     $response->getBody()->write(json_encode([
                         'error' => $mensagem,
                         'codigo' => 'LIMITE_CHECKINS_CICLO',
@@ -490,16 +487,10 @@ class CheckinController
             if ($statusCodigo === 'pendente' && $matriculaId > 0) {
                 $detalhesLimite = $this->checkinModel->avaliarLimiteMensalPorMatricula($matriculaId);
                 if ($detalhesLimite !== null) {
-                    $usados = (int) ($detalhesLimite['usados'] ?? $detalhesLimite['checkins_mes'] ?? 0);
-                    $direito = (int) ($detalhesLimite['direito'] ?? $detalhesLimite['limite_mensal'] ?? 0);
-                    $cicloRef = (string) ($detalhesLimite['mes_referencia'] ?? '');
                     $mensagem = $mensagemParaAluno
-                        ? ('Você atingiu o limite de check-ins do ciclo do seu plano'
-                            . ($direito > 0 ? " ({$usados}/{$direito}" . ($cicloRef !== '' ? " em {$cicloRef}" : '') . ')' : '')
-                            . '. Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.')
-                        : ('Aluno atingiu o limite de check-ins do ciclo'
-                            . ($direito > 0 ? " ({$usados}/{$direito})" : '')
-                            . '.');
+                        ? \App\Models\Checkin::montarMensagemLimiteCicloParaAluno($detalhesLimite)
+                        : (\App\Models\Checkin::formatarDetalhesLimiteMensal($detalhesLimite, false)['mensagem']
+                            ?? 'Aluno atingiu o limite de check-ins do ciclo.');
 
                     return [
                         'error' => $mensagem,

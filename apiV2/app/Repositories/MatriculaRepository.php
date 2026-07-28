@@ -197,7 +197,25 @@ class MatriculaRepository
                     $cicloRef = (string) ($detalhesLimite['mes_referencia'] ?? '');
                     $mensagem = 'Você atingiu o limite de check-ins do ciclo do seu plano'
                         . ($direito > 0 ? " ({$usados}/{$direito}" . ($cicloRef !== '' ? " em {$cicloRef}" : '') . ')' : '')
-                        . '. Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.';
+                        . '.';
+                    $datasAulas = '';
+                    if (!empty($detalhesLimite['dias_checkin']) && is_array($detalhesLimite['dias_checkin'])) {
+                        $datas = [];
+                        foreach ($detalhesLimite['dias_checkin'] as $dia) {
+                            $raw = is_array($dia) ? ($dia['data'] ?? null) : $dia;
+                            if (is_string($raw) && $raw !== '') {
+                                $ts = strtotime(substr($raw, 0, 10));
+                                if ($ts !== false) {
+                                    $datas[] = date('d/m', $ts);
+                                }
+                            }
+                        }
+                        $datasAulas = implode(', ', array_values(array_unique($datas)));
+                    }
+                    if ($datasAulas !== '') {
+                        $mensagem .= " Aulas neste ciclo: {$datasAulas}.";
+                    }
+                    $mensagem .= ' Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.';
 
                     return [
                         'code' => 'LIMITE_CHECKINS_CICLO',

@@ -747,12 +747,70 @@ class Checkin
             $excesso
         );
 
+        $datasAulas = self::formatarDatasAulasCiclo($detalhes['dias_checkin'] ?? []);
+        if ($datasAulas !== '') {
+            $mensagem .= ' Aulas neste ciclo: ' . $datasAulas . '.';
+        }
+        if ($paraAluno) {
+            $mensagem .= ' Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.';
+        }
+
         $detalhes['direito'] = $direito;
         $detalhes['usados'] = $usados;
         $detalhes['excesso'] = $excesso;
+        $detalhes['datas_aulas'] = $datasAulas;
         $detalhes['mensagem'] = $mensagem;
 
         return $detalhes;
+    }
+
+    /**
+     * Mensagem curta e clara para o aluno quando o limite do ciclo esgotou.
+     */
+    public static function montarMensagemLimiteCicloParaAluno(array $detalhes): string
+    {
+        $formatado = self::formatarDetalhesLimiteMensal($detalhes, true);
+        $usados = (int) ($formatado['usados'] ?? 0);
+        $direito = (int) ($formatado['direito'] ?? 0);
+        $ciclo = (string) ($formatado['mes_referencia'] ?? '');
+        $datasAulas = (string) ($formatado['datas_aulas'] ?? '');
+
+        $msg = 'Você atingiu o limite de check-ins do ciclo do seu plano';
+        if ($direito > 0) {
+            $msg .= " ({$usados}/{$direito}";
+            if ($ciclo !== '') {
+                $msg .= " no período {$ciclo}";
+            }
+            $msg .= ')';
+        }
+        $msg .= '.';
+        if ($datasAulas !== '') {
+            $msg .= " Aulas neste ciclo: {$datasAulas}.";
+        }
+        $msg .= ' Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.';
+
+        return $msg;
+    }
+
+    /**
+     * @param list<array<string, mixed>|string> $diasCheckin
+     */
+    public static function formatarDatasAulasCiclo(array $diasCheckin): string
+    {
+        $datas = [];
+        foreach ($diasCheckin as $dia) {
+            $raw = is_array($dia) ? ($dia['data'] ?? null) : $dia;
+            if (!is_string($raw) || $raw === '') {
+                continue;
+            }
+            $ts = strtotime(substr($raw, 0, 10));
+            if ($ts === false) {
+                continue;
+            }
+            $datas[] = date('d/m', $ts);
+        }
+
+        return implode(', ', array_values(array_unique($datas)));
     }
 
     public function avaliarLimiteMensalReposicao(

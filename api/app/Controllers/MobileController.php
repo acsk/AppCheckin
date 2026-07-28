@@ -1649,35 +1649,16 @@ class MobileController
             $matricula = $stmtMatricula->fetch(\PDO::FETCH_ASSOC);
 
             if (!$matricula) {
-                // Buscar matrícula vencida para informar quando expirou
-                $stmtVencida = $this->db->prepare("
-                    SELECT m.id, m.proxima_data_vencimento, sm.codigo as status_codigo, sm.nome as status_nome
-                    FROM matriculas m
-                    INNER JOIN status_matricula sm ON sm.id = m.status_id
-                    WHERE m.aluno_id = :aluno_id
-                    AND m.tenant_id = :tenant_id
-                    AND m.proxima_data_vencimento IS NOT NULL
-                    ORDER BY m.proxima_data_vencimento DESC
-                    LIMIT 1
-                ");
-                $stmtVencida->execute([
-                    'aluno_id' => $alunoId,
-                    'tenant_id' => $tenantId
-                ]);
-                $matriculaVencida = $stmtVencida->fetch(\PDO::FETCH_ASSOC);
-
-                $errorResponse = [
+                $erroMatriculaCheckin = $this->montarErroMatriculaIndisponivelCheckin(
+                    $alunoId,
+                    (int) $tenantId
+                );
+                $errorResponse = array_merge([
                     'success' => false,
-                    'code' => 'SEM_MATRICULA'
-                ];
-
-                if ($matriculaVencida) {
-                    $dataVencimento = date('d/m/Y', strtotime($matriculaVencida['proxima_data_vencimento']));
-                    $errorResponse['error'] = "Sua matrícula expirou em {$dataVencimento}";
-                    $errorResponse['data_vencimento'] = $matriculaVencida['proxima_data_vencimento'];
-                    $errorResponse['status'] = $matriculaVencida['status_nome'];
-                } else {
-                    $errorResponse['error'] = 'Aluno não possui matrícula ativa';
+                ], $erroMatriculaCheckin);
+                // Compat: alguns clientes leem "error" em vez de "mensagem"
+                if (empty($errorResponse['error']) && !empty($errorResponse['mensagem'])) {
+                    $errorResponse['error'] = $errorResponse['mensagem'];
                 }
 
                 $errorResponse['debug'] = $this->montarDebugSemMatricula(
@@ -1687,8 +1668,8 @@ class MobileController
                     'checkin_manual'
                 );
 
-                $response->getBody()->write(json_encode($errorResponse));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+                $response->getBody()->write(json_encode($errorResponse, JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(403);
             }
 
             $hoje = date('Y-m-d');
@@ -2112,12 +2093,7 @@ class MobileController
                         if (!empty($matricula['id'])) {
                             $this->checkinModel->marcarPendenteSeLimiteCicloEsgotado((int) $matricula['id']);
                         }
-                        $usados = (int) ($detalhes['usados'] ?? $detalhes['checkins_mes'] ?? 0);
-                        $direito = (int) ($detalhes['direito'] ?? $detalhes['limite_mensal'] ?? 0);
-                        $cicloRef = (string) ($detalhes['mes_referencia'] ?? '');
-                        $mensagem = 'Você atingiu o limite de check-ins do ciclo do seu plano'
-                            . ($direito > 0 ? " ({$usados}/{$direito}" . ($cicloRef !== '' ? " em {$cicloRef}" : '') . ')' : '')
-                            . '. Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.';
+                        $mensagem = \App\Models\Checkin::montarMensagemLimiteCicloParaAluno($detalhes);
                         $response->getBody()->write(json_encode([
                             'success' => false,
                             'error' => $mensagem,
@@ -8377,7 +8353,8 @@ class MobileController
         if ($restricao !== null) {
             $erro = [
                 'code' => $restricao['code'],
-                'error' => $restricao['mensagem'],
+                'error' => $restricao['error'] ?? $restricao['mensagem'],
+                'mensagem' => $restricao['mensagem'] ?? $restricao['error'] ?? null,
                 'matricula_id' => $restricao['matricula_id'],
                 'status_codigo' => $restricao['status_codigo'],
             ];
@@ -8396,6 +8373,7 @@ class MobileController
         return [
             'code' => 'SEM_MATRICULA',
             'error' => 'Você não possui matrícula ativa',
+            'mensagem' => 'Você não possui matrícula ativa',
             'matricula_id' => $ultima ? (int) $ultima['id'] : null,
             'status_codigo' => $ultima['status_codigo'] ?? null,
         ];
@@ -8501,16 +8479,12 @@ class MobileController
                 // 1) Check-ins do ciclo esgotados (prioridade sobre mensagem financeira genérica).
                 $detalhesLimite = $this->checkinModel->avaliarLimiteMensalPorMatricula($matriculaId);
                 if ($detalhesLimite !== null) {
-                    $usados = (int) ($detalhesLimite['usados'] ?? $detalhesLimite['checkins_mes'] ?? 0);
-                    $direito = (int) ($detalhesLimite['direito'] ?? $detalhesLimite['limite_mensal'] ?? 0);
-                    $cicloRef = (string) ($detalhesLimite['mes_referencia'] ?? '');
-                    $mensagem = 'Você atingiu o limite de check-ins do ciclo do seu plano'
-                        . ($direito > 0 ? " ({$usados}/{$direito}" . ($cicloRef !== '' ? " em {$cicloRef}" : '') . ')' : '')
-                        . '. Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.';
+                    $mensagem = \App\Models\Checkin::montarMensagemLimiteCicloParaAluno($detalhesLimite);
 
                     return [
                         'code' => 'LIMITE_CHECKINS_CICLO',
                         'mensagem' => $mensagem,
+                        'error' => $mensagem,
                         'matricula_id' => $matriculaId,
                         'status_codigo' => $statusCodigo,
                         'status' => $statusNome,
@@ -8538,11 +8512,13 @@ class MobileController
                 }
 
                 if ($temParcelaVencida) {
+                    $mensagem = 'Há pagamento em atraso na sua matrícula.'
+                        . $vencTxt
+                        . ' Regularize para voltar a fazer check-in.';
                     return [
                         'code' => 'MATRICULA_PENDENTE',
-                        'mensagem' => 'Há pagamento em atraso na sua matrícula.'
-                            . $vencTxt
-                            . ' Regularize para voltar a fazer check-in.',
+                        'mensagem' => $mensagem,
+                        'error' => $mensagem,
                         'matricula_id' => $matriculaId,
                         'status_codigo' => $statusCodigo,
                         'status' => $statusNome,
@@ -8553,10 +8529,12 @@ class MobileController
                 // 3) Período ainda vigente sem parcela atrasada: trata como limite
                 // (status pendente costuma vir do job de check-ins esgotados).
                 if (is_string($acessoAte) && $acessoAte !== '0000-00-00' && $acessoAte >= $hoje) {
+                    $mensagem = 'Você atingiu o limite de check-ins do ciclo do seu plano.'
+                        . ' Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.';
                     return [
                         'code' => 'LIMITE_CHECKINS_CICLO',
-                        'mensagem' => 'Você atingiu o limite de check-ins do ciclo do seu plano.'
-                            . ' Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.',
+                        'mensagem' => $mensagem,
+                        'error' => $mensagem,
                         'matricula_id' => $matriculaId,
                         'status_codigo' => $statusCodigo,
                         'status' => $statusNome,
@@ -8565,11 +8543,13 @@ class MobileController
                 }
 
                 // 4) Aguardando primeiro pagamento / acesso expirado.
+                $mensagem = 'Sua matrícula está aguardando pagamento.'
+                    . $vencTxt
+                    . ' Conclua o pagamento para ativar o check-in.';
                 return [
                     'code' => 'MATRICULA_PENDENTE',
-                    'mensagem' => 'Sua matrícula está aguardando pagamento.'
-                        . $vencTxt
-                        . ' Conclua o pagamento para ativar o check-in.',
+                    'mensagem' => $mensagem,
+                    'error' => $mensagem,
                     'matricula_id' => $matriculaId,
                     'status_codigo' => $statusCodigo,
                     'status' => $statusNome,
@@ -8577,9 +8557,11 @@ class MobileController
                 ];
             }
 
+            $mensagem = "Sua matrícula está {$statusNome}.{$vencTxt} Entre em contato com a academia.";
             return [
                 'code' => $this->codigoErroPorStatusMatricula($statusCodigo),
-                'mensagem' => "Sua matrícula está {$statusNome}.{$vencTxt} Entre em contato com a academia.",
+                'mensagem' => $mensagem,
+                'error' => $mensagem,
                 'matricula_id' => $matriculaId,
                 'status_codigo' => $statusCodigo,
                 'status' => $statusNome,
