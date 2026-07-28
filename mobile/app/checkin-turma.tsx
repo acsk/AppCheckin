@@ -218,6 +218,13 @@ export default function CheckinTurmaScreen() {
     visible: boolean;
     aluno: any | null;
   }>({ visible: false, aluno: null });
+  const [confirmRemoveModal, setConfirmRemoveModal] = useState<{
+    visible: boolean;
+    checkin: any | null;
+  }>({ visible: false, checkin: null });
+  const [removingCheckinId, setRemovingCheckinId] = useState<number | null>(
+    null,
+  );
   const [confirmBloqueioModal, setConfirmBloqueioModal] = useState(false);
   const bloqueioModalScale = useRef(new Animated.Value(0)).current;
 
@@ -866,6 +873,88 @@ export default function CheckinTurmaScreen() {
       showErrorModal("Falha ao desfazer o check-in.", "error");
     } finally {
       setCheckinLoading(false);
+    }
+  };
+
+  const openRemoveConfirm = (checkin: any) => {
+    setConfirmRemoveModal({ visible: true, checkin });
+    Animated.spring(modalScale, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 50,
+      friction: 7,
+    }).start();
+  };
+
+  const closeRemoveConfirm = () => {
+    Animated.timing(modalScale, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      setConfirmRemoveModal({ visible: false, checkin: null });
+    });
+  };
+
+  const handleRemoveAlunoCheckin = async (checkin: any) => {
+    const checkinId = Number(checkin?.checkin_id ?? checkin?.id ?? 0);
+    if (!checkinId) {
+      showErrorModal("ID de check-in não encontrado.", "error");
+      return;
+    }
+
+    setRemovingCheckinId(checkinId);
+    try {
+      const token = await AsyncStorage.getItem("@appcheckin:token");
+      if (!token) {
+        showErrorModal("Token não encontrado. Faça login novamente.", "error");
+        return;
+      }
+
+      const url = `${getApiUrlRuntime()}/mobile/checkin/manual/${checkinId}/desfazer`;
+      const response = await fetch(url, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const text = await response.text();
+      let data: any = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = {};
+      }
+
+      if (!response.ok) {
+        if (await handleUnauthorizedResponse(response)) {
+          return;
+        }
+        const apiMessage =
+          data?.error ||
+          data?.message ||
+          text ||
+          "Não foi possível remover o aluno da aula.";
+        showErrorModal(normalizeUtf8(String(apiMessage)), "error");
+        return;
+      }
+
+      if (userCheckinId && Number(userCheckinId) === checkinId) {
+        setUserCheckinId(null);
+      }
+      showToast(
+        normalizeUtf8(
+          data?.message || "Aluno removido da aula. Check-in cancelado.",
+        ),
+        "success",
+      );
+      await loadParticipantsForTurma(participantsTurma);
+    } catch (error) {
+      console.error("Erro ao remover aluno da aula:", error);
+      showErrorModal("Falha ao remover o aluno da aula.", "error");
+    } finally {
+      setRemovingCheckinId(null);
     }
   };
 
@@ -1710,10 +1799,49 @@ export default function CheckinTurmaScreen() {
                                   <TouchableOpacity
                                     style={[
                                       styles.presencaBtn,
+                                      styles.removeCheckinBtn,
+                                      removingCheckinId ===
+                                        Number(c.checkin_id) &&
+                                        styles.removeCheckinBtnDisabled,
+                                    ]}
+                                    onPress={(e) => {
+                                      e.stopPropagation?.();
+                                      openRemoveConfirm(c);
+                                    }}
+                                    disabled={
+                                      removingCheckinId === Number(c.checkin_id)
+                                    }
+                                    hitSlop={{
+                                      top: 8,
+                                      bottom: 8,
+                                      left: 8,
+                                      right: 8,
+                                    }}
+                                  >
+                                    {removingCheckinId ===
+                                    Number(c.checkin_id) ? (
+                                      <ActivityIndicator
+                                        size="small"
+                                        color="#ef4444"
+                                      />
+                                    ) : (
+                                      <Feather
+                                        name="user-minus"
+                                        size={18}
+                                        color="#ef4444"
+                                      />
+                                    )}
+                                  </TouchableOpacity>
+                                  <TouchableOpacity
+                                    style={[
+                                      styles.presencaBtn,
                                       presencaAtual === true &&
                                         styles.presencaBtnPresente,
                                     ]}
-                                    onPress={() => togglePresenca(c.checkin_id)}
+                                    onPress={(e) => {
+                                      e.stopPropagation?.();
+                                      togglePresenca(c.checkin_id);
+                                    }}
                                   >
                                     <Feather
                                       name="check"
@@ -1731,7 +1859,8 @@ export default function CheckinTurmaScreen() {
                                       presencaAtual === false &&
                                         styles.presencaBtnFalta,
                                     ]}
-                                    onPress={() => {
+                                    onPress={(e) => {
+                                      e.stopPropagation?.();
                                       setPresencas((prev) => ({
                                         ...prev,
                                         [c.checkin_id]:
@@ -2233,6 +2362,83 @@ export default function CheckinTurmaScreen() {
         </TouchableOpacity>
       </Modal>
 
+      <Modal
+        visible={confirmRemoveModal.visible}
+        transparent
+        animationType="none"
+        onRequestClose={closeRemoveConfirm}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={closeRemoveConfirm}
+        >
+          <Animated.View
+            style={[
+              styles.modalContainer,
+              {
+                transform: [{ scale: modalScale }],
+              },
+            ]}
+          >
+            <TouchableOpacity
+              activeOpacity={1}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <View
+                style={[styles.modalContent, styles.modalContentWarning]}
+              >
+                <View
+                  style={[
+                    styles.modalIconContainer,
+                    styles.modalIconContainerWarning,
+                  ]}
+                >
+                  <Feather name="user-minus" size={40} color="#f57c00" />
+                </View>
+                <Text style={styles.modalTitle}>Remover da aula?</Text>
+                <Text style={styles.modalMessage}>
+                  Cancelar o check-in de{" "}
+                  {normalizeUtf8(
+                    confirmRemoveModal.checkin?.usuario_nome ||
+                      confirmRemoveModal.checkin?.nome ||
+                      "este aluno",
+                  )}
+                  ? Ele sairá da lista desta aula.
+                </Text>
+                <View style={styles.confirmButtonsRow}>
+                  <TouchableOpacity
+                    style={[styles.confirmButton, styles.confirmButtonCancel]}
+                    onPress={closeRemoveConfirm}
+                  >
+                    <Text style={styles.confirmButtonText}>Voltar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.confirmButton, styles.confirmButtonDanger]}
+                    onPress={async () => {
+                      const checkin = confirmRemoveModal.checkin;
+                      closeRemoveConfirm();
+                      if (checkin) {
+                        await handleRemoveAlunoCheckin(checkin);
+                      }
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.confirmButtonText,
+                        styles.confirmButtonTextLight,
+                      ]}
+                    >
+                      Remover
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableOpacity>
+          </Animated.View>
+        </TouchableOpacity>
+      </Modal>
+
       {toastVisible && (
         <View style={[styles.toastContainer, styles[`toast_${toast.type}`]]}>
           <Feather
@@ -2656,6 +2862,13 @@ const styles = StyleSheet.create({
   presencaBtnFalta: {
     backgroundColor: "#ef4444",
     borderColor: "#ef4444",
+  },
+  removeCheckinBtn: {
+    backgroundColor: "#fef2f2",
+    borderColor: "#fecaca",
+  },
+  removeCheckinBtnDisabled: {
+    opacity: 0.6,
   },
   toastContainer: {
     position: "absolute",

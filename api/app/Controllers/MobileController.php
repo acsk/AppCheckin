@@ -2423,15 +2423,15 @@ class MobileController
     #[OA\Delete(
         path: "/mobile/checkin/manual/{checkinId}/desfazer",
         summary: "Desfazer check-in manual (professor)",
-        description: "Professor/admin remove um check-in de aluno no tenant. Só é permitido se a aula ainda não começou.",
+        description: "Professor/admin remove um check-in de aluno no tenant (cancela a presença na aula).",
         tags: ["Mobile"],
         security: [["bearerAuth" => []]],
         parameters: [
             new OA\Parameter(name: "checkinId", in: "path", required: true, description: "ID do check-in", schema: new OA\Schema(type: "integer"))
         ],
         responses: [
-            new OA\Response(response: 200, description: "Check-in desfeito com sucesso"),
-            new OA\Response(response: 400, description: "checkinId obrigatório ou aula já começou"),
+            new OA\Response(response: 200, description: "Check-in cancelado com sucesso"),
+            new OA\Response(response: 400, description: "checkinId obrigatório"),
             new OA\Response(response: 401, description: "Não autorizado"),
             new OA\Response(response: 403, description: "Sem permissão"),
             new OA\Response(response: 404, description: "Check-in não encontrado")
@@ -2472,7 +2472,6 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
             }
 
-            // Buscar dados da turma para verificar horário
             $turmaId = (int) $checkin['turma_id'];
             $turma = $this->turmaModel->findById($turmaId, $tenantId);
 
@@ -2484,32 +2483,15 @@ class MobileController
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
             }
 
-            // Validar se a aula já começou ou passou
-            $agora = new \DateTime();
-            $diaAula = $checkin['dia_data'];
-            $horarioInicio = $turma['horario_inicio'];
-            $dataHorarioInicio = new \DateTime($diaAula . ' ' . $horarioInicio);
+            // Professor/admin pode remover o aluno da aula a qualquer momento.
 
-            if ($agora >= $dataHorarioInicio) {
-                $response->getBody()->write(json_encode([
-                    'success' => false,
-                    'error' => 'Não é possível desfazer o check-in. A aula já começou ou passou',
-                    'detalhes' => [
-                        'aula_inicio' => $dataHorarioInicio->format('Y-m-d H:i:s'),
-                        'agora' => $agora->format('Y-m-d H:i:s')
-                    ]
-                ]));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
-            }
-
-            // Deletar check-in
             $deleteSql = "DELETE FROM checkins WHERE id = :checkin_id";
             $deleteStmt = $this->db->prepare($deleteSql);
             $deleteStmt->execute(['checkin_id' => $checkinId]);
 
             $response->getBody()->write(json_encode([
                 'success' => true,
-                'message' => 'Check-in desfeito com sucesso',
+                'message' => 'Check-in cancelado. Aluno removido da aula.',
                 'data' => [
                     'checkin_id' => $checkinId,
                     'turma' => [
@@ -2518,7 +2500,7 @@ class MobileController
                         'horario_inicio' => $turma['horario_inicio']
                     ]
                 ]
-            ]));
+            ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(200);
 
         } catch (\Exception $e) {
