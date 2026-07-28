@@ -8529,9 +8529,12 @@ class MobileController
                 // 3) Período ainda vigente sem parcela atrasada: trata como limite
                 // (status pendente costuma vir do job de check-ins esgotados).
                 if (is_string($acessoAte) && $acessoAte !== '0000-00-00' && $acessoAte >= $hoje) {
-                    $mensagem = 'Você atingiu o limite de check-ins do ciclo do seu plano.'
-                        . ' Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.';
-                    return [
+                    $resumoCiclo = $this->checkinModel->obterResumoCicloPorMatricula($matriculaId);
+                    $mensagem = $resumoCiclo
+                        ? \App\Models\Checkin::montarMensagemLimiteCicloParaAluno($resumoCiclo)
+                        : ('Você atingiu o limite de check-ins do ciclo do seu plano.'
+                            . ' Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.');
+                    $payload = [
                         'code' => 'LIMITE_CHECKINS_CICLO',
                         'mensagem' => $mensagem,
                         'error' => $mensagem,
@@ -8540,6 +8543,10 @@ class MobileController
                         'status' => $statusNome,
                         'data_vencimento' => $acessoAte,
                     ];
+                    if ($resumoCiclo) {
+                        $payload['detalhes'] = $resumoCiclo;
+                    }
+                    return $payload;
                 }
 
                 // 4) Aguardando primeiro pagamento / acesso expirado.

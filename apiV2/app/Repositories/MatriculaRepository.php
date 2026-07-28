@@ -194,26 +194,38 @@ class MatriculaRepository
                 if ($detalhesLimite !== null) {
                     $usados = (int) ($detalhesLimite['usados'] ?? $detalhesLimite['checkins_mes'] ?? 0);
                     $direito = (int) ($detalhesLimite['direito'] ?? $detalhesLimite['limite_mensal'] ?? 0);
-                    $cicloRef = (string) ($detalhesLimite['mes_referencia'] ?? '');
-                    $mensagem = 'Você atingiu o limite de check-ins do ciclo do seu plano'
-                        . ($direito > 0 ? " ({$usados}/{$direito}" . ($cicloRef !== '' ? " em {$cicloRef}" : '') . ')' : '')
-                        . '.';
-                    $datasAulas = '';
-                    if (!empty($detalhesLimite['dias_checkin']) && is_array($detalhesLimite['dias_checkin'])) {
-                        $datas = [];
-                        foreach ($detalhesLimite['dias_checkin'] as $dia) {
-                            $raw = is_array($dia) ? ($dia['data'] ?? null) : $dia;
-                            if (is_string($raw) && $raw !== '') {
-                                $ts = strtotime(substr($raw, 0, 10));
-                                if ($ts !== false) {
-                                    $datas[] = date('d/m', $ts);
-                                }
-                            }
-                        }
-                        $datasAulas = implode(', ', array_values(array_unique($datas)));
+                    $periodo = (string) ($detalhesLimite['periodo_vigente'] ?? $detalhesLimite['mes_referencia'] ?? '');
+                    $mensagem = 'Você atingiu o limite de check-ins do ciclo do seu plano.';
+                    if ($periodo !== '') {
+                        $mensagem .= " Período vigente: {$periodo}.";
                     }
-                    if ($datasAulas !== '') {
-                        $mensagem .= " Aulas neste ciclo: {$datasAulas}.";
+                    if ($direito > 0) {
+                        $mensagem .= " Check-ins: {$usados} utilizados de {$direito} disponíveis.";
+                    }
+                    $aulasComHorario = [];
+                    if (!empty($detalhesLimite['dias_checkin']) && is_array($detalhesLimite['dias_checkin'])) {
+                        foreach ($detalhesLimite['dias_checkin'] as $dia) {
+                            if (!is_array($dia)) {
+                                continue;
+                            }
+                            $raw = $dia['data'] ?? null;
+                            if (!is_string($raw) || $raw === '') {
+                                continue;
+                            }
+                            $ts = strtotime(substr($raw, 0, 10));
+                            if ($ts === false) {
+                                continue;
+                            }
+                            $item = date('d/m', $ts);
+                            $horario = $dia['horario'] ?? null;
+                            if (is_string($horario) && $horario !== '') {
+                                $item .= ' ' . substr($horario, 0, 5);
+                            }
+                            $aulasComHorario[] = $item;
+                        }
+                    }
+                    if ($aulasComHorario !== []) {
+                        $mensagem .= ' Aulas neste ciclo: ' . implode(', ', $aulasComHorario) . '.';
                     }
                     $mensagem .= ' Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.';
 

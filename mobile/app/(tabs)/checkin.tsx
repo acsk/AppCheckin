@@ -77,16 +77,41 @@ export default function CheckinScreen() {
   }>({ message: "", type: "info" });
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showOnlyAvailable, setShowOnlyAvailable] = useState(true);
+  type LimiteCicloDetalhes = {
+    plano?: string;
+    checkins_semanais?: number;
+    limite_mensal?: number;
+    checkins_mes?: number;
+    direito?: number;
+    usados?: number;
+    excesso?: number;
+    bonus_cinco_semanas?: boolean;
+    mes_referencia?: string;
+    periodo_vigente?: string;
+    ciclo_inicio?: string;
+    ciclo_fim?: string;
+    mensagem?: string;
+    dias_checkin?: {
+      data: string;
+      horario?: string | null;
+      modalidade?: string | null;
+      status?: string;
+      registrado_por_admin?: boolean;
+    }[];
+  };
+
   const [errorModal, setErrorModal] = useState<{
     visible: boolean;
     title: string;
     message: string;
     type: "error" | "warning" | "success";
+    limite?: LimiteCicloDetalhes | null;
   }>({
     visible: false,
     title: "",
     message: "",
     type: "error",
+    limite: null,
   });
   const modalScale = useRef(new Animated.Value(0)).current;
   const [currentUserId, setCurrentUserId] = useState<number | null>(null);
@@ -271,10 +296,41 @@ export default function CheckinScreen() {
     }, duration);
   };
 
+  const extractLimiteDetalhes = (data: any): LimiteCicloDetalhes | null => {
+    const d = data?.detalhes;
+    if (!d || typeof d !== "object") return null;
+    if (
+      d.limite_mensal !== undefined ||
+      d.direito !== undefined ||
+      d.ciclo_inicio ||
+      d.periodo_vigente ||
+      Array.isArray(d.dias_checkin)
+    ) {
+      return d as LimiteCicloDetalhes;
+    }
+    return null;
+  };
+
+  const formatPeriodoLimite = (limite: LimiteCicloDetalhes): string => {
+    if (limite.periodo_vigente) return String(limite.periodo_vigente);
+    if (limite.mes_referencia) return String(limite.mes_referencia);
+    return "";
+  };
+
+  const formatDiaCheckin = (data: string) => {
+    const partes = String(data || "").split("-");
+    if (partes.length !== 3) return data;
+    const [ano, mes, dia] = partes;
+    const dt = new Date(Number(ano), Number(mes) - 1, Number(dia));
+    const semana = weekdayAbbrev(dt);
+    return `${semana} ${dia}/${mes}`;
+  };
+
   const showErrorModal = (
     message: string,
     type: "error" | "warning" | "success" = "error",
     titleOverride?: string,
+    limite: LimiteCicloDetalhes | null = null,
   ) => {
     const msg = normalizeUtf8(String(message || ""));
     const title =
@@ -290,6 +346,7 @@ export default function CheckinScreen() {
       title,
       message: msg,
       type,
+      limite: limite ?? null,
     });
 
     Animated.spring(modalScale, {
@@ -306,7 +363,13 @@ export default function CheckinScreen() {
       duration: 200,
       useNativeDriver: true,
     }).start(() => {
-      setErrorModal({ visible: false, title: "", message: "", type: "error" });
+      setErrorModal({
+        visible: false,
+        title: "",
+        message: "",
+        type: "error",
+        limite: null,
+      });
     });
   };
 
@@ -643,6 +706,8 @@ export default function CheckinScreen() {
           apiMessage || "",
         );
 
+        const limiteDetalhes = extractLimiteDetalhes(data);
+
         if (
           String(apiMessage).toLowerCase().includes("já realizou check-in") ||
           String(apiMessage).toLowerCase().includes("já fez check-in")
@@ -653,10 +718,14 @@ export default function CheckinScreen() {
           data?.codigo === "LIMITE_CHECKINS_CICLO" ||
           String(apiMessage).toLowerCase().includes("limite de check-ins")
         ) {
+          const msgLimite = limiteDetalhes
+            ? "Você atingiu o limite de check-ins do ciclo do seu plano. Renove o plano para liberar o próximo ciclo e continuar fazendo check-in."
+            : normalizeUtf8(String(apiMessage));
           showErrorModal(
-            normalizeUtf8(String(apiMessage)),
+            msgLimite,
             "warning",
             "Limite de check-ins",
+            limiteDetalhes,
           );
         } else if (
           data?.code === "MATRICULA_PENDENTE" ||
@@ -668,7 +737,12 @@ export default function CheckinScreen() {
             "Pagamento pendente",
           );
         } else {
-          showErrorModal(normalizeUtf8(String(apiMessage)), "error");
+          showErrorModal(
+            normalizeUtf8(String(apiMessage)),
+            "error",
+            undefined,
+            limiteDetalhes,
+          );
         }
         return;
       }
@@ -1972,7 +2046,88 @@ export default function CheckinScreen() {
                 <Text style={styles.modalTitle}>{errorModal.title}</Text>
 
                 {/* Mensagem */}
-                <Text style={styles.modalMessage}>{errorModal.message}</Text>
+                <Text
+                  style={[
+                    styles.modalMessage,
+                    errorModal.limite ? styles.modalMessageWithLimite : null,
+                  ]}
+                >
+                  {errorModal.message}
+                </Text>
+
+                {errorModal.limite ? (
+                  <ScrollView
+                    style={styles.limiteScroll}
+                    contentContainerStyle={styles.limiteScrollContent}
+                    showsVerticalScrollIndicator={false}
+                  >
+                    <View style={styles.limiteBox}>
+                      {!!errorModal.limite.plano && (
+                        <View style={styles.limiteHeaderRow}>
+                          <Feather name="award" size={16} color="#92400e" />
+                          <Text style={styles.limitePlano}>
+                            {normalizeUtf8(errorModal.limite.plano)}
+                          </Text>
+                        </View>
+                      )}
+
+                      {!!formatPeriodoLimite(errorModal.limite) && (
+                        <Text style={styles.limiteResumo}>
+                          Período vigente:{" "}
+                          {formatPeriodoLimite(errorModal.limite)}
+                        </Text>
+                      )}
+                      <Text style={styles.limiteResumo}>
+                        Direito:{" "}
+                        {errorModal.limite.direito ??
+                          errorModal.limite.limite_mensal ??
+                          0}{" "}
+                        | Utilizados:{" "}
+                        {errorModal.limite.usados ??
+                          errorModal.limite.checkins_mes ??
+                          0}
+                      </Text>
+
+                      {Array.isArray(errorModal.limite.dias_checkin) &&
+                        errorModal.limite.dias_checkin.length > 0 && (
+                          <View style={styles.limiteDiasList}>
+                            <Text style={styles.limiteDiasTitulo}>
+                              Check-ins neste ciclo
+                            </Text>
+                            {errorModal.limite.dias_checkin.map((d, idx) => (
+                              <View
+                                key={`${d.data}-${idx}`}
+                                style={styles.limiteDiaRow}
+                              >
+                                <Feather
+                                  name={
+                                    d.status === "pendente"
+                                      ? "clock"
+                                      : "check-circle"
+                                  }
+                                  size={14}
+                                  color={
+                                    d.status === "pendente"
+                                      ? "#f59e0b"
+                                      : "#16a34a"
+                                  }
+                                />
+                                <Text style={styles.limiteDiaTexto}>
+                                  {formatDiaCheckin(d.data)}
+                                  {d.horario
+                                    ? `  ${String(d.horario).slice(0, 5)}`
+                                    : ""}
+                                  {d.modalidade
+                                    ? `  ·  ${normalizeUtf8(d.modalidade)}`
+                                    : ""}
+                                </Text>
+                              </View>
+                            ))}
+                          </View>
+                        )}
+                    </View>
+                  </ScrollView>
+                ) : null}
 
                 {/* Botão Fechar */}
                 <TouchableOpacity
@@ -2853,6 +3008,66 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 24,
     lineHeight: 24,
+  },
+  modalMessageWithLimite: {
+    fontSize: 15,
+    marginBottom: 12,
+  },
+  limiteScroll: {
+    width: "100%",
+    maxHeight: 260,
+    marginBottom: 16,
+  },
+  limiteScrollContent: {
+    paddingBottom: 4,
+  },
+  limiteBox: {
+    width: "100%",
+    backgroundColor: "#fffbeb",
+    borderWidth: 1,
+    borderColor: "#fcd34d",
+    borderRadius: 12,
+    padding: 14,
+  },
+  limiteHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 6,
+  },
+  limitePlano: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#92400e",
+  },
+  limiteResumo: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#b45309",
+    marginBottom: 2,
+  },
+  limiteDiasTitulo: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#92400e",
+    marginBottom: 6,
+  },
+  limiteDiasList: {
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#fde68a",
+    paddingTop: 8,
+    gap: 6,
+  },
+  limiteDiaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  limiteDiaTexto: {
+    fontSize: 14,
+    color: "#374151",
+    flexShrink: 1,
   },
   modalButton: {
     width: "100%",

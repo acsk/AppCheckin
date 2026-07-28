@@ -748,8 +748,10 @@ class Checkin
         );
 
         $datasAulas = self::formatarDatasAulasCiclo($detalhes['dias_checkin'] ?? []);
+        $aulasComHorario = self::formatarAulasCicloComHorario($detalhes['dias_checkin'] ?? []);
+        $periodoVigente = self::formatarPeriodoVigenteCiclo($detalhes);
         if ($datasAulas !== '') {
-            $mensagem .= ' Aulas neste ciclo: ' . $datasAulas . '.';
+            $mensagem .= ' Aulas neste ciclo: ' . ($aulasComHorario !== '' ? $aulasComHorario : $datasAulas) . '.';
         }
         if ($paraAluno) {
             $mensagem .= ' Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.';
@@ -759,37 +761,65 @@ class Checkin
         $detalhes['usados'] = $usados;
         $detalhes['excesso'] = $excesso;
         $detalhes['datas_aulas'] = $datasAulas;
+        $detalhes['aulas_com_horario'] = $aulasComHorario;
+        $detalhes['periodo_vigente'] = $periodoVigente;
         $detalhes['mensagem'] = $mensagem;
 
         return $detalhes;
     }
 
     /**
-     * Mensagem curta e clara para o aluno quando o limite do ciclo esgotou.
+     * Mensagem clara para o aluno quando o limite do ciclo esgotou.
+     * Inclui período vigente, direito/usados e data/horário das aulas.
      */
     public static function montarMensagemLimiteCicloParaAluno(array $detalhes): string
     {
         $formatado = self::formatarDetalhesLimiteMensal($detalhes, true);
         $usados = (int) ($formatado['usados'] ?? 0);
         $direito = (int) ($formatado['direito'] ?? 0);
-        $ciclo = (string) ($formatado['mes_referencia'] ?? '');
-        $datasAulas = (string) ($formatado['datas_aulas'] ?? '');
 
-        $msg = 'Você atingiu o limite de check-ins do ciclo do seu plano';
+        $periodo = self::formatarPeriodoVigenteCiclo($formatado);
+        $aulas = self::formatarAulasCicloComHorario($detalhes['dias_checkin'] ?? $formatado['dias_checkin'] ?? []);
+
+        $partes = ['Você atingiu o limite de check-ins do ciclo do seu plano.'];
+        if ($periodo !== '') {
+            $partes[] = "Período vigente: {$periodo}.";
+        }
         if ($direito > 0) {
-            $msg .= " ({$usados}/{$direito}";
-            if ($ciclo !== '') {
-                $msg .= " no período {$ciclo}";
-            }
-            $msg .= ')';
+            $partes[] = "Check-ins: {$usados} utilizados de {$direito} disponíveis.";
+        } elseif ($usados > 0) {
+            $partes[] = "Check-ins utilizados: {$usados}.";
         }
-        $msg .= '.';
-        if ($datasAulas !== '') {
-            $msg .= " Aulas neste ciclo: {$datasAulas}.";
+        if ($aulas !== '') {
+            $partes[] = "Aulas neste ciclo: {$aulas}.";
         }
-        $msg .= ' Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.';
+        $partes[] = 'Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.';
 
-        return $msg;
+        return implode(' ', $partes);
+    }
+
+    /**
+     * Período vigente do ciclo para exibição (início e último dia inclusivo).
+     */
+    public static function formatarPeriodoVigenteCiclo(array $detalhes): string
+    {
+        $inicioRaw = $detalhes['ciclo_inicio'] ?? $detalhes['periodo_inicio'] ?? null;
+        $fimRaw = $detalhes['ciclo_fim'] ?? $detalhes['periodo_fim'] ?? null;
+
+        if (is_string($inicioRaw) && $inicioRaw !== '' && is_string($fimRaw) && $fimRaw !== '') {
+            $tsIni = strtotime(substr($inicioRaw, 0, 10));
+            // ciclo_fim é exclusivo → último dia = fim - 1
+            $tsFimExcl = strtotime(substr($fimRaw, 0, 10));
+            if ($tsIni !== false && $tsFimExcl !== false) {
+                $tsFim = strtotime('-1 day', $tsFimExcl);
+                if ($tsFim !== false) {
+                    return date('d/m/Y', $tsIni) . ' a ' . date('d/m/Y', $tsFim);
+                }
+            }
+        }
+
+        $ref = (string) ($detalhes['mes_referencia'] ?? '');
+        return $ref;
     }
 
     /**
@@ -811,6 +841,110 @@ class Checkin
         }
 
         return implode(', ', array_values(array_unique($datas)));
+    }
+
+    /**
+     * Lista amigável: "02/07 08:00, 09/07 08:00".
+     *
+     * @param list<array<string, mixed>|string> $diasCheckin
+     */
+    public static function formatarAulasCicloComHorario(array $diasCheckin): string
+    {
+        $itens = [];
+        foreach ($diasCheckin as $dia) {
+            if (is_string($dia)) {
+                $ts = strtotime(substr($dia, 0, 10));
+                if ($ts === false) {
+                    continue;
+                }
+                $itens[] = date('d/m', $ts);
+                continue;
+            }
+            if (!is_array($dia)) {
+                continue;
+            }
+            $raw = $dia['data'] ?? null;
+            if (!is_string($raw) || $raw === '') {
+                continue;
+            }
+            $ts = strtotime(substr($raw, 0, 10));
+            if ($ts === false) {
+                continue;
+            }
+            $horario = $dia['horario'] ?? null;
+            if (is_string($horario) && $horario !== '') {
+                $itens[] = date('d/m', $ts) . ' ' . substr($horario, 0, 5);
+            } else {
+                $itens[] = date('d/m', $ts);
+            }
+        }
+
+        return implode(', ', $itens);
+    }
+
+    /**
+     * Snapshot do ciclo mesmo sem ter empatado o limite (para aviso em matrícula pendente).
+     *
+     * @return array<string, mixed>|null
+     */
+    public function obterResumoCicloPorMatricula(int $matriculaId): ?array
+    {
+        $stmt = $this->db->prepare(
+            "SELECT m.id, m.tenant_id, a.usuario_id, p.modalidade_id, p.checkins_semanais,
+                    p.nome AS plano_nome, p.duracao_dias,
+                    CASE
+                        WHEN m.plano_ciclo_id IS NOT NULL THEN COALESCE(pc.permite_reposicao, 0)
+                        ELSE COALESCE((
+                            SELECT MAX(pc2.permite_reposicao)
+                            FROM plano_ciclos pc2
+                            WHERE pc2.plano_id = p.id
+                              AND pc2.tenant_id = m.tenant_id
+                              AND pc2.ativo = 1
+                        ), 0)
+                    END AS permite_reposicao
+             FROM matriculas m
+             INNER JOIN planos p ON p.id = m.plano_id
+             LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id AND pc.tenant_id = m.tenant_id
+             INNER JOIN alunos a ON a.id = m.aluno_id
+             WHERE m.id = :matricula_id
+             LIMIT 1"
+        );
+        $stmt->execute(['matricula_id' => $matriculaId]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!$row) {
+            return null;
+        }
+        if ((int) ($row['duracao_dias'] ?? 0) === 1) {
+            return null;
+        }
+
+        $checkinsSemanais = (int) ($row['checkins_semanais'] ?? 0);
+        if ($checkinsSemanais <= 0) {
+            return null;
+        }
+
+        $usuarioId = (int) $row['usuario_id'];
+        $tenantId = (int) $row['tenant_id'];
+        $modalidadeId = $row['modalidade_id'] !== null ? (int) $row['modalidade_id'] : null;
+        $ciclo = $this->obterCicloCheckins($usuarioId, $tenantId, $modalidadeId, $matriculaId);
+        if (empty($ciclo['tem_plano'])) {
+            return null;
+        }
+
+        return self::formatarDetalhesLimiteMensal([
+            'plano' => $ciclo['plano_nome'] ?? $row['plano_nome'],
+            'checkins_semanais' => $ciclo['checkins_semanais'] ?? $checkinsSemanais,
+            'limite_mensal' => $ciclo['limite_mensal'] ?? ($checkinsSemanais * 4),
+            'checkins_mes' => $ciclo['checkins_no_ciclo'] ?? 0,
+            'permite_reposicao' => (bool) ($ciclo['permite_reposicao'] ?? $row['permite_reposicao'] ?? false),
+            'bonus_cinco_semanas' => (bool) ($ciclo['bonus_cinco_semanas'] ?? false),
+            'mes_referencia' => isset($ciclo['ciclo_inicio'], $ciclo['ciclo_fim'])
+                ? date('d/m', strtotime($ciclo['ciclo_inicio'])) . ' a ' . date('d/m', strtotime($ciclo['ciclo_fim'] . ' -1 day'))
+                : '',
+            'ciclo_inicio' => $ciclo['ciclo_inicio'] ?? null,
+            'ciclo_fim' => $ciclo['ciclo_fim'] ?? null,
+            'dias_checkin' => $ciclo['dias_checkin'] ?? [],
+        ], true);
     }
 
     public function avaliarLimiteMensalReposicao(

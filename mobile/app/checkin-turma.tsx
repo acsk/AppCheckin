@@ -171,6 +171,9 @@ export default function CheckinTurmaScreen() {
       excesso?: number;
       bonus_cinco_semanas?: boolean;
       mes_referencia?: string;
+      periodo_vigente?: string;
+      ciclo_inicio?: string;
+      ciclo_fim?: string;
       mensagem?: string;
       dias_checkin?: {
         data: string;
@@ -739,7 +742,13 @@ export default function CheckinTurmaScreen() {
           text ||
           "Não foi possível realizar o check-in.";
         const limiteDetalhes =
-          data?.detalhes && data.detalhes.limite_mensal !== undefined
+          data?.detalhes &&
+          typeof data.detalhes === "object" &&
+          (data.detalhes.limite_mensal !== undefined ||
+            data.detalhes.direito !== undefined ||
+            data.detalhes.periodo_vigente ||
+            data.detalhes.ciclo_inicio ||
+            Array.isArray(data.detalhes.dias_checkin))
             ? data.detalhes
             : null;
 
@@ -753,8 +762,11 @@ export default function CheckinTurmaScreen() {
           data?.codigo === "LIMITE_CHECKINS_CICLO" ||
           String(apiMessage).toLowerCase().includes("limite de check-ins")
         ) {
+          const msgLimite = limiteDetalhes
+            ? "Você atingiu o limite de check-ins do ciclo do seu plano. Renove o plano para liberar o próximo ciclo e continuar fazendo check-in."
+            : normalizeUtf8(String(apiMessage));
           showErrorModal(
-            normalizeUtf8(String(apiMessage)),
+            msgLimite,
             "warning",
             limiteDetalhes,
             "Limite de check-ins",
@@ -1944,31 +1956,21 @@ export default function CheckinTurmaScreen() {
                     )}
 
                     <Text style={styles.limiteResumo}>
-                      Ciclo do plano
-                      {errorModal.limite.mes_referencia
-                        ? `: ${errorModal.limite.mes_referencia}`
-                        : ""}
+                      {errorModal.limite.periodo_vigente
+                        ? `Período vigente: ${errorModal.limite.periodo_vigente}`
+                        : errorModal.limite.mes_referencia
+                          ? `Período vigente: ${errorModal.limite.mes_referencia}`
+                          : "Ciclo do plano"}
                     </Text>
                     <Text style={styles.limiteResumo}>
                       Direito:{" "}
                       {errorModal.limite.direito ??
                         errorModal.limite.limite_mensal ??
                         0}{" "}
-                      | Usados:{" "}
+                      | Utilizados:{" "}
                       {errorModal.limite.usados ??
                         errorModal.limite.checkins_mes ??
-                        0}{" "}
-                      | Excedeu:{" "}
-                      {errorModal.limite.excesso ??
-                        Math.max(
-                          0,
-                          (errorModal.limite.usados ??
-                            errorModal.limite.checkins_mes ??
-                            0) -
-                            (errorModal.limite.direito ??
-                              errorModal.limite.limite_mensal ??
-                              0),
-                        )}
+                        0}
                     </Text>
                     {errorModal.limite.bonus_cinco_semanas && (
                       <Text style={styles.limiteBonus}>
@@ -1979,6 +1981,9 @@ export default function CheckinTurmaScreen() {
                     {Array.isArray(errorModal.limite.dias_checkin) &&
                       errorModal.limite.dias_checkin.length > 0 && (
                         <View style={styles.limiteDiasList}>
+                          <Text style={styles.limiteDiasTitulo}>
+                            Check-ins neste ciclo
+                          </Text>
                           {errorModal.limite.dias_checkin.map((d, idx) => (
                             <View
                               key={`${d.data}-${idx}`}
@@ -1997,7 +2002,9 @@ export default function CheckinTurmaScreen() {
                               />
                               <Text style={styles.limiteDiaTexto}>
                                 {formatDiaCheckin(d.data)}
-                                {d.horario ? `  ${d.horario}` : ""}
+                                {d.horario
+                                  ? `  ${String(d.horario).slice(0, 5)}`
+                                  : ""}
                                 {d.modalidade
                                   ? `  ·  ${normalizeUtf8(d.modalidade)}`
                                   : ""}
@@ -2754,6 +2761,12 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#b45309",
     marginBottom: 2,
+  },
+  limiteDiasTitulo: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#92400e",
+    marginBottom: 6,
   },
   limiteBonus: {
     fontSize: 12,
