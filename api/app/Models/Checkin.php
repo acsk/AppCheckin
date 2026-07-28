@@ -769,33 +769,12 @@ class Checkin
     }
 
     /**
-     * Mensagem clara para o aluno quando o limite do ciclo esgotou.
-     * Inclui período vigente, direito/usados e data/horário das aulas.
+     * Mensagem curta para o aluno. Detalhes (período, direito/usados, aulas)
+     * vão no payload `detalhes` para a UI estruturada.
      */
     public static function montarMensagemLimiteCicloParaAluno(array $detalhes): string
     {
-        $formatado = self::formatarDetalhesLimiteMensal($detalhes, true);
-        $usados = (int) ($formatado['usados'] ?? 0);
-        $direito = (int) ($formatado['direito'] ?? 0);
-
-        $periodo = self::formatarPeriodoVigenteCiclo($formatado);
-        $aulas = self::formatarAulasCicloComHorario($detalhes['dias_checkin'] ?? $formatado['dias_checkin'] ?? []);
-
-        $partes = ['Você atingiu o limite de check-ins do ciclo do seu plano.'];
-        if ($periodo !== '') {
-            $partes[] = "Período vigente: {$periodo}.";
-        }
-        if ($direito > 0) {
-            $partes[] = "Check-ins: {$usados} utilizados de {$direito} disponíveis.";
-        } elseif ($usados > 0) {
-            $partes[] = "Check-ins utilizados: {$usados}.";
-        }
-        if ($aulas !== '') {
-            $partes[] = "Aulas neste ciclo: {$aulas}.";
-        }
-        $partes[] = 'Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.';
-
-        return implode(' ', $partes);
+        return 'Você atingiu o limite de check-ins do ciclo do seu plano. Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.';
     }
 
     /**
@@ -1120,6 +1099,47 @@ class Checkin
         $stmt->execute(['matricula_id' => $matriculaId]);
 
         return $stmt->rowCount() > 0;
+    }
+
+    /**
+     * Reverte pendente→ativa quando o status veio do limite do ciclo, mas ainda
+     * há saldo (ex.: ciclo com 5 semanas / bônus aplicado depois).
+     */
+    public function reativarDePendenteParaAtiva(int $matriculaId): bool
+    {
+        $stmt = $this->db->prepare(
+            "UPDATE matriculas m
+             INNER JOIN status_matricula sm ON sm.id = m.status_id
+             SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1),
+                 m.updated_at = NOW()
+             WHERE m.id = :matricula_id
+               AND sm.codigo = 'pendente'"
+        );
+        $stmt->execute(['matricula_id' => $matriculaId]);
+
+        return $stmt->rowCount() > 0;
+    }
+
+    /**
+     * True se a matrícula pendente ainda tem saldo de check-ins no ciclo vigente
+     * (não deve permanecer bloqueada só por limite).
+     * Exige usos > 0 para não confundir com aguardando 1º pagamento.
+     */
+    public function matriculaPendenteAindaTemSaldoCiclo(int $matriculaId): bool
+    {
+        if ($this->avaliarLimiteMensalPorMatricula($matriculaId) !== null) {
+            return false;
+        }
+
+        $resumo = $this->obterResumoCicloPorMatricula($matriculaId);
+        if ($resumo === null) {
+            return false;
+        }
+
+        $direito = (int) ($resumo['direito'] ?? $resumo['limite_mensal'] ?? 0);
+        $usados = (int) ($resumo['usados'] ?? $resumo['checkins_mes'] ?? 0);
+
+        return $direito > 0 && $usados > 0 && $usados < $direito;
     }
 
     /**

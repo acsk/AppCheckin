@@ -1653,23 +1653,34 @@ class MobileController
                     $alunoId,
                     (int) $tenantId
                 );
-                $errorResponse = array_merge([
-                    'success' => false,
-                ], $erroMatriculaCheckin);
-                // Compat: alguns clientes leem "error" em vez de "mensagem"
-                if (empty($errorResponse['error']) && !empty($errorResponse['mensagem'])) {
-                    $errorResponse['error'] = $errorResponse['mensagem'];
+                if (!empty($erroMatriculaCheckin['reativada'])) {
+                    $stmtMatricula->execute([
+                        'aluno_id' => $alunoId,
+                        'tenant_id' => $tenantId
+                    ]);
+                    $matricula = $stmtMatricula->fetch(\PDO::FETCH_ASSOC);
                 }
 
-                $errorResponse['debug'] = $this->montarDebugSemMatricula(
-                    (int)$tenantId,
-                    $alunoId,
-                    $usuarioId,
-                    'checkin_manual'
-                );
+                if (!$matricula) {
+                    unset($erroMatriculaCheckin['reativada']);
+                    $errorResponse = array_merge([
+                        'success' => false,
+                    ], $erroMatriculaCheckin);
+                    // Compat: alguns clientes leem "error" em vez de "mensagem"
+                    if (empty($errorResponse['error']) && !empty($errorResponse['mensagem'])) {
+                        $errorResponse['error'] = $errorResponse['mensagem'];
+                    }
 
-                $response->getBody()->write(json_encode($errorResponse, JSON_UNESCAPED_UNICODE));
-                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(403);
+                    $errorResponse['debug'] = $this->montarDebugSemMatricula(
+                        (int)$tenantId,
+                        $alunoId,
+                        $usuarioId,
+                        'checkin_manual'
+                    );
+
+                    $response->getBody()->write(json_encode($errorResponse, JSON_UNESCAPED_UNICODE));
+                    return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(403);
+                }
             }
 
             $hoje = date('Y-m-d');
@@ -1974,19 +1985,30 @@ class MobileController
                     (int) ($aluno['id'] ?? 0),
                     (int) $tenantId
                 );
-                $errorResponse = array_merge([
-                    'success' => false,
-                ], $erroMatriculaCheckin);
+                if (!empty($erroMatriculaCheckin['reativada'])) {
+                    $stmtMatricula->execute([
+                        'aluno_id' => (int) ($aluno['id'] ?? 0),
+                        'tenant_id' => $tenantId
+                    ]);
+                    $matricula = $stmtMatricula->fetch(\PDO::FETCH_ASSOC);
+                }
 
-                $errorResponse['debug'] = $this->montarDebugSemMatricula(
-                    (int)$tenantId,
-                    (int)($aluno['id'] ?? 0),
-                    (int)$userId,
-                    'checkin'
-                );
+                if (!$matricula) {
+                    unset($erroMatriculaCheckin['reativada']);
+                    $errorResponse = array_merge([
+                        'success' => false,
+                    ], $erroMatriculaCheckin);
 
-                $response->getBody()->write(json_encode($errorResponse));
-                return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+                    $errorResponse['debug'] = $this->montarDebugSemMatricula(
+                        (int)$tenantId,
+                        (int)($aluno['id'] ?? 0),
+                        (int)$userId,
+                        'checkin'
+                    );
+
+                    $response->getBody()->write(json_encode($errorResponse));
+                    return $response->withHeader('Content-Type', 'application/json')->withStatus(403);
+                }
             }
             
             // Verificar se o acesso ainda está válido (proxima_data_vencimento ou data_vencimento)
@@ -8344,11 +8366,27 @@ class MobileController
 
     /**
      * Erro de check-in quando não há matrícula elegível (permite_checkin), mas pode existir registro.
+     * Pode reativar pendente com saldo de ciclo (retorno com code MATRICULA_REATIVADA) para o caller retentar.
      */
     private function montarErroMatriculaIndisponivelCheckin(int $alunoId, int $tenantId): array
     {
         $ultima = $this->buscarMatriculaMaisRecentePorAluno($alunoId, $tenantId);
         $restricao = $this->avaliarRestricaoAcessoMatricula($ultima);
+
+        // avaliarRestricao pode ter reativado (saldo de ciclo). Sinaliza retry.
+        if ($restricao === null && $ultima) {
+            $refresh = $this->buscarMatriculaMaisRecentePorAluno($alunoId, $tenantId);
+            if ($refresh && (int) ($refresh['permite_checkin'] ?? 0) === 1) {
+                return [
+                    'code' => 'MATRICULA_REATIVADA',
+                    'error' => null,
+                    'mensagem' => null,
+                    'matricula_id' => (int) $refresh['id'],
+                    'status_codigo' => $refresh['status_codigo'] ?? 'ativa',
+                    'reativada' => true,
+                ];
+            }
+        }
 
         if ($restricao !== null) {
             $erro = [
@@ -8526,14 +8564,18 @@ class MobileController
                     ];
                 }
 
-                // 3) Período ainda vigente sem parcela atrasada: trata como limite
-                // (status pendente costuma vir do job de check-ins esgotados).
+                // 3) Período ainda vigente sem parcela atrasada.
+                // Status pendente costuma vir do job de check-ins esgotados — mas
+                // só bloqueia se o limite realmente estiver empatado. Se ainda há
+                // saldo (ex.: bônus de 5ª semana), reativa e libera.
                 if (is_string($acessoAte) && $acessoAte !== '0000-00-00' && $acessoAte >= $hoje) {
+                    if ($this->checkinModel->matriculaPendenteAindaTemSaldoCiclo($matriculaId)) {
+                        $this->checkinModel->reativarDePendenteParaAtiva($matriculaId);
+                        return null;
+                    }
+
                     $resumoCiclo = $this->checkinModel->obterResumoCicloPorMatricula($matriculaId);
-                    $mensagem = $resumoCiclo
-                        ? \App\Models\Checkin::montarMensagemLimiteCicloParaAluno($resumoCiclo)
-                        : ('Você atingiu o limite de check-ins do ciclo do seu plano.'
-                            . ' Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.');
+                    $mensagem = \App\Models\Checkin::montarMensagemLimiteCicloParaAluno($resumoCiclo ?? []);
                     $payload = [
                         'code' => 'LIMITE_CHECKINS_CICLO',
                         'mensagem' => $mensagem,

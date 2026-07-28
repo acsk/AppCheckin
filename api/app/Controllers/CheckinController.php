@@ -534,12 +534,15 @@ class CheckinController
                 }
 
                 if (is_string($acessoAte) && $acessoAte !== '0000-00-00' && $acessoAte >= $hoje) {
+                    if ($this->checkinModel->matriculaPendenteAindaTemSaldoCiclo($matriculaId)) {
+                        $this->checkinModel->reativarDePendenteParaAtiva($matriculaId);
+                        return null;
+                    }
+
                     $resumoCiclo = $this->checkinModel->obterResumoCicloPorMatricula($matriculaId);
                     return [
                         'error' => $mensagemParaAluno
-                            ? ($resumoCiclo
-                                ? \App\Models\Checkin::montarMensagemLimiteCicloParaAluno($resumoCiclo)
-                                : 'Você atingiu o limite de check-ins do ciclo do seu plano. Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.')
+                            ? \App\Models\Checkin::montarMensagemLimiteCicloParaAluno($resumoCiclo ?? [])
                             : 'Aluno atingiu o limite de check-ins do ciclo.',
                         'codigo' => 'LIMITE_CHECKINS_CICLO',
                         'status' => $statusNome,

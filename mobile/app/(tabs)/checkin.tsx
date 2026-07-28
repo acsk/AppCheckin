@@ -718,9 +718,8 @@ export default function CheckinScreen() {
           data?.codigo === "LIMITE_CHECKINS_CICLO" ||
           String(apiMessage).toLowerCase().includes("limite de check-ins")
         ) {
-          const msgLimite = limiteDetalhes
-            ? "Você atingiu o limite de check-ins do ciclo do seu plano. Renove o plano para liberar o próximo ciclo e continuar fazendo check-in."
-            : normalizeUtf8(String(apiMessage));
+          const msgLimite =
+            "Você atingiu o limite de check-ins do ciclo do seu plano. Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.";
           showErrorModal(
             msgLimite,
             "warning",

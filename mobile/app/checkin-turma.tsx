@@ -762,9 +762,8 @@ export default function CheckinTurmaScreen() {
           data?.codigo === "LIMITE_CHECKINS_CICLO" ||
           String(apiMessage).toLowerCase().includes("limite de check-ins")
         ) {
-          const msgLimite = limiteDetalhes
-            ? "Você atingiu o limite de check-ins do ciclo do seu plano. Renove o plano para liberar o próximo ciclo e continuar fazendo check-in."
-            : normalizeUtf8(String(apiMessage));
+          const msgLimite =
+            "Você atingiu o limite de check-ins do ciclo do seu plano. Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.";
           showErrorModal(
             msgLimite,
             "warning",
@@ -1099,14 +1098,44 @@ export default function CheckinTurmaScreen() {
         // já trata dias_checkin ausente/malformado. Não confundir com outros
         // erros que trazem 'detalhes' de formato diferente (ex.: limite diário).
         const limiteDetalhes =
-          data?.detalhes && data.detalhes.limite_mensal !== undefined
+          data?.detalhes &&
+          typeof data.detalhes === "object" &&
+          (data.detalhes.limite_mensal !== undefined ||
+            data.detalhes.direito !== undefined ||
+            data.detalhes.periodo_vigente ||
+            data.detalhes.ciclo_inicio ||
+            Array.isArray(data.detalhes.dias_checkin))
             ? data.detalhes
             : null;
-        showErrorModal(
-          normalizeUtf8(String(apiMessage)),
-          "warning",
-          limiteDetalhes,
-        );
+
+        if (
+          data?.code === "LIMITE_CHECKINS_CICLO" ||
+          data?.codigo === "LIMITE_CHECKINS_CICLO" ||
+          String(apiMessage).toLowerCase().includes("limite de check-ins")
+        ) {
+          showErrorModal(
+            "Você atingiu o limite de check-ins do ciclo do seu plano. Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.",
+            "warning",
+            limiteDetalhes,
+            "Limite de check-ins",
+          );
+        } else if (
+          data?.code === "MATRICULA_PENDENTE" ||
+          data?.codigo === "MATRICULA_PENDENTE"
+        ) {
+          showErrorModal(
+            normalizeUtf8(String(apiMessage)),
+            "warning",
+            null,
+            "Pagamento pendente",
+          );
+        } else {
+          showErrorModal(
+            normalizeUtf8(String(apiMessage)),
+            "warning",
+            limiteDetalhes,
+          );
+        }
         return;
       }
 
