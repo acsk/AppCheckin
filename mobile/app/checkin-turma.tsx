@@ -267,10 +267,16 @@ export default function CheckinTurmaScreen() {
     message: string,
     type: "error" | "warning" | "success" = "error",
     limite: typeof errorModal.limite = null,
+    titleOverride?: string,
   ) => {
     const msg = normalizeUtf8(String(message || ""));
     const title =
-      type === "error" ? "Erro!" : type === "warning" ? "Atenção!" : "Sucesso!";
+      titleOverride ||
+      (type === "error"
+        ? "Erro!"
+        : type === "warning"
+          ? "Atenção!"
+          : "Sucesso!");
 
     setErrorModal({
       visible: true,
@@ -742,6 +748,27 @@ export default function CheckinTurmaScreen() {
           String(apiMessage).toLowerCase().includes("já fez check-in")
         ) {
           showErrorModal(normalizeUtf8(String(apiMessage)), "warning");
+        } else if (
+          data?.code === "LIMITE_CHECKINS_CICLO" ||
+          data?.codigo === "LIMITE_CHECKINS_CICLO" ||
+          String(apiMessage).toLowerCase().includes("limite de check-ins")
+        ) {
+          showErrorModal(
+            normalizeUtf8(String(apiMessage)),
+            "warning",
+            limiteDetalhes,
+            "Limite de check-ins",
+          );
+        } else if (
+          data?.code === "MATRICULA_PENDENTE" ||
+          data?.codigo === "MATRICULA_PENDENTE"
+        ) {
+          showErrorModal(
+            normalizeUtf8(String(apiMessage)),
+            "warning",
+            null,
+            "Pagamento pendente",
+          );
         } else {
           showErrorModal(
             normalizeUtf8(String(apiMessage)),

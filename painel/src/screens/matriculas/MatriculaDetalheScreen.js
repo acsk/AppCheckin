@@ -692,6 +692,9 @@ export default function MatriculaDetalheScreen() {
 
   const getStatusLabel = (statusId) => {
     const id = Number(statusId);
+    if (id === 5 && matricula?.motivo_status === 'limite_checkins') {
+      return 'Limite esgotado';
+    }
     switch (id) {
       case 1:
         return 'Ativa';
@@ -1315,6 +1318,27 @@ export default function MatriculaDetalheScreen() {
                     O pagamento e a baixa são gerenciados no módulo de pacotes.
                   </Text>
                 </View>
+              </View>
+            )}
+
+            {Number(matricula.status_id) === 5 && matricula.motivo_status === 'limite_checkins' && (
+              <View className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <Text className="text-sm font-semibold text-amber-900">
+                  Limite de check-ins do ciclo esgotado
+                </Text>
+                <Text className="mt-1 text-[12px] leading-5 text-amber-800">
+                  O período pago segue até{' '}
+                  {formatDate(matricula.proxima_data_vencimento || matricula.data_vencimento)}, mas o
+                  check-in foi bloqueado porque o aluno usou todos os check-ins do ciclo
+                  {matricula.limite_ciclo?.checkins_mes != null && matricula.limite_ciclo?.limite_mensal != null
+                    ? ` (${matricula.limite_ciclo.checkins_mes}/${matricula.limite_ciclo.limite_mensal}`
+                    : ''}
+                  {matricula.limite_ciclo?.mes_referencia
+                    ? ` em ${matricula.limite_ciclo.mes_referencia}`
+                    : ''}
+                  {matricula.limite_ciclo?.checkins_mes != null ? ')' : ''}. A renovação libera o próximo
+                  ciclo.
+                </Text>
               </View>
             )}
           </View>

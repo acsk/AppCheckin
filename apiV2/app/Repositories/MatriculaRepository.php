@@ -183,19 +183,25 @@ class MatriculaRepository
 
         if ((int) ($matricula['permite_checkin'] ?? 0) !== 1 || (int) ($matricula['status_ativo'] ?? 0) !== 1) {
             $acessoAte = $matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'] ?? null;
+            $hoje = date('Y-m-d');
             $vencTxt = ($acessoAte && $acessoAte !== '0000-00-00')
                 ? ' Vencimento: ' . date('d/m/Y', strtotime((string) $acessoAte)) . '.'
                 : '';
 
             if ($statusCodigo === 'pendente' && $matriculaId > 0) {
+                // 1) Check-ins primeiro
                 $detalhesLimite = $this->avaliarLimiteCicloMatricula($matriculaId);
                 if ($detalhesLimite !== null) {
-                    $msgBase = $detalhesLimite['mensagem']
-                        ?? 'Você atingiu o limite de check-ins do ciclo do plano';
+                    $usados = (int) ($detalhesLimite['usados'] ?? $detalhesLimite['checkins_mes'] ?? 0);
+                    $direito = (int) ($detalhesLimite['direito'] ?? $detalhesLimite['limite_mensal'] ?? 0);
+                    $cicloRef = (string) ($detalhesLimite['mes_referencia'] ?? '');
+                    $mensagem = 'Você atingiu o limite de check-ins do ciclo do seu plano'
+                        . ($direito > 0 ? " ({$usados}/{$direito}" . ($cicloRef !== '' ? " em {$cicloRef}" : '') . ')' : '')
+                        . '. Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.';
 
                     return [
                         'code' => 'LIMITE_CHECKINS_CICLO',
-                        'mensagem' => $msgBase.' Regularize o pagamento para renovar o ciclo e continuar fazendo check-in.',
+                        'mensagem' => $mensagem,
                         'matricula_id' => $matriculaId,
                         'status_codigo' => $statusCodigo,
                         'status' => $statusNome,
@@ -203,6 +209,52 @@ class MatriculaRepository
                         'detalhes' => $detalhesLimite,
                     ];
                 }
+
+                // 2) Financeiro: parcela vencida/atrasada
+                $temParcelaVencida = DB::table('pagamentos_plano')
+                    ->where('matricula_id', $matriculaId)
+                    ->whereIn('status_pagamento_id', [1, 3])
+                    ->whereNull('data_pagamento')
+                    ->whereNotNull('data_vencimento')
+                    ->where('data_vencimento', '<=', $hoje)
+                    ->exists();
+
+                if ($temParcelaVencida) {
+                    return [
+                        'code' => 'MATRICULA_PENDENTE',
+                        'mensagem' => 'Há pagamento em atraso na sua matrícula.'
+                            . $vencTxt
+                            . ' Regularize para voltar a fazer check-in.',
+                        'matricula_id' => $matriculaId,
+                        'status_codigo' => $statusCodigo,
+                        'status' => $statusNome,
+                        'data_vencimento' => $acessoAte,
+                    ];
+                }
+
+                // 3) Ainda no período pago → limite (status veio do job)
+                if (is_string($acessoAte) && $acessoAte !== '0000-00-00' && $acessoAte >= $hoje) {
+                    return [
+                        'code' => 'LIMITE_CHECKINS_CICLO',
+                        'mensagem' => 'Você atingiu o limite de check-ins do ciclo do seu plano.'
+                            . ' Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.',
+                        'matricula_id' => $matriculaId,
+                        'status_codigo' => $statusCodigo,
+                        'status' => $statusNome,
+                        'data_vencimento' => $acessoAte,
+                    ];
+                }
+
+                return [
+                    'code' => 'MATRICULA_PENDENTE',
+                    'mensagem' => 'Sua matrícula está aguardando pagamento.'
+                        . $vencTxt
+                        . ' Conclua o pagamento para ativar o check-in.',
+                    'matricula_id' => $matriculaId,
+                    'status_codigo' => $statusCodigo,
+                    'status' => $statusNome,
+                    'data_vencimento' => $acessoAte,
+                ];
             }
 
             return [

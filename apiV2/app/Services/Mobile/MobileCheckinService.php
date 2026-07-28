@@ -310,11 +310,10 @@ class MobileCheckinService
                     $excesso = max(0, $usados - $direito);
                     $mesRef = date('d/m', strtotime(date('Y-m-01'))) . ' a ' . date('d/m', strtotime(date('Y-m-t')));
                     $mensagem = sprintf(
-                        'Você atingiu o limite de check-ins do ciclo do plano (%s). Direito: %d | Usados: %d | Excedeu: %d. Regularize o pagamento para renovar o ciclo e continuar fazendo check-in.',
+                        'Você atingiu o limite de check-ins do ciclo do seu plano (%s). Usados: %d/%d. Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.',
                         $mesRef,
-                        $direito,
                         $usados,
-                        $excesso
+                        $direito
                     );
 
                     return [

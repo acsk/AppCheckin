@@ -99,10 +99,16 @@ export default function TurmaDetalhesScreen() {
   const showErrorModal = (
     message: string,
     type: "error" | "warning" | "success" = "error",
+    titleOverride?: string,
   ) => {
     const msg = normalizeUtf8(String(message || ""));
     const title =
-      type === "error" ? "Erro!" : type === "warning" ? "Atenção!" : "Sucesso!";
+      titleOverride ||
+      (type === "error"
+        ? "Erro!"
+        : type === "warning"
+          ? "Atenção!"
+          : "Sucesso!");
 
     setErrorModal({
       visible: true,
@@ -540,6 +546,25 @@ export default function TurmaDetalhesScreen() {
           showErrorModal(
             'Você já fez check-in nesta turma. Use o botão "Desfazer Check-in" para remover.',
             "warning",
+          );
+        } else if (
+          responseData?.code === "LIMITE_CHECKINS_CICLO" ||
+          responseData?.codigo === "LIMITE_CHECKINS_CICLO" ||
+          String(apiMessage).toLowerCase().includes("limite de check-ins")
+        ) {
+          showErrorModal(
+            normalizeUtf8(String(apiMessage)),
+            "warning",
+            "Limite de check-ins",
+          );
+        } else if (
+          responseData?.code === "MATRICULA_PENDENTE" ||
+          responseData?.codigo === "MATRICULA_PENDENTE"
+        ) {
+          showErrorModal(
+            normalizeUtf8(String(apiMessage)),
+            "warning",
+            "Pagamento pendente",
           );
         } else {
           showErrorModal(normalizeUtf8(String(apiMessage)), "error");

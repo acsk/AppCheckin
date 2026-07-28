@@ -1521,6 +1521,40 @@ class MatriculaController
             error_log("[MatriculaController] Erro ao buscar outras matrículas: " . $e->getMessage());
         }
 
+        // Pendente por limite de check-ins (acesso ainda futuro) ≠ pendente de 1ª compra.
+        $matricula['limite_ciclo'] = null;
+        $matricula['motivo_status'] = null;
+        try {
+            if (($matricula['status_codigo'] ?? '') === 'pendente') {
+                $checkinModel = new \App\Models\Checkin($db);
+                $detalheLimite = $checkinModel->avaliarLimiteMensalPorMatricula($matriculaId);
+                if ($detalheLimite !== null) {
+                    $matricula['limite_ciclo'] = \App\Models\Checkin::formatarDetalhesLimiteMensal(
+                        $detalheLimite,
+                        false
+                    );
+                    $matricula['motivo_status'] = 'limite_checkins';
+                } else {
+                    $hoje = date('Y-m-d');
+                    $acessoAte = $matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'] ?? null;
+                    $temPago = false;
+                    foreach ($matricula['pagamentos'] as $pag) {
+                        if ((int) ($pag['status_pagamento_id'] ?? 0) === 2 || !empty($pag['data_pagamento'])) {
+                            $temPago = true;
+                            break;
+                        }
+                    }
+                    if ($temPago && is_string($acessoAte) && $acessoAte > $hoje) {
+                        $matricula['motivo_status'] = 'aguardando_renovacao';
+                    } else {
+                        $matricula['motivo_status'] = 'aguardando_pagamento';
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log("[MatriculaController] Erro ao avaliar motivo_status: " . $e->getMessage());
+        }
+
         $response->getBody()->write(json_encode([
             'matricula' => $matricula,
             'pagamentos' => $matricula['pagamentos'],

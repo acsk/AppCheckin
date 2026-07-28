@@ -106,9 +106,14 @@ class CheckinController
                     if (!empty($matricula['id'])) {
                         $this->checkinModel->marcarPendenteSeLimiteCicloEsgotado((int) $matricula['id']);
                     }
-                    $msgBase = $detalhesLimite['mensagem'] ?? 'Você atingiu o limite de check-ins do ciclo do plano';
+                    $usados = (int) ($detalhesLimite['usados'] ?? $detalhesLimite['checkins_mes'] ?? 0);
+                    $direito = (int) ($detalhesLimite['direito'] ?? $detalhesLimite['limite_mensal'] ?? 0);
+                    $cicloRef = (string) ($detalhesLimite['mes_referencia'] ?? '');
+                    $mensagem = 'Você atingiu o limite de check-ins do ciclo do seu plano'
+                        . ($direito > 0 ? " ({$usados}/{$direito}" . ($cicloRef !== '' ? " em {$cicloRef}" : '') . ')' : '')
+                        . '. Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.';
                     $response->getBody()->write(json_encode([
-                        'error' => $msgBase . ' Regularize o pagamento para renovar o ciclo e continuar fazendo check-in.',
+                        'error' => $mensagem,
                         'codigo' => 'LIMITE_CHECKINS_CICLO',
                         'detalhes' => $detalhesLimite
                     ], JSON_UNESCAPED_UNICODE));
@@ -475,26 +480,91 @@ class CheckinController
         if ((int) ($matricula['permite_checkin'] ?? 0) !== 1 || (int) ($matricula['status_ativo'] ?? 0) !== 1) {
             $statusNome = $matricula['status_nome'] ?? $statusCodigo;
             $acessoAte = $matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'] ?? null;
+            $hoje = date('Y-m-d');
             $vencTxt = ($acessoAte && $acessoAte !== '0000-00-00')
                 ? ' Vencimento: ' . date('d/m/Y', strtotime((string) $acessoAte)) . '.'
                 : '';
+            $matriculaId = (int) ($matricula['id'] ?? 0);
 
-            // Pendente por limite de check-ins empatado: aviso específico para renovar.
-            if ($statusCodigo === 'pendente') {
-                $detalhesLimite = $this->checkinModel->avaliarLimiteMensalPorMatricula((int) ($matricula['id'] ?? 0));
+            // Pendente: check-ins primeiro, depois financeiro.
+            if ($statusCodigo === 'pendente' && $matriculaId > 0) {
+                $detalhesLimite = $this->checkinModel->avaliarLimiteMensalPorMatricula($matriculaId);
                 if ($detalhesLimite !== null) {
-                    $msgBase = $detalhesLimite['mensagem']
-                        ?? 'Você atingiu o limite de check-ins do ciclo do plano';
+                    $usados = (int) ($detalhesLimite['usados'] ?? $detalhesLimite['checkins_mes'] ?? 0);
+                    $direito = (int) ($detalhesLimite['direito'] ?? $detalhesLimite['limite_mensal'] ?? 0);
+                    $cicloRef = (string) ($detalhesLimite['mes_referencia'] ?? '');
+                    $mensagem = $mensagemParaAluno
+                        ? ('Você atingiu o limite de check-ins do ciclo do seu plano'
+                            . ($direito > 0 ? " ({$usados}/{$direito}" . ($cicloRef !== '' ? " em {$cicloRef}" : '') . ')' : '')
+                            . '. Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.')
+                        : ('Aluno atingiu o limite de check-ins do ciclo'
+                            . ($direito > 0 ? " ({$usados}/{$direito})" : '')
+                            . '.');
+
                     return [
-                        'error' => $msgBase . ' Regularize o pagamento para renovar o ciclo e continuar fazendo check-in.',
+                        'error' => $mensagem,
                         'codigo' => 'LIMITE_CHECKINS_CICLO',
                         'status' => $statusNome,
                         'status_codigo' => $statusCodigo,
-                        'matricula_id' => (int) ($matricula['id'] ?? 0),
+                        'matricula_id' => $matriculaId,
                         'data_vencimento' => $acessoAte,
                         'detalhes' => $detalhesLimite,
                     ];
                 }
+
+                $temParcelaVencida = false;
+                try {
+                    $stmtParc = $this->db->prepare("
+                        SELECT 1 FROM pagamentos_plano
+                        WHERE matricula_id = ?
+                          AND status_pagamento_id IN (1, 3)
+                          AND data_pagamento IS NULL
+                          AND data_vencimento IS NOT NULL
+                          AND data_vencimento <= CURDATE()
+                        LIMIT 1
+                    ");
+                    $stmtParc->execute([$matriculaId]);
+                    $temParcelaVencida = (bool) $stmtParc->fetchColumn();
+                } catch (\Throwable $e) {
+                    // ignore
+                }
+
+                if ($temParcelaVencida) {
+                    return [
+                        'error' => $mensagemParaAluno
+                            ? ('Há pagamento em atraso na sua matrícula.' . $vencTxt . ' Regularize para voltar a fazer check-in.')
+                            : ('Matrícula com pagamento em atraso.' . $vencTxt),
+                        'codigo' => 'MATRICULA_PENDENTE',
+                        'status' => $statusNome,
+                        'status_codigo' => $statusCodigo,
+                        'matricula_id' => $matriculaId,
+                        'data_vencimento' => $acessoAte,
+                    ];
+                }
+
+                if (is_string($acessoAte) && $acessoAte !== '0000-00-00' && $acessoAte >= $hoje) {
+                    return [
+                        'error' => $mensagemParaAluno
+                            ? 'Você atingiu o limite de check-ins do ciclo do seu plano. Renove o plano para liberar o próximo ciclo e continuar fazendo check-in.'
+                            : 'Aluno atingiu o limite de check-ins do ciclo.',
+                        'codigo' => 'LIMITE_CHECKINS_CICLO',
+                        'status' => $statusNome,
+                        'status_codigo' => $statusCodigo,
+                        'matricula_id' => $matriculaId,
+                        'data_vencimento' => $acessoAte,
+                    ];
+                }
+
+                return [
+                    'error' => $mensagemParaAluno
+                        ? ('Sua matrícula está aguardando pagamento.' . $vencTxt . ' Conclua o pagamento para ativar o check-in.')
+                        : ('Matrícula aguardando pagamento.' . $vencTxt),
+                    'codigo' => 'MATRICULA_PENDENTE',
+                    'status' => $statusNome,
+                    'status_codigo' => $statusCodigo,
+                    'matricula_id' => $matriculaId,
+                    'data_vencimento' => $acessoAte,
+                ];
             }
 
             return [
@@ -504,7 +574,7 @@ class CheckinController
                 'codigo' => $this->codigoErroPorStatusMatricula($statusCodigo),
                 'status' => $statusNome,
                 'status_codigo' => $statusCodigo,
-                'matricula_id' => (int) ($matricula['id'] ?? 0),
+                'matricula_id' => $matriculaId,
                 'data_vencimento' => $acessoAte,
             ];
         }
