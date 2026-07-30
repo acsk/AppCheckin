@@ -6,10 +6,12 @@
  * para atualizar o status das matrículas baseado nos pagamentos vencidos.
  * 
  * Lógica de Status:
- * - Ativa (0 dias): Pagamento em dia
+ * - Ativa (0 dias): Pagamento em dia / vigência válida
  * - Vencida (1-4 dias): Pagamento vencido, aguardando regularização  
  * - Cancelada (5+ dias): Inadimplência - acesso bloqueado
  * - Pendente: limite de check-ins do ciclo empatado (planos com reposição)
+ * - Avulso temp/cortesia (valor = 0): usa datas da matrícula; não realinha nem
+ *   cancela pelo histórico de pagamentos antigos.
  * 
  * Uso via cron:
  * 0 6 * * * php /path/to/jobs/atualizar_status_matriculas.php >> /var/log/status_matriculas.log 2>&1
@@ -132,6 +134,24 @@ function sqlFimPeriodoPago(string $tenantExpr, string $matriculaExpr): string
     )";
 }
 
+/**
+ * Data de acesso usada para vencida/cancelada.
+ * Avulso comercial (valor > 0): fim do período pago.
+ * Avulso temp/cortesia (valor = 0) e demais: datas da matrícula (não cancelar vigente).
+ */
+function sqlAcessoAteStatus(string $tenantExpr, string $matriculaExpr): string
+{
+    return "(
+        CASE
+            WHEN m.tipo_cobranca = 'avulso' AND CAST(COALESCE(m.valor, 0) AS DECIMAL(10,2)) > 0 THEN COALESCE(
+                " . sqlFimPeriodoPago($tenantExpr, $matriculaExpr) . ",
+                m.data_vencimento
+            )
+            ELSE COALESCE(m.proxima_data_vencimento, m.data_vencimento)
+        END
+    )";
+}
+
 try {
     // Buscar tenants ativos COM LIMITE para não sobrecarregar
     // Usa ORDER BY RAND() para distribuir a carga ao longo do tempo
@@ -216,7 +236,8 @@ try {
                 logMessage("  ✓ Avulso renovação Atrasada (período pago expirou): {$avulsoAtrasados}\n", $quiet);
             }
 
-            // 1c. Avulso: alinhar vigência ao fim do período pago (não à parcela futura)
+            // 1c. Avulso comercial: alinhar vigência ao fim do período pago (não à parcela futura).
+            // Temp/cortesia (valor = 0): NÃO sobrescrever — a vigência é a da matrícula.
             $sqlAlinharAvulso = "
                 UPDATE matriculas m
                 INNER JOIN (
@@ -238,6 +259,7 @@ try {
                     m.updated_at = NOW()
                 WHERE m.tenant_id = :tenant_id
                   AND m.tipo_cobranca = 'avulso'
+                  AND CAST(COALESCE(m.valor, 0) AS DECIMAL(10,2)) > 0
                   AND (
                       m.data_vencimento IS NULL
                       OR m.proxima_data_vencimento IS NULL
@@ -299,26 +321,16 @@ try {
             $canceladasAtualizadas = $stmt->rowCount();
             logMessage("  ✓ Matrículas Canceladas: {$canceladasAtualizadas}\n", $quiet);
 
-            // 3.1 Atualizar matrículas para VENCIDA quando a data de vencimento expirou (1-4 dias)
-            // Avulso usa fim do período PAGO; demais usam proxima_data_vencimento.
+            // 3.1 Atualizar matrículas para VENCIDA quando a data de acesso expirou (1-4 dias)
+            // Avulso comercial: fim do período pago. Temp (valor=0): datas da matrícula.
             $sqlVencidaPorData = "
                 UPDATE matriculas m
                 SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'vencida' LIMIT 1),
                     m.updated_at = NOW()
                 WHERE m.tenant_id = :tenant_id
                 AND m.status_id IN (SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'pendente'))
-                AND (
-                    CASE WHEN m.tipo_cobranca = 'avulso' THEN COALESCE(
-                        " . sqlFimPeriodoPago('m.tenant_id', 'm.id') . ",
-                        m.data_vencimento
-                    ) ELSE COALESCE(m.proxima_data_vencimento, m.data_vencimento) END
-                ) < CURDATE()
-                AND DATEDIFF(CURDATE(), (
-                    CASE WHEN m.tipo_cobranca = 'avulso' THEN COALESCE(
-                        " . sqlFimPeriodoPago('m.tenant_id', 'm.id') . ",
-                        m.data_vencimento
-                    ) ELSE COALESCE(m.proxima_data_vencimento, m.data_vencimento) END
-                )) < 5
+                AND " . sqlAcessoAteStatus('m.tenant_id', 'm.id') . " < CURDATE()
+                AND DATEDIFF(CURDATE(), " . sqlAcessoAteStatus('m.tenant_id', 'm.id') . ") < 5
                 LIMIT 1000
             ";
             $stmt = $db->prepare($sqlVencidaPorData);
@@ -326,19 +338,14 @@ try {
             $vencidasPorData = $stmt->rowCount();
             logMessage("  ✓ Matrículas Vencidas (por data): {$vencidasPorData}\n", $quiet);
 
-            // 3.2 Atualizar matrículas para CANCELADA quando a data de vencimento expirou (5+ dias)
+            // 3.2 Atualizar matrículas para CANCELADA quando a data de acesso expirou (5+ dias)
             $sqlCanceladaPorData = "
                 UPDATE matriculas m
                 SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'cancelada' LIMIT 1),
                     m.updated_at = NOW()
                 WHERE m.tenant_id = :tenant_id
                 AND m.status_id IN (SELECT id FROM status_matricula WHERE codigo IN ('ativa', 'pendente', 'vencida'))
-                AND DATEDIFF(CURDATE(), (
-                    CASE WHEN m.tipo_cobranca = 'avulso' THEN COALESCE(
-                        " . sqlFimPeriodoPago('m.tenant_id', 'm.id') . ",
-                        m.data_vencimento
-                    ) ELSE COALESCE(m.proxima_data_vencimento, m.data_vencimento) END
-                )) >= 5
+                AND DATEDIFF(CURDATE(), " . sqlAcessoAteStatus('m.tenant_id', 'm.id') . ") >= 5
                 LIMIT 1000
             ";
             $stmt = $db->prepare($sqlCanceladaPorData);
@@ -426,21 +433,14 @@ try {
             logMessage("  ✓ Matrículas sincronizadas (assinatura approved/ativa): {$sincAprovadas}\n", $quiet);
             
             // 7. Reativar matrículas vencidas que foram regularizadas
-            // Avulso: só reativa se o período pago ainda não expirou.
+            // Avulso comercial: período pago. Temp (valor=0): datas da matrícula.
             $sqlReativar = "
                 UPDATE matriculas m
                 SET m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'ativa' LIMIT 1),
                     m.updated_at = NOW()
                 WHERE m.tenant_id = :tenant_id 
                 AND m.status_id = (SELECT id FROM status_matricula WHERE codigo = 'vencida' LIMIT 1)
-                AND (
-                    CASE WHEN m.tipo_cobranca = 'avulso' THEN COALESCE(
-                        (SELECT MAX(pp_acesso.data_vencimento) FROM pagamentos_plano pp_acesso
-                         WHERE pp_acesso.matricula_id = m.id AND pp_acesso.tenant_id = m.tenant_id
-                           AND pp_acesso.status_pagamento_id = 2),
-                        m.data_vencimento
-                    ) ELSE COALESCE(m.proxima_data_vencimento, m.data_vencimento) END
-                ) >= CURDATE()
+                AND " . sqlAcessoAteStatus('m.tenant_id', 'm.id') . " >= CURDATE()
                 AND NOT EXISTS (
                     SELECT 1 FROM pagamentos_plano pp
                     WHERE pp.matricula_id = m.id

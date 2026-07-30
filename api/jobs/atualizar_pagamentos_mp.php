@@ -69,7 +69,7 @@ function buscarPagamentoAprovadoPorExternalReference(int $tenantId, string $exte
 function atualizarVigenciaMatriculaAprovada(PDO $pdo, int $matriculaId, ?string $dataReferencia, bool $quiet): void
 {
     $stmtMatricula = $pdo->prepare("
-        SELECT m.id, m.status_id, m.tipo_cobranca, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento,
+        SELECT m.id, m.status_id, m.tipo_cobranca, m.valor, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento,
                p.duracao_dias, pc.meses
         FROM matriculas m
         INNER JOIN planos p ON p.id = m.plano_id
@@ -103,6 +103,21 @@ function atualizarVigenciaMatriculaAprovada(PDO $pdo, int $matriculaId, ?string 
 
     $ehAvulso = ($matricula['tipo_cobranca'] ?? '') === 'avulso';
     $ehDiariaAvulsa = $ehAvulso && (int) ($matricula['duracao_dias'] ?? 0) === 1;
+    $ehTempCortesia = $ehAvulso && (float) ($matricula['valor'] ?? 0) <= 0;
+
+    // Temp/cortesia: não realinhar vigência por histórico de pagamento.
+    if ($ehTempCortesia) {
+        if ((int) $matricula['status_id'] !== $statusAtivaId) {
+            $stmtOnlyStatus = $pdo->prepare("UPDATE matriculas SET status_id = ?, updated_at = NOW() WHERE id = ?");
+            $stmtOnlyStatus->execute([$statusAtivaId, $matriculaId]);
+            if ($stmtOnlyStatus->rowCount() > 0) {
+                logMsg("✅ Matrícula {$matriculaId} (temp/cortesia) reativada sem alterar vigência", $quiet);
+            }
+        } else {
+            logMsg("ℹ️  Matrícula {$matriculaId} temp/cortesia: vigência preservada", $quiet);
+        }
+        return;
+    }
 
     $duracaoMeses = $ehDiariaAvulsa ? 0 : (int) ($matricula['meses'] ?? 0);
     if ($duracaoMeses > 0) {
