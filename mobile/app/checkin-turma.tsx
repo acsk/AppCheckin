@@ -21,6 +21,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import BirthdayBadge from "../src/components/BirthdayBadge";
 import { colors } from "../src/theme/colors";
 import { normalizeUtf8 } from "../src/utils/utf8";
+import { normalizeVencimentoMessage } from "../src/utils/dateBr";
 import { weekdayAbbrev } from "../src/utils/weekdayAbbrev";
 
 const getRouteParam = (value?: string | string[]) => {
@@ -743,11 +744,15 @@ export default function CheckinTurmaScreen() {
         if (await handleUnauthorizedResponse(response)) {
           return;
         }
-        const apiMessage =
-          data?.message ||
-          data?.error ||
-          text ||
-          "Não foi possível realizar o check-in.";
+        const apiMessage = normalizeVencimentoMessage(
+          String(
+            data?.message ||
+              data?.error ||
+              text ||
+              "Não foi possível realizar o check-in.",
+          ),
+          data?.data_vencimento,
+        );
         const limiteDetalhes =
           data?.detalhes &&
           typeof data.detalhes === "object" &&
@@ -790,7 +795,10 @@ export default function CheckinTurmaScreen() {
         } else {
           showErrorModal(
             normalizeUtf8(String(apiMessage)),
-            "error",
+            data?.code === "MATRICULA_CANCELADA" ||
+              data?.codigo === "MATRICULA_CANCELADA"
+              ? "warning"
+              : "error",
             limiteDetalhes,
           );
         }
@@ -1177,11 +1185,15 @@ export default function CheckinTurmaScreen() {
         if (await handleUnauthorizedResponse(response)) {
           return;
         }
-        const apiMessage =
-          data?.error ||
-          data?.message ||
-          text ||
-          "Não foi possível adicionar o aluno.";
+        const apiMessage = normalizeVencimentoMessage(
+          String(
+            data?.error ||
+              data?.message ||
+              text ||
+              "Não foi possível adicionar o aluno.",
+          ),
+          data?.data_vencimento,
+        );
         // Mostra o box de limite sempre que vier o resumo do limite mensal
         // (identificado por limite_mensal). A lista de dias é opcional — o render
         // já trata dias_checkin ausente/malformado. Não confundir com outros

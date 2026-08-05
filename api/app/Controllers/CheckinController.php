@@ -478,9 +478,9 @@ class CheckinController
             $statusNome = $matricula['status_nome'] ?? $statusCodigo;
             $acessoAte = $matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'] ?? null;
             $hoje = date('Y-m-d');
-            $vencTxt = ($acessoAte && $acessoAte !== '0000-00-00')
-                ? ' Vencimento: ' . date('d/m/Y', strtotime((string) $acessoAte)) . '.'
-                : '';
+            $vencTxt = \App\Helpers\DateBr::vencimentoSuffix(
+                is_string($acessoAte) ? $acessoAte : null
+            );
             $matriculaId = (int) ($matricula['id'] ?? 0);
 
             // Pendente: check-ins primeiro, depois financeiro.
@@ -579,7 +579,8 @@ class CheckinController
 
         $hoje = date('Y-m-d');
         if (!empty($matricula['proxima_data_vencimento']) && $matricula['proxima_data_vencimento'] < $hoje) {
-            $dataVencimento = date('d/m/Y', strtotime($matricula['proxima_data_vencimento']));
+            $dataVencimento = \App\Helpers\DateBr::format((string) $matricula['proxima_data_vencimento'])
+                ?? (string) $matricula['proxima_data_vencimento'];
             return [
                 'error' => $mensagemParaAluno
                     ? "Seu acesso expirou em {$dataVencimento}. Por favor, renove sua matrícula."

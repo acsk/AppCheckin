@@ -231,9 +231,9 @@ class MobileCompraPlanoService
                 }
             }
 
-            $vencTxt = ($acessoAte && $acessoAte !== '0000-00-00')
-                ? ' Vencimento: '.date('d/m/Y', strtotime((string) $acessoAte)).'.'
-                : '';
+            $vencTxt = \App\Helpers\DateBr::vencimentoSuffix(
+                is_string($acessoAte) ? $acessoAte : null
+            );
 
             return [
                 'status' => 400,

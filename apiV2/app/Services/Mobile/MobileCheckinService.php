@@ -77,7 +77,7 @@ class MobileCheckinService
         $hoje = AcademyDateTime::today();
         $acessoAte = $matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'] ?? null;
         if ($acessoAte && $acessoAte < $hoje) {
-            $dataVencimento = date('d/m/Y', strtotime($acessoAte));
+            $dataVencimento = \App\Helpers\DateBr::format(is_string($acessoAte) ? $acessoAte : null) ?? (string) $acessoAte;
 
             return [
                 'status' => 403,

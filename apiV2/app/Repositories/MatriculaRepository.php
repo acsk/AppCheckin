@@ -184,9 +184,9 @@ class MatriculaRepository
         if ((int) ($matricula['permite_checkin'] ?? 0) !== 1 || (int) ($matricula['status_ativo'] ?? 0) !== 1) {
             $acessoAte = $matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'] ?? null;
             $hoje = date('Y-m-d');
-            $vencTxt = ($acessoAte && $acessoAte !== '0000-00-00')
-                ? ' Vencimento: ' . date('d/m/Y', strtotime((string) $acessoAte)) . '.'
-                : '';
+            $vencTxt = \App\Helpers\DateBr::vencimentoSuffix(
+                is_string($acessoAte) ? $acessoAte : null
+            );
 
             if ($statusCodigo === 'pendente' && $matriculaId > 0) {
                 // 1) Check-ins primeiro
@@ -334,7 +334,7 @@ class MatriculaRepository
         $hoje = date('Y-m-d');
         $acessoAte = $matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'] ?? null;
         if ($acessoAte && $acessoAte < $hoje) {
-            $dataVencimento = date('d/m/Y', strtotime($acessoAte));
+            $dataVencimento = \App\Helpers\DateBr::format(is_string($acessoAte) ? $acessoAte : null) ?? (string) $acessoAte;
 
             return [
                 'code' => 'MATRICULA_VENCIDA',

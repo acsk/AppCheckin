@@ -24,6 +24,7 @@ import AuthService from "../../src/services/authService";
 import { colors } from "../../src/theme/colors";
 import { handleAuthError } from "../../src/utils/authHelpers";
 import { normalizeUtf8 } from "../../src/utils/utf8";
+import { normalizeVencimentoMessage } from "../../src/utils/dateBr";
 import { weekdayAbbrev } from "../../src/utils/weekdayAbbrev";
 
 const getRouteParam = (value?: string | string[]) => {
@@ -695,11 +696,16 @@ export default function CheckinScreen() {
       }
 
       if (!response.ok) {
-        const apiMessage =
-          data?.message ||
-          data?.error ||
-          text ||
-          "Não foi possível realizar o check-in.";
+        const apiMessage = normalizeVencimentoMessage(
+          String(
+            data?.message ||
+              data?.error ||
+              data?.mensagem ||
+              text ||
+              "Não foi possível realizar o check-in.",
+          ),
+          data?.data_vencimento,
+        );
         console.warn(
           "Erro ao registrar check-in:",
           response.status,
@@ -738,7 +744,10 @@ export default function CheckinScreen() {
         } else {
           showErrorModal(
             normalizeUtf8(String(apiMessage)),
-            "error",
+            data?.code === "MATRICULA_CANCELADA" ||
+              data?.codigo === "MATRICULA_CANCELADA"
+              ? "warning"
+              : "error",
             undefined,
             limiteDetalhes,
           );
