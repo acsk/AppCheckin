@@ -54,7 +54,7 @@ class AlunoController
             ),
             new OA\Parameter(
                 name: "busca",
-                description: "Buscar por nome ou email",
+                description: "Buscar por nome, email, CPF ou telefone",
                 in: "query",
                 schema: new OA\Schema(type: "string")
             ),

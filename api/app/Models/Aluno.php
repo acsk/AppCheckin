@@ -418,12 +418,42 @@ class Aluno
         
         $params = [$tenantId];
         
-        if ($busca) {
-            $buscaLike = "%{$busca}%";
-            $sql .= " AND (a.nome LIKE ? OR u.email LIKE ? OR a.cpf LIKE ?)";
+        if ($busca !== null && trim($busca) !== '') {
+            $termo = trim($busca);
+            $buscaLike = '%' . $termo . '%';
+            $digitos = preg_replace('/\D+/', '', $termo) ?: '';
+            $digitosLike = $digitos !== '' ? '%' . $digitos . '%' : null;
+
+            $sql .= " AND (
+                a.nome LIKE ?
+                OR LOWER(COALESCE(u.email, '')) LIKE LOWER(?)
+                OR LOWER(COALESCE(u.email_global, '')) LIKE LOWER(?)
+                OR COALESCE(a.cpf, '') LIKE ?
+                OR COALESCE(u.cpf, '') LIKE ?
+                OR COALESCE(a.telefone, '') LIKE ?
+            ";
             $params[] = $buscaLike;
             $params[] = $buscaLike;
             $params[] = $buscaLike;
+            $params[] = $buscaLike;
+            $params[] = $buscaLike;
+            $params[] = $buscaLike;
+
+            if ($digitosLike !== null) {
+                $sql .= " OR COALESCE(a.cpf, '') LIKE ?
+                          OR COALESCE(u.cpf, '') LIKE ?
+                          OR COALESCE(a.telefone, '') LIKE ?";
+                $params[] = $digitosLike;
+                $params[] = $digitosLike;
+                $params[] = $digitosLike;
+            }
+
+            if ($digitos !== '' && ctype_digit($digitos) && strlen($digitos) <= 10) {
+                $sql .= " OR a.id = ?";
+                $params[] = (int) $digitos;
+            }
+
+            $sql .= ")";
         }
         
         $sql .= " ORDER BY a.nome ASC LIMIT " . (int)$porPagina . " OFFSET " . (int)$offset;

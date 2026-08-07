@@ -252,7 +252,15 @@ class AuthController
 
             // Usuário
             $usuario = $this->usuarioModel->findByEmailGlobal($email);
-            if (!$usuario || !isset($usuario['senha_hash']) || !password_verify($senha, $usuario['senha_hash'])) {
+            if (
+                !$usuario
+                || !isset($usuario['senha_hash'])
+                || !\App\Models\Usuario::verificarSenha(
+                    (string) $senha,
+                    (string) $usuario['senha_hash'],
+                    $usuario['cpf'] ?? null
+                )
+            ) {
                 $response->getBody()->write(json_encode([
                     'type' => 'error',
                     'code' => 'INVALID_CREDENTIALS',

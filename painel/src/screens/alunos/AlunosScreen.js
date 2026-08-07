@@ -132,6 +132,7 @@ export default function AlunosScreen() {
     <View key={aluno.id} style={styles.card}>
       <View style={styles.cardHeader}>
         <View style={styles.cardHeaderLeft}>
+          <Text style={styles.cardId}>#{aluno.id}</Text>
           <Text style={styles.cardName}>{aluno.nome}</Text>
           <View style={styles.badgesRow}>
             <View style={[
@@ -181,6 +182,13 @@ export default function AlunosScreen() {
       </View>
 
       <View style={styles.cardBody}>
+        {!!aluno.email && (
+          <View style={styles.cardRow}>
+            <Feather name="mail" size={14} color="#666" />
+            <Text style={styles.cardLabel}>E-mail:</Text>
+            <Text style={styles.cardValue}>{aluno.email}</Text>
+          </View>
+        )}
         {!!aluno.telefone && (
           <View style={styles.cardRow}>
             <Feather name="phone" size={14} color="#666" />
@@ -202,7 +210,9 @@ export default function AlunosScreen() {
   const renderTable = () => (
     <View className="mx-4 my-3 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
       <View className="flex-row items-center border-b border-slate-200 bg-slate-50 px-4 py-3">
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colId}>ID</Text>
         <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colNome}>NOME</Text>
+        <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colEmail}>E-MAIL</Text>
         <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colPlano}>PLANO</Text>
         <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colStatus}>STATUS</Text>
         <Text className="text-[11px] font-bold uppercase tracking-widest text-slate-500" style={styles.colPagamento}>PGTO</Text>
@@ -212,11 +222,19 @@ export default function AlunosScreen() {
       <ScrollView className="max-h-[520px]" showsVerticalScrollIndicator={true}>
         {alunosFiltrados.map((aluno) => (
           <View key={aluno.id} className="flex-row items-center border-b border-slate-100 px-4 py-3">
+            <View style={styles.colId}>
+              <Text className="text-[12px] font-semibold text-slate-500">#{aluno.id}</Text>
+            </View>
             <View style={styles.colNome}>
               <Text className="text-[13px] font-semibold text-slate-800" numberOfLines={1}>{aluno.nome}</Text>
               {aluno.telefone && (
                 <Text className="text-[11px] text-slate-400" numberOfLines={1}>{mascaraTelefone(aluno.telefone)}</Text>
               )}
+            </View>
+            <View style={styles.colEmail}>
+              <Text className="text-[12px] text-slate-700" numberOfLines={1}>
+                {aluno.email || '—'}
+              </Text>
             </View>
             <View style={styles.colPlano}>
               {aluno.plano ? (
@@ -691,13 +709,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   colNome: {
-    flex: 1.5,
+    flex: 1.4,
+  },
+  colId: {
+    width: 56,
   },
   colEmail: {
-    flex: 1.5,
+    flex: 1.6,
   },
   colPlano: {
-    flex: 1.2,
+    flex: 1.1,
   },
   colCheckins: {
     flex: 0.8,
@@ -710,6 +731,12 @@ const styles = StyleSheet.create({
   },
   colAcoes: {
     width: 130,
+  },
+  cardId: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#9ca3af',
+    marginBottom: 2,
   },
   filtersRow: {
     flexDirection: 'row',

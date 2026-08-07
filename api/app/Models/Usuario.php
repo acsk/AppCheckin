@@ -64,11 +64,13 @@ class Usuario
                  VALUES (:nome, :email, :email_global, :senha_hash, :cpf, :cep, :logradouro, :numero, :complemento, :bairro, :cidade, :estado, :telefone, :ativo)"
             );
             
+            $senhaNorm = self::normalizarSenhaCpf($data['senha'] ?? '', $cpfLimpo);
+
             $stmt->execute([
                 'nome' => $nome,
                 'email' => $emailNormalizado,
                 'email_global' => $emailGlobalNormalizado,
-                'senha_hash' => password_hash($data['senha'], PASSWORD_BCRYPT),
+                'senha_hash' => password_hash($senhaNorm, PASSWORD_BCRYPT),
                 'cpf' => $cpfLimpo ?: null,
                 'cep' => $cepLimpo ?: null,
                 'logradouro' => $logradouro,
@@ -224,14 +226,34 @@ class Usuario
             $params['nome'] = mb_strtoupper(trim($data['nome']), 'UTF-8');
         }
 
-        if (isset($data['email'])) {
-            $fields[] = 'email = :email';
-            $params['email'] = $data['email'];
-        }
-
         if (isset($data['senha'])) {
             $fields[] = 'senha_hash = :senha_hash';
-            $params['senha_hash'] = password_hash($data['senha'], PASSWORD_BCRYPT);
+            $cpfParaSenha = $data['cpf'] ?? null;
+            if ($cpfParaSenha === null) {
+                try {
+                    $stmtCpf = $this->db->prepare('SELECT cpf FROM usuarios WHERE id = :id LIMIT 1');
+                    $stmtCpf->execute(['id' => $id]);
+                    $cpfParaSenha = $stmtCpf->fetchColumn() ?: null;
+                } catch (\Throwable $e) {
+                    $cpfParaSenha = null;
+                }
+            }
+            $senhaNorm = self::normalizarSenhaCpf($data['senha'], $cpfParaSenha);
+            $params['senha_hash'] = password_hash($senhaNorm, PASSWORD_BCRYPT);
+        }
+
+        if (isset($data['email'])) {
+            $fields[] = 'email = :email';
+            $params['email'] = mb_strtolower(trim((string) $data['email']), 'UTF-8');
+            try {
+                $checkColumn = $this->db->query("SHOW COLUMNS FROM usuarios LIKE 'email_global'");
+                if ($checkColumn->fetch() !== false) {
+                    $fields[] = 'email_global = :email_global';
+                    $params['email_global'] = $params['email'];
+                }
+            } catch (\Throwable $e) {
+                // ignore
+            }
         }
 
         if (isset($data['foto_base64'])) {
@@ -523,34 +545,86 @@ class Usuario
      */
     public function findByEmailGlobal(string $email): ?array
     {
-        // Tentar primeiro com email_global, se não existir usar email
+        $email = mb_strtolower(trim($email), 'UTF-8');
+        if ($email === '') {
+            return null;
+        }
+
+        // Case-insensitive: cadastros do painel às vezes gravam email com maiúsculas
+        // e o login normaliza para minúsculas.
         $sql = "SELECT * FROM usuarios WHERE ";
-        
-        // Verificar se coluna email_global existe
+
         try {
             $checkColumn = $this->db->query("SHOW COLUMNS FROM usuarios LIKE 'email_global'");
             $hasEmailGlobal = $checkColumn->fetch() !== false;
-            
+
             if ($hasEmailGlobal) {
-                $sql .= "(email_global = :email OR email = :email2)";
+                $sql .= "(LOWER(TRIM(COALESCE(email_global, ''))) = :email OR LOWER(TRIM(email)) = :email2)";
                 $params = ['email' => $email, 'email2' => $email];
             } else {
-                $sql .= "email = :email";
+                $sql .= "LOWER(TRIM(email)) = :email";
                 $params = ['email' => $email];
             }
         } catch (\PDOException $e) {
-            // Se falhar, usar apenas email
-            $sql .= "email = :email";
+            $sql .= "LOWER(TRIM(email)) = :email";
             $params = ['email' => $email];
         }
-        
+
         $sql .= " LIMIT 1";
-        
+
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
         $user = $stmt->fetch();
-        
+
         return $user ?: null;
+    }
+
+    /**
+     * Normaliza senha inicial: se for o CPF (com ou sem máscara), grava só os dígitos.
+     */
+    public static function normalizarSenhaCpf(?string $senha, ?string $cpf): string
+    {
+        $senha = (string) ($senha ?? '');
+        $cpfDigitos = preg_replace('/[^0-9]/', '', (string) ($cpf ?? '')) ?: '';
+        $senhaDigitos = preg_replace('/[^0-9]/', '', $senha) ?: '';
+
+        if ($cpfDigitos !== '' && strlen($cpfDigitos) === 11 && $senhaDigitos === $cpfDigitos) {
+            return $cpfDigitos;
+        }
+
+        return $senha;
+    }
+
+    /**
+     * Verifica senha aceitando CPF com ou sem pontuação.
+     */
+    public static function verificarSenha(string $senhaInformada, string $senhaHash, ?string $cpf = null): bool
+    {
+        if ($senhaHash === '') {
+            return false;
+        }
+
+        if (password_verify($senhaInformada, $senhaHash)) {
+            return true;
+        }
+
+        $senhaDigitos = preg_replace('/[^0-9]/', '', $senhaInformada) ?: '';
+        if ($senhaDigitos !== '' && $senhaDigitos !== $senhaInformada && password_verify($senhaDigitos, $senhaHash)) {
+            return true;
+        }
+
+        // Fallback: senha informada (só dígitos) = CPF do cadastro
+        $cpfDigitos = preg_replace('/[^0-9]/', '', (string) ($cpf ?? '')) ?: '';
+        if (
+            $cpfDigitos !== ''
+            && strlen($cpfDigitos) === 11
+            && $senhaDigitos === $cpfDigitos
+            && password_verify($cpfDigitos, $senhaHash)
+        ) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -717,23 +791,26 @@ class Usuario
     {
         // Limpar CPF (remover formatação)
         $cpfLimpo = isset($data['cpf']) ? preg_replace('/[^0-9]/', '', $data['cpf']) : null;
+        $senhaNorm = self::normalizarSenhaCpf($data['senha'] ?? '', $cpfLimpo);
+        $emailNorm = mb_strtolower(trim((string) ($data['email'] ?? '')), 'UTF-8');
         
         // Converter nome para maiúsculas
         $nome = isset($data['nome']) ? mb_strtoupper(trim($data['nome']), 'UTF-8') : null;
         
         $sql = "
             INSERT INTO usuarios 
-            (nome, email, senha_hash, telefone, cpf) 
+            (nome, email, email_global, senha_hash, telefone, cpf, ativo) 
             VALUES 
-            (:nome, :email, :senha_hash, :telefone, :cpf)
+            (:nome, :email, :email_global, :senha_hash, :telefone, :cpf, 1)
         ";
         
         $stmt = $this->db->prepare($sql);
         
         $stmt->execute([
             'nome' => $nome,
-            'email' => $data['email'],
-            'senha_hash' => password_hash($data['senha'], PASSWORD_BCRYPT),
+            'email' => $emailNorm,
+            'email_global' => $emailNorm,
+            'senha_hash' => password_hash($senhaNorm, PASSWORD_BCRYPT),
             'telefone' => $data['telefone'] ?? null,
             'cpf' => $cpfLimpo ?: null,
         ]);
