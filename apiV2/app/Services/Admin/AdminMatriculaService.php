@@ -845,6 +845,18 @@ class AdminMatriculaService
             return $this->error('Pagamento não encontrado', 404);
         }
 
+        $pacoteContratoId = (int) ($pagamento['pacote_contrato_id'] ?? 0);
+        if ($pacoteContratoId > 0) {
+            return [
+                'status' => 400,
+                'body' => [
+                    'error' => 'Esta parcela faz parte de um pacote com valor rateado. A baixa individual não é permitida. Use a baixa do pacote ou, após o fim da vigência do desconto, cobre o valor individual.',
+                    'code' => 'PACOTE_BAIXA_INDIVIDUAL_BLOQUEADA',
+                    'pacote_contrato_id' => $pacoteContratoId,
+                ],
+            ];
+        }
+
         if ((int) $pagamento['status_pagamento_id'] === 2) {
             return $this->error('Pagamento já está marcado como pago', 400);
         }
@@ -993,8 +1005,9 @@ class AdminMatriculaService
             return $this->error('Não é possível alterar plano de matrícula finalizada', 400);
         }
 
+        $vinculoPacoteId = (int) ($matricula['pacote_contrato_id'] ?? 0);
         $migracao = new \App\Services\Mobile\MobileMigracaoPlanoService();
-        if ($migracao->temParcelaAtrasada($id, $tenantId)) {
+        if ($vinculoPacoteId <= 0 && $migracao->temParcelaAtrasada($id, $tenantId)) {
             return $this->error('Há parcela em atraso. Quite o débito antes de alterar o plano.', 400);
         }
 
@@ -1204,7 +1217,16 @@ class AdminMatriculaService
                     'status_id' => $statusNovoId,
                     'motivo_id' => $motivoId,
                     'observacoes' => $data['observacoes'] ?? null,
+                    'pacote_contrato_id' => null,
                 ]);
+
+                if (! empty($matricula['pacote_contrato_id'])) {
+                    $this->matriculas->desvincularPacoteDaMatricula(
+                        $id,
+                        $tenantId,
+                        (int) $matricula['pacote_contrato_id']
+                    );
+                }
 
                 $this->matriculas->inserirHistoricoPlanos([
                     'usuario_id' => $usuarioId,

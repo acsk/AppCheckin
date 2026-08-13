@@ -195,9 +195,11 @@ class PacoteController
             }
 
             $stmtPacote = $this->db->prepare("
-                SELECT p.*, pl.duracao_dias
+                SELECT p.*, pl.duracao_dias, pl.valor as plano_valor,
+                       pc.valor as ciclo_valor, pc.meses as ciclo_meses
                 FROM pacotes p
                 INNER JOIN planos pl ON pl.id = p.plano_id
+                LEFT JOIN plano_ciclos pc ON pc.id = p.plano_ciclo_id AND pc.tenant_id = p.tenant_id
                 WHERE p.id = ? AND p.tenant_id = ? AND p.ativo = 1
                 LIMIT 1
             ");
@@ -326,6 +328,15 @@ class PacoteController
             $valorTotal = (float) $pacote['valor_total'];
             $valorBaseRateio = round($valorTotal / max(1, $totalPessoas), 2);
             $valorAcumulado = 0.0;
+            $pacoteDescontoSvc = new \App\Services\PacoteDescontoService($this->db);
+            $valorCheio = $pacoteDescontoSvc->resolverValorCheio(
+                $tenantId,
+                (int) $pacote['plano_id'],
+                !empty($pacote['plano_ciclo_id']) ? (int) $pacote['plano_ciclo_id'] : null
+            );
+            if ($valorCheio < 0.01) {
+                $valorCheio = $valorBaseRateio;
+            }
 
             $stmtInsertMatricula = $this->db->prepare("
                 INSERT INTO matriculas
@@ -339,13 +350,6 @@ class PacoteController
                 INSERT INTO pacote_beneficiarios
                 (tenant_id, pacote_contrato_id, aluno_id, matricula_id, valor_rateado, status, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, 'pendente', NOW(), NOW())
-            ");
-
-            $stmtInsertPagamento = $this->db->prepare("
-                INSERT INTO pagamentos_plano
-                (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento,
-                 status_pagamento_id, pacote_contrato_id, observacoes, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, 1, ?, 'Pagamento do pacote', NOW(), NOW())
             ");
 
             $matriculasCriadas = [];
@@ -367,7 +371,7 @@ class PacoteController
                     $dataInicio,
                     $dataInicio,
                     $dataFim,
-                    $valorRateado,
+                    $valorCheio,
                     $valorRateado,
                     $statusPendenteId,
                     $motivoNovaId,
@@ -384,15 +388,20 @@ class PacoteController
                     $valorRateado
                 ]);
 
-                $stmtInsertPagamento->execute([
+                $pacoteDescontoSvc->criarPagamentoPacote(
                     $tenantId,
                     (int) $alunoId,
                     $matriculaId,
                     (int) $pacote['plano_id'],
+                    $contratoId,
+                    (string) ($pacote['nome'] ?? 'Pacote'),
+                    $valorCheio,
                     $valorRateado,
                     $dataFim,
-                    $contratoId
-                ]);
+                    $dataInicio,
+                    null,
+                    'Pagamento do pacote'
+                );
 
                 $matriculasCriadas[] = [
                     'aluno_id' => (int) $alunoId,
@@ -524,7 +533,7 @@ class PacoteController
             }
 
             $stmtContrato = $this->db->prepare("
-                SELECT pc.*, p.plano_id, p.plano_ciclo_id, p.valor_total, p.qtd_beneficiarios
+                SELECT pc.*, p.plano_id, p.plano_ciclo_id, p.valor_total, p.qtd_beneficiarios, p.nome as pacote_nome
                 FROM pacote_contratos pc
                 INNER JOIN pacotes p ON p.id = pc.pacote_id
                 WHERE pc.id = ? AND pc.tenant_id = ?
@@ -603,6 +612,20 @@ class PacoteController
             $stmtMotivo->execute();
             $motivoId = (int) ($stmtMotivo->fetchColumn() ?: 1);
 
+            $stmtStatusPago = $this->db->prepare("SELECT id FROM status_pagamento WHERE codigo = 'aprovado' LIMIT 1");
+            $stmtStatusPago->execute();
+            $statusPagoId = (int) ($stmtStatusPago->fetchColumn() ?: 2);
+
+            $pacoteDescontoSvc = new \App\Services\PacoteDescontoService($this->db);
+            $valorCheio = $pacoteDescontoSvc->resolverValorCheio(
+                $tenantId,
+                (int) $contrato['plano_id'],
+                !empty($contrato['plano_ciclo_id']) ? (int) $contrato['plano_ciclo_id'] : null
+            );
+            if ($valorCheio < 0.01) {
+                $valorCheio = $valorRateado;
+            }
+
             foreach ($beneficiarios as $ben) {
                 $stmtMat = $this->db->prepare("
                     INSERT INTO matriculas
@@ -619,7 +642,7 @@ class PacoteController
                     $dataInicio,
                     $dataInicio,
                     $dataFim,
-                    $valorRateado,
+                    $valorCheio,
                     $valorRateado,
                     $statusAtivaId,
                     $motivoId,
@@ -640,21 +663,21 @@ class PacoteController
                     $tenantId
                 ]);
 
-                $stmtPag = $this->db->prepare("
-                    INSERT INTO pagamentos_plano
-                    (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento,
-                     status_pagamento_id, pacote_contrato_id, observacoes, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, (SELECT id FROM status_pagamento WHERE codigo = 'aprovado' LIMIT 1), ?, 'Pacote rateado', NOW(), NOW())
-                ");
-                $stmtPag->execute([
+                $pacoteDescontoSvc->criarPagamentoPacote(
                     $tenantId,
                     (int) $ben['aluno_id'],
                     $matriculaId,
                     (int) $contrato['plano_id'],
+                    $contratoId,
+                    (string) ($contrato['pacote_nome'] ?? 'Pacote'),
+                    $valorCheio,
                     $valorRateado,
                     $dataFim,
-                    $contratoId
-                ]);
+                    $dataInicio,
+                    null,
+                    'Pacote rateado',
+                    $statusPagoId
+                );
             }
 
             $this->db->commit();

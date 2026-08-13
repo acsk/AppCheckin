@@ -100,6 +100,11 @@ export default function BaixaPagamentoPlanoModal({ visible, onClose, pagamento, 
   };
 
   const handleConfirmarFinal = async () => {
+    if (pagamento?.pacote_contrato_id) {
+      showError('Esta parcela faz parte de um pacote. Use a baixa do pacote ou renove a matrícula fora do pacote.');
+      return;
+    }
+
     try {
       setLoading(true);
       setShowConfirmModal(false);

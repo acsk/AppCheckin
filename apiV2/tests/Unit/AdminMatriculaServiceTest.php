@@ -121,6 +121,56 @@ class AdminMatriculaServiceTest extends TestCase
         $this->assertSame('data_vencimento é obrigatória para baixa manual', $result['body']['error']);
     }
 
+    public function test_dar_baixa_bloqueia_parcela_de_pacote(): void
+    {
+        $repo = Mockery::mock(AdminMatriculaRepository::class);
+        $repo->shouldReceive('findPagamentoParaBaixa')->once()->with(10, 3)->andReturn([
+            'id' => 10,
+            'status_pagamento_id' => 1,
+            'matricula_id' => 1,
+            'tenant_id' => 3,
+            'aluno_id' => 2,
+            'plano_id' => 4,
+            'valor' => 180,
+            'data_vencimento' => '2026-10-13',
+            'duracao_dias' => 30,
+            'pacote_contrato_id' => 7,
+        ]);
+
+        $service = new AdminMatriculaService($repo, Mockery::mock(PagamentoPlanoService::class));
+        $result = $service->darBaixaConta(10, 3, 5, [
+            'data_vencimento' => '2026-10-13',
+        ]);
+
+        $this->assertSame(400, $result['status']);
+        $this->assertSame('PACOTE_BAIXA_INDIVIDUAL_BLOQUEADA', $result['body']['code']);
+        $this->assertSame(7, $result['body']['pacote_contrato_id']);
+    }
+
+    public function test_dar_baixa_permite_proxima_parcela_sem_vinculo_de_pagamento(): void
+    {
+        $repo = Mockery::mock(AdminMatriculaRepository::class);
+        $repo->shouldReceive('findPagamentoParaBaixa')->once()->with(11, 3)->andReturn([
+            'id' => 11,
+            'status_pagamento_id' => 1,
+            'matricula_id' => 1,
+            'tenant_id' => 3,
+            'aluno_id' => 2,
+            'plano_id' => 4,
+            'valor' => 200,
+            'data_vencimento' => '2026-12-13',
+            'duracao_dias' => 30,
+            'pacote_contrato_id' => null,
+            'matricula_pacote_contrato_id' => 7,
+        ]);
+
+        $service = new AdminMatriculaService($repo, Mockery::mock(PagamentoPlanoService::class));
+        $result = $service->darBaixaConta(11, 3, 5, []);
+
+        $this->assertSame(400, $result['status']);
+        $this->assertSame('data_vencimento é obrigatória para baixa manual', $result['body']['error']);
+    }
+
     public function test_alterar_plano_missing_plano_id(): void
     {
         $service = new AdminMatriculaService(

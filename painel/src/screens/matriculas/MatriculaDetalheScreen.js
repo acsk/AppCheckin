@@ -219,8 +219,13 @@ export default function MatriculaDetalheScreen() {
   };
 
   const handleBaixaPagamento = (pagamento) => {
-    console.log('🔍 Pagamento selecionado:', pagamento);
-    console.log('📍 ID do pagamento:', pagamento.id || pagamento.pagamento_id || pagamento.conta_id);
+    if (pagamento?.pacote_contrato_id) {
+      showAlert(
+        'Baixa individual indisponível',
+        'Esta parcela tem valor rateado do pacote. Use a baixa do pacote. Depois da vigência do desconto, a próxima parcela pode ser cobrada no valor individual.'
+      );
+      return;
+    }
     setPagamentoSelecionado(pagamento);
     setModalConfirmBaixaVisible(true);
   };
@@ -907,6 +912,7 @@ export default function MatriculaDetalheScreen() {
     return statusId === 1 && isVencido(pagamento.data_vencimento);
   };
   const isPagamentoBaixavel = (pagamento) => {
+    if (pagamento?.pacote_contrato_id) return false;
     const statusId = Number(pagamento?.status_pagamento_id);
     return statusId !== 4 && !pagamento?.data_pagamento;
   };
@@ -1205,7 +1211,7 @@ export default function MatriculaDetalheScreen() {
 
   const renderAcoesPagamento = (pagamento, mobile = false) => (
     <View className={`flex-row flex-wrap items-center ${mobile ? 'justify-start' : 'justify-end'} gap-1.5`}>
-      {(!isPacote && isPagamentoBaixavel(pagamento)) ? (
+      {isPagamentoBaixavel(pagamento) ? (
         <Pressable
           className="flex-row items-center gap-1 rounded-lg bg-orange-500 px-3 py-1.5"
           style={({ pressed }) => [pressed && { opacity: 0.8 }]}
@@ -1214,6 +1220,10 @@ export default function MatriculaDetalheScreen() {
           <Feather name="check-circle" size={12} color="#fff" />
           <Text className="text-[11px] font-semibold text-white">Dar baixa</Text>
         </Pressable>
+      ) : pagamento?.pacote_contrato_id && Number(pagamento?.status_pagamento_id) !== 2 && Number(pagamento?.status_pagamento_id) !== 4 && !pagamento?.data_pagamento ? (
+        <View className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1.5">
+          <Text className="text-[11px] font-semibold text-emerald-700">Baixa só no pacote</Text>
+        </View>
       ) : null}
 
         {/* {hasMercadoPagoIds && isPagamentoNaoPago(pagamento) ? (
@@ -1328,7 +1338,8 @@ export default function MatriculaDetalheScreen() {
                 <View className="flex-1">
                   <Text className="text-[17px] font-bold text-emerald-700">Matrícula vinculada a pacote</Text>
                   <Text className="text-[13px] text-emerald-600">
-                    O pagamento e a baixa são gerenciados no módulo de pacotes.
+                    O desconto do pacote vale só no ciclo pago. A baixa do grupo usa o valor rateado;
+                    depois da vigência, a parcela individual volta ao valor cheio do plano.
                   </Text>
                 </View>
               </View>
@@ -1591,16 +1602,23 @@ export default function MatriculaDetalheScreen() {
                   )}
 
                   {podeExibirAlterarPlano && (
-                    <Pressable
-                      onPress={handleAbrirAlterarPlano}
-                      className="flex-1 flex-row items-center justify-center gap-2 rounded-lg bg-slate-800 py-3"
-                      style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                    >
-                      <Feather name="repeat" size={16} color="#fff" />
-                      <Text className="text-sm font-semibold text-white">
-                        {isMatriculaRenovavel ? 'Renovar Matrícula' : 'Alterar Plano'}
-                      </Text>
-                    </Pressable>
+                    <View className="flex-1">
+                      <Pressable
+                        onPress={handleAbrirAlterarPlano}
+                        className="flex-row items-center justify-center gap-2 rounded-lg bg-slate-800 py-3"
+                        style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                      >
+                        <Feather name="repeat" size={16} color="#fff" />
+                        <Text className="text-sm font-semibold text-white">
+                          {isMatriculaRenovavel ? 'Renovar Matrícula' : 'Alterar Plano'}
+                        </Text>
+                      </Pressable>
+                      {isPacote && isMatriculaRenovavel ? (
+                        <Text className="mt-1.5 text-center text-[11px] text-slate-500">
+                          A renovação sai do pacote, encerra o desconto e cobra o valor individual do plano.
+                        </Text>
+                      ) : null}
+                    </View>
                   )}
 
                   {podeBloquearMatricula && (
@@ -1824,6 +1842,9 @@ export default function MatriculaDetalheScreen() {
                             <Text className="text-[12px] text-slate-500">Desconto</Text>
                             <Text className="text-[13px] font-semibold text-slate-700">{formatCurrency(pagamento.desconto || 0)}</Text>
                           </View>
+                          {pagamento.motivo_desconto ? (
+                            <Text className="mb-2 text-[11px] leading-4 text-emerald-700">{pagamento.motivo_desconto}</Text>
+                          ) : null}
 
                           {pagamento.credito_aplicado > 0 && (
                             <View className="mb-2 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2">
@@ -1909,9 +1930,16 @@ export default function MatriculaDetalheScreen() {
                             </Text>
                           )}
                         </View>
-                        <Text className="text-[13px] font-semibold text-slate-700" style={{ flex: 1, textAlign: 'right' }}>
-                          {formatCurrency(pagamento.desconto || 0)}
-                        </Text>
+                        <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                          <Text className="text-[13px] font-semibold text-slate-700">
+                            {formatCurrency(pagamento.desconto || 0)}
+                          </Text>
+                          {pagamento.motivo_desconto ? (
+                            <Text className="mt-0.5 text-right text-[10px] leading-3 text-emerald-700" numberOfLines={2}>
+                              {pagamento.motivo_desconto}
+                            </Text>
+                          ) : null}
+                        </View>
                         <View style={{ flex: 0.9, alignItems: 'center' }}>
                           <View
                             className="rounded-full px-2.5 py-1"

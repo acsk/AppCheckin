@@ -758,6 +758,11 @@ class MatriculaController
         $planoCicloId = (!empty($pacote['plano_ciclo_id']) && !empty($pacote['ciclo_meses']))
             ? (int) $pacote['plano_ciclo_id']
             : null;
+        $pacoteDescontoSvc = new \App\Services\PacoteDescontoService($db);
+        $valorCheio = $pacoteDescontoSvc->resolverValorCheio($tenantId, $planoId, $planoCicloId);
+        if ($valorCheio < 0.01) {
+            $valorCheio = $valorRateado;
+        }
 
         $dataInicioObj = new \DateTime($dataInicio);
         $proximaDataVencimento = clone $dataInicioObj;
@@ -893,7 +898,7 @@ class MatriculaController
                         date('Y-m-d'),
                         $dataInicio,
                         $dataVencimento,
-                        $valorRateado,
+                        $valorCheio,
                         $valorRateado,
                         $statusId,
                         $motivoId,
@@ -924,7 +929,7 @@ class MatriculaController
                         date('Y-m-d'),
                         $dataInicio,
                         $dataVencimento,
-                        $valorRateado,
+                        $valorCheio,
                         $valorRateado,
                         $statusId,
                         $motivoId,
@@ -944,24 +949,20 @@ class MatriculaController
                 ");
                 $stmtBen->execute([$tenantId, $contratoId, $benAlunoId, $matriculaId, $valorRateado]);
 
-                // Criar primeiro pagamento
-                $stmtPag = $db->prepare("
-                    INSERT INTO pagamentos_plano
-                    (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento,
-                     status_pagamento_id, pacote_contrato_id, observacoes, criado_por, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?, NOW(), NOW())
-                ");
-                $stmtPag->execute([
+                $pacoteDescontoSvc->criarPagamentoPacote(
                     $tenantId,
                     $benAlunoId,
                     $matriculaId,
                     $planoId,
+                    $contratoId,
+                    (string) ($pacote['nome'] ?? 'Pacote'),
+                    $valorCheio,
                     $valorRateado,
                     $dataVencimento,
-                    $contratoId,
-                    'Pagamento pacote - rateado',
-                    $adminId
-                ]);
+                    $dataInicio,
+                    $adminId,
+                    'Pagamento pacote - rateado'
+                );
 
                 // Buscar nome do aluno
                 $stmtNomeAluno = $db->prepare("SELECT a.nome FROM alunos a WHERE a.id = ? LIMIT 1");
@@ -1408,7 +1409,11 @@ class MatriculaController
                 pp.baixado_por,
                 baixador.nome as baixado_por_nome,
                 pp.tipo_baixa_id,
-                tb.nome as tipo_baixa_nome
+                tb.nome as tipo_baixa_nome,
+                pp.pacote_contrato_id,
+                CAST(pp.valor_original AS DECIMAL(10,2)) as valor_original,
+                CAST(pp.desconto AS DECIMAL(10,2)) as desconto,
+                pp.motivo_desconto
             FROM pagamentos_plano pp
             LEFT JOIN formas_pagamento fp ON fp.id = pp.forma_pagamento_id
             LEFT JOIN usuarios criador ON pp.criado_por = criador.id
@@ -1823,9 +1828,12 @@ class MatriculaController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
         }
 
-        // Em atraso: não permite alteração/migração com crédito
+        // Em atraso: não permite alteração/migração com crédito.
+        // Parcelas de pacote não podem ser quitadas individualmente — a renovação
+        // cancela essas abertas e cobra o valor cheio do plano.
         $migracaoSvc = new \App\Services\MatriculaMigracaoService($db);
-        if ($migracaoSvc->temParcelaAtrasada($matriculaId, (int) $tenantId)) {
+        $vinculoPacoteId = (int) ($matricula['pacote_contrato_id'] ?? 0);
+        if ($vinculoPacoteId <= 0 && $migracaoSvc->temParcelaAtrasada($matriculaId, (int) $tenantId)) {
             $response->getBody()->write(json_encode([
                 'error' => 'Há parcela em atraso. Quite o débito antes de alterar o plano.',
                 'code' => 'MATRICULA_EM_ATRASO',
@@ -2032,6 +2040,7 @@ class MatriculaController
                     status_id = ?,
                     motivo_id = ?,
                     observacoes = ?,
+                    pacote_contrato_id = NULL,
                     cancelado_por = NULL,
                     data_cancelamento = NULL,
                     motivo_cancelamento = NULL,
@@ -2053,6 +2062,17 @@ class MatriculaController
                 $matriculaId,
                 $tenantId
             ]);
+
+            if ($vinculoPacoteId > 0) {
+                $stmtDesvincularPacote = $db->prepare("
+                    UPDATE pacote_beneficiarios
+                    SET status = 'cancelado', updated_at = NOW()
+                    WHERE matricula_id = ? AND tenant_id = ?
+                ");
+                $stmtDesvincularPacote->execute([$matriculaId, $tenantId]);
+                (new \App\Services\PacoteDescontoService($db))
+                    ->desativarDescontoPacote($tenantId, $matriculaId, $vinculoPacoteId);
+            }
 
             // 3. Registrar no histórico de planos
             $stmtHistorico = $db->prepare("
@@ -3433,7 +3453,7 @@ class MatriculaController
                     ]
                 )
             ),
-            new OA\Response(response: 400, description: "Pagamento já está pago"),
+            new OA\Response(response: 400, description: "Pagamento já está pago ou parcela vinculada a pacote"),
             new OA\Response(response: 404, description: "Pagamento não encontrado"),
             new OA\Response(response: 401, description: "Não autorizado")
         ]
@@ -3451,6 +3471,7 @@ class MatriculaController
         $stmt = $db->prepare("
             SELECT pp.*, m.plano_id, m.plano_ciclo_id, p.duracao_dias,
                    m.valor as matricula_valor,
+                   m.pacote_contrato_id as matricula_pacote_contrato_id,
                    pc.meses as ciclo_meses, af.meses as frequencia_meses
             FROM pagamentos_plano pp
             INNER JOIN matriculas m ON pp.matricula_id = m.id
@@ -3467,6 +3488,16 @@ class MatriculaController
                 'error' => 'Pagamento não encontrado'
             ]));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
+        }
+
+        $pacoteContratoId = (int) ($pagamento['pacote_contrato_id'] ?? 0);
+        if ($pacoteContratoId > 0) {
+            $response->getBody()->write(json_encode([
+                'error' => 'Esta parcela faz parte de um pacote com valor rateado. A baixa individual não é permitida. Use a baixa do pacote ou, após o fim da vigência do desconto, cobre o valor individual.',
+                'code' => 'PACOTE_BAIXA_INDIVIDUAL_BLOQUEADA',
+                'pacote_contrato_id' => $pacoteContratoId,
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
         }
         
         // Verificar se já está pago (status_pagamento_id = 2)
@@ -3850,21 +3881,27 @@ class MatriculaController
                         $proximoVencimento->add(new \DateInterval("P{$duracaoDias}D"));
                     }
 
+                    $valorProxima = (float) ($pagamento['valor_original'] ?? $pagamento['matricula_valor'] ?? 0);
+                    if ($valorProxima < 0.01) {
+                        $valorProxima = (float) ($pagamento['valor'] ?? 0) + (float) ($pagamento['desconto'] ?? 0);
+                    }
+
                     $stmtProxima = $db->prepare("
                         INSERT INTO pagamentos_plano (
-                            tenant_id, aluno_id, matricula_id, plano_id, valor,
+                            tenant_id, aluno_id, matricula_id, plano_id,
+                            valor, valor_original, desconto, motivo_desconto,
                             data_vencimento, status_pagamento_id, pacote_contrato_id,
                             observacoes, criado_por, created_at, updated_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, 'Parcela gerada automaticamente', ?, NOW(), NOW())
+                        ) VALUES (?, ?, ?, ?, ?, ?, 0, NULL, ?, 1, NULL, 'Parcela gerada automaticamente', ?, NOW(), NOW())
                     ");
                     $stmtProxima->execute([
                         $pagamento['tenant_id'],
                         $pagamento['aluno_id'],
                         $pagamento['matricula_id'],
                         $pagamento['plano_id'],
-                        $pagamento['valor'],
+                        $valorProxima,
+                        $valorProxima,
                         $proximoVencimento->format('Y-m-d'),
-                        $contratoId,
                         $adminId
                     ]);
 
@@ -3872,7 +3909,7 @@ class MatriculaController
                         'id' => (int) $db->lastInsertId(),
                         'aluno_nome' => $pagamento['aluno_nome'],
                         'data_vencimento' => $proximoVencimento->format('Y-m-d'),
-                        'valor' => (float) $pagamento['valor']
+                        'valor' => $valorProxima
                     ];
 
                     // data_vencimento = fim do ciclo pago (acesso).
@@ -3954,19 +3991,27 @@ class MatriculaController
         $stmt = $db->prepare("
             SELECT pp.*, m.plano_ciclo_id, COALESCE(p.duracao_dias, 30) AS duracao_dias,
                    pc2.meses as ciclo_meses, af.meses as frequencia_meses,
-                   a.nome as aluno_nome
+                   a.nome as aluno_nome,
+                   m.data_inicio as matricula_data_inicio,
+                   m.valor as matricula_valor,
+                   m.valor_rateado as matricula_valor_rateado,
+                   pb.valor_rateado as valor_rateado_beneficiario
             FROM pagamentos_plano pp
             INNER JOIN matriculas m ON pp.matricula_id = m.id
             LEFT JOIN planos p ON p.id = COALESCE(pp.plano_id, m.plano_id)
             INNER JOIN alunos a ON pp.aluno_id = a.id
             LEFT JOIN plano_ciclos pc2 ON pc2.id = m.plano_ciclo_id
             LEFT JOIN assinatura_frequencias af ON af.id = pc2.assinatura_frequencia_id
+            LEFT JOIN pacote_beneficiarios pb
+                ON pb.matricula_id = m.id
+               AND pb.pacote_contrato_id = ?
+               AND pb.tenant_id = pp.tenant_id
             WHERE pp.tenant_id = ?
               AND pp.status_pagamento_id IN (1, 3)
               AND (pp.pacote_contrato_id = ? OR m.pacote_contrato_id = ?)
             ORDER BY pp.id
         ");
-        $stmt->execute([$tenantId, $contratoId, $contratoId]);
+        $stmt->execute([$contratoId, $tenantId, $contratoId, $contratoId]);
 
         return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
     }
@@ -4009,9 +4054,7 @@ class MatriculaController
                     $stmtLink->execute([$contratoId, $pagamento['id'], $tenantId]);
                 }
             }
-
-            return $this->buscarPagamentosPendentesPacote($db, $contratoId, $tenantId);
-        }
+        } else {
 
         $stmtMat = $db->prepare("
             SELECT m.id, m.aluno_id, m.plano_id, m.valor, m.valor_rateado,
@@ -4074,6 +4117,44 @@ class MatriculaController
                 $contratoId,
                 $adminId
             ]);
+        }
+        }
+
+        $pagamentos = $this->buscarPagamentosPendentesPacote($db, $contratoId, $tenantId);
+        if (empty($pagamentos)) {
+            return [];
+        }
+
+        $svc = new \App\Services\PacoteDescontoService($db);
+        $planoId = (int) ($contrato['plano_id'] ?? 0);
+        $cicloId = !empty($contrato['plano_ciclo_id']) ? (int) $contrato['plano_ciclo_id'] : null;
+        $valorCheio = $svc->resolverValorCheio($tenantId, $planoId, $cicloId);
+        $pacoteNome = (string) ($contrato['pacote_nome'] ?? 'Pacote');
+
+        foreach ($pagamentos as $pagamento) {
+            $valorRateado = (float) ($pagamento['valor_rateado_beneficiario']
+                ?? $pagamento['matricula_valor_rateado']
+                ?? 0);
+            if ($valorRateado < 0.01) {
+                $valorRateado = (float) ($pagamento['valor'] ?? 0);
+            }
+            $valorBase = $valorCheio > 0.01 ? $valorCheio : (float) ($pagamento['matricula_valor'] ?? $valorRateado);
+            $inicio = (string) ($pagamento['matricula_data_inicio']
+                ?: ($contrato['data_inicio'] ?? $pagamento['data_vencimento']));
+            $fim = (string) ($pagamento['data_vencimento'] ?? $inicio);
+
+            $svc->prepararParcelaPacote(
+                $tenantId,
+                (int) $pagamento['matricula_id'],
+                $contratoId,
+                $pacoteNome,
+                $valorBase,
+                $valorRateado,
+                $inicio,
+                $fim,
+                (int) $pagamento['id'],
+                $adminId
+            );
         }
 
         return $this->buscarPagamentosPendentesPacote($db, $contratoId, $tenantId);

@@ -939,6 +939,7 @@ class AdminMatriculaRepository
                 'm.plano_ciclo_id',
                 'p.duracao_dias',
                 'm.valor as matricula_valor',
+                'm.pacote_contrato_id as matricula_pacote_contrato_id',
                 'pc.meses as ciclo_meses',
                 'af.meses as frequencia_meses',
             ])
@@ -1055,6 +1056,29 @@ class AdminMatriculaRepository
             ->where('id', $id)
             ->where('tenant_id', $tenantId)
             ->update($payload);
+    }
+
+    public function desvincularPacoteDaMatricula(int $matriculaId, int $tenantId, ?int $contratoId = null): void
+    {
+        DB::table('pacote_beneficiarios')
+            ->where('matricula_id', $matriculaId)
+            ->where('tenant_id', $tenantId)
+            ->update([
+                'status' => 'cancelado',
+                'updated_at' => now(),
+            ]);
+
+        if ($contratoId) {
+            DB::table('matricula_descontos')
+                ->where('tenant_id', $tenantId)
+                ->where('matricula_id', $matriculaId)
+                ->where('ativo', 1)
+                ->where('motivo', 'like', '[PACOTE#'.$contratoId.']%')
+                ->update([
+                    'ativo' => 0,
+                    'updated_at' => now(),
+                ]);
+        }
     }
 
     /**
