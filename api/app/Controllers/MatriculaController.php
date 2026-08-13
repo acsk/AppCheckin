@@ -3875,11 +3875,21 @@ class MatriculaController
                         'valor' => (float) $pagamento['valor']
                     ];
 
-                    // Atualizar próxima data de vencimento na matrícula
+                    // data_vencimento = fim do ciclo pago (acesso).
+                    // proxima_data_vencimento = vencimento da próxima cobrança.
+                    $acessoAte = $dataVencimentoAtual->format('Y-m-d');
                     $stmtUpdMat = $db->prepare("
-                        UPDATE matriculas SET proxima_data_vencimento = ?, updated_at = NOW() WHERE id = ?
+                        UPDATE matriculas
+                        SET data_vencimento = ?,
+                            proxima_data_vencimento = ?,
+                            updated_at = NOW()
+                        WHERE id = ?
                     ");
-                    $stmtUpdMat->execute([$proximoVencimento->format('Y-m-d'), $pagamento['matricula_id']]);
+                    $stmtUpdMat->execute([
+                        $acessoAte,
+                        $proximoVencimento->format('Y-m-d'),
+                        $pagamento['matricula_id']
+                    ]);
 
                 } catch (\Exception $e) {
                     error_log("[darBaixaPacote] Erro ao gerar próxima parcela para matrícula {$pagamento['matricula_id']}: " . $e->getMessage());

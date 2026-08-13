@@ -882,6 +882,18 @@ export default function MatriculaDetalheScreen() {
     return statusId === 1 && isVencido(p.data_vencimento);
   });
   const isPacote = Boolean(matricula?.pacote_contrato_id);
+  const contratoPacotePendente =
+    String(matricula?.pacote?.contrato_status || '').toLowerCase() === 'pendente';
+  const temParcelaPacoteVencida = pagamentos.some((p) => {
+    const statusId = Number(p.status_pagamento_id);
+    if (statusId === 4 || p.data_pagamento) return false;
+    if (statusId === 3) return true;
+    return statusId === 1 && isVencido(p.data_vencimento);
+  });
+  const podeDarBaixaPacote = isPacote && (contratoPacotePendente || temParcelaPacoteVencida);
+  const qtdPessoasPacote = Array.isArray(matricula?.pacote?.beneficiarios)
+    ? matricula.pacote.beneficiarios.length
+    : (matricula?.pacote?.pacote_qtd_beneficiarios ?? 0);
   const isMatriculaCancelada = Number(matricula?.status_id) === 3;
   const isMatriculaVencida = Number(matricula?.status_id) === 2;
   const isMatriculaRenovavel = isMatriculaCancelada || isMatriculaVencida;
@@ -1248,6 +1260,28 @@ export default function MatriculaDetalheScreen() {
 
   const resumo = calcularResumo();
   const cicloInfo = getCicloInfo();
+  const ultimoPagamentoPago = [...pagamentos]
+    .filter((p) => Number(p.status_pagamento_id) === 2 && p.data_vencimento)
+    .sort((a, b) => String(b.data_vencimento).localeCompare(String(a.data_vencimento)))[0];
+  const acessoAte =
+    ultimoPagamentoPago?.data_vencimento ||
+    matricula.data_vencimento ||
+    matricula.proxima_data_vencimento;
+  const proximaParcelaAberta = [...pagamentos]
+    .filter((p) => [1, 3].includes(Number(p.status_pagamento_id)) && !p.data_pagamento && p.data_vencimento)
+    .sort((a, b) => String(a.data_vencimento).localeCompare(String(b.data_vencimento)))[0];
+  const duracaoLabel = cicloInfo?.meses
+    ? `${cicloInfo.meses} ${cicloInfo.meses === 1 ? 'mês' : 'meses'}`
+    : matricula.data_inicio && acessoAte
+      ? `${Math.max(
+          1,
+          Math.round(
+            (new Date(`${acessoAte}T00:00:00`).getTime() -
+              new Date(`${matricula.data_inicio}T00:00:00`).getTime()) /
+              (1000 * 60 * 60 * 24)
+          )
+        )} dias`
+      : `${matricula.duracao_dias} dias`;
   const planoSelecionadoAlteracao = planosAlteracao.find(
     (plano) => plano.id === Number(formAlterarPlano.plano_id)
   );
@@ -1338,7 +1372,7 @@ export default function MatriculaDetalheScreen() {
                 </View>
                 <View className="rounded-full bg-emerald-200 px-2.5 py-0.5">
                   <Text className="text-[10px] font-semibold text-emerald-800">
-                    {matricula.pacote.pacote_qtd_beneficiarios || 0} benef.
+                    {qtdPessoasPacote} {qtdPessoasPacote === 1 ? 'pessoa' : 'pessoas'}
                   </Text>
                 </View>
               </View>
@@ -1411,14 +1445,21 @@ export default function MatriculaDetalheScreen() {
                 )}
 
                 <View className="mt-4">
-                  <Pressable
-                    onPress={() => setModalBaixaPacoteVisible(true)}
-                    className="flex-row items-center justify-center gap-2 rounded-lg bg-emerald-600 py-3"
-                    style={({ pressed }) => [pressed && { opacity: 0.8 }]}
-                  >
-                    <Feather name="check-circle" size={16} color="#fff" />
-                    <Text className="text-sm font-semibold text-white">Dar baixa do pacote</Text>
-                  </Pressable>
+                  {podeDarBaixaPacote ? (
+                    <Pressable
+                      onPress={() => setModalBaixaPacoteVisible(true)}
+                      className="flex-row items-center justify-center gap-2 rounded-lg bg-emerald-600 py-3"
+                      style={({ pressed }) => [pressed && { opacity: 0.8 }]}
+                    >
+                      <Feather name="check-circle" size={16} color="#fff" />
+                      <Text className="text-sm font-semibold text-white">Dar baixa do pacote</Text>
+                    </Pressable>
+                  ) : (
+                    <View className="flex-row items-center justify-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 py-3">
+                      <Feather name="check-circle" size={16} color="#10b981" />
+                      <Text className="text-sm font-semibold text-emerald-700">Pacote já baixado</Text>
+                    </View>
+                  )}
                 </View>
               </View>
             </View>
@@ -1462,9 +1503,9 @@ export default function MatriculaDetalheScreen() {
                 <Feather name="clock" size={16} color="#f59e0b" />
                 <Text className="text-[10px] font-semibold uppercase text-slate-400">Acesso até</Text>
                 <Text className="text-[13px] font-semibold text-slate-700">
-                  {formatDate(matricula.proxima_data_vencimento || matricula.data_vencimento)}
+                  {formatDate(acessoAte)}
                 </Text>
-                {isProximoVencer(matricula.proxima_data_vencimento || matricula.data_vencimento) && (
+                {isProximoVencer(acessoAte) && (
                   <View className="rounded-full bg-amber-100 px-2 py-0.5">
                     <Text className="text-[10px] font-bold text-amber-700">Vence em breve</Text>
                   </View>
@@ -1484,7 +1525,7 @@ export default function MatriculaDetalheScreen() {
               <View className="flex-1 items-center gap-1">
                 <Feather name="hash" size={16} color="#94a3b8" />
                 <Text className="text-[10px] font-semibold uppercase text-slate-400">Duração</Text>
-                <Text className="text-[13px] font-semibold text-slate-700">{matricula.duracao_dias} dias</Text>
+                <Text className="text-[13px] font-semibold text-slate-700">{duracaoLabel}</Text>
               </View>
             </View>
 
@@ -1519,7 +1560,7 @@ export default function MatriculaDetalheScreen() {
                   <View className="min-w-[150px] flex-1 rounded-lg border border-slate-200 bg-white px-4 py-3">
                     <Text className="text-[10px] font-semibold uppercase text-slate-400">Próximo Vencimento</Text>
                     <Text className="mt-1 text-sm font-semibold text-slate-700">
-                      {formatDate(matricula.proxima_data_vencimento || matricula.data_vencimento)}
+                      {formatDate(proximaParcelaAberta?.data_vencimento || acessoAte)}
                     </Text>
                   </View>
                 </View>
