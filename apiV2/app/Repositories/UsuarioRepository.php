@@ -320,28 +320,21 @@ class UsuarioRepository
         DB::table('usuarios')->where('id', $usuarioId)->update($update);
     }
 
+    /**
+     * Email é único no sistema (não por tenant).
+     * $tenantId é ignorado (compatibilidade de assinatura).
+     */
     public function emailExists(string $email, ?int $excludeId = null, ?int $tenantId = null): bool
     {
         $email = mb_strtolower(trim($email), 'UTF-8');
-
-        if ($tenantId) {
-            $query = DB::table('usuarios as u')
-                ->join('tenant_usuario_papel as tup', 'tup.usuario_id', '=', 'u.id')
-                ->where('u.email', $email)
-                ->where('tup.tenant_id', $tenantId)
-                ->where('tup.ativo', 1);
-
-            if ($excludeId) {
-                $query->where('u.id', '!=', $excludeId);
-            }
-
-            return $query->exists();
+        if ($email === '') {
+            return false;
         }
 
         $query = DB::table('usuarios')->where(function ($q) use ($email) {
-            $q->where('email', $email);
+            $q->whereRaw('LOWER(TRIM(email)) = ?', [$email]);
             if ($this->hasColumn('usuarios', 'email_global')) {
-                $q->orWhere('email_global', $email);
+                $q->orWhereRaw("LOWER(TRIM(COALESCE(email_global, ''))) = ?", [$email]);
             }
         });
 
@@ -353,7 +346,35 @@ class UsuarioRepository
     }
 
     /**
-     * @param  array{email?: string, senha?: string, nome?: string}  $data
+     * CPF único no sistema (usuarios.cpf e alunos.cpf).
+     */
+    public function cpfExists(string $cpf, ?int $excludeUsuarioId = null): bool
+    {
+        $cpfLimpo = preg_replace('/[^0-9]/', '', $cpf) ?: '';
+        if ($cpfLimpo === '' || strlen($cpfLimpo) !== 11) {
+            return false;
+        }
+
+        $qUsuario = DB::table('usuarios')->where('cpf', $cpfLimpo);
+        if ($excludeUsuarioId) {
+            $qUsuario->where('id', '!=', $excludeUsuarioId);
+        }
+        if ($qUsuario->exists()) {
+            return true;
+        }
+
+        $qAluno = DB::table('alunos')->where('cpf', $cpfLimpo);
+        if ($excludeUsuarioId) {
+            $qAluno->where(function ($q) use ($excludeUsuarioId) {
+                $q->whereNull('usuario_id')->orWhere('usuario_id', '!=', $excludeUsuarioId);
+            });
+        }
+
+        return $qAluno->exists();
+    }
+
+    /**
+     * @param  array{email?: string, senha?: string, nome?: string, cpf?: string|null}  $data
      */
     public function updateAuthFields(int $id, array $data): void
     {
@@ -370,6 +391,12 @@ class UsuarioRepository
         }
         if (isset($data['nome'])) {
             $update['nome'] = mb_strtoupper(trim((string) $data['nome']), 'UTF-8');
+        }
+        if (array_key_exists('cpf', $data)) {
+            $cpf = $data['cpf'];
+            $update['cpf'] = $cpf !== null && $cpf !== ''
+                ? (preg_replace('/[^0-9]/', '', (string) $cpf) ?: null)
+                : null;
         }
 
         if ($update === []) {

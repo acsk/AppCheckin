@@ -240,7 +240,9 @@ export default function FormAlunoScreen() {
       newErrors.telefone = 'Telefone inválido';
     }
 
-    if (formData.cpf && !validateCPF(formData.cpf)) {
+    if (!isEdit && (!formData.cpf || !formData.cpf.trim())) {
+      newErrors.cpf = 'CPF é obrigatório';
+    } else if (formData.cpf && !validateCPF(formData.cpf)) {
       newErrors.cpf = 'CPF inválido';
     }
 
@@ -319,7 +321,19 @@ export default function FormAlunoScreen() {
 
       router.push('/alunos');
     } catch (error) {
-      showError(error.errors?.join('\n') || error.error || `Não foi possível ${isEdit ? 'atualizar' : 'cadastrar'} o aluno`);
+      const apiErrors = error.errors || [];
+      const fieldErrors = {};
+      apiErrors.forEach((msg) => {
+        const lower = String(msg).toLowerCase();
+        if (lower.includes('email')) fieldErrors.email = msg;
+        else if (lower.includes('cpf')) fieldErrors.cpf = msg;
+        else if (lower.includes('senha')) fieldErrors.senha = msg;
+        else if (lower.includes('nome')) fieldErrors.nome = msg;
+      });
+      if (Object.keys(fieldErrors).length > 0) {
+        setErrors((prev) => ({ ...prev, ...fieldErrors }));
+      }
+      showError(apiErrors.join('\n') || error.error || error.message || `Não foi possível ${isEdit ? 'atualizar' : 'cadastrar'} o aluno`);
     } finally {
       setSaving(false);
     }

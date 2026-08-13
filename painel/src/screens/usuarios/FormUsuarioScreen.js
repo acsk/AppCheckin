@@ -369,7 +369,19 @@ export default function FormUsuarioScreen() {
       
       router.push('/usuarios');
     } catch (error) {
-      showError(error.errors?.join('\n') || error.error || `Não foi possível ${isEdit ? 'atualizar' : 'cadastrar'} o usuário`);
+      const apiErrors = error.errors || [];
+      const fieldErrors = {};
+      apiErrors.forEach((msg) => {
+        const lower = String(msg).toLowerCase();
+        if (lower.includes('email')) fieldErrors.email = msg;
+        else if (lower.includes('cpf')) fieldErrors.cpf = msg;
+        else if (lower.includes('senha')) fieldErrors.senha = msg;
+        else if (lower.includes('nome')) fieldErrors.nome = msg;
+      });
+      if (Object.keys(fieldErrors).length > 0) {
+        setErrors((prev) => ({ ...prev, ...fieldErrors }));
+      }
+      showError(apiErrors.join('\n') || error.error || `Não foi possível ${isEdit ? 'atualizar' : 'cadastrar'} o usuário`);
     } finally {
       setSaving(false);
     }

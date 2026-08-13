@@ -341,6 +341,13 @@ class PacoteController
                 VALUES (?, ?, ?, ?, ?, 'pendente', NOW(), NOW())
             ");
 
+            $stmtInsertPagamento = $this->db->prepare("
+                INSERT INTO pagamentos_plano
+                (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento,
+                 status_pagamento_id, pacote_contrato_id, observacoes, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, 1, ?, 'Pagamento do pacote', NOW(), NOW())
+            ");
+
             $matriculasCriadas = [];
             foreach ($beneficiariosFinais as $index => $alunoId) {
                 $isLast = ($index === ($totalPessoas - 1));
@@ -375,6 +382,16 @@ class PacoteController
                     (int) $alunoId,
                     $matriculaId,
                     $valorRateado
+                ]);
+
+                $stmtInsertPagamento->execute([
+                    $tenantId,
+                    (int) $alunoId,
+                    $matriculaId,
+                    (int) $pacote['plano_id'],
+                    $valorRateado,
+                    $dataFim,
+                    $contratoId
                 ]);
 
                 $matriculasCriadas[] = [
@@ -635,7 +652,7 @@ class PacoteController
                     $matriculaId,
                     (int) $contrato['plano_id'],
                     $valorRateado,
-                    $dataInicio,
+                    $dataFim,
                     $contratoId
                 ]);
             }

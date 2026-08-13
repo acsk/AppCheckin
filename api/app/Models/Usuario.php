@@ -368,40 +368,78 @@ class Usuario
         }
     }
 
+    /**
+     * Email é único no sistema (não por tenant).
+     * $tenantId é ignorado (mantido por compatibilidade de assinatura).
+     */
     public function emailExists(string $email, ?int $excludeId = null, ?int $tenantId = null): bool
     {
-        // Verificar email_global (único no sistema) ou email em combinação com tenant
-        if ($tenantId) {
-            // Verificar se email já existe no tenant específico
-            $sql = "
-                SELECT COUNT(*) 
-                FROM usuarios u
-                INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id
-                WHERE u.email = :email 
-                AND tup.tenant_id = :tenant_id
-                AND tup.ativo = 1
-            ";
-            $params = ['email' => $email, 'tenant_id' => $tenantId];
-            
-            if ($excludeId) {
-                $sql .= " AND u.id != :id";
-                $params['id'] = $excludeId;
-            }
-        } else {
-            // Verificar globalmente tanto email_global quanto email (compatibilidade com dados antigos)
-            $sql = "SELECT COUNT(*) FROM usuarios WHERE (email_global = :email OR email = :email2)";
-            $params = ['email' => $email, 'email2' => $email];
-            
-            if ($excludeId) {
-                $sql .= " AND id != :id";
-                $params['id'] = $excludeId;
-            }
+        $email = mb_strtolower(trim($email), 'UTF-8');
+        if ($email === '') {
+            return false;
+        }
+
+        // Case-insensitive: cadastros legados podem ter maiúsculas
+        $sql = "
+            SELECT COUNT(*) FROM usuarios
+            WHERE (
+                LOWER(TRIM(COALESCE(email_global, ''))) = :email
+                OR LOWER(TRIM(email)) = :email2
+            )
+        ";
+        $params = ['email' => $email, 'email2' => $email];
+
+        if ($excludeId) {
+            $sql .= " AND id != :id";
+            $params['id'] = $excludeId;
         }
 
         $stmt = $this->db->prepare($sql);
         $stmt->execute($params);
-        
-        return $stmt->fetchColumn() > 0;
+
+        return (int) $stmt->fetchColumn() > 0;
+    }
+
+    /**
+     * CPF é único no sistema (usuarios.cpf e alunos.cpf).
+     */
+    public function cpfExists(string $cpf, ?int $excludeUsuarioId = null): bool
+    {
+        $cpfLimpo = preg_replace('/[^0-9]/', '', $cpf) ?: '';
+        if ($cpfLimpo === '' || strlen($cpfLimpo) !== 11) {
+            return false;
+        }
+
+        $sqlUsuario = "SELECT id FROM usuarios WHERE cpf = :cpf";
+        $paramsUsuario = ['cpf' => $cpfLimpo];
+        if ($excludeUsuarioId) {
+            $sqlUsuario .= " AND id != :id";
+            $paramsUsuario['id'] = $excludeUsuarioId;
+        }
+        $sqlUsuario .= " LIMIT 1";
+
+        $stmt = $this->db->prepare($sqlUsuario);
+        $stmt->execute($paramsUsuario);
+        if ($stmt->fetch()) {
+            return true;
+        }
+
+        $sqlAluno = "
+            SELECT a.id
+            FROM alunos a
+            WHERE a.cpf = :cpf
+        ";
+        $paramsAluno = ['cpf' => $cpfLimpo];
+        if ($excludeUsuarioId) {
+            $sqlAluno .= " AND (a.usuario_id IS NULL OR a.usuario_id != :usuario_id)";
+            $paramsAluno['usuario_id'] = $excludeUsuarioId;
+        }
+        $sqlAluno .= " LIMIT 1";
+
+        $stmtAluno = $this->db->prepare($sqlAluno);
+        $stmtAluno->execute($paramsAluno);
+
+        return (bool) $stmtAluno->fetch();
     }
 
     /**
@@ -633,13 +671,32 @@ class Usuario
      */
     public function findByCpfGlobal(string $cpf): ?array
     {
+        $cpfLimpo = preg_replace('/[^0-9]/', '', $cpf) ?: '';
+        if ($cpfLimpo === '') {
+            return null;
+        }
+
         $stmt = $this->db->prepare(
             "SELECT * FROM usuarios WHERE cpf = :cpf LIMIT 1"
         );
-        $stmt->execute(['cpf' => $cpf]);
+        $stmt->execute(['cpf' => $cpfLimpo]);
         $user = $stmt->fetch();
-        
-        return $user ?: null;
+        if ($user) {
+            return $user;
+        }
+
+        // Fallback: CPF só em alunos (legado)
+        $stmtAluno = $this->db->prepare(
+            "SELECT u.*
+             FROM alunos a
+             INNER JOIN usuarios u ON u.id = a.usuario_id
+             WHERE a.cpf = :cpf
+             LIMIT 1"
+        );
+        $stmtAluno->execute(['cpf' => $cpfLimpo]);
+        $userViaAluno = $stmtAluno->fetch();
+
+        return $userViaAluno ?: null;
     }
 
     /**
@@ -946,26 +1003,7 @@ class Usuario
      */
     public function findByCpf(string $cpf): ?array
     {
-        $cpfLimpo = preg_replace('/[^0-9]/', '', $cpf);
-        
-        $sql = "
-            SELECT u.id, u.nome, u.email, u.email_global, u.telefone,
-                   u.cpf, u.cep, u.logradouro, u.numero, u.complemento, 
-                   u.bairro, u.cidade, u.estado, u.ativo,
-                   u.created_at, u.updated_at,
-                   tup.papel_id
-            FROM usuarios u
-            LEFT JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.ativo = 1
-            WHERE u.cpf = :cpf
-            ORDER BY tup.papel_id DESC
-            LIMIT 1
-        ";
-        
-        $stmt = $this->db->prepare($sql);
-        $stmt->execute(['cpf' => $cpfLimpo]);
-        $user = $stmt->fetch();
-        
-        return $user ?: null;
+        return $this->findByCpfGlobal($cpf);
     }
 
     /**

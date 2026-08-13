@@ -768,27 +768,6 @@ export default function MatriculaDetalheScreen() {
     return diffDias >= 0 && diffDias <= 3;
   };
 
-  const isJanelaBaixaPacote = (dateString) => {
-    if (!dateString) return false;
-    const [year, month, day] = dateString.split('-');
-    const vencimento = new Date(year, month - 1, day);
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
-    vencimento.setHours(0, 0, 0, 0);
-    const diffDias = Math.ceil((vencimento.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
-    return diffDias <= 3;
-  };
-
-  const isDataDiferenteHoje = (dateString) => {
-    if (!dateString) return false;
-    const [year, month, day] = dateString.split('-');
-    const data = new Date(year, month - 1, day);
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
-    data.setHours(0, 0, 0, 0);
-    return data.getTime() !== hoje.getTime();
-  };
-
   const formatDateTime = (dateTimeString) => {
     if (!dateTimeString) return '-';
     try {
@@ -2407,23 +2386,16 @@ export default function MatriculaDetalheScreen() {
                 Esta ação confirma o pagamento do pacote e libera as matrículas vinculadas.
               </Text>
 
-              {isDataDiferenteHoje(matricula?.proxima_data_vencimento || matricula?.data_vencimento) && (
-                <View className="mt-4 flex-row items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-                  <Feather name="alert-triangle" size={18} color="#f59e0b" />
-                  <View className="flex-1">
-                    <Text className="text-sm font-semibold text-amber-700">Atenção: data diferente de hoje</Text>
-                    <Text className="text-[12px] text-amber-700">
-                      O vencimento está em {formatDate(matricula?.proxima_data_vencimento || matricula?.data_vencimento)}.
-                    </Text>
-                  </View>
-                </View>
-              )}
-
               <View className="mt-4 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3">
                 <Text className="text-xs text-slate-500">Valor total a baixar</Text>
                 <Text className="text-base font-bold text-slate-800">
                   {formatCurrency(matricula?.pacote?.contrato_valor_total || matricula?.pacote?.pacote_valor_total)}
                 </Text>
+                {(matricula?.proxima_data_vencimento || matricula?.data_vencimento) && (
+                  <Text className="mt-2 text-[12px] text-slate-500">
+                    Vigência até {formatDate(matricula?.proxima_data_vencimento || matricula?.data_vencimento)}
+                  </Text>
+                )}
               </View>
 
               {Array.isArray(matricula?.pacote?.beneficiarios) && matricula.pacote.beneficiarios.length > 0 && (

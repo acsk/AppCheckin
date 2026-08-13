@@ -207,7 +207,7 @@ class AuthService
         return response()->json($payload, 200, [], JSON_UNESCAPED_UNICODE);
     }
 
-    public function register(string $nome, string $email, string $senha, int $tenantId): JsonResponse
+    public function register(string $nome, string $email, string $senha, int $tenantId, ?string $cpf = null): JsonResponse
     {
         if ($nome === '' || $email === '' || $senha === '' || $tenantId <= 0) {
             return ApiError::json(
@@ -235,12 +235,36 @@ class AuthService
             );
         }
 
-        $usuarioId = $this->usuarios->createUsuario([
+        $cpfLimpo = null;
+        if ($cpf !== null && trim($cpf) !== '') {
+            $cpfLimpo = preg_replace('/[^0-9]/', '', $cpf) ?: '';
+            if (strlen($cpfLimpo) !== 11) {
+                return ApiError::json(
+                    'CPF deve ter 11 dígitos',
+                    'INVALID_CPF',
+                    422,
+                );
+            }
+            if ($this->usuarios->cpfExists($cpfLimpo)) {
+                return ApiError::json(
+                    'CPF já cadastrado',
+                    'CPF_ALREADY_EXISTS',
+                    422,
+                );
+            }
+        }
+
+        $payload = [
             'nome' => $nome,
             'email' => $emailNorm,
             'senha' => $senha,
             'papel_id' => 1,
-        ], $tenantId, 1);
+        ];
+        if ($cpfLimpo !== null) {
+            $payload['cpf'] = $cpfLimpo;
+        }
+
+        $usuarioId = $this->usuarios->createUsuario($payload, $tenantId, 1);
 
         if (! $usuarioId) {
             return ApiError::json(

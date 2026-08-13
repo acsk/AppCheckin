@@ -298,53 +298,15 @@ class AlunoController
         try {
             $this->db->beginTransaction();
             
-            // Verificar se já existe usuário com esse email
-            $usuarioExistente = $this->usuarioModel->findByEmailGlobal($data['email']);
+            // Email/CPF duplicados já bloqueados em validarDados — só cria usuário novo.
+            // Associação de aluno existente: usar buscar-cpf / associar.
+            $usuarioId = $this->usuarioModel->create($data, $tenantId);
             
-            if ($usuarioExistente) {
-                // Usuário já existe - verificar se já é aluno neste tenant
-                $alunoExistente = $this->alunoModel->findByUsuarioIdAndTenant($usuarioExistente['id'], $tenantId);
-                
-                if ($alunoExistente) {
-                    $this->db->rollBack();
-                    $response->getBody()->write(json_encode([
-                        'type' => 'error',
-                        'message' => 'Este email já está cadastrado como aluno neste tenant'
-                    ], JSON_UNESCAPED_UNICODE));
-                    return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(400);
-                }
-                
-                // Vincular usuário existente como aluno neste tenant
-                $usuarioId = $usuarioExistente['id'];
-                
-                // Verificar se já tem registro em alunos
-                $alunoGlobal = $this->alunoModel->findByUsuarioId($usuarioId);
-                
-                if (!$alunoGlobal) {
-                    // Criar registro em alunos
-                    $data['usuario_id'] = $usuarioId;
-                    $this->alunoModel->create($data);
-                }
-                
-                // Adicionar vínculo com tenant
-                $this->criarVinculoTenant($usuarioId, $tenantId);
-                
-                // Adicionar papel de aluno
-                $this->adicionarPapel($usuarioId, $tenantId, 1);
-                
-                $aluno = $this->alunoModel->findByUsuarioId($usuarioId);
-                
-            } else {
-                // Criar novo usuário (isso automaticamente cria o aluno e vínculos)
-                // O papel de aluno é definido via tenant_usuario_papel pelo create()
-                $usuarioId = $this->usuarioModel->create($data, $tenantId);
-                
-                if (!$usuarioId) {
-                    throw new \Exception('Erro ao criar usuário');
-                }
-                
-                $aluno = $this->alunoModel->findByUsuarioId($usuarioId);
+            if (!$usuarioId) {
+                throw new \Exception('Erro ao criar usuário');
             }
+            
+            $aluno = $this->alunoModel->findByUsuarioId($usuarioId);
             
             $this->db->commit();
             
@@ -356,6 +318,31 @@ class AlunoController
             
             return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(201);
             
+        } catch (\PDOException $e) {
+            $this->db->rollBack();
+
+            $msg = $e->getMessage();
+            if (stripos($msg, 'Duplicate') !== false || (int) $e->getCode() === 23000) {
+                $duplicado = 'Email ou CPF já cadastrado';
+                if (stripos($msg, 'cpf') !== false) {
+                    $duplicado = 'CPF já cadastrado';
+                } elseif (stripos($msg, 'email') !== false) {
+                    $duplicado = 'Email já cadastrado';
+                }
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'code' => 'DUPLICATE_IDENTITY',
+                    'message' => $duplicado,
+                    'errors' => [$duplicado]
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(409);
+            }
+
+            $response->getBody()->write(json_encode([
+                'type' => 'error',
+                'message' => 'Erro ao criar aluno: ' . $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
         } catch (\Exception $e) {
             $this->db->rollBack();
             
@@ -442,18 +429,19 @@ class AlunoController
             // Atualizar dados do aluno (perfil)
             $this->alunoModel->update($id, $data);
             
-            // Se tiver email ou senha, atualizar em usuarios também
-            if (isset($data['email']) || isset($data['senha'])) {
-                $usuarioData = [];
-                if (isset($data['email'])) {
-                    $usuarioData['email'] = $data['email'];
-                }
-                if (isset($data['senha']) && !empty($data['senha'])) {
-                    $usuarioData['senha'] = $data['senha'];
-                }
-                if (!empty($usuarioData)) {
-                    $this->usuarioModel->update($aluno['usuario_id'], $usuarioData);
-                }
+            // Sincronizar email/senha/cpf no usuário de autenticação
+            $usuarioData = [];
+            if (isset($data['email'])) {
+                $usuarioData['email'] = $data['email'];
+            }
+            if (isset($data['senha']) && !empty($data['senha'])) {
+                $usuarioData['senha'] = $data['senha'];
+            }
+            if (array_key_exists('cpf', $data)) {
+                $usuarioData['cpf'] = $data['cpf'];
+            }
+            if (!empty($usuarioData)) {
+                $this->usuarioModel->update($aluno['usuario_id'], $usuarioData);
             }
             
             $this->db->commit();
@@ -817,20 +805,19 @@ class AlunoController
             $errors[] = 'Nome é obrigatório';
         }
         
-        // Email obrigatório apenas na criação
+        // Email obrigatório na criação; unicidade sempre global
         if (!$isUpdate) {
             if (empty($data['email'])) {
                 $errors[] = 'Email é obrigatório';
             } elseif (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
                 $errors[] = 'Email inválido';
-            } elseif ($this->usuarioModel->emailExists($data['email'], $usuarioIdExcluir, $tenantId)) {
+            } elseif ($this->usuarioModel->emailExists($data['email'], $usuarioIdExcluir)) {
                 $errors[] = 'Email já cadastrado';
             }
         } elseif (isset($data['email'])) {
-            // Na atualização, validar apenas se foi informado
             if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
                 $errors[] = 'Email inválido';
-            } elseif ($this->usuarioModel->emailExists($data['email'], $usuarioIdExcluir, $tenantId)) {
+            } elseif ($this->usuarioModel->emailExists($data['email'], $usuarioIdExcluir)) {
                 $errors[] = 'Email já cadastrado';
             }
         }
@@ -846,11 +833,24 @@ class AlunoController
             $errors[] = 'Senha deve ter no mínimo 6 caracteres';
         }
         
-        // Validar CPF se informado
-        if (!empty($data['cpf'])) {
-            $cpfLimpo = preg_replace('/[^0-9]/', '', $data['cpf']);
+        // CPF obrigatório na criação; unicidade global
+        if (!$isUpdate) {
+            if (empty($data['cpf'])) {
+                $errors[] = 'CPF é obrigatório';
+            } else {
+                $cpfLimpo = preg_replace('/[^0-9]/', '', $data['cpf']);
+                if (strlen($cpfLimpo) !== 11) {
+                    $errors[] = 'CPF deve ter 11 dígitos';
+                } elseif ($this->usuarioModel->cpfExists($cpfLimpo, $usuarioIdExcluir)) {
+                    $errors[] = 'CPF já cadastrado';
+                }
+            }
+        } elseif (array_key_exists('cpf', $data) && $data['cpf'] !== null && $data['cpf'] !== '') {
+            $cpfLimpo = preg_replace('/[^0-9]/', '', (string) $data['cpf']);
             if (strlen($cpfLimpo) !== 11) {
                 $errors[] = 'CPF deve ter 11 dígitos';
+            } elseif ($this->usuarioModel->cpfExists($cpfLimpo, $usuarioIdExcluir)) {
+                $errors[] = 'CPF já cadastrado';
             }
         }
         

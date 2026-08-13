@@ -295,12 +295,25 @@ class AdminController
 
         if (empty($data['email']) || !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
             $errors[] = 'Email inválido';
-        } elseif ($this->usuarioModel->emailExists($data['email'], null, $tenantId)) {
+        } elseif ($this->usuarioModel->emailExists($data['email'])) {
             $errors[] = 'Email já cadastrado';
         }
 
         if (empty($data['senha']) || strlen($data['senha']) < 6) {
             $errors[] = 'Senha deve ter no mínimo 6 caracteres';
+        }
+
+        if (empty($data['cpf'])) {
+            $errors[] = 'CPF é obrigatório';
+        } else {
+            $cpfLimpo = preg_replace('/[^0-9]/', '', $data['cpf']);
+            if (strlen($cpfLimpo) !== 11) {
+                $errors[] = 'CPF deve ter 11 dígitos';
+            } elseif ($this->usuarioModel->cpfExists($cpfLimpo)) {
+                $errors[] = 'CPF já cadastrado';
+            } else {
+                $data['cpf'] = $cpfLimpo;
+            }
         }
 
         if (!empty($errors)) {
@@ -345,8 +358,20 @@ class AdminController
                 $response->getBody()->write(json_encode(['errors' => ['Email inválido']]));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
             }
-            if ($this->usuarioModel->emailExists($data['email'], $alunoId, $tenantId)) {
+            if ($this->usuarioModel->emailExists($data['email'], $alunoId)) {
                 $response->getBody()->write(json_encode(['errors' => ['Email já cadastrado']]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+            }
+        }
+
+        if (isset($data['cpf']) && $data['cpf'] !== null && $data['cpf'] !== '') {
+            $cpfLimpo = preg_replace('/[^0-9]/', '', (string) $data['cpf']);
+            if (strlen($cpfLimpo) !== 11) {
+                $response->getBody()->write(json_encode(['errors' => ['CPF deve ter 11 dígitos']]));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+            }
+            if ($this->usuarioModel->cpfExists($cpfLimpo, $alunoId)) {
+                $response->getBody()->write(json_encode(['errors' => ['CPF já cadastrado']]));
                 return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
             }
         }

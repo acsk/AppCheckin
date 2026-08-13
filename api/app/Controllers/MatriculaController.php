@@ -957,7 +957,7 @@ class MatriculaController
                     $matriculaId,
                     $planoId,
                     $valorRateado,
-                    $dataInicio,
+                    $dataVencimento,
                     $contratoId,
                     'Pagamento pacote - rateado',
                     $adminId
@@ -3774,34 +3774,25 @@ class MatriculaController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(404);
         }
 
-        // 2. Buscar pagamentos pendentes do contrato
-        $stmtPagamentos = $db->prepare("
-            SELECT pp.*, m.plano_ciclo_id, p.duracao_dias,
-                   pc2.meses as ciclo_meses, af.meses as frequencia_meses,
-                   a.nome as aluno_nome
-            FROM pagamentos_plano pp
-            INNER JOIN matriculas m ON pp.matricula_id = m.id
-            INNER JOIN planos p ON pp.plano_id = p.id
-            INNER JOIN alunos a ON pp.aluno_id = a.id
-            LEFT JOIN plano_ciclos pc2 ON pc2.id = m.plano_ciclo_id
-            LEFT JOIN assinatura_frequencias af ON af.id = pc2.assinatura_frequencia_id
-            WHERE pp.pacote_contrato_id = ? AND pp.tenant_id = ? AND pp.status_pagamento_id != 2
-            ORDER BY pp.id
-        ");
-        $stmtPagamentos->execute([$contratoId, $tenantId]);
-        $pagamentos = $stmtPagamentos->fetchAll(\PDO::FETCH_ASSOC);
-
-        if (empty($pagamentos)) {
-            $response->getBody()->write(json_encode(['error' => 'Nenhum pagamento pendente para este pacote'], JSON_UNESCAPED_UNICODE));
-            return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
-        }
-
         $dataPagamento = $data['data_pagamento'] ?? date('Y-m-d');
         $formaPagamentoId = $data['forma_pagamento_id'] ?? null;
         $observacoes = $data['observacoes'] ?? null;
 
         $db->beginTransaction();
         try {
+            // Contratar via /admin/pacotes nem sempre cria pagamentos_plano.
+            $pagamentos = $this->garantirPagamentosPendentesPacote($db, $contratoId, (int) $tenantId, $adminId ? (int) $adminId : null, $contrato);
+
+            if (empty($pagamentos)) {
+                $db->rollBack();
+                $jaPago = $this->pacoteJaPossuiPagamentoPago($db, $contratoId, (int) $tenantId);
+                $response->getBody()->write(json_encode([
+                    'error' => $jaPago
+                        ? 'Este pacote já está pago'
+                        : 'Nenhum pagamento pendente para este pacote. Verifique se as matrículas do contrato existem.'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(400);
+            }
             $matriculasAtivadas = [];
             $proximasParcelas = [];
 
@@ -3895,11 +3886,24 @@ class MatriculaController
                 }
             }
 
-            // Atualizar contrato para ativo
+            // Atualizar contrato para ativo (preenche vigência se ainda estiver vazia)
             $stmtUpdContrato = $db->prepare("
-                UPDATE pacote_contratos SET status = 'ativo', updated_at = NOW() WHERE id = ? AND tenant_id = ?
+                UPDATE pacote_contratos pc
+                LEFT JOIN (
+                    SELECT pacote_contrato_id,
+                           MIN(data_inicio) AS data_inicio_min,
+                           MAX(data_vencimento) AS data_fim_max
+                    FROM matriculas
+                    WHERE pacote_contrato_id = ? AND tenant_id = ?
+                    GROUP BY pacote_contrato_id
+                ) m ON m.pacote_contrato_id = pc.id
+                SET pc.status = 'ativo',
+                    pc.data_inicio = COALESCE(pc.data_inicio, m.data_inicio_min, CURDATE()),
+                    pc.data_fim = COALESCE(pc.data_fim, m.data_fim_max),
+                    pc.updated_at = NOW()
+                WHERE pc.id = ? AND pc.tenant_id = ?
             ");
-            $stmtUpdContrato->execute([$contratoId, $tenantId]);
+            $stmtUpdContrato->execute([$contratoId, $tenantId, $contratoId, $tenantId]);
 
             // Atualizar beneficiários para ativo
             $stmtUpdBen = $db->prepare("
@@ -3930,6 +3934,139 @@ class MatriculaController
             ], JSON_UNESCAPED_UNICODE));
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
+    }
+
+    /**
+     * Localiza parcelas em aberto do pacote (por contrato ou via matrícula).
+     */
+    private function buscarPagamentosPendentesPacote(\PDO $db, int $contratoId, int $tenantId): array
+    {
+        $stmt = $db->prepare("
+            SELECT pp.*, m.plano_ciclo_id, COALESCE(p.duracao_dias, 30) AS duracao_dias,
+                   pc2.meses as ciclo_meses, af.meses as frequencia_meses,
+                   a.nome as aluno_nome
+            FROM pagamentos_plano pp
+            INNER JOIN matriculas m ON pp.matricula_id = m.id
+            LEFT JOIN planos p ON p.id = COALESCE(pp.plano_id, m.plano_id)
+            INNER JOIN alunos a ON pp.aluno_id = a.id
+            LEFT JOIN plano_ciclos pc2 ON pc2.id = m.plano_ciclo_id
+            LEFT JOIN assinatura_frequencias af ON af.id = pc2.assinatura_frequencia_id
+            WHERE pp.tenant_id = ?
+              AND pp.status_pagamento_id IN (1, 3)
+              AND (pp.pacote_contrato_id = ? OR m.pacote_contrato_id = ?)
+            ORDER BY pp.id
+        ");
+        $stmt->execute([$tenantId, $contratoId, $contratoId]);
+
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+    }
+
+    private function pacoteJaPossuiPagamentoPago(\PDO $db, int $contratoId, int $tenantId): bool
+    {
+        $stmt = $db->prepare("
+            SELECT COUNT(*)
+            FROM pagamentos_plano pp
+            INNER JOIN matriculas m ON m.id = pp.matricula_id
+            WHERE pp.tenant_id = ?
+              AND pp.status_pagamento_id = 2
+              AND (pp.pacote_contrato_id = ? OR m.pacote_contrato_id = ?)
+        ");
+        $stmt->execute([$tenantId, $contratoId, $contratoId]);
+
+        return (int) $stmt->fetchColumn() > 0;
+    }
+
+    /**
+     * Garante uma parcela pendente por matrícula do pacote.
+     * Contratos criados em /admin/pacotes/contratar não geravam pagamentos_plano.
+     */
+    private function garantirPagamentosPendentesPacote(
+        \PDO $db,
+        int $contratoId,
+        int $tenantId,
+        ?int $adminId,
+        array $contrato
+    ): array {
+        $pagamentos = $this->buscarPagamentosPendentesPacote($db, $contratoId, $tenantId);
+        if (!empty($pagamentos)) {
+            $stmtLink = $db->prepare("
+                UPDATE pagamentos_plano
+                SET pacote_contrato_id = ?
+                WHERE id = ? AND tenant_id = ? AND pacote_contrato_id IS NULL
+            ");
+            foreach ($pagamentos as $pagamento) {
+                if (empty($pagamento['pacote_contrato_id'])) {
+                    $stmtLink->execute([$contratoId, $pagamento['id'], $tenantId]);
+                }
+            }
+
+            return $this->buscarPagamentosPendentesPacote($db, $contratoId, $tenantId);
+        }
+
+        $stmtMat = $db->prepare("
+            SELECT m.id, m.aluno_id, m.plano_id, m.valor, m.valor_rateado,
+                   m.data_inicio, m.data_vencimento
+            FROM matriculas m
+            WHERE m.pacote_contrato_id = ? AND m.tenant_id = ?
+            ORDER BY m.id
+        ");
+        $stmtMat->execute([$contratoId, $tenantId]);
+        $matriculas = $stmtMat->fetchAll(\PDO::FETCH_ASSOC) ?: [];
+
+        if (empty($matriculas)) {
+            return [];
+        }
+
+        $stmtExiste = $db->prepare("
+            SELECT id, status_pagamento_id, pacote_contrato_id
+            FROM pagamentos_plano
+            WHERE matricula_id = ? AND tenant_id = ? AND status_pagamento_id IN (1, 2, 3)
+            ORDER BY id DESC
+            LIMIT 1
+        ");
+        $stmtInsert = $db->prepare("
+            INSERT INTO pagamentos_plano (
+                tenant_id, aluno_id, matricula_id, plano_id, valor,
+                data_vencimento, status_pagamento_id, pacote_contrato_id,
+                observacoes, criado_por, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, 'Pagamento do pacote', ?, NOW(), NOW())
+        ");
+        $stmtLink = $db->prepare("
+            UPDATE pagamentos_plano
+            SET pacote_contrato_id = ?
+            WHERE id = ? AND tenant_id = ? AND pacote_contrato_id IS NULL
+        ");
+
+        $planoIdFallback = (int) ($contrato['plano_id'] ?? 0);
+
+        foreach ($matriculas as $matricula) {
+            $stmtExiste->execute([(int) $matricula['id'], $tenantId]);
+            $existente = $stmtExiste->fetch(\PDO::FETCH_ASSOC);
+
+            if ($existente) {
+                if (empty($existente['pacote_contrato_id'])) {
+                    $stmtLink->execute([$contratoId, $existente['id'], $tenantId]);
+                }
+                continue;
+            }
+
+            $valor = (float) ($matricula['valor_rateado'] ?? $matricula['valor'] ?? 0);
+            $vencimento = $matricula['data_vencimento'] ?: ($matricula['data_inicio'] ?: date('Y-m-d'));
+            $planoId = (int) ($matricula['plano_id'] ?: $planoIdFallback) ?: null;
+
+            $stmtInsert->execute([
+                $tenantId,
+                (int) $matricula['aluno_id'],
+                (int) $matricula['id'],
+                $planoId,
+                $valor,
+                $vencimento,
+                $contratoId,
+                $adminId
+            ]);
+        }
+
+        return $this->buscarPagamentosPendentesPacote($db, $contratoId, $tenantId);
     }
 
     private function usuariosTemColunasPlano(\PDO $db): bool

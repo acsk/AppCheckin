@@ -64,11 +64,14 @@ class AuthController extends Controller
 
     public function register(Request $request): JsonResponse
     {
+        $cpf = $request->input('cpf');
+
         return $this->auth->register(
             (string) $request->input('nome', ''),
             (string) $request->input('email', ''),
             (string) $request->input('senha', ''),
             (int) $request->input('tenant_id', 0),
+            $cpf !== null ? (string) $cpf : null,
         );
     }
 

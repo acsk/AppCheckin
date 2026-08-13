@@ -116,24 +116,6 @@ class AdminAlunoService
 
         try {
             $aluno = DB::transaction(function () use ($tenantId, $data) {
-                $usuarioExistente = $this->usuarios->findByEmailGlobal((string) $data['email']);
-
-                if ($usuarioExistente) {
-                    $usuarioId = (int) $usuarioExistente->id;
-                    if ($this->alunos->findByUsuarioIdAndTenant($usuarioId, $tenantId)) {
-                        throw new \RuntimeException('EMAIL_JA_ALUNO_TENANT');
-                    }
-
-                    if (! $this->alunos->findByUsuarioId($usuarioId)) {
-                        $data['usuario_id'] = $usuarioId;
-                        $this->alunos->create($data);
-                    }
-
-                    $this->alunos->garantirVinculoAluno($usuarioId, $tenantId);
-
-                    return $this->alunos->findByUsuarioId($usuarioId);
-                }
-
                 $usuarioId = $this->usuarios->createUsuario($data, $tenantId, 1);
                 if (! $usuarioId) {
                     throw new \RuntimeException('Erro ao criar usuário');
@@ -162,14 +144,28 @@ class AdminAlunoService
                     'aluno' => $this->enriquecerAluno($aluno ?? [], $tenantId),
                 ],
             ];
-        } catch (\RuntimeException $e) {
-            if ($e->getMessage() === 'EMAIL_JA_ALUNO_TENANT') {
-                return $this->error('Este email já está cadastrado como aluno neste tenant', 400);
+        } catch (\Throwable $e) {
+            $msg = $e->getMessage();
+            if (stripos($msg, 'Duplicate') !== false || str_contains($msg, '1062')) {
+                $duplicado = 'Email ou CPF já cadastrado';
+                if (stripos($msg, 'cpf') !== false) {
+                    $duplicado = 'CPF já cadastrado';
+                } elseif (stripos($msg, 'email') !== false) {
+                    $duplicado = 'Email já cadastrado';
+                }
+
+                return [
+                    'status' => 409,
+                    'body' => [
+                        'type' => 'error',
+                        'code' => 'DUPLICATE_IDENTITY',
+                        'message' => $duplicado,
+                        'errors' => [$duplicado],
+                    ],
+                ];
             }
 
-            return $this->error('Erro ao criar aluno: '.$e->getMessage(), 500);
-        } catch (\Throwable $e) {
-            return $this->error('Erro ao criar aluno: '.$e->getMessage(), 500);
+            return $this->error('Erro ao criar aluno: '.$msg, 500);
         }
     }
 
@@ -200,7 +196,7 @@ class AdminAlunoService
             DB::transaction(function () use ($id, $aluno, $data) {
                 $this->alunos->update($id, $data);
 
-                if (isset($data['email']) || isset($data['senha']) || isset($data['nome'])) {
+                if (isset($data['email']) || isset($data['senha']) || isset($data['nome']) || array_key_exists('cpf', $data)) {
                     $usuarioData = [];
                     if (isset($data['email'])) {
                         $usuarioData['email'] = $data['email'];
@@ -210,6 +206,9 @@ class AdminAlunoService
                     }
                     if (isset($data['nome'])) {
                         $usuarioData['nome'] = $data['nome'];
+                    }
+                    if (array_key_exists('cpf', $data)) {
+                        $usuarioData['cpf'] = $data['cpf'];
                     }
                     $this->usuarios->updateAuthFields((int) $aluno['usuario_id'], $usuarioData);
                 }
@@ -521,13 +520,13 @@ class AdminAlunoService
                 $errors[] = 'Email é obrigatório';
             } elseif (! filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
                 $errors[] = 'Email inválido';
-            } elseif ($this->usuarios->emailExists((string) $data['email'], $usuarioIdExcluir, $tenantId)) {
+            } elseif ($this->usuarios->emailExists((string) $data['email'], $usuarioIdExcluir)) {
                 $errors[] = 'Email já cadastrado';
             }
         } elseif (isset($data['email'])) {
             if (! filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
                 $errors[] = 'Email inválido';
-            } elseif ($this->usuarios->emailExists((string) $data['email'], $usuarioIdExcluir, $tenantId)) {
+            } elseif ($this->usuarios->emailExists((string) $data['email'], $usuarioIdExcluir)) {
                 $errors[] = 'Email já cadastrado';
             }
         }
@@ -542,10 +541,23 @@ class AdminAlunoService
             $errors[] = 'Senha deve ter no mínimo 6 caracteres';
         }
 
-        if (! empty($data['cpf'])) {
+        if (! $isUpdate) {
+            if (empty($data['cpf'])) {
+                $errors[] = 'CPF é obrigatório';
+            } else {
+                $cpfLimpo = preg_replace('/[^0-9]/', '', (string) $data['cpf']);
+                if (strlen((string) $cpfLimpo) !== 11) {
+                    $errors[] = 'CPF deve ter 11 dígitos';
+                } elseif ($this->usuarios->cpfExists((string) $cpfLimpo, $usuarioIdExcluir)) {
+                    $errors[] = 'CPF já cadastrado';
+                }
+            }
+        } elseif (array_key_exists('cpf', $data) && $data['cpf'] !== null && $data['cpf'] !== '') {
             $cpfLimpo = preg_replace('/[^0-9]/', '', (string) $data['cpf']);
             if (strlen((string) $cpfLimpo) !== 11) {
                 $errors[] = 'CPF deve ter 11 dígitos';
+            } elseif ($this->usuarios->cpfExists((string) $cpfLimpo, $usuarioIdExcluir)) {
+                $errors[] = 'CPF já cadastrado';
             }
         }
 

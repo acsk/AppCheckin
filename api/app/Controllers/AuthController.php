@@ -121,14 +121,39 @@ class AuthController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
         }
 
+        $cpfLimpo = null;
+        if (isset($data['cpf']) && trim((string) $data['cpf']) !== '') {
+            $cpfLimpo = preg_replace('/[^0-9]/', '', (string) $data['cpf']) ?: '';
+            if (strlen($cpfLimpo) !== 11) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'code' => 'INVALID_CPF',
+                    'message' => 'CPF deve ter 11 dígitos'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+            }
+            if ($this->usuarioModel->cpfExists($cpfLimpo)) {
+                $response->getBody()->write(json_encode([
+                    'type' => 'error',
+                    'code' => 'CPF_ALREADY_EXISTS',
+                    'message' => 'CPF já cadastrado'
+                ], JSON_UNESCAPED_UNICODE));
+                return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+            }
+        }
+
         try {
             // Criar usuário e vincular ao tenant como aluno (papel_id = 1)
-            $usuarioId = $this->usuarioModel->create([
+            $payloadCreate = [
                 'nome' => $data['nome'],
                 'email' => $data['email'],
                 'senha' => $data['senha'],
                 'papel_id' => 1
-            ], $tenantId);
+            ];
+            if ($cpfLimpo !== null) {
+                $payloadCreate['cpf'] = $cpfLimpo;
+            }
+            $usuarioId = $this->usuarioModel->create($payloadCreate, $tenantId);
 
             if (!$usuarioId) {
                 throw new \RuntimeException('Falha ao criar usuário');

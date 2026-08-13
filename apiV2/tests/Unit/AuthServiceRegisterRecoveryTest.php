@@ -74,6 +74,33 @@ class AuthServiceRegisterRecoveryTest extends TestCase
         $this->assertSame('INVALID_TENANT', $response->getData(true)['code']);
     }
 
+    public function test_register_rejects_invalid_cpf_length(): void
+    {
+        $usuarios = Mockery::mock(UsuarioRepository::class);
+        $usuarios->shouldReceive('isTenantActive')->with(1)->andReturn(true);
+        $usuarios->shouldReceive('findByEmailGlobal')->andReturn(null);
+
+        $service = $this->authService(Mockery::mock(JwtService::class), $usuarios);
+
+        $response = $service->register('João', 'joao@b.com', 'senha123', 1, '123');
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertSame('INVALID_CPF', $response->getData(true)['code']);
+    }
+
+    public function test_register_rejects_duplicate_cpf(): void
+    {
+        $usuarios = Mockery::mock(UsuarioRepository::class);
+        $usuarios->shouldReceive('isTenantActive')->with(1)->andReturn(true);
+        $usuarios->shouldReceive('findByEmailGlobal')->andReturn(null);
+        $usuarios->shouldReceive('cpfExists')->with('39053344705')->andReturn(true);
+
+        $service = $this->authService(Mockery::mock(JwtService::class), $usuarios);
+
+        $response = $service->register('João', 'joao@b.com', 'senha123', 1, '390.533.447-05');
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertSame('CPF_ALREADY_EXISTS', $response->getData(true)['code']);
+    }
+
     public function test_password_recovery_requires_email(): void
     {
         $service = $this->authService(

@@ -117,8 +117,19 @@ class UsuarioController
         if (isset($data['email'])) {
             if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
                 $errors[] = 'Email inválido';
-            } elseif ($this->usuarioModel->emailExists($data['email'], $userId, $tenantId)) {
+            } elseif ($this->usuarioModel->emailExists($data['email'], $userId)) {
                 $errors[] = 'Email já cadastrado';
+            }
+        }
+
+        if (isset($data['cpf']) && $data['cpf'] !== null && $data['cpf'] !== '') {
+            $cpfLimpo = preg_replace('/[^0-9]/', '', (string) $data['cpf']);
+            if (strlen($cpfLimpo) !== 11) {
+                $errors[] = 'CPF deve conter 11 dígitos';
+            } elseif (!$this->validarCPF($cpfLimpo)) {
+                $errors[] = 'CPF inválido';
+            } elseif ($this->usuarioModel->cpfExists($cpfLimpo, $userId)) {
+                $errors[] = 'CPF já cadastrado';
             }
         }
 
@@ -766,12 +777,12 @@ class UsuarioController
             $errors[] = 'Nome é obrigatório';
         }
 
-        // Email obrigatório e válido
+        // Email obrigatório e único no sistema
         if (empty($data['email'])) {
             $errors[] = 'Email é obrigatório';
         } elseif (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
             $errors[] = 'Email inválido';
-        } elseif ($this->usuarioModel->emailExists($data['email'], $excludeId, $tenantId)) {
+        } elseif ($this->usuarioModel->emailExists($data['email'], $excludeId)) {
             $errors[] = 'Email já cadastrado';
         }
 
@@ -785,13 +796,15 @@ class UsuarioController
             $errors[] = 'Senha deve ter no mínimo 6 caracteres';
         }
 
-        // Validar CPF se fornecido
+        // Validar CPF se fornecido (único no sistema)
         if (!empty($data['cpf'])) {
             $cpfLimpo = preg_replace('/[^0-9]/', '', $data['cpf']);
             if (strlen($cpfLimpo) !== 11) {
                 $errors[] = 'CPF deve conter 11 dígitos';
             } elseif (!$this->validarCPF($cpfLimpo)) {
                 $errors[] = 'CPF inválido';
+            } elseif ($this->usuarioModel->cpfExists($cpfLimpo, $excludeId)) {
+                $errors[] = 'CPF já cadastrado';
             }
         }
 
