@@ -56,6 +56,7 @@ interface PlanoDetalhes {
   pode_migrar?: boolean;
   pode_renovar?: boolean;
   pode_pagar?: boolean;
+  motivo_renovacao?: string | null;
   status_codigo?: string | null;
   status?: {
     codigo?: string;
@@ -1087,7 +1088,7 @@ export default function PlanoDetalhesScreen() {
   const isPendente =
     statusCodigo === "pendente" || statusNome.includes("pendente");
   const podeRenovar = !!(plano.pode_renovar || plano.pode_pagar);
-  const isPlanoAtivo = !!plano.is_plano_atual && !isPendente;
+  const isPlanoAtivo = !!plano.is_plano_atual && !isPendente && !podeRenovar;
   const cicloAtualId = plano.matricula_ativa?.plano_ciclo_id ?? null;
   const cicloDiferenteDoAtual =
     isPlanoAtivo &&
@@ -1125,11 +1126,11 @@ export default function PlanoDetalhesScreen() {
                 </Text>
               </View>
             </View>
-            {isPlanoAtivo && (
+            {(isPlanoAtivo || podeRenovar) && (
               <View style={styles.ativoBadge}>
-                <Feather name="check-circle" size={14} color="#fff" />
+                <Feather name={podeRenovar ? "refresh-cw" : "check-circle"} size={14} color="#fff" />
                 <Text style={styles.ativoBadgeText}>
-                  {plano.label || "Seu plano"}
+                  {plano.label || (podeRenovar ? "Renovação disponível" : "Seu plano")}
                 </Text>
               </View>
             )}
@@ -1151,7 +1152,19 @@ export default function PlanoDetalhesScreen() {
           )}
         </View>
 
-        {isPendente && (
+        {podeRenovar &&
+        (plano.motivo_renovacao === "limite_checkins_ciclo" || isPendente) ? (
+          <View style={styles.pendingBanner}>
+            <Feather name="refresh-cw" size={16} color="#b45309" />
+            <View style={styles.pendingBannerContent}>
+              <Text style={styles.pendingBannerTitle}>Renovação disponível</Text>
+              <Text style={styles.pendingBannerText}>
+                Você usou todos os check-ins deste ciclo. Renove o plano para
+                continuar treinando.
+              </Text>
+            </View>
+          </View>
+        ) : isPendente ? (
           <View style={styles.pendingBanner}>
             <Feather name="alert-circle" size={16} color="#b45309" />
             <View style={styles.pendingBannerContent}>
@@ -1162,7 +1175,7 @@ export default function PlanoDetalhesScreen() {
               </Text>
             </View>
           </View>
-        )}
+        ) : null}
 
         {/* Descrição */}
         {!!plano.descricao && (

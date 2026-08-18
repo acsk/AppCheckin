@@ -57,6 +57,7 @@ interface Plan {
   pode_migrar?: boolean;
   pode_renovar?: boolean;
   pode_pagar?: boolean;
+  motivo_renovacao?: string | null;
   label?: string | null;
   matricula_ativa?: {
     id?: number;

@@ -5718,8 +5718,17 @@ class MobileController
                     INNER JOIN planos p ON p.id = m.plano_id
                     WHERE a.usuario_id = :usuario_id
                     AND m.tenant_id = :tenant_id
-                    AND sm.codigo = 'ativa'
+                    AND sm.codigo IN ('ativa', 'pendente')
                     AND COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= CURDATE()
+                    AND (
+                        sm.codigo = 'ativa'
+                        OR EXISTS (
+                            SELECT 1 FROM pagamentos_plano pp
+                            WHERE pp.matricula_id = m.id
+                              AND pp.tenant_id = m.tenant_id
+                              AND (pp.status_pagamento_id = 2 OR pp.data_pagamento IS NOT NULL)
+                        )
+                    )
                     ORDER BY m.updated_at DESC, m.id DESC
                 ");
                 $stmtMatriculasAtivas->execute([
@@ -5757,8 +5766,10 @@ class MobileController
                     (int) $usuarioId,
                     (int) $tenantId,
                     (int) $modalidadeAtivaId,
-                    $matAtiva['data_vencimento'] ?? null,
-                    $parcelaVencRen ? (string) $parcelaVencRen : null
+                    $matAtiva['data_vencimento_acesso'] ?? $matAtiva['data_vencimento'] ?? null,
+                    $parcelaVencRen ? (string) $parcelaVencRen : null,
+                    $matAtiva['status_codigo'] ?? null,
+                    (int) $matAtiva['id']
                 );
                 $renovacaoPorModalidade[(int) $modalidadeAtivaId] = $liberacao;
             }
@@ -6209,11 +6220,8 @@ class MobileController
 
             $podeRenovar = false;
             $motivoRenovacao = null;
-            if (
-                $userId
-                && $matriculaAtiva
-                && ($matriculaAtiva['status_codigo'] ?? '') === 'ativa'
-            ) {
+            if ($userId && $matriculaAtiva) {
+                $statusReal = (string) ($mat['status_codigo'] ?? $matriculaAtiva['status_codigo'] ?? '');
                 $stmtParcRenDet = $this->db->prepare("
                     SELECT data_vencimento FROM pagamentos_plano
                     WHERE tenant_id = ? AND matricula_id = ?
@@ -6229,10 +6237,16 @@ class MobileController
                     (int) $tenantId,
                     isset($plano['modalidade_id']) ? (int) $plano['modalidade_id'] : null,
                     $matriculaAtiva['data_vencimento'] ?? null,
-                    $parcelaVencDet ? (string) $parcelaVencDet : null
+                    $parcelaVencDet ? (string) $parcelaVencDet : null,
+                    $statusReal,
+                    (int) $matriculaAtiva['id']
                 );
                 $podeRenovar = !empty($liberacaoDet['liberar']);
                 $motivoRenovacao = $liberacaoDet['motivo'] ?? null;
+                if ($podeRenovar && ($motivoRenovacao === 'limite_checkins_ciclo')) {
+                    $matriculaAtiva['status_codigo'] = (string) ($mat['status_codigo'] ?? $matriculaAtiva['status_codigo']);
+                    $matriculaAtiva['status'] = (string) ($mat['status'] ?? $matriculaAtiva['status']);
+                }
             }
 
             // Montar resposta
@@ -7924,7 +7938,9 @@ class MobileController
                     (int) $tenantId,
                     isset($matricula['modalidade_id']) ? (int) $matricula['modalidade_id'] : null,
                     $matricula['proxima_data_vencimento'] ?? null,
-                    $parcelaRen['data_vencimento'] ?? null
+                    $parcelaRen['data_vencimento'] ?? null,
+                    $matricula['status_codigo'] ?? null,
+                    $matriculaId
                 );
 
                 if (!$liberacao['liberar']) {

@@ -1142,10 +1142,39 @@ class Checkin
         return $direito > 0 && $usados > 0 && $usados < $direito;
     }
 
+    public function matriculaTemPagamentoPago(int $matriculaId, int $tenantId): bool
+    {
+        $stmt = $this->db->prepare(
+            "SELECT 1
+             FROM pagamentos_plano
+             WHERE matricula_id = :matricula_id
+               AND tenant_id = :tenant_id
+               AND (status_pagamento_id = 2 OR data_pagamento IS NOT NULL)
+             LIMIT 1"
+        );
+        $stmt->execute([
+            'matricula_id' => $matriculaId,
+            'tenant_id' => $tenantId,
+        ]);
+
+        return (bool) $stmt->fetchColumn();
+    }
+
+    /**
+     * Pendente após ciclo pago (limite de check-ins ou aguardando renovação),
+     * não a 1ª compra.
+     */
+    public function isPendenteAguardandoRenovacao(string $statusCodigo, int $matriculaId, int $tenantId): bool
+    {
+        return $statusCodigo === 'pendente'
+            && $this->matriculaTemPagamentoPago($matriculaId, $tenantId);
+    }
+
     /**
      * Libera renovação/pagamento antecipado em matrícula ainda ativa quando:
      * - o limite de check-ins do ciclo (reposição) foi atingido, ou
      * - o acesso / parcela em aberto já venceu (ou vence hoje).
+     * Matrícula já marcada pendente depois de um ciclo pago também libera.
      *
      * @return array{liberar: bool, motivo: string, detalhes_limite: ?array}
      */
@@ -1154,8 +1183,21 @@ class Checkin
         int $tenantId,
         ?int $modalidadeId = null,
         ?string $acessoAte = null,
-        ?string $parcelaVencimento = null
+        ?string $parcelaVencimento = null,
+        ?string $statusCodigo = null,
+        ?int $matriculaId = null
     ): array {
+        if (
+            $matriculaId
+            && $this->isPendenteAguardandoRenovacao((string) $statusCodigo, $matriculaId, $tenantId)
+        ) {
+            return [
+                'liberar' => true,
+                'motivo' => 'limite_checkins_ciclo',
+                'detalhes_limite' => null,
+            ];
+        }
+
         $hoje = date('Y-m-d');
 
         if ($acessoAte && $acessoAte <= $hoje) {

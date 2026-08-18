@@ -55,10 +55,13 @@ class MobilePlanoService
                 $userId,
                 $tenantId,
                 (int) $mid,
-                isset($mat['data_vencimento']) ? (string) $mat['data_vencimento'] : null,
+                isset($mat['proxima_data_vencimento'])
+                    ? (string) $mat['proxima_data_vencimento']
+                    : (isset($mat['data_vencimento']) ? (string) $mat['data_vencimento'] : null),
                 $parcelaVenc ? (string) $parcelaVenc : null,
                 (int) ($mat['checkins_semanais'] ?? 0),
-                (int) $mat['id']
+                (int) $mat['id'],
+                isset($mat['status_codigo']) ? (string) $mat['status_codigo'] : null
             );
         }
 
@@ -227,7 +230,7 @@ class MobilePlanoService
         $podeMigrar = $this->resolverPodeMigrar($userId, $tenantId, $planoId, (int) ($plano['modalidade_id'] ?? 0));
         $podeRenovar = false;
         $motivoRenovacao = null;
-        if ($matriculaAtiva && ($matriculaAtiva['status_codigo'] ?? '') === 'ativa') {
+        if ($matriculaAtiva) {
             $parcelaVenc = DB::table('pagamentos_plano')
                 ->where('tenant_id', $tenantId)
                 ->where('matricula_id', (int) $matriculaAtiva['id'])
@@ -244,10 +247,15 @@ class MobilePlanoService
                 isset($matriculaAtiva['data_vencimento']) ? (string) $matriculaAtiva['data_vencimento'] : null,
                 $parcelaVenc ? (string) $parcelaVenc : null,
                 (int) ($plano['checkins_semanais'] ?? 0),
-                (int) $matriculaAtiva['id']
+                (int) $matriculaAtiva['id'],
+                (string) ($mat['status_codigo'] ?? $matriculaAtiva['status_codigo'] ?? '')
             );
             $podeRenovar = ! empty($liberacao['liberar']);
             $motivoRenovacao = $liberacao['motivo'] ?? null;
+            if ($podeRenovar && $motivoRenovacao === 'limite_checkins_ciclo' && $mat) {
+                $matriculaAtiva['status_codigo'] = $mat['status_codigo'] ?? $matriculaAtiva['status_codigo'];
+                $matriculaAtiva['status'] = $mat['status'] ?? $matriculaAtiva['status'];
+            }
         }
 
         return [
@@ -298,9 +306,23 @@ class MobilePlanoService
         ?string $acessoAte,
         ?string $parcelaVencimento,
         int $checkinsSemanais,
-        int $matriculaId
+        int $matriculaId,
+        ?string $statusCodigo = null
     ): array {
         $hoje = date('Y-m-d');
+
+        if ($statusCodigo === 'pendente') {
+            $temPago = DB::table('pagamentos_plano')
+                ->where('tenant_id', $tenantId)
+                ->where('matricula_id', $matriculaId)
+                ->where(function ($q) {
+                    $q->where('status_pagamento_id', 2)->orWhereNotNull('data_pagamento');
+                })
+                ->exists();
+            if ($temPago) {
+                return ['liberar' => true, 'motivo' => 'limite_checkins_ciclo'];
+            }
+        }
 
         if ($acessoAte && $acessoAte !== '0000-00-00' && $acessoAte <= $hoje) {
             return ['liberar' => true, 'motivo' => 'acesso_vencido'];

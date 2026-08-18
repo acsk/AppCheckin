@@ -750,9 +750,23 @@ class MobileCompraPlanoService
         ?string $acessoAte,
         ?string $parcelaVencimento,
         int $checkinsSemanais,
-        int $matriculaId
+        int $matriculaId,
+        ?string $statusCodigo = null
     ): array {
         $hoje = date('Y-m-d');
+
+        if ($statusCodigo === 'pendente') {
+            $temPago = DB::table('pagamentos_plano')
+                ->where('tenant_id', $tenantId)
+                ->where('matricula_id', $matriculaId)
+                ->where(function ($q) {
+                    $q->where('status_pagamento_id', 2)->orWhereNotNull('data_pagamento');
+                })
+                ->exists();
+            if ($temPago) {
+                return ['liberar' => true, 'motivo' => 'limite_checkins_ciclo'];
+            }
+        }
 
         if ($acessoAte && $acessoAte !== '0000-00-00' && $acessoAte <= $hoje) {
             return ['liberar' => true, 'motivo' => 'acesso_vencido'];

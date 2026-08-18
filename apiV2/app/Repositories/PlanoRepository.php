@@ -13,7 +13,9 @@ class PlanoRepository
             ->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
             ->where('a.usuario_id', $userId)
             ->where('m.tenant_id', $tenantId)
-            ->where('sm.codigo', 'ativa')
+            ->where(function ($q) {
+                $this->aplicarFiltroMatriculaVigenteParaPlanos($q);
+            })
             ->orderByDesc('m.created_at')
             ->value('m.plano_id');
 
@@ -31,7 +33,9 @@ class PlanoRepository
             ->join('planos as p', 'p.id', '=', 'm.plano_id')
             ->where('a.usuario_id', $userId)
             ->where('m.tenant_id', $tenantId)
-            ->where('sm.codigo', 'ativa')
+            ->where(function ($q) {
+                $this->aplicarFiltroMatriculaVigenteParaPlanos($q);
+            })
             ->whereRaw('COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= CURDATE()')
             ->orderByDesc('m.updated_at')
             ->orderByDesc('m.id')
@@ -257,5 +261,29 @@ class PlanoRepository
         }
 
         return $map;
+    }
+
+    /**
+     * Ativa vigente, ou pendente depois de ciclo já pago (limite de check-ins).
+     * Não inclui 1ª compra (pendente sem pagamento pago).
+     */
+    private function aplicarFiltroMatriculaVigenteParaPlanos($query): void
+    {
+        $query->where(function ($q) {
+            $q->where('sm.codigo', 'ativa')
+                ->orWhere(function ($pendente) {
+                    $pendente->where('sm.codigo', 'pendente')
+                        ->whereExists(function ($pago) {
+                            $pago->selectRaw('1')
+                                ->from('pagamentos_plano as pp')
+                                ->whereColumn('pp.matricula_id', 'm.id')
+                                ->whereColumn('pp.tenant_id', 'm.tenant_id')
+                                ->where(function ($status) {
+                                    $status->where('pp.status_pagamento_id', 2)
+                                        ->orWhereNotNull('pp.data_pagamento');
+                                });
+                        });
+                });
+        });
     }
 }
