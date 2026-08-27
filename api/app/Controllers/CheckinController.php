@@ -429,7 +429,7 @@ class CheckinController
     private function buscarMatriculaMaisRecente(\PDO $db, int $usuarioId, int $tenantId): ?array
     {
         $stmt = $db->prepare("
-            SELECT m.id, m.proxima_data_vencimento, m.periodo_teste,
+            SELECT m.id, m.tenant_id, m.proxima_data_vencimento, m.periodo_teste,
                    sm.codigo as status_codigo, sm.nome as status_nome,
                    sm.permite_checkin, sm.ativo as status_ativo
             FROM matriculas m
@@ -537,6 +537,22 @@ class CheckinController
                     if ($this->checkinModel->matriculaPendenteAindaTemSaldoCiclo($matriculaId)) {
                         $this->checkinModel->reativarDePendenteParaAtiva($matriculaId);
                         return null;
+                    }
+
+                    $tenantIdRestricao = (int) ($matricula['tenant_id'] ?? 0);
+                    $temPagamentoPago = $tenantIdRestricao > 0
+                        && $this->checkinModel->matriculaTemPagamentoPago($matriculaId, $tenantIdRestricao);
+                    if (!\App\Models\Checkin::pendenteDeveInformarLimiteCiclo($tenantIdRestricao, $temPagamentoPago)) {
+                        return [
+                            'error' => $mensagemParaAluno
+                                ? ('Sua matrícula está aguardando pagamento.' . $vencTxt . ' Conclua o pagamento para ativar o check-in.')
+                                : ('Matrícula aguardando pagamento.' . $vencTxt),
+                            'codigo' => 'MATRICULA_PENDENTE',
+                            'status' => $statusNome,
+                            'status_codigo' => $statusCodigo,
+                            'matricula_id' => $matriculaId,
+                            'data_vencimento' => $acessoAte,
+                        ];
                     }
 
                     $resumoCiclo = $this->checkinModel->obterResumoCicloPorMatricula($matriculaId);

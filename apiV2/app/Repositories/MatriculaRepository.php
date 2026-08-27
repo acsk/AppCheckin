@@ -262,14 +262,22 @@ class MatriculaRepository
                     ];
                 }
 
-                // 3) Ainda no período pago → só bloqueia se o limite estiver empatado.
-                // Se ainda há saldo (ex.: bônus 5ª semana) e já houve check-in no ciclo,
-                // reativa (status pendente veio do limite, não de 1º pagamento).
+                // 3) Ainda no período vigente sem parcela atrasada.
+                // Pendente costuma vir do limite do ciclo anterior. Se o ciclo
+                // vigente ainda tem saldo (inclui renovação paga com 0 check-ins),
+                // reativa. Sem pagamento pago = 1ª compra.
                 if (is_string($acessoAte) && $acessoAte !== '0000-00-00' && $acessoAte >= $hoje) {
                     $detalhesLimiteAtual = $this->avaliarLimiteCicloMatricula($matriculaId);
                     if ($detalhesLimiteAtual === null) {
-                        $usadosCiclo = $this->contarCheckinsCicloCalendarioMatricula($matriculaId);
-                        if ($usadosCiclo > 0) {
+                        $temPagamentoPago = DB::table('pagamentos_plano')
+                            ->where('matricula_id', $matriculaId)
+                            ->where(function ($q) {
+                                $q->where('status_pagamento_id', 2)
+                                    ->orWhereNotNull('data_pagamento');
+                            })
+                            ->exists();
+
+                        if ($temPagamentoPago) {
                             $statusAtivaId = DB::table('status_matricula')->where('codigo', 'ativa')->value('id');
                             $statusPendenteId = DB::table('status_matricula')->where('codigo', 'pendente')->value('id');
                             if ($statusAtivaId && $statusPendenteId) {
@@ -453,41 +461,6 @@ class MatriculaRepository
             'permite_reposicao' => true,
             'mensagem' => $mensagem,
         ];
-    }
-
-    /**
-     * Contagem aproximada de check-ins do mês calendário (mesma base de avaliarLimiteCicloMatricula).
-     */
-    private function contarCheckinsCicloCalendarioMatricula(int $matriculaId): int
-    {
-        $row = DB::table('matriculas as m')
-            ->join('planos as p', 'p.id', '=', 'm.plano_id')
-            ->join('alunos as a', 'a.id', '=', 'm.aluno_id')
-            ->where('m.id', $matriculaId)
-            ->select(['a.usuario_id', 'p.modalidade_id'])
-            ->first();
-
-        if (! $row) {
-            return 0;
-        }
-
-        $usuarioId = (int) $row->usuario_id;
-        $modalidadeId = $row->modalidade_id !== null ? (int) $row->modalidade_id : null;
-
-        return (int) DB::table('checkins as c')
-            ->join('alunos as a', 'a.id', '=', 'c.aluno_id')
-            ->join('turmas as t', function ($join) {
-                $join->on('c.turma_id', '=', 't.id')
-                    ->on('t.tenant_id', '=', 'c.tenant_id');
-            })
-            ->where('a.usuario_id', $usuarioId)
-            ->whereRaw('MONTH(COALESCE(c.data_checkin_date, DATE(c.created_at))) = MONTH(CURDATE())')
-            ->whereRaw('YEAR(COALESCE(c.data_checkin_date, DATE(c.created_at))) = YEAR(CURDATE())')
-            ->where(function ($q) {
-                $q->whereNull('c.presente')->orWhere('c.presente', 1);
-            })
-            ->when($modalidadeId !== null, fn ($q) => $q->where('t.modalidade_id', $modalidadeId))
-            ->count();
     }
 
     /**

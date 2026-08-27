@@ -8432,7 +8432,7 @@ class MobileController
     private function buscarMatriculaMaisRecentePorAluno(int $alunoId, int $tenantId): ?array
     {
         $stmt = $this->db->prepare("
-            SELECT m.id, m.proxima_data_vencimento, m.data_vencimento,
+            SELECT m.id, m.tenant_id, m.proxima_data_vencimento, m.data_vencimento,
                    sm.codigo as status_codigo, sm.nome as status_nome,
                    sm.permite_checkin, sm.ativo as status_ativo
             FROM matriculas m
@@ -8456,7 +8456,7 @@ class MobileController
     private function buscarMatriculaMaisRecentePorUsuario(int $userId, int $tenantId): ?array
     {
         $stmt = $this->db->prepare("
-            SELECT m.id, m.proxima_data_vencimento, m.data_vencimento,
+            SELECT m.id, m.tenant_id, m.proxima_data_vencimento, m.data_vencimento,
                    sm.codigo as status_codigo, sm.nome as status_nome,
                    sm.permite_checkin, sm.ativo as status_ativo
             FROM matriculas m
@@ -8563,13 +8563,31 @@ class MobileController
                 }
 
                 // 3) Período ainda vigente sem parcela atrasada.
-                // Status pendente costuma vir do job de check-ins esgotados — mas
-                // só bloqueia se o limite realmente estiver empatado. Se ainda há
-                // saldo (ex.: bônus de 5ª semana), reativa e libera.
+                // Pendente costuma vir do limite do ciclo anterior. Se o ciclo
+                // vigente ainda tem saldo (inclui renovação paga com 0 check-ins
+                // no ciclo novo), reativa. Sem pagamento pago = 1ª compra.
                 if (is_string($acessoAte) && $acessoAte !== '0000-00-00' && $acessoAte >= $hoje) {
                     if ($this->checkinModel->matriculaPendenteAindaTemSaldoCiclo($matriculaId)) {
                         $this->checkinModel->reativarDePendenteParaAtiva($matriculaId);
                         return null;
+                    }
+
+                    $tenantIdRestricao = (int) ($matricula['tenant_id'] ?? 0);
+                    $temPagamentoPago = $tenantIdRestricao > 0
+                        && $this->checkinModel->matriculaTemPagamentoPago($matriculaId, $tenantIdRestricao);
+                    if (!\App\Models\Checkin::pendenteDeveInformarLimiteCiclo($tenantIdRestricao, $temPagamentoPago)) {
+                        $mensagem = 'Sua matrícula está aguardando pagamento.'
+                            . $vencTxt
+                            . ' Conclua o pagamento para ativar o check-in.';
+                        return [
+                            'code' => 'MATRICULA_PENDENTE',
+                            'mensagem' => $mensagem,
+                            'error' => $mensagem,
+                            'matricula_id' => $matriculaId,
+                            'status_codigo' => $statusCodigo,
+                            'status' => $statusNome,
+                            'data_vencimento' => $acessoAte,
+                        ];
                     }
 
                     $resumoCiclo = $this->checkinModel->obterResumoCicloPorMatricula($matriculaId);

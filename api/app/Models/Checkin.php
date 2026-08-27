@@ -1123,7 +1123,9 @@ class Checkin
     /**
      * True se a matrícula pendente ainda tem saldo de check-ins no ciclo vigente
      * (não deve permanecer bloqueada só por limite).
-     * Exige usos > 0 para não confundir com aguardando 1º pagamento.
+     *
+     * Não reativa 1ª compra aguardando pagamento (sem parcela paga).
+     * Reativa renovação já paga, inclusive ciclo novo com 0 check-ins.
      */
     public function matriculaPendenteAindaTemSaldoCiclo(int $matriculaId): bool
     {
@@ -1131,15 +1133,44 @@ class Checkin
             return false;
         }
 
+        $stmt = $this->db->prepare('SELECT tenant_id FROM matriculas WHERE id = :id LIMIT 1');
+        $stmt->execute(['id' => $matriculaId]);
+        $tenantId = (int) $stmt->fetchColumn();
+        if ($tenantId <= 0 || !$this->matriculaTemPagamentoPago($matriculaId, $tenantId)) {
+            return false;
+        }
+
         $resumo = $this->obterResumoCicloPorMatricula($matriculaId);
         if ($resumo === null) {
-            return false;
+            // Sem teto mensal de reposição (ex.: diária) — pagamento já cobre o acesso.
+            return true;
         }
 
         $direito = (int) ($resumo['direito'] ?? $resumo['limite_mensal'] ?? 0);
         $usados = (int) ($resumo['usados'] ?? $resumo['checkins_mes'] ?? 0);
 
-        return $direito > 0 && $usados > 0 && $usados < $direito;
+        return self::pendenteDeveReativarPorSaldoCiclo($direito, $usados, true);
+    }
+
+    /**
+     * Ciclo vigente com saldo restante + parcela já paga (não é 1ª compra).
+     * usados = 0 é válido: ciclo novo após renovação, ainda sem check-in.
+     */
+    public static function pendenteDeveReativarPorSaldoCiclo(
+        int $direito,
+        int $usados,
+        bool $temPagamentoPago
+    ): bool {
+        return $temPagamentoPago && $direito > 0 && $usados < $direito;
+    }
+
+    /**
+     * LIMITE_CHECKINS_CICLO só após tenant válido e parcela paga.
+     * tenant_id ≤ 0 ou sem pagamento → aguardando pagamento (não limite).
+     */
+    public static function pendenteDeveInformarLimiteCiclo(int $tenantId, bool $temPagamentoPago): bool
+    {
+        return $tenantId > 0 && $temPagamentoPago;
     }
 
     public function matriculaTemPagamentoPago(int $matriculaId, int $tenantId): bool

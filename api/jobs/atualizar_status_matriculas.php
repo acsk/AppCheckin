@@ -9,7 +9,8 @@
  * - Ativa (0 dias): Pagamento em dia / vigência válida
  * - Vencida (1-4 dias): Pagamento vencido, aguardando regularização  
  * - Cancelada (5+ dias): Inadimplência - acesso bloqueado
- * - Pendente: limite de check-ins do ciclo empatado (planos com reposição)
+ * - Pendente: limite de check-ins do ciclo empatado (planos com reposição).
+ *   Reativa para Ativa quando o ciclo vigente ainda tem saldo e há pagamento pago.
  * - Avulso temp/cortesia (valor = 0): usa datas da matrícula; não realinha nem
  *   cancela pelo histórico de pagamentos antigos.
  * 
@@ -515,9 +516,9 @@ try {
             }
 
             // 10. Matrículas ativas com limite de check-ins do ciclo empatado → pendente
-            // (planos com reposição). Roda por último para não ser desfeito pela
-            // reativação via assinatura approved (passo 6.1).
+            // (planos com reposição). Depois da reativação via assinatura (passo 6.1).
             $pendentesPorLimite = 0;
+            $checkinModel = null;
             $stmtLimite = $db->prepare("
                 SELECT m.id
                 FROM matriculas m
@@ -554,6 +555,50 @@ try {
                 logMessage("  ✓ Matrículas Pendentes (limite de check-ins empatado): {$pendentesPorLimite}\n", $quiet);
             }
 
+            // 11. Reativar pendentes cujo ciclo vigente ainda tem saldo
+            // (renovação já paga + ciclo novo com 0 check-ins). Não desfaz o
+            // passo 10: limite empatado faz matriculaPendenteAindaTemSaldoCiclo=false.
+            $reativadasPorSaldo = 0;
+            $stmtPendSaldo = $db->prepare("
+                SELECT m.id
+                FROM matriculas m
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
+                INNER JOIN planos p ON p.id = m.plano_id
+                WHERE m.tenant_id = :tenant_id
+                  AND sm.codigo = 'pendente'
+                  AND COALESCE(p.duracao_dias, 0) <> 1
+                  AND COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= CURDATE()
+                  AND EXISTS (
+                      SELECT 1 FROM pagamentos_plano pp
+                      WHERE pp.matricula_id = m.id
+                        AND (pp.status_pagamento_id = 2 OR pp.data_pagamento IS NOT NULL)
+                  )
+                  AND NOT EXISTS (
+                      SELECT 1 FROM pagamentos_plano pp
+                      WHERE pp.matricula_id = m.id
+                        AND pp.status_pagamento_id IN (1, 3)
+                        AND pp.data_pagamento IS NULL
+                        AND pp.data_vencimento IS NOT NULL
+                        AND pp.data_vencimento <= CURDATE()
+                  )
+                LIMIT 500
+            ");
+            $stmtPendSaldo->execute(['tenant_id' => $tenant['id']]);
+            $matriculasPendSaldo = $stmtPendSaldo->fetchAll(PDO::FETCH_COLUMN);
+            if (!empty($matriculasPendSaldo)) {
+                $checkinModel = $checkinModel ?? new \App\Models\Checkin($db);
+                foreach ($matriculasPendSaldo as $matriculaPendId) {
+                    if ($checkinModel->matriculaPendenteAindaTemSaldoCiclo((int) $matriculaPendId)) {
+                        if ($checkinModel->reativarDePendenteParaAtiva((int) $matriculaPendId)) {
+                            $reativadasPorSaldo++;
+                        }
+                    }
+                }
+            }
+            if ($reativadasPorSaldo > 0) {
+                logMessage("  ✓ Matrículas Reativadas (pendente→ativa, saldo do ciclo): {$reativadasPorSaldo}\n", $quiet);
+            }
+
             $descontoModel = new \App\Models\MatriculaDesconto($db);
             $descontosDesativados = $descontoModel->desativarDescontosMatriculasEncerradas((int) $tenant['id']);
             if ($descontosDesativados > 0) {
@@ -563,7 +608,7 @@ try {
             // Commit da transação
             $db->commit();
             
-            $totalTenant = $vencidasAtualizadas + $canceladasAtualizadas + $vencidasPorData + $canceladasPorData + $sincCanceladas + $sincPausadas + $sincExpiradas + $sincAprovadas + $reativadas + $reativadasCanceladas + ($diariasEncerradas ?? 0) + ($pendentesPorLimite ?? 0);
+            $totalTenant = $vencidasAtualizadas + $canceladasAtualizadas + $vencidasPorData + $canceladasPorData + $sincCanceladas + $sincPausadas + $sincExpiradas + $sincAprovadas + $reativadas + $reativadasCanceladas + ($diariasEncerradas ?? 0) + ($pendentesPorLimite ?? 0) + ($reativadasPorSaldo ?? 0);
             $totalAtualizado += $totalTenant;
             
             if ($totalTenant > 0) {
