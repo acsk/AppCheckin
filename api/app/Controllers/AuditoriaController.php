@@ -255,7 +255,7 @@ class AuditoriaController
                   AND m.proxima_data_vencimento IS NOT NULL
                   AND m.pacote_contrato_id IS NULL
                 GROUP BY m.id, a.nome, p.nome, m.proxima_data_vencimento, sm.codigo
-                HAVING ABS(DATEDIFF(m.proxima_data_vencimento, MIN(pp.data_vencimento))) > 1
+                HAVING ABS(DATEDIFF(m.proxima_data_vencimento, MIN(pp.data_vencimento))) > 3
                 ORDER BY a.nome
             ";
             $stmt = $db->prepare($sql);
@@ -264,7 +264,7 @@ class AuditoriaController
             if ($rows) {
                 $anomalias[] = [
                     'tipo' => 'proxima_data_vencimento_desatualizada',
-                    'descricao' => 'Matrículas ativas (fora de pacote) onde proxima_data_vencimento diverge da próxima parcela pendente em mais de 1 dia',
+                    'descricao' => 'Matrículas ativas (fora de pacote) onde proxima_data_vencimento diverge da próxima parcela pendente em mais de 3 dias (tolera atraso de pagamento vs ciclo)',
                     'severidade' => 'media',
                     'total' => count($rows),
                     'registros' => $rows,
@@ -441,7 +441,7 @@ class AuditoriaController
                   AND m.pacote_contrato_id IS NULL
                 GROUP BY m.id, a.nome, m.proxima_data_vencimento
                 HAVING m.proxima_data_vencimento IS NULL
-                    OR ABS(DATEDIFF(m.proxima_data_vencimento, MIN(pp.data_vencimento))) > 1
+                    OR ABS(DATEDIFF(m.proxima_data_vencimento, MIN(pp.data_vencimento))) > 3
                 ORDER BY a.nome
             ";
             $stmt = $db->prepare($sqlDetect);
