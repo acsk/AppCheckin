@@ -5,6 +5,9 @@
 
     RewriteEngine On
 
+    # Hostinger/LiteSpeed: repassa Authorization ao PHP
+    SetEnvIf Authorization ".+" HTTP_AUTHORIZATION=$0
+
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
