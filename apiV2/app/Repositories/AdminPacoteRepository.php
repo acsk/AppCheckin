@@ -440,13 +440,15 @@ class AdminPacoteRepository
                 u.id as pagante_usuario_id,
                 u.nome as pagante_nome,
                 u.email as pagante_email,
-                COUNT(DISTINCT pb.id) as beneficiarios_adicionados
+                (
+                    SELECT COUNT(DISTINCT pb2.id)
+                    FROM pacote_beneficiarios pb2
+                    WHERE pb2.pacote_contrato_id = pc.id
+                ) as beneficiarios_adicionados
             FROM pacote_contratos pc
             INNER JOIN pacotes p ON p.id = pc.pacote_id
             INNER JOIN usuarios u ON u.id = pc.pagante_usuario_id
-            LEFT JOIN pacote_beneficiarios pb ON pb.pacote_contrato_id = pc.id
             WHERE pc.tenant_id = ? AND pc.status = ?
-            GROUP BY pc.id
             ORDER BY pc.created_at DESC
         ', [$tenantId, $status]);
 
@@ -475,14 +477,16 @@ class AdminPacoteRepository
                 u.id as pagante_usuario_id,
                 u.nome as pagante_nome,
                 u.email as pagante_email,
-                COUNT(DISTINCT pb.id) as beneficiarios_adicionados
+                (
+                    SELECT COUNT(DISTINCT pb2.id)
+                    FROM pacote_beneficiarios pb2
+                    WHERE pb2.pacote_contrato_id = pc.id
+                ) as beneficiarios_adicionados
             FROM pacote_contratos pc
             INNER JOIN pacotes p ON p.id = pc.pacote_id
             LEFT JOIN planos pl ON pl.id = p.plano_id
             INNER JOIN usuarios u ON u.id = pc.pagante_usuario_id
-            LEFT JOIN pacote_beneficiarios pb ON pb.pacote_contrato_id = pc.id
             WHERE pc.tenant_id = ? AND pc.status = ?
-            GROUP BY pc.id
             ORDER BY pc.data_inicio DESC
         ', [$tenantId, $status]);
 
