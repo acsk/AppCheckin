@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\PagamentoPlano;
+
 /**
  * Detecta inconsistências do bug de migração/alteração de plano:
  * parcelas fantasma R$ 0, MP cancelado → crédito, vencimento deslocado por reset de datas.
@@ -11,6 +13,15 @@ namespace App\Services;
 class AuditoriaCreditoMigracaoService
 {
     private const TOLERANCIA_DIAS = 2;
+
+    /** @var list<string> */
+    private const TIPOS_REVISAO_MANUAL = [
+        'parcela_fantasma_migracao',
+        'pagamento_cancelado_credito',
+        'credito_indevido_ativo',
+        'vencimento_divergente',
+        'acesso_alem_periodo_pago',
+    ];
 
     private \PDO $db;
 
@@ -60,6 +71,7 @@ class AuditoriaCreditoMigracaoService
                 'tipo' => $tipo,
                 'severidade' => $severidade,
                 'descricao' => $descricao,
+                'revisao_manual' => $this->tipoRequerRevisaoManual($tipo),
             ];
         };
 
@@ -321,22 +333,19 @@ class AuditoriaCreditoMigracaoService
             // tabela assinaturas pode não existir em alguns ambientes
         }
 
-        // 6) Acesso além do período pago (avulso): vencimento da matrícula = parcela futura não paga
+        // 6) Acesso além do período pago (avulso): usa fim de ciclo calculado (mensal/bimestral/quadrimestral).
         // Caso #369: pago até 09/08, mas data_vencimento/próxima em 09/09 (parcela #807 aguardando)
+        $fimPeriodoPago = PagamentoPlano::sqlFimPeriodoPago('m.tenant_id', 'm.id');
+        $tolerancia = self::TOLERANCIA_DIAS;
         $stmt = $this->db->prepare("
             SELECT m.id AS matricula_id, a.nome AS aluno_nome, sm.codigo AS status_matricula,
                    m.data_inicio, m.data_vencimento, m.proxima_data_vencimento,
-                   pago.data_vencimento AS fim_pago, pend.data_vencimento AS prox_pendente
+                   ({$fimPeriodoPago}) AS fim_pago,
+                   pend.data_vencimento AS prox_pendente
             FROM matriculas m
             INNER JOIN alunos a ON a.id = m.aluno_id
             INNER JOIN status_matricula sm ON sm.id = m.status_id
-            INNER JOIN (
-                SELECT matricula_id, MAX(data_vencimento) AS data_vencimento
-                FROM pagamentos_plano
-                WHERE tenant_id = ? AND status_pagamento_id = 2 AND valor > 0
-                GROUP BY matricula_id
-            ) pago ON pago.matricula_id = m.id
-            INNER JOIN (
+            LEFT JOIN (
                 SELECT matricula_id, MIN(data_vencimento) AS data_vencimento
                 FROM pagamentos_plano
                 WHERE tenant_id = ? AND status_pagamento_id IN (1, 3) AND data_pagamento IS NULL
@@ -345,25 +354,26 @@ class AuditoriaCreditoMigracaoService
             WHERE m.tenant_id = ?
               AND m.tipo_cobranca = 'avulso'
               AND sm.codigo IN ('ativa', 'vencida')
-              AND m.data_vencimento > pago.data_vencimento
-              AND DATEDIFF(m.data_vencimento, pago.data_vencimento) > 2
-              AND m.data_vencimento = pend.data_vencimento
+              AND ({$fimPeriodoPago}) IS NOT NULL
+              AND m.data_vencimento IS NOT NULL
+              AND m.data_vencimento > DATE_ADD(({$fimPeriodoPago}), INTERVAL {$tolerancia} DAY)
             ORDER BY m.id DESC
             LIMIT 200
         ");
-        $stmt->execute([$tenantId, $tenantId, $tenantId]);
+        $stmt->execute([$tenantId, $tenantId]);
         foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $proxPendente = $r['prox_pendente'] ?? null;
             $add(
                 (int) $r['matricula_id'],
                 $r['aluno_nome'],
                 'acesso_alem_periodo_pago',
                 'alta',
                 sprintf(
-                    'Acesso até %s / próxima %s, mas último pago cobre só até %s (parcela futura %s)',
+                    'Acesso até %s / próxima %s, mas período pago calculado cobre só até %s%s',
                     $r['data_vencimento'],
                     $r['proxima_data_vencimento'] ?: '-',
                     $r['fim_pago'],
-                    $r['prox_pendente']
+                    $proxPendente ? sprintf(' (próxima parcela %s)', $proxPendente) : ''
                 ),
                 [
                     'status' => $r['status_matricula'],
@@ -375,7 +385,24 @@ class AuditoriaCreditoMigracaoService
         }
 
         $registros = array_values($porMatricula);
-        usort($registros, fn ($a, $b) => $a['matricula_id'] <=> $b['matricula_id']);
+        foreach ($registros as &$reg) {
+            $reg['revisao_manual'] = false;
+            foreach ($reg['problemas'] as $p) {
+                if (!empty($p['revisao_manual'])) {
+                    $reg['revisao_manual'] = true;
+                    break;
+                }
+            }
+        }
+        unset($reg);
+
+        usort($registros, function ($a, $b) {
+            if ($a['revisao_manual'] !== $b['revisao_manual']) {
+                return $b['revisao_manual'] <=> $a['revisao_manual'];
+            }
+
+            return $a['matricula_id'] <=> $b['matricula_id'];
+        });
 
         $contagens = [
             'parcela_fantasma_migracao' => 0,
@@ -393,13 +420,29 @@ class AuditoriaCreditoMigracaoService
             }
         }
 
+        $revisaoManual = 0;
+        foreach ($registros as $reg) {
+            if (!empty($reg['revisao_manual'])) {
+                $revisaoManual++;
+            }
+        }
+
         return [
             'resumo' => array_merge(
-                ['total_matriculas' => count($registros)],
+                [
+                    'total_matriculas' => count($registros),
+                    'revisao_manual' => $revisaoManual,
+                    'informativo' => count($registros) - $revisaoManual,
+                ],
                 $contagens
             ),
             'registros' => $registros,
         ];
+    }
+
+    private function tipoRequerRevisaoManual(string $tipo): bool
+    {
+        return in_array($tipo, self::TIPOS_REVISAO_MANUAL, true);
     }
 
     /**

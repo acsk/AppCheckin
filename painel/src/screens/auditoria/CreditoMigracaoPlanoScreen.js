@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -36,6 +36,7 @@ export default function CreditoMigracaoPlanoScreen() {
   const [loading, setLoading] = useState(true);
   const [resumo, setResumo] = useState(null);
   const [registros, setRegistros] = useState([]);
+  const [somenteRevisao, setSomenteRevisao] = useState(true);
 
   const carregar = useCallback(async () => {
     try {
@@ -54,6 +55,11 @@ export default function CreditoMigracaoPlanoScreen() {
   useEffect(() => {
     carregar();
   }, [carregar]);
+
+  const registrosVisiveis = useMemo(() => {
+    if (!somenteRevisao) return registros;
+    return registros.filter((reg) => reg.revisao_manual);
+  }, [registros, somenteRevisao]);
 
   const irMatricula = (id) => {
     router.push(`/matriculas/detalhe?id=${id}`);
@@ -88,16 +94,18 @@ export default function CreditoMigracaoPlanoScreen() {
           <Feather name="info" size={16} color="#6366f1" />
           <Text style={styles.infoText}>
             Foco no padrão do bug: parcela fantasma R$ 0, pagamento MP cancelado → crédito, crédito
-            indevido ativo e datas resetadas (início após o último pagamento) com vencimento fora
-            do ciclo. Diferença de 1–2 dias por aniversário do mês não entra no relatório.
+            indevido ativo e datas resetadas na migração. Planos bimestrais e quadrimestrais entram
+            no cálculo do período pago (vencimento + meses do ciclo). Itens marcados como{' '}
+            <Text style={styles.infoStrong}>Revisão manual</Text> exigem conferência; assinatura de
+            migração sozinha é apenas informativa.
           </Text>
         </View>
 
         <View style={[styles.resumoRow, isMobile && { flexDirection: 'column' }]}>
           <View style={[styles.resumoCard, { borderLeftColor: '#ef4444' }]}>
-            <Text style={styles.resumoLabel}>Matrículas afetadas</Text>
+            <Text style={styles.resumoLabel}>Revisão manual</Text>
             <Text style={[styles.resumoValue, { color: '#ef4444' }]}>
-              {resumo?.total_matriculas ?? 0}
+              {resumo?.revisao_manual ?? 0}
             </Text>
           </View>
           <View style={[styles.resumoCard, { borderLeftColor: '#f97316' }]}>
@@ -106,28 +114,79 @@ export default function CreditoMigracaoPlanoScreen() {
               {resumo?.vencimento_divergente ?? 0}
             </Text>
           </View>
-          <View style={[styles.resumoCard, { borderLeftColor: '#d97706' }]}>
-            <Text style={styles.resumoLabel}>Parcelas fantasma</Text>
-            <Text style={[styles.resumoValue, { color: '#d97706' }]}>
-              {resumo?.parcela_fantasma_migracao ?? 0}
+          <View style={[styles.resumoCard, { borderLeftColor: '#94a3b8' }]}>
+            <Text style={styles.resumoLabel}>Informativo</Text>
+            <Text style={[styles.resumoValue, { color: '#64748b' }]}>
+              {resumo?.informativo ?? 0}
             </Text>
           </View>
         </View>
 
-        {registros.length === 0 ? (
+        {registros.length > 0 && (
+          <View style={styles.filtroRow}>
+            <TouchableOpacity
+              style={[styles.filtroBtn, somenteRevisao && styles.filtroBtnAtivo]}
+              onPress={() => setSomenteRevisao(true)}
+            >
+              <Feather name="alert-triangle" size={14} color={somenteRevisao ? '#fff' : '#ef4444'} />
+              <Text style={[styles.filtroBtnText, somenteRevisao && styles.filtroBtnTextAtivo]}>
+                Só revisão manual ({resumo?.revisao_manual ?? 0})
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filtroBtn, !somenteRevisao && styles.filtroBtnAtivoSec]}
+              onPress={() => setSomenteRevisao(false)}
+            >
+              <Feather name="list" size={14} color={!somenteRevisao ? '#fff' : '#64748b'} />
+              <Text style={[styles.filtroBtnText, !somenteRevisao && styles.filtroBtnTextAtivo]}>
+                Todos ({resumo?.total_matriculas ?? 0})
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {registrosVisiveis.length === 0 ? (
           <View style={styles.emptyBox}>
-            <Feather name="check-circle" size={40} color="#22c55e" />
-            <Text style={styles.emptyTitle}>Nenhuma anomalia detectada</Text>
+            <Feather
+              name={registros.length === 0 ? 'check-circle' : 'filter'}
+              size={40}
+              color="#22c55e"
+            />
+            <Text style={styles.emptyTitle}>
+              {registros.length === 0
+                ? 'Nenhuma anomalia detectada'
+                : 'Nenhum item para revisão manual'}
+            </Text>
             <Text style={styles.emptyDesc}>
-              Não há matrículas com o padrão de bug de migração de plano neste tenant.
+              {registros.length === 0
+                ? 'Não há matrículas com o padrão de bug de migração de plano neste tenant.'
+                : 'Todos os registros restantes são informativos (ex.: assinatura recriada na migração).'}
             </Text>
           </View>
         ) : (
-          registros.map((reg) => (
-            <View key={reg.matricula_id} style={styles.card}>
+          registrosVisiveis.map((reg) => (
+            <View
+              key={reg.matricula_id}
+              style={[
+                styles.card,
+                reg.revisao_manual ? styles.cardRevisao : styles.cardInformativo,
+              ]}
+            >
               <View style={styles.cardHeader}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.alunoNome}>{reg.aluno_nome}</Text>
+                  <View style={styles.tituloRow}>
+                    <Text style={styles.alunoNome}>{reg.aluno_nome}</Text>
+                    {reg.revisao_manual ? (
+                      <View style={styles.badgeRevisao}>
+                        <Feather name="alert-triangle" size={11} color="#fff" />
+                        <Text style={styles.badgeRevisaoText}>Revisão manual</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.badgeInfo}>
+                        <Text style={styles.badgeInfoText}>Informativo</Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={styles.matriculaMeta}>
                     Matrícula #{reg.matricula_id}
                     {reg.status ? ` · ${reg.status}` : ''}
@@ -152,7 +211,7 @@ export default function CreditoMigracaoPlanoScreen() {
                     <>
                       <Feather name="arrow-right" size={14} color="#94a3b8" style={{ marginTop: 14 }} />
                       <View style={styles.dataItem}>
-                        <Text style={styles.dataLabel}>Esperado</Text>
+                        <Text style={styles.dataLabel}>Período pago até</Text>
                         <Text style={[styles.dataValue, { color: '#16a34a' }]}>
                           {formatarData(reg.data_vencimento_esperada)}
                         </Text>
@@ -165,11 +224,20 @@ export default function CreditoMigracaoPlanoScreen() {
               <View style={styles.problemasList}>
                 {(reg.problemas || []).map((p, idx) => {
                   const cfg = TIPO_CONFIG[p.tipo] || { label: p.tipo, cor: '#6b7280', icon: 'alert-circle' };
+                  const revisao = Boolean(p.revisao_manual);
                   return (
-                    <View key={idx} style={styles.problemaRow}>
+                    <View
+                      key={idx}
+                      style={[styles.problemaRow, revisao ? styles.problemaRowRevisao : styles.problemaRowInfo]}
+                    >
                       <Feather name={cfg.icon} size={13} color={cfg.cor} />
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.problemaTipo, { color: cfg.cor }]}>{cfg.label}</Text>
+                        <View style={styles.problemaHeader}>
+                          <Text style={[styles.problemaTipo, { color: cfg.cor }]}>{cfg.label}</Text>
+                          {revisao && (
+                            <Text style={styles.problemaRevisaoTag}>Revisar</Text>
+                          )}
+                        </View>
                         <Text style={styles.problemaDesc}>{p.descricao}</Text>
                       </View>
                     </View>
@@ -229,7 +297,8 @@ const styles = StyleSheet.create({
     borderColor: '#c7d2fe',
   },
   infoText: { flex: 1, fontSize: 12, color: '#4338ca', lineHeight: 18 },
-  resumoRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, marginBottom: 16 },
+  infoStrong: { fontWeight: '700' },
+  resumoRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, marginBottom: 12 },
   resumoCard: {
     flex: 1,
     backgroundColor: '#fff',
@@ -241,6 +310,28 @@ const styles = StyleSheet.create({
   },
   resumoLabel: { fontSize: 11, color: '#6b7280', fontWeight: '600', textTransform: 'uppercase' },
   resumoValue: { fontSize: 26, fontWeight: '800', marginTop: 4 },
+  filtroRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingHorizontal: 16,
+    marginBottom: 16,
+  },
+  filtroBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  filtroBtnAtivo: { backgroundColor: '#ef4444', borderColor: '#ef4444' },
+  filtroBtnAtivoSec: { backgroundColor: '#64748b', borderColor: '#64748b' },
+  filtroBtnText: { fontSize: 12, fontWeight: '600', color: '#475569' },
+  filtroBtnTextAtivo: { color: '#fff' },
   emptyBox: {
     margin: 16,
     padding: 32,
@@ -259,11 +350,30 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
   },
+  cardRevisao: { borderColor: '#fecaca', backgroundColor: '#fffbfb' },
+  cardInformativo: { borderColor: '#e5e7eb' },
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  tituloRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
   alunoNome: { fontSize: 15, fontWeight: '700', color: '#111827' },
-  matriculaMeta: { fontSize: 12, color: '#6b7280', marginTop: 2 },
+  badgeRevisao: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#ef4444',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  badgeRevisaoText: { fontSize: 10, fontWeight: '700', color: '#fff', textTransform: 'uppercase' },
+  badgeInfo: {
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  badgeInfoText: { fontSize: 10, fontWeight: '600', color: '#64748b', textTransform: 'uppercase' },
+  matriculaMeta: { fontSize: 12, color: '#6b7280', marginTop: 4 },
   linkBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -291,10 +401,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
     alignItems: 'flex-start',
-    backgroundColor: '#fef2f2',
     padding: 10,
     borderRadius: 8,
   },
+  problemaRowRevisao: { backgroundColor: '#fef2f2' },
+  problemaRowInfo: { backgroundColor: '#f8fafc' },
+  problemaHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' },
   problemaTipo: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
+  problemaRevisaoTag: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#ef4444',
+    textTransform: 'uppercase',
+    backgroundColor: '#fee2e2',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
   problemaDesc: { fontSize: 12, color: '#475569', marginTop: 2, lineHeight: 17 },
 });
