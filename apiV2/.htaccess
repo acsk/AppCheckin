@@ -1,3 +1,8 @@
+# Hostinger/LiteSpeed: PHP 8.4 (Laravel 13). Só afeta HTTP desta pasta.
+<FilesMatch "\.(php4|php5|php3|php2|php|phtml)$">
+    SetHandler application/x-lsphp84
+</FilesMatch>
+
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteRule ^$ public/ [L]

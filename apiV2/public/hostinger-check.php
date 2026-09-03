@@ -12,9 +12,9 @@ $root = dirname(__DIR__);
 $checks = [];
 
 $checks['php_version'] = [
-    'ok' => version_compare(PHP_VERSION, '8.2.0', '>='),
+    'ok' => version_compare(PHP_VERSION, '8.4.0', '>='),
     'value' => PHP_VERSION,
-    'required' => '>= 8.2',
+    'required' => '>= 8.4 (Laravel 13)',
 ];
 
 $paths = [
