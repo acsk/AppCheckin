@@ -153,6 +153,29 @@ function sqlAcessoAteStatus(string $tenantExpr, string $matriculaExpr): string
     )";
 }
 
+/**
+ * Atualiza status de pagamentos por lista de IDs (evita MySQL 1093 em UPDATE+subquery).
+ *
+ * @param list<int|string> $ids
+ */
+function atualizarPagamentosStatusPorIds(PDO $db, array $ids, int $statusPagamentoId): int
+{
+    $ids = array_values(array_filter(array_map('intval', $ids), static fn (int $id) => $id > 0));
+    if ($ids === []) {
+        return 0;
+    }
+
+    $placeholders = implode(',', array_fill(0, count($ids), '?'));
+    $stmt = $db->prepare(
+        "UPDATE pagamentos_plano
+         SET status_pagamento_id = ?, updated_at = NOW()
+         WHERE id IN ($placeholders)"
+    );
+    $stmt->execute(array_merge([$statusPagamentoId], $ids));
+
+    return $stmt->rowCount();
+}
+
 try {
     // Buscar tenants ativos COM LIMITE para não sobrecarregar
     // Usa ORDER BY RAND() para distribuir a carga ao longo do tempo
@@ -180,11 +203,12 @@ try {
             $db->beginTransaction();
 
             // 0. Corrigir parcelas futuras erroneamente marcadas como Atrasado
-            // (exceto renovação avulsa com período pago já expirado)
+            // (exceto renovação avulsa com período pago já expirado).
+            // SELECT + UPDATE por id: evita MySQL 1093 (rollback do tenant inteiro).
             $sqlCorrigirFuturas = "
-                UPDATE pagamentos_plano pp
+                SELECT pp.id
+                FROM pagamentos_plano pp
                 INNER JOIN matriculas m ON m.id = pp.matricula_id AND m.tenant_id = pp.tenant_id
-                SET pp.status_pagamento_id = 1, pp.updated_at = NOW()
                 WHERE pp.tenant_id = :tenant_id
                 AND pp.status_pagamento_id = 3
                 AND pp.data_vencimento >= CURDATE()
@@ -197,7 +221,8 @@ try {
             ";
             $stmt = $db->prepare($sqlCorrigirFuturas);
             $stmt->execute(['tenant_id' => $tenant['id']]);
-            $corrigidasFuturas = $stmt->rowCount();
+            $idsCorrigirFuturas = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $corrigidasFuturas = atualizarPagamentosStatusPorIds($db, $idsCorrigirFuturas ?: [], 1);
             if ($corrigidasFuturas > 0) {
                 logMessage("  ✓ Parcelas futuras revertidas para Aguardando: {$corrigidasFuturas}\n", $quiet);
             }
@@ -220,9 +245,9 @@ try {
 
             // 1b. Avulso: renovação em aberto fica atrasada quando período pago atual expirou
             $sqlAvulsoAtrasado = "
-                UPDATE pagamentos_plano pp
+                SELECT pp.id
+                FROM pagamentos_plano pp
                 INNER JOIN matriculas m ON m.id = pp.matricula_id AND m.tenant_id = pp.tenant_id
-                SET pp.status_pagamento_id = 3, pp.updated_at = NOW()
                 WHERE pp.tenant_id = :tenant_id
                   AND m.tipo_cobranca = 'avulso'
                   AND pp.status_pagamento_id = 1
@@ -232,7 +257,8 @@ try {
             ";
             $stmt = $db->prepare($sqlAvulsoAtrasado);
             $stmt->execute(['tenant_id' => $tenant['id']]);
-            $avulsoAtrasados = $stmt->rowCount();
+            $idsAvulsoAtrasados = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $avulsoAtrasados = atualizarPagamentosStatusPorIds($db, $idsAvulsoAtrasados ?: [], 3);
             if ($avulsoAtrasados > 0) {
                 logMessage("  ✓ Avulso renovação Atrasada (período pago expirou): {$avulsoAtrasados}\n", $quiet);
             }

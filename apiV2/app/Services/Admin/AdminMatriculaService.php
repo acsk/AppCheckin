@@ -55,7 +55,7 @@ class AdminMatriculaService
      */
     public function show(int $id, int $tenantId): array
     {
-        $this->syncParcelasAtrasadas($tenantId);
+        $this->syncParcelasAtrasadas($tenantId, $id);
 
         $matricula = $this->matriculas->findDetalhe($id, $tenantId);
         if (! $matricula) {
@@ -1538,13 +1538,17 @@ class AdminMatriculaService
         ];
     }
 
-    private function syncParcelasAtrasadas(int $tenantId): void
+    private function syncParcelasAtrasadas(int $tenantId, ?int $matriculaId = null): void
     {
         try {
             $this->pagamentosPlano->marcarAtrasados($tenantId);
+            if ($matriculaId !== null && $matriculaId > 0) {
+                $this->pagamentosPlano->atualizarStatusMatricula($tenantId, $matriculaId);
+            }
         } catch (\Throwable $e) {
             Log::warning('marcarAtrasados falhou no admin de matrículas', [
                 'tenant_id' => $tenantId,
+                'matricula_id' => $matriculaId,
                 'message' => $e->getMessage(),
             ]);
         }
