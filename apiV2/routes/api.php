@@ -90,6 +90,9 @@ Route::prefix('v2')->group(function () {
             Route::get('/assinaturas/aprovadas-hoje', [MobileController::class, 'assinaturasAprovadasHoje']);
             Route::post('/assinatura/{id}/cancelar', [MobileController::class, 'cancelarAssinatura']);
             Route::post('/diaria/{matriculaId}/cancelar', [MobileController::class, 'cancelarDiaria']);
+            Route::get('/pacotes/contratos', [MobileController::class, 'listarPacotesContratos']);
+            Route::get('/pacotes/pendentes', [MobileController::class, 'listarPacotesPendentes']);
+            Route::post('/pacotes/contratos/{contratoId}/pagar', [MobileController::class, 'pagarPacoteContrato']);
         });
 
         // Painel admin (contrato Slim /admin/* sob prefixo /v2)

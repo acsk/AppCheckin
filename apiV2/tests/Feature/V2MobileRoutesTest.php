@@ -236,4 +236,70 @@ class V2MobileRoutesTest extends TestCase
         $this->postJson('/v2/mobile/turma/1/bloquear-checkin')
             ->assertUnauthorized();
     }
+
+    public function test_pacotes_contratos_requires_jwt(): void
+    {
+        $this->getJson('/v2/mobile/pacotes/contratos')
+            ->assertUnauthorized();
+    }
+
+    public function test_pacotes_contratos_returns_success_shape(): void
+    {
+        $this->getJson('/v2/mobile/pacotes/contratos', [
+            'Authorization' => 'Bearer '.$this->bearerToken(),
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonStructure([
+                'success',
+                'contratos',
+                'total',
+            ]);
+    }
+
+    public function test_pacotes_pendentes_requires_jwt(): void
+    {
+        $this->getJson('/v2/mobile/pacotes/pendentes')
+            ->assertUnauthorized();
+    }
+
+    public function test_pacotes_pendentes_returns_success_shape(): void
+    {
+        $this->getJson('/v2/mobile/pacotes/pendentes', [
+            'Authorization' => 'Bearer '.$this->bearerToken(),
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonStructure([
+                'success',
+                'pacotes',
+                'total',
+            ]);
+    }
+
+    public function test_pagar_pacote_requires_jwt(): void
+    {
+        $this->postJson('/v2/mobile/pacotes/contratos/1/pagar')
+            ->assertUnauthorized();
+    }
+
+    public function test_pagar_pacote_invalid_contrato_id(): void
+    {
+        $this->postJson('/v2/mobile/pacotes/contratos/0/pagar', [], [
+            'Authorization' => 'Bearer '.$this->bearerToken(),
+        ])
+            ->assertStatus(400)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'contratoId inválido');
+    }
+
+    public function test_pagar_pacote_not_found(): void
+    {
+        $this->postJson('/v2/mobile/pacotes/contratos/999999/pagar', [], [
+            'Authorization' => 'Bearer '.$this->bearerToken(),
+        ])
+            ->assertNotFound()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Contrato não encontrado');
+    }
 }

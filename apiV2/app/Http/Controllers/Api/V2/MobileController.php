@@ -7,6 +7,7 @@ use App\Services\Mobile\MobileAssinaturaService;
 use App\Services\Mobile\MobileCheckinService;
 use App\Services\Mobile\MobileCompraPlanoService;
 use App\Services\Mobile\MobileMigracaoPlanoService;
+use App\Services\Mobile\MobilePacoteService;
 use App\Services\Mobile\MobileHistoricoService;
 use App\Services\Mobile\MobileHorariosService;
 use App\Services\Mobile\MobileMatriculaService;
@@ -40,6 +41,7 @@ class MobileController extends Controller
         private readonly MobileAssinaturaService $assinaturas,
         private readonly MobileTurmaService $turmas,
         private readonly MobileProfessorService $professor,
+        private readonly MobilePacoteService $pacotes,
     ) {}
 
     public function uploadFotoPerfil(Request $request): JsonResponse
@@ -677,6 +679,58 @@ class MobileController extends Controller
             Log::error('confirmarPresenca v2: '.$e->getMessage());
 
             return MobileResponse::serverError('Erro ao confirmar presença', $e->getMessage());
+        }
+    }
+
+    public function listarPacotesContratos(Request $request): JsonResponse
+    {
+        try {
+            $result = $this->pacotes->listarContratos(
+                $this->tenantId($request),
+                $this->userId($request),
+                $request->query('status'),
+            );
+
+            return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            Log::error('listarPacotesContratos v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao listar contratos de pacote', $e->getMessage());
+        }
+    }
+
+    public function listarPacotesPendentes(Request $request): JsonResponse
+    {
+        try {
+            $result = $this->pacotes->listarPendentes(
+                $this->tenantId($request),
+                $this->userId($request),
+            );
+
+            return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            Log::error('listarPacotesPendentes v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao listar pacotes pendentes', $e->getMessage());
+        }
+    }
+
+    public function pagarPacoteContrato(Request $request, int $contratoId): JsonResponse
+    {
+        try {
+            $result = $this->pacotes->pagar(
+                $this->tenantId($request),
+                $this->userId($request),
+                $contratoId,
+                $request->all(),
+                $request->query('force_new'),
+            );
+
+            return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            Log::error('pagarPacoteContrato v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao gerar pagamento do pacote', $e->getMessage());
         }
     }
 
