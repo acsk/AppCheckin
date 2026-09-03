@@ -2,10 +2,12 @@
 
 namespace Tests\Unit;
 
+use App\Repositories\TenantRepository;
 use App\Repositories\UsuarioRepository;
 use App\Services\AuthService;
 use App\Services\JwtService;
 use App\Services\PasswordRecoveryMailer;
+use App\Services\WelcomeAlunoMailer;
 use Mockery;
 use Tests\TestCase;
 
@@ -119,6 +121,9 @@ class AuthServiceSelectTenantTest extends TestCase
                 'papeis' => [['id' => $papelId, 'nome' => 'aluno']],
             ],
         ]);
+        $usuarios->shouldReceive('getPapeis')->with($userId)->andReturn([
+            ['id' => $papelId, 'nome' => 'aluno'],
+        ]);
 
         $jwt = Mockery::mock(JwtService::class);
         $jwt->shouldReceive('encode')->once()->andReturn('token-test');
@@ -140,7 +145,9 @@ class AuthServiceSelectTenantTest extends TestCase
         return new AuthService(
             $jwt,
             $usuarios,
+            Mockery::mock(TenantRepository::class),
             Mockery::mock(PasswordRecoveryMailer::class),
+            Mockery::mock(WelcomeAlunoMailer::class),
         );
     }
 }

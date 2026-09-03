@@ -2,10 +2,13 @@
 
 namespace Tests\Unit;
 
+use App\Repositories\TenantRepository;
 use App\Repositories\UsuarioRepository;
 use App\Services\AuthService;
 use App\Services\JwtService;
 use App\Services\PasswordRecoveryMailer;
+use App\Services\WelcomeAlunoMailer;
+use Illuminate\Http\Request;
 use Mockery;
 use Tests\TestCase;
 
@@ -144,12 +147,30 @@ class AuthServiceRegisterRecoveryTest extends TestCase
         $this->assertNotEmpty($data['errors']);
     }
 
+    public function test_register_mobile_validates_required_fields(): void
+    {
+        $service = $this->authService(
+            Mockery::mock(JwtService::class),
+            Mockery::mock(UsuarioRepository::class),
+        );
+
+        $request = Request::create('/v2/auth/register-mobile', 'POST', []);
+        $response = $service->registerMobile($request);
+        $data = $response->getData(true);
+
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertSame('VALIDATION_ERROR', $data['code']);
+        $this->assertContains('nome é obrigatório', $data['errors']);
+    }
+
     private function authService($jwt, $usuarios): AuthService
     {
         return new AuthService(
             $jwt,
             $usuarios,
+            Mockery::mock(TenantRepository::class),
             Mockery::mock(PasswordRecoveryMailer::class),
+            Mockery::mock(WelcomeAlunoMailer::class),
         );
     }
 }

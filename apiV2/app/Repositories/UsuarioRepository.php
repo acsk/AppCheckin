@@ -849,6 +849,79 @@ class UsuarioRepository
         }
     }
 
+    /**
+     * Cadastro público mobile: senha = CPF, tenant opcional, perfil completo em alunos.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function createMobileAluno(array $data, ?int $tenantId = null): ?int
+    {
+        try {
+            return DB::transaction(function () use ($data, $tenantId) {
+                $email = mb_strtolower(trim((string) ($data['email'] ?? '')), 'UTF-8');
+                $nome = mb_strtoupper(trim((string) ($data['nome'] ?? '')), 'UTF-8');
+                $cpf = preg_replace('/[^0-9]/', '', (string) ($data['cpf'] ?? '')) ?: null;
+                $cep = isset($data['cep']) ? preg_replace('/[^0-9]/', '', (string) $data['cep']) : null;
+                $telefone = isset($data['telefone']) ? preg_replace('/[^0-9]/', '', (string) $data['telefone']) : null;
+                $whatsapp = isset($data['whatsapp']) ? preg_replace('/[^0-9]/', '', (string) $data['whatsapp']) : null;
+                $senha = self::normalizarSenhaCpf((string) ($data['senha'] ?? ''), $cpf);
+
+                $usuarioId = (int) DB::table('usuarios')->insertGetId([
+                    'nome' => $nome,
+                    'email' => $email,
+                    'email_global' => $email,
+                    'senha_hash' => password_hash($senha, PASSWORD_BCRYPT),
+                    'cpf' => $cpf,
+                    'cep' => $cep ?: null,
+                    'logradouro' => isset($data['logradouro']) ? mb_strtoupper(trim((string) $data['logradouro']), 'UTF-8') : null,
+                    'numero' => $data['numero'] ?? null,
+                    'complemento' => isset($data['complemento']) ? mb_strtoupper(trim((string) $data['complemento']), 'UTF-8') : null,
+                    'bairro' => isset($data['bairro']) ? mb_strtoupper(trim((string) $data['bairro']), 'UTF-8') : null,
+                    'cidade' => isset($data['cidade']) ? mb_strtoupper(trim((string) $data['cidade']), 'UTF-8') : null,
+                    'estado' => isset($data['estado'])
+                        ? mb_substr(mb_strtoupper(trim((string) $data['estado']), 'UTF-8'), 0, 2)
+                        : null,
+                    'telefone' => $telefone,
+                    'ativo' => $data['ativo'] ?? 1,
+                ]);
+
+                DB::table('alunos')->insert([
+                    'usuario_id' => $usuarioId,
+                    'nome' => $nome,
+                    'telefone' => $telefone,
+                    'whatsapp' => $whatsapp,
+                    'cpf' => $cpf,
+                    'data_nascimento' => $data['data_nascimento'] ?? null,
+                    'cep' => $cep ?: null,
+                    'logradouro' => isset($data['logradouro']) ? mb_strtoupper(trim((string) $data['logradouro']), 'UTF-8') : null,
+                    'numero' => $data['numero'] ?? null,
+                    'complemento' => isset($data['complemento']) ? mb_strtoupper(trim((string) $data['complemento']), 'UTF-8') : null,
+                    'bairro' => isset($data['bairro']) ? mb_strtoupper(trim((string) $data['bairro']), 'UTF-8') : null,
+                    'cidade' => isset($data['cidade']) ? mb_strtoupper(trim((string) $data['cidade']), 'UTF-8') : null,
+                    'estado' => isset($data['estado'])
+                        ? mb_substr(mb_strtoupper(trim((string) $data['estado']), 'UTF-8'), 0, 2)
+                        : null,
+                    'ativo' => $data['ativo'] ?? 1,
+                ]);
+
+                if ($tenantId !== null && $tenantId > 0) {
+                    DB::table('tenant_usuario_papel')->insertOrIgnore([
+                        'tenant_id' => $tenantId,
+                        'usuario_id' => $usuarioId,
+                        'papel_id' => (int) ($data['papel_id'] ?? 1),
+                        'ativo' => 1,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                }
+
+                return $usuarioId;
+            });
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
     private function hasColumn(string $table, string $column): bool
     {
         return DB::getSchemaBuilder()->hasColumn($table, $column);

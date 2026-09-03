@@ -32,6 +32,7 @@ const isPublicAuthEndpoint = (endpoint = "") =>
   endpoint === "/auth/tenants-public" ||
   endpoint === "/auth/select-tenant" ||
   endpoint === "/auth/select-tenant-public" ||
+  endpoint === "/auth/select-tenant-initial" ||
   endpoint === "/auth/password-recovery/request" ||
   endpoint === "/auth/password-recovery/validate-token" ||
   endpoint === "/auth/password-recovery/reset";

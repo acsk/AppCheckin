@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Repositories\TenantRepository;
 use App\Repositories\UsuarioRepository;
 use App\Support\ApiError;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class AuthService
 {
@@ -13,7 +15,9 @@ class AuthService
     public function __construct(
         private readonly JwtService $jwt,
         private readonly UsuarioRepository $usuarios,
+        private readonly TenantRepository $tenants,
         private readonly PasswordRecoveryMailer $passwordRecoveryMailer,
+        private readonly WelcomeAlunoMailer $welcomeAlunoMailer,
     ) {}
 
     public function login(string $email, string $senha): JsonResponse
@@ -427,5 +431,225 @@ class AuthService
         return response()->json([
             'message' => 'Senha alterada com sucesso. Faça login com sua nova senha.',
         ]);
+    }
+
+    public function tenantsPublic(): JsonResponse
+    {
+        try {
+            $tenants = $this->tenants->listPublicActive();
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'tenants' => $tenants,
+                    'total' => count($tenants),
+                ],
+            ], 200, [], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'success' => false,
+                'type' => 'error',
+                'code' => 'TENANTS_PUBLIC_INTERNAL_ERROR',
+                'message' => 'Erro ao listar academias ativas',
+            ], 500, [], JSON_UNESCAPED_UNICODE);
+        }
+    }
+
+    public function registerMobile(Request $request): JsonResponse
+    {
+        $rateLimiter = new RateLimiter(
+            (int) config('appcheckin.rate_limit_register_max', 5),
+            (int) config('appcheckin.rate_limit_register_decay', 15),
+        );
+
+        $clientIp = $this->clientIp($request);
+        $rateLimitResult = $rateLimiter->attempt($clientIp, 'register-mobile');
+
+        if (! $rateLimitResult['allowed']) {
+            $retryAfter = (int) ($rateLimitResult['retryAfter'] ?? 0);
+
+            return response()->json([
+                'type' => 'error',
+                'code' => 'RATE_LIMIT_EXCEEDED',
+                'message' => 'Muitas tentativas de cadastro. Tente novamente em '.ceil($retryAfter / 60).' minutos',
+                'retryAfter' => $retryAfter,
+            ], 429, ['Retry-After' => (string) $retryAfter], JSON_UNESCAPED_UNICODE);
+        }
+
+        $data = $request->all();
+        $recaptchaToken = $data['recaptcha_token'] ?? null;
+
+        if (! empty($recaptchaToken)) {
+            $recaptcha = new ReCaptchaService(
+                (string) config('appcheckin.recaptcha_secret', ''),
+                (float) config('appcheckin.recaptcha_min_score', 0.5),
+            );
+            $recaptchaResult = $recaptcha->verify($recaptchaToken, $clientIp);
+
+            if (! $recaptchaResult['success']) {
+                return ApiError::json(
+                    'Falha na validação de segurança. Por favor, tente novamente',
+                    'RECAPTCHA_VALIDATION_FAILED',
+                    403,
+                );
+            }
+        }
+
+        $nome = trim((string) ($data['nome'] ?? ''));
+        $email = trim((string) ($data['email'] ?? ''));
+        $emailNorm = $email !== '' ? mb_strtolower($email, 'UTF-8') : '';
+        $cpf = trim((string) ($data['cpf'] ?? ''));
+        $dataNascimento = trim((string) ($data['data_nascimento'] ?? ''));
+        $tenantId = isset($data['tenant_id']) ? (int) $data['tenant_id'] : null;
+        if ($tenantId !== null && $tenantId <= 0) {
+            $tenantId = null;
+        }
+
+        $telefone = isset($data['telefone']) ? preg_replace('/[^0-9]/', '', (string) $data['telefone']) : null;
+        $whatsapp = isset($data['whatsapp']) ? preg_replace('/[^0-9]/', '', (string) $data['whatsapp']) : null;
+
+        $erros = [];
+        if ($nome === '') {
+            $erros[] = 'nome é obrigatório';
+        }
+        if ($email === '') {
+            $erros[] = 'email é obrigatório';
+        }
+        if ($cpf === '') {
+            $erros[] = 'cpf é obrigatório';
+        }
+        if ($dataNascimento === '') {
+            $erros[] = 'data_nascimento é obrigatória';
+        }
+
+        $cpfLimpo = preg_replace('/[^0-9]/', '', $cpf) ?: '';
+        if ($cpfLimpo === '' || strlen($cpfLimpo) !== 11) {
+            $erros[] = 'cpf inválido (use 11 dígitos)';
+        }
+
+        if ($dataNascimento !== '') {
+            $dt = \DateTime::createFromFormat('Y-m-d', $dataNascimento);
+            $dtErros = \DateTime::getLastErrors();
+            if (
+                ! $dt
+                || $dt->format('Y-m-d') !== $dataNascimento
+                || ($dtErros['warning_count'] ?? 0) > 0
+                || ($dtErros['error_count'] ?? 0) > 0
+            ) {
+                $erros[] = 'data_nascimento inválida (use YYYY-MM-DD)';
+            }
+        }
+
+        if ($erros !== []) {
+            return response()->json([
+                'type' => 'error',
+                'code' => 'VALIDATION_ERROR',
+                'errors' => $erros,
+            ], 422, [], JSON_UNESCAPED_UNICODE);
+        }
+
+        if ($this->usuarios->emailExists($emailNorm)) {
+            return ApiError::json('Email já cadastrado', 'EMAIL_ALREADY_EXISTS', 409);
+        }
+
+        if ($this->usuarios->cpfExists($cpfLimpo)) {
+            return ApiError::json('CPF já cadastrado', 'CPF_ALREADY_EXISTS', 409);
+        }
+
+        $payload = array_merge([
+            'nome' => $nome,
+            'email' => $emailNorm,
+            'senha' => $cpfLimpo,
+            'cpf' => $cpfLimpo,
+            'data_nascimento' => $dataNascimento,
+            'telefone' => $telefone,
+            'whatsapp' => $whatsapp,
+            'ativo' => 1,
+            'papel_id' => 1,
+        ], [
+            'cep' => $data['cep'] ?? null,
+            'logradouro' => $data['logradouro'] ?? null,
+            'numero' => $data['numero'] ?? null,
+            'complemento' => $data['complemento'] ?? null,
+            'bairro' => $data['bairro'] ?? null,
+            'cidade' => $data['cidade'] ?? null,
+            'estado' => $data['estado'] ?? null,
+        ]);
+
+        try {
+            $usuarioId = $this->usuarios->createMobileAluno($payload, $tenantId);
+        } catch (\Throwable $e) {
+            report($e);
+            $usuarioId = null;
+        }
+
+        if (! $usuarioId) {
+            $body = [
+                'type' => 'error',
+                'code' => 'USER_CREATION_FAILED',
+                'message' => 'Não foi possível criar o usuário',
+            ];
+            if (app()->environment(['local', 'development'])) {
+                $body['debug'] = 'createMobileAluno returned null';
+            }
+
+            return response()->json($body, 500, [], JSON_UNESCAPED_UNICODE);
+        }
+
+        $alunoId = $this->usuarios->findAlunoId($usuarioId);
+
+        try {
+            $token = $this->jwt->encode([
+                'user_id' => $usuarioId,
+                'email' => $emailNorm,
+                'tenant_id' => $tenantId,
+                'aluno_id' => $alunoId,
+            ]);
+        } catch (\RuntimeException $e) {
+            report($e);
+
+            return ApiError::json(
+                'Configuração JWT inválida no servidor. Verifique JWT_SECRET no .env da apiV2.',
+                'JWT_CONFIG_ERROR',
+                500,
+            );
+        }
+
+        $rateLimiter->reset($clientIp, 'register-mobile');
+
+        $this->welcomeAlunoMailer->send($emailNorm, $nome, $cpfLimpo);
+
+        return response()->json([
+            'message' => 'Cadastro realizado com sucesso',
+            'token' => $token,
+            'user' => [
+                'id' => $usuarioId,
+                'nome' => mb_strtoupper($nome, 'UTF-8'),
+                'email' => $email,
+                'telefone' => $telefone,
+                'whatsapp' => $whatsapp,
+                'cpf' => $cpfLimpo,
+                'data_nascimento' => $dataNascimento,
+                'tenant_id' => $tenantId,
+            ],
+        ], 201, [], JSON_UNESCAPED_UNICODE);
+    }
+
+    private function clientIp(Request $request): string
+    {
+        foreach (['CF-Connecting-IP', 'X-Real-IP', 'X-Forwarded-For'] as $header) {
+            $value = $request->header($header);
+            if (! $value) {
+                continue;
+            }
+            $ip = trim(explode(',', $value)[0]);
+            if (filter_var($ip, FILTER_VALIDATE_IP)) {
+                return $ip;
+            }
+        }
+
+        return $request->ip() ?? '0.0.0.0';
     }
 }

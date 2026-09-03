@@ -7,6 +7,22 @@ use Illuminate\Support\Facades\DB;
 class TenantRepository
 {
     /**
+     * Academias ativas para cadastro mobile (exclui tenant sistema id=1).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function listPublicActive(): array
+    {
+        return DB::table('tenants')
+            ->where('ativo', 1)
+            ->where('id', '<>', 1)
+            ->orderBy('nome')
+            ->get(['id', 'nome', 'slug', 'email', 'telefone'])
+            ->map(fn ($row) => (array) $row)
+            ->all();
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     public function findById(int $id): ?array

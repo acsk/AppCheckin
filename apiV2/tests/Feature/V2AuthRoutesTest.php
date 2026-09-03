@@ -66,4 +66,23 @@ class V2AuthRoutesTest extends TestCase
             ->assertStatus(422)
             ->assertJsonPath('code', 'MISSING_TOKEN');
     }
+
+    public function test_tenants_public_returns_success_shape(): void
+    {
+        $this->getJson('/v2/auth/tenants-public')
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonStructure([
+                'success',
+                'data' => ['tenants', 'total'],
+            ]);
+    }
+
+    public function test_register_mobile_validates_required_fields(): void
+    {
+        $this->postJson('/v2/auth/register-mobile', [])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'VALIDATION_ERROR')
+            ->assertJsonStructure(['errors']);
+    }
 }

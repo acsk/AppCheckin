@@ -671,7 +671,7 @@ export default function TurmaDetalhesScreen() {
         return;
       }
 
-      const url = `${getApiUrlRuntime()}/checkin/${checkinId}/desfazer`;
+      const url = `${getApiUrlRuntime()}/mobile/checkin/${checkinId}/desfazer`;
 
       const response = await fetch(url, {
         method: "DELETE",

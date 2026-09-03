@@ -34,6 +34,8 @@ Route::prefix('v2')->group(function () {
 
     Route::post('/auth/login', [AuthController::class, 'login']);
     Route::post('/auth/register', [AuthController::class, 'register']);
+    Route::get('/auth/tenants-public', [AuthController::class, 'tenantsPublic']);
+    Route::post('/auth/register-mobile', [AuthController::class, 'registerMobile']);
     Route::post('/auth/select-tenant-initial', [AuthController::class, 'selectTenantPublic']);
     Route::post('/auth/select-tenant-public', [AuthController::class, 'selectTenantPublic']);
     Route::post('/auth/password-recovery/request', [AuthController::class, 'requestPasswordRecovery']);

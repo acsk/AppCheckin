@@ -75,6 +75,26 @@ class AuthController extends Controller
         );
     }
 
+    public function tenantsPublic(): JsonResponse
+    {
+        return $this->auth->tenantsPublic();
+    }
+
+    public function registerMobile(Request $request): JsonResponse
+    {
+        try {
+            return $this->auth->registerMobile($request);
+        } catch (\Throwable $e) {
+            report($e);
+
+            return response()->json([
+                'type' => 'error',
+                'code' => 'REGISTER_INTERNAL_ERROR',
+                'message' => 'Erro interno ao realizar cadastro',
+            ], 500, [], JSON_UNESCAPED_UNICODE);
+        }
+    }
+
     public function requestPasswordRecovery(Request $request): JsonResponse
     {
         return $this->auth->requestPasswordRecovery((string) $request->input('email', ''));

@@ -6,11 +6,9 @@
 export const CONFIG = {
   // URLs da API por ambiente
   api: {
-    development: "http://localhost:8080",
-    // localhost com porta customizada (ex: 3000, 5000, etc)
-    // development: 'http://localhost:3000',
+    development: "http://localhost:9090/v2",
 
-    production: "https://api.appcheckin.com.br",
+    production: "https://apiv2.appcheckin.com.br/v2",
   },
 
   // URLs para servir imagens/assets
@@ -50,8 +48,13 @@ export const CONFIG = {
     "/auth/login",
     "/auth/register",
     "/auth/register-mobile",
+    "/auth/tenants-public",
     "/auth/select-tenant",
     "/auth/select-tenant-public",
+    "/auth/select-tenant-initial",
+    "/auth/password-recovery/request",
+    "/auth/password-recovery/validate-token",
+    "/auth/password-recovery/reset",
   ],
 
   // Headers padrão
