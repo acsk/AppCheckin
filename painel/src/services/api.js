@@ -1,6 +1,9 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_BASE_URL } from '../config/api';
+import { API_BASE_URL, API_V2_BASE_URL } from '../config/api';
+import apiRouting from '../config/apiRouting';
+
+const { shouldUseApiV2 } = apiRouting;
 
 // Event emitter simples para notificar logout
 let onUnauthorizedCallback = null;
@@ -54,7 +57,9 @@ api.interceptors.request.use(
     } else {
       console.warn('⚠️ Nenhum token encontrado');
     }
-    console.log(`📡 ${config.method.toUpperCase()} ${config.baseURL}${config.url}`);
+    const useV2 = shouldUseApiV2(config.url, config.method, config.data);
+    config.baseURL = useV2 ? API_V2_BASE_URL : API_BASE_URL;
+    console.log(`📡 ${config.method.toUpperCase()} ${config.baseURL}${config.url}${useV2 ? ' [v2]' : ' [slim]'}`);
     return config;
   },
   (error) => {

@@ -1273,13 +1273,18 @@ export default function MatriculaDetalheScreen() {
   const ultimoPagamentoPago = [...pagamentos]
     .filter((p) => Number(p.status_pagamento_id) === 2 && p.data_vencimento)
     .sort((a, b) => String(b.data_vencimento).localeCompare(String(a.data_vencimento)))[0];
+  // Vigência = fim do período pago (data_vencimento), não o vencimento da última fatura.
   const acessoAte =
-    ultimoPagamentoPago?.data_vencimento ||
     matricula.data_vencimento ||
-    matricula.proxima_data_vencimento;
+    matricula.proxima_data_vencimento ||
+    ultimoPagamentoPago?.data_vencimento;
   const proximaParcelaAberta = [...pagamentos]
     .filter((p) => [1, 3].includes(Number(p.status_pagamento_id)) && !p.data_pagamento && p.data_vencimento)
     .sort((a, b) => String(a.data_vencimento).localeCompare(String(b.data_vencimento)))[0];
+  const proximoVencimentoExibicao =
+    proximaParcelaAberta?.data_vencimento ||
+    matricula.proxima_data_vencimento ||
+    acessoAte;
   const duracaoLabel = cicloInfo?.meses
     ? `${cicloInfo.meses} ${cicloInfo.meses === 1 ? 'mês' : 'meses'}`
     : matricula.data_inicio && acessoAte
@@ -1571,7 +1576,7 @@ export default function MatriculaDetalheScreen() {
                   <View className="min-w-[150px] flex-1 rounded-lg border border-slate-200 bg-white px-4 py-3">
                     <Text className="text-[10px] font-semibold uppercase text-slate-400">Próximo Vencimento</Text>
                     <Text className="mt-1 text-sm font-semibold text-slate-700">
-                      {formatDate(proximaParcelaAberta?.data_vencimento || acessoAte)}
+                      {formatDate(proximoVencimentoExibicao)}
                     </Text>
                   </View>
                 </View>
