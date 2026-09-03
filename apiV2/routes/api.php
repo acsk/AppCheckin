@@ -135,6 +135,23 @@ Route::prefix('v2')->group(function () {
             Route::get('/logs', [SuperAdminLogController::class, 'index']);
             Route::get('/logs/{arquivo}', [SuperAdminLogController::class, 'show'])
                 ->where('arquivo', '[a-zA-Z0-9._-]+\\.log');
+
+            // Módulos migrados da Slim — um arquivo por módulo (evita conflito de merge)
+            foreach (glob(__DIR__.'/v2/admin/*.php') ?: [] as $moduleRoutes) {
+                require $moduleRoutes;
+            }
+        });
+
+        // Rotas migradas sem prefixo /admin (ex.: /tenant/usuarios, /status, /dias)
+        foreach (glob(__DIR__.'/v2/shared/*.php') ?: [] as $moduleRoutes) {
+            require $moduleRoutes;
+        }
+
+        // Super Admin (papel 4)
+        Route::prefix('superadmin')->middleware('superadmin.auth')->group(function () {
+            foreach (glob(__DIR__.'/v2/superadmin/*.php') ?: [] as $moduleRoutes) {
+                require $moduleRoutes;
+            }
         });
 
         // Alias legado (build antigo do painel ainda chama /superadmin/logs)

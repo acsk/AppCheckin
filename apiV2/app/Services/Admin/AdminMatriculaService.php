@@ -537,9 +537,8 @@ class AdminMatriculaService
             $errors[] = 'Plano ou Pacote é obrigatório (envie plano_id ou pacote_id)';
         }
 
-        if (! array_key_exists('dia_vencimento', $data) || $data['dia_vencimento'] === null || $data['dia_vencimento'] === '') {
-            $errors[] = 'Dia de vencimento é obrigatório';
-        } else {
+        // Opcional (paridade com a Slim): quando ausente, a matrícula fica sem dia fixo.
+        if (! empty($data['dia_vencimento'])) {
             $diaVencimento = (int) $data['dia_vencimento'];
             if ($diaVencimento < 1 || $diaVencimento > 31) {
                 $errors[] = 'Dia de vencimento deve estar entre 1 e 31';
@@ -549,6 +548,8 @@ class AdminMatriculaService
         if ($errors !== []) {
             return ['status' => 422, 'body' => ['errors' => $errors]];
         }
+
+        $diaVencimento = ! empty($data['dia_vencimento']) ? (int) $data['dia_vencimento'] : null;
 
         if ($alunoIdInput) {
             $usuarioId = $this->matriculas->findUsuarioIdPorAluno((int) $alunoIdInput);
@@ -777,7 +778,7 @@ class AdminMatriculaService
                 'plano_anterior_id' => $planoAnteriorId,
                 'observacoes' => $data['observacoes'] ?? null,
                 'criado_por' => $adminId,
-                'dia_vencimento' => (int) $data['dia_vencimento'],
+                'dia_vencimento' => $diaVencimento,
                 'periodo_teste' => $periodoTeste,
                 'data_inicio_cobranca' => $dataInicioCobranca,
                 'proxima_data_vencimento' => $proximaDataVencimento->format('Y-m-d'),
@@ -798,7 +799,7 @@ class AdminMatriculaService
                 'plano_anterior_id' => $planoAnteriorId,
                 'observacoes' => $data['observacoes'] ?? null,
                 'criado_por' => $adminId,
-                'dia_vencimento' => (int) $data['dia_vencimento'],
+                'dia_vencimento' => $diaVencimento,
                 'periodo_teste' => $periodoTeste,
                 'data_inicio_cobranca' => $dataInicioCobranca,
                 'proxima_data_vencimento' => $proximaDataVencimento->format('Y-m-d'),

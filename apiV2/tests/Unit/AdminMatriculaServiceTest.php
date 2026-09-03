@@ -100,7 +100,7 @@ class AdminMatriculaServiceTest extends TestCase
         $this->assertSame(422, $result['status']);
         $this->assertContains('Aluno é obrigatório (envie aluno_id ou usuario_id)', $result['body']['errors']);
         $this->assertContains('Plano ou Pacote é obrigatório (envie plano_id ou pacote_id)', $result['body']['errors']);
-        $this->assertContains('Dia de vencimento é obrigatório', $result['body']['errors']);
+        $this->assertNotContains('Dia de vencimento é obrigatório', $result['body']['errors']);
     }
 
     public function test_dar_baixa_requer_data_vencimento(): void

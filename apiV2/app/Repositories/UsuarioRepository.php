@@ -422,6 +422,433 @@ class UsuarioRepository
         DB::table('usuarios')->where('id', $id)->update($update);
     }
 
+    /**
+     * Espelha Usuario::listarPorTenant da Slim.
+     *
+     * A Slim monta a chave `status` a partir de uma coluna que não existe no schema,
+     * então o painel sempre recebe null e cai no fallback `ativo`.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function listarPorTenant(int $tenantId, bool $apenasAtivos = false): array
+    {
+        $sql = '
+            SELECT
+                u.id,
+                u.nome,
+                u.email,
+                u.telefone,
+                u.cpf,
+                tup.papel_id,
+                u.created_at,
+                u.updated_at,
+                p_tenant.nome as papel_nome,
+                tup.ativo
+            FROM usuarios u
+            INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.ativo = 1
+            LEFT JOIN papeis p_tenant ON tup.papel_id = p_tenant.id
+            WHERE tup.tenant_id = ?
+        ';
+
+        if ($apenasAtivos) {
+            $sql .= ' AND tup.ativo = 1';
+        }
+
+        $sql .= ' ORDER BY u.nome ASC';
+
+        return array_map(
+            fn ($row) => $this->mapLinhaListagem($row),
+            DB::select($sql, [$tenantId]),
+        );
+    }
+
+    /**
+     * Espelha Usuario::listarTodos da Slim (dedup por usuário).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function listarTodos(bool $isSuperAdmin = false, ?int $tenantId = null, bool $apenasAtivos = false): array
+    {
+        $sql = '
+            SELECT
+                u.id,
+                u.nome,
+                u.email,
+                u.telefone,
+                u.cpf,
+                tup.papel_id,
+                u.created_at,
+                u.updated_at,
+                p_tenant.nome as papel_nome,
+                tup.ativo
+            FROM usuarios u
+            INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.ativo = 1
+            LEFT JOIN papeis p_tenant ON tup.papel_id = p_tenant.id
+        ';
+
+        $conditions = [];
+        $bindings = [];
+
+        if (! $isSuperAdmin && $tenantId !== null) {
+            $conditions[] = 'tup.tenant_id = ?';
+            $bindings[] = $tenantId;
+        }
+
+        if ($apenasAtivos) {
+            $conditions[] = 'tup.ativo = 1';
+        }
+
+        if ($conditions !== []) {
+            $sql .= ' WHERE '.implode(' AND ', $conditions);
+        }
+
+        $sql .= ' ORDER BY u.id ASC, tup.ativo DESC';
+
+        $usuarios = [];
+        foreach (DB::select($sql, $bindings) as $row) {
+            $usuarioId = (int) $row->id;
+            if (isset($usuarios[$usuarioId])) {
+                continue;
+            }
+            $usuarios[$usuarioId] = $this->mapLinhaListagem($row);
+        }
+
+        return array_values($usuarios);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function mapLinhaListagem(object $row): array
+    {
+        return [
+            'id' => (int) $row->id,
+            'nome' => $row->nome,
+            'email' => $row->email,
+            'telefone' => $row->telefone ?? null,
+            'cpf' => $row->cpf ?? null,
+            'papel_id' => $row->papel_id !== null ? (int) $row->papel_id : null,
+            'papel_nome' => $row->papel_nome,
+            'ativo' => (bool) $row->ativo,
+            'status' => null,
+            'created_at' => $row->created_at,
+            'updated_at' => $row->updated_at,
+        ];
+    }
+
+    /**
+     * Espelha Usuario::listarAdmins usada em GET /admin/admins da Slim.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function listarAdminsDoTenant(int $tenantId): array
+    {
+        $rows = DB::select('
+            SELECT DISTINCT u.id, u.nome, u.email, p.nome as papel
+            FROM usuarios u
+            INNER JOIN tenant_usuario_papel tup ON tup.usuario_id = u.id AND tup.ativo = 1
+            INNER JOIN papeis p ON p.id = tup.papel_id
+            WHERE tup.tenant_id = ?
+              AND tup.papel_id IN (3, 4)
+            ORDER BY u.nome ASC
+        ', [$tenantId]);
+
+        return array_map(fn ($row) => (array) $row, $rows);
+    }
+
+    /**
+     * Espelha Usuario::criarUsuarioCompleto da Slim: grava só em `usuarios`
+     * (sem criar registro em `alunos`) e o papel em `tenant_usuario_papel`.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function criarUsuarioCompleto(array $data, int $tenantId): ?int
+    {
+        $cpfLimpo = isset($data['cpf']) ? preg_replace('/[^0-9]/', '', (string) $data['cpf']) : null;
+        $emailNorm = mb_strtolower(trim((string) ($data['email'] ?? '')), 'UTF-8');
+        $nome = isset($data['nome']) ? mb_strtoupper(trim((string) $data['nome']), 'UTF-8') : null;
+        $senha = self::normalizarSenhaCpf((string) ($data['senha'] ?? ''), $cpfLimpo);
+
+        try {
+            $usuarioId = (int) DB::table('usuarios')->insertGetId([
+                'nome' => $nome,
+                'email' => $emailNorm,
+                'email_global' => $emailNorm,
+                'senha_hash' => password_hash($senha, PASSWORD_BCRYPT),
+                'telefone' => $data['telefone'] ?? null,
+                'cpf' => $cpfLimpo ?: null,
+                'ativo' => 1,
+            ]);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if ($usuarioId <= 0) {
+            return null;
+        }
+
+        try {
+            DB::statement(
+                'INSERT INTO tenant_usuario_papel (tenant_id, usuario_id, papel_id, ativo)
+                 VALUES (?, ?, ?, 1)
+                 ON DUPLICATE KEY UPDATE papel_id = ?, ativo = 1',
+                [$tenantId, $usuarioId, (int) ($data['papel_id'] ?? 1), (int) ($data['papel_id'] ?? 1)],
+            );
+        } catch (\Throwable) {
+            // A Slim trata falha ao gravar o papel como não crítica.
+        }
+
+        return $usuarioId;
+    }
+
+    /**
+     * Espelha Usuario::update da Slim. Retorna false apenas quando nenhum campo
+     * conhecido foi enviado — a Slim não diferencia "0 linhas afetadas".
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function atualizarPerfil(int $id, array $data): bool
+    {
+        $update = [];
+
+        if (isset($data['nome'])) {
+            $update['nome'] = mb_strtoupper(trim((string) $data['nome']), 'UTF-8');
+        }
+
+        if (isset($data['senha'])) {
+            $cpfParaSenha = $data['cpf'] ?? null;
+            if ($cpfParaSenha === null) {
+                try {
+                    $cpfParaSenha = DB::table('usuarios')->where('id', $id)->value('cpf') ?: null;
+                } catch (\Throwable) {
+                    $cpfParaSenha = null;
+                }
+            }
+            $update['senha_hash'] = password_hash(
+                self::normalizarSenhaCpf((string) $data['senha'], $cpfParaSenha !== null ? (string) $cpfParaSenha : null),
+                PASSWORD_BCRYPT,
+            );
+        }
+
+        if (isset($data['email'])) {
+            $email = mb_strtolower(trim((string) $data['email']), 'UTF-8');
+            $update['email'] = $email;
+            if ($this->hasColumn('usuarios', 'email_global')) {
+                $update['email_global'] = $email;
+            }
+        }
+
+        if (isset($data['foto_base64'])) {
+            $update['foto_base64'] = $data['foto_base64'];
+        }
+
+        if (isset($data['telefone'])) {
+            $update['telefone'] = preg_replace('/[^0-9]/', '', (string) $data['telefone']);
+        }
+
+        foreach (['cpf', 'cep'] as $campo) {
+            if (isset($data[$campo])) {
+                $update[$campo] = preg_replace('/[^0-9]/', '', (string) $data[$campo]) ?: null;
+            }
+        }
+
+        if (isset($data['numero'])) {
+            $update['numero'] = $data['numero'];
+        }
+
+        foreach (['logradouro', 'complemento', 'bairro', 'cidade', 'estado'] as $campo) {
+            if (isset($data[$campo])) {
+                $update[$campo] = mb_strtoupper(trim((string) $data[$campo]), 'UTF-8');
+            }
+        }
+
+        if ($update === []) {
+            return false;
+        }
+
+        DB::table('usuarios')->where('id', $id)->update($update);
+        $this->sincronizarAluno($id, $data);
+
+        return true;
+    }
+
+    /**
+     * Espelha Usuario::toggleStatusUsuarioTenant da Slim.
+     */
+    public function toggleStatusUsuarioTenant(int $usuarioId, int $tenantId): bool
+    {
+        $vinculo = DB::table('tenant_usuario_papel')
+            ->where('usuario_id', $usuarioId)
+            ->where('tenant_id', $tenantId)
+            ->first();
+
+        if (! $vinculo) {
+            return false;
+        }
+
+        $novoAtivo = ((int) $vinculo->ativo === 1) ? 0 : 1;
+
+        DB::table('tenant_usuario_papel')
+            ->where('usuario_id', $usuarioId)
+            ->where('tenant_id', $tenantId)
+            ->update(['ativo' => $novoAtivo, 'updated_at' => DB::raw('NOW()')]);
+
+        try {
+            DB::table('usuarios')
+                ->where('id', $usuarioId)
+                ->update(['ativo' => $novoAtivo, 'updated_at' => DB::raw('NOW()')]);
+        } catch (\Throwable) {
+            // A Slim segue adiante quando `usuarios.ativo` não existe.
+        }
+
+        return true;
+    }
+
+    /**
+     * Busca global por CPF (usuarios.cpf com fallback em alunos.cpf).
+     *
+     * @return array<string, mixed>|null
+     */
+    public function findByCpfGlobal(string $cpf): ?array
+    {
+        $cpfLimpo = preg_replace('/[^0-9]/', '', $cpf) ?: '';
+        if ($cpfLimpo === '') {
+            return null;
+        }
+
+        $row = DB::table('usuarios')->where('cpf', $cpfLimpo)->first();
+        if ($row) {
+            return (array) $row;
+        }
+
+        $viaAluno = DB::table('alunos as a')
+            ->join('usuarios as u', 'u.id', '=', 'a.usuario_id')
+            ->where('a.cpf', $cpfLimpo)
+            ->select('u.*')
+            ->first();
+
+        return $viaAluno ? (array) $viaAluno : null;
+    }
+
+    /**
+     * Diferente de temAcessoTenant: a Slim não filtra `ativo` aqui, para que um
+     * vínculo desativado ainda conte como "já associado".
+     */
+    public function isAssociatedWithTenant(int $usuarioId, int $tenantId): bool
+    {
+        return DB::table('tenant_usuario_papel')
+            ->where('usuario_id', $usuarioId)
+            ->where('tenant_id', $tenantId)
+            ->exists();
+    }
+
+    public function associateToTenant(int $usuarioId, int $tenantId, string $status = 'ativo'): bool
+    {
+        $ativo = $status === 'ativo' ? 1 : 0;
+
+        try {
+            if ($this->isAssociatedWithTenant($usuarioId, $tenantId)) {
+                DB::table('tenant_usuario_papel')
+                    ->where('usuario_id', $usuarioId)
+                    ->where('tenant_id', $tenantId)
+                    ->update(['ativo' => $ativo, 'updated_at' => DB::raw('NOW()')]);
+            } else {
+                DB::table('tenant_usuario_papel')->insert([
+                    'usuario_id' => $usuarioId,
+                    'tenant_id' => $tenantId,
+                    'papel_id' => 1,
+                    'ativo' => $ativo,
+                    'created_at' => DB::raw('NOW()'),
+                    'updated_at' => DB::raw('NOW()'),
+                ]);
+            }
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    public function getEstatisticas(int $userId, ?int $tenantId = null): ?array
+    {
+        $usuario = $this->findProfile($userId, $tenantId);
+        if (! $usuario) {
+            return null;
+        }
+
+        $totalCheckins = DB::table('checkins as c')
+            ->join('alunos as a', 'a.id', '=', 'c.aluno_id')
+            ->where('a.usuario_id', $userId)
+            ->count();
+
+        return [
+            'id' => $usuario['id'],
+            'nome' => $usuario['nome'],
+            'email' => $usuario['email'],
+            'foto_url' => $usuario['foto_base64'] ?? null,
+            'total_checkins' => (int) $totalCheckins,
+            'total_prs' => 0,
+            'created_at' => $usuario['created_at'],
+            'updated_at' => $usuario['updated_at'],
+        ];
+    }
+
+    /**
+     * Senha inicial igual ao CPF é gravada só com os dígitos (paridade com a Slim).
+     */
+    public static function normalizarSenhaCpf(?string $senha, ?string $cpf): string
+    {
+        $senha = (string) ($senha ?? '');
+        $cpfDigitos = preg_replace('/[^0-9]/', '', (string) ($cpf ?? '')) ?: '';
+        $senhaDigitos = preg_replace('/[^0-9]/', '', $senha) ?: '';
+
+        if ($cpfDigitos !== '' && strlen($cpfDigitos) === 11 && $senhaDigitos === $cpfDigitos) {
+            return $cpfDigitos;
+        }
+
+        return $senha;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function sincronizarAluno(int $usuarioId, array $data): void
+    {
+        $camposPerfil = ['nome', 'telefone', 'whatsapp', 'cpf', 'cep', 'logradouro', 'numero',
+            'complemento', 'bairro', 'cidade', 'estado', 'foto_base64'];
+
+        $update = [];
+        foreach ($camposPerfil as $campo) {
+            if (! array_key_exists($campo, $data)) {
+                continue;
+            }
+
+            $valor = $data[$campo];
+            if ($campo === 'cpf' || $campo === 'cep') {
+                $valor = $valor ? preg_replace('/[^0-9]/', '', (string) $valor) : null;
+            } elseif (in_array($campo, ['nome', 'logradouro', 'complemento', 'bairro', 'cidade', 'estado'], true)) {
+                $valor = $valor ? mb_strtoupper(trim((string) $valor), 'UTF-8') : null;
+            }
+
+            $update[$campo] = $valor;
+        }
+
+        if ($update === []) {
+            return;
+        }
+
+        $update['updated_at'] = DB::raw('CURRENT_TIMESTAMP');
+
+        try {
+            DB::table('alunos')->where('usuario_id', $usuarioId)->update($update);
+        } catch (\Throwable) {
+            // A Slim loga e segue: falha de sincronia não aborta a atualização.
+        }
+    }
+
     private function hasColumn(string $table, string $column): bool
     {
         return DB::getSchemaBuilder()->hasColumn($table, $column);

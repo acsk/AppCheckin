@@ -22,9 +22,6 @@ function normalizeApiPath(url) {
  * Para portar: remova a entrada correspondente desta lista.
  */
 const SLIM_ONLY = [
-  // Usuários tenant
-  /^\/tenant(\/|$)/,
-
   // Assinaturas admin (Mercado Pago / gateway)
   /^\/admin\/assinaturas(\/|$)/,
   /^\/superadmin\/assinaturas(\/|$)/,
@@ -32,9 +29,6 @@ const SLIM_ONLY = [
   // Pacotes e pacote-contratos
   /^\/admin\/pacotes(\/|$)/,
   /^\/admin\/pacote-contratos(\/|$)/,
-
-  // Professores
-  /^\/admin\/professores(\/|$)/,
 
   // Turmas, dias, horários
   /^\/admin\/turmas(\/|$)/,
@@ -48,8 +42,7 @@ const SLIM_ONLY = [
   // Dashboard
   /^\/admin\/dashboard(\/|$)/,
 
-  // Financeiro / pagamentos
-  /^\/admin\/pagamentos-plano(\/|$)/,
+  // Financeiro / pagamentos (credenciais e formas ainda na Slim)
   /^\/admin\/payment-credentials(\/|$)/,
   /^\/admin\/formas-pagamento(\/|$)/,
   /^\/admin\/configuracoes(\/|$)/,
@@ -59,16 +52,6 @@ const SLIM_ONLY = [
 
   // Relatórios
   /^\/admin\/relatorios(\/|$)/,
-
-  // Descontos (subpath de matrícula tratado abaixo, mas também rota isolada)
-  /^\/admin\/matricula-descontos(\/|$)/,
-
-  // Créditos de aluno
-  /^\/admin\/creditos(\/|$)/,
-  /^\/admin\/alunos\/\d+\/creditos(\/|$)/,
-
-  // Admins locais
-  /^\/admin\/admins(\/|$)/,
 
   // Superadmin (tudo, exceto logs)
   /^\/superadmin\/academias(\/|$)/,
@@ -97,7 +80,6 @@ const SLIM_MATRICULA_PATHS = [
   /\/pagamentos\/\d+\/confirmar$/,
   /\/assinatura$/,
   /\/sincronizar-assinatura$/,
-  /\/descontos(\/|$)/,
 ];
 
 function hasPacoteId(data) {
