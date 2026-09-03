@@ -167,34 +167,59 @@ class AdminMatriculaRepository
      */
     public function listarPagamentosResumo(int $matriculaId): array
     {
-        return DB::table('pagamentos_plano as pp')
-            ->leftJoin('formas_pagamento as fp', 'fp.id', '=', 'pp.forma_pagamento_id')
-            ->leftJoin('usuarios as criador', 'pp.criado_por', '=', 'criador.id')
-            ->leftJoin('usuarios as baixador', 'pp.baixado_por', '=', 'baixador.id')
-            ->leftJoin('tipos_baixa as tb', 'pp.tipo_baixa_id', '=', 'tb.id')
-            ->where('pp.matricula_id', $matriculaId)
-            ->orderBy('pp.data_vencimento')
-            ->orderBy('pp.id')
-            ->selectRaw("
-                pp.id,
-                CAST(pp.valor AS DECIMAL(10,2)) as valor,
-                pp.data_vencimento,
-                pp.data_pagamento,
-                pp.status_pagamento_id,
-                (SELECT nome FROM status_pagamento WHERE id = pp.status_pagamento_id) as status,
-                pp.forma_pagamento_id,
-                fp.nome as forma_pagamento_nome,
-                pp.observacoes,
-                pp.criado_por,
-                criador.nome as criado_por_nome,
-                pp.baixado_por,
-                baixador.nome as baixado_por_nome,
-                pp.tipo_baixa_id,
-                tb.nome as tipo_baixa_nome
-            ")
-            ->get()
-            ->map(fn ($r) => (array) $r)
-            ->all();
+        try {
+            $extraCols = '';
+            if (Schema::hasColumn('pagamentos_plano', 'pacote_contrato_id')) {
+                $extraCols .= ", pp.pacote_contrato_id";
+            }
+            if (Schema::hasColumn('pagamentos_plano', 'valor_original')) {
+                $extraCols .= ", CAST(pp.valor_original AS DECIMAL(10,2)) as valor_original";
+            }
+            if (Schema::hasColumn('pagamentos_plano', 'desconto')) {
+                $extraCols .= ", CAST(pp.desconto AS DECIMAL(10,2)) as desconto";
+            }
+            if (Schema::hasColumn('pagamentos_plano', 'motivo_desconto')) {
+                $extraCols .= ', pp.motivo_desconto';
+            }
+
+            $tipoBaixaJoin = Schema::hasTable('tipos_baixa')
+                ? 'LEFT JOIN tipos_baixa as tb ON pp.tipo_baixa_id = tb.id'
+                : '';
+            $tipoBaixaSelect = Schema::hasTable('tipos_baixa')
+                ? 'tb.nome as tipo_baixa_nome'
+                : 'NULL as tipo_baixa_nome';
+
+            $rows = DB::select("
+                SELECT
+                    pp.id,
+                    CAST(pp.valor AS DECIMAL(10,2)) as valor,
+                    pp.data_vencimento,
+                    pp.data_pagamento,
+                    pp.status_pagamento_id,
+                    (SELECT nome FROM status_pagamento WHERE id = pp.status_pagamento_id) as status,
+                    pp.forma_pagamento_id,
+                    fp.nome as forma_pagamento_nome,
+                    pp.observacoes,
+                    pp.criado_por,
+                    criador.nome as criado_por_nome,
+                    pp.baixado_por,
+                    baixador.nome as baixado_por_nome,
+                    pp.tipo_baixa_id,
+                    {$tipoBaixaSelect}
+                    {$extraCols}
+                FROM pagamentos_plano pp
+                LEFT JOIN formas_pagamento fp ON fp.id = pp.forma_pagamento_id
+                LEFT JOIN usuarios criador ON pp.criado_por = criador.id
+                LEFT JOIN usuarios baixador ON pp.baixado_por = baixador.id
+                {$tipoBaixaJoin}
+                WHERE pp.matricula_id = ?
+                ORDER BY pp.data_vencimento ASC, pp.id ASC
+            ", [$matriculaId]);
+
+            return array_map(static fn ($r) => (array) $r, $rows);
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /**

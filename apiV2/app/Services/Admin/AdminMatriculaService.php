@@ -3,6 +3,7 @@
 namespace App\Services\Admin;
 
 use App\Repositories\AdminMatriculaRepository;
+use App\Repositories\MatriculaRepository;
 use App\Services\PagamentoPlanoService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -12,6 +13,7 @@ class AdminMatriculaService
     public function __construct(
         private readonly AdminMatriculaRepository $matriculas,
         private readonly PagamentoPlanoService $pagamentosPlano,
+        private readonly MatriculaRepository $matriculaRepo,
     ) {}
 
     /**
@@ -20,14 +22,7 @@ class AdminMatriculaService
      */
     public function index(int $tenantId, array $query): array
     {
-        try {
-            $this->pagamentosPlano->marcarAtrasados($tenantId);
-        } catch (\Throwable $e) {
-            Log::warning('marcarAtrasados falhou na listagem admin de matrículas', [
-                'tenant_id' => $tenantId,
-                'message' => $e->getMessage(),
-            ]);
-        }
+        $this->syncParcelasAtrasadas($tenantId);
 
         $result = $this->matriculas->listar($tenantId, $query);
         $rows = $result['rows'];
@@ -60,7 +55,7 @@ class AdminMatriculaService
      */
     public function show(int $id, int $tenantId): array
     {
-        $this->pagamentosPlano->marcarAtrasados($tenantId);
+        $this->syncParcelasAtrasadas($tenantId);
 
         $matricula = $this->matriculas->findDetalhe($id, $tenantId);
         if (! $matricula) {
@@ -89,38 +84,47 @@ class AdminMatriculaService
         }
 
         if (! empty($matricula['pacote_contrato_id'])) {
-            $paganteUsuarioId = (int) ($matricula['contrato_pagante_usuario_id'] ?? 0);
-            $beneficiarios = $this->matriculas->beneficiariosPacote(
-                (int) $matricula['pacote_contrato_id'],
-                $tenantId,
-                $paganteUsuarioId
-            );
-            $nomePagante = $paganteUsuarioId > 0
-                ? $this->matriculas->findNomeUsuario($paganteUsuarioId)
-                : null;
+            try {
+                $paganteUsuarioId = (int) ($matricula['contrato_pagante_usuario_id'] ?? 0);
+                $beneficiarios = $this->matriculas->beneficiariosPacote(
+                    (int) $matricula['pacote_contrato_id'],
+                    $tenantId,
+                    $paganteUsuarioId
+                );
+                $nomePagante = $paganteUsuarioId > 0
+                    ? $this->matriculas->findNomeUsuario($paganteUsuarioId)
+                    : null;
 
-            $matricula['pacote'] = [
-                'pacote_id' => $matricula['pacote_id'] ? (int) $matricula['pacote_id'] : null,
-                'pacote_nome' => $matricula['pacote_nome'],
-                'pacote_valor_total' => $matricula['pacote_valor_total']
-                    ? (float) $matricula['pacote_valor_total']
-                    : null,
-                'pacote_qtd_beneficiarios' => $matricula['pacote_qtd_beneficiarios']
-                    ? (int) $matricula['pacote_qtd_beneficiarios']
-                    : null,
-                'contrato_id' => (int) $matricula['contrato_id'],
-                'contrato_status' => $matricula['contrato_status'],
-                'contrato_data_inicio' => $matricula['contrato_data_inicio'],
-                'contrato_data_fim' => $matricula['contrato_data_fim'],
-                'contrato_valor_total' => $matricula['contrato_valor_total']
-                    ? (float) $matricula['contrato_valor_total']
-                    : null,
-                'pagante_usuario_id' => $matricula['contrato_pagante_usuario_id']
-                    ? (int) $matricula['contrato_pagante_usuario_id']
-                    : null,
-                'pagante_nome' => $nomePagante,
-                'beneficiarios' => $beneficiarios,
-            ];
+                $matricula['pacote'] = [
+                    'pacote_id' => $matricula['pacote_id'] ? (int) $matricula['pacote_id'] : null,
+                    'pacote_nome' => $matricula['pacote_nome'],
+                    'pacote_valor_total' => $matricula['pacote_valor_total']
+                        ? (float) $matricula['pacote_valor_total']
+                        : null,
+                    'pacote_qtd_beneficiarios' => $matricula['pacote_qtd_beneficiarios']
+                        ? (int) $matricula['pacote_qtd_beneficiarios']
+                        : null,
+                    'contrato_id' => (int) $matricula['contrato_id'],
+                    'contrato_status' => $matricula['contrato_status'],
+                    'contrato_data_inicio' => $matricula['contrato_data_inicio'],
+                    'contrato_data_fim' => $matricula['contrato_data_fim'],
+                    'contrato_valor_total' => $matricula['contrato_valor_total']
+                        ? (float) $matricula['contrato_valor_total']
+                        : null,
+                    'pagante_usuario_id' => $matricula['contrato_pagante_usuario_id']
+                        ? (int) $matricula['contrato_pagante_usuario_id']
+                        : null,
+                    'pagante_nome' => $nomePagante,
+                    'beneficiarios' => $beneficiarios,
+                ];
+            } catch (\Throwable $e) {
+                Log::warning('Falha ao montar pacote da matrícula', [
+                    'matricula_id' => $id,
+                    'tenant_id' => $tenantId,
+                    'message' => $e->getMessage(),
+                ]);
+                $matricula['pacote'] = null;
+            }
         } else {
             $matricula['pacote'] = null;
         }
@@ -176,11 +180,25 @@ class AdminMatriculaService
         }
 
         $creditos = $this->matriculas->creditosAluno($tenantId, (int) $matricula['aluno_id']);
-        $outrasMatriculas = $this->matriculas->listarOutrasMatriculasDoAluno(
-            (int) $matricula['aluno_id'],
-            $tenantId,
-            $id,
-        );
+
+        $outrasMatriculas = [];
+        try {
+            $outrasMatriculas = $this->matriculas->listarOutrasMatriculasDoAluno(
+                (int) $matricula['aluno_id'],
+                $tenantId,
+                $id,
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Falha ao listar outras matrículas do aluno', [
+                'matricula_id' => $id,
+                'tenant_id' => $tenantId,
+                'message' => $e->getMessage(),
+            ]);
+        }
+
+        $resolvido = $this->resolverMotivoStatusEPendencias($id, $matricula, $pagamentos);
+        $matricula['limite_ciclo'] = $resolvido['limite_ciclo'];
+        $matricula['motivo_status'] = $resolvido['motivo_status'];
 
         return [
             'status' => 200,
@@ -1518,5 +1536,65 @@ class AdminMatriculaService
             'status' => $status,
             'body' => ['error' => $message],
         ];
+    }
+
+    private function syncParcelasAtrasadas(int $tenantId): void
+    {
+        try {
+            $this->pagamentosPlano->marcarAtrasados($tenantId);
+        } catch (\Throwable $e) {
+            Log::warning('marcarAtrasados falhou no admin de matrículas', [
+                'tenant_id' => $tenantId,
+                'message' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Paridade Slim MatriculaController::buscar (motivo_status / limite_ciclo pendente).
+     *
+     * @param  array<string, mixed>  $matricula
+     * @param  list<array<string, mixed>>  $pagamentos
+     * @return array{limite_ciclo: ?array<string, mixed>, motivo_status: ?string}
+     */
+    private function resolverMotivoStatusEPendencias(int $matriculaId, array $matricula, array $pagamentos): array
+    {
+        if (($matricula['status_codigo'] ?? '') !== 'pendente') {
+            return ['limite_ciclo' => null, 'motivo_status' => null];
+        }
+
+        try {
+            $detalheLimite = $this->matriculaRepo->avaliarLimiteMensalPorMatricula($matriculaId, false);
+            if ($detalheLimite !== null) {
+                return [
+                    'limite_ciclo' => $detalheLimite,
+                    'motivo_status' => 'limite_checkins',
+                ];
+            }
+
+            $hoje = date('Y-m-d');
+            $acessoAte = $matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'] ?? null;
+            $temPago = false;
+
+            foreach ($pagamentos as $pag) {
+                if ((int) ($pag['status_pagamento_id'] ?? 0) === 2 || ! empty($pag['data_pagamento'])) {
+                    $temPago = true;
+                    break;
+                }
+            }
+
+            if ($temPago && is_string($acessoAte) && $acessoAte > $hoje) {
+                return ['limite_ciclo' => null, 'motivo_status' => 'aguardando_renovacao'];
+            }
+
+            return ['limite_ciclo' => null, 'motivo_status' => 'aguardando_pagamento'];
+        } catch (\Throwable $e) {
+            Log::warning('Erro ao avaliar motivo_status da matrícula', [
+                'matricula_id' => $matriculaId,
+                'message' => $e->getMessage(),
+            ]);
+
+            return ['limite_ciclo' => null, 'motivo_status' => null];
+        }
     }
 }

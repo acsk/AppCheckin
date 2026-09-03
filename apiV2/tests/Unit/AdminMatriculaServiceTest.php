@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Repositories\AdminMatriculaRepository;
+use App\Repositories\MatriculaRepository;
 use App\Services\Admin\AdminMatriculaService;
 use App\Services\PagamentoPlanoService;
 use Mockery;
@@ -10,6 +11,18 @@ use Tests\TestCase;
 
 class AdminMatriculaServiceTest extends TestCase
 {
+    private function makeService(
+        ?AdminMatriculaRepository $repo = null,
+        ?PagamentoPlanoService $pagamentosPlano = null,
+        ?MatriculaRepository $matriculaRepo = null,
+    ): AdminMatriculaService {
+        return new AdminMatriculaService(
+            $repo ?? Mockery::mock(AdminMatriculaRepository::class),
+            $pagamentosPlano ?? Mockery::mock(PagamentoPlanoService::class),
+            $matriculaRepo ?? Mockery::mock(MatriculaRepository::class),
+        );
+    }
+
     protected function tearDown(): void
     {
         Mockery::close();
@@ -21,7 +34,7 @@ class AdminMatriculaServiceTest extends TestCase
         $repo = Mockery::mock(AdminMatriculaRepository::class);
         $repo->shouldReceive('findBasicoComStatus')->once()->with(99, 3)->andReturn(null);
 
-        $service = new AdminMatriculaService($repo, Mockery::mock(PagamentoPlanoService::class));
+        $service = $this->makeService($repo);
         $result = $service->bloquear(99, 3, 5, []);
 
         $this->assertSame(404, $result['status']);
@@ -33,7 +46,7 @@ class AdminMatriculaServiceTest extends TestCase
         $repo = Mockery::mock(AdminMatriculaRepository::class);
         $repo->shouldReceive('findBasicoComStatus')->once()->with(99, 3)->andReturn(null);
 
-        $service = new AdminMatriculaService($repo, Mockery::mock(PagamentoPlanoService::class));
+        $service = $this->makeService($repo);
         $result = $service->cancelar(99, 3, 5, []);
 
         $this->assertSame(404, $result['status']);
@@ -49,7 +62,7 @@ class AdminMatriculaServiceTest extends TestCase
             'aluno_id' => 1,
         ]);
 
-        $service = new AdminMatriculaService($repo, Mockery::mock(PagamentoPlanoService::class));
+        $service = $this->makeService($repo);
         $result = $service->cancelar(10, 3, 5, []);
 
         $this->assertSame(400, $result['status']);
@@ -58,10 +71,7 @@ class AdminMatriculaServiceTest extends TestCase
 
     public function test_atualizar_proxima_data_formato_invalido(): void
     {
-        $service = new AdminMatriculaService(
-            Mockery::mock(AdminMatriculaRepository::class),
-            Mockery::mock(PagamentoPlanoService::class),
-        );
+        $service = $this->makeService();
 
         $result = $service->atualizarProximaDataVencimento(1, 3, [
             'proxima_data_vencimento' => '13/07/2026',
@@ -73,10 +83,7 @@ class AdminMatriculaServiceTest extends TestCase
 
     public function test_atualizar_proxima_data_obrigatoria(): void
     {
-        $service = new AdminMatriculaService(
-            Mockery::mock(AdminMatriculaRepository::class),
-            Mockery::mock(PagamentoPlanoService::class),
-        );
+        $service = $this->makeService();
 
         $result = $service->atualizarProximaDataVencimento(1, 3, []);
 
@@ -86,10 +93,7 @@ class AdminMatriculaServiceTest extends TestCase
 
     public function test_criar_validation_missing_aluno_e_plano(): void
     {
-        $service = new AdminMatriculaService(
-            Mockery::mock(AdminMatriculaRepository::class),
-            Mockery::mock(PagamentoPlanoService::class),
-        );
+        $service = $this->makeService();
 
         $result = $service->criar(3, 5, []);
 
@@ -114,7 +118,7 @@ class AdminMatriculaServiceTest extends TestCase
             'duracao_dias' => 30,
         ]);
 
-        $service = new AdminMatriculaService($repo, Mockery::mock(PagamentoPlanoService::class));
+        $service = $this->makeService($repo);
         $result = $service->darBaixaConta(10, 3, 5, []);
 
         $this->assertSame(400, $result['status']);
@@ -137,7 +141,7 @@ class AdminMatriculaServiceTest extends TestCase
             'pacote_contrato_id' => 7,
         ]);
 
-        $service = new AdminMatriculaService($repo, Mockery::mock(PagamentoPlanoService::class));
+        $service = $this->makeService($repo);
         $result = $service->darBaixaConta(10, 3, 5, [
             'data_vencimento' => '2026-10-13',
         ]);
@@ -164,7 +168,7 @@ class AdminMatriculaServiceTest extends TestCase
             'matricula_pacote_contrato_id' => 7,
         ]);
 
-        $service = new AdminMatriculaService($repo, Mockery::mock(PagamentoPlanoService::class));
+        $service = $this->makeService($repo);
         $result = $service->darBaixaConta(11, 3, 5, []);
 
         $this->assertSame(400, $result['status']);
@@ -173,10 +177,7 @@ class AdminMatriculaServiceTest extends TestCase
 
     public function test_alterar_plano_missing_plano_id(): void
     {
-        $service = new AdminMatriculaService(
-            Mockery::mock(AdminMatriculaRepository::class),
-            Mockery::mock(PagamentoPlanoService::class),
-        );
+        $service = $this->makeService();
 
         $result = $service->alterarPlano(1, 3, 5, []);
 
@@ -189,7 +190,7 @@ class AdminMatriculaServiceTest extends TestCase
         $repo = Mockery::mock(AdminMatriculaRepository::class);
         $repo->shouldReceive('findParaAlterarPlano')->once()->with(99, 3)->andReturn(null);
 
-        $service = new AdminMatriculaService($repo, Mockery::mock(PagamentoPlanoService::class));
+        $service = $this->makeService($repo);
         $result = $service->alterarPlano(99, 3, 5, ['plano_id' => 10]);
 
         $this->assertSame(404, $result['status']);
@@ -218,7 +219,7 @@ class AdminMatriculaServiceTest extends TestCase
             'duracao_dias' => 90,
         ]);
 
-        $service = new AdminMatriculaService($repo, Mockery::mock(PagamentoPlanoService::class));
+        $service = $this->makeService($repo);
         $result = $service->alterarPlano(10, 3, 5, [
             'plano_id' => 20,
             'data_inicio' => '13/07/2026',
@@ -257,7 +258,7 @@ class AdminMatriculaServiceTest extends TestCase
         $repo->shouldReceive('motivoIdPorCodigo')->once()->with('upgrade')->andReturn(1);
         $repo->shouldReceive('findUsuarioIdPorAluno')->once()->with(2)->andReturn(null);
 
-        $service = new AdminMatriculaService($repo, Mockery::mock(PagamentoPlanoService::class));
+        $service = $this->makeService($repo);
         $result = $service->alterarPlano(10, 3, 5, [
             'plano_id' => 20,
             'data_inicio' => '2026-07-13',
@@ -280,7 +281,7 @@ class AdminMatriculaServiceTest extends TestCase
             ->once()
             ->andReturn(['ok' => false]);
 
-        $service = new AdminMatriculaService($repo, Mockery::mock(PagamentoPlanoService::class));
+        $service = $this->makeService($repo);
         $result = $service->atualizarProximaDataVencimento(10, 3, [
             'proxima_data_vencimento' => '2026-08-01',
         ]);
@@ -294,7 +295,7 @@ class AdminMatriculaServiceTest extends TestCase
         $repo = Mockery::mock(AdminMatriculaRepository::class);
         $repo->shouldReceive('findParaHardDelete')->once()->with(99, 3)->andReturn(null);
 
-        $service = new AdminMatriculaService($repo, Mockery::mock(PagamentoPlanoService::class));
+        $service = $this->makeService($repo);
         $result = $service->destroy(99, 3);
 
         $this->assertSame(404, $result['status']);
@@ -310,12 +311,96 @@ class AdminMatriculaServiceTest extends TestCase
             'pacote_contrato_id' => 55,
         ]);
 
-        $service = new AdminMatriculaService($repo, Mockery::mock(PagamentoPlanoService::class));
+        $service = $this->makeService($repo);
         $result = $service->destroy(10, 3);
 
         $this->assertSame(422, $result['status']);
         $this->assertFalse($result['body']['success']);
         $this->assertSame(55, $result['body']['pacote_contrato_id']);
         $this->assertStringContainsString('pacote', $result['body']['error']);
+    }
+
+    public function test_show_motivo_status_limite_checkins_tem_prioridade_sobre_pagamento(): void
+    {
+        $adminRepo = Mockery::mock(AdminMatriculaRepository::class);
+        $pagamentosPlano = Mockery::mock(PagamentoPlanoService::class);
+        $matriculaRepo = Mockery::mock(MatriculaRepository::class);
+
+        $pagamentosPlano->shouldReceive('marcarAtrasados')->once()->with(3);
+
+        $adminRepo->shouldReceive('findDetalhe')->once()->with(412, 3)->andReturn([
+            'id' => 412,
+            'aluno_id' => 1,
+            'status_codigo' => 'pendente',
+            'proxima_data_vencimento' => '2099-12-01',
+            'data_vencimento' => '2099-11-01',
+            'plano_ciclo_id' => null,
+            'pacote_contrato_id' => null,
+        ]);
+        $adminRepo->shouldReceive('listarPagamentosResumo')->once()->with(412)->andReturn([
+            ['id' => 1, 'valor' => 100, 'status_pagamento_id' => 2, 'data_pagamento' => '2026-01-01'],
+        ]);
+        $adminRepo->shouldReceive('mpPaymentIds')->once()->with(412, 3)->andReturn([]);
+        $adminRepo->shouldReceive('creditosAluno')->once()->with(3, 1)->andReturn([
+            'saldo_total' => 0.0,
+            'creditos_ativos' => [],
+        ]);
+        $adminRepo->shouldReceive('listarOutrasMatriculasDoAluno')->once()->andReturn([]);
+
+        $limiteDetalhe = [
+            'plano' => 'Mensal',
+            'limite_mensal' => 17,
+            'checkins_mes' => 17,
+            'mensagem' => 'O aluno atingiu o limite de check-ins do ciclo do plano.',
+        ];
+        $matriculaRepo->shouldReceive('avaliarLimiteMensalPorMatricula')
+            ->once()
+            ->with(412, false)
+            ->andReturn($limiteDetalhe);
+
+        $result = $this->makeService($adminRepo, $pagamentosPlano, $matriculaRepo)->show(412, 3);
+
+        $this->assertSame(200, $result['status']);
+        $this->assertSame('limite_checkins', $result['body']['matricula']['motivo_status']);
+        $this->assertSame($limiteDetalhe, $result['body']['matricula']['limite_ciclo']);
+    }
+
+    public function test_show_motivo_status_aguardando_renovacao_sem_limite_checkins(): void
+    {
+        $adminRepo = Mockery::mock(AdminMatriculaRepository::class);
+        $pagamentosPlano = Mockery::mock(PagamentoPlanoService::class);
+        $matriculaRepo = Mockery::mock(MatriculaRepository::class);
+
+        $pagamentosPlano->shouldReceive('marcarAtrasados')->once()->with(3);
+
+        $adminRepo->shouldReceive('findDetalhe')->once()->with(10, 3)->andReturn([
+            'id' => 10,
+            'aluno_id' => 2,
+            'status_codigo' => 'pendente',
+            'proxima_data_vencimento' => '2099-12-01',
+            'data_vencimento' => '2099-11-01',
+            'plano_ciclo_id' => null,
+            'pacote_contrato_id' => null,
+        ]);
+        $adminRepo->shouldReceive('listarPagamentosResumo')->once()->with(10)->andReturn([
+            ['id' => 1, 'valor' => 100, 'status_pagamento_id' => 2, 'data_pagamento' => '2026-01-01'],
+        ]);
+        $adminRepo->shouldReceive('mpPaymentIds')->once()->with(10, 3)->andReturn([]);
+        $adminRepo->shouldReceive('creditosAluno')->once()->with(3, 2)->andReturn([
+            'saldo_total' => 0.0,
+            'creditos_ativos' => [],
+        ]);
+        $adminRepo->shouldReceive('listarOutrasMatriculasDoAluno')->once()->andReturn([]);
+
+        $matriculaRepo->shouldReceive('avaliarLimiteMensalPorMatricula')
+            ->once()
+            ->with(10, false)
+            ->andReturn(null);
+
+        $result = $this->makeService($adminRepo, $pagamentosPlano, $matriculaRepo)->show(10, 3);
+
+        $this->assertSame(200, $result['status']);
+        $this->assertNull($result['body']['matricula']['limite_ciclo']);
+        $this->assertSame('aguardando_renovacao', $result['body']['matricula']['motivo_status']);
     }
 }

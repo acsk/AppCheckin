@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Support\AcademyDateTime;
+use App\Support\CheckinLimiteFormatter;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -358,12 +359,34 @@ class MatriculaRepository
     }
 
     /**
-     * Avalia se a matrícula empatou o limite mensal do ciclo (reposição).
-     * Usado no aviso de check-in quando status já está pendente.
+     * Avalia se a matrícula esgotou o limite de check-ins do ciclo (paridade Slim Checkin::avaliarLimiteMensalPorMatricula).
      *
+     * @return array<string, mixed>|null detalhes formatados; null se N/A ou dentro do limite
+     */
+    public function avaliarLimiteMensalPorMatricula(int $matriculaId, bool $paraAluno = true): ?array
+    {
+        $raw = $this->avaliarLimiteCicloMatriculaRaw($matriculaId);
+        if ($raw === null) {
+            return null;
+        }
+
+        return CheckinLimiteFormatter::formatarDetalhesLimiteMensal($raw, $paraAluno);
+    }
+
+    /**
      * @return ?array<string, mixed>
      */
     private function avaliarLimiteCicloMatricula(int $matriculaId): ?array
+    {
+        return $this->avaliarLimiteMensalPorMatricula($matriculaId, true);
+    }
+
+    /**
+     * Avalia se a matrícula empatou o limite mensal do ciclo (reposição).
+     *
+     * @return ?array<string, mixed> dados brutos para formatação; null se dentro do limite
+     */
+    private function avaliarLimiteCicloMatriculaRaw(int $matriculaId): ?array
     {
         $row = DB::table('matriculas as m')
             ->join('planos as p', 'p.id', '=', 'm.plano_id')
@@ -438,28 +461,19 @@ class MatriculaRepository
             return null;
         }
 
-        $direito = $limiteMensal;
-        $usados = $checkinsNoMes;
-        $excesso = max(0, $usados - $direito);
         $mesRef = date('d/m', strtotime(date('Y-m-01'))).' a '.date('d/m', strtotime(date('Y-m-t')));
-        $mensagem = sprintf(
-            'Você atingiu o limite de check-ins do ciclo do plano (%s). Direito: %d | Usados: %d | Excedeu: %d.',
-            $mesRef,
-            $direito,
-            $usados,
-            $excesso
-        );
 
         return [
             'plano' => (string) $row->plano_nome,
-            'limite_mensal' => $direito,
-            'checkins_mes' => $usados,
-            'direito' => $direito,
-            'usados' => $usados,
-            'excesso' => $excesso,
-            'mes_referencia' => $mesRef,
+            'checkins_semanais' => $checkinsSemanais,
+            'limite_mensal' => $limiteMensal,
+            'checkins_mes' => $checkinsNoMes,
             'permite_reposicao' => true,
-            'mensagem' => $mensagem,
+            'bonus_cinco_semanas' => $bonusCincoSemanas === 1,
+            'mes_referencia' => $mesRef,
+            'ciclo_inicio' => date('Y-m-01'),
+            'ciclo_fim' => date('Y-m-01', strtotime('first day of next month')),
+            'dias_checkin' => [],
         ];
     }
 
