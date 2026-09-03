@@ -189,4 +189,166 @@ class MobilePerfilService
             default => 'Usuário',
         };
     }
+
+    /**
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function uploadFoto(int $userId, ?int $tenantId, mixed $uploadedFile): array
+    {
+        if (! $tenantId) {
+            return [
+                'status' => 400,
+                'body' => ['success' => false, 'error' => 'Nenhum tenant selecionado'],
+            ];
+        }
+
+        $usuario = $this->usuarios->findById($userId, $tenantId);
+        if (! $usuario) {
+            return [
+                'status' => 404,
+                'body' => ['success' => false, 'error' => 'Usuário não encontrado'],
+            ];
+        }
+
+        $aluno = $this->alunos->findAlunoComFotoNoTenant($userId, $tenantId);
+        if (! $aluno) {
+            return [
+                'status' => 404,
+                'body' => ['success' => false, 'error' => 'Aluno não encontrado para este usuário'],
+            ];
+        }
+
+        if (! $uploadedFile || ! $uploadedFile->isValid()) {
+            return [
+                'status' => 400,
+                'body' => [
+                    'success' => false,
+                    'error' => 'Nenhuma imagem foi enviada. Use o campo "foto" em multipart/form-data',
+                ],
+            ];
+        }
+
+        $mimeType = $uploadedFile->getMimeType() ?? '';
+        $permitidos = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if (! in_array($mimeType, $permitidos, true)) {
+            return [
+                'status' => 400,
+                'body' => [
+                    'success' => false,
+                    'error' => 'Tipo de arquivo não permitido. Use JPEG, PNG, GIF ou WebP',
+                    'mime_enviado' => $mimeType,
+                ],
+            ];
+        }
+
+        $tamanhoMaximo = 5 * 1024 * 1024;
+        if ($uploadedFile->getSize() > $tamanhoMaximo) {
+            return [
+                'status' => 400,
+                'body' => [
+                    'success' => false,
+                    'error' => 'Arquivo muito grande. Máximo 5MB',
+                    'tamanho_enviado' => $uploadedFile->getSize(),
+                    'tamanho_maximo' => $tamanhoMaximo,
+                ],
+            ];
+        }
+
+        $extensoes = [
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/gif' => 'gif',
+            'image/webp' => 'webp',
+        ];
+        $ext = $extensoes[$mimeType] ?? 'jpg';
+
+        $uploadDir = public_path('uploads/fotos');
+        if (! is_dir($uploadDir)) {
+            mkdir($uploadDir, 0755, true);
+        }
+
+        if (! empty($aluno['foto_caminho'])) {
+            $caminhoAntigo = $this->resolveFotoAbsolutePath((string) $aluno['foto_caminho']);
+            if ($caminhoAntigo && is_file($caminhoAntigo)) {
+                @unlink($caminhoAntigo);
+            }
+        }
+
+        $nomeArquivo = 'aluno_'.$aluno['id'].'_'.time().'.'.$ext;
+        $caminhoRelativo = '/uploads/fotos/'.$nomeArquivo;
+        $caminhoCompleto = $uploadDir.'/'.$nomeArquivo;
+
+        $uploadedFile->move($uploadDir, $nomeArquivo);
+        @chmod($caminhoCompleto, 0644);
+
+        $this->alunos->updateFotoCaminho((int) $aluno['id'], $caminhoRelativo);
+
+        return [
+            'status' => 200,
+            'body' => [
+                'success' => true,
+                'message' => 'Foto de perfil atualizada com sucesso',
+                'data' => [
+                    'aluno_id' => (int) $aluno['id'],
+                    'usuario_id' => $userId,
+                    'tamanho_original' => $uploadedFile->getSize(),
+                    'tamanho_final' => is_file($caminhoCompleto) ? filesize($caminhoCompleto) : null,
+                    'tipo_arquivo' => $mimeType,
+                    'nome_original' => $uploadedFile->getClientOriginalName(),
+                    'caminho_url' => $caminhoRelativo,
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * @return array{status: int, body: string|null, headers?: array<string, string>}
+     */
+    public function obterFoto(int $userId, ?int $tenantId): array
+    {
+        if (! $tenantId) {
+            return ['status' => 400, 'body' => null];
+        }
+
+        $aluno = $this->alunos->findAlunoComFotoNoTenant($userId, $tenantId);
+        if (! $aluno || empty($aluno['foto_caminho'])) {
+            return ['status' => 404, 'body' => null];
+        }
+
+        $caminhoCompleto = $this->resolveFotoAbsolutePath((string) $aluno['foto_caminho']);
+        if (! $caminhoCompleto || ! is_file($caminhoCompleto)) {
+            return ['status' => 404, 'body' => null];
+        }
+
+        $mimeType = mime_content_type($caminhoCompleto) ?: 'application/octet-stream';
+        if (! str_starts_with($mimeType, 'image/')) {
+            return ['status' => 400, 'body' => null];
+        }
+
+        return [
+            'status' => 200,
+            'body' => file_get_contents($caminhoCompleto) ?: '',
+            'headers' => [
+                'Content-Type' => $mimeType,
+                'Cache-Control' => 'public, max-age=86400',
+            ],
+        ];
+    }
+
+    private function resolveFotoAbsolutePath(string $caminhoRelativo): ?string
+    {
+        $caminhoRelativo = ltrim($caminhoRelativo, '/');
+        $candidates = [
+            public_path($caminhoRelativo),
+            base_path('../api/public/'.$caminhoRelativo),
+        ];
+
+        foreach ($candidates as $path) {
+            if (is_file($path)) {
+                return $path;
+            }
+        }
+
+        return null;
+    }
 }

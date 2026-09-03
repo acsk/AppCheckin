@@ -13,6 +13,8 @@ use App\Services\Mobile\MobileMatriculaService;
 use App\Services\Mobile\MobilePagamentoService;
 use App\Services\Mobile\MobilePerfilService;
 use App\Services\Mobile\MobilePlanoService;
+use App\Services\Mobile\MobileProfessorService;
+use App\Services\Mobile\MobileTurmaService;
 use App\Services\Mobile\MobileWodService;
 
 use App\Support\AcademyDateTime;
@@ -20,6 +22,7 @@ use App\Support\MobileResponse;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Symfony\Component\HttpFoundation\Response;
 
 class MobileController extends Controller
 {
@@ -35,7 +38,142 @@ class MobileController extends Controller
         private readonly MobileMigracaoPlanoService $migracao,
         private readonly MobilePagamentoService $pagamento,
         private readonly MobileAssinaturaService $assinaturas,
+        private readonly MobileTurmaService $turmas,
+        private readonly MobileProfessorService $professor,
     ) {}
+
+    public function uploadFotoPerfil(Request $request): JsonResponse
+    {
+        try {
+            $result = $this->perfil->uploadFoto(
+                $this->userId($request),
+                $this->tenantId($request),
+                $request->file('foto'),
+            );
+
+            return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            Log::error('uploadFotoPerfil v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao processar upload', $e->getMessage());
+        }
+    }
+
+    public function obterFotoPerfil(Request $request): Response|JsonResponse
+    {
+        try {
+            $result = $this->perfil->obterFoto(
+                $this->userId($request),
+                $this->tenantId($request),
+            );
+
+            if ($result['body'] === null) {
+                return response('', $result['status']);
+            }
+
+            return response($result['body'], $result['status'], $result['headers'] ?? []);
+        } catch (\Throwable $e) {
+            Log::error('obterFotoPerfil v2: '.$e->getMessage());
+
+            return response('', 500);
+        }
+    }
+
+    public function buscarAlunosParaCheckin(Request $request): JsonResponse
+    {
+        try {
+            $result = $this->professor->buscarAlunos(
+                $this->userId($request),
+                $this->tenantId($request),
+                $request->query('q'),
+                $request->query('nome'),
+                $request->query('cpf'),
+                $request->query('email'),
+                (int) $request->query('limit', 20),
+                (int) $request->query('offset', 0),
+            );
+
+            return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            Log::error('buscarAlunosParaCheckin v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao buscar alunos', $e->getMessage());
+        }
+    }
+
+    public function registrarCheckinManual(Request $request): JsonResponse
+    {
+        try {
+            $result = $this->professor->registrarCheckinManual(
+                $this->userId($request),
+                $this->tenantId($request),
+                $request->all(),
+            );
+
+            return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            Log::error('registrarCheckinManual v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao registrar check-in manual', $e->getMessage());
+        }
+    }
+
+    public function desfazerCheckinManual(Request $request, int $checkinId): JsonResponse
+    {
+        try {
+            $result = $this->professor->desfazerCheckinManual(
+                $this->userId($request),
+                $this->tenantId($request),
+                $checkinId,
+            );
+
+            return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            Log::error('desfazerCheckinManual v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao desfazer check-in manual', $e->getMessage());
+        }
+    }
+
+    public function bloquearCheckinTurma(Request $request, int $turmaId): JsonResponse
+    {
+        try {
+            $result = $this->turmas->alterarBloqueioCheckin(
+                $this->tenantId($request),
+                $this->userId($request),
+                $turmaId,
+                true,
+                $request->all(),
+                $request->attributes->get('usuario'),
+            );
+
+            return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            Log::error('bloquearCheckinTurma v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao alterar bloqueio de check-in', $e->getMessage());
+        }
+    }
+
+    public function desbloquearCheckinTurma(Request $request, int $turmaId): JsonResponse
+    {
+        try {
+            $result = $this->turmas->alterarBloqueioCheckin(
+                $this->tenantId($request),
+                $this->userId($request),
+                $turmaId,
+                false,
+                $request->all(),
+                $request->attributes->get('usuario'),
+            );
+
+            return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            Log::error('desbloquearCheckinTurma v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao alterar bloqueio de check-in', $e->getMessage());
+        }
+    }
 
     public function historicoCheckins(Request $request): JsonResponse
     {
@@ -478,6 +616,67 @@ class MobileController extends Controller
                 'Erro ao desfazer check-in',
                 $e->getMessage(),
             );
+        }
+    }
+
+    public function listarTurmas(Request $request): JsonResponse
+    {
+        try {
+            $result = $this->turmas->listarTurmas($this->tenantId($request));
+
+            return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            Log::error('listarTurmas v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao listar turmas', $e->getMessage());
+        }
+    }
+
+    public function detalheTurma(Request $request, int $turmaId): JsonResponse
+    {
+        try {
+            $result = $this->turmas->detalhe(
+                $this->tenantId($request),
+                $turmaId,
+                $request->query('data'),
+            );
+
+            return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            Log::error('detalheTurma v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao carregar detalhes da turma', $e->getMessage());
+        }
+    }
+
+    public function participantesTurma(Request $request, int $turmaId): JsonResponse
+    {
+        try {
+            $result = $this->turmas->participantes($this->tenantId($request), $turmaId);
+
+            return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            Log::error('participantesTurma v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao carregar participantes da turma', $e->getMessage());
+        }
+    }
+
+    public function confirmarPresenca(Request $request, int $turmaId): JsonResponse
+    {
+        try {
+            $result = $this->turmas->confirmarPresenca(
+                $this->tenantId($request),
+                $this->userId($request),
+                $turmaId,
+                $request->all(),
+            );
+
+            return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            Log::error('confirmarPresenca v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao confirmar presença', $e->getMessage());
         }
     }
 

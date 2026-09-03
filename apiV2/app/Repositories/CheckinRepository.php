@@ -26,6 +26,67 @@ class CheckinRepository
         }
     }
 
+    public function createManualEmTurma(
+        int $alunoId,
+        int $turmaId,
+        int $tenantId,
+        int $adminId,
+        string $dataCheckinDate,
+    ): int {
+        return (int) DB::table('checkins')->insertGetId([
+            'aluno_id' => $alunoId,
+            'turma_id' => $turmaId,
+            'tenant_id' => $tenantId,
+            'registrado_por_admin' => 1,
+            'admin_id' => $adminId,
+            'data_checkin_date' => $dataCheckinDate,
+        ]);
+    }
+
+    /**
+     * @return ?array<string, mixed>
+     */
+    public function findUltimoCheckinUsuarioNaTurma(int $usuarioId, int $turmaId): ?array
+    {
+        $row = DB::table('checkins as c')
+            ->join('alunos as a', 'a.id', '=', 'c.aluno_id')
+            ->where('a.usuario_id', $usuarioId)
+            ->where('c.turma_id', $turmaId)
+            ->orderByDesc('c.id')
+            ->select([
+                'c.id',
+                'c.aluno_id',
+                'c.created_at',
+                DB::raw('COALESCE(c.data_checkin_date, DATE(c.created_at)) AS data_efetiva'),
+                'c.registrado_por_admin',
+            ])
+            ->first();
+
+        return $row ? (array) $row : null;
+    }
+
+    public function contarCheckinsTurmaNoDia(int $turmaId, int $tenantId, string $dataAula): int
+    {
+        return (int) DB::table('checkins')
+            ->where('turma_id', $turmaId)
+            ->where('tenant_id', $tenantId)
+            ->whereRaw('COALESCE(data_checkin_date, DATE(created_at)) = ?', [$dataAula])
+            ->count();
+    }
+
+    public function contarCheckinsTurmaNoDiaComLock(int $turmaId, int $tenantId, string $dataAula): int
+    {
+        $row = DB::selectOne(
+            'SELECT COUNT(*) as total FROM checkins
+             WHERE turma_id = ? AND tenant_id = ?
+             AND COALESCE(data_checkin_date, DATE(created_at)) = ?
+             FOR UPDATE',
+            [$turmaId, $tenantId, $dataAula],
+        );
+
+        return (int) ($row->total ?? 0);
+    }
+
     public function usuarioTemCheckinNaTurma(int $usuarioId, int $turmaId): bool
     {
         return DB::table('checkins as c')
@@ -401,6 +462,52 @@ class CheckinRepository
             ])
             ->map(fn ($row) => (array) $row)
             ->all();
+    }
+
+    public function atualizarPresenca(
+        int $checkinId,
+        int $turmaId,
+        int $tenantId,
+        bool $presente,
+        int $confirmadoPor,
+    ): int {
+        return DB::table('checkins')
+            ->where('id', $checkinId)
+            ->where('turma_id', $turmaId)
+            ->where('tenant_id', $tenantId)
+            ->update([
+                'presente' => $presente ? 1 : 0,
+                'presenca_confirmada_em' => DB::raw('NOW()'),
+                'presenca_confirmada_por' => $confirmadoPor,
+            ]);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function listarFaltantesComDados(int $turmaId, int $tenantId): array
+    {
+        return DB::table('checkins as c')
+            ->join('alunos as a', 'c.aluno_id', '=', 'a.id')
+            ->join('usuarios as u', 'a.usuario_id', '=', 'u.id')
+            ->where('c.turma_id', $turmaId)
+            ->where('c.tenant_id', $tenantId)
+            ->where('c.presente', 0)
+            ->get(['c.id', 'a.nome as aluno_nome', 'u.email as aluno_email'])
+            ->map(static fn ($row) => (array) $row)
+            ->all();
+    }
+
+    /**
+     * @param  list<int>  $ids
+     */
+    public function deleteByIds(array $ids): int
+    {
+        if ($ids === []) {
+            return 0;
+        }
+
+        return DB::table('checkins')->whereIn('id', $ids)->delete();
     }
 
     /**

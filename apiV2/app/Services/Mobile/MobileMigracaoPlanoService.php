@@ -6,13 +6,23 @@ use Illuminate\Support\Facades\DB;
 
 class MobileMigracaoPlanoService
 {
-    private \App\Services\MatriculaMigracaoService $core;
+    private ?\App\Services\MatriculaMigracaoService $core = null;
 
-    public function __construct()
+    private function core(): \App\Services\MatriculaMigracaoService
     {
+        if ($this->core !== null) {
+            return $this->core;
+        }
+
         $slimServicePath = base_path('../api/app/Services/MatriculaMigracaoService.php');
+        if (! is_file($slimServicePath)) {
+            throw new \RuntimeException('MatriculaMigracaoService Slim não disponível em '.$slimServicePath);
+        }
+
         require_once $slimServicePath;
         $this->core = new \App\Services\MatriculaMigracaoService(DB::connection()->getPdo());
+
+        return $this->core;
     }
 
     /**
@@ -20,7 +30,7 @@ class MobileMigracaoPlanoService
      */
     public function simular(int $userId, int $tenantId, int $planoId, ?int $planoCicloId): array
     {
-        return $this->core->simular($userId, $tenantId, $planoId, $planoCicloId);
+        return $this->core()->simular($userId, $tenantId, $planoId, $planoCicloId);
     }
 
     /**
@@ -29,17 +39,17 @@ class MobileMigracaoPlanoService
      */
     public function migrar(int $userId, int $tenantId, array $data): array
     {
-        return $this->core->migrar($userId, $tenantId, $data);
+        return $this->core()->migrar($userId, $tenantId, $data);
     }
 
     public function buscarMatriculaAtivaModalidade(int $alunoId, int $tenantId, int $modalidadeId): ?array
     {
-        return $this->core->buscarMatriculaAtivaModalidade($alunoId, $tenantId, $modalidadeId);
+        return $this->core()->buscarMatriculaAtivaModalidade($alunoId, $tenantId, $modalidadeId);
     }
 
     public function temParcelaAtrasada(int $matriculaId, int $tenantId): bool
     {
-        return $this->core->temParcelaAtrasada($matriculaId, $tenantId);
+        return $this->core()->temParcelaAtrasada($matriculaId, $tenantId);
     }
 
     /**
@@ -48,6 +58,6 @@ class MobileMigracaoPlanoService
      */
     public function avaliarAptidaoMigracao(array $matricula, int $tenantId): array
     {
-        return $this->core->avaliarAptidaoMigracao($matricula, $tenantId);
+        return $this->core()->avaliarAptidaoMigracao($matricula, $tenantId);
     }
 }

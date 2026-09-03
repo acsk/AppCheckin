@@ -142,4 +142,98 @@ class V2MobileRoutesTest extends TestCase
         $this->getJson('/v2/mobile/assinaturas')
             ->assertUnauthorized();
     }
+
+    public function test_turmas_requires_jwt(): void
+    {
+        $this->getJson('/v2/mobile/turmas')
+            ->assertUnauthorized();
+    }
+
+    public function test_turma_detalhes_returns_404_when_not_found(): void
+    {
+        $this->getJson('/v2/mobile/turma/999999/detalhes', [
+            'Authorization' => 'Bearer '.$this->bearerToken(),
+        ])
+            ->assertNotFound()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('error', 'Turma não encontrada');
+    }
+
+    public function test_turma_participantes_returns_404_when_not_found(): void
+    {
+        $this->getJson('/v2/mobile/turma/999999/participantes', [
+            'Authorization' => 'Bearer '.$this->bearerToken(),
+        ])
+            ->assertNotFound()
+            ->assertJsonPath('error', 'Turma não encontrada');
+    }
+
+    public function test_confirmar_presenca_requires_presencas(): void
+    {
+        $response = $this->postJson('/v2/mobile/turma/1/confirmar-presenca', [], [
+            'Authorization' => 'Bearer '.$this->bearerToken(),
+        ]);
+
+        // Paridade Slim: turma é validada antes das presenças; turma 1 pode não existir no banco de teste.
+        $this->assertContains($response->status(), [400, 404]);
+        if ($response->status() === 400) {
+            $response->assertJsonPath('error', 'Nenhuma presença informada');
+        }
+    }
+
+    public function test_confirmar_presenca_returns_404_when_turma_not_found(): void
+    {
+        $this->postJson('/v2/mobile/turma/999999/confirmar-presenca', [
+            'presencas' => ['1' => true],
+        ], [
+            'Authorization' => 'Bearer '.$this->bearerToken(),
+        ])
+            ->assertNotFound()
+            ->assertJsonPath('error', 'Turma não encontrada');
+    }
+
+    public function test_perfil_foto_requires_jwt(): void
+    {
+        $this->getJson('/v2/mobile/perfil/foto')
+            ->assertUnauthorized();
+    }
+
+    public function test_alunos_buscar_requires_jwt(): void
+    {
+        $this->getJson('/v2/mobile/alunos/buscar')
+            ->assertUnauthorized();
+    }
+
+    public function test_alunos_buscar_requires_search_param(): void
+    {
+        $this->getJson('/v2/mobile/alunos/buscar', [
+            'Authorization' => 'Bearer '.$this->bearerToken(),
+        ])
+            ->assertStatus(400)
+            ->assertJsonPath('error', 'Informe nome, CPF ou email para buscar');
+    }
+
+    public function test_checkin_manual_requires_fields(): void
+    {
+        $this->postJson('/v2/mobile/checkin/manual', [], [
+            'Authorization' => 'Bearer '.$this->bearerToken(),
+        ])
+            ->assertStatus(422)
+            ->assertJsonPath('error', 'turma_id e aluno_id (ou usuario_id) são obrigatórios');
+    }
+
+    public function test_desfazer_checkin_manual_requires_valid_id(): void
+    {
+        $this->deleteJson('/v2/mobile/checkin/manual/0/desfazer', [], [
+            'Authorization' => 'Bearer '.$this->bearerToken(),
+        ])
+            ->assertStatus(400)
+            ->assertJsonPath('error', 'checkinId é obrigatório');
+    }
+
+    public function test_bloquear_checkin_requires_jwt(): void
+    {
+        $this->postJson('/v2/mobile/turma/1/bloquear-checkin')
+            ->assertUnauthorized();
+    }
 }

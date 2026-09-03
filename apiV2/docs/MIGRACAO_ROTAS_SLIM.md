@@ -87,7 +87,7 @@ Ao concluir um módulo: implementar rotas na v2 **e** remover o prefixo correspo
 - Matrículas: index, show, store, update, delete, bloquear, cancelar, alterar-plano, vencimentos, pagamentos
 - Auditoria (7 rotas)
 - Logs `/admin/logs`, alias `/superadmin/logs`
-- Mobile: perfil, checkin, planos, assinaturas, pagamento pix, etc.
+- Mobile: perfil, checkin, planos, assinaturas, pagamento pix, **turmas**, **perfil/foto**, **check-in manual professor**, **bloquear/desbloquear check-in**, etc.
 
 ### Partials `routes/v2/admin/`
 
@@ -167,7 +167,7 @@ Detalhamento das rotas que **ainda não existem** na apiV2. Módulos já migrado
 ### Fora do painel (baixa prioridade strangler)
 
 - `/professor/*` (5 rotas)
-- `/mobile/*` restante (recordes, pacotes, turma, perfil foto, etc.)
+- `/mobile/*` restante (recordes, pacotes, `/professor/*` dashboard/presença)
 - `/v1/*` legado
 - `/checkin`, `/signin`, `/uploads`, `/usuarios/{id}/estatisticas`
 

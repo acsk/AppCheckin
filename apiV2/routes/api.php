@@ -54,6 +54,8 @@ Route::prefix('v2')->group(function () {
 
         Route::prefix('mobile')->group(function () {
             Route::get('/perfil', [MobileController::class, 'perfil']);
+            Route::post('/perfil/foto', [MobileController::class, 'uploadFotoPerfil']);
+            Route::get('/perfil/foto', [MobileController::class, 'obterFotoPerfil']);
             Route::get('/acesso', [MobileController::class, 'verificarAcesso']);
             Route::get('/tenants', [MobileController::class, 'tenants']);
             Route::get('/checkins', [MobileController::class, 'historicoCheckins']);
@@ -62,6 +64,15 @@ Route::prefix('v2')->group(function () {
             Route::get('/wod/hoje', [MobileController::class, 'wodHoje']);
             Route::get('/wods/hoje', [MobileController::class, 'wodsHoje']);
             Route::get('/horarios-disponiveis', [MobileController::class, 'horariosDisponiveis']);
+            Route::get('/turmas', [MobileController::class, 'listarTurmas']);
+            Route::get('/turma/{turmaId}/detalhes', [MobileController::class, 'detalheTurma']);
+            Route::get('/turma/{turmaId}/participantes', [MobileController::class, 'participantesTurma']);
+            Route::post('/turma/{turmaId}/confirmar-presenca', [MobileController::class, 'confirmarPresenca']);
+            Route::post('/turma/{turmaId}/bloquear-checkin', [MobileController::class, 'bloquearCheckinTurma']);
+            Route::post('/turma/{turmaId}/desbloquear-checkin', [MobileController::class, 'desbloquearCheckinTurma']);
+            Route::get('/alunos/buscar', [MobileController::class, 'buscarAlunosParaCheckin']);
+            Route::post('/checkin/manual', [MobileController::class, 'registrarCheckinManual']);
+            Route::delete('/checkin/manual/{checkinId}/desfazer', [MobileController::class, 'desfazerCheckinManual']);
             Route::post('/checkin', [MobileController::class, 'registrarCheckin']);
             Route::delete('/checkin/{checkinId}/desfazer', [MobileController::class, 'desfazerCheckin']);
 

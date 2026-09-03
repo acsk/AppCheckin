@@ -60,6 +60,151 @@ class TurmaRepository
             ->count('aluno_id');
     }
 
+    /** Contagem por turma_id apenas (paridade Slim detalheTurma). */
+    public function contarCheckinsPorTurmaId(int $turmaId): int
+    {
+        return (int) DB::table('checkins')->where('turma_id', $turmaId)->count();
+    }
+
+    public function findDetalheMobile(int $turmaId, int $tenantId): ?array
+    {
+        $row = DB::table('turmas as t')
+            ->join('professores as p', 't.professor_id', '=', 'p.id')
+            ->leftJoin('modalidades as m', 't.modalidade_id', '=', 'm.id')
+            ->leftJoin('dias as d', 't.dia_id', '=', 'd.id')
+            ->where('t.id', $turmaId)
+            ->where('t.tenant_id', $tenantId)
+            ->first([
+                't.id',
+                't.nome',
+                't.professor_id',
+                't.modalidade_id',
+                't.limite_alunos',
+                't.horario_inicio',
+                't.horario_fim',
+                't.tolerancia_minutos',
+                't.tolerancia_antes_minutos',
+                't.ativo',
+                'p.nome as professor_nome',
+                'p.email as professor_email',
+                'm.nome as modalidade_nome',
+                'm.icone as modalidade_icone',
+                'm.cor as modalidade_cor',
+                'd.data as dia_data',
+            ]);
+
+        return $row ? (array) $row : null;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function listarAlunosAgregadosCheckinTurma(int $turmaId): array
+    {
+        return DB::table('alunos as a')
+            ->join('usuarios as u', 'u.id', '=', 'a.usuario_id')
+            ->join('checkins as c', 'a.id', '=', 'c.aluno_id')
+            ->where('c.turma_id', $turmaId)
+            ->groupBy('a.id', 'a.nome', 'a.data_nascimento', 'u.email', 'a.foto_caminho')
+            ->orderBy('u.nome')
+            ->get([
+                'a.id',
+                'a.nome',
+                'a.data_nascimento',
+                'u.email',
+                'a.foto_caminho',
+                DB::raw('COUNT(c.id) as checkins_do_aluno'),
+            ])
+            ->map(static fn ($row) => (array) $row)
+            ->all();
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function listarCheckinsRecentesMobile(int $turmaId, int $limit = 50): array
+    {
+        return DB::table('checkins as c')
+            ->join('alunos as a', 'c.aluno_id', '=', 'a.id')
+            ->where('c.turma_id', $turmaId)
+            ->orderByDesc('c.created_at')
+            ->limit($limit)
+            ->get([
+                'c.id as checkin_id',
+                'c.aluno_id',
+                'a.nome as usuario_nome',
+                'a.data_nascimento',
+                'c.created_at as data_checkin',
+                DB::raw("TIME_FORMAT(c.created_at, '%H:%i:%s') as hora_checkin"),
+                DB::raw("DATE_FORMAT(c.created_at, '%d/%m/%Y') as data_checkin_formatada"),
+                'c.presente',
+                'c.presenca_confirmada_em',
+                'c.presenca_confirmada_por',
+            ])
+            ->map(static fn ($row) => (array) $row)
+            ->all();
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function listarParticipantesMobile(int $turmaId): array
+    {
+        return DB::table('checkins as c')
+            ->join('alunos as a', 'c.aluno_id', '=', 'a.id')
+            ->join('usuarios as u', 'a.usuario_id', '=', 'u.id')
+            ->where('c.turma_id', $turmaId)
+            ->orderByDesc('c.created_at')
+            ->get([
+                'c.id as checkin_id',
+                'c.aluno_id',
+                'a.nome as usuario_nome',
+                'a.data_nascimento',
+                'u.email',
+                'c.created_at as data_checkin',
+                DB::raw("TIME_FORMAT(c.created_at, '%H:%i:%s') as hora_checkin"),
+                DB::raw("DATE_FORMAT(c.created_at, '%d/%m/%Y') as data_checkin_formatada"),
+            ])
+            ->map(static fn ($row) => (array) $row)
+            ->all();
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function listarTurmasMobileAtivas(int $tenantId): array
+    {
+        $sql = 'SELECT t.id,
+                t.nome,
+                p.id as professor_id,
+                p.nome as professor,
+                m.id as modalidade_id,
+                m.nome as modalidade,
+                m.icone,
+                m.cor,
+                t.horario_inicio,
+                t.horario_fim,
+                d.data as dia_aula,
+                d.id as dia_id,
+                t.limite_alunos,
+                (SELECT COUNT(*) FROM checkins c WHERE c.turma_id = t.id) as total_checkins,
+                (SELECT COUNT(*) FROM inscricoes_turmas it
+                 WHERE it.turma_id = t.id AND it.ativo = 1 AND it.status = \'ativa\') as alunos_inscritos,
+                (t.limite_alunos - COALESCE((SELECT COUNT(*) FROM inscricoes_turmas it
+                 WHERE it.turma_id = t.id AND it.ativo = 1 AND it.status = \'ativa\'), 0)) as vagas_disponiveis,
+                t.ativo,
+                t.created_at,
+                t.updated_at
+                FROM turmas t
+                INNER JOIN professores p ON t.professor_id = p.id
+                INNER JOIN modalidades m ON t.modalidade_id = m.id
+                INNER JOIN dias d ON t.dia_id = d.id
+                WHERE t.tenant_id = ? AND t.ativo = 1
+                ORDER BY d.data ASC, t.horario_inicio ASC';
+
+        return $this->rows($sql, [$tenantId]);
+    }
+
     public function findById(int $id, ?int $tenantId = null): ?array
     {
         $query = DB::table('turmas as t')
