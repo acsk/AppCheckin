@@ -22,8 +22,7 @@ function normalizeApiPath(url) {
  * Para portar: remova a entrada correspondente desta lista.
  */
 const SLIM_ONLY = [
-  // Assinaturas admin (Mercado Pago / gateway)
-  /^\/admin\/assinaturas(\/|$)/,
+  // Assinaturas admin migrado; superadmin ainda na Slim
   /^\/superadmin\/assinaturas(\/|$)/,
 
   // Pacotes e pacote-contratos
