@@ -125,5 +125,12 @@ Route::prefix('v2')->group(function () {
             Route::get('/logs/{arquivo}', [SuperAdminLogController::class, 'show'])
                 ->where('arquivo', '[a-zA-Z0-9._-]+\\.log');
         });
+
+        // Alias legado (build antigo do painel ainda chama /superadmin/logs)
+        Route::prefix('superadmin')->middleware('admin.auth')->group(function () {
+            Route::get('/logs', [SuperAdminLogController::class, 'index']);
+            Route::get('/logs/{arquivo}', [SuperAdminLogController::class, 'show'])
+                ->where('arquivo', '[a-zA-Z0-9._-]+\\.log');
+        });
     });
 });

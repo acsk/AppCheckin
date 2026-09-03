@@ -23,6 +23,7 @@ const cases = [
   ['/admin/dashboard', 'get', null, false, 'dashboard fica na Slim'],
   ['/superadmin/academias', 'get', null, false, 'superadmin academias fica na Slim'],
   ['/admin/logs', 'get', null, true, 'logs Laravel admin vai para v2'],
+  ['/superadmin/logs', 'get', null, true, 'logs Laravel legado SA vai para v2'],
   ['/cep/57000000', 'get', null, false, 'CEP fica na Slim'],
 ];
 
