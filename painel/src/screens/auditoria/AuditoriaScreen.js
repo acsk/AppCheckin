@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -9,13 +9,40 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import LayoutBase from '../../components/LayoutBase';
+import { authService } from '../../services/authService';
 
 export default function AuditoriaScreen() {
   const router = useRouter();
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+
+  useEffect(() => {
+    authService.getCurrentUser().then((user) => {
+      setIsSuperAdmin(user?.papel_id === 4);
+    });
+  }, []);
 
   return (
     <LayoutBase title="Auditoria" subtitle="Verificações e consistência">
       <View style={styles.container}>
+        {isSuperAdmin && (
+          <TouchableOpacity
+            style={[styles.actionButton, styles.actionButtonSa]}
+            activeOpacity={0.7}
+            onPress={() => router.push('/superadmin/logs-laravel')}
+          >
+            <View style={[styles.actionIcon, { backgroundColor: '#0f172a' }]}>
+              <Feather name="terminal" size={22} color="#a5b4fc" />
+            </View>
+            <View style={styles.actionContent}>
+              <Text style={styles.actionLabel}>Logs Laravel (API v2)</Text>
+              <Text style={styles.actionDesc}>
+                Erros e warnings do servidor Laravel — filtre por nível ou texto para diagnosticar falhas
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={20} color="#9ca3af" />
+          </TouchableOpacity>
+        )}
+
         <TouchableOpacity
           style={styles.actionButton}
           activeOpacity={0.7}
@@ -53,7 +80,7 @@ export default function AuditoriaScreen() {
           activeOpacity={0.7}
           onPress={() => router.push('/auditoria/pagamentos-duplicados')}
         >
-          <View style={styles.actionIcon}>
+          <View style={[styles.actionIcon]}>
             <Feather name="copy" size={22} color="#ef4444" />
           </View>
           <View style={styles.actionContent}>
@@ -126,6 +153,10 @@ const styles = StyleSheet.create({
     padding: 16,
     borderWidth: 1,
     borderColor: '#e5e7eb',
+  },
+  actionButtonSa: {
+    borderColor: '#c7d2fe',
+    backgroundColor: '#f8fafc',
   },
   actionIcon: {
     width: 44,
