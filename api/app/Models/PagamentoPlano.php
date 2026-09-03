@@ -474,6 +474,7 @@ class PagamentoPlano
 
         // Avulso: acesso = fim do período PAGO (última parcela paga).
         // Parcela futura "Aguardando" é só cobrança — não estende vigência.
+        // Semestral ex. #288: pago 27/03, venc 27/04, ciclo 6m → fim = 27/10.
         $acessoAte = null;
         if ($ehAvulso) {
             $stmtPago = $this->pdo->prepare(

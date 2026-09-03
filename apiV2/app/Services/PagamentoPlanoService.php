@@ -104,6 +104,7 @@ class PagamentoPlanoService
         // venc >= pago + ciclo → parcela já representa o FIM do período (fluxo MP);
         // senão → venc é a data devida (início); fim = GREATEST(pago, venc) + ciclo.
         // Parcela futura "Aguardando" é só cobrança — não estende vigência.
+        // Semestral ex. #288: pago 27/03, venc 27/04, ciclo 6m → fim = 27/10.
         $acessoAte = null;
         if ($ehAvulso) {
             $acessoAte = DB::table('pagamentos_plano as pg')

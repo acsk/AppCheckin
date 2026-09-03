@@ -200,6 +200,8 @@ class AdminAuditoriaService
             }
 
             // 2. proxima_data_vencimento desatualizada
+            // Pacote: proxima = fim do período do contrato; parcela pendente futura
+            // é renovação do pacote (ex. bimestre) — não é divergência.
             $rows = $this->select("
                 SELECT m.id AS matricula_id, a.nome AS aluno_nome, p.nome AS plano_nome,
                        m.proxima_data_vencimento AS vencimento_matricula,
@@ -214,6 +216,7 @@ class AdminAuditoriaService
                 WHERE m.tenant_id = :tid
                   AND sm.codigo = 'ativa'
                   AND m.proxima_data_vencimento IS NOT NULL
+                  AND m.pacote_contrato_id IS NULL
                 GROUP BY m.id, a.nome, p.nome, m.proxima_data_vencimento, sm.codigo
                 HAVING ABS(DATEDIFF(m.proxima_data_vencimento, MIN(pp.data_vencimento))) > 1
                 ORDER BY a.nome
@@ -221,7 +224,7 @@ class AdminAuditoriaService
             if ($rows) {
                 $anomalias[] = [
                     'tipo' => 'proxima_data_vencimento_desatualizada',
-                    'descricao' => 'Matrículas ativas onde proxima_data_vencimento diverge da próxima parcela pendente em mais de 1 dia',
+                    'descricao' => 'Matrículas ativas (fora de pacote) onde proxima_data_vencimento diverge da próxima parcela pendente em mais de 1 dia',
                     'severidade' => 'media',
                     'total' => count($rows),
                     'registros' => $rows,
@@ -368,6 +371,7 @@ class AdminAuditoriaService
                 INNER JOIN pagamentos_plano pp ON pp.matricula_id = m.id
                     AND pp.status_pagamento_id IN (1, 3)
                 WHERE m.tenant_id = :tid
+                  AND m.pacote_contrato_id IS NULL
                 GROUP BY m.id, a.nome, m.proxima_data_vencimento
                 HAVING m.proxima_data_vencimento IS NULL
                     OR ABS(DATEDIFF(m.proxima_data_vencimento, MIN(pp.data_vencimento))) > 1
