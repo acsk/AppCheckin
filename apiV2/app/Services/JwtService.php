@@ -17,13 +17,21 @@ class JwtService
 
     public function encode(array $payload): string
     {
+        if (strlen($this->secret) < 16) {
+            throw new \RuntimeException('JWT_SECRET inválido ou não configurado');
+        }
+
         $issuedAt = time();
         $data = array_merge($payload, [
             'iat' => $issuedAt,
             'exp' => $issuedAt + $this->expiration,
         ]);
 
-        return JWT::encode($data, $this->secret, 'HS256');
+        try {
+            return JWT::encode($data, $this->secret, 'HS256');
+        } catch (\Throwable $e) {
+            throw new \RuntimeException('JWT_SECRET inválido ou não configurado', 0, $e);
+        }
     }
 
     public function decode(string $token): ?object

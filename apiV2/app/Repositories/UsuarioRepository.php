@@ -107,6 +107,22 @@ class UsuarioRepository
         return $row ? (int) $row->id : null;
     }
 
+    public function findAlunoIdInTenant(int $usuarioId, int $tenantId): ?int
+    {
+        $row = DB::table('alunos as a')
+            ->join('tenant_usuario_papel as tup', function ($join) use ($tenantId) {
+                $join->on('tup.usuario_id', '=', 'a.usuario_id')
+                    ->where('tup.tenant_id', $tenantId)
+                    ->where('tup.papel_id', 1)
+                    ->where('tup.ativo', 1);
+            })
+            ->where('a.usuario_id', $usuarioId)
+            ->select('a.id')
+            ->first();
+
+        return $row ? (int) $row->id : null;
+    }
+
     public function findProfile(int $userId, ?int $tenantId): ?array
     {
         $query = DB::table('usuarios as u');

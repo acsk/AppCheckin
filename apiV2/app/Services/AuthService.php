@@ -44,12 +44,22 @@ class AuthService
         $tenants = [];
 
         if ($papelId === 4) {
-            $token = $this->jwt->encode([
-                'user_id' => (int) $usuario->id,
-                'email' => $usuario->email,
-                'tenant_id' => null,
-                'is_super_admin' => true,
-            ]);
+            try {
+                $token = $this->jwt->encode([
+                    'user_id' => (int) $usuario->id,
+                    'email' => $usuario->email,
+                    'tenant_id' => null,
+                    'is_super_admin' => true,
+                ]);
+            } catch (\RuntimeException $e) {
+                report($e);
+
+                return ApiError::json(
+                    'Configuração JWT inválida no servidor. Verifique JWT_SECRET no .env da apiV2.',
+                    'JWT_CONFIG_ERROR',
+                    500,
+                );
+            }
         } else {
             $tenants = $this->usuarios->getTenantsByUsuario((int) $usuario->id);
 
@@ -75,12 +85,22 @@ class AuthService
                     ? $this->usuarios->findAlunoId((int) $usuario->id)
                     : null;
 
-                $token = $this->jwt->encode([
-                    'user_id' => (int) $usuario->id,
-                    'email' => $usuario->email,
-                    'tenant_id' => $tenantId,
-                    'aluno_id' => $alunoId,
-                ]);
+                try {
+                    $token = $this->jwt->encode([
+                        'user_id' => (int) $usuario->id,
+                        'email' => $usuario->email,
+                        'tenant_id' => $tenantId,
+                        'aluno_id' => $alunoId,
+                    ]);
+                } catch (\RuntimeException $e) {
+                    report($e);
+
+                    return ApiError::json(
+                        'Configuração JWT inválida no servidor. Verifique JWT_SECRET no .env da apiV2.',
+                        'JWT_CONFIG_ERROR',
+                        500,
+                    );
+                }
             }
         }
 
@@ -129,7 +149,7 @@ class AuthService
             );
         }
 
-        $usuario = $this->usuarios->findById($userId);
+        $usuario = $this->usuarios->findAuthContext($userId);
 
         if (! $usuario) {
             return ApiError::json('Dados inválidos', 'INVALID_USER_DATA', 401);
@@ -159,22 +179,33 @@ class AuthService
         int $tenantId,
         bool $includeAllTenants,
     ): JsonResponse {
-        $usuario = $this->usuarios->findById($userId);
+        $usuario = $this->usuarios->findAuthContext($userId);
 
         if (! $usuario) {
             return ApiError::json('Usuário não encontrado', 'USER_NOT_FOUND', 404);
         }
 
-        $alunoId = (($usuario['papel_id'] ?? null) == 1)
-            ? $this->usuarios->findAlunoId($userId)
+        $papelId = (int) ($usuario['papel_id'] ?? 0);
+        $alunoId = $papelId === 1
+            ? $this->usuarios->findAlunoIdInTenant($userId, $tenantId)
             : null;
 
-        $token = $this->jwt->encode([
-            'user_id' => (int) $usuario['id'],
-            'email' => $usuario['email'],
-            'tenant_id' => $tenantId,
-            'aluno_id' => $alunoId,
-        ]);
+        try {
+            $token = $this->jwt->encode([
+                'user_id' => (int) $usuario['id'],
+                'email' => $usuario['email'],
+                'tenant_id' => $tenantId,
+                'aluno_id' => $alunoId,
+            ]);
+        } catch (\RuntimeException $e) {
+            report($e);
+
+            return ApiError::json(
+                'Configuração JWT inválida no servidor. Verifique JWT_SECRET no .env da apiV2.',
+                'JWT_CONFIG_ERROR',
+                500,
+            );
+        }
 
         $tenants = $this->usuarios->getTenantsByUsuario($userId);
         $tenantSelecionado = null;

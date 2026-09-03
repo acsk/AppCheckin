@@ -48,7 +48,7 @@ class AuthServiceSelectTenantTest extends TestCase
     public function test_select_tenant_public_rejects_unknown_user(): void
     {
         $usuarios = Mockery::mock(UsuarioRepository::class);
-        $usuarios->shouldReceive('findById')->with(99999)->andReturn(null);
+        $usuarios->shouldReceive('findAuthContext')->with(99999)->andReturn(null);
 
         $service = $this->authService(Mockery::mock(JwtService::class), $usuarios);
 
@@ -100,7 +100,7 @@ class AuthServiceSelectTenantTest extends TestCase
 
         $usuarios = Mockery::mock(UsuarioRepository::class);
         $usuarios->shouldReceive('temAcessoTenant')->with($userId, $tenantId)->andReturn(true);
-        $usuarios->shouldReceive('findById')->with($userId)->andReturn([
+        $usuarios->shouldReceive('findAuthContext')->with($userId)->andReturn([
             'id' => $userId,
             'nome' => 'Test',
             'email' => 'a@b.com',
@@ -110,7 +110,7 @@ class AuthServiceSelectTenantTest extends TestCase
         ]);
 
         if ($alunoId !== null) {
-            $usuarios->shouldReceive('findAlunoId')->with($userId)->andReturn($alunoId);
+            $usuarios->shouldReceive('findAlunoIdInTenant')->with($userId, $tenantId)->andReturn($alunoId);
         }
 
         $usuarios->shouldReceive('getTenantsByUsuario')->with($userId)->andReturn([
