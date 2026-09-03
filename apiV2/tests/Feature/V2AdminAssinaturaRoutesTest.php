@@ -109,14 +109,13 @@ class V2AdminAssinaturaRoutesTest extends TestCase
         $token = $this->tokenParaPapel(3);
 
         $service = Mockery::mock(\App\Services\Admin\AdminAssinaturaService::class);
-        $service->shouldReceive('listarHistoricoAluno')
+        $service->shouldReceive('listarPorAluno')
             ->once()
             ->with(3, 1)
             ->andReturn([
                 'status' => 200,
                 'body' => [
                     'success' => true,
-                    'aluno_id' => 1,
                     'total' => 1,
                     'assinaturas' => [['id' => 10]],
                 ],
@@ -134,6 +133,34 @@ class V2AdminAssinaturaRoutesTest extends TestCase
     {
         $this->postJson('/v2/admin/assinaturas/1/sincronizar-matricula')
             ->assertUnauthorized();
+    }
+
+    public function test_show_assinatura_requires_jwt(): void
+    {
+        $this->getJson('/v2/admin/assinaturas/1')
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'MISSING_TOKEN');
+    }
+
+    public function test_show_delegates_to_service(): void
+    {
+        $token = $this->tokenParaPapel(3);
+
+        $service = Mockery::mock(\App\Services\Admin\AdminAssinaturaService::class);
+        $service->shouldReceive('buscar')
+            ->once()
+            ->with(7, 3)
+            ->andReturn([
+                'status' => 200,
+                'body' => ['success' => true, 'assinatura' => ['id' => 7]],
+            ]);
+        $this->app->instance(\App\Services\Admin\AdminAssinaturaService::class, $service);
+
+        $this->getJson('/v2/admin/assinaturas/7', [
+            'Authorization' => 'Bearer '.$token,
+        ])
+            ->assertOk()
+            ->assertJsonPath('assinatura.id', 7);
     }
 
     private function tokenParaPapel(int $papelId): string

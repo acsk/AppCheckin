@@ -56,14 +56,14 @@ class V2SuperAdminRoutesTest extends TestCase
     {
         $token = $this->tokenParaPapel(4);
 
-        $misc = Mockery::mock(\App\Services\SuperAdmin\SuperAdminMiscService::class);
-        $misc->shouldReceive('listarPapeis')
+        $service = Mockery::mock(\App\Services\SuperAdmin\SuperAdminPapelService::class);
+        $service->shouldReceive('listarPapeis')
             ->once()
             ->andReturn([
                 'status' => 200,
                 'body' => ['papeis' => [['id' => 3, 'nome' => 'Admin']]],
             ]);
-        $this->app->instance(\App\Services\SuperAdmin\SuperAdminMiscService::class, $misc);
+        $this->app->instance(\App\Services\SuperAdmin\SuperAdminPapelService::class, $service);
 
         $this->getJson('/v2/superadmin/papeis', [
             'Authorization' => 'Bearer '.$token,
@@ -159,8 +159,8 @@ class V2SuperAdminRoutesTest extends TestCase
     {
         $token = $this->tokenParaPapel(4);
 
-        $service = Mockery::mock(\App\Services\SuperAdmin\SuperAdminAssinaturaService::class);
-        $service->shouldReceive('listar')
+        $service = Mockery::mock(\App\Services\Admin\AdminAssinaturaService::class);
+        $service->shouldReceive('listarSuperAdmin')
             ->once()
             ->with([])
             ->andReturn([
@@ -174,7 +174,7 @@ class V2SuperAdminRoutesTest extends TestCase
                     'assinaturas' => [['id' => 7, 'tenant_nome' => 'Academia A']],
                 ],
             ]);
-        $this->app->instance(\App\Services\SuperAdmin\SuperAdminAssinaturaService::class, $service);
+        $this->app->instance(\App\Services\Admin\AdminAssinaturaService::class, $service);
 
         $this->getJson('/v2/superadmin/assinaturas', [
             'Authorization' => 'Bearer '.$token,
@@ -188,15 +188,15 @@ class V2SuperAdminRoutesTest extends TestCase
     {
         $token = $this->tokenParaPapel(4);
 
-        $service = Mockery::mock(\App\Services\SuperAdmin\SuperAdminAssinaturaService::class);
-        $service->shouldReceive('listar')
+        $service = Mockery::mock(\App\Services\Admin\AdminAssinaturaService::class);
+        $service->shouldReceive('listarSuperAdmin')
             ->once()
             ->with(['tenant_id' => '3'])
             ->andReturn([
                 'status' => 200,
                 'body' => ['success' => true, 'total' => 0, 'assinaturas' => []],
             ]);
-        $this->app->instance(\App\Services\SuperAdmin\SuperAdminAssinaturaService::class, $service);
+        $this->app->instance(\App\Services\Admin\AdminAssinaturaService::class, $service);
 
         $this->getJson('/v2/superadmin/assinaturas?tenant_id=3', [
             'Authorization' => 'Bearer '.$token,

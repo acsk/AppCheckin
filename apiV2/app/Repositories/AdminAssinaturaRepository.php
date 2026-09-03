@@ -328,7 +328,8 @@ class AdminAssinaturaRepository
 
         return [
             'id' => (int) $row['id'],
-            'tenant_id' => (int) $row['tenant_id'],
+            'tenant_id' => (int) ($row['tenant_id'] ?? 0),
+            'tenant_nome' => $row['tenant_nome'] ?? null,
             'aluno_id' => (int) $row['aluno_id'],
             'aluno_nome' => $row['aluno_nome'] ?? '',
             'aluno_email' => $row['aluno_email'] ?? '',

@@ -16,10 +16,11 @@ class V2AdminRelatorioRoutesTest extends TestCase
     public function test_planos_ciclos_requires_jwt(): void
     {
         $this->getJson('/v2/admin/relatorios/planos-ciclos')
-            ->assertUnauthorized();
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'MISSING_TOKEN');
     }
 
-    public function test_planos_ciclos_retorna_relatorio(): void
+    public function test_planos_ciclos_ok_for_admin(): void
     {
         $token = $this->tokenParaPapel(3);
 
@@ -29,7 +30,12 @@ class V2AdminRelatorioRoutesTest extends TestCase
             ->with(3, Mockery::type('array'))
             ->andReturn([
                 'status' => 200,
-                'body' => ['success' => true, 'planos' => [], 'resumo' => ['total_planos' => 0]],
+                'body' => [
+                    'success' => true,
+                    'tenant' => ['id' => 3, 'nome' => 'Academia'],
+                    'planos' => [],
+                    'resumo' => ['total_planos' => 0],
+                ],
             ]);
         $this->app->instance(\App\Services\Admin\AdminRelatorioService::class, $service);
 

@@ -146,4 +146,47 @@ class V2AdminMatriculaRoutesTest extends TestCase
             ->assertUnauthorized()
             ->assertJsonPath('code', 'MISSING_TOKEN');
     }
+
+    public function test_simular_cancelamento_requires_jwt(): void
+    {
+        $this->getJson('/v2/admin/matriculas/1/simular-cancelamento')
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'MISSING_TOKEN');
+    }
+
+    public function test_cancelar_com_credito_requires_jwt(): void
+    {
+        $this->postJson('/v2/admin/matriculas/1/cancelar-com-credito', ['gerar_credito' => true])
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'MISSING_TOKEN');
+    }
+
+    public function test_confirmar_pagamento_matricula_requires_jwt(): void
+    {
+        $this->postJson('/v2/admin/matriculas/1/pagamentos/2/confirmar', [])
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'MISSING_TOKEN');
+    }
+
+    public function test_baixa_pacote_contrato_requires_jwt(): void
+    {
+        $this->postJson('/v2/admin/matriculas/pacote-contrato/1/baixa', [])
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'MISSING_TOKEN');
+    }
+
+    public function test_matricula_assinatura_routes_require_jwt(): void
+    {
+        $this->getJson('/v2/admin/matriculas/1/assinatura')
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'MISSING_TOKEN');
+
+        $this->postJson('/v2/admin/matriculas/1/assinatura', [])
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'MISSING_TOKEN');
+
+        $this->postJson('/v2/admin/matriculas/1/sincronizar-assinatura', [])
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'MISSING_TOKEN');
+    }
 }

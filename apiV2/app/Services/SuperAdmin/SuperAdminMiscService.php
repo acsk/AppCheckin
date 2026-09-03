@@ -2,33 +2,8 @@
 
 namespace App\Services\SuperAdmin;
 
-use App\Repositories\PlanoRepository;
-use App\Repositories\TenantRepository;
-
 class SuperAdminMiscService
 {
-    public function __construct(
-        private readonly TenantRepository $tenants,
-        private readonly PlanoRepository $planos,
-    ) {}
-
-    /**
-     * @return array{status: int, body: array<string, mixed>}
-     */
-    public function listarPapeis(): array
-    {
-        return [
-            'status' => 200,
-            'body' => [
-                'papeis' => [
-                    ['id' => 1, 'nome' => 'Aluno', 'descricao' => 'Pode acessar o app mobile e fazer check-in'],
-                    ['id' => 2, 'nome' => 'Professor', 'descricao' => 'Pode marcar presença e gerenciar turmas'],
-                    ['id' => 3, 'nome' => 'Admin', 'descricao' => 'Pode acessar o painel administrativo'],
-                ],
-            ],
-        ];
-    }
-
     /**
      * @return array{status: int, body: array<string, mixed>}
      */
@@ -58,40 +33,6 @@ class SuperAdminMiscService
                 'environment' => $safeVars,
                 'php_version' => PHP_VERSION,
                 'timestamp' => date('Y-m-d H:i:s'),
-            ],
-        ];
-    }
-
-    /**
-     * @param  array<string, mixed>  $query
-     * @return array{status: int, body: array<string, mixed>}
-     */
-    public function listarPlanosAlunos(array $query): array
-    {
-        $tenantId = isset($query['tenant_id']) ? (int) $query['tenant_id'] : null;
-        $apenasAtivos = isset($query['ativos']) && $query['ativos'] === 'true';
-        $tenants = $this->tenants->getAll(['ativo' => true]);
-
-        if (! $tenantId) {
-            return [
-                'status' => 200,
-                'body' => [
-                    'planos' => [],
-                    'total' => 0,
-                    'tenants' => $tenants,
-                    'message' => 'Selecione uma academia para ver os planos',
-                ],
-            ];
-        }
-
-        $planos = $this->planos->listarPorTenantSuperAdmin($tenantId, $apenasAtivos);
-
-        return [
-            'status' => 200,
-            'body' => [
-                'planos' => $planos,
-                'total' => count($planos),
-                'tenants' => $tenants,
             ],
         ];
     }

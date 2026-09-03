@@ -26,19 +26,27 @@ class AdminAssinaturaService
     }
 
     /**
-     * Super Admin: filtra por tenant_id no query (obrigatório para listagem por academia).
+     * Super Admin: lista assinaturas de todos os tenants; filtro opcional tenant_id.
+     *
+     * @param  array<string, mixed>  $params
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function listarSuperAdmin(array $params): array
+    {
+        $tenantId = ! empty($params['tenant_id']) ? (int) $params['tenant_id'] : null;
+
+        return $this->listarPaginado($tenantId, $params);
+    }
+
+    /**
+     * @deprecated Use listarSuperAdmin
      *
      * @param  array<string, mixed>  $params
      * @return array{status: int, body: array<string, mixed>}
      */
     public function listarTodas(array $params): array
     {
-        $tenantId = ! empty($params['tenant_id']) ? (int) $params['tenant_id'] : null;
-        if ($tenantId === null) {
-            return $this->erro('tenant_id é obrigatório', 400);
-        }
-
-        return $this->listarPaginado($tenantId, $params);
+        return $this->listarSuperAdmin($params);
     }
 
     /**
@@ -418,7 +426,7 @@ class AdminAssinaturaService
      * @param  array<string, mixed>  $params
      * @return array{status: int, body: array<string, mixed>}
      */
-    private function listarPaginado(int $tenantId, array $params): array
+    private function listarPaginado(?int $tenantId, array $params): array
     {
         try {
             $page = max(1, (int) ($params['page'] ?? 1));
