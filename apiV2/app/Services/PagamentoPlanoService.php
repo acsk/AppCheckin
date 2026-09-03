@@ -206,6 +206,9 @@ class PagamentoPlanoService
     /**
      * Marca parcelas pendentes vencidas como atrasado (status 3).
      * Paridade com Slim PagamentoPlano::marcarAtrasados.
+     *
+     * Usa SELECT + UPDATE por id para evitar MySQL 1093 e falha de correlação
+     * de alias externo em derived table (Hostinger/MariaDB: Unknown column m.tenant_id).
      */
     public function marcarAtrasados(int $tenantId): int
     {
@@ -222,17 +225,25 @@ class PagamentoPlanoService
             [$tenantId]
         );
 
-        $sqlAvulso = '
-            UPDATE pagamentos_plano pp
+        $idsAvulso = DB::select(
+            '
+            SELECT pp.id
+            FROM pagamentos_plano pp
             INNER JOIN matriculas m ON m.id = pp.matricula_id AND m.tenant_id = pp.tenant_id
-            SET pp.status_pagamento_id = 3, pp.updated_at = NOW()
             WHERE pp.tenant_id = ?
               AND m.tipo_cobranca = \'avulso\'
               AND pp.status_pagamento_id = 1
               AND pp.data_pagamento IS NULL
               AND '.self::sqlAvulsoPeriodoPagoExpirou('m.tenant_id', 'm.id').'
-        ';
-        $marcadosAvulso = DB::update($sqlAvulso, [$tenantId]);
+            ',
+            [$tenantId]
+        );
+
+        $marcadosAvulso = $this->atualizarStatusPorIds(
+            array_map(static fn ($r) => (int) $r->id, $idsAvulso),
+            $tenantId,
+            3
+        );
 
         return $marcados + $marcadosAvulso;
     }
@@ -274,15 +285,8 @@ class PagamentoPlanoService
 
     private static function sqlAvulsoPeriodoPagoExpirou(string $tenantExpr, string $matriculaExpr): string
     {
-        $fimPeriodo = self::sqlFimPeriodoPago($tenantExpr, $matriculaExpr);
-
-        // MySQL 1093: ao UPDATE em pagamentos_plano, subquery na mesma tabela precisa
-        // de derived table intermediária (paridade com regra do InnoDB).
-        return "COALESCE((
-            SELECT fim_periodo FROM (
-                SELECT {$fimPeriodo} AS fim_periodo
-            ) AS _fim_pago_calc
-        ), '1900-01-01') < CURDATE()";
+        // Em SELECT (não UPDATE) a subquery direta em pagamentos_plano é válida.
+        return 'COALESCE('.self::sqlFimPeriodoPago($tenantExpr, $matriculaExpr).", '1900-01-01') < CURDATE()";
     }
 
     /**
@@ -291,10 +295,11 @@ class PagamentoPlanoService
      */
     public function corrigirParcelasFuturasMarcadasAtrasadas(int $tenantId): int
     {
-        $sql = '
-            UPDATE pagamentos_plano pp
+        $rows = DB::select(
+            '
+            SELECT pp.id
+            FROM pagamentos_plano pp
             INNER JOIN matriculas m ON m.id = pp.matricula_id AND m.tenant_id = pp.tenant_id
-            SET pp.status_pagamento_id = 1, pp.updated_at = NOW()
             WHERE pp.tenant_id = ?
             AND pp.status_pagamento_id = 3
             AND pp.data_vencimento >= CURDATE()
@@ -302,8 +307,34 @@ class PagamentoPlanoService
             AND NOT (
                 m.tipo_cobranca = \'avulso\'
                 AND '.self::sqlAvulsoPeriodoPagoExpirou('m.tenant_id', 'm.id').'
-            )';
+            )
+            ',
+            [$tenantId]
+        );
 
-        return DB::update($sql, [$tenantId]);
+        return $this->atualizarStatusPorIds(
+            array_map(static fn ($r) => (int) $r->id, $rows),
+            $tenantId,
+            1
+        );
+    }
+
+    /**
+     * @param  list<int>  $ids
+     */
+    private function atualizarStatusPorIds(array $ids, int $tenantId, int $statusPagamentoId): int
+    {
+        $ids = array_values(array_filter($ids, static fn (int $id) => $id > 0));
+        if ($ids === []) {
+            return 0;
+        }
+
+        return DB::table('pagamentos_plano')
+            ->where('tenant_id', $tenantId)
+            ->whereIn('id', $ids)
+            ->update([
+                'status_pagamento_id' => $statusPagamentoId,
+                'updated_at' => now(),
+            ]);
     }
 }

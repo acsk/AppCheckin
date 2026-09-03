@@ -576,9 +576,9 @@ class PagamentoPlano
         // Avulso: renovação em aberto fica atrasada quando o período PAGO ATUAL expirou
         // (MAX data_vencimento das pagas), não por parcela histórica antiga.
         $sqlAvulso = "
-            UPDATE pagamentos_plano pp
+            SELECT pp.id
+            FROM pagamentos_plano pp
             INNER JOIN matriculas m ON m.id = pp.matricula_id AND m.tenant_id = pp.tenant_id
-            SET pp.status_pagamento_id = 3, pp.updated_at = NOW()
             WHERE pp.tenant_id = :tenant_id
               AND m.tipo_cobranca = 'avulso'
               AND pp.status_pagamento_id = 1
@@ -587,8 +587,9 @@ class PagamentoPlano
         ";
         $stmtAvulso = $this->pdo->prepare($sqlAvulso);
         $stmtAvulso->execute(['tenant_id' => $tenantId]);
+        $idsAvulso = array_map('intval', $stmtAvulso->fetchAll(\PDO::FETCH_COLUMN));
 
-        return $marcados + $stmtAvulso->rowCount();
+        return $marcados + $this->atualizarStatusPagamentoPorIds($idsAvulso, $tenantId, 3);
     }
 
     /**
@@ -636,16 +637,12 @@ class PagamentoPlano
 
     /**
      * Período pago avulso já expirou em relação a hoje.
+     * Usar só em SELECT (não em UPDATE na mesma tabela) para evitar MySQL 1093
+     * e falha de correlação em derived table (Unknown column m.tenant_id).
      */
     private static function sqlAvulsoPeriodoPagoExpirou(string $tenantExpr, string $matriculaExpr): string
     {
-        $fimPeriodo = self::sqlFimPeriodoPago($tenantExpr, $matriculaExpr);
-
-        return 'COALESCE((
-            SELECT fim_periodo FROM (
-                SELECT ' . $fimPeriodo . ' AS fim_periodo
-            ) AS _fim_pago_calc
-        ), \'1900-01-01\') < CURDATE()';
+        return 'COALESCE(' . self::sqlFimPeriodoPago($tenantExpr, $matriculaExpr) . ", '1900-01-01') < CURDATE()";
     }
 
     /**
@@ -654,9 +651,9 @@ class PagamentoPlano
      */
     public function corrigirParcelasFuturasMarcadasAtrasadas(int $tenantId): int
     {
-        $sql = "UPDATE pagamentos_plano pp
+        $sql = "SELECT pp.id
+                FROM pagamentos_plano pp
                 INNER JOIN matriculas m ON m.id = pp.matricula_id AND m.tenant_id = pp.tenant_id
-                SET pp.status_pagamento_id = 1, pp.updated_at = NOW()
                 WHERE pp.tenant_id = :tenant_id
                 AND pp.status_pagamento_id = 3
                 AND pp.data_vencimento >= CURDATE()
@@ -668,6 +665,29 @@ class PagamentoPlano
 
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute(['tenant_id' => $tenantId]);
+        $ids = array_map('intval', $stmt->fetchAll(\PDO::FETCH_COLUMN));
+
+        return $this->atualizarStatusPagamentoPorIds($ids, $tenantId, 1);
+    }
+
+    /**
+     * @param  list<int>  $ids
+     */
+    private function atualizarStatusPagamentoPorIds(array $ids, int $tenantId, int $statusPagamentoId): int
+    {
+        $ids = array_values(array_filter($ids, static fn (int $id) => $id > 0));
+        if ($ids === []) {
+            return 0;
+        }
+
+        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $params = array_merge([$statusPagamentoId, $tenantId], $ids);
+        $stmt = $this->pdo->prepare(
+            "UPDATE pagamentos_plano
+             SET status_pagamento_id = ?, updated_at = NOW()
+             WHERE tenant_id = ? AND id IN ($placeholders)"
+        );
+        $stmt->execute($params);
 
         return $stmt->rowCount();
     }
