@@ -16,9 +16,7 @@ export default function AuditoriaScreen() {
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   useEffect(() => {
-    authService.getCurrentUser().then((user) => {
-      setIsSuperAdmin(user?.papel_id === 4);
-    });
+    authService.isSuperAdmin().then(setIsSuperAdmin);
   }, []);
 
   return (

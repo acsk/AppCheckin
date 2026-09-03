@@ -257,7 +257,7 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
       >
         <View className="gap-0">
           {(() => {
-            const userRole = usuarioInfo?.papel_id || 1;
+            const userRole = authService.getEffectivePapelId(usuarioInfo);
             const menuItems = MENU.map((item) => {
               if (item.children) {
                 const children = item.children.filter((child) => child.roles.includes(userRole));

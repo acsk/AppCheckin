@@ -217,6 +217,9 @@ class AuthService
             }
         }
 
+        $papeis = $this->usuarios->getPapeis($userId);
+        $papelId = ! empty($papeis) ? $papeis[0]['id'] : ($usuario['papel_id'] ?? null);
+
         $payload = [
             'message' => 'Academia selecionada com sucesso',
             'token' => $token,
@@ -226,7 +229,8 @@ class AuthService
                 'email' => $usuario['email'],
                 'email_global' => $usuario['email_global'] ?? $usuario['email'],
                 'foto_base64' => $usuario['foto_base64'] ?? null,
-                'papel_id' => $usuario['papel_id'] ?? null,
+                'papel_id' => $papelId,
+                'papeis' => $papeis,
             ],
             'tenant' => $tenantSelecionado,
         ];
