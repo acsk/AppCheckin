@@ -1542,15 +1542,26 @@ class AdminMatriculaService
     {
         try {
             $this->pagamentosPlano->marcarAtrasados($tenantId);
-            if ($matriculaId !== null && $matriculaId > 0) {
-                $this->pagamentosPlano->atualizarStatusMatricula($tenantId, $matriculaId);
-            }
         } catch (\Throwable $e) {
             Log::warning('marcarAtrasados falhou no admin de matrículas', [
                 'tenant_id' => $tenantId,
                 'matricula_id' => $matriculaId,
                 'message' => $e->getMessage(),
             ]);
+        }
+
+        // Status da matrícula independente do sync de parcelas (marcarAtrasados
+        // pode falhar em produção sem impedir o recálculo de status).
+        if ($matriculaId !== null && $matriculaId > 0) {
+            try {
+                $this->pagamentosPlano->atualizarStatusMatricula($tenantId, $matriculaId);
+            } catch (\Throwable $e) {
+                Log::warning('atualizarStatusMatricula falhou no admin de matrículas', [
+                    'tenant_id' => $tenantId,
+                    'matricula_id' => $matriculaId,
+                    'message' => $e->getMessage(),
+                ]);
+            }
         }
     }
 
