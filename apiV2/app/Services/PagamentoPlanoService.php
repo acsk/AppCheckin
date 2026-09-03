@@ -230,7 +230,7 @@ class PagamentoPlanoService
               AND m.tipo_cobranca = \'avulso\'
               AND pp.status_pagamento_id = 1
               AND pp.data_pagamento IS NULL
-              AND '.self::sqlAvulsoPeriodoPagoExpirou('pp').'
+              AND '.self::sqlAvulsoPeriodoPagoExpirou('m.tenant_id', 'm.id').'
         ';
         $marcadosAvulso = DB::update($sqlAvulso, [$tenantId]);
 
@@ -272,9 +272,17 @@ class PagamentoPlanoService
         )";
     }
 
-    private static function sqlAvulsoPeriodoPagoExpirou(string $ppAlias = 'pp'): string
+    private static function sqlAvulsoPeriodoPagoExpirou(string $tenantExpr, string $matriculaExpr): string
     {
-        return 'COALESCE('.self::sqlFimPeriodoPago("{$ppAlias}.tenant_id", "{$ppAlias}.matricula_id").", '1900-01-01') < CURDATE()";
+        $fimPeriodo = self::sqlFimPeriodoPago($tenantExpr, $matriculaExpr);
+
+        // MySQL 1093: ao UPDATE em pagamentos_plano, subquery na mesma tabela precisa
+        // de derived table intermediária (paridade com regra do InnoDB).
+        return "COALESCE((
+            SELECT fim_periodo FROM (
+                SELECT {$fimPeriodo} AS fim_periodo
+            ) AS _fim_pago_calc
+        ), '1900-01-01') < CURDATE()";
     }
 
     /**
@@ -293,7 +301,7 @@ class PagamentoPlanoService
             AND pp.data_pagamento IS NULL
             AND NOT (
                 m.tipo_cobranca = \'avulso\'
-                AND '.self::sqlAvulsoPeriodoPagoExpirou('pp').'
+                AND '.self::sqlAvulsoPeriodoPagoExpirou('m.tenant_id', 'm.id').'
             )';
 
         return DB::update($sql, [$tenantId]);

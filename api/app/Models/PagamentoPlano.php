@@ -583,7 +583,7 @@ class PagamentoPlano
               AND m.tipo_cobranca = 'avulso'
               AND pp.status_pagamento_id = 1
               AND pp.data_pagamento IS NULL
-              AND " . self::sqlAvulsoPeriodoPagoExpirou('pp') . "
+              AND " . self::sqlAvulsoPeriodoPagoExpirou('m.tenant_id', 'm.id') . "
         ";
         $stmtAvulso = $this->pdo->prepare($sqlAvulso);
         $stmtAvulso->execute(['tenant_id' => $tenantId]);
@@ -637,9 +637,15 @@ class PagamentoPlano
     /**
      * Período pago avulso já expirou em relação a hoje.
      */
-    private static function sqlAvulsoPeriodoPagoExpirou(string $ppAlias = 'pp'): string
+    private static function sqlAvulsoPeriodoPagoExpirou(string $tenantExpr, string $matriculaExpr): string
     {
-        return 'COALESCE(' . self::sqlFimPeriodoPago("{$ppAlias}.tenant_id", "{$ppAlias}.matricula_id") . ", '1900-01-01') < CURDATE()";
+        $fimPeriodo = self::sqlFimPeriodoPago($tenantExpr, $matriculaExpr);
+
+        return 'COALESCE((
+            SELECT fim_periodo FROM (
+                SELECT ' . $fimPeriodo . ' AS fim_periodo
+            ) AS _fim_pago_calc
+        ), \'1900-01-01\') < CURDATE()';
     }
 
     /**
@@ -657,7 +663,7 @@ class PagamentoPlano
                 AND pp.data_pagamento IS NULL
                 AND NOT (
                     m.tipo_cobranca = 'avulso'
-                    AND " . self::sqlAvulsoPeriodoPagoExpirou('pp') . "
+                    AND " . self::sqlAvulsoPeriodoPagoExpirou('m.tenant_id', 'm.id') . "
                 )";
 
         $stmt = $this->pdo->prepare($sql);

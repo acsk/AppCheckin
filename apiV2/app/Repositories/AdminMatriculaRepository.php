@@ -75,8 +75,7 @@ class AdminMatriculaRepository
         $meta = null;
         if ($usarPaginacao) {
             $paginaAtual = $pagina ?? 1;
-            $countQuery = clone $query;
-            $total = (int) $countQuery->toBase()->getCountForPagination();
+            $total = (int) (clone $query)->count();
             $rows = $query
                 ->offset(($paginaAtual - 1) * $porPagina)
                 ->limit($porPagina)
