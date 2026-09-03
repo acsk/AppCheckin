@@ -98,6 +98,44 @@ class V2AdminAssinaturaRoutesTest extends TestCase
             ->assertJsonPath('total', 0);
     }
 
+    public function test_historico_aluno_requires_jwt(): void
+    {
+        $this->getJson('/v2/admin/alunos/1/assinaturas')
+            ->assertUnauthorized();
+    }
+
+    public function test_historico_aluno_ok(): void
+    {
+        $token = $this->tokenParaPapel(3);
+
+        $service = Mockery::mock(\App\Services\Admin\AdminAssinaturaService::class);
+        $service->shouldReceive('listarHistoricoAluno')
+            ->once()
+            ->with(3, 1)
+            ->andReturn([
+                'status' => 200,
+                'body' => [
+                    'success' => true,
+                    'aluno_id' => 1,
+                    'total' => 1,
+                    'assinaturas' => [['id' => 10]],
+                ],
+            ]);
+        $this->app->instance(\App\Services\Admin\AdminAssinaturaService::class, $service);
+
+        $this->getJson('/v2/admin/alunos/1/assinaturas', [
+            'Authorization' => 'Bearer '.$token,
+        ])
+            ->assertOk()
+            ->assertJsonPath('total', 1);
+    }
+
+    public function test_sincronizar_matricula_requires_jwt(): void
+    {
+        $this->postJson('/v2/admin/assinaturas/1/sincronizar-matricula')
+            ->assertUnauthorized();
+    }
+
     private function tokenParaPapel(int $papelId): string
     {
         config(['appcheckin.jwt_secret' => 'test-secret-key-with-enough-length-for-hs256-algorithm']);

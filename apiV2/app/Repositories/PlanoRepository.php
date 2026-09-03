@@ -286,4 +286,31 @@ class PlanoRepository
                 });
         });
     }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function listarPorTenantSuperAdmin(int $tenantId, bool $apenasAtivos = false): array
+    {
+        $query = DB::table('planos as p')
+            ->join('tenants as t', 'p.tenant_id', '=', 't.id')
+            ->leftJoin('modalidades as m', 'p.modalidade_id', '=', 'm.id')
+            ->where('p.tenant_id', $tenantId);
+
+        if ($apenasAtivos) {
+            $query->where('p.ativo', 1);
+        }
+
+        return $query
+            ->orderBy('p.nome')
+            ->get([
+                'p.*',
+                't.nome as academia_nome',
+                'm.nome as modalidade_nome',
+                'm.icone as modalidade_icone',
+                'm.cor as modalidade_cor',
+            ])
+            ->map(fn ($row) => (array) $row)
+            ->all();
+    }
 }

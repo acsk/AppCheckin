@@ -1,6 +1,9 @@
 <?php
 
+use App\Http\Controllers\Api\V2\CepController;
+use App\Http\Controllers\Api\V2\StatusController;
 use App\Http\Controllers\Api\V2\SuperAdmin\LogController as SuperAdminLogController;
+use App\Http\Controllers\Api\V2\SuperAdmin\PapelController as SuperAdminPapelController;
 use App\Http\Controllers\Api\V2\Admin\AlunoController as AdminAlunoController;
 use App\Http\Controllers\Api\V2\Admin\AuditoriaController as AdminAuditoriaController;
 use App\Http\Controllers\Api\V2\Admin\MatriculaController as AdminMatriculaController;
@@ -22,6 +25,12 @@ Route::prefix('v2')->group(function () {
     Route::get('/ping', [HealthController::class, 'ping']);
     Route::get('/health', [HealthController::class, 'health']);
     Route::get('/health/basic', [HealthController::class, 'healthBasic']);
+
+    // Rotas públicas (paridade Slim)
+    Route::get('/cep/{cep}', [CepController::class, 'buscar'])->where('cep', '[0-9\\-]+');
+    Route::get('/status/{tipo}/codigo/{codigo}', [StatusController::class, 'buscarPorCodigo']);
+    Route::get('/status/{tipo}/{id}', [StatusController::class, 'buscar'])->where('id', '[0-9]+');
+    Route::get('/status/{tipo}', [StatusController::class, 'listar']);
 
     Route::post('/auth/login', [AuthController::class, 'login']);
     Route::post('/auth/register', [AuthController::class, 'register']);
@@ -104,6 +113,7 @@ Route::prefix('v2')->group(function () {
             Route::delete('/planos/{planoId}/ciclos/{id}', [AdminPlanoCicloController::class, 'destroy']);
 
             // Matrículas Wave A+B+C — rotas estáticas / específicas antes de {id}
+            require __DIR__.'/v2/admin/matriculas_extras.php';
             Route::get('/matriculas/vencimentos/hoje', [AdminMatriculaController::class, 'vencimentosHoje']);
             Route::get('/matriculas/vencimentos/proximos', [AdminMatriculaController::class, 'proximosVencimentos']);
             Route::post('/matriculas/contas/{id}/baixa', [AdminMatriculaController::class, 'darBaixaConta']);
@@ -111,6 +121,12 @@ Route::prefix('v2')->group(function () {
             Route::post('/matriculas', [AdminMatriculaController::class, 'store']);
             Route::get('/matriculas/{id}/delete-preview', [AdminMatriculaController::class, 'deletePreview']);
             Route::post('/matriculas/{id}/alterar-plano', [AdminMatriculaController::class, 'alterarPlano']);
+            Route::get('/matriculas/{id}/simular-cancelamento', [AdminMatriculaController::class, 'simularCancelamento']);
+            Route::post('/matriculas/{id}/cancelar-com-credito', [AdminMatriculaController::class, 'cancelarComCredito']);
+            Route::post('/matriculas/{matriculaId}/pagamentos/{pagamentoId}/confirmar', [AdminMatriculaController::class, 'confirmarPagamento']);
+            Route::get('/matriculas/{id}/assinatura', [AdminMatriculaController::class, 'obterAssinatura']);
+            Route::post('/matriculas/{id}/assinatura', [AdminMatriculaController::class, 'criarAssinatura']);
+            Route::post('/matriculas/{id}/sincronizar-assinatura', [AdminMatriculaController::class, 'sincronizarAssinatura']);
             Route::get('/matriculas/{id}', [AdminMatriculaController::class, 'show']);
             Route::get('/matriculas/{id}/pagamentos', [AdminMatriculaController::class, 'pagamentos']);
             Route::post('/matriculas/{id}/bloquear', [AdminMatriculaController::class, 'bloquear']);
@@ -146,6 +162,10 @@ Route::prefix('v2')->group(function () {
         foreach (glob(__DIR__.'/v2/shared/*.php') ?: [] as $moduleRoutes) {
             require $moduleRoutes;
         }
+
+        // Alias painel: GET /papeis (fallback quando /superadmin/papeis falhar)
+        Route::get('/papeis', [SuperAdminPapelController::class, 'index'])
+            ->middleware('superadmin.auth');
 
         // Super Admin (papel 4)
         Route::prefix('superadmin')->middleware('superadmin.auth')->group(function () {

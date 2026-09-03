@@ -2,6 +2,7 @@
 
 namespace App\Services\Admin;
 
+use App\Repositories\AdminAssinaturaRepository;
 use App\Repositories\AdminMatriculaRepository;
 use App\Repositories\MatriculaRepository;
 use App\Services\PagamentoPlanoService;
@@ -14,6 +15,9 @@ class AdminMatriculaService
         private readonly AdminMatriculaRepository $matriculas,
         private readonly PagamentoPlanoService $pagamentosPlano,
         private readonly MatriculaRepository $matriculaRepo,
+        private readonly AdminPacoteService $pacotes,
+        private readonly AdminPagamentoPlanoService $pagamentosPlanoAdmin,
+        private readonly AdminAssinaturaRepository $assinaturas,
     ) {}
 
     /**
@@ -567,12 +571,7 @@ class AdminMatriculaService
         }
 
         if (! empty($data['pacote_id'])) {
-            return [
-                'status' => 501,
-                'body' => [
-                    'error' => 'Criação de matrícula via pacote ainda não foi migrada para a API v2. Use plano_id ou a API Slim.',
-                ],
-            ];
+            return $this->pacotes->criarMatriculaPacote($tenantId, $adminId, $alunoId, $usuarioId, $data);
         }
 
         $planoId = (int) $data['plano_id'];
@@ -1573,6 +1572,320 @@ class AdminMatriculaService
      * @param  list<array<string, mixed>>  $pagamentos
      * @return array{limite_ciclo: ?array<string, mixed>, motivo_status: ?string}
      */
+    /**
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function simularCancelamento(int $id, int $tenantId): array
+    {
+        date_default_timezone_set('America/Sao_Paulo');
+
+        $matricula = DB::selectOne('
+            SELECT m.*, sm.codigo as status_codigo, p.nome as plano_nome, p.valor as plano_valor, p.duracao_dias,
+                   pc.valor as ciclo_valor, af.meses as frequencia_meses
+            FROM matriculas m
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            INNER JOIN planos p ON p.id = m.plano_id
+            LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+            LEFT JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
+            WHERE m.id = ? AND m.tenant_id = ?
+        ', [$id, $tenantId]);
+
+        if (! $matricula) {
+            return $this->error('Matrícula não encontrada', 404);
+        }
+
+        $matricula = (array) $matricula;
+
+        if (in_array($matricula['status_codigo'], ['cancelada', 'finalizada'], true)) {
+            return $this->error('Matrícula já está '.$matricula['status_codigo'], 400);
+        }
+
+        $valorPlano = (float) $matricula['valor'];
+
+        $temPagamento = (int) DB::table('pagamentos_plano')
+            ->where('matricula_id', $id)
+            ->where('tenant_id', $tenantId)
+            ->where('status_pagamento_id', 2)
+            ->count() > 0;
+
+        $hoje = new \DateTime('today');
+        $dataInicio = new \DateTime($matricula['data_inicio'] ?? $matricula['created_at']);
+        $dataVencimento = new \DateTime($matricula['data_vencimento'] ?? $matricula['proxima_data_vencimento']);
+
+        $diasTotais = max(1, (int) $dataInicio->diff($dataVencimento)->days);
+        $diasUtilizados = max(0, (int) $dataInicio->diff($hoje)->days);
+        $diasRestantes = max(0, (int) $hoje->diff($dataVencimento)->days);
+
+        $valorProporcional = 0.0;
+        if ($temPagamento && $hoje <= $dataVencimento && $diasRestantes > 0) {
+            $valorProporcional = round(($valorPlano / $diasTotais) * $diasRestantes, 2);
+        }
+
+        $parcelasPendentes = (int) DB::table('pagamentos_plano')
+            ->where('matricula_id', $id)
+            ->where('tenant_id', $tenantId)
+            ->whereIn('status_pagamento_id', [1, 3])
+            ->count();
+
+        $saldoAtual = $this->matriculas->creditosAluno($tenantId, (int) $matricula['aluno_id'])['saldo_total'];
+
+        return [
+            'status' => 200,
+            'body' => [
+                'matricula_id' => $id,
+                'aluno_id' => (int) $matricula['aluno_id'],
+                'plano_nome' => $matricula['plano_nome'],
+                'valor_plano' => $valorPlano,
+                'data_inicio' => $matricula['data_inicio'],
+                'data_vencimento' => $matricula['data_vencimento'] ?? $matricula['proxima_data_vencimento'],
+                'dias_totais' => $diasTotais,
+                'dias_utilizados' => min($diasUtilizados, $diasTotais),
+                'dias_restantes' => $diasRestantes,
+                'tem_pagamento_pago' => $temPagamento,
+                'valor_proporcional_credito' => $valorProporcional,
+                'parcelas_pendentes' => $parcelasPendentes,
+                'saldo_creditos_atual' => $saldoAtual,
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function cancelarComCredito(int $id, int $tenantId, ?int $adminId, array $data): array
+    {
+        date_default_timezone_set('America/Sao_Paulo');
+
+        $matricula = DB::selectOne('
+            SELECT m.*, sm.codigo as status_codigo, p.nome as plano_nome, p.valor as plano_valor, p.duracao_dias,
+                   pc.valor as ciclo_valor, af.meses as frequencia_meses
+            FROM matriculas m
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            INNER JOIN planos p ON p.id = m.plano_id
+            LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+            LEFT JOIN assinatura_frequencias af ON af.id = pc.assinatura_frequencia_id
+            WHERE m.id = ? AND m.tenant_id = ?
+        ', [$id, $tenantId]);
+
+        if (! $matricula) {
+            return $this->error('Matrícula não encontrada', 404);
+        }
+
+        $matricula = (array) $matricula;
+
+        if ($matricula['status_codigo'] === 'cancelada') {
+            return $this->error('Matrícula já está cancelada', 400);
+        }
+
+        if ($matricula['status_codigo'] === 'finalizada') {
+            return $this->error('Não é possível cancelar matrícula finalizada', 400);
+        }
+
+        $gerarCredito = ! empty($data['gerar_credito']);
+        $motivoCancelamento = $data['motivo_cancelamento'] ?? 'Cancelado para alteração de plano';
+        $valorPlano = (float) $matricula['valor'];
+        $creditoValor = 0.0;
+        $creditoInfo = null;
+
+        if ($gerarCredito) {
+            $temPagamento = (int) DB::table('pagamentos_plano')
+                ->where('matricula_id', $id)
+                ->where('tenant_id', $tenantId)
+                ->where('status_pagamento_id', 2)
+                ->count() > 0;
+
+            if ($temPagamento) {
+                $hoje = new \DateTime('today');
+                $dataInicio = new \DateTime($matricula['data_inicio'] ?? $matricula['created_at']);
+                $dataVencimento = new \DateTime($matricula['data_vencimento'] ?? $matricula['proxima_data_vencimento']);
+                $diasTotais = max(1, (int) $dataInicio->diff($dataVencimento)->days);
+                $diasRestantes = max(0, (int) $hoje->diff($dataVencimento)->days);
+
+                if ($hoje <= $dataVencimento && $diasRestantes > 0) {
+                    $creditoValor = round(($valorPlano / $diasTotais) * $diasRestantes, 2);
+                }
+            }
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $parcelasCanceladas = DB::update('
+                UPDATE pagamentos_plano
+                SET status_pagamento_id = 4,
+                    observacoes = CONCAT(COALESCE(observacoes, \'\'), \' [Cancelado por cancelamento da matrícula com crédito]\'),
+                    updated_at = NOW()
+                WHERE matricula_id = ? AND tenant_id = ? AND status_pagamento_id IN (1, 3)
+            ', [$id, $tenantId]);
+
+            DB::update('
+                UPDATE matriculas
+                SET status_id = (SELECT id FROM status_matricula WHERE codigo = \'cancelada\' LIMIT 1),
+                    cancelado_por = ?,
+                    data_cancelamento = CURDATE(),
+                    motivo_cancelamento = ?,
+                    updated_at = NOW()
+                WHERE id = ?
+            ', [$adminId, $motivoCancelamento, $id]);
+
+            $this->matriculas->desativarDescontosSeTabelaExiste($tenantId, $id);
+
+            $usuarioId = $this->matriculas->findUsuarioIdPorAluno((int) $matricula['aluno_id']);
+            if ($usuarioId) {
+                $this->matriculas->clearUsuarioPlanoSeColunasExistem($usuarioId);
+            }
+
+            if ($gerarCredito && $creditoValor > 0) {
+                $motivoCredito = $data['motivo_credito']
+                    ?? 'Crédito proporcional do cancelamento do plano '.$matricula['plano_nome']
+                       .' (R$'.number_format($creditoValor, 2, ',', '.').')';
+
+                $creditoId = $this->matriculas->inserirCredito([
+                    'tenant_id' => $tenantId,
+                    'aluno_id' => (int) $matricula['aluno_id'],
+                    'matricula_origem_id' => $id,
+                    'pagamento_origem_id' => null,
+                    'valor' => $creditoValor,
+                    'motivo' => $motivoCredito,
+                    'criado_por' => $adminId,
+                ]);
+
+                if ($creditoId) {
+                    $creditoInfo = [
+                        'id' => $creditoId,
+                        'valor' => $creditoValor,
+                        'motivo' => $motivoCredito,
+                    ];
+                }
+            }
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('Erro ao cancelar matrícula com crédito', ['matricula_id' => $id, 'message' => $e->getMessage()]);
+
+            return $this->error('Erro ao cancelar: '.$e->getMessage(), 500);
+        }
+
+        $matriculaAtualizada = DB::selectOne('
+            SELECT m.*, p.nome as plano_nome, sm.codigo as status_codigo, sm.nome as status_nome
+            FROM matriculas m
+            INNER JOIN planos p ON p.id = m.plano_id
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            WHERE m.id = ?
+        ', [$id]);
+
+        $saldoTotal = $this->matriculas->creditosAluno($tenantId, (int) $matricula['aluno_id'])['saldo_total'];
+
+        return [
+            'status' => 200,
+            'body' => [
+                'message' => $creditoInfo
+                    ? 'Matrícula cancelada e crédito de R$'.number_format($creditoValor, 2, ',', '.').' gerado com sucesso'
+                    : 'Matrícula cancelada com sucesso',
+                'matricula' => $matriculaAtualizada ? (array) $matriculaAtualizada : null,
+                'credito_gerado' => $creditoInfo,
+                'parcelas_canceladas' => $parcelasCanceladas,
+                'saldo_creditos_total' => $saldoTotal,
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function darBaixaPacote(int $contratoId, int $tenantId, ?int $adminId, array $data): array
+    {
+        return $this->pacotes->darBaixaPacote($contratoId, $tenantId, $adminId, $data);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function confirmarPagamentoMatricula(int $matriculaId, int $pagamentoId, int $tenantId, ?int $adminId, array $data): array
+    {
+        $pagamento = DB::table('pagamentos_plano')
+            ->where('id', $pagamentoId)
+            ->where('matricula_id', $matriculaId)
+            ->where('tenant_id', $tenantId)
+            ->first();
+
+        if (! $pagamento) {
+            return $this->error('Pagamento não encontrado para esta matrícula', 404);
+        }
+
+        return $this->pagamentosPlanoAdmin->confirmar($tenantId, $pagamentoId, $adminId, $data);
+    }
+
+    /**
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function obterAssinatura(int $matriculaId, int $tenantId): array
+    {
+        $assinatura = $this->assinaturas->findByMatriculaId($matriculaId, $tenantId);
+        if (! $assinatura) {
+            return $this->error('Nenhuma assinatura vinculada a esta matrícula', 404);
+        }
+
+        return [
+            'status' => 200,
+            'body' => [
+                'success' => true,
+                'assinatura' => $this->assinaturas->mapearDetalhe($assinatura),
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function criarAssinaturaMatricula(int $matriculaId, int $tenantId, ?int $adminId, array $data): array
+    {
+        $matricula = $this->matriculas->findBasicoComStatus($matriculaId, $tenantId);
+        if (! $matricula) {
+            return $this->error('Matrícula não encontrada', 404);
+        }
+
+        $existente = $this->assinaturas->findByMatriculaId($matriculaId, $tenantId);
+        if ($existente) {
+            return $this->error('Matrícula já possui assinatura vinculada', 400);
+        }
+
+        $result = $this->assinaturas->criarParaMatricula($tenantId, $matriculaId, (int) $matricula['aluno_id'], (int) $matricula['plano_id'], $matricula, $data, $adminId);
+        if ($result === null) {
+            return $this->error('Erro ao criar assinatura para matrícula', 500);
+        }
+
+        return [
+            'status' => 201,
+            'body' => [
+                'success' => true,
+                'message' => 'Assinatura criada e vinculada à matrícula',
+                'assinatura' => $this->assinaturas->mapearDetalhe($result),
+            ],
+        ];
+    }
+
+    /**
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function sincronizarAssinaturaMatricula(int $matriculaId, int $tenantId): array
+    {
+        $assinatura = $this->assinaturas->findByMatriculaId($matriculaId, $tenantId);
+        if (! $assinatura) {
+            return $this->error('Nenhuma assinatura vinculada a esta matrícula', 404);
+        }
+
+        $service = app(AdminAssinaturaService::class);
+        $result = $service->sincronizarComMatricula((int) $assinatura['id'], $tenantId);
+
+        return $result;
+    }
+
     private function resolverMotivoStatusEPendencias(int $matriculaId, array $matricula, array $pagamentos): array
     {
         if (($matricula['status_codigo'] ?? '') !== 'pendente') {

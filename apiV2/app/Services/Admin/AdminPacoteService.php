@@ -700,6 +700,434 @@ class AdminPacoteService
         }
     }
 
+    /**
+     * POST /admin/matriculas com pacote_id (paridade MatriculaController::criarMatriculaPacote).
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function criarMatriculaPacote(
+        int $tenantId,
+        ?int $adminId,
+        int $alunoId,
+        int $usuarioId,
+        array $data
+    ): array {
+        try {
+            $pacoteId = (int) $data['pacote_id'];
+            $dependentesIds = isset($data['dependentes']) ? array_map('intval', (array) $data['dependentes']) : [];
+            $diaVencimento = (int) ($data['dia_vencimento'] ?? 10);
+            $observacoes = $data['observacoes'] ?? null;
+            $dataInicio = ! empty($data['data_inicio']) ? (string) $data['data_inicio'] : date('Y-m-d');
+
+            $pacote = $this->pacotes->findPacoteAtivoComPlano($pacoteId, $tenantId);
+            if (! $pacote) {
+                return ['status' => 404, 'body' => ['error' => 'Pacote não encontrado ou inativo']];
+            }
+
+            $beneficiariosIds = array_values(array_unique(array_merge([$alunoId], $dependentesIds)));
+            $totalBeneficiarios = count($beneficiariosIds);
+            $limiteTotal = (int) $pacote['qtd_beneficiarios'] + 1;
+
+            if ($totalBeneficiarios > $limiteTotal) {
+                return [
+                    'status' => 400,
+                    'body' => [
+                        'error' => "Quantidade total de pessoas ({$totalBeneficiarios}) excede o limite do pacote ({$limiteTotal}: 1 pagante + {$pacote['qtd_beneficiarios']} beneficiário(s))",
+                    ],
+                ];
+            }
+
+            if ($dependentesIds !== []) {
+                $depsValidos = $this->pacotes->filtrarAlunosValidosNoTenant($tenantId, $dependentesIds);
+                $depsNaoEncontrados = array_diff($dependentesIds, $depsValidos);
+                if ($depsNaoEncontrados !== []) {
+                    return [
+                        'status' => 404,
+                        'body' => ['error' => 'Dependentes não encontrados: '.implode(', ', $depsNaoEncontrados)],
+                    ];
+                }
+            }
+
+            $valorTotal = (float) $pacote['valor_total'];
+            $valorRateado = round($valorTotal / $totalBeneficiarios, 2);
+            $planoId = (int) $pacote['plano_id'];
+            $planoCicloId = (! empty($pacote['plano_ciclo_id']) && ! empty($pacote['ciclo_meses']))
+                ? (int) $pacote['plano_ciclo_id']
+                : null;
+
+            $valorCheio = $this->descontos->resolverValorCheio($tenantId, $planoId, $planoCicloId);
+            if ($valorCheio < 0.01) {
+                $valorCheio = $valorRateado;
+            }
+
+            $dataInicioObj = new \DateTime($dataInicio);
+            $proximaDataVencimento = clone $dataInicioObj;
+
+            if (! empty($pacote['ciclo_meses']) && (int) $pacote['ciclo_meses'] > 0) {
+                $mesesCiclo = (int) $pacote['ciclo_meses'];
+                $proximaDataVencimento->modify("+{$mesesCiclo} months");
+            } else {
+                $duracaoDias = max(1, (int) ($pacote['duracao_dias'] ?? 30));
+                $proximaDataVencimento->modify("+{$duracaoDias} days");
+            }
+
+            $dataVencimento = $proximaDataVencimento->format('Y-m-d');
+            $statusId = $this->pacotes->statusMatriculaId('pendente', 5);
+            $motivoId = $this->pacotes->motivoMatriculaId('nova', 1);
+
+            $result = DB::transaction(function () use (
+                $tenantId, $pacoteId, $adminId, $usuarioId, $alunoId, $beneficiariosIds,
+                $pacote, $valorTotal, $valorRateado, $planoId, $planoCicloId, $valorCheio,
+                $dataInicio, $dataVencimento, $statusId, $motivoId, $observacoes, $diaVencimento,
+                $totalBeneficiarios, $proximaDataVencimento
+            ) {
+                $contratoId = $this->pacotes->inserirContrato(
+                    $tenantId,
+                    $pacoteId,
+                    $usuarioId,
+                    $valorTotal
+                );
+
+                $matriculasCriadas = [];
+
+                foreach ($beneficiariosIds as $benAlunoId) {
+                    $modalidadeId = isset($pacote['modalidade_id']) ? (int) $pacote['modalidade_id'] : null;
+                    $duplicada = app(AdminMatriculaRepository::class)->buscarMatriculaDuplicadaMesmoPlanoCiclo(
+                        $tenantId,
+                        $benAlunoId,
+                        $planoId,
+                        $planoCicloId,
+                        $modalidadeId
+                    );
+
+                    if ($duplicada) {
+                        $nomeAluno = DB::table('alunos')->where('id', $benAlunoId)->value('nome') ?: "ID {$benAlunoId}";
+                        throw new \RuntimeException(
+                            "Aluno {$nomeAluno} ja possui matricula #{$duplicada['id']} com mesmo plano/ciclo/modalidade em status ".($duplicada['status_codigo'] ?? 'desconhecido')
+                        );
+                    }
+
+                    $matriculaId = $this->pacotes->inserirMatriculaContrato([
+                        'tenant_id' => $tenantId,
+                        'aluno_id' => $benAlunoId,
+                        'plano_id' => $planoId,
+                        'plano_ciclo_id' => $planoCicloId,
+                        'pacote_contrato_id' => $contratoId,
+                        'data_matricula' => date('Y-m-d'),
+                        'data_inicio' => $dataInicio,
+                        'data_vencimento' => $dataVencimento,
+                        'valor' => $valorCheio,
+                        'valor_rateado' => $valorRateado,
+                        'status_id' => $statusId,
+                        'motivo_id' => $motivoId,
+                        'proxima_data_vencimento' => $dataVencimento,
+                        'dia_vencimento' => $diaVencimento,
+                    ]);
+
+                    $this->pacotes->inserirBeneficiarioComMatricula(
+                        $tenantId,
+                        $contratoId,
+                        $benAlunoId,
+                        $matriculaId,
+                        $valorRateado
+                    );
+
+                    $this->descontos->criarPagamentoPacote(
+                        $tenantId,
+                        $benAlunoId,
+                        $matriculaId,
+                        $planoId,
+                        $contratoId,
+                        (string) ($pacote['nome'] ?? 'Pacote'),
+                        $valorCheio,
+                        $valorRateado,
+                        $dataVencimento,
+                        $dataInicio,
+                        $adminId,
+                        'Pagamento pacote - rateado'
+                    );
+
+                    $nomeAluno = DB::table('alunos')->where('id', $benAlunoId)->value('nome') ?: '';
+
+                    $matriculasCriadas[] = [
+                        'matricula_id' => $matriculaId,
+                        'aluno_id' => $benAlunoId,
+                        'aluno_nome' => $nomeAluno,
+                        'valor_rateado' => $valorRateado,
+                        'is_pagante' => ($benAlunoId === $alunoId),
+                        'reutilizada' => false,
+                    ];
+                }
+
+                DB::insert('
+                    INSERT INTO historico_planos
+                    (usuario_id, plano_novo_id, data_inicio, data_vencimento, valor_pago, motivo, observacoes, criado_por)
+                    VALUES (?, ?, ?, ?, ?, \'nova\', ?, ?)
+                ', [
+                    $usuarioId,
+                    $planoId,
+                    $dataInicio,
+                    $dataVencimento,
+                    $valorTotal,
+                    "Pacote: {$pacote['nome']} ({$totalBeneficiarios} beneficiários)",
+                    $adminId,
+                ]);
+
+                return [
+                    'contratoId' => $contratoId,
+                    'matriculasCriadas' => $matriculasCriadas,
+                ];
+            });
+
+            return [
+                'status' => 201,
+                'body' => [
+                    'message' => "Pacote contratado com sucesso - {$totalBeneficiarios} matrícula(s) criada(s)",
+                    'pacote_contrato_id' => $result['contratoId'],
+                    'pacote' => [
+                        'id' => $pacoteId,
+                        'nome' => $pacote['nome'],
+                        'valor_total' => $valorTotal,
+                        'valor_rateado' => $valorRateado,
+                        'plano_nome' => $pacote['plano_nome'] ?? null,
+                        'qtd_beneficiarios' => $totalBeneficiarios,
+                    ],
+                    'matriculas' => $result['matriculasCriadas'],
+                    'data_inicio' => $dataInicio,
+                    'data_vencimento' => $dataVencimento,
+                    'info' => 'Pacote ativo até '.$proximaDataVencimento->format('d/m/Y'),
+                ],
+            ];
+        } catch (\RuntimeException $e) {
+            return ['status' => 400, 'body' => ['error' => $e->getMessage()]];
+        } catch (Throwable $e) {
+            error_log('[AdminPacoteService::criarMatriculaPacote] Erro: '.$e->getMessage());
+
+            return ['status' => 500, 'body' => ['error' => 'Erro ao criar matrícula de pacote: '.$e->getMessage()]];
+        }
+    }
+
+    /**
+     * POST /admin/matriculas/pacote-contrato/{contratoId}/baixa
+     *
+     * @param  array<string, mixed>  $data
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function darBaixaPacote(int $contratoId, int $tenantId, ?int $adminId, array $data): array
+    {
+        try {
+            $contrato = $this->pacotes->findContratoParaBaixa($contratoId, $tenantId);
+            if (! $contrato) {
+                return ['status' => 404, 'body' => ['error' => 'Contrato de pacote não encontrado']];
+            }
+
+            $dataPagamento = $data['data_pagamento'] ?? date('Y-m-d');
+            $formaPagamentoId = $data['forma_pagamento_id'] ?? null;
+            $observacoes = $data['observacoes'] ?? null;
+
+            $result = DB::transaction(function () use (
+                $contratoId, $tenantId, $adminId, $contrato, $dataPagamento, $formaPagamentoId, $observacoes
+            ) {
+                $pagamentos = $this->garantirPagamentosPendentesPacote($contratoId, $tenantId, $adminId, $contrato);
+
+                if ($pagamentos === []) {
+                    $jaPago = $this->pacotes->pacoteJaPossuiPagamentoPago($contratoId, $tenantId);
+
+                    throw new \RuntimeException(
+                        $jaPago
+                            ? 'Este pacote já está pago'
+                            : 'Nenhum pagamento pendente para este pacote. Verifique se as matrículas do contrato existem.'
+                    );
+                }
+
+                $matriculasAtivadas = [];
+                $proximasParcelas = [];
+
+                foreach ($pagamentos as $pagamento) {
+                    $this->pacotes->marcarPagamentoComoPago($pagamento['id'], [
+                        'data_pagamento' => $dataPagamento,
+                        'forma_pagamento_id' => $formaPagamentoId,
+                        'observacoes' => $observacoes,
+                        'baixado_por' => $adminId,
+                    ]);
+
+                    $this->pacotes->ativarMatriculaSePendenteOuVencida((int) $pagamento['matricula_id']);
+
+                    $matriculasAtivadas[] = [
+                        'matricula_id' => (int) $pagamento['matricula_id'],
+                        'aluno_id' => (int) $pagamento['aluno_id'],
+                        'aluno_nome' => $pagamento['aluno_nome'],
+                        'valor' => (float) $pagamento['valor'],
+                    ];
+
+                    try {
+                        $dataVencimentoAtual = new \DateTime($pagamento['data_vencimento']);
+                        $mesesCiclo = $pagamento['ciclo_meses'] ?? $pagamento['frequencia_meses'] ?? null;
+
+                        if ($mesesCiclo) {
+                            $proximoVencimento = clone $dataVencimentoAtual;
+                            $proximoVencimento->modify("+{$mesesCiclo} months");
+                        } else {
+                            $duracaoDias = max(1, (int) ($pagamento['duracao_dias'] ?? 30));
+                            $proximoVencimento = clone $dataVencimentoAtual;
+                            $proximoVencimento->add(new \DateInterval("P{$duracaoDias}D"));
+                        }
+
+                        $valorProxima = (float) ($pagamento['valor_original'] ?? $pagamento['matricula_valor'] ?? 0);
+                        if ($valorProxima < 0.01) {
+                            $valorProxima = (float) ($pagamento['valor'] ?? 0) + (float) ($pagamento['desconto'] ?? 0);
+                        }
+
+                        $proximaId = $this->pacotes->inserirProximaParcela(
+                            $tenantId,
+                            (int) $pagamento['aluno_id'],
+                            (int) $pagamento['matricula_id'],
+                            (int) ($pagamento['plano_id'] ?? 0) ?: null,
+                            $valorProxima,
+                            $proximoVencimento->format('Y-m-d'),
+                            $adminId
+                        );
+
+                        $proximasParcelas[] = [
+                            'id' => $proximaId,
+                            'aluno_nome' => $pagamento['aluno_nome'],
+                            'data_vencimento' => $proximoVencimento->format('Y-m-d'),
+                            'valor' => $valorProxima,
+                        ];
+
+                        $this->pacotes->atualizarVencimentosMatricula(
+                            (int) $pagamento['matricula_id'],
+                            $dataVencimentoAtual->format('Y-m-d'),
+                            $proximoVencimento->format('Y-m-d')
+                        );
+                    } catch (\Throwable $e) {
+                        error_log("[darBaixaPacote] Erro próxima parcela matrícula {$pagamento['matricula_id']}: ".$e->getMessage());
+                    }
+                }
+
+                $this->pacotes->ativarContratoComVigenciaDasMatriculas($contratoId, $tenantId);
+                $this->pacotes->ativarBeneficiariosDoContrato($contratoId, $tenantId);
+
+                return [
+                    'matriculasAtivadas' => $matriculasAtivadas,
+                    'proximasParcelas' => $proximasParcelas,
+                ];
+            });
+
+            $valorTotal = array_sum(array_column($result['matriculasAtivadas'], 'valor'));
+
+            return [
+                'status' => 200,
+                'body' => [
+                    'message' => 'Baixa do pacote realizada com sucesso',
+                    'pacote' => $contrato['pacote_nome'],
+                    'contrato_id' => $contratoId,
+                    'valor_total' => $valorTotal,
+                    'matriculas_ativadas' => $result['matriculasAtivadas'],
+                    'proximas_parcelas' => $result['proximasParcelas'],
+                    'total_beneficiarios' => count($result['matriculasAtivadas']),
+                ],
+            ];
+        } catch (\RuntimeException $e) {
+            return ['status' => 400, 'body' => ['error' => $e->getMessage()]];
+        } catch (Throwable $e) {
+            error_log('[AdminPacoteService::darBaixaPacote] Erro: '.$e->getMessage());
+
+            return ['status' => 500, 'body' => ['error' => 'Erro ao dar baixa no pacote: '.$e->getMessage()]];
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $contrato
+     * @return list<array<string, mixed>>
+     */
+    private function garantirPagamentosPendentesPacote(
+        int $contratoId,
+        int $tenantId,
+        ?int $adminId,
+        array $contrato
+    ): array {
+        $pagamentos = $this->pacotes->buscarPagamentosPendentesPacote($contratoId, $tenantId);
+
+        if ($pagamentos !== []) {
+            foreach ($pagamentos as $pagamento) {
+                if (empty($pagamento['pacote_contrato_id'])) {
+                    $this->pacotes->vincularPagamentoAoContrato((int) $pagamento['id'], $tenantId, $contratoId);
+                }
+            }
+        } else {
+            $matriculas = $this->pacotes->listarMatriculasDoContrato($contratoId, $tenantId);
+            if ($matriculas === []) {
+                return [];
+            }
+
+            foreach ($matriculas as $matricula) {
+                $existente = $this->pacotes->findUltimoPagamentoDaMatricula((int) $matricula['id'], $tenantId);
+                if ($existente) {
+                    if (empty($existente['pacote_contrato_id'])) {
+                        $this->pacotes->vincularPagamentoAoContrato((int) $existente['id'], $tenantId, $contratoId);
+                    }
+
+                    continue;
+                }
+
+                $valor = (float) ($matricula['valor_rateado'] ?? $matricula['valor'] ?? 0);
+                $vencimento = $matricula['data_vencimento'] ?: ($matricula['data_inicio'] ?: date('Y-m-d'));
+                $planoId = (int) ($matricula['plano_id'] ?: ($contrato['plano_id'] ?? 0)) ?: null;
+
+                $this->pacotes->inserirPagamentoPendentePacote(
+                    $tenantId,
+                    (int) $matricula['aluno_id'],
+                    (int) $matricula['id'],
+                    $planoId,
+                    $valor,
+                    (string) $vencimento,
+                    $contratoId,
+                    $adminId
+                );
+            }
+        }
+
+        $pagamentos = $this->pacotes->buscarPagamentosPendentesPacote($contratoId, $tenantId);
+        if ($pagamentos === []) {
+            return [];
+        }
+
+        $planoId = (int) ($contrato['plano_id'] ?? 0);
+        $cicloId = ! empty($contrato['plano_ciclo_id']) ? (int) $contrato['plano_ciclo_id'] : null;
+        $valorCheio = $this->descontos->resolverValorCheio($tenantId, $planoId, $cicloId);
+        $pacoteNome = (string) ($contrato['pacote_nome'] ?? 'Pacote');
+
+        foreach ($pagamentos as $pagamento) {
+            $valorRateado = (float) ($pagamento['valor_rateado_beneficiario']
+                ?? $pagamento['matricula_valor_rateado']
+                ?? 0);
+            if ($valorRateado < 0.01) {
+                $valorRateado = (float) ($pagamento['valor'] ?? 0);
+            }
+            $valorBase = $valorCheio > 0.01 ? $valorCheio : (float) ($pagamento['matricula_valor'] ?? $valorRateado);
+            $inicio = (string) ($pagamento['matricula_data_inicio']
+                ?: ($contrato['data_inicio'] ?? $pagamento['data_vencimento']));
+            $fim = (string) ($pagamento['data_vencimento'] ?? $inicio);
+
+            $this->descontos->prepararParcelaPacote(
+                $tenantId,
+                (int) $pagamento['matricula_id'],
+                $contratoId,
+                $pacoteNome,
+                $valorBase,
+                $valorRateado,
+                $inicio,
+                $fim,
+                (int) $pagamento['id'],
+                $adminId
+            );
+        }
+
+        return $this->pacotes->buscarPagamentosPendentesPacote($contratoId, $tenantId);
+    }
+
     private function calcularDataFim(string $dataInicio, ?int $planoCicloId, int $tenantId, int $duracaoDias): string
     {
         if ($planoCicloId) {

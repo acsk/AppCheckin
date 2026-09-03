@@ -22,9 +22,6 @@ function normalizeApiPath(url) {
  * Para portar: remova a entrada correspondente desta lista.
  */
 const SLIM_ONLY = [
-  // Assinaturas admin migrado; superadmin ainda na Slim
-  /^\/superadmin\/assinaturas(\/|$)/,
-
   // WOD / Recordes
   /^\/admin\/wods(\/|$)/,
   /^\/admin\/recordes(\/|$)/,
@@ -36,10 +33,7 @@ const SLIM_ONLY = [
   // Parâmetros tenant
   /^\/admin\/parametros(\/|$)/,
 
-  // Relatórios
-  /^\/admin\/relatorios(\/|$)/,
-
-  // Superadmin (tudo, exceto logs)
+  // Superadmin (tudo, exceto logs e assinaturas migradas)
   /^\/superadmin\/academias(\/|$)/,
   /^\/superadmin\/usuarios(\/|$)/,
   /^\/superadmin\/papeis(\/|$)/,
@@ -59,14 +53,7 @@ const SLIM_ONLY = [
 ];
 
 /** Subpaths de /admin/matriculas ainda só na Slim. */
-const SLIM_MATRICULA_PATHS = [
-  /\/simular-cancelamento$/,
-  /\/cancelar-com-credito$/,
-  /\/pacote-contrato(\/|$)/,
-  /\/pagamentos\/\d+\/confirmar$/,
-  /\/assinatura$/,
-  /\/sincronizar-assinatura$/,
-];
+const SLIM_MATRICULA_PATHS = [];
 
 function hasPacoteId(data) {
   if (!data || typeof data !== 'object') return false;
@@ -86,7 +73,6 @@ function shouldUseApiV2(url, method, data) {
 
   if (/^\/admin\/matriculas(\/|$)/.test(path)) {
     if (SLIM_MATRICULA_PATHS.some((re) => re.test(path))) return false;
-    if (verb === 'post' && path === '/admin/matriculas' && hasPacoteId(data)) return false;
   }
 
   return true;

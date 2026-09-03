@@ -217,6 +217,115 @@ class MatriculaController extends Controller
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }
 
+    public function simularCancelamento(Request $request, int $id): JsonResponse
+    {
+        $tenantId = $this->requireTenant($request);
+        if ($tenantId instanceof JsonResponse) {
+            return $tenantId;
+        }
+
+        $result = $this->service->simularCancelamento($id, $tenantId);
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
+    public function cancelarComCredito(Request $request, int $id): JsonResponse
+    {
+        $tenantId = $this->requireTenant($request);
+        if ($tenantId instanceof JsonResponse) {
+            return $tenantId;
+        }
+
+        $adminId = $request->attributes->get('userId');
+        $result = $this->service->cancelarComCredito(
+            $id,
+            $tenantId,
+            $adminId !== null ? (int) $adminId : null,
+            $request->all()
+        );
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
+    public function darBaixaPacote(Request $request, int $contratoId): JsonResponse
+    {
+        $tenantId = $this->requireTenant($request);
+        if ($tenantId instanceof JsonResponse) {
+            return $tenantId;
+        }
+
+        $adminId = $request->attributes->get('userId');
+        $result = $this->service->darBaixaPacote(
+            $contratoId,
+            $tenantId,
+            $adminId !== null ? (int) $adminId : null,
+            $request->all()
+        );
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
+    public function confirmarPagamento(Request $request, int $matriculaId, int $pagamentoId): JsonResponse
+    {
+        $tenantId = $this->requireTenant($request);
+        if ($tenantId instanceof JsonResponse) {
+            return $tenantId;
+        }
+
+        $adminId = $request->attributes->get('userId');
+        $result = $this->service->confirmarPagamentoMatricula(
+            $matriculaId,
+            $pagamentoId,
+            $tenantId,
+            $adminId !== null ? (int) $adminId : null,
+            $request->all()
+        );
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
+    public function obterAssinatura(Request $request, int $id): JsonResponse
+    {
+        $tenantId = $this->requireTenant($request);
+        if ($tenantId instanceof JsonResponse) {
+            return $tenantId;
+        }
+
+        $result = $this->service->obterAssinatura($id, $tenantId);
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
+    public function criarAssinatura(Request $request, int $id): JsonResponse
+    {
+        $tenantId = $this->requireTenant($request);
+        if ($tenantId instanceof JsonResponse) {
+            return $tenantId;
+        }
+
+        $adminId = $request->attributes->get('userId');
+        $result = $this->service->criarAssinaturaMatricula(
+            $id,
+            $tenantId,
+            $adminId !== null ? (int) $adminId : null,
+            $request->all()
+        );
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
+    public function sincronizarAssinatura(Request $request, int $id): JsonResponse
+    {
+        $tenantId = $this->requireTenant($request);
+        if ($tenantId instanceof JsonResponse) {
+            return $tenantId;
+        }
+
+        $result = $this->service->sincronizarAssinaturaMatricula($id, $tenantId);
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
     private function requireTenant(Request $request): int|JsonResponse
     {
         $tenantId = $request->attributes->get('tenantId');
