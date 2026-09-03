@@ -87,4 +87,14 @@ export const auditoriaService = {
       throw prepararErro(error.response?.data || error);
     }
   },
+
+  async repararVencimentoMatricula(matriculaId) {
+    try {
+      const response = await api.post(`/admin/auditoria/reparar-vencimento-matricula/${matriculaId}`);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao reparar vencimento da matrícula:', error);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
 };

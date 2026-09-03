@@ -446,6 +446,197 @@ class AuditoriaCreditoMigracaoService
     }
 
     /**
+     * Repara vencimento divergente pós-migração para uma matrícula.
+     *
+     * @return array{ok: bool, matricula_id: int, alterado: bool, message: string, antes?: array<string, mixed>, depois?: array<string, mixed>}
+     */
+    public function repararVencimentoMatricula(int $tenantId, int $matriculaId): array
+    {
+        $stmt = $this->db->prepare("
+            SELECT m.id, m.tenant_id, m.data_inicio, m.data_vencimento, m.proxima_data_vencimento,
+                   m.dia_vencimento, sm.codigo AS status_codigo, a.nome AS aluno_nome
+            FROM matriculas m
+            INNER JOIN status_matricula sm ON sm.id = m.status_id
+            INNER JOIN alunos a ON a.id = m.aluno_id
+            WHERE m.id = ? AND m.tenant_id = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$matriculaId, $tenantId]);
+        $mat = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!$mat) {
+            return [
+                'ok' => false,
+                'matricula_id' => $matriculaId,
+                'alterado' => false,
+                'message' => 'Matrícula não encontrada',
+            ];
+        }
+
+        $stmtPag = $this->db->prepare("
+            SELECT pp.id, pp.data_pagamento, pp.data_vencimento, pl.duracao_dias
+            FROM pagamentos_plano pp
+            INNER JOIN planos pl ON pl.id = pp.plano_id
+            WHERE pp.matricula_id = ? AND pp.tenant_id = ?
+              AND pp.status_pagamento_id = 2
+              AND pp.data_pagamento IS NOT NULL
+              AND pp.valor > 0
+              AND (pp.observacoes IS NULL OR pp.observacoes NOT LIKE '%Migração de plano%')
+            ORDER BY pp.data_pagamento DESC, pp.id DESC
+            LIMIT 1
+        ");
+        $stmtPag->execute([$matriculaId, $tenantId]);
+        $pagamento = $stmtPag->fetch(\PDO::FETCH_ASSOC);
+        if (!$pagamento) {
+            return [
+                'ok' => false,
+                'matricula_id' => $matriculaId,
+                'alterado' => false,
+                'message' => 'Nenhum pagamento legítimo encontrado para calcular o vencimento',
+            ];
+        }
+
+        $dataInicio = (string) ($mat['data_inicio'] ?? '');
+        $dataPagamento = (string) ($pagamento['data_pagamento'] ?? '');
+        $duracaoDias = (int) ($pagamento['duracao_dias'] ?? 0);
+        $referencia = (string) ($mat['proxima_data_vencimento'] ?: $mat['data_vencimento'] ?: '');
+
+        $candidatos = $this->candidatosVencimento(
+            $dataPagamento,
+            $duracaoDias,
+            $matriculaId,
+            (int) $pagamento['id'],
+            $dataInicio,
+            (string) ($pagamento['data_vencimento'] ?? '')
+        );
+
+        $novaData = null;
+        if ($dataInicio !== '' && $dataPagamento !== ''
+            && $this->diffDias($dataInicio, $dataPagamento) >= 3) {
+            $novaData = $this->somarMeses($dataInicio, 1);
+            $diaVenc = (int) ($mat['dia_vencimento'] ?? 0);
+            if ($diaVenc > 0) {
+                $dt = new \DateTime($novaData);
+                $ultimoDia = (int) $dt->format('t');
+                $dt->setDate((int) $dt->format('Y'), (int) $dt->format('m'), min($diaVenc, $ultimoDia));
+                $novaData = $dt->format('Y-m-d');
+            }
+        }
+
+        if ($novaData === null) {
+            $melhor = $this->melhorCandidato($referencia, $candidatos);
+            if ($melhor === null) {
+                return [
+                    'ok' => false,
+                    'matricula_id' => $matriculaId,
+                    'alterado' => false,
+                    'message' => 'Não foi possível calcular vencimento esperado',
+                ];
+            }
+            $novaData = $melhor['data'];
+        }
+
+        $antes = [
+            'data_inicio' => $mat['data_inicio'],
+            'data_vencimento' => $mat['data_vencimento'],
+            'proxima_data_vencimento' => $mat['proxima_data_vencimento'],
+            'status' => $mat['status_codigo'],
+        ];
+
+        if ($referencia === $novaData
+            && (string) $mat['data_vencimento'] === $novaData
+            && (string) $mat['proxima_data_vencimento'] === $novaData) {
+            return [
+                'ok' => true,
+                'matricula_id' => $matriculaId,
+                'alterado' => false,
+                'message' => 'Vencimento já está correto',
+                'antes' => $antes,
+                'depois' => $antes,
+            ];
+        }
+
+        $this->db->beginTransaction();
+        try {
+            $this->db->prepare("
+                UPDATE matriculas
+                SET data_vencimento = ?,
+                    proxima_data_vencimento = ?,
+                    updated_at = NOW()
+                WHERE id = ? AND tenant_id = ?
+            ")->execute([$novaData, $novaData, $matriculaId, $tenantId]);
+
+            $stmtPend = $this->db->prepare("
+                SELECT id, data_vencimento FROM pagamentos_plano
+                WHERE matricula_id = ? AND tenant_id = ?
+                  AND status_pagamento_id IN (1, 3)
+                  AND data_pagamento IS NULL
+                ORDER BY data_vencimento ASC
+            ");
+            $stmtPend->execute([$matriculaId, $tenantId]);
+            foreach ($stmtPend->fetchAll(\PDO::FETCH_ASSOC) as $pend) {
+                if ((string) $pend['data_vencimento'] === $novaData) {
+                    continue;
+                }
+                $this->db->prepare("
+                    UPDATE pagamentos_plano
+                    SET data_vencimento = ?, updated_at = NOW()
+                    WHERE id = ? AND matricula_id = ? AND tenant_id = ?
+                ")->execute([$novaData, (int) $pend['id'], $matriculaId, $tenantId]);
+            }
+
+            try {
+                $this->db->prepare("
+                    UPDATE assinaturas
+                    SET proxima_cobranca = ?, updated_at = NOW()
+                    WHERE matricula_id = ? AND tenant_id = ?
+                ")->execute([$novaData, $matriculaId, $tenantId]);
+            } catch (\Throwable) {
+                // coluna/tabela opcional em alguns ambientes
+            }
+
+            $pagamentoModel = new \App\Models\PagamentoPlano($this->db);
+            $pagamentoModel->atualizarStatusMatricula($tenantId, $matriculaId);
+
+            $stmtFinal = $this->db->prepare("
+                SELECT m.data_inicio, m.data_vencimento, m.proxima_data_vencimento, sm.codigo AS status_codigo
+                FROM matriculas m
+                INNER JOIN status_matricula sm ON sm.id = m.status_id
+                WHERE m.id = ? AND m.tenant_id = ?
+            ");
+            $stmtFinal->execute([$matriculaId, $tenantId]);
+            $depois = $stmtFinal->fetch(\PDO::FETCH_ASSOC) ?: [];
+
+            $this->db->commit();
+
+            return [
+                'ok' => true,
+                'matricula_id' => $matriculaId,
+                'alterado' => true,
+                'message' => 'Vencimento corrigido com sucesso',
+                'vencimento_novo' => $novaData,
+                'antes' => $antes,
+                'depois' => [
+                    'data_inicio' => $depois['data_inicio'] ?? $mat['data_inicio'],
+                    'data_vencimento' => $depois['data_vencimento'] ?? $novaData,
+                    'proxima_data_vencimento' => $depois['proxima_data_vencimento'] ?? $novaData,
+                    'status' => $depois['status_codigo'] ?? $mat['status_codigo'],
+                ],
+            ];
+        } catch (\Throwable $e) {
+            if ($this->db->inTransaction()) {
+                $this->db->rollBack();
+            }
+
+            return [
+                'ok' => false,
+                'matricula_id' => $matriculaId,
+                'alterado' => false,
+                'message' => 'Erro ao corrigir vencimento: ' . $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
      * @param list<array{tipo: string, severidade: string, descricao: string}> $problemas
      */
     private function temSinalForte(array $problemas): bool
@@ -504,9 +695,10 @@ class AuditoriaCreditoMigracaoService
             $candidatos[] = $pagamentoVencimento;
         }
 
-        // Aniversário do início da matrícula (início depois do pagamento)
+        // Aniversário do início da matrícula (início depois do pagamento / reset migração)
         if ($dataInicio !== '') {
             $candidatos[] = $this->somarMeses($dataInicio, $meses);
+            $candidatos[] = $this->somarMeses($dataInicio, 1);
         }
 
         if ($duracaoDias > 0 && $duracaoDias <= 31) {

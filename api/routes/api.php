@@ -1123,6 +1123,7 @@ return function ($app) {
         $group->get('/auditoria/checkins-acima-do-limite', [AuditoriaController::class, 'checkinsAcimaDoLimite']);
         $group->get('/auditoria/checkins-multiplos-no-dia', [AuditoriaController::class, 'checkinsMultiplosNoDia']);
         $group->get('/auditoria/credito-migracao-plano', [AuditoriaController::class, 'creditoMigracaoPlano']);
+        $group->post('/auditoria/reparar-vencimento-matricula/{id}', [AuditoriaController::class, 'repararVencimentoMatricula']);
         
         // Contas a Receber
         $group->get('/contas-receber', [ContasReceberController::class, 'index']);

@@ -12,7 +12,7 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import LayoutBase from '../../components/LayoutBase';
 import { auditoriaService } from '../../services/auditoriaService';
-import { showError } from '../../utils/toast';
+import { showError, showSuccess } from '../../utils/toast';
 
 const TIPO_CONFIG = {
   parcela_fantasma_migracao: { label: 'Parcela fantasma', cor: '#ef4444', icon: 'file-minus' },
@@ -37,6 +37,7 @@ export default function CreditoMigracaoPlanoScreen() {
   const [resumo, setResumo] = useState(null);
   const [registros, setRegistros] = useState([]);
   const [somenteRevisao, setSomenteRevisao] = useState(true);
+  const [reparandoId, setReparandoId] = useState(null);
 
   const carregar = useCallback(async () => {
     try {
@@ -63,6 +64,26 @@ export default function CreditoMigracaoPlanoScreen() {
 
   const irMatricula = (id) => {
     router.push(`/matriculas/detalhe?id=${id}`);
+  };
+
+  const temVencimentoDivergente = (reg) =>
+    (reg.problemas || []).some((p) => p.tipo === 'vencimento_divergente');
+
+  const corrigirVencimento = async (matriculaId) => {
+    try {
+      setReparandoId(matriculaId);
+      const result = await auditoriaService.repararVencimentoMatricula(matriculaId);
+      if (result.alterado) {
+        showSuccess(result.message || 'Vencimento corrigido');
+      } else {
+        showSuccess(result.message || 'Vencimento já estava correto');
+      }
+      await carregar();
+    } catch (error) {
+      showError(error.mensagemLimpa || error.message || error.error || 'Erro ao corrigir vencimento');
+    } finally {
+      setReparandoId(null);
+    }
   };
 
   if (loading) {
@@ -199,6 +220,20 @@ export default function CreditoMigracaoPlanoScreen() {
                   <Feather name="external-link" size={14} color="#6366f1" />
                   <Text style={styles.linkBtnText}>Abrir</Text>
                 </TouchableOpacity>
+                {temVencimentoDivergente(reg) && (
+                  <TouchableOpacity
+                    style={[styles.linkBtn, styles.fixBtn]}
+                    onPress={() => corrigirVencimento(reg.matricula_id)}
+                    disabled={reparandoId === reg.matricula_id}
+                  >
+                    {reparandoId === reg.matricula_id ? (
+                      <ActivityIndicator size="small" color="#16a34a" />
+                    ) : (
+                      <Feather name="tool" size={14} color="#16a34a" />
+                    )}
+                    <Text style={styles.fixBtnText}>Corrigir</Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
               {(reg.data_vencimento || reg.data_vencimento_esperada) && (
@@ -384,6 +419,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   linkBtnText: { fontSize: 12, fontWeight: '600', color: '#6366f1' },
+  fixBtn: { backgroundColor: '#ecfdf5', borderWidth: 1, borderColor: '#bbf7d0' },
+  fixBtnText: { fontSize: 12, fontWeight: '600', color: '#16a34a' },
   datasRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',

@@ -795,4 +795,41 @@ class AuditoriaController
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
     }
+
+    /**
+     * Repara vencimento divergente pós-migração para uma matrícula.
+     * POST /admin/auditoria/reparar-vencimento-matricula/{id}
+     */
+    public function repararVencimentoMatricula(Request $request, Response $response, array $args): Response
+    {
+        $tenantId = (int) $request->getAttribute('tenant_id');
+        $matriculaId = (int) ($args['id'] ?? 0);
+        $db = require __DIR__ . '/../../config/database.php';
+
+        if ($matriculaId <= 0) {
+            $response->getBody()->write(json_encode([
+                'ok' => false,
+                'message' => 'ID da matrícula inválido',
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(422);
+        }
+
+        try {
+            $service = new \App\Services\AuditoriaCreditoMigracaoService($db);
+            $resultado = $service->repararVencimentoMatricula($tenantId, $matriculaId);
+
+            $status = ($resultado['ok'] ?? false) ? 200 : 400;
+            $response->getBody()->write(json_encode($resultado, JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json')->withStatus($status);
+        } catch (\Exception $e) {
+            $response->getBody()->write(json_encode([
+                'ok' => false,
+                'message' => 'Erro ao reparar vencimento: ' . $e->getMessage(),
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
+        }
+    }
 }
