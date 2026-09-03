@@ -5,7 +5,7 @@ namespace App\Support;
 /**
  * Leitura segura dos arquivos em storage/logs (somente *.log).
  */
-final class LaravelLogReader
+class LaravelLogReader
 {
     public const MAX_LINHAS = 1000;
 

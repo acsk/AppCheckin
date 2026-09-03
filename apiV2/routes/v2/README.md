@@ -30,7 +30,8 @@ Denylist do painel: `painel/src/config/apiRouting.js`
 | `pacotes.php` | pacotes + contratos (contratar, beneficiários, etc.) |
 | `pacote_contratos.php` | listar contratos + gerar matrículas |
 | `dashboard.php` | `GET /dashboard`, `GET /dashboard/cards` |
-| `assinaturas.php` | `GET /assinaturas` (parcial — ver doc migração) |
+| `assinaturas.php` | CRUD + ações admin (14 rotas) |
+| `matriculas_extras.php` | subpaths matrícula + assinatura por matrícula |
 | `parametros.php` | parâmetros tenant + alias `/configuracoes` |
 | `relatorios.php` | `GET /relatorios/planos-ciclos` |
 | `wods.php` | WOD admin (CRUD, blocos, variações, resultados) — 22 rotas |
@@ -44,11 +45,24 @@ Denylist do painel: `painel/src/config/apiRouting.js`
 | `dias.php` | `/dias`, horários, período |
 | `config_formas.php` | `/formas-pagamento`, `/config/formas-pagamento*`, `/config/status-conta` |
 
+## Módulos em `superadmin/` (migrados)
+
+| Arquivo | Rotas principais |
+|---------|------------------|
+| `academias.php` | academias + admins |
+| `usuarios.php` | usuários globais |
+| `papeis.php` | papéis disponíveis |
+| `planos.php` | planos de alunos |
+| `planos_sistema.php` | planos do sistema |
+| `contratos.php` | contratos + trocar-plano |
+| `pagamentos_contrato.php` | pagamentos de contratos |
+| `assinaturas.php` | assinaturas multi-tenant |
+| `misc.php` | debug env |
+
 ## Pendente (criar arquivo quando migrar)
 
-- `superadmin/*.php` (academias, contratos, planos-sistema, assinaturas, …)
-- assinaturas admin (completar rotas além de listagem)
-- matrículas subpaths (`matriculas_extras.php`)
+- `/admin/formas-pagamento` catálogo CRUD
+- webhooks Mercado Pago
 
 ---
 

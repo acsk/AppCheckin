@@ -19,7 +19,7 @@ Rotas modulares em `apiV2/routes/v2/**/*.php`, carregadas por `routes/api.php`. 
 | Modalidades | ✅ | — | ✅ | `routes/api.php` |
 | Alunos | ✅ | parcial | ✅ | `routes/api.php` |
 | Planos + ciclos | ✅ | — | ✅ | `routes/api.php` |
-| Matrículas (core) | ✅ | ✅ | ✅ | `routes/api.php` + exceções abaixo |
+| Matrículas | ✅ | ✅ | ✅ | `routes/api.php` + `admin/matriculas_extras.php` |
 | Auditoria | ✅ | — | ✅ | `routes/api.php` |
 | Logs admin / superadmin | ✅ | — | ✅ | `routes/api.php` |
 | Usuários tenant | ✅ | ✅ | ✅ | `admin/usuarios.php`, `shared/tenant_usuarios.php` |
@@ -31,14 +31,14 @@ Rotas modulares em `apiV2/routes/v2/**/*.php`, carregadas por `routes/api.php`. 
 | Payment-credentials | ✅ | ✅ | ✅ | `admin/payment_credentials.php` |
 | Pacotes + pacote-contratos | ✅ | ✅ | ✅ | `admin/pacotes.php`, `admin/pacote_contratos.php` |
 | Dashboard | ✅ | ✅ | ✅ | `admin/dashboard.php` |
-| Assinaturas admin | ⚠️ | ✅ | ✅ | `admin/assinaturas.php` — **só** `GET /assinaturas` |
+| Assinaturas admin | ✅ | ✅ | ✅ | `admin/assinaturas.php` |
 | WOD | ✅ | ✅ | ✅ | `admin/wods.php` — 22 rotas |
-| Recordes | ✅ | ✅ | ✅ | `admin/recordes.php` — 11 rotas |
+| Recordes | ✅ | ✅ | ✅ | `admin/recordes.php` — **requer** `migrate_recordes_pessoais.php` no banco |
 | Formas-pagamento (catálogo `/admin/formas-pagamento`) | ❌ | — | Slim | `SLIM_ONLY` |
 | Configurações tenant | ✅ | ✅ | ✅ | `admin/parametros.php` (alias `/configuracoes`) |
 | Parâmetros | ✅ | ✅ | ✅ | `admin/parametros.php` |
 | Relatórios | ✅ | ✅ | ✅ | `admin/relatorios.php` |
-| Super Admin (exc. logs) | ❌ | — | Slim | `SLIM_ONLY` |
+| Super Admin (exc. logs) | ✅ | ✅ | ✅ | `routes/v2/superadmin/*.php` |
 | CEP / status / formas catálogo | ✅ | ✅ | ✅ | `routes/api.php` (público) + `shared/config_formas.php` |
 | Webhooks Mercado Pago | ❌ | — | Slim | `SLIM_ONLY` |
 
@@ -49,11 +49,7 @@ Legenda: ✅ completo para o escopo do painel · ⚠️ parcial · ❌ pendente
 ## Denylist atual (`painel/src/config/apiRouting.js`)
 
 ```
-/superadmin/assinaturas
 /admin/formas-pagamento      ← catálogo; config já está na v2
-/admin/parametros            ← migrado (mantido só se build antigo)
-/superadmin/academias|usuarios|papeis|contratos|pagamentos-contrato|planos
-/papeis
 /api/webhooks
 ```
 
@@ -61,53 +57,20 @@ Ao concluir um módulo: implementar rotas na v2 **e** remover o prefixo correspo
 
 ---
 
-## Matrículas — subpaths ainda na Slim
-
-Definidos em `SLIM_MATRICULA_PATHS` (painel continua na Slim para estes):
-
-- `POST /admin/matriculas` quando body contém `pacote_id`
-- `GET …/simular-cancelamento`
-- `POST …/cancelar-com-credito`
-- `…/pacote-contrato/…`
-- `…/pagamentos/{id}/confirmar`
-- `…/assinatura`, `…/sincronizar-assinatura`
-
----
-
-## Lacunas (v2 incompleto, painel já aponta para v2)
-
-Rotas **sem** entrada em `SLIM_ONLY` que ainda podem faltar na apiV2:
+## Lacunas menores (painel → v2, rotas auxiliares)
 
 | Rota | Usado por |
 |------|-----------|
 | `GET /admin/admins` | `descontoMatriculaService` |
-| `GET /formas-pagamento` | modals de baixa, contratos |
-| `GET /config/formas-pagamento-ativas` | `BaixaPagamentoModal` |
-| Assinaturas admin (exc. listagem) | `assinaturaService` — ver abaixo |
 | `GET /admin/turmas/dia/{id}`, presenças | Slim (painel não usa hoje) |
-
-### Assinaturas admin — pendente na v2
-
-Painel já vai para apiV2, mas só existe `GET /v2/admin/assinaturas`. Faltam migrar:
-
-- `GET/POST/PUT /admin/assinaturas/{id}`
-- `POST …/renovar`, `…/suspender`, `…/reativar`, `…/cancelar`
-- `GET …/proximas-vencer`, `…/sem-matricula`, `…/relatorio`
-- `POST …/sincronizar-matricula`, `GET …/status-sincronizacao`
-- `GET /admin/alunos/{id}/assinaturas`
 
 ---
 
 ## Ordem sugerida (próximas waves)
 
-1. **Assinaturas admin** (completar) + **`/superadmin/assinaturas`**
-2. **Parâmetros** + **configurações** tenant
-3. **WOD** + **Recordes**
-4. **Super Admin** (academias, contratos, planos-sistema, usuários)
-5. **Auxiliares:** `/cep`, `/status`, `/formas-pagamento`, `/config/formas-pagamento-ativas`, `GET /admin/admins`
-6. **Matrículas** — subpaths em `SLIM_MATRICULA_PATHS`
-7. **Relatórios** (`/admin/relatorios/planos-ciclos`)
-8. **Webhooks MP** (infra; manter Slim até cutover explícito)
+1. **Formas-pagamento** catálogo (`/admin/formas-pagamento` CRUD)
+2. **Webhooks MP** (infra; manter Slim até cutover explícito)
+3. **Turmas** — presenças / `GET /turmas/dia/{id}` (se painel passar a usar)
 
 ---
 
@@ -141,9 +104,24 @@ Painel já vai para apiV2, mas só existe `GET /v2/admin/assinaturas`. Faltam mi
 | `dashboard.php` | index + cards |
 | `parametros.php` | parâmetros + `/configuracoes` |
 | `relatorios.php` | planos-ciclos |
-| `assinaturas.php` | `GET /assinaturas` |
+| `assinaturas.php` | CRUD + ações admin |
+| `matriculas_extras.php` | simular-cancelamento, cancelar-com-credito, baixa pacote, assinatura |
 | `wods.php` | 22 rotas WOD |
 | `recordes.php` | 11 rotas recordes |
+
+### Partials `routes/v2/superadmin/`
+
+| Arquivo | Rotas |
+|---------|-------|
+| `academias.php` | CRUD academias + admins |
+| `usuarios.php` | usuários globais |
+| `papeis.php` | listar papéis (+ alias `GET /v2/papeis`) |
+| `planos.php` | planos de alunos |
+| `planos_sistema.php` | CRUD planos sistema |
+| `contratos.php` | contratos tenant ↔ plano sistema |
+| `pagamentos_contrato.php` | pagamentos de contratos |
+| `assinaturas.php` | listagem global |
+| `misc.php` | `GET /env` |
 
 ### Partials `routes/v2/shared/`
 
@@ -163,17 +141,6 @@ Detalhamento das rotas que **ainda não existem** na apiV2. Módulos já migrado
 
 - `GET /admin/admins`
 
-### `/admin/assinaturas` — demais rotas (listagem ✅)
-
-- `GET /admin/assinaturas/{id}`
-- `POST /admin/assinaturas`
-- `PUT /admin/assinaturas/{id}`
-- `POST /admin/assinaturas/{id}/renovar|suspender|reativar|cancelar`
-- `GET /admin/assinaturas/proximas-vencer|sem-matricula|relatorio`
-- `POST /admin/assinaturas/{id}/sincronizar-matricula`
-- `GET /admin/assinaturas/{id}/status-sincronizacao`
-- `GET /admin/alunos/{id}/assinaturas`
-
 ### `/admin/checkins` — 2 rotas
 
 - `POST /admin/checkins/registrar`
@@ -182,14 +149,6 @@ Detalhamento das rotas que **ainda não existem** na apiV2. Módulos já migrado
 ### `/admin/formas-pagamento` — catálogo global (≠ config)
 
 - Rotas CRUD em `formas_pagamento` (Slim)
-
-### `/admin/matriculas` — subpaths Slim-only
-
-- `POST /admin/matriculas/pacote-contrato/{id}/baixa`
-- `POST /admin/matriculas/{id}/cancelar-com-credito`
-- `GET /admin/matriculas/{id}/simular-cancelamento`
-- `POST /admin/matriculas/{id}/pagamentos/{id}/confirmar`
-- rotas assinatura / sincronizar (ver `SLIM_MATRICULA_PATHS`)
 
 ### `/admin/feature-flags` — 2 rotas
 
@@ -205,16 +164,6 @@ Detalhamento das rotas que **ainda não existem** na apiV2. Módulos já migrado
 
 - Webhooks + listagem/reprocessamento (painel Mercado Pago)
 
-### `/superadmin/*` — módulos inteiros
-
-- `academias` (14 rotas)
-- `contratos` (8 rotas)
-- `pagamentos-contrato` (5 rotas)
-- `usuarios` (4 rotas)
-- `papeis`, `planos`, `planos-sistema` (8 rotas)
-- `assinaturas`
-- `env`
-
 ### Fora do painel (baixa prioridade strangler)
 
 - `/professor/*` (5 rotas)
@@ -229,5 +178,6 @@ Detalhamento das rotas que **ainda não existem** na apiV2. Módulos já migrado
 1. Implementar repository + service + controller + `routes/v2/admin/<modulo>.php`
 2. Testes feature em `tests/Feature/V2Admin*RoutesTest.php`
 3. Remover prefixo de `SLIM_ONLY` em `painel/src/config/apiRouting.js`
-4. Deploy apiV2 + rebuild painel
-5. Atualizar esta tabela de status
+4. **Schema:** se o módulo usa tabelas novas, rodar a migration Slim antes do deploy (ex.: recordes → `api/database/migrate_recordes_pessoais.php` — ver `api/docs/EXECUTAR_MIGRATIONS_RECORDES.md`)
+5. Deploy apiV2 + rebuild painel
+6. Atualizar esta tabela de status

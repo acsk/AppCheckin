@@ -22,48 +22,15 @@ function normalizeApiPath(url) {
  * Para portar: remova a entrada correspondente desta lista.
  */
 const SLIM_ONLY = [
-  // WOD / Recordes
-  /^\/admin\/wods(\/|$)/,
-  /^\/admin\/recordes(\/|$)/,
-
-  // Financeiro / pagamentos (formas ainda na Slim)
+  // Catálogo global formas-pagamento (admin CRUD; config tenant já na v2)
   /^\/admin\/formas-pagamento(\/|$)/,
-  /^\/admin\/configuracoes(\/|$)/,
-
-  // Parâmetros tenant
-  /^\/admin\/parametros(\/|$)/,
-
-  // Superadmin (tudo, exceto logs e assinaturas migradas)
-  /^\/superadmin\/academias(\/|$)/,
-  /^\/superadmin\/usuarios(\/|$)/,
-  /^\/superadmin\/papeis(\/|$)/,
-  /^\/superadmin\/contratos(\/|$)/,
-  /^\/superadmin\/pagamentos-contrato(\/|$)/,
-  /^\/superadmin\/planos(\/|$)/,
-
-  // Papéis raiz
-  /^\/papeis(\/|$)/,
 
   // Mercado Pago webhooks
   /^\/api\/webhooks(\/|$)/,
-
-  // CEP / status auxiliar
-  /^\/cep(\/|$)/,
-  /^\/status(\/|$)/,
 ];
 
 /** Subpaths de /admin/matriculas ainda só na Slim. */
 const SLIM_MATRICULA_PATHS = [];
-
-function hasPacoteId(data) {
-  if (!data || typeof data !== 'object') return false;
-  if (typeof FormData !== 'undefined' && data instanceof FormData) {
-    const v = data.get('pacote_id');
-    return v !== null && v !== '' && v !== undefined;
-  }
-  const v = data.pacote_id;
-  return v !== null && v !== undefined && v !== '';
-}
 
 function shouldUseApiV2(url, method, data) {
   const path = normalizeApiPath(url);

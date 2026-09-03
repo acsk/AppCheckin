@@ -67,7 +67,7 @@ class V2SuperAdminLogRoutesTest extends TestCase
             ]);
         $this->app->instance(\App\Repositories\UsuarioRepository::class, $usuarios);
 
-        $reader = Mockery::mock(app(\App\Support\LaravelLogReader::class))->makePartial();
+        $reader = Mockery::mock(\App\Support\LaravelLogReader::class);
         $reader->shouldReceive('listarArquivos')->once()->andReturn([
             ['nome' => 'laravel.log', 'tamanho_bytes' => 10, 'modificado_em' => '2026-09-02T10:00:00+00:00'],
         ]);
@@ -115,7 +115,7 @@ class V2SuperAdminLogRoutesTest extends TestCase
             ]);
         $this->app->instance(\App\Repositories\UsuarioRepository::class, $usuarios);
 
-        $reader = Mockery::mock(app(\App\Support\LaravelLogReader::class))->makePartial();
+        $reader = Mockery::mock(\App\Support\LaravelLogReader::class);
         $reader->shouldReceive('listarArquivos')->once()->andReturn([
             ['nome' => 'laravel.log', 'tamanho_bytes' => 10, 'modificado_em' => '2026-09-02T10:00:00+00:00'],
         ]);

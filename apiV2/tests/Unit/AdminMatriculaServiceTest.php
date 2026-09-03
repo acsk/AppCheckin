@@ -2,9 +2,12 @@
 
 namespace Tests\Unit;
 
+use App\Repositories\AdminAssinaturaRepository;
 use App\Repositories\AdminMatriculaRepository;
 use App\Repositories\MatriculaRepository;
 use App\Services\Admin\AdminMatriculaService;
+use App\Services\Admin\AdminPacoteService;
+use App\Services\Admin\AdminPagamentoPlanoService;
 use App\Services\PagamentoPlanoService;
 use Mockery;
 use Tests\TestCase;
@@ -15,11 +18,17 @@ class AdminMatriculaServiceTest extends TestCase
         ?AdminMatriculaRepository $repo = null,
         ?PagamentoPlanoService $pagamentosPlano = null,
         ?MatriculaRepository $matriculaRepo = null,
+        ?AdminPacoteService $pacotes = null,
+        ?AdminPagamentoPlanoService $pagamentosPlanoAdmin = null,
+        ?AdminAssinaturaRepository $assinaturas = null,
     ): AdminMatriculaService {
         return new AdminMatriculaService(
             $repo ?? Mockery::mock(AdminMatriculaRepository::class),
             $pagamentosPlano ?? Mockery::mock(PagamentoPlanoService::class),
             $matriculaRepo ?? Mockery::mock(MatriculaRepository::class),
+            $pacotes ?? Mockery::mock(AdminPacoteService::class),
+            $pagamentosPlanoAdmin ?? Mockery::mock(AdminPagamentoPlanoService::class),
+            $assinaturas ?? Mockery::mock(AdminAssinaturaRepository::class),
         );
     }
 
