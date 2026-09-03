@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'jwt.auth' => \App\Http\Middleware\JwtAuthenticate::class,
             'admin.auth' => \App\Http\Middleware\AdminAuthenticate::class,
+            'superadmin.auth' => \App\Http\Middleware\SuperAdminAuthenticate::class,
         ]);
         $middleware->trustProxies(at: '*');
     })

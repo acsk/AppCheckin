@@ -21,7 +21,8 @@ const cases = [
   ['/admin/turmas', 'get', null, false, 'turmas ficam na Slim'],
   ['/admin/wods', 'get', null, false, 'wods ficam na Slim'],
   ['/admin/dashboard', 'get', null, false, 'dashboard fica na Slim'],
-  ['/superadmin/academias', 'get', null, false, 'superadmin fica na Slim'],
+  ['/superadmin/academias', 'get', null, false, 'superadmin academias fica na Slim'],
+  ['/superadmin/logs', 'get', null, true, 'logs Laravel SA vai para v2'],
   ['/cep/57000000', 'get', null, false, 'CEP fica na Slim'],
 ];
 

@@ -68,6 +68,7 @@ const MENU = [
     children: [
       
       { label: 'Planos Sistema', path: '/planos-sistema', icon: 'layers', roles: [4] },
+      { label: 'Logs Laravel', path: '/superadmin/logs-laravel', icon: 'terminal', roles: [4] },
       { label: 'Configurações de Pagamento', path: '/configuracoes-pagamento', icon: 'settings', roles: [3, 4] },
       
     ],

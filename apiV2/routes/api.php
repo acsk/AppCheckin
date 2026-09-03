@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V2\SuperAdmin\LogController as SuperAdminLogController;
 use App\Http\Controllers\Api\V2\Admin\AlunoController as AdminAlunoController;
 use App\Http\Controllers\Api\V2\Admin\MatriculaController as AdminMatriculaController;
 use App\Http\Controllers\Api\V2\Admin\ModalidadeController as AdminModalidadeController;
@@ -118,6 +119,12 @@ Route::prefix('v2')->group(function () {
             Route::post('/matriculas/{id}/cancelar', [AdminMatriculaController::class, 'cancelar']);
             Route::put('/matriculas/{id}/proxima-data-vencimento', [AdminMatriculaController::class, 'atualizarProximaDataVencimento']);
             Route::delete('/matriculas/{id}', [AdminMatriculaController::class, 'destroy']);
+        });
+
+        Route::prefix('superadmin')->middleware('superadmin.auth')->group(function () {
+            Route::get('/logs', [SuperAdminLogController::class, 'index']);
+            Route::get('/logs/{arquivo}', [SuperAdminLogController::class, 'show'])
+                ->where('arquivo', '[a-zA-Z0-9._-]+\\.log');
         });
     });
 });
