@@ -37,8 +37,7 @@ const SLIM_ONLY = [
   // Dashboard
   /^\/admin\/dashboard(\/|$)/,
 
-  // Financeiro / pagamentos (credenciais e formas ainda na Slim)
-  /^\/admin\/payment-credentials(\/|$)/,
+  // Financeiro / pagamentos (formas ainda na Slim)
   /^\/admin\/formas-pagamento(\/|$)/,
   /^\/admin\/configuracoes(\/|$)/,
 
