@@ -25,10 +25,6 @@ const SLIM_ONLY = [
   // Assinaturas admin migrado; superadmin ainda na Slim
   /^\/superadmin\/assinaturas(\/|$)/,
 
-  // Pacotes e pacote-contratos
-  /^\/admin\/pacotes(\/|$)/,
-  /^\/admin\/pacote-contratos(\/|$)/,
-
   // WOD / Recordes
   /^\/admin\/wods(\/|$)/,
   /^\/admin\/recordes(\/|$)/,
