@@ -130,6 +130,11 @@ class AuditoriaCreditoMigracaoService
                   ))
                   OR (pp.tipo_baixa_id = 4 AND pp.observacoes LIKE '%Mercado Pago%')
               )
+              AND NOT EXISTS (
+                  SELECT 1 FROM creditos_aluno c
+                  WHERE c.pagamento_origem_id = pp.id
+                    AND c.status_credito_id IN (1, 2)
+              )
             ORDER BY pp.id DESC
             LIMIT 200
         ");
@@ -295,6 +300,9 @@ class AuditoriaCreditoMigracaoService
                     GROUP BY matricula_id
                 ) ult ON ult.matricula_id = ass.matricula_id
                 WHERE ass.tenant_id = ?
+                  AND ass.status_id NOT IN (
+                      SELECT id FROM assinatura_status WHERE codigo IN ('cancelada', 'expirada')
+                  )
                   AND DATEDIFF(ass.data_inicio, ult.data_pagamento) >= 3
                   AND DATEDIFF(m.data_inicio, ult.data_pagamento) >= 3
                 ORDER BY ass.id DESC
