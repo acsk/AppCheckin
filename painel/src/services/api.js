@@ -1,9 +1,6 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { API_BASE_URL, API_V2_BASE_URL } from '../config/api';
-import apiRouting from '../config/apiRouting';
-
-const { shouldUseApiV2 } = apiRouting;
+import { API_BASE_URL } from '../config/api';
 
 // Event emitter simples para notificar logout
 let onUnauthorizedCallback = null;
@@ -57,9 +54,8 @@ api.interceptors.request.use(
     } else {
       console.warn('⚠️ Nenhum token encontrado');
     }
-    const useV2 = shouldUseApiV2(config.url, config.method, config.data);
-    config.baseURL = useV2 ? API_V2_BASE_URL : API_BASE_URL;
-    console.log(`📡 ${config.method.toUpperCase()} ${config.baseURL}${config.url}${useV2 ? ' [v2]' : ' [slim]'}`);
+    config.baseURL = API_BASE_URL;
+    console.log(`📡 ${config.method.toUpperCase()} ${config.baseURL}${config.url} [v2]`);
     return config;
   },
   (error) => {
@@ -76,8 +72,7 @@ api.interceptors.response.use(
       console.warn('🚫 Token inválido ou expirado - redirecionando para login...');
       await AsyncStorage.removeItem('@appcheckin:token');
       await AsyncStorage.removeItem('@appcheckin:user');
-      
-      // Notificar o app para redirecionar
+
       if (onUnauthorizedCallback) {
         onUnauthorizedCallback();
       }
@@ -106,11 +101,10 @@ export const apiCall = async (method, url, data = null) => {
     const response = await api(config);
     return response.data;
   } catch (error) {
-    // Retornar objeto de erro padronizado
     if (error.response?.data) {
       return error.response.data;
     }
-    
+
     return {
       type: 'error',
       message: error.message || 'Erro na requisição',

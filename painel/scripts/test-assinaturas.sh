@@ -6,7 +6,7 @@
 # 
 # Substitua:
 # - TOKEN: seu JWT token
-# - BASE_URL: http://localhost:8080 (development) ou https://api.appcheckin.com.br (production)
+# - BASE_URL: http://localhost:9090/v2 (development) ou https://apiv2.appcheckin.com.br/v2 (production)
 
 BASE_URL="http://localhost:8080"
 TOKEN="seu_jwt_token_aqui"

@@ -12,8 +12,7 @@
     "web:build:dev": "bash -c 'source .env.development && DEPLOY_BASE_PATH=/dist ./scripts/deploy.sh'",
     "web:build": "bash -c 'source .env.production && DEPLOY_BASE_PATH=/dist ./scripts/deploy.sh'",
     "copy-icons": "node scripts/copy-icons.js",
-    "postbuild": "node scripts/copy-icons.js",
-    "test:api-routing": "node scripts/test-api-routing.js"
+    "postbuild": "node scripts/copy-icons.js"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",

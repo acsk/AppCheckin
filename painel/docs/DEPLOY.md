@@ -47,7 +47,7 @@ Use FTP ou seu gerenciador de arquivos para:
 #### API Base URL
 Já configurado em `src/config/api.js`:
 ```javascript
-export const API_BASE_URL = 'https://api.appcheckin.com.br';
+export const API_BASE_URL = 'https://apiv2.appcheckin.com.br/v2';
 ```
 
 #### .htaccess - Reescrita de URLs
@@ -61,7 +61,7 @@ O arquivo `.htaccess` já contém:
 
 1. Acesse https://mobile.appcheckin.com.br
 2. Verifique no console do navegador se há erros
-3. Teste as requisições para a API: https://api.appcheckin.com.br
+3. Teste as requisições para a API: https://apiv2.appcheckin.com.br/v2
 
 ### Troubleshooting
 
@@ -71,7 +71,7 @@ O arquivo `.htaccess` já contém:
 - Testar com arquivo simples na raiz
 
 **❌ CORS errors da API**
-- A API em `https://api.appcheckin.com.br` precisa aceitar requisições de `https://mobile.appcheckin.com.br`
+- A API em `https://apiv2.appcheckin.com.br` precisa aceitar requisições de `https://painel.appcheckin.com.br` / `https://mobile.appcheckin.com.br`
 - Configurar headers CORS na API
 
 **❌ Arquivos CSS/JS não carregam**
@@ -84,7 +84,7 @@ O arquivo `.htaccess` já contém:
 
 Se precisar usar variáveis de ambiente:
 ```bash
-EXPO_PUBLIC_API_URL=https://api.appcheckin.com.br npm run web
+EXPO_PUBLIC_API_URL=https://apiv2.appcheckin.com.br/v2 npm run web
 ```
 
 ### Script Automatizado
@@ -103,6 +103,7 @@ DEPLOY_BASE_PATH=/dist ./scripts/deploy.sh
 
 ---
 
-**API:** https://api.appcheckin.com.br  
+**API:** https://apiv2.appcheckin.com.br/v2  
+
 **App Web:** https://mobile.appcheckin.com.br  
 **Suporte:** Para problemas, verificar logs no servidor
