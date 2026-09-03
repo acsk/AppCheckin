@@ -1,6 +1,6 @@
 /**
- * Cutover strangler: só rotas já portadas na v2 vão para apiv2.
- * O restante permanece em api.appcheckin.com.br (Slim).
+ * Cutover strangler invertido: padrão = apiV2.
+ * Só paths ainda sem paridade na Laravel ficam na Slim (api.appcheckin.com.br).
  */
 
 function normalizeApiPath(url) {
@@ -15,6 +15,7 @@ function normalizeApiPath(url) {
   return collapsed || '/';
 }
 
+/** Subpaths de matrícula ainda só na Slim. */
 const SLIM_MATRICULA_PATHS = [
   /\/simular-cancelamento$/,
   /\/cancelar-com-credito$/,
@@ -23,6 +24,37 @@ const SLIM_MATRICULA_PATHS = [
   /\/assinatura$/,
   /\/sincronizar-assinatura$/,
   /\/descontos(\/|$)/,
+];
+
+/** Prefixos/módulos inteiros ainda só na Slim. */
+const SLIM_PREFIXES = [
+  /^\/admin\/dashboard(\/|$)/,
+  /^\/admin\/turmas(\/|$)/,
+  /^\/admin\/dias(\/|$)/,
+  /^\/admin\/wods(\/|$)/,
+  /^\/admin\/recordes(\/|$)/,
+  /^\/admin\/professores(\/|$)/,
+  /^\/admin\/pacotes(\/|$)/,
+  /^\/admin\/pacote-contratos(\/|$)/,
+  /^\/admin\/assinaturas(\/|$)/,
+  /^\/admin\/pagamentos-plano(\/|$)/,
+  /^\/admin\/pagamentos(\/|$)/,
+  /^\/admin\/payment-credentials(\/|$)/,
+  /^\/admin\/formas-pagamento(\/|$)/,
+  /^\/admin\/configuracoes(\/|$)/,
+  /^\/admin\/matricula-descontos(\/|$)/,
+  /^\/admin\/relatorios(\/|$)/,
+  /^\/admin\/admins(\/|$)/,
+  /^\/admin\/creditos(\/|$)/,
+  /^\/admin\/alunos\/\d+\/creditos(\/|$)/,
+  /^\/superadmin\/(?!logs(\/|$))/,
+  /^\/tenant(\/|$)/,
+  /^\/cep(\/|$)/,
+  /^\/status(\/|$)/,
+  /^\/dias(\/|$)/,
+  /^\/turmas(\/|$)/,
+  /^\/papeis(\/|$)/,
+  /^\/api\/webhooks(\/|$)/,
 ];
 
 function hasPacoteId(data) {
@@ -37,37 +69,31 @@ function hasPacoteId(data) {
   return pacoteId !== null && pacoteId !== undefined && pacoteId !== '';
 }
 
-function shouldUseApiV2(url, method, data) {
-  const path = normalizeApiPath(url);
-  const verb = String(method || 'get').toLowerCase();
-
-  if (/^\/auth(\/|$)/.test(path)) return true;
-  if (path === '/me' || path.startsWith('/me/')) return true;
-  if (/^\/planos(\/|$)/.test(path)) return true;
-  if (/^\/admin\/modalidades(\/|$)/.test(path)) return true;
-  if (/^\/admin\/assinatura-frequencias(\/|$)/.test(path)) return true;
-  if (/^\/admin\/planos(\/|$)/.test(path)) return true;
-
-  if (/^\/admin\/alunos(\/|$)/.test(path)) {
-    return !/\/creditos(\/|$)/.test(path);
-  }
-
-  if (/^\/admin\/matriculas(\/|$)/.test(path)) {
-    if (SLIM_MATRICULA_PATHS.some((re) => re.test(path))) return false;
-    if (verb === 'post' && path === '/admin/matriculas' && hasPacoteId(data)) {
-      return false;
-    }
+function shouldUseSlim(path, verb, data) {
+  if (SLIM_PREFIXES.some((re) => re.test(path))) {
     return true;
   }
 
-  if (/^\/admin\/logs(\/|$)/.test(path)) return true;
-  if (/^\/superadmin\/logs(\/|$)/.test(path)) return true;
-  if (/^\/admin\/auditoria(\/|$)/.test(path)) return true;
+  if (/^\/admin\/matriculas(\/|$)/.test(path)) {
+    if (SLIM_MATRICULA_PATHS.some((re) => re.test(path))) {
+      return true;
+    }
+    if (verb === 'post' && path === '/admin/matriculas' && hasPacoteId(data)) {
+      return true;
+    }
+  }
 
   return false;
+}
+
+function shouldUseApiV2(url, method, data) {
+  const path = normalizeApiPath(url);
+  const verb = String(method || 'get').toLowerCase();
+  return !shouldUseSlim(path, verb, data);
 }
 
 module.exports = {
   normalizeApiPath,
   shouldUseApiV2,
+  shouldUseSlim,
 };

@@ -21,13 +21,18 @@ const cases = [
   ['/admin/turmas', 'get', null, false, 'turmas ficam na Slim'],
   ['/admin/wods', 'get', null, false, 'wods ficam na Slim'],
   ['/admin/dashboard', 'get', null, false, 'dashboard fica na Slim'],
+  ['/admin/professores', 'get', null, false, 'professores ficam na Slim'],
+  ['/admin/pacotes', 'get', null, false, 'pacotes ficam na Slim'],
+  ['/admin/assinaturas', 'get', null, false, 'assinaturas admin ficam na Slim'],
   ['/superadmin/academias', 'get', null, false, 'superadmin academias fica na Slim'],
+  ['/superadmin/logs', 'get', null, true, 'logs Laravel SA vai para v2'],
   ['/admin/logs', 'get', null, true, 'logs Laravel admin vai para v2'],
-  ['/superadmin/logs', 'get', null, true, 'logs Laravel legado SA vai para v2'],
   ['/admin/auditoria/pagamentos-duplicados', 'get', null, true, 'auditoria vai para v2'],
   ['/admin/auditoria/credito-migracao-plano', 'get', null, true, 'auditoria crédito vai para v2'],
   ['/admin/auditoria/reparar-vencimento-matricula/335', 'post', null, true, 'reparar vencimento vai para v2'],
+  ['/tenant/usuarios', 'get', null, false, 'usuários tenant ficam na Slim'],
   ['/cep/57000000', 'get', null, false, 'CEP fica na Slim'],
+  ['/qualquer-nova-rota', 'get', null, true, 'rotas novas vão para v2 por padrão'],
 ];
 
 let failed = 0;
