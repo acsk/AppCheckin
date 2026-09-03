@@ -30,11 +30,6 @@ const SLIM_ONLY = [
   /^\/admin\/pacotes(\/|$)/,
   /^\/admin\/pacote-contratos(\/|$)/,
 
-  // Turmas, dias, horários
-  /^\/admin\/turmas(\/|$)/,
-  /^\/admin\/dias(\/|$)/,
-  /^\/dias(\/|$)/,
-
   // WOD / Recordes
   /^\/admin\/wods(\/|$)/,
   /^\/admin\/recordes(\/|$)/,

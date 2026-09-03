@@ -353,6 +353,38 @@ class TurmaRepository
     }
 
     /**
+     * Espelha App\Models\Turma::listarPorProfessor da Slim.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function listarPorProfessor(int $professorId, int $tenantId, bool $apenasAtivas = false): array
+    {
+        $sql = 'SELECT t.*,
+                m.nome as modalidade_nome,
+                m.icone as modalidade_icone,
+                m.cor as modalidade_cor,
+                d.data as dia_data,
+                '.self::SUBQUERY_ALUNOS_COUNT.'
+                FROM turmas t
+                LEFT JOIN modalidades m ON t.modalidade_id = m.id
+                LEFT JOIN dias d ON t.dia_id = d.id
+                WHERE t.professor_id = ? AND t.tenant_id = ?';
+
+        if ($apenasAtivas) {
+            $sql .= ' AND t.ativo = 1';
+        }
+
+        $sql .= ' ORDER BY d.data ASC, t.horario_inicio ASC';
+
+        return $this->rows($sql, [$professorId, $tenantId]);
+    }
+
+    public function deletar(int $id): void
+    {
+        $this->desativar($id);
+    }
+
+    /**
      * Espelha App\Models\Professor::pertenceAoTenant (papel_id = 2 ativo no tenant).
      */
     public function professorPertenceAoTenant(int $professorId, int $tenantId): bool

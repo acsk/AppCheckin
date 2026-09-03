@@ -5,7 +5,7 @@ export const horarioService = {
   async listarPorDia(diaId) {
     try {
       const response = await api.get(`/dias/${diaId}/horarios`);
-      return response.data.horarios || [];
+      return response.data.turmas || response.data.horarios || [];
     } catch (error) {
       console.error('Erro ao listar horários:', error);
       throw error;
@@ -18,7 +18,7 @@ export const horarioService = {
       const response = await api.get('/dias/horarios', {
         params: { data }
       });
-      return response.data.horarios || [];
+      return response.data.turmas || response.data.horarios || [];
     } catch (error) {
       console.error('Erro ao listar horários por data:', error);
       throw error;
