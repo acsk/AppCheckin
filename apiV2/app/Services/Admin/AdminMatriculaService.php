@@ -20,7 +20,14 @@ class AdminMatriculaService
      */
     public function index(int $tenantId, array $query): array
     {
-        $this->pagamentosPlano->marcarAtrasados($tenantId);
+        try {
+            $this->pagamentosPlano->marcarAtrasados($tenantId);
+        } catch (\Throwable $e) {
+            Log::warning('marcarAtrasados falhou na listagem admin de matrículas', [
+                'tenant_id' => $tenantId,
+                'message' => $e->getMessage(),
+            ]);
+        }
 
         $result = $this->matriculas->listar($tenantId, $query);
         $rows = $result['rows'];
