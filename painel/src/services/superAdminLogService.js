@@ -10,7 +10,7 @@ export const superAdminLogService = {
       if (filtros.busca) params.busca = filtros.busca;
       if (filtros.nivel) params.nivel = filtros.nivel;
 
-      const response = await api.get('/superadmin/logs', { params });
+      const response = await api.get('/admin/logs', { params });
       return response.data;
     } catch (error) {
       console.error('Erro ao buscar logs Laravel:', error);

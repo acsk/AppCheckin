@@ -15,12 +15,42 @@ class V2SuperAdminLogRoutesTest extends TestCase
 
     public function test_logs_requires_jwt(): void
     {
-        $this->getJson('/v2/superadmin/logs')
+        $this->getJson('/v2/admin/logs')
             ->assertUnauthorized()
             ->assertJsonPath('code', 'MISSING_TOKEN');
     }
 
-    public function test_logs_rejects_admin(): void
+    public function test_logs_rejects_aluno(): void
+    {
+        config(['appcheckin.jwt_secret' => 'test-secret-key-with-enough-length-for-hs256-algorithm']);
+
+        $usuarios = Mockery::mock(\App\Repositories\UsuarioRepository::class);
+        $usuarios->shouldReceive('findAuthContext')
+            ->once()
+            ->with(9)
+            ->andReturn([
+                'id' => 9,
+                'nome' => 'Aluno',
+                'email' => 'aluno@example.com',
+                'tenant_id' => 3,
+                'papel_id' => 1,
+            ]);
+        $this->app->instance(\App\Repositories\UsuarioRepository::class, $usuarios);
+
+        $token = app(\App\Services\JwtService::class)->encode([
+            'user_id' => 9,
+            'email' => 'aluno@example.com',
+            'tenant_id' => 3,
+        ]);
+
+        $this->getJson('/v2/admin/logs', [
+            'Authorization' => 'Bearer '.$token,
+        ])
+            ->assertForbidden()
+            ->assertJsonPath('erro', 'Acesso negado. Apenas administradores podem acessar este recurso.');
+    }
+
+    public function test_logs_ok_for_admin(): void
     {
         config(['appcheckin.jwt_secret' => 'test-secret-key-with-enough-length-for-hs256-algorithm']);
 
@@ -34,36 +64,6 @@ class V2SuperAdminLogRoutesTest extends TestCase
                 'email' => 'admin@example.com',
                 'tenant_id' => 3,
                 'papel_id' => 3,
-            ]);
-        $this->app->instance(\App\Repositories\UsuarioRepository::class, $usuarios);
-
-        $token = app(\App\Services\JwtService::class)->encode([
-            'user_id' => 5,
-            'email' => 'admin@example.com',
-            'tenant_id' => 3,
-        ]);
-
-        $this->getJson('/v2/superadmin/logs', [
-            'Authorization' => 'Bearer '.$token,
-        ])
-            ->assertForbidden()
-            ->assertJsonPath('erro', 'Acesso negado. Apenas Super Admin pode acessar este recurso.');
-    }
-
-    public function test_logs_ok_for_super_admin(): void
-    {
-        config(['appcheckin.jwt_secret' => 'test-secret-key-with-enough-length-for-hs256-algorithm']);
-
-        $usuarios = Mockery::mock(\App\Repositories\UsuarioRepository::class);
-        $usuarios->shouldReceive('findAuthContext')
-            ->once()
-            ->with(1)
-            ->andReturn([
-                'id' => 1,
-                'nome' => 'SA',
-                'email' => 'sa@example.com',
-                'tenant_id' => 1,
-                'papel_id' => 4,
             ]);
         $this->app->instance(\App\Repositories\UsuarioRepository::class, $usuarios);
 
@@ -85,13 +85,12 @@ class V2SuperAdminLogRoutesTest extends TestCase
         $this->app->instance(\App\Support\LaravelLogReader::class, $reader);
 
         $token = app(\App\Services\JwtService::class)->encode([
-            'user_id' => 1,
-            'email' => 'sa@example.com',
-            'tenant_id' => 1,
-            'is_super_admin' => true,
+            'user_id' => 5,
+            'email' => 'admin@example.com',
+            'tenant_id' => 3,
         ]);
 
-        $this->getJson('/v2/superadmin/logs', [
+        $this->getJson('/v2/admin/logs', [
             'Authorization' => 'Bearer '.$token,
         ])
             ->assertOk()

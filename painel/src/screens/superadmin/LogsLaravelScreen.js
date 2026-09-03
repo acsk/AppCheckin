@@ -88,9 +88,10 @@ export default function LogsLaravelScreen() {
 
   useEffect(() => {
     const init = async () => {
-      const allowed = await authService.isSuperAdmin();
-      if (!allowed) {
-        showError('Acesso negado. Apenas Super Admin (papel_id 4).');
+      const user = await authService.getCurrentUser();
+      const papel = authService.getEffectivePapelId(user);
+      if (!user || (papel !== 3 && papel !== 4)) {
+        showError('Acesso negado. Apenas administradores.');
         router.replace('/');
         return;
       }

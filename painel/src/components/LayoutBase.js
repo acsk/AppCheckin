@@ -88,7 +88,7 @@ const MENU = [
     icon: 'shield',
     roles: [3, 4],
     children: [
-      { label: 'Logs Laravel (API v2)', path: '/superadmin/logs-laravel', icon: 'terminal', roles: [4] },
+      { label: 'Logs Laravel (API v2)', path: '/superadmin/logs-laravel', icon: 'terminal', roles: [3, 4] },
       { label: 'Crédito / Migração de Plano', path: '/auditoria/credito-migracao-plano', icon: 'shuffle', roles: [3, 4] },
       { label: 'Anomalias de Datas', path: '/auditoria/anomalias-datas', icon: 'alert-triangle', roles: [3, 4] },
       { label: 'Pagamentos Duplicados', path: '/auditoria/pagamentos-duplicados', icon: 'copy', roles: [3, 4] },

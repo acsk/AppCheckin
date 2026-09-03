@@ -60,7 +60,7 @@ function shouldUseApiV2(url, method, data) {
     return true;
   }
 
-  if (/^\/superadmin\/logs(\/|$)/.test(path)) return true;
+  if (/^\/admin\/logs(\/|$)/.test(path)) return true;
 
   return false;
 }

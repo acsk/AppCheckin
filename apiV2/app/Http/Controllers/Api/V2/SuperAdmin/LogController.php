@@ -14,7 +14,7 @@ class LogController extends Controller
     ) {}
 
     /**
-     * GET /v2/superadmin/logs
+     * GET /v2/admin/logs
      */
     public function index(Request $request): JsonResponse
     {
@@ -47,7 +47,7 @@ class LogController extends Controller
     }
 
     /**
-     * GET /v2/superadmin/logs/{arquivo}
+     * GET /v2/admin/logs/{arquivo}
      */
     public function show(Request $request, string $arquivo): JsonResponse
     {

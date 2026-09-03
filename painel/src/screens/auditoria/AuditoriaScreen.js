@@ -1,45 +1,36 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import {
   View,
   Text,
-  ScrollView,
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import LayoutBase from '../../components/LayoutBase';
-import { authService } from '../../services/authService';
 
 export default function AuditoriaScreen() {
   const router = useRouter();
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-
-  useEffect(() => {
-    authService.isSuperAdmin().then(setIsSuperAdmin);
-  }, []);
 
   return (
     <LayoutBase title="Auditoria" subtitle="Verificações e consistência">
       <View style={styles.container}>
-        {isSuperAdmin && (
-          <TouchableOpacity
-            style={[styles.actionButton, styles.actionButtonSa]}
-            activeOpacity={0.7}
-            onPress={() => router.push('/superadmin/logs-laravel')}
-          >
-            <View style={[styles.actionIcon, { backgroundColor: '#0f172a' }]}>
-              <Feather name="terminal" size={22} color="#a5b4fc" />
-            </View>
-            <View style={styles.actionContent}>
-              <Text style={styles.actionLabel}>Logs Laravel (API v2)</Text>
-              <Text style={styles.actionDesc}>
-                Erros e warnings do servidor Laravel — filtre por nível ou texto para diagnosticar falhas
-              </Text>
-            </View>
-            <Feather name="chevron-right" size={20} color="#9ca3af" />
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity
+          style={[styles.actionButton, styles.actionButtonSa]}
+          activeOpacity={0.7}
+          onPress={() => router.push('/superadmin/logs-laravel')}
+        >
+          <View style={[styles.actionIcon, { backgroundColor: '#0f172a' }]}>
+            <Feather name="terminal" size={22} color="#a5b4fc" />
+          </View>
+          <View style={styles.actionContent}>
+            <Text style={styles.actionLabel}>Logs Laravel (API v2)</Text>
+            <Text style={styles.actionDesc}>
+              Erros e warnings do servidor Laravel — filtre por nível ou texto para diagnosticar falhas
+            </Text>
+          </View>
+          <Feather name="chevron-right" size={20} color="#9ca3af" />
+        </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.actionButton}
