@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V2\SuperAdmin\LogController as SuperAdminLogController;
 use App\Http\Controllers\Api\V2\Admin\AlunoController as AdminAlunoController;
+use App\Http\Controllers\Api\V2\Admin\AuditoriaController as AdminAuditoriaController;
 use App\Http\Controllers\Api\V2\Admin\MatriculaController as AdminMatriculaController;
 use App\Http\Controllers\Api\V2\Admin\ModalidadeController as AdminModalidadeController;
 use App\Http\Controllers\Api\V2\Admin\PlanoCicloController as AdminPlanoCicloController;
@@ -119,6 +120,16 @@ Route::prefix('v2')->group(function () {
             Route::post('/matriculas/{id}/cancelar', [AdminMatriculaController::class, 'cancelar']);
             Route::put('/matriculas/{id}/proxima-data-vencimento', [AdminMatriculaController::class, 'atualizarProximaDataVencimento']);
             Route::delete('/matriculas/{id}', [AdminMatriculaController::class, 'destroy']);
+
+            // Auditoria
+            Route::get('/auditoria/pagamentos-duplicados', [AdminAuditoriaController::class, 'pagamentosDuplicados']);
+            Route::get('/auditoria/pagamentos-duplicados/detalhe', [AdminAuditoriaController::class, 'pagamentosDuplicadosDetalhe']);
+            Route::get('/auditoria/anomalias-datas', [AdminAuditoriaController::class, 'anomaliasDatas']);
+            Route::post('/auditoria/reparar-proxima-data-vencimento', [AdminAuditoriaController::class, 'repararProximaDataVencimento']);
+            Route::get('/auditoria/checkins-acima-do-limite', [AdminAuditoriaController::class, 'checkinsAcimaDoLimite']);
+            Route::get('/auditoria/checkins-multiplos-no-dia', [AdminAuditoriaController::class, 'checkinsMultiplosNoDia']);
+            Route::get('/auditoria/credito-migracao-plano', [AdminAuditoriaController::class, 'creditoMigracaoPlano']);
+            Route::post('/auditoria/reparar-vencimento-matricula/{id}', [AdminAuditoriaController::class, 'repararVencimentoMatricula']);
 
             // Logs Laravel — Admin (3) e Super Admin (4)
             Route::get('/logs', [SuperAdminLogController::class, 'index']);

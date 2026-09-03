@@ -62,6 +62,7 @@ function shouldUseApiV2(url, method, data) {
 
   if (/^\/admin\/logs(\/|$)/.test(path)) return true;
   if (/^\/superadmin\/logs(\/|$)/.test(path)) return true;
+  if (/^\/admin\/auditoria(\/|$)/.test(path)) return true;
 
   return false;
 }

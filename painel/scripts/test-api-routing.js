@@ -24,6 +24,9 @@ const cases = [
   ['/superadmin/academias', 'get', null, false, 'superadmin academias fica na Slim'],
   ['/admin/logs', 'get', null, true, 'logs Laravel admin vai para v2'],
   ['/superadmin/logs', 'get', null, true, 'logs Laravel legado SA vai para v2'],
+  ['/admin/auditoria/pagamentos-duplicados', 'get', null, true, 'auditoria vai para v2'],
+  ['/admin/auditoria/credito-migracao-plano', 'get', null, true, 'auditoria crédito vai para v2'],
+  ['/admin/auditoria/reparar-vencimento-matricula/335', 'post', null, true, 'reparar vencimento vai para v2'],
   ['/cep/57000000', 'get', null, false, 'CEP fica na Slim'],
 ];
 

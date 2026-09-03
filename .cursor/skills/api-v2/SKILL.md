@@ -119,6 +119,14 @@ Checklist por endpoint:
     - `DELETE /v2/admin/matriculas/{id}` (hard delete)
     - `GET .../vencimentos/hoje`, `.../vencimentos/proximos`
     - Ainda não: pacote create, cancelar-com-credito, simular-cancelamento
+  - Auditoria (`admin.auth`):
+    - `GET /v2/admin/auditoria/pagamentos-duplicados` (+ `/detalhe`)
+    - `GET /v2/admin/auditoria/anomalias-datas`
+    - `POST /v2/admin/auditoria/reparar-proxima-data-vencimento` (`dry-run`)
+    - `GET /v2/admin/auditoria/checkins-acima-do-limite`
+    - `GET /v2/admin/auditoria/checkins-multiplos-no-dia`
+    - `GET /v2/admin/auditoria/credito-migracao-plano`
+    - `POST /v2/admin/auditoria/reparar-vencimento-matricula/{id}`
 
 ## Limitações vs Slim (Fase 4 — planos / pagamentos)
 
@@ -150,7 +158,7 @@ Auth/`me` já estão na v2. Paths Slim `/admin/*` → Laravel `/v2/admin/*` + mi
 | 7 | WOD admin | `/admin/wods` (+ blocos/variações/resultados) | TODO | Grande superfície |
 | 8 | Professores | `/admin/professores` | TODO | |
 | 9 | Pacotes admin | `/admin/pacotes`, pacote-contratos | TODO | |
-| 10 | Auditoria / dashboard | `/admin/dashboard`, `/admin/auditoria/*` | TODO | |
+| 10 | Auditoria / dashboard | `/admin/dashboard`, `/admin/auditoria/*` | **PARTIAL** | Auditoria DONE (`/v2/admin/auditoria/*`); dashboard ainda TODO |
 | 11 | Superadmin | `/superadmin/*` | TODO | Por último |
 
 **Contrato painel:** respostas admin usam `{ type, message, ... }` (não o envelope mobile `success`/`data`). Erros de papel: `{ erro, ... }` como na Slim.
