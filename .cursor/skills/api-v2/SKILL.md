@@ -93,6 +93,8 @@ Checklist por endpoint:
   - `GET /v2/mobile/assinaturas/aprovadas-hoje` (`matricula_id`)
   - `POST /v2/mobile/assinatura/{id}/cancelar`
   - `POST /v2/mobile/diaria/{matriculaId}/cancelar`
+  - `GET /v2/uploads/fotos/{filename}` (público — paridade Slim `/uploads/fotos/*`)
+  - `GET /uploads/fotos/{filename}` (público — raiz, compat painel/Slim)
   - `GET /v2/mobile/pacotes/contratos` (`status` opcional)
   - `GET /v2/mobile/pacotes/pendentes`
   - `POST /v2/mobile/pacotes/contratos/{contratoId}/pagar` (`force_new` body/query)

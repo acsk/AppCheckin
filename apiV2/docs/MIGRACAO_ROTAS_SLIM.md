@@ -169,7 +169,8 @@ Detalhamento das rotas que **ainda não existem** na apiV2. Módulos já migrado
 - `/professor/*` (5 rotas)
 - `/mobile/*` restante (recordes, `/professor/*` dashboard/presença)
 - `/v1/*` legado
-- `/checkin`, `/signin`, `/uploads`, `/usuarios/{id}/estatisticas`
+- `/checkin`, `/signin`, `/usuarios/{id}/estatisticas`
+- `/uploads/fotos/*` — ✅ na v2 (`UploadsController` + pasta `public/uploads/fotos`, compartilhada com Slim no Docker)
 
 ---
 

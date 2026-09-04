@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\V2\AuthController;
 use App\Http\Controllers\Api\V2\HealthController;
 use App\Http\Controllers\Api\V2\MeController;
 use App\Http\Controllers\Api\V2\MobileController;
+use App\Http\Controllers\Api\V2\UploadsController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -21,7 +22,12 @@ use Illuminate\Support\Facades\Route;
 | JWT compatível com a API Slim (mesmo JWT_SECRET).
 */
 
+Route::get('/uploads/fotos/{filename}', [UploadsController::class, 'foto'])
+    ->where('filename', '[^/\\\\]+');
+
 Route::prefix('v2')->group(function () {
+    Route::get('/uploads/fotos/{filename}', [UploadsController::class, 'foto'])
+        ->where('filename', '[^/\\\\]+');
     Route::get('/ping', [HealthController::class, 'ping']);
     Route::get('/health', [HealthController::class, 'health']);
     Route::get('/health/basic', [HealthController::class, 'healthBasic']);

@@ -1,7 +1,14 @@
-# Hostinger/LiteSpeed: PHP 8.4 (Laravel 13)
+# Hostinger/LiteSpeed: PHP 8.4 (Laravel 13) — ignorado no Docker Apache (mod_php)
+<IfModule LiteSpeed>
 <FilesMatch "\.(php4|php5|php3|php2|php|phtml)$">
     SetHandler application/x-lsphp84
 </FilesMatch>
+</IfModule>
+<IfModule !LiteSpeed>
+<FilesMatch "\.php$">
+    SetHandler application/x-httpd-php
+</FilesMatch>
+</IfModule>
 
 <IfModule mod_rewrite.c>
     <IfModule mod_negotiation.c>

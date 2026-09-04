@@ -7,6 +7,7 @@ use App\Repositories\CheckinRepository;
 use App\Repositories\MobilePerfilRepository;
 use App\Repositories\UsuarioRepository;
 use App\Support\AniversarioUtil;
+use App\Support\FotoStorage;
 
 class MobilePerfilService
 {
@@ -262,20 +263,18 @@ class MobilePerfilService
         ];
         $ext = $extensoes[$mimeType] ?? 'jpg';
 
-        $uploadDir = public_path('uploads/fotos');
-        if (! is_dir($uploadDir)) {
-            mkdir($uploadDir, 0755, true);
-        }
+        FotoStorage::ensureFotosDir();
+        $uploadDir = FotoStorage::fotosDir();
 
         if (! empty($aluno['foto_caminho'])) {
-            $caminhoAntigo = $this->resolveFotoAbsolutePath((string) $aluno['foto_caminho']);
+            $caminhoAntigo = FotoStorage::resolveAbsolutePath((string) $aluno['foto_caminho']);
             if ($caminhoAntigo && is_file($caminhoAntigo)) {
                 @unlink($caminhoAntigo);
             }
         }
 
         $nomeArquivo = 'aluno_'.$aluno['id'].'_'.time().'.'.$ext;
-        $caminhoRelativo = '/uploads/fotos/'.$nomeArquivo;
+        $caminhoRelativo = FotoStorage::caminhoRelativo($nomeArquivo);
         $caminhoCompleto = $uploadDir.'/'.$nomeArquivo;
 
         $uploadedFile->move($uploadDir, $nomeArquivo);
@@ -315,7 +314,7 @@ class MobilePerfilService
             return ['status' => 404, 'body' => null];
         }
 
-        $caminhoCompleto = $this->resolveFotoAbsolutePath((string) $aluno['foto_caminho']);
+        $caminhoCompleto = FotoStorage::resolveAbsolutePath((string) $aluno['foto_caminho']);
         if (! $caminhoCompleto || ! is_file($caminhoCompleto)) {
             return ['status' => 404, 'body' => null];
         }
@@ -333,22 +332,5 @@ class MobilePerfilService
                 'Cache-Control' => 'public, max-age=86400',
             ],
         ];
-    }
-
-    private function resolveFotoAbsolutePath(string $caminhoRelativo): ?string
-    {
-        $caminhoRelativo = ltrim($caminhoRelativo, '/');
-        $candidates = [
-            public_path($caminhoRelativo),
-            base_path('../api/public/'.$caminhoRelativo),
-        ];
-
-        foreach ($candidates as $path) {
-            if (is_file($path)) {
-                return $path;
-            }
-        }
-
-        return null;
     }
 }
