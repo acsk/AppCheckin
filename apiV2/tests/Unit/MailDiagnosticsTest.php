@@ -26,4 +26,19 @@ class MailDiagnosticsTest extends TestCase
         $this->assertFalse($snapshot['ok']);
         $this->assertNotEmpty($snapshot['issues']);
     }
+
+    public function test_config_snapshot_reports_resend_sdk_when_mailer_is_resend(): void
+    {
+        config([
+            'app.env' => 'production',
+            'mail.default' => 'resend',
+            'mail.from.address' => 'mail@appcheckin.com.br',
+            'services.resend.key' => 're_test_key_1234',
+        ]);
+
+        $snapshot = MailDiagnostics::configSnapshot();
+
+        $this->assertTrue($snapshot['resend_sdk_installed']);
+        $this->assertTrue($snapshot['ok']);
+    }
 }

@@ -59,11 +59,16 @@ final class MailDiagnostics
         if ($appEnv === 'production' && $mailer === 'log') {
             $issues[] = 'MAIL_MAILER=log em produção — e-mails não saem para Resend';
         }
+        $resendSdkInstalled = class_exists('Resend');
+        if ($mailer === 'resend' && ! $resendSdkInstalled) {
+            $issues[] = 'Pacote resend/resend-php ausente (Class "Resend" not found) — composer require resend/resend-php';
+        }
 
         return [
             'ok' => $issues === [],
             'app_env' => $appEnv,
             'mail_mailer' => $mailer,
+            'resend_sdk_installed' => $resendSdkInstalled,
             'mail_from_address' => $fromAddress,
             'mail_from_name' => $fromName,
             'resend_api_key' => self::maskSecret($resendKey),
