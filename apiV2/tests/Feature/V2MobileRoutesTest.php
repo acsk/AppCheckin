@@ -213,6 +213,32 @@ class V2MobileRoutesTest extends TestCase
             ->assertJsonPath('error', 'Informe nome, CPF ou email para buscar');
     }
 
+    public function test_resumo_financeiro_requires_jwt(): void
+    {
+        $this->getJson('/v2/mobile/alunos/1/resumo-financeiro')
+            ->assertUnauthorized();
+    }
+
+    public function test_resumo_financeiro_invalid_aluno_id(): void
+    {
+        $this->getJson('/v2/mobile/alunos/0/resumo-financeiro', [
+            'Authorization' => 'Bearer '.$this->bearerToken(),
+        ])
+            ->assertStatus(400)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('error', 'ID do aluno não informado');
+    }
+
+    public function test_resumo_financeiro_not_found(): void
+    {
+        $this->getJson('/v2/mobile/alunos/999999/resumo-financeiro', [
+            'Authorization' => 'Bearer '.$this->bearerToken(),
+        ])
+            ->assertNotFound()
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('error', 'Aluno não encontrado');
+    }
+
     public function test_checkin_manual_requires_fields(): void
     {
         $this->postJson('/v2/mobile/checkin/manual', [], [

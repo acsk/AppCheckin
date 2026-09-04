@@ -77,6 +77,7 @@ Route::prefix('v2')->group(function () {
             Route::post('/turma/{turmaId}/bloquear-checkin', [MobileController::class, 'bloquearCheckinTurma']);
             Route::post('/turma/{turmaId}/desbloquear-checkin', [MobileController::class, 'desbloquearCheckinTurma']);
             Route::get('/alunos/buscar', [MobileController::class, 'buscarAlunosParaCheckin']);
+            Route::get('/alunos/{alunoId}/resumo-financeiro', [MobileController::class, 'resumoFinanceiroAluno']);
             Route::post('/checkin/manual', [MobileController::class, 'registrarCheckinManual']);
             Route::delete('/checkin/manual/{checkinId}/desfazer', [MobileController::class, 'desfazerCheckinManual']);
             Route::post('/checkin', [MobileController::class, 'registrarCheckin']);

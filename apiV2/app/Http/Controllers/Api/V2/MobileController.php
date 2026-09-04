@@ -103,6 +103,23 @@ class MobileController extends Controller
         }
     }
 
+    public function resumoFinanceiroAluno(Request $request, int $alunoId): JsonResponse
+    {
+        try {
+            $result = $this->professor->resumoFinanceiroAluno(
+                $this->userId($request),
+                $this->tenantId($request),
+                $alunoId,
+            );
+
+            return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            Log::error('resumoFinanceiroAluno v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao carregar resumo financeiro', $e->getMessage());
+        }
+    }
+
     public function registrarCheckinManual(Request $request): JsonResponse
     {
         try {

@@ -359,6 +359,126 @@ class MobileProfessorService
     }
 
     /**
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function resumoFinanceiroAluno(int $userId, ?int $tenantId, int $alunoId): array
+    {
+        if (! $tenantId) {
+            return $this->fail('Nenhum tenant selecionado', 400);
+        }
+
+        if ($alunoId <= 0) {
+            return $this->fail('ID do aluno não informado', 400);
+        }
+
+        if ($denied = $this->exigirStaff($userId, $tenantId)) {
+            return $denied;
+        }
+
+        $aluno = $this->alunos->findAlunoNoTenantPorId($alunoId, $tenantId);
+        if (! $aluno) {
+            return $this->fail('Aluno não encontrado', 404);
+        }
+
+        $matricula = $this->matriculas->findPrincipalParaResumoFinanceiro($alunoId, $tenantId);
+
+        $matriculaFormatada = null;
+        $pagamentosFormatados = [];
+        $resumoFinanceiro = [
+            'total_previsto' => 0.0,
+            'total_pago' => 0.0,
+            'total_pendente' => 0.0,
+            'quantidade_pagamentos' => 0,
+            'pagamentos_realizados' => 0,
+        ];
+
+        if ($matricula) {
+            $matriculaId = (int) $matricula['id'];
+            $plano = $this->matriculas->findPlanoResumo((int) $matricula['plano_id']);
+            $pagamentos = $this->matriculas->listarPagamentosResumoFinanceiro($matriculaId);
+            $totais = $this->matriculas->totaisPagamentosResumoFinanceiro($matriculaId);
+
+            $matriculaFormatada = [
+                'id' => $matriculaId,
+                'usuario' => $matricula['usuario_nome'],
+                'plano' => $plano ? [
+                    'nome' => $plano['nome'],
+                    'valor' => (float) $plano['valor'],
+                    'duracao_dias' => (int) ($plano['duracao_dias'] ?? 0),
+                    'checkins_semanais' => (int) ($plano['checkins_semanais'] ?? 0),
+                ] : null,
+                'datas' => [
+                    'matricula' => $matricula['data_matricula'],
+                    'inicio' => $matricula['data_inicio'],
+                    'vencimento' => $matricula['data_vencimento'],
+                ],
+                'valor_total' => (float) $matricula['valor'],
+                'status' => $matricula['status'],
+                'motivo' => $matricula['motivo'],
+            ];
+
+            $pagamentosFormatados = array_map(
+                static function (array $p): array {
+                    $obs = (string) ($p['observacoes'] ?? '');
+                    $forma = $p['forma_pagamento_nome'] ?? null;
+                    $origem = null;
+                    if (! empty($p['baixado_por'])) {
+                        $origem = 'manual';
+                    } elseif ($forma && (stripos((string) $forma, 'Mercado') !== false || stripos($obs, 'Mercado Pago') !== false)) {
+                        $origem = 'mercadopago';
+                    } elseif ($forma) {
+                        $origem = 'manual';
+                    } elseif (stripos($obs, 'Mercado Pago') !== false) {
+                        $origem = 'mercadopago';
+                    }
+
+                    return [
+                        'id' => (int) $p['id'],
+                        'valor' => (float) $p['valor'],
+                        'data_vencimento' => $p['data_vencimento'],
+                        'data_pagamento' => $p['data_pagamento'],
+                        'status' => $p['status_pagamento_nome'],
+                        'status_pagamento_id' => (int) ($p['status_pagamento_id'] ?? 0),
+                        'forma_pagamento' => $forma,
+                        'baixado_por' => $p['baixado_por'] !== null ? (int) $p['baixado_por'] : null,
+                        'baixado_por_nome' => $p['baixado_por_nome'] ?? null,
+                        'criado_por' => $p['criado_por'] !== null ? (int) $p['criado_por'] : null,
+                        'criado_por_nome' => $p['criado_por_nome'] ?? null,
+                        'tipo_baixa_nome' => $p['tipo_baixa_nome'] ?? null,
+                        'origem' => $origem,
+                        'pendente' => $p['data_pagamento'] === null,
+                    ];
+                },
+                $pagamentos,
+            );
+
+            $resumoFinanceiro = [
+                'total_previsto' => (float) $matricula['valor'],
+                'total_pago' => (float) ($totais['total_pago'] ?? 0),
+                'total_pendente' => (float) ($totais['total_pendente'] ?? 0),
+                'quantidade_pagamentos' => (int) ($totais['quantidade_pagamentos'] ?? 0),
+                'pagamentos_realizados' => (int) ($totais['pagamentos_realizados'] ?? 0),
+            ];
+        }
+
+        return [
+            'status' => 200,
+            'body' => [
+                'success' => true,
+                'data' => [
+                    'aluno' => [
+                        'id' => (int) $aluno['aluno_id'],
+                        'nome' => $aluno['nome'],
+                    ],
+                    'matricula' => $matriculaFormatada,
+                    'pagamentos' => $pagamentosFormatados,
+                    'resumo_financeiro' => $resumoFinanceiro,
+                ],
+            ],
+        ];
+    }
+
+    /**
      * @return ?array{status: int, body: array<string, mixed>}
      */
     private function exigirStaff(int $userId, int $tenantId): ?array

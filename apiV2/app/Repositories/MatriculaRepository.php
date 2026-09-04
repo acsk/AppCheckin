@@ -674,5 +674,76 @@ class MatriculaRepository
 
         return $row ? (array) $row : null;
     }
+
+    public function findPrincipalParaResumoFinanceiro(int $alunoId, int $tenantId): ?array
+    {
+        $row = DB::selectOne('
+            SELECT m.id, m.aluno_id, m.plano_id, m.data_matricula, m.data_inicio, m.data_vencimento,
+                   m.valor, sm.nome AS status, mm.nome AS motivo, al.nome AS usuario_nome
+            FROM matriculas m
+            INNER JOIN alunos al ON m.aluno_id = al.id
+            LEFT JOIN status_matricula sm ON sm.id = m.status_id
+            LEFT JOIN motivo_matricula mm ON mm.id = m.motivo_id
+            WHERE m.aluno_id = ? AND m.tenant_id = ?
+            ORDER BY
+                CASE sm.codigo
+                    WHEN \'ativa\' THEN 1
+                    WHEN \'pendente\' THEN 2
+                    WHEN \'vencida\' THEN 3
+                    ELSE 4
+                END,
+                m.updated_at DESC
+            LIMIT 1
+        ', [$alunoId, $tenantId]);
+
+        return $row ? (array) $row : null;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function listarPagamentosResumoFinanceiro(int $matriculaId, int $limit = 12): array
+    {
+        return array_map(
+            static fn ($row) => (array) $row,
+            DB::select('
+                SELECT pp.id, pp.valor, pp.data_vencimento, pp.data_pagamento,
+                       pp.status_pagamento_id,
+                       sp.nome AS status_pagamento_nome, fp.nome AS forma_pagamento_nome,
+                       pp.criado_por, criador.nome AS criado_por_nome,
+                       pp.baixado_por, baixador.nome AS baixado_por_nome,
+                       tb.nome AS tipo_baixa_nome, pp.observacoes
+                FROM pagamentos_plano pp
+                INNER JOIN status_pagamento sp ON pp.status_pagamento_id = sp.id
+                LEFT JOIN formas_pagamento fp ON pp.forma_pagamento_id = fp.id
+                LEFT JOIN usuarios criador ON pp.criado_por = criador.id
+                LEFT JOIN usuarios baixador ON pp.baixado_por = baixador.id
+                LEFT JOIN tipos_baixa tb ON pp.tipo_baixa_id = tb.id
+                WHERE pp.matricula_id = ?
+                  AND pp.status_pagamento_id <> 4
+                ORDER BY COALESCE(pp.data_pagamento, pp.data_vencimento) DESC, pp.id DESC
+                LIMIT ?
+            ', [$matriculaId, $limit]),
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function totaisPagamentosResumoFinanceiro(int $matriculaId): array
+    {
+        $row = DB::selectOne('
+            SELECT
+                COALESCE(SUM(CASE WHEN status_pagamento_id = 2 THEN valor ELSE 0 END), 0) AS total_pago,
+                COALESCE(SUM(CASE WHEN status_pagamento_id IN (1, 3) THEN valor ELSE 0 END), 0) AS total_pendente,
+                COUNT(*) AS quantidade_pagamentos,
+                SUM(CASE WHEN status_pagamento_id = 2 THEN 1 ELSE 0 END) AS pagamentos_realizados
+            FROM pagamentos_plano
+            WHERE matricula_id = ?
+              AND status_pagamento_id <> 4
+        ', [$matriculaId]);
+
+        return $row ? (array) $row : [];
+    }
 }
 
