@@ -16,8 +16,17 @@ class PasswordRecoveryMailer
             Mail::html($html, function ($message) use ($email, $nome, $subject) {
                 $message->to($email, $nome)->subject($subject);
             });
+
+            Log::info('Email de recuperação enviado', [
+                'to' => $email,
+                'mailer' => config('mail.default'),
+            ]);
         } catch (\Throwable $e) {
-            Log::error('Erro ao enviar email de recuperação: '.$e->getMessage());
+            Log::error('Erro ao enviar email de recuperação: '.$e->getMessage(), [
+                'to' => $email,
+                'mailer' => config('mail.default'),
+                'exception' => $e::class,
+            ]);
         }
     }
 

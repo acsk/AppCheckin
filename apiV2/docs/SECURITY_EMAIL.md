@@ -70,6 +70,53 @@ Por isso **rotacionar e revogar a chave** é obrigatório — o guard é camada 
 
 ---
 
+## Debug em produção (Hostinger)
+
+### 1. Via browser / curl (após deploy do `hostinger-check.php` atualizado)
+
+```bash
+# Config + teste API Resend (sem enviar e-mail)
+curl -s "https://apiv2.appcheckin.com.br/hostinger-check.php?mail=1" | jq .
+```
+
+Verifique em `mail.config.issues` e `mail.resend_api`.
+
+### 2. Envio de teste (protegido por token)
+
+No `.env` da Hostinger:
+
+```env
+MAIL_DIAG_TOKEN=escolha_um_token_longo_aleatorio
+```
+
+Depois:
+
+```bash
+curl -s "https://apiv2.appcheckin.com.br/hostinger-check.php?mail=1&send_test=1&to=SEU_EMAIL&token=SEU_TOKEN" | jq .
+```
+
+### 3. Via SSH
+
+```bash
+cd ~/domains/appcheckin.com.br/public_html/apiV2
+/opt/alt/php84/usr/bin/php artisan config:clear
+/opt/alt/php84/usr/bin/php artisan mail:diagnose
+/opt/alt/php84/usr/bin/php artisan mail:diagnose --send-test=seu@email.com
+```
+
+### 4. Logs
+
+```bash
+tail -50 storage/logs/laravel.log | grep -iE 'recuperação|resend|mail'
+```
+
+Linhas úteis após tentativa de recuperação:
+- `Email de recuperação enviado` → Laravel aceitou o envio
+- `Erro ao enviar email de recuperação` → detalhe do erro Resend/guard
+- `Mail guard bloqueou` → assunto/remetente fora da lista
+
+---
+
 ## Verificação pós-deploy
 
 ```bash
