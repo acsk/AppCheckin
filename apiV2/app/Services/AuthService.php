@@ -345,13 +345,63 @@ class AuthService
         ], 201, [], JSON_UNESCAPED_UNICODE);
     }
 
-    public function requestPasswordRecovery(string $email): JsonResponse
+    public function requestPasswordRecovery(Request $request): JsonResponse
     {
+        $email = (string) $request->input('email', '');
+
         if (trim($email) === '') {
             return ApiError::json('Email é obrigatório', 'MISSING_EMAIL', 422);
         }
 
+        $rateLimiter = new RateLimiter(
+            (int) config('appcheckin.rate_limit_password_recovery_max', 3),
+            (int) config('appcheckin.rate_limit_password_recovery_decay', 15),
+        );
+
+        $clientIp = $this->clientIp($request);
         $emailNorm = mb_strtolower(trim($email), 'UTF-8');
+
+        foreach ([[$clientIp, 'password-recovery'], ['email:'.md5($emailNorm), 'password-recovery']] as [$key, $action]) {
+            $rateLimitResult = $rateLimiter->attempt($key, $action);
+            if (! $rateLimitResult['allowed']) {
+                $retryAfter = (int) ($rateLimitResult['retryAfter'] ?? 0);
+
+                return response()->json([
+                    'type' => 'error',
+                    'code' => 'RATE_LIMIT_EXCEEDED',
+                    'message' => 'Muitas tentativas. Tente novamente em '.max(1, (int) ceil($retryAfter / 60)).' minutos',
+                    'retryAfter' => $retryAfter,
+                ], 429, ['Retry-After' => (string) $retryAfter], JSON_UNESCAPED_UNICODE);
+            }
+        }
+
+        $recaptchaToken = $request->input('recaptcha_token');
+        $requireRecaptcha = (bool) config('appcheckin.password_recovery_require_recaptcha', false);
+
+        if ($requireRecaptcha || ! empty($recaptchaToken)) {
+            if (empty($recaptchaToken)) {
+                return ApiError::json(
+                    'Validação de segurança obrigatória',
+                    'RECAPTCHA_REQUIRED',
+                    403,
+                );
+            }
+
+            $recaptcha = new ReCaptchaService(
+                (string) config('appcheckin.recaptcha_secret', ''),
+                (float) config('appcheckin.recaptcha_min_score', 0.5),
+            );
+            $recaptchaResult = $recaptcha->verify((string) $recaptchaToken, $clientIp);
+
+            if (! $recaptchaResult['success']) {
+                return ApiError::json(
+                    'Falha na validação de segurança. Por favor, tente novamente',
+                    'RECAPTCHA_VALIDATION_FAILED',
+                    403,
+                );
+            }
+        }
+
         $usuario = $this->usuarios->findByEmailGlobal($emailNorm);
 
         if ($usuario) {

@@ -111,7 +111,7 @@ class AuthServiceRegisterRecoveryTest extends TestCase
             Mockery::mock(UsuarioRepository::class),
         );
 
-        $response = $service->requestPasswordRecovery('');
+        $response = $service->requestPasswordRecovery(Request::create('/', 'POST', ['email' => '']));
         $this->assertSame(422, $response->getStatusCode());
         $this->assertSame('MISSING_EMAIL', $response->getData(true)['code']);
     }
@@ -123,7 +123,9 @@ class AuthServiceRegisterRecoveryTest extends TestCase
 
         $service = $this->authService(Mockery::mock(JwtService::class), $usuarios);
 
-        $response = $service->requestPasswordRecovery('unknown@example.com');
+        $response = $service->requestPasswordRecovery(Request::create('/', 'POST', [
+            'email' => 'unknown@example.com',
+        ]));
         $data = $response->getData(true);
 
         $this->assertSame(200, $response->getStatusCode());

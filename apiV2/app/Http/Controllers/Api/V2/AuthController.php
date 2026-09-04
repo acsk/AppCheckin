@@ -97,7 +97,7 @@ class AuthController extends Controller
 
     public function requestPasswordRecovery(Request $request): JsonResponse
     {
-        return $this->auth->requestPasswordRecovery((string) $request->input('email', ''));
+        return $this->auth->requestPasswordRecovery($request);
     }
 
     public function validatePasswordToken(Request $request): JsonResponse
