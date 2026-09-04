@@ -2,8 +2,9 @@
 
 namespace App\Support;
 
+use App\Services\EmailTemplateService;
+use App\Services\TransactionalMailSender;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Throwable;
 
 /**
@@ -209,12 +210,13 @@ final class MailDiagnostics
     public static function sendTestMessage(string $to): array
     {
         $subject = '🔐 Código de Recuperação de Senha - App Check-in';
-        $html = '<p>Teste de diagnóstico AppCheckin — '.date('c').'</p>';
+        $templates = app(EmailTemplateService::class);
+        $token = '000000-TESTE-DIAGNOSTICO';
+        $html = $templates->passwordRecovery('Teste Diagnóstico', $token, 60);
+        $text = $templates->passwordRecoveryPlainText('Teste Diagnóstico', $token, 60);
 
         try {
-            Mail::html($html, function ($message) use ($to, $subject): void {
-                $message->to($to)->subject($subject);
-            });
+            TransactionalMailSender::send($to, 'Teste Diagnóstico', $subject, $html, $text);
 
             Log::info('Mail diagnostics: teste enviado', ['to' => $to]);
 
