@@ -127,6 +127,7 @@ if ($wantMail) {
         'list_domains' => 'Chame sem send_test para ver config + teste API Resend',
         'send_test' => 'Adicione &send_test=1&to=SEU_EMAIL&token=MAIL_DIAG_TOKEN (defina MAIL_DIAG_TOKEN no .env)',
         'ssh' => '/opt/alt/php84/usr/bin/php artisan mail:diagnose --send-test=seu@email.com',
+        'composer' => '/opt/alt/php84/usr/bin/php $(which composer) install --no-dev --optimize-autoloader',
         'password_recovery' => 'POST /v2/auth/password-recovery/request só envia se o e-mail existir no banco',
     ];
 }
