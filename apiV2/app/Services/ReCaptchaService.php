@@ -29,9 +29,10 @@ class ReCaptchaService
 
         if ($this->secretKey === '') {
             return [
-                'success' => false,
+                'success' => true,
                 'score' => null,
-                'error' => 'reCAPTCHA não configurado',
+                'error' => null,
+                'skipped' => true,
             ];
         }
 

@@ -7,6 +7,7 @@ use App\Repositories\UsuarioRepository;
 use App\Support\ApiError;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class AuthService
 {
@@ -538,7 +539,13 @@ class AuthService
             );
             $recaptchaResult = $recaptcha->verify($recaptchaToken, $clientIp);
 
-            if (! $recaptchaResult['success']) {
+            if (! ($recaptchaResult['skipped'] ?? false) && ! $recaptchaResult['success']) {
+                Log::warning('[register-mobile] reCAPTCHA falhou', [
+                    'ip' => $clientIp,
+                    'error' => $recaptchaResult['error'] ?? null,
+                    'score' => $recaptchaResult['score'] ?? null,
+                ]);
+
                 return ApiError::json(
                     'Falha na validação de segurança. Por favor, tente novamente',
                     'RECAPTCHA_VALIDATION_FAILED',
