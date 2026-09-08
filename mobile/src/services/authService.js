@@ -1,5 +1,6 @@
 import AsyncStorage from "@/src/utils/storage";
 import api from "./api";
+import { decodeJwtPayload } from "@/src/utils/authHelpers";
 
 /**
  * Serviço de autenticação
@@ -17,6 +18,43 @@ export const authService = {
     );
     const roles = match?.papeis || match?.roles || [];
     return Array.isArray(roles) ? roles : [];
+  },
+
+  _normalizeTenantEntry(entry) {
+    if (!entry) return null;
+    return entry?.tenant ?? entry;
+  },
+
+  async _resolveTenantFromStoredList(tenantId) {
+    if (!tenantId) return null;
+    try {
+      const tenantsJson = await AsyncStorage.getItem("@appcheckin:tenants");
+      if (!tenantsJson) return null;
+      const list = JSON.parse(tenantsJson);
+      if (!Array.isArray(list)) return null;
+      const match = list.find(
+        (t) => (t?.tenant?.id ?? t?.id) === tenantId,
+      );
+      return this._normalizeTenantEntry(match);
+    } catch {
+      return null;
+    }
+  },
+
+  async _persistCurrentTenant(tenantLike) {
+    const tenant = this._normalizeTenantEntry(tenantLike);
+    if (!tenant?.id) return;
+    await AsyncStorage.setItem(
+      "@appcheckin:current_tenant",
+      JSON.stringify(tenant),
+    );
+    await AsyncStorage.setItem("@appcheckin:tenant_id", String(tenant.id));
+    if (tenant.slug) {
+      await AsyncStorage.setItem("@appcheckin:tenant_slug", tenant.slug);
+    }
+    if (tenant.nome) {
+      await AsyncStorage.setItem("@appcheckin:tenant_nome", tenant.nome);
+    }
   },
 
   _applyTenantRolesToUser(user, roles) {
@@ -150,13 +188,16 @@ export const authService = {
           );
         }
 
-        const tenantId = response.data.tenant_id || response.data.tenant?.id;
+        const tenantId =
+          response.data.tenant_id ??
+          response.data.user?.tenant_id ??
+          response.data.tenant?.id;
         if (tenantId) {
-          await AsyncStorage.setItem("@appcheckin:tenant_id", String(tenantId));
-          await AsyncStorage.setItem(
-            "@appcheckin:current_tenant",
-            JSON.stringify(response.data.tenant || { id: tenantId }),
-          );
+          const resolved =
+            (await this._resolveTenantFromStoredList(Number(tenantId))) ||
+            response.data.tenant ||
+            { id: Number(tenantId) };
+          await this._persistCurrentTenant(resolved);
         }
       }
 
@@ -373,11 +414,60 @@ export const authService = {
   },
 
   /**
-   * Retorna o tenant atual selecionado
+   * Retorna o tenant atual selecionado (com fallback JWT / lista de tenants).
    */
   async getCurrentTenant() {
     const tenantJson = await AsyncStorage.getItem("@appcheckin:current_tenant");
-    return tenantJson ? JSON.parse(tenantJson) : null;
+    if (tenantJson) {
+      try {
+        const parsed = JSON.parse(tenantJson);
+        if (parsed?.id || parsed?.tenant?.id) {
+          return this._normalizeTenantEntry(parsed);
+        }
+      } catch {
+        // continua para fallbacks
+      }
+    }
+
+    const tenantIdStr = await AsyncStorage.getItem("@appcheckin:tenant_id");
+    if (tenantIdStr) {
+      const fromList = await this._resolveTenantFromStoredList(Number(tenantIdStr));
+      if (fromList) {
+        await this._persistCurrentTenant(fromList);
+        return fromList;
+      }
+      const minimal = { id: Number(tenantIdStr) };
+      await this._persistCurrentTenant(minimal);
+      return minimal;
+    }
+
+    const token = await AsyncStorage.getItem("@appcheckin:token");
+    const payload = decodeJwtPayload(token || undefined);
+    const tokenTenantId = payload?.tenant_id ?? payload?.tenantId;
+    if (tokenTenantId) {
+      const fromList = await this._resolveTenantFromStoredList(Number(tokenTenantId));
+      const resolved = fromList || { id: Number(tokenTenantId) };
+      await this._persistCurrentTenant(resolved);
+      return resolved;
+    }
+
+    try {
+      const tenantsJson = await AsyncStorage.getItem("@appcheckin:tenants");
+      if (tenantsJson) {
+        const list = JSON.parse(tenantsJson);
+        if (Array.isArray(list) && list.length > 0) {
+          const first = this._normalizeTenantEntry(list[0]);
+          if (first?.id) {
+            await this._persistCurrentTenant(first);
+            return first;
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    return null;
   },
 
   /**

@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\V2\AuthController;
 use App\Http\Controllers\Api\V2\HealthController;
 use App\Http\Controllers\Api\V2\MeController;
 use App\Http\Controllers\Api\V2\MobileController;
+use App\Http\Controllers\Api\V2\NotificationController;
 use App\Http\Controllers\Api\V2\UploadsController;
 use Illuminate\Support\Facades\Route;
 
@@ -53,6 +54,8 @@ Route::prefix('v2')->group(function () {
         Route::post('/auth/select-tenant', [AuthController::class, 'selectTenant']);
         Route::get('/auth/tenants', [AuthController::class, 'tenants']);
         Route::get('/me', [MeController::class, 'show']);
+
+        Route::get('/notificacoes/unread', [NotificationController::class, 'unread']);
 
         // Planos (JWT) — painel usa GET /planos (não /admin) para listagem
         Route::get('/planos', [AdminPlanoController::class, 'index']);
