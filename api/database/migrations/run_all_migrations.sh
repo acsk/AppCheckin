@@ -158,6 +158,7 @@ MIGRATIONS=(
     "063_create_wod_resultados_table.sql"
     "064_add_modalidade_id_to_wods.sql"
     "065_fix_wods_unique_constraint.sql"
+    "066_add_whatsapp_links_to_tenants.sql"
 )
 
 echo -e "${BLUE}📋 EXECUTANDO MIGRATIONS${NC}"

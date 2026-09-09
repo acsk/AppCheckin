@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use App\Support\AcademyDateTime;
+use App\Support\TenantWhatsappLinks;
 use Illuminate\Support\Facades\DB;
 
 class MobilePerfilRepository
@@ -25,8 +26,9 @@ class MobilePerfilRepository
                 't.slug',
                 't.email',
                 't.telefone',
+                't.whatsapp_links',
             ])
-            ->map(fn ($row) => (array) $row)
+            ->map(fn ($row) => TenantWhatsappLinks::attachToTenant((array) $row))
             ->all();
     }
 

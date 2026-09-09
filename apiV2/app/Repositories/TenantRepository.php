@@ -2,6 +2,7 @@
 
 namespace App\Repositories;
 
+use App\Support\TenantWhatsappLinks;
 use Illuminate\Support\Facades\DB;
 
 class TenantRepository
@@ -88,6 +89,9 @@ class TenantRepository
             'email' => $data['email'],
             'cnpj' => $cnpj,
             'telefone' => $data['telefone'] ?? null,
+            'whatsapp_links' => array_key_exists('whatsapp_links', $data)
+                ? TenantWhatsappLinks::encode($data['whatsapp_links'])
+                : null,
             'responsavel_nome' => $data['responsavel_nome'] ?? null,
             'responsavel_cpf' => isset($data['responsavel_cpf']) ? preg_replace('/[^0-9]/', '', (string) $data['responsavel_cpf']) : null,
             'responsavel_telefone' => $data['responsavel_telefone'] ?? null,
@@ -119,6 +123,9 @@ class TenantRepository
             'email' => $data['email'],
             'cnpj' => $data['cnpj'] ?? null,
             'telefone' => $data['telefone'] ?? null,
+            'whatsapp_links' => array_key_exists('whatsapp_links', $data)
+                ? TenantWhatsappLinks::encode($data['whatsapp_links'])
+                : null,
             'responsavel_nome' => $data['responsavel_nome'] ?? null,
             'responsavel_cpf' => $data['responsavel_cpf'] ?? null,
             'responsavel_telefone' => $data['responsavel_telefone'] ?? null,

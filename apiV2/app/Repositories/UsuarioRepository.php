@@ -68,6 +68,7 @@ class UsuarioRepository
                 't.slug as tenant_slug',
                 't.email as tenant_email',
                 't.telefone as tenant_telefone',
+                't.whatsapp_links as tenant_whatsapp_links',
                 'p.nome as papel_nome',
             ])
             ->get();
@@ -86,6 +87,7 @@ class UsuarioRepository
                         'slug' => $row->tenant_slug,
                         'email' => $row->tenant_email,
                         'telefone' => $row->tenant_telefone,
+                        'whatsapp_links' => \App\Support\TenantWhatsappLinks::parse($row->tenant_whatsapp_links ?? null),
                     ],
                     'papeis' => [],
                     'plano' => null,

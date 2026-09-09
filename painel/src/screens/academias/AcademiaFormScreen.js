@@ -72,6 +72,10 @@ export default function AcademiaFormScreen() {
   const [papelsDisponiveisParaDesativar, setPapelsDisponiveisParaDesativar] = useState([]);
   const [deactivatingAdmin, setDeactivatingAdmin] = useState(false);
   
+  const [whatsappLinks, setWhatsappLinks] = useState([
+    { nome: '', url: '' },
+  ]);
+
   const [formData, setFormData] = useState({
     nome: '',
     email: '',
@@ -150,6 +154,16 @@ export default function AcademiaFormScreen() {
         estado: academia.estado || '',
         ativo: academia.ativo !== false,
       });
+
+      const links = Array.isArray(academia.whatsapp_links) ? academia.whatsapp_links : [];
+      setWhatsappLinks(
+        links.length > 0
+          ? links.map((link) => ({
+              nome: link.nome || '',
+              url: link.url || '',
+            }))
+          : [{ nome: '', url: '' }],
+      );
       
       // Carregar admins da academia
       loadAdmins();
@@ -577,8 +591,47 @@ export default function AcademiaFormScreen() {
     return true;
   };
 
+  const handleWhatsappLinkChange = (index, field, value) => {
+    setWhatsappLinks((prev) =>
+      prev.map((link, i) => (i === index ? { ...link, [field]: value } : link)),
+    );
+  };
+
+  const addWhatsappLink = () => {
+    setWhatsappLinks((prev) => [...prev, { nome: '', url: '' }]);
+  };
+
+  const removeWhatsappLink = (index) => {
+    setWhatsappLinks((prev) => {
+      if (prev.length <= 1) {
+        return [{ nome: '', url: '' }];
+      }
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const buildWhatsappLinksPayload = () =>
+    whatsappLinks
+      .map((link) => ({
+        nome: (link.nome || '').trim(),
+        url: (link.url || '').trim(),
+      }))
+      .filter((link) => link.nome !== '' || link.url !== '');
+
   const handleSubmit = async () => {
     if (!validateForm()) return;
+
+    const linksPayload = buildWhatsappLinksPayload();
+    for (const link of linksPayload) {
+      if (!link.nome || !link.url) {
+        showError('Preencha nome e link de todos os grupos WhatsApp ou remova a linha vazia');
+        return;
+      }
+      if (!/^https:\/\/(chat\.)?whatsapp\.com\//i.test(link.url)) {
+        showError(`Link inválido em "${link.nome}" — use https://chat.whatsapp.com/...`);
+        return;
+      }
+    }
 
     setSaving(true);
     try {
@@ -589,6 +642,7 @@ export default function AcademiaFormScreen() {
         telefone: apenasNumeros(formData.telefone),
         responsavel_cpf: apenasNumeros(formData.responsavel_cpf),
         responsavel_telefone: apenasNumeros(formData.responsavel_telefone),
+        whatsapp_links: linksPayload,
       };
       
       // Remover senha se estiver vazia na edição
@@ -749,6 +803,70 @@ export default function AcademiaFormScreen() {
                   />
                 </View>
               </View>
+            </View>
+          </View>
+
+          {/* Card: Grupos WhatsApp */}
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <View style={styles.cardHeaderIcon}>
+                <Feather name="message-circle" size={20} color="#f97316" />
+              </View>
+              <Text style={styles.cardTitle}>Grupos WhatsApp</Text>
+              <TouchableOpacity
+                style={styles.addButton}
+                onPress={addWhatsappLink}
+                disabled={saving}
+              >
+                <Feather name="plus" size={16} color="#fff" />
+                <Text style={styles.addButtonText}>Link</Text>
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.cardBody}>
+              <Text style={styles.helperText}>
+                Links exibidos no app mobile para o aluno entrar nos grupos da academia.
+              </Text>
+
+              {whatsappLinks.map((link, index) => (
+                <View key={`whatsapp-${index}`} style={styles.whatsappLinkRow}>
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Nome do grupo</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Ex: CN AVISOS"
+                      placeholderTextColor="#999"
+                      value={link.nome}
+                      onChangeText={(value) => handleWhatsappLinkChange(index, 'nome', value)}
+                      editable={!saving}
+                    />
+                  </View>
+
+                  <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Link do convite</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="https://chat.whatsapp.com/..."
+                      placeholderTextColor="#999"
+                      value={link.url}
+                      onChangeText={(value) => handleWhatsappLinkChange(index, 'url', value)}
+                      autoCapitalize="none"
+                      editable={!saving}
+                    />
+                  </View>
+
+                  {whatsappLinks.length > 1 && (
+                    <TouchableOpacity
+                      style={styles.removeWhatsappButton}
+                      onPress={() => removeWhatsappLink(index)}
+                      disabled={saving}
+                    >
+                      <Feather name="trash-2" size={16} color="#ef4444" />
+                      <Text style={styles.removeWhatsappText}>Remover</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
             </View>
           </View>
 
@@ -1672,6 +1790,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#fff',
+  },
+  helperText: {
+    fontSize: 13,
+    color: '#6b7280',
+    marginBottom: 16,
+    lineHeight: 18,
+  },
+  whatsappLinkRow: {
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  removeWhatsappButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+  },
+  removeWhatsappText: {
+    fontSize: 13,
+    color: '#ef4444',
+    fontWeight: '600',
   },
   loadingAdmins: {
     flexDirection: 'row',

@@ -29,6 +29,7 @@ import {
     Animated,
     Dimensions,
     Image,
+    Linking,
     Modal,
     Platform,
     Pressable,
@@ -1679,6 +1680,24 @@ export default function AccountScreen() {
                           </Text>
                         </View>
                       )}
+                      {Array.isArray(tenant.whatsapp_links) &&
+                        tenant.whatsapp_links.map((link) => (
+                          <TouchableOpacity
+                            key={`${tenant.id}-${link.url}`}
+                            style={styles.whatsappLinkSidebar}
+                            activeOpacity={0.8}
+                            onPress={() => Linking.openURL(link.url)}
+                          >
+                            <MaterialCommunityIcons
+                              name="whatsapp"
+                              size={14}
+                              color="#25D366"
+                            />
+                            <Text style={styles.whatsappLinkTextSidebar}>
+                              {link.nome}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
                     </View>
                     <View style={styles.sidebarChevronButton}>
                       <Feather name="chevron-right" size={18} color="#fff" />
@@ -2161,6 +2180,22 @@ const styles = StyleSheet.create({
   academiaInfoTextSidebar: {
     fontSize: 12,
     color: "rgba(255,255,255,0.85)",
+  },
+  whatsappLinkSidebar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    backgroundColor: "rgba(37, 211, 102, 0.15)",
+    alignSelf: "flex-start",
+  },
+  whatsappLinkTextSidebar: {
+    fontSize: 12,
+    color: "#fff",
+    fontWeight: "600",
   },
   sidebarChevronButton: {
     width: 30,

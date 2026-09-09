@@ -5,6 +5,7 @@ namespace App\Services\SuperAdmin;
 use App\Repositories\TenantPlanoRepository;
 use App\Repositories\TenantRepository;
 use App\Repositories\UsuarioRepository;
+use App\Support\TenantWhatsappLinks;
 use Illuminate\Support\Facades\DB;
 
 class SuperAdminAcademiaService
@@ -32,7 +33,10 @@ class SuperAdminAcademiaService
             $filtros['ativo'] = $query['ativo'] === 'true' || $query['ativo'] === '1';
         }
 
-        $academias = $this->tenants->getAll($filtros);
+        $academias = array_map(
+            fn (array $academia) => TenantWhatsappLinks::attachToTenant($academia),
+            $this->tenants->getAll($filtros),
+        );
 
         if ($semContratoAtivo) {
             $academias = array_values(array_filter(
@@ -63,7 +67,7 @@ class SuperAdminAcademiaService
 
         return [
             'status' => 200,
-            'body' => ['academia' => $academia],
+            'body' => ['academia' => TenantWhatsappLinks::attachToTenant($academia)],
         ];
     }
 
@@ -105,6 +109,10 @@ class SuperAdminAcademiaService
             $errors[] = 'Email já está sendo utilizado por outro usuário';
         }
 
+        if (($whatsappError = TenantWhatsappLinks::validateForSave($data['whatsapp_links'] ?? null)) !== null) {
+            $errors[] = $whatsappError;
+        }
+
         if ($errors !== []) {
             return ['status' => 422, 'body' => ['errors' => $errors]];
         }
@@ -115,6 +123,7 @@ class SuperAdminAcademiaService
             'email' => $data['email'],
             'cnpj' => isset($data['cnpj']) ? preg_replace('/[^0-9]/', '', (string) $data['cnpj']) : null,
             'telefone' => isset($data['telefone']) ? preg_replace('/[^0-9]/', '', (string) $data['telefone']) : null,
+            'whatsapp_links' => TenantWhatsappLinks::parse($data['whatsapp_links'] ?? null),
             'responsavel_nome' => $data['responsavel_nome'] ?? null,
             'responsavel_cpf' => isset($data['responsavel_cpf']) ? preg_replace('/[^0-9]/', '', (string) $data['responsavel_cpf']) : null,
             'responsavel_telefone' => isset($data['responsavel_telefone']) ? preg_replace('/[^0-9]/', '', (string) $data['responsavel_telefone']) : null,
@@ -256,6 +265,10 @@ class SuperAdminAcademiaService
             }
         }
 
+        if (($whatsappError = TenantWhatsappLinks::validateForSave($data['whatsapp_links'] ?? null)) !== null) {
+            $errors[] = $whatsappError;
+        }
+
         if ($errors !== []) {
             return [
                 'status' => 422,
@@ -272,6 +285,9 @@ class SuperAdminAcademiaService
             'email' => $data['email'],
             'cnpj' => isset($data['cnpj']) ? preg_replace('/[^0-9]/', '', (string) $data['cnpj']) : $academia['cnpj'],
             'telefone' => isset($data['telefone']) ? preg_replace('/[^0-9]/', '', (string) $data['telefone']) : $academia['telefone'],
+            'whatsapp_links' => array_key_exists('whatsapp_links', $data)
+                ? TenantWhatsappLinks::parse($data['whatsapp_links'])
+                : TenantWhatsappLinks::parse($academia['whatsapp_links'] ?? null),
             'responsavel_nome' => $data['responsavel_nome'] ?? $academia['responsavel_nome'],
             'responsavel_cpf' => isset($data['responsavel_cpf']) ? preg_replace('/[^0-9]/', '', (string) $data['responsavel_cpf']) : $academia['responsavel_cpf'],
             'responsavel_telefone' => isset($data['responsavel_telefone']) ? preg_replace('/[^0-9]/', '', (string) $data['responsavel_telefone']) : $academia['responsavel_telefone'],

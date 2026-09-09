@@ -13,7 +13,13 @@ export interface UserProfile {
   foto_caminho?: string;
   membro_desde?: string;
   tenant?: { nome: string };
-  tenants?: { id: string; nome: string; email?: string; telefone?: string }[];
+  tenants?: {
+    id: string;
+    nome: string;
+    email?: string;
+    telefone?: string;
+    whatsapp_links?: { nome: string; url: string }[];
+  }[];
   estatisticas?: {
     total_checkins: number;
     checkins_mes: number;
