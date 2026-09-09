@@ -164,8 +164,10 @@ if ($wantOps) {
         $response['ops_alert_test'] = $opsAlertReport;
     }
     $response['hints'] = array_merge($response['hints'] ?? [], [
-        'send_alert' => 'https://apiv2.appcheckin.com.br/hostinger-check.php?ops=1&send_alert=1&force=1&token=MAIL_DIAG_TOKEN',
+        'send_alert' => 'https://apiv2.appcheckin.com.br/ops-error-alert-test.php?force=1&token=MAIL_DIAG_TOKEN',
+        'send_alert_hostinger' => 'https://apiv2.appcheckin.com.br/hostinger-check.php?ops=1&send_alert=1&force=1&token=MAIL_DIAG_TOKEN',
         'test_log' => '/opt/alt/php84/usr/bin/php artisan ops:error-alert-test --force',
+        'deploy_check' => 'Se artisan falhar, o deploy não subiu routes/console.php — use ops-error-alert-test.php',
         'config_clear' => '/opt/alt/php84/usr/bin/php artisan config:clear',
         'migrate' => '/opt/alt/php84/usr/bin/php artisan migrate --path=database/migrations/2026_09_09_120000_create_application_error_logs_table.php --force',
         'panel' => 'https://apiv2.appcheckin.com.br/ops/errors?token=OPS_VIEW_TOKEN',
