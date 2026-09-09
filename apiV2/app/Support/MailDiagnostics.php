@@ -169,6 +169,7 @@ final class MailDiagnostics
             'enabled' => (bool) config('appcheckin.mail_guard_enabled', true),
             'from_enforced' => (string) config('appcheckin.mail_from_address', ''),
             'allowed_subjects' => config('appcheckin.mail_allowed_subjects', []),
+            'allowed_subject_prefixes' => config('appcheckin.mail_allowed_subject_prefixes', []),
         ];
     }
 
