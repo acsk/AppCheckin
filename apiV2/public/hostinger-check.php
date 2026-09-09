@@ -6,6 +6,7 @@
  * Infra: https://apiv2.appcheckin.com.br/hostinger-check.php
  * E-mail: https://apiv2.appcheckin.com.br/hostinger-check.php?mail=1
  * Teste de envio (protegido): ?mail=1&send_test=1&to=seu@email.com&token=SEU_MAIL_DIAG_TOKEN
+ * Alerta ops (protegido): ?ops=1&send_alert=1&token=SEU_MAIL_DIAG_TOKEN&force=1
  *
  * Remova ou proteja este arquivo após o debug.
  */
@@ -67,6 +68,7 @@ foreach ($extensions as $ext) {
 $wantMail = isset($_GET['mail']) && $_GET['mail'] !== '0' && $_GET['mail'] !== 'false';
 $wantOps = isset($_GET['ops']) && $_GET['ops'] !== '0' && $_GET['ops'] !== 'false';
 $opsReport = null;
+$opsAlertReport = null;
 $sendTestTo = null;
 
 if ($checks['vendor/autoload.php']['ok'] ?? false) {
@@ -107,6 +109,23 @@ if ($checks['vendor/autoload.php']['ok'] ?? false) {
 
         if ($wantOps) {
             $opsReport = \App\Support\OpsErrorLogDiagnostics::snapshot();
+
+            $sendAlertRequested = isset($_GET['send_alert']) && $_GET['send_alert'] !== '0';
+            if ($sendAlertRequested) {
+                $token = isset($_GET['token']) ? trim((string) $_GET['token']) : '';
+                $expectedToken = (string) env('MAIL_DIAG_TOKEN', '');
+
+                if ($expectedToken === '' || ! hash_equals($expectedToken, $token)) {
+                    $opsAlertReport = [
+                        'ok' => false,
+                        'error' => 'Token inválido. Defina MAIL_DIAG_TOKEN no .env e passe ?token=...',
+                    ];
+                } else {
+                    $force = ! isset($_GET['force']) || $_GET['force'] === '1' || $_GET['force'] === 'true';
+                    $clearThrottle = isset($_GET['clear_throttle']) && $_GET['clear_throttle'] !== '0';
+                    $opsAlertReport = \App\Support\OpsErrorAlertTestRunner::run($force, $clearThrottle);
+                }
+            }
         }
     } catch (Throwable $e) {
         $checks['laravel_bootstrap'] = ['ok' => false];
@@ -141,7 +160,11 @@ if ($wantMail) {
 
 if ($wantOps) {
     $response['ops_errors'] = $opsReport;
+    if ($opsAlertReport !== null) {
+        $response['ops_alert_test'] = $opsAlertReport;
+    }
     $response['hints'] = array_merge($response['hints'] ?? [], [
+        'send_alert' => 'https://apiv2.appcheckin.com.br/hostinger-check.php?ops=1&send_alert=1&force=1&token=MAIL_DIAG_TOKEN',
         'test_log' => '/opt/alt/php84/usr/bin/php artisan ops:error-alert-test --force',
         'config_clear' => '/opt/alt/php84/usr/bin/php artisan config:clear',
         'migrate' => '/opt/alt/php84/usr/bin/php artisan migrate --path=database/migrations/2026_09_09_120000_create_application_error_logs_table.php --force',
