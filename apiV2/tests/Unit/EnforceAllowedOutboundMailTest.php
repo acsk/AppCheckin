@@ -3,7 +3,6 @@
 namespace Tests\Unit;
 
 use App\Listeners\EnforceAllowedOutboundMail;
-use App\Services\ApplicationErrorAlertMailBuilder;
 use Illuminate\Mail\Events\MessageSending;
 use Symfony\Component\Mime\Email;
 use Tests\TestCase;
@@ -66,7 +65,7 @@ class EnforceAllowedOutboundMailTest extends TestCase
         $message = (new Email())
             ->from('mail@appcheckin.com.br')
             ->to('admin@example.com')
-            ->subject(ApplicationErrorAlertMailBuilder::SUBJECT_PREFIX.' Falha no check-in')
+            ->subject(EnforceAllowedOutboundMail::ERROR_ALERT_SUBJECT_PREFIX.' Falha no check-in')
             ->html('<p>ok</p>');
 
         $listener = new EnforceAllowedOutboundMail;

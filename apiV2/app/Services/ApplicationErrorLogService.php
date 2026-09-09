@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Listeners\EnforceAllowedOutboundMail;
 use App\Repositories\ApplicationErrorLogRepository;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -14,7 +15,6 @@ final class ApplicationErrorLogService
 {
     public function __construct(
         private readonly ApplicationErrorLogRepository $repository,
-        private readonly ApplicationErrorAlertMailBuilder $alertMailBuilder,
     ) {}
 
     public function recordFromLogRecord(LogRecord $record): void
@@ -207,7 +207,7 @@ final class ApplicationErrorLogService
         $cacheKey = 'error_alert_sent:'.$fingerprint;
 
         if (! $force && Cache::has($cacheKey)) {
-            Log::info('Alerta de erro suprimido por throttle', [
+            Log::warning('Alerta de erro suprimido por throttle', [
                 'log_id' => $logId,
                 'fingerprint' => $fingerprint,
                 'throttle_minutes' => $throttleMinutes,
@@ -219,7 +219,7 @@ final class ApplicationErrorLogService
         $recentCount = $this->repository->countSince($fingerprint, $throttleMinutes);
 
         try {
-            $mail = $this->alertMailBuilder->build($payload, [
+            $mail = $this->buildAlertMail($payload, [
                 'log_id' => $logId,
                 'created_at' => Carbon::now('UTC')->format('Y-m-d H:i:s'),
                 'app_env' => (string) config('app.env', 'production'),
@@ -271,5 +271,26 @@ final class ApplicationErrorLogService
         $url = $base.'/ops/errors';
 
         return $token !== '' ? $url.'?token='.urlencode($token) : $url;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>  $meta
+     * @return array{subject: string, html: string, text: string}
+     */
+    private function buildAlertMail(array $payload, array $meta): array
+    {
+        if (class_exists(ApplicationErrorAlertMailBuilder::class)) {
+            return app(ApplicationErrorAlertMailBuilder::class)->build($payload, $meta);
+        }
+
+        $description = (string) ($payload['description'] ?? 'Erro');
+        $message = (string) ($payload['message'] ?? $description);
+
+        return [
+            'subject' => EnforceAllowedOutboundMail::ERROR_ALERT_SUBJECT_PREFIX.' '.mb_substr($description, 0, 80),
+            'html' => '<pre>'.htmlspecialchars($message, ENT_QUOTES, 'UTF-8').'</pre>',
+            'text' => $message,
+        ];
     }
 }

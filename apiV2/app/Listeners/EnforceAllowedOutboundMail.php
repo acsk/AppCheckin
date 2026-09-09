@@ -2,7 +2,6 @@
 
 namespace App\Listeners;
 
-use App\Services\ApplicationErrorAlertMailBuilder;
 use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Support\Facades\Log;
 
@@ -11,6 +10,8 @@ use Illuminate\Support\Facades\Log;
  */
 class EnforceAllowedOutboundMail
 {
+    public const ERROR_ALERT_SUBJECT_PREFIX = 'AppCheckin [ERRO]';
+
     public function handle(MessageSending $event): bool
     {
         if (! config('appcheckin.mail_guard_enabled', true)) {
@@ -28,7 +29,7 @@ class EnforceAllowedOutboundMail
         $subjectAllowed = in_array($subject, $allowedSubjects, true);
         $prefixes = array_values(array_unique(array_filter(array_merge(
             $allowedPrefixes,
-            [ApplicationErrorAlertMailBuilder::SUBJECT_PREFIX],
+            [self::ERROR_ALERT_SUBJECT_PREFIX],
         ))));
 
         if (! $subjectAllowed && $prefixes !== []) {

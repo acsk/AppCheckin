@@ -3,7 +3,6 @@
 namespace Tests\Unit;
 
 use App\Repositories\ApplicationErrorLogRepository;
-use App\Services\ApplicationErrorAlertMailBuilder;
 use App\Services\ApplicationErrorLogService;
 use Mockery;
 use Tests\TestCase;
@@ -35,7 +34,7 @@ class ApplicationErrorLogServiceTest extends TestCase
             'appcheckin.error_alert_throttle_minutes' => 15,
         ]);
 
-        $service = new ApplicationErrorLogService($repo, new ApplicationErrorAlertMailBuilder);
+        $service = new ApplicationErrorLogService($repo);
         $id = $service->record('Falha ao processar pagamento #123', 'error');
 
         $this->assertSame(42, $id);
@@ -46,7 +45,7 @@ class ApplicationErrorLogServiceTest extends TestCase
         $repo = Mockery::mock(ApplicationErrorLogRepository::class);
         $repo->shouldNotReceive('insert');
 
-        $service = new ApplicationErrorLogService($repo, new ApplicationErrorAlertMailBuilder);
+        $service = new ApplicationErrorLogService($repo);
         $this->assertNull($service->record('debug msg', 'info'));
     }
 }

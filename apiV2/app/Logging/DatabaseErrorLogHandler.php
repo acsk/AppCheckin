@@ -21,8 +21,9 @@ final class DatabaseErrorLogHandler extends AbstractProcessingHandler
     {
         try {
             $this->errorLogService->recordFromLogRecord($record);
-        } catch (\Throwable) {
-            // Nunca quebrar a aplicação por falha no handler de log.
+        } catch (\Throwable $e) {
+            // Não usar Log:: aqui — evitar loop no canal database_errors.
+            error_log('DatabaseErrorLogHandler: '.$e->getMessage());
         }
     }
 }

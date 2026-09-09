@@ -54,13 +54,23 @@ class OpsErrorAlertTestCommand extends Command
         }
 
         $subject = 'AppCheckin [ERRO] '.$message;
-        TransactionalMailSender::send(
+        $sent = TransactionalMailSender::send(
             $to,
             'Admin AppCheckin',
             $subject,
             '<p>Teste fallback — envie app/Support/OpsErrorAlertTestRunner.php</p>',
             'Teste fallback ops',
         );
+
+        if (! $sent) {
+            return [
+                'ok' => false,
+                'fallback' => true,
+                'error' => 'Mail::send retornou null — mail guard bloqueou ou transporte falhou',
+                'subject' => $subject,
+            ];
+        }
+
         Cache::put($cacheKey, true, now()->addMinutes(max(1, (int) config('appcheckin.error_alert_throttle_minutes', 15))));
 
         return ['ok' => true, 'fallback' => true, 'to' => $to, 'subject' => $subject];
