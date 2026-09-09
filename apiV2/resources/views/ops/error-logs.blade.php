@@ -27,6 +27,7 @@
     <p class="meta">
         Total de eventos: <strong>{{ number_format($totalEvents, 0, ',', '.') }}</strong>
         · Alertas por e-mail: <strong>{{ $alertEmail ?: 'não configurado' }}</strong>
+        · Horários em <strong>BRT</strong>
     </p>
 
     @if (!$tableReady)
@@ -55,8 +56,8 @@
                 <tr>
                     <td class="desc">{{ $group['description'] }}</td>
                     <td><span class="badge">{{ $group['occurrences'] }}</span></td>
-                    <td>{{ $group['first_seen'] }}</td>
-                    <td>{{ $group['last_seen'] }}</td>
+                    <td>{{ \App\Support\DisplayDateTime::label($group['first_seen']) }}</td>
+                    <td>{{ \App\Support\DisplayDateTime::label($group['last_seen']) }}</td>
                     <td>{{ strtoupper($group['max_level'] ?? 'ERROR') }}</td>
                     <td>
                         <a href="{{ url('/ops/errors/'.$group['fingerprint'].'?token='.urlencode(request('token'))) }}">Detalhes</a>

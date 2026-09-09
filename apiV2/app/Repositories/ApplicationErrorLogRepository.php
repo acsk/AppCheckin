@@ -2,7 +2,7 @@
 
 namespace App\Repositories;
 
-use Illuminate\Support\Collection;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class ApplicationErrorLogRepository
@@ -36,7 +36,7 @@ class ApplicationErrorLogRepository
             'user_id' => $data['user_id'] ?? null,
             'tenant_id' => $data['tenant_id'] ?? null,
             'context' => isset($data['context']) ? json_encode($data['context'], JSON_UNESCAPED_UNICODE) : null,
-            'created_at' => $data['created_at'] ?? now(),
+            'created_at' => $data['created_at'] ?? Carbon::now('UTC')->format('Y-m-d H:i:s'),
         ]);
     }
 

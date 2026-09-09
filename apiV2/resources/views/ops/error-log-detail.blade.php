@@ -26,13 +26,20 @@
         <div class="card">
             <div class="meta">
                 #{{ $event['id'] }}
-                · {{ $event['created_at'] }}
+                · {{ \App\Support\DisplayDateTime::label($event['created_at']) }}
                 · {{ strtoupper($event['level']) }}
                 · {{ $event['request_method'] ?? '-' }} {{ $event['request_path'] ?? '' }}
+                @if(!empty($event['ip'])) · IP {{ $event['ip'] }} @endif
                 @if(!empty($event['user_id'])) · user {{ $event['user_id'] }} @endif
                 @if(!empty($event['tenant_id'])) · tenant {{ $event['tenant_id'] }} @endif
+                @if(!empty($event['exception_class'])) · {{ $event['exception_class'] }} @endif
+                @if(!empty($event['source_file'])) · {{ basename($event['source_file']) }}@if(!empty($event['source_line'])):{{ $event['source_line'] }}@endif @endif
             </div>
             <pre>{{ $event['message'] }}</pre>
+            @if(!empty($event['context']))
+                <div class="meta" style="margin-top:10px;">Contexto</div>
+                <pre>{{ json_encode($event['context'], JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) }}</pre>
+            @endif
         </div>
     @endforeach
 </div>

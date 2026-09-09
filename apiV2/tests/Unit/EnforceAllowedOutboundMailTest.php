@@ -50,4 +50,29 @@ class EnforceAllowedOutboundMailTest extends TestCase
 
         $this->assertTrue($result);
     }
+
+    public function test_allows_error_alert_subject_by_prefix(): void
+    {
+        config([
+            'appcheckin.mail_guard_enabled' => true,
+            'appcheckin.mail_allowed_subjects' => [
+                '🔐 Código de Recuperação de Senha - App Check-in',
+            ],
+            'appcheckin.mail_allowed_subject_prefixes' => [
+                'AppCheckin [ERRO]',
+            ],
+            'appcheckin.mail_from_address' => 'mail@appcheckin.com.br',
+        ]);
+
+        $message = (new Email())
+            ->from('mail@appcheckin.com.br')
+            ->to('admin@example.com')
+            ->subject('AppCheckin [ERRO] Falha no check-in')
+            ->html('<p>ok</p>');
+
+        $listener = new EnforceAllowedOutboundMail;
+        $result = $listener->handle(new MessageSending($message, []));
+
+        $this->assertTrue($result);
+    }
 }

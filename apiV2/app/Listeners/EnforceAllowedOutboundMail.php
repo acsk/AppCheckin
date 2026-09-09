@@ -21,7 +21,20 @@ class EnforceAllowedOutboundMail
 
         /** @var list<string> $allowedSubjects */
         $allowedSubjects = config('appcheckin.mail_allowed_subjects', []);
-        if ($allowedSubjects !== [] && ! in_array($subject, $allowedSubjects, true)) {
+        /** @var list<string> $allowedPrefixes */
+        $allowedPrefixes = config('appcheckin.mail_allowed_subject_prefixes', []);
+
+        $subjectAllowed = in_array($subject, $allowedSubjects, true);
+        if (! $subjectAllowed && $allowedPrefixes !== []) {
+            foreach ($allowedPrefixes as $prefix) {
+                if ($prefix !== '' && str_starts_with($subject, $prefix)) {
+                    $subjectAllowed = true;
+                    break;
+                }
+            }
+        }
+
+        if ($allowedSubjects !== [] && ! $subjectAllowed) {
             Log::warning('Mail guard bloqueou assunto não autorizado', [
                 'subject' => $subject,
                 'to' => array_map(static fn ($a) => $a->getAddress(), $message->getTo()),

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Repositories\ApplicationErrorLogRepository;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Monolog\Level;
@@ -11,10 +12,9 @@ use Throwable;
 
 final class ApplicationErrorLogService
 {
-    private const ALERT_SUBJECT = '🚨 Alerta de Erro — AppCheckin API v2';
-
     public function __construct(
         private readonly ApplicationErrorLogRepository $repository,
+        private readonly ApplicationErrorAlertMailBuilder $alertMailBuilder,
     ) {}
 
     public function recordFromLogRecord(LogRecord $record): void
@@ -203,15 +203,21 @@ final class ApplicationErrorLogService
         $recentCount = $this->repository->countSince($fingerprint, $throttleMinutes);
 
         try {
-            $html = $this->buildAlertHtml($payload, $logId, $recentCount, $throttleMinutes);
-            $text = $this->buildAlertText($payload, $logId, $recentCount, $throttleMinutes);
+            $mail = $this->alertMailBuilder->build($payload, [
+                'log_id' => $logId,
+                'created_at' => Carbon::now('UTC')->format('Y-m-d H:i:s'),
+                'app_env' => (string) config('app.env', 'production'),
+                'recent_count' => $recentCount,
+                'throttle_minutes' => $throttleMinutes,
+                'panel_url' => $this->opsViewUrl(),
+            ]);
 
-            TransactionalMailSender::send(
+            TransactionalMailSender::sendOperationalAlert(
                 $to,
                 'Admin AppCheckin',
-                self::ALERT_SUBJECT,
-                $html,
-                $text,
+                $mail['subject'],
+                $mail['html'],
+                $mail['text'],
             );
 
             Cache::put($cacheKey, true, now()->addMinutes($throttleMinutes));
@@ -221,51 +227,6 @@ final class ApplicationErrorLogService
                 'error' => $e->getMessage(),
             ]);
         }
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     */
-    private function buildAlertHtml(array $payload, int $logId, int $recentCount, int $throttleMinutes): string
-    {
-        $desc = htmlspecialchars((string) $payload['description'], ENT_QUOTES, 'UTF-8');
-        $level = htmlspecialchars(strtoupper((string) $payload['level']), ENT_QUOTES, 'UTF-8');
-        $path = htmlspecialchars((string) ($payload['request_path'] ?? '-'), ENT_QUOTES, 'UTF-8');
-        $method = htmlspecialchars((string) ($payload['request_method'] ?? '-'), ENT_QUOTES, 'UTF-8');
-        $message = htmlspecialchars(mb_substr((string) $payload['message'], 0, 2000), ENT_QUOTES, 'UTF-8');
-        $opsUrl = htmlspecialchars($this->opsViewUrl(), ENT_QUOTES, 'UTF-8');
-
-        return <<<HTML
-<!DOCTYPE html>
-<html lang="pt-BR"><body style="font-family: Arial, sans-serif; color: #333;">
-  <h2 style="color: #c0392b;">Alerta de erro — apiV2</h2>
-  <p><strong>ID:</strong> {$logId} &nbsp; <strong>Nível:</strong> {$level}</p>
-  <p><strong>Descrição:</strong> {$desc}</p>
-  <p><strong>Request:</strong> {$method} {$path}</p>
-  <p><strong>Ocorrências recentes ({$throttleMinutes} min):</strong> {$recentCount}</p>
-  <pre style="background:#f4f4f4;padding:12px;border-radius:6px;white-space:pre-wrap;font-size:12px;">{$message}</pre>
-  <p><a href="{$opsUrl}">Ver painel de erros agrupados</a></p>
-</body></html>
-HTML;
-    }
-
-    /**
-     * @param  array<string, mixed>  $payload
-     */
-    private function buildAlertText(array $payload, int $logId, int $recentCount, int $throttleMinutes): string
-    {
-        return implode("\n", [
-            'Alerta de erro — apiV2',
-            "ID: {$logId}",
-            'Nível: '.strtoupper((string) $payload['level']),
-            'Descrição: '.$payload['description'],
-            'Request: '.($payload['request_method'] ?? '-').' '.($payload['request_path'] ?? '-'),
-            "Ocorrências recentes ({$throttleMinutes} min): {$recentCount}",
-            '',
-            mb_substr((string) $payload['message'], 0, 2000),
-            '',
-            'Painel: '.$this->opsViewUrl(),
-        ]);
     }
 
     private function opsViewUrl(): string
