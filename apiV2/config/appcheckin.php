@@ -23,7 +23,15 @@ return [
     'mail_allowed_subjects' => [
         '🔐 Código de Recuperação de Senha - App Check-in',
         '🎉 Bem-vindo ao AppCheckin - Seus Dados de Acesso',
+        '🚨 Alerta de Erro — AppCheckin API v2',
     ],
+
+    /*
+    | Monitoramento de erros (DB + e-mail + painel /ops/errors).
+    */
+    'error_alert_email' => env('ERROR_ALERT_EMAIL', 'andrecabrall@gmail.com'),
+    'error_alert_throttle_minutes' => (int) env('ERROR_ALERT_THROTTLE_MINUTES', 15),
+    'ops_view_token' => env('OPS_VIEW_TOKEN', ''),
 
     /*
     | Diretório absoluto das fotos de perfil (produção Hostinger).

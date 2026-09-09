@@ -17,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'jwt.auth' => \App\Http\Middleware\JwtAuthenticate::class,
             'admin.auth' => \App\Http\Middleware\AdminAuthenticate::class,
             'superadmin.auth' => \App\Http\Middleware\SuperAdminAuthenticate::class,
+            'ops.token' => \App\Http\Middleware\OpsViewTokenAuth::class,
         ]);
         $middleware->trustProxies(at: '*');
     })

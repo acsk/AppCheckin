@@ -54,8 +54,15 @@ return [
 
         'stack' => [
             'driver' => 'stack',
-            'channels' => explode(',', (string) env('LOG_STACK', 'single')),
+            'channels' => explode(',', (string) env('LOG_STACK', 'single,database_errors')),
             'ignore_exceptions' => false,
+        ],
+
+        'database_errors' => [
+            'driver' => 'monolog',
+            'handler' => \App\Logging\DatabaseErrorLogHandler::class,
+            'level' => env('LOG_DB_ERRORS_LEVEL', 'error'),
+            'replace_placeholders' => true,
         ],
 
         'single' => [
