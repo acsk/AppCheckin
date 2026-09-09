@@ -65,6 +65,8 @@ foreach ($extensions as $ext) {
 }
 
 $wantMail = isset($_GET['mail']) && $_GET['mail'] !== '0' && $_GET['mail'] !== 'false';
+$wantOps = isset($_GET['ops']) && $_GET['ops'] !== '0' && $_GET['ops'] !== 'false';
+$opsReport = null;
 $sendTestTo = null;
 
 if ($checks['vendor/autoload.php']['ok'] ?? false) {
@@ -102,6 +104,10 @@ if ($checks['vendor/autoload.php']['ok'] ?? false) {
                 $mailReport = \App\Support\MailDiagnostics::run($sendTestTo);
             }
         }
+
+        if ($wantOps) {
+            $opsReport = \App\Support\OpsErrorLogDiagnostics::snapshot();
+        }
     } catch (Throwable $e) {
         $checks['laravel_bootstrap'] = ['ok' => false];
         $laravelError = $e->getMessage();
@@ -110,7 +116,8 @@ if ($checks['vendor/autoload.php']['ok'] ?? false) {
 
 $infraOk = ! in_array(false, array_column($checks, 'ok'), true);
 $mailOk = $mailReport === null ? null : (bool) ($mailReport['ok'] ?? false);
-$status = $infraOk && ($mailOk === null || $mailOk) ? 'ok' : 'fail';
+$opsOk = $opsReport === null ? null : (bool) ($opsReport['ok'] ?? false);
+$status = $infraOk && ($mailOk === null || $mailOk) && ($opsOk === null || $opsOk) ? 'ok' : 'fail';
 
 $response = [
     'status' => $status,
@@ -130,6 +137,15 @@ if ($wantMail) {
         'composer' => '/opt/alt/php84/usr/bin/php $(which composer) install --no-dev --optimize-autoloader',
         'password_recovery' => 'POST /v2/auth/password-recovery/request só envia se o e-mail existir no banco',
     ];
+}
+
+if ($wantOps) {
+    $response['ops_errors'] = $opsReport;
+    $response['hints'] = array_merge($response['hints'] ?? [], [
+        'test_log' => '/opt/alt/php84/usr/bin/php artisan tinker --execute="Log::error(\'Teste ops\', [\'origem\'=>\'manual\']);"',
+        'migrate' => '/opt/alt/php84/usr/bin/php artisan migrate --path=database/migrations/2026_09_09_120000_create_application_error_logs_table.php --force',
+        'panel' => 'https://apiv2.appcheckin.com.br/ops/errors?token=OPS_VIEW_TOKEN',
+    ]);
 }
 
 echo json_encode($response, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
