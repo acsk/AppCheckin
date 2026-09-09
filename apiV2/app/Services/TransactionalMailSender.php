@@ -17,12 +17,12 @@ final class TransactionalMailSender
         string $text,
         array $headers = [],
         ?string $fromNameOverride = null,
-    ): void {
+    ): bool {
         $fromAddress = (string) config('mail.from.address');
         $fromName = $fromNameOverride ?? (string) config('mail.from.name');
         $replyTo = (string) config('appcheckin.mail_from_address', $fromAddress);
 
-        Mail::send([], [], function ($message) use ($email, $nome, $subject, $html, $text, $fromAddress, $fromName, $replyTo, $headers): void {
+        $result = Mail::send([], [], function ($message) use ($email, $nome, $subject, $html, $text, $fromAddress, $fromName, $replyTo, $headers): void {
             $message->to($email, $nome)
                 ->subject($subject)
                 ->html($html)
@@ -40,6 +40,8 @@ final class TransactionalMailSender
                 $message->getHeaders()->addTextHeader($name, $value);
             }
         });
+
+        return $result !== null;
     }
 
     public static function sendOperationalAlert(
@@ -48,8 +50,8 @@ final class TransactionalMailSender
         string $subject,
         string $html,
         string $text,
-    ): void {
-        self::send(
+    ): bool {
+        return self::send(
             $email,
             $nome,
             $subject,
@@ -58,7 +60,6 @@ final class TransactionalMailSender
             headers: [
                 'Importance' => 'high',
                 'X-Priority' => '1',
-                'Priority' => 'urgent',
                 'X-AppCheckin-Mail-Type' => 'operational-alert',
             ],
             fromNameOverride: (string) config('appcheckin.error_alert_from_name', 'AppCheckin Ops'),

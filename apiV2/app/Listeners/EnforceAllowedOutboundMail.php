@@ -2,6 +2,7 @@
 
 namespace App\Listeners;
 
+use App\Services\ApplicationErrorAlertMailBuilder;
 use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Support\Facades\Log;
 
@@ -25,8 +26,13 @@ class EnforceAllowedOutboundMail
         $allowedPrefixes = config('appcheckin.mail_allowed_subject_prefixes', []);
 
         $subjectAllowed = in_array($subject, $allowedSubjects, true);
-        if (! $subjectAllowed && $allowedPrefixes !== []) {
-            foreach ($allowedPrefixes as $prefix) {
+        $prefixes = array_values(array_unique(array_filter(array_merge(
+            $allowedPrefixes,
+            [ApplicationErrorAlertMailBuilder::SUBJECT_PREFIX],
+        ))));
+
+        if (! $subjectAllowed && $prefixes !== []) {
+            foreach ($prefixes as $prefix) {
                 if ($prefix !== '' && str_starts_with($subject, $prefix)) {
                     $subjectAllowed = true;
                     break;

@@ -93,7 +93,7 @@ final class ApplicationErrorLogService
         }
 
         if ($id !== null) {
-            $this->maybeSendAlertEmail($payload, (int) $id);
+            $this->maybeSendAlertEmail($payload, (int) $id, force: false);
         }
 
         return $id;
@@ -185,19 +185,35 @@ final class ApplicationErrorLogService
     /**
      * @param  array<string, mixed>  $payload
      */
-    private function maybeSendAlertEmail(array $payload, int $logId): void
+    public function sendAlertEmailForTest(array $payload, int $logId, bool $force = true): bool
+    {
+        return $this->maybeSendAlertEmail($payload, $logId, $force);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    private function maybeSendAlertEmail(array $payload, int $logId, bool $force): bool
     {
         $to = (string) config('appcheckin.error_alert_email', '');
         if ($to === '' || ! filter_var($to, FILTER_VALIDATE_EMAIL)) {
-            return;
+            Log::warning('Alerta de erro não enviado: ERROR_ALERT_EMAIL inválido ou vazio');
+
+            return false;
         }
 
         $fingerprint = (string) $payload['fingerprint'];
         $throttleMinutes = max(1, (int) config('appcheckin.error_alert_throttle_minutes', 15));
         $cacheKey = 'error_alert_sent:'.$fingerprint;
 
-        if (Cache::has($cacheKey)) {
-            return;
+        if (! $force && Cache::has($cacheKey)) {
+            Log::info('Alerta de erro suprimido por throttle', [
+                'log_id' => $logId,
+                'fingerprint' => $fingerprint,
+                'throttle_minutes' => $throttleMinutes,
+            ]);
+
+            return false;
         }
 
         $recentCount = $this->repository->countSince($fingerprint, $throttleMinutes);
@@ -212,7 +228,7 @@ final class ApplicationErrorLogService
                 'panel_url' => $this->opsViewUrl(),
             ]);
 
-            TransactionalMailSender::sendOperationalAlert(
+            $sent = TransactionalMailSender::sendOperationalAlert(
                 $to,
                 'Admin AppCheckin',
                 $mail['subject'],
@@ -220,12 +236,31 @@ final class ApplicationErrorLogService
                 $mail['text'],
             );
 
+            if (! $sent) {
+                Log::warning('Alerta de erro não enviado (mail guard ou transporte cancelou)', [
+                    'log_id' => $logId,
+                    'subject' => $mail['subject'],
+                    'to' => $to,
+                ]);
+
+                return false;
+            }
+
             Cache::put($cacheKey, true, now()->addMinutes($throttleMinutes));
+            Log::info('Alerta de erro enviado por email', [
+                'log_id' => $logId,
+                'subject' => $mail['subject'],
+                'to' => $to,
+            ]);
+
+            return true;
         } catch (\Throwable $e) {
             Log::warning('Falha ao enviar alerta de erro por email', [
                 'log_id' => $logId,
                 'error' => $e->getMessage(),
             ]);
+
+            return false;
         }
     }
 

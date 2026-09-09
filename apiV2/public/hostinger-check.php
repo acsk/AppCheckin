@@ -142,7 +142,8 @@ if ($wantMail) {
 if ($wantOps) {
     $response['ops_errors'] = $opsReport;
     $response['hints'] = array_merge($response['hints'] ?? [], [
-        'test_log' => '/opt/alt/php84/usr/bin/php artisan tinker --execute="Log::error(\'Teste ops\', [\'origem\'=>\'manual\']);"',
+        'test_log' => '/opt/alt/php84/usr/bin/php artisan ops:error-alert-test --force',
+        'config_clear' => '/opt/alt/php84/usr/bin/php artisan config:clear',
         'migrate' => '/opt/alt/php84/usr/bin/php artisan migrate --path=database/migrations/2026_09_09_120000_create_application_error_logs_table.php --force',
         'panel' => 'https://apiv2.appcheckin.com.br/ops/errors?token=OPS_VIEW_TOKEN',
     ]);

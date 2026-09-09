@@ -48,6 +48,12 @@ final class OpsErrorLogDiagnostics
             $issues[] = 'OPS_VIEW_TOKEN não configurado (painel /ops/errors)';
         }
 
+        $subjectPrefixes = config('appcheckin.mail_allowed_subject_prefixes', []);
+        $hints = [];
+        if (! is_array($subjectPrefixes) || ! in_array('AppCheckin [ERRO]', $subjectPrefixes, true)) {
+            $hints[] = 'Config em cache antiga: rode php artisan config:clear (fallback hardcoded no mail guard)';
+        }
+
         return [
             'ok' => $issues === [],
             'config' => [
@@ -55,6 +61,8 @@ final class OpsErrorLogDiagnostics
                 'error_alert_email' => config('appcheckin.error_alert_email'),
                 'error_alert_throttle_minutes' => config('appcheckin.error_alert_throttle_minutes'),
                 'ops_view_token_set' => (string) config('appcheckin.ops_view_token', '') !== '',
+                'mail_guard_enabled' => config('appcheckin.mail_guard_enabled', true),
+                'mail_allowed_subject_prefixes' => $subjectPrefixes,
             ],
             'table' => [
                 'exists' => $tableExists,
@@ -62,6 +70,7 @@ final class OpsErrorLogDiagnostics
                 'recent' => $recent,
             ],
             'issues' => $issues,
+            'hints' => $hints,
             'panel_url' => rtrim((string) config('app.url', ''), '/').'/ops/errors',
         ];
     }
