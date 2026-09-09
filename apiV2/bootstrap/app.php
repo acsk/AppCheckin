@@ -13,9 +13,7 @@ return Application::configure(basePath: dirname(__DIR__))
         apiPrefix: '',
     )
     ->withCommands([
-        \App\Console\Commands\MailDiagnoseCommand::class,
-        \App\Console\Commands\UploadsVerifyFotosCommand::class,
-        \App\Console\Commands\OpsErrorAlertTestCommand::class,
+        __DIR__.'/../app/Console/Commands',
     ])
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
