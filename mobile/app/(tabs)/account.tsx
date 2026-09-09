@@ -1172,7 +1172,18 @@ export default function AccountScreen() {
       >
         {currentWhatsappLinks.length > 0 && (
           <View style={styles.whatsappHomeSection}>
-            <Text style={styles.sectionTitle}>Grupos WhatsApp</Text>
+            <View style={styles.whatsappHomeHeader}>
+              <View style={styles.whatsappHomeHeaderIcon}>
+                <MaterialCommunityIcons name="whatsapp" size={22} color="#fff" />
+              </View>
+              <View style={styles.whatsappHomeHeaderText}>
+                <Text style={styles.whatsappHomeTitle}>Grupos WhatsApp</Text>
+                <Text style={styles.whatsappHomeSubtitle}>
+                  Entre nos grupos da sua academia
+                </Text>
+              </View>
+            </View>
+
             <View style={styles.whatsappHomeLinks}>
               {currentWhatsappLinks.map((link) => (
                 <TouchableOpacity
@@ -1180,14 +1191,30 @@ export default function AccountScreen() {
                   style={styles.whatsappHomeLink}
                   activeOpacity={0.85}
                   onPress={() => Linking.openURL(link.url)}
+                  accessibilityRole="link"
+                  accessibilityLabel={`Entrar no grupo ${link.nome}`}
                 >
-                  <MaterialCommunityIcons
-                    name="whatsapp"
-                    size={20}
-                    color="#25D366"
-                  />
-                  <Text style={styles.whatsappHomeLinkText}>{link.nome}</Text>
-                  <Feather name="external-link" size={16} color={colors.textMuted} />
+                  <View style={styles.whatsappHomeLinkIconWrap}>
+                    <MaterialCommunityIcons
+                      name="whatsapp"
+                      size={22}
+                      color="#fff"
+                    />
+                  </View>
+                  <View style={styles.whatsappHomeLinkContent}>
+                    <Text
+                      style={styles.whatsappHomeLinkText}
+                      numberOfLines={2}
+                    >
+                      {link.nome}
+                    </Text>
+                    <Text style={styles.whatsappHomeLinkHint}>
+                      Toque para entrar no grupo
+                    </Text>
+                  </View>
+                  <View style={styles.whatsappHomeLinkChevron}>
+                    <Feather name="chevron-right" size={18} color="#128C7E" />
+                  </View>
                 </TouchableOpacity>
               ))}
             </View>
@@ -2293,35 +2320,94 @@ const styles = StyleSheet.create({
     padding: 18,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: "#f0f1f4",
-    ...withShadow("0px 6px 10px rgba(0, 0, 0, 0.06)", {
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.06,
-      shadowRadius: 10,
-      elevation: 2,
+    borderColor: "#e8f5ee",
+    ...withShadow("0px 8px 16px rgba(37, 211, 102, 0.08)", {
+      shadowColor: "#25D366",
+      shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: 0.12,
+      shadowRadius: 14,
+      elevation: 3,
     }),
+  },
+  whatsappHomeHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    marginBottom: 16,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eef7f1",
+  },
+  whatsappHomeHeaderIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: "#25D366",
+    justifyContent: "center",
+    alignItems: "center",
+    flexShrink: 0,
+  },
+  whatsappHomeHeaderText: {
+    flex: 1,
+  },
+  whatsappHomeTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: colors.text,
+    marginBottom: 2,
+  },
+  whatsappHomeSubtitle: {
+    fontSize: 12,
+    color: colors.textMuted,
+    lineHeight: 16,
   },
   whatsappHomeLinks: {
     gap: 10,
-    marginTop: 12,
   },
   whatsappHomeLink: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 14,
-    borderRadius: 12,
-    backgroundColor: "rgba(37, 211, 102, 0.08)",
+    borderRadius: 14,
+    backgroundColor: "#f6fbf8",
     borderWidth: 1,
-    borderColor: "rgba(37, 211, 102, 0.2)",
+    borderColor: "#dcefe3",
+  },
+  whatsappHomeLinkIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "#25D366",
+    justifyContent: "center",
+    alignItems: "center",
+    flexShrink: 0,
+  },
+  whatsappHomeLinkContent: {
+    flex: 1,
+    marginHorizontal: 12,
+    minWidth: 0,
   },
   whatsappHomeLinkText: {
-    flex: 1,
     fontSize: 15,
-    fontWeight: "600",
+    fontWeight: "700",
     color: colors.text,
+    lineHeight: 20,
+  },
+  whatsappHomeLinkHint: {
+    marginTop: 2,
+    fontSize: 12,
+    color: "#128C7E",
+    fontWeight: "500",
+  },
+  whatsappHomeLinkChevron: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(18, 140, 126, 0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+    flexShrink: 0,
   },
   // Calendário Semanal
   weekCalendarSection: {
