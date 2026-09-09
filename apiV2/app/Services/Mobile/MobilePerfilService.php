@@ -203,6 +203,77 @@ class MobilePerfilService
             ];
         }
 
+        if (! $uploadedFile || ! method_exists($uploadedFile, 'isValid') || ! $uploadedFile->isValid()) {
+            return [
+                'status' => 400,
+                'body' => [
+                    'success' => false,
+                    'error' => 'Nenhuma imagem foi enviada. Use o campo "foto" em multipart/form-data',
+                ],
+            ];
+        }
+
+        $tempPath = method_exists($uploadedFile, 'getRealPath') ? $uploadedFile->getRealPath() : null;
+        if (! is_string($tempPath) || $tempPath === '' || ! is_file($tempPath)) {
+            return [
+                'status' => 400,
+                'body' => [
+                    'success' => false,
+                    'error' => 'Upload incompleto ou expirado. Tente enviar a foto novamente.',
+                ],
+            ];
+        }
+
+        $tamanhoOriginal = filesize($tempPath);
+        if ($tamanhoOriginal === false) {
+            return [
+                'status' => 400,
+                'body' => [
+                    'success' => false,
+                    'error' => 'Não foi possível ler o arquivo enviado. Tente novamente.',
+                ],
+            ];
+        }
+
+        $mimeType = $uploadedFile->getMimeType()
+            ?? (is_readable($tempPath) ? mime_content_type($tempPath) : null)
+            ?? '';
+        $permitidos = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if (! in_array($mimeType, $permitidos, true)) {
+            return [
+                'status' => 400,
+                'body' => [
+                    'success' => false,
+                    'error' => 'Tipo de arquivo não permitido. Use JPEG, PNG, GIF ou WebP',
+                    'mime_enviado' => $mimeType,
+                ],
+            ];
+        }
+
+        $tamanhoMaximo = 5 * 1024 * 1024;
+        if ($tamanhoOriginal > $tamanhoMaximo) {
+            return [
+                'status' => 400,
+                'body' => [
+                    'success' => false,
+                    'error' => 'Arquivo muito grande. Máximo 5MB',
+                    'tamanho_enviado' => $tamanhoOriginal,
+                    'tamanho_maximo' => $tamanhoMaximo,
+                ],
+            ];
+        }
+
+        $extensoes = [
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/gif' => 'gif',
+            'image/webp' => 'webp',
+        ];
+        $ext = $extensoes[$mimeType] ?? 'jpg';
+        $nomeOriginal = method_exists($uploadedFile, 'getClientOriginalName')
+            ? (string) $uploadedFile->getClientOriginalName()
+            : '';
+
         $usuario = $this->usuarios->findById($userId, $tenantId);
         if (! $usuario) {
             return [
@@ -219,49 +290,15 @@ class MobilePerfilService
             ];
         }
 
-        if (! $uploadedFile || ! $uploadedFile->isValid()) {
+        if (! is_file($tempPath)) {
             return [
                 'status' => 400,
                 'body' => [
                     'success' => false,
-                    'error' => 'Nenhuma imagem foi enviada. Use o campo "foto" em multipart/form-data',
+                    'error' => 'Upload expirou durante o processamento. Tente novamente.',
                 ],
             ];
         }
-
-        $mimeType = $uploadedFile->getMimeType() ?? '';
-        $permitidos = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-        if (! in_array($mimeType, $permitidos, true)) {
-            return [
-                'status' => 400,
-                'body' => [
-                    'success' => false,
-                    'error' => 'Tipo de arquivo não permitido. Use JPEG, PNG, GIF ou WebP',
-                    'mime_enviado' => $mimeType,
-                ],
-            ];
-        }
-
-        $tamanhoMaximo = 5 * 1024 * 1024;
-        if ($uploadedFile->getSize() > $tamanhoMaximo) {
-            return [
-                'status' => 400,
-                'body' => [
-                    'success' => false,
-                    'error' => 'Arquivo muito grande. Máximo 5MB',
-                    'tamanho_enviado' => $uploadedFile->getSize(),
-                    'tamanho_maximo' => $tamanhoMaximo,
-                ],
-            ];
-        }
-
-        $extensoes = [
-            'image/jpeg' => 'jpg',
-            'image/png' => 'png',
-            'image/gif' => 'gif',
-            'image/webp' => 'webp',
-        ];
-        $ext = $extensoes[$mimeType] ?? 'jpg';
 
         FotoStorage::ensureFotosDir();
         $uploadDir = FotoStorage::fotosDir();
@@ -277,10 +314,23 @@ class MobilePerfilService
         $caminhoRelativo = FotoStorage::caminhoRelativo($nomeArquivo);
         $caminhoCompleto = $uploadDir.'/'.$nomeArquivo;
 
-        $uploadedFile->move($uploadDir, $nomeArquivo);
+        try {
+            $uploadedFile->move($uploadDir, $nomeArquivo);
+        } catch (\Throwable $e) {
+            return [
+                'status' => 500,
+                'body' => [
+                    'success' => false,
+                    'error' => 'Erro ao salvar a foto no servidor',
+                ],
+            ];
+        }
+
         @chmod($caminhoCompleto, 0644);
 
         $this->alunos->updateFotoCaminho((int) $aluno['id'], $caminhoRelativo);
+
+        $tamanhoFinal = is_file($caminhoCompleto) ? filesize($caminhoCompleto) : false;
 
         return [
             'status' => 200,
@@ -290,10 +340,10 @@ class MobilePerfilService
                 'data' => [
                     'aluno_id' => (int) $aluno['id'],
                     'usuario_id' => $userId,
-                    'tamanho_original' => $uploadedFile->getSize(),
-                    'tamanho_final' => is_file($caminhoCompleto) ? filesize($caminhoCompleto) : null,
+                    'tamanho_original' => $tamanhoOriginal,
+                    'tamanho_final' => $tamanhoFinal !== false ? $tamanhoFinal : null,
                     'tipo_arquivo' => $mimeType,
-                    'nome_original' => $uploadedFile->getClientOriginalName(),
+                    'nome_original' => $nomeOriginal,
                     'caminho_url' => $caminhoRelativo,
                 ],
             ],
