@@ -1810,15 +1810,20 @@ class MobileController
                 }
 
                 $stmtInsert = $this->db->prepare("
-                    INSERT INTO checkins (aluno_id, turma_id, tenant_id, registrado_por_admin, admin_id, data_checkin_date)
-                    VALUES (:aluno_id, :turma_id, :tenant_id, 1, :admin_id, :data_checkin_date)
+                    INSERT INTO checkins (aluno_id, turma_id, tenant_id, registrado_por_admin, admin_id, data_checkin)
+                    VALUES (:aluno_id, :turma_id, :tenant_id, 1, :admin_id, :data_checkin)
                 ");
+                // data_checkin_date é GENERATED ALWAYS AS (DATE(data_checkin)) — não pode receber INSERT.
+                $horaAgora = date('H:i:s');
+                $dataCheckin = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $diaAula) === 1
+                    ? $diaAula.' '.$horaAgora
+                    : date('Y-m-d H:i:s');
                 $stmtInsert->execute([
                     'aluno_id' => $alunoId,
                     'turma_id' => $turmaId,
                     'tenant_id' => $tenantId,
                     'admin_id' => $professorId,
-                    'data_checkin_date' => $diaAula,
+                    'data_checkin' => $dataCheckin,
                 ]);
 
                 $checkinId = (int) $this->db->lastInsertId();

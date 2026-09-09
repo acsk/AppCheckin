@@ -33,13 +33,19 @@ class CheckinRepository
         int $adminId,
         string $dataCheckinDate,
     ): int {
+        // data_checkin_date é GENERATED ALWAYS AS (DATE(data_checkin)) — não pode receber INSERT.
+        $hora = AcademyDateTime::now()->format('H:i:s');
+        $dataCheckin = preg_match('/^\d{4}-\d{2}-\d{2}$/', $dataCheckinDate) === 1
+            ? $dataCheckinDate.' '.$hora
+            : AcademyDateTime::nowFormatted();
+
         return (int) DB::table('checkins')->insertGetId([
             'aluno_id' => $alunoId,
             'turma_id' => $turmaId,
             'tenant_id' => $tenantId,
             'registrado_por_admin' => 1,
             'admin_id' => $adminId,
-            'data_checkin_date' => $dataCheckinDate,
+            'data_checkin' => $dataCheckin,
         ]);
     }
 
