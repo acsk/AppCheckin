@@ -113,6 +113,16 @@ class TenantRepository
     }
 
     /**
+     * @param  list<array{nome: string, url: string}>  $links
+     */
+    public function updateWhatsappLinks(int $id, array $links): bool
+    {
+        return DB::table('tenants')->where('id', $id)->update([
+            'whatsapp_links' => TenantWhatsappLinks::encode($links),
+        ]) >= 0;
+    }
+
+    /**
      * @param  array<string, mixed>  $data
      */
     public function update(int $id, array $data): bool

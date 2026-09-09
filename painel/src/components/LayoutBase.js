@@ -69,6 +69,7 @@ const MENU = [
       
       { label: 'Planos Sistema', path: '/planos-sistema', icon: 'layers', roles: [4] },
       { label: 'Configurações de Pagamento', path: '/configuracoes-pagamento', icon: 'settings', roles: [3, 4] },
+      { label: 'Grupos WhatsApp', path: '/grupos-whatsapp', icon: 'message-circle', roles: [3, 4] },
       
     ],
   },

@@ -22,7 +22,7 @@ import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
@@ -202,6 +202,16 @@ export default function AccountScreen() {
   };
 
   const getTenantDisplayName = () => getTenantName();
+
+  const currentWhatsappLinks = useMemo(() => {
+    const currentId =
+      currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
+    if (!currentId || !Array.isArray(userProfile?.tenants)) {
+      return [];
+    }
+    const tenant = userProfile.tenants.find((t) => t.id === currentId);
+    return Array.isArray(tenant?.whatsapp_links) ? tenant.whatsapp_links : [];
+  }, [currentTenant, userProfile]);
 
   const userRoleLabels = React.useMemo(() => {
     if (!Array.isArray(userRoles) || userRoles.length === 0) {
@@ -1160,6 +1170,30 @@ export default function AccountScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {currentWhatsappLinks.length > 0 && (
+          <View style={styles.whatsappHomeSection}>
+            <Text style={styles.sectionTitle}>Grupos WhatsApp</Text>
+            <View style={styles.whatsappHomeLinks}>
+              {currentWhatsappLinks.map((link) => (
+                <TouchableOpacity
+                  key={link.url}
+                  style={styles.whatsappHomeLink}
+                  activeOpacity={0.85}
+                  onPress={() => Linking.openURL(link.url)}
+                >
+                  <MaterialCommunityIcons
+                    name="whatsapp"
+                    size={20}
+                    color="#25D366"
+                  />
+                  <Text style={styles.whatsappHomeLinkText}>{link.nome}</Text>
+                  <Feather name="external-link" size={16} color={colors.textMuted} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        )}
+
         {/* Calendário Semanal de Check-ins */}
         <View style={styles.weekCalendarSection} className="notranslate">
           <View style={styles.weekCalendarHeader}>
@@ -1680,24 +1714,6 @@ export default function AccountScreen() {
                           </Text>
                         </View>
                       )}
-                      {Array.isArray(tenant.whatsapp_links) &&
-                        tenant.whatsapp_links.map((link) => (
-                          <TouchableOpacity
-                            key={`${tenant.id}-${link.url}`}
-                            style={styles.whatsappLinkSidebar}
-                            activeOpacity={0.8}
-                            onPress={() => Linking.openURL(link.url)}
-                          >
-                            <MaterialCommunityIcons
-                              name="whatsapp"
-                              size={14}
-                              color="#25D366"
-                            />
-                            <Text style={styles.whatsappLinkTextSidebar}>
-                              {link.nome}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
                     </View>
                     <View style={styles.sidebarChevronButton}>
                       <Feather name="chevron-right" size={18} color="#fff" />
@@ -2270,6 +2286,42 @@ const styles = StyleSheet.create({
   },
   statisticsSection: {
     marginBottom: 20,
+  },
+  whatsappHomeSection: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 18,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#f0f1f4",
+    ...withShadow("0px 6px 10px rgba(0, 0, 0, 0.06)", {
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: 0.06,
+      shadowRadius: 10,
+      elevation: 2,
+    }),
+  },
+  whatsappHomeLinks: {
+    gap: 10,
+    marginTop: 12,
+  },
+  whatsappHomeLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: "rgba(37, 211, 102, 0.08)",
+    borderWidth: 1,
+    borderColor: "rgba(37, 211, 102, 0.2)",
+  },
+  whatsappHomeLinkText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: "600",
+    color: colors.text,
   },
   // Calendário Semanal
   weekCalendarSection: {
