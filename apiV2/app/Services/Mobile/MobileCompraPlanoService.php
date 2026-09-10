@@ -20,6 +20,7 @@ class MobileCompraPlanoService
         private readonly AlunoRepository $alunos,
         private readonly MatriculaRepository $matriculas,
         private readonly PagamentoPlanoService $pagamentosPlano,
+        private readonly MobilePagamentoService $mobilePagamento,
     ) {}
 
     /**
@@ -605,8 +606,7 @@ class MobileCompraPlanoService
 
         $pixData = null;
         if ($metodoPagamento === 'pix') {
-            $pagamento = new MobilePagamentoService($this->matriculas);
-            $pixResult = $pagamento->gerarPix($userId, $tenantId, ['matricula_id' => $matriculaId]);
+            $pixResult = $this->mobilePagamento->gerarPix($userId, $tenantId, ['matricula_id' => $matriculaId]);
             if ($pixResult['status'] === 200 && isset($pixResult['body']['data']['pix'])) {
                 $pixData = $pixResult['body']['data']['pix'];
             }
