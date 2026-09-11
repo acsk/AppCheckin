@@ -25,6 +25,7 @@ import { creditoService } from '../../services/creditoService';
 import { formatarDataParaInput, calcularDiasRestantes } from '../../utils/formatadores';
 import { mascaraData } from '../../utils/masks';
 import { obterMensagemErro } from '../../utils/errorHandler';
+import { showError } from '../../utils/toast';
 import { authService } from '../../services/authService';
 import descontoMatriculaService from '../../services/descontoMatriculaService';
 
@@ -89,6 +90,7 @@ export default function MatriculaDetalheScreen() {
   const [baixaConfirmando, setBaixaConfirmando] = useState(false);
   const [modalConfirmCancelamentoVisible, setModalConfirmCancelamentoVisible] = useState(false);
   const [modalConfirmAlteracaoVisible, setModalConfirmAlteracaoVisible] = useState(false);
+  const [alterarPlanoErro, setAlterarPlanoErro] = useState('');
   const [modalBaixaPacoteVisible, setModalBaixaPacoteVisible] = useState(false);
   const [baixaPacoteLoading, setBaixaPacoteLoading] = useState(false);
   const [errorModal, setErrorModal] = useState({ visible: false, title: '', message: '' });
@@ -414,6 +416,7 @@ export default function MatriculaDetalheScreen() {
     setEtapaAlterarPlano('plano');
     setSimulacaoCancelamento(null);
     setModalAlterarPlanoVisible(true);
+    setAlterarPlanoErro('');
 
     setFormAlterarPlano({
       plano_id: planoAtualId,
@@ -477,6 +480,7 @@ export default function MatriculaDetalheScreen() {
     setGerarCreditoCancelamento(true);
     setCancelandoMatricula(false);
     setModalAlterarPlanoVisible(true);
+    setAlterarPlanoErro('');
 
     try {
       setLoadingSimulacao(true);
@@ -586,6 +590,7 @@ export default function MatriculaDetalheScreen() {
 
     try {
       setSalvandoAlteracaoPlano(true);
+      setAlterarPlanoErro('');
       const payload = {
         plano_id: Number(formAlterarPlano.plano_id),
         data_inicio: formAlterarPlano.data_inicio,
@@ -618,6 +623,13 @@ export default function MatriculaDetalheScreen() {
       const response = await matriculaService.alterarPlano(id, payload);
 
       let msg = response?.message || 'Plano alterado com sucesso';
+      if (
+        response?.plano_anterior &&
+        response?.plano_novo &&
+        response.plano_anterior === response.plano_novo
+      ) {
+        msg += ' (renovação do mesmo plano — confira datas e pagamento pendente)';
+      }
       if (response?.credito && (response.credito.total_aplicado > 0 || response.credito.valor_aplicado > 0)) {
         const totalAplicado = response.credito.total_aplicado || response.credito.valor_aplicado || 0;
         msg += ` — Crédito de ${formatCurrency(totalAplicado)} aplicado. Parcela: ${formatCurrency(response.valor_parcela)}`;
@@ -631,6 +643,8 @@ export default function MatriculaDetalheScreen() {
       await carregarDados();
     } catch (error) {
       const mensagem = obterMensagemErro(error, 'Não foi possível alterar o plano da matrícula');
+      setAlterarPlanoErro(mensagem);
+      showError(mensagem);
       showAlert('Erro', mensagem);
     } finally {
       setSalvandoAlteracaoPlano(false);
@@ -2752,6 +2766,12 @@ export default function MatriculaDetalheScreen() {
             {/* ===== ETAPA 2: Selecionar novo plano ===== */}
             {etapaAlterarPlano === 'plano' && (
               <>
+            {!!alterarPlanoErro && (
+              <View className="mx-5 mt-3 flex-row items-start gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2">
+                <Feather name="alert-circle" size={16} color="#e11d48" />
+                <Text className="flex-1 text-xs leading-5 text-rose-800">{alterarPlanoErro}</Text>
+              </View>
+            )}
             <View className="border-b border-slate-100 px-5 py-3">
               <View className="flex-row items-center gap-2">
                 <Feather name="repeat" size={16} color="#64748b" />

@@ -86,6 +86,21 @@ class PagamentoPlanoService
             return;
         }
 
+        // Pendente aguardando pagamento (nova contratação ou alterar-plano): não recalcular
+        // vigência/status pelo último período pago — isso revertia datas e cancelava a matrícula.
+        if ($statusAtual === 'pendente') {
+            $temCobrancaAberta = DB::table('pagamentos_plano')
+                ->where('tenant_id', $tenantId)
+                ->where('matricula_id', $matriculaId)
+                ->whereIn('status_pagamento_id', [1, 3])
+                ->whereNull('data_pagamento')
+                ->exists();
+
+            if ($temCobrancaAberta) {
+                return;
+            }
+        }
+
         $row = DB::table('pagamentos_plano')
             ->where('tenant_id', $tenantId)
             ->where('matricula_id', $matriculaId)
