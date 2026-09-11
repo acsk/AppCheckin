@@ -86,17 +86,21 @@ class PagamentoPlanoService
             return;
         }
 
-        // Pendente aguardando pagamento (nova contratação ou alterar-plano): não recalcular
-        // vigência/status pelo último período pago — isso revertia datas e cancelava a matrícula.
+        // Pendente só enquanto falta pagar a cobrança de ativação (1ª parcela / MP).
+        // Parcela futura "após confirmação" (ex. bimestral) não deve manter matrícula pendente.
         if ($statusAtual === 'pendente') {
-            $temCobrancaAberta = DB::table('pagamentos_plano')
+            $aguardandoAtivacao = DB::table('pagamentos_plano')
                 ->where('tenant_id', $tenantId)
                 ->where('matricula_id', $matriculaId)
                 ->whereIn('status_pagamento_id', [1, 3])
                 ->whereNull('data_pagamento')
+                ->where(function ($q) {
+                    $q->where('observacoes', 'like', '%Primeiro pagamento%')
+                        ->orWhere('observacoes', 'like', '%Aguardando pagamento%');
+                })
                 ->exists();
 
-            if ($temCobrancaAberta) {
+            if ($aguardandoAtivacao) {
                 return;
             }
         }
@@ -122,31 +126,11 @@ class PagamentoPlanoService
         // Semestral ex. #288: pago 27/03, venc 27/04, ciclo 6m → fim = 27/10.
         $acessoAte = null;
         if ($ehAvulso) {
-            $acessoAte = DB::table('pagamentos_plano as pg')
-                ->join('matriculas as m2', function ($join) {
-                    $join->on('m2.id', '=', 'pg.matricula_id')
-                        ->on('m2.tenant_id', '=', 'pg.tenant_id');
-                })
-                ->join('planos as p2', 'p2.id', '=', 'm2.plano_id')
-                ->leftJoin('plano_ciclos as pc', 'pc.id', '=', 'm2.plano_ciclo_id')
-                ->where('pg.tenant_id', $tenantId)
-                ->where('pg.matricula_id', $matriculaId)
-                ->where('pg.status_pagamento_id', 2)
-                ->selectRaw("MAX(CASE
-                    WHEN COALESCE(p2.duracao_dias, 0) = 1 THEN
-                        CASE
-                            WHEN pg.data_pagamento IS NULL THEN pg.data_vencimento
-                            WHEN pg.data_vencimento >= DATE_ADD(pg.data_pagamento, INTERVAL 1 DAY)
-                                THEN pg.data_vencimento
-                            ELSE DATE_ADD(GREATEST(pg.data_pagamento, pg.data_vencimento), INTERVAL 1 DAY)
-                        END
-                    WHEN pg.data_pagamento IS NULL THEN pg.data_vencimento
-                    WHEN pg.data_vencimento >= DATE_ADD(pg.data_pagamento, INTERVAL COALESCE(pc.meses, 1) MONTH)
-                        THEN pg.data_vencimento
-                    ELSE DATE_ADD(GREATEST(pg.data_pagamento, pg.data_vencimento), INTERVAL COALESCE(pc.meses, 1) MONTH)
-                END) as fim_periodo")
-                ->value('fim_periodo')
-                ?: ($matriculaMeta->data_vencimento ?? null);
+            $fimRow = DB::selectOne(
+                'SELECT '.self::sqlFimPeriodoPago('?', '?').' AS fim_periodo',
+                [$tenantId, $matriculaId]
+            );
+            $acessoAte = $fimRow->fim_periodo ?? ($matriculaMeta->data_vencimento ?? null);
 
             if ($acessoAte && $acessoAte < date('Y-m-d')) {
                 $diasAtrasoAcesso = (int) ((new \DateTime(date('Y-m-d')))->diff(new \DateTime($acessoAte))->days);
@@ -183,7 +167,24 @@ class PagamentoPlanoService
                         'updated_at' => now(),
                     ]);
             }
-            // Avulso sem parcela paga: não usar pendentes para proxima_data_vencimento.
+
+            $proximaCobranca = DB::table('pagamentos_plano')
+                ->where('tenant_id', $tenantId)
+                ->where('matricula_id', $matriculaId)
+                ->whereIn('status_pagamento_id', [1, 3])
+                ->whereNull('data_pagamento')
+                ->min('data_vencimento');
+
+            if ($proximaCobranca && $novoStatus === 'ativa') {
+                DB::table('matriculas')
+                    ->where('id', $matriculaId)
+                    ->where('tenant_id', $tenantId)
+                    ->update([
+                        'proxima_data_vencimento' => $proximaCobranca,
+                        'updated_at' => now(),
+                    ]);
+            }
+
             return;
         }
 
