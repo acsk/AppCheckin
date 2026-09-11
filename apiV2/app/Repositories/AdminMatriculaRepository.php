@@ -1022,6 +1022,17 @@ class AdminMatriculaRepository
      *
      * @return array<string, mixed>|null
      */
+    public function temParcelaAbertaAtrasada(int $matriculaId, int $tenantId): bool
+    {
+        return DB::table('pagamentos_plano')
+            ->where('tenant_id', $tenantId)
+            ->where('matricula_id', $matriculaId)
+            ->whereIn('status_pagamento_id', [1, 3])
+            ->whereNull('data_pagamento')
+            ->where('data_vencimento', '<', DB::raw('CURDATE()'))
+            ->exists();
+    }
+
     public function findParaAlterarPlano(int $id, int $tenantId): ?array
     {
         $row = DB::table('matriculas as m')

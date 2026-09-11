@@ -1018,6 +1018,8 @@ class AdminMatriculaService
             return $this->error('plano_id é obrigatório', 422);
         }
 
+        $this->syncParcelasAtrasadas($tenantId, $id);
+
         $novoPlanoId = (int) $data['plano_id'];
         $novoCicloId = ! empty($data['plano_ciclo_id']) ? (int) $data['plano_ciclo_id'] : null;
 
@@ -1027,14 +1029,27 @@ class AdminMatriculaService
         }
 
         if (($matricula['status_codigo'] ?? '') === 'finalizada') {
-            return $this->error('Não é possível alterar plano de matrícula finalizada', 400);
+            return $this->error('Não é possível alterar plano de matrícula finalizada', 400, 'MATRICULA_FINALIZADA');
         }
 
+        $statusCodigo = (string) ($matricula['status_codigo'] ?? '');
         $vinculoPacoteId = (int) ($matricula['pacote_contrato_id'] ?? 0);
-        $migracao = new \App\Services\Mobile\MobileMigracaoPlanoService();
-        if ($vinculoPacoteId <= 0 && $migracao->temParcelaAtrasada($id, $tenantId)) {
-            return $this->error('Há parcela em atraso. Quite o débito antes de alterar o plano.', 400);
+        // Matrícula ativa/bloqueada com débito: exige quitar ou cancelar antes (fluxo do painel).
+        // Cancelada/vencida/pendente: alterar-plano já cancela parcelas abertas na transação.
+        $exigeQuitarAtraso = in_array($statusCodigo, ['ativa', 'bloqueada'], true);
+        if (
+            $vinculoPacoteId <= 0
+            && $exigeQuitarAtraso
+            && $this->matriculas->temParcelaAbertaAtrasada($id, $tenantId)
+        ) {
+            return $this->error(
+                'Há parcela em atraso. Quite o débito ou cancele a matrícula (com crédito) antes de alterar o plano.',
+                400,
+                'MATRICULA_EM_ATRASO'
+            );
         }
+
+        $migracao = new \App\Services\Mobile\MobileMigracaoPlanoService();
 
         $novoPlano = $this->matriculas->findPlano($novoPlanoId, $tenantId);
         if (! $novoPlano) {
@@ -1054,7 +1069,7 @@ class AdminMatriculaService
         $podeRenovar = in_array($matricula['status_codigo'] ?? '', ['cancelada', 'vencida'], true);
 
         if ($mesmoPlanoCiclo && ! $podeRenovar) {
-            return $this->error('O plano e ciclo selecionados são iguais aos atuais', 400);
+            return $this->error('O plano e ciclo selecionados são iguais aos atuais', 400, 'PLANO_IGUAL_ATUAL');
         }
 
         $ehRenovacao = $mesmoPlanoCiclo && $podeRenovar;
@@ -1530,11 +1545,16 @@ class AdminMatriculaService
     /**
      * @return array{status: int, body: array<string, mixed>}
      */
-    private function error(string $message, int $status): array
+    private function error(string $message, int $status, ?string $code = null): array
     {
+        $body = ['error' => $message];
+        if ($code !== null && $code !== '') {
+            $body['code'] = $code;
+        }
+
         return [
             'status' => $status,
-            'body' => ['error' => $message],
+            'body' => $body,
         ];
     }
 
