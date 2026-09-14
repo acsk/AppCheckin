@@ -2,11 +2,16 @@
 
 namespace App\Services\Mobile;
 
+use App\Services\MatriculaMigracaoAptidaoService;
 use Illuminate\Support\Facades\DB;
 
 class MobileMigracaoPlanoService
 {
     private ?\App\Services\MatriculaMigracaoService $core = null;
+
+    public function __construct(
+        private readonly MatriculaMigracaoAptidaoService $aptidao,
+    ) {}
 
     private function core(): \App\Services\MatriculaMigracaoService
     {
@@ -49,7 +54,7 @@ class MobileMigracaoPlanoService
 
     public function temParcelaAtrasada(int $matriculaId, int $tenantId): bool
     {
-        return $this->core()->temParcelaAtrasada($matriculaId, $tenantId);
+        return $this->aptidao->temParcelaAtrasada($matriculaId, $tenantId);
     }
 
     /**
@@ -58,6 +63,6 @@ class MobileMigracaoPlanoService
      */
     public function avaliarAptidaoMigracao(array $matricula, int $tenantId): array
     {
-        return $this->core()->avaliarAptidaoMigracao($matricula, $tenantId);
+        return $this->aptidao->avaliarAptidaoMigracao($matricula, $tenantId);
     }
 }

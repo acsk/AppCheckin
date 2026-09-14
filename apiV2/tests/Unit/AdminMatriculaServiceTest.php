@@ -8,6 +8,7 @@ use App\Repositories\MatriculaRepository;
 use App\Services\Admin\AdminMatriculaService;
 use App\Services\Admin\AdminPacoteService;
 use App\Services\Admin\AdminPagamentoPlanoService;
+use App\Services\MatriculaMigracaoAptidaoService;
 use App\Services\PagamentoPlanoService;
 use Mockery;
 use Tests\TestCase;
@@ -21,6 +22,7 @@ class AdminMatriculaServiceTest extends TestCase
         ?AdminPacoteService $pacotes = null,
         ?AdminPagamentoPlanoService $pagamentosPlanoAdmin = null,
         ?AdminAssinaturaRepository $assinaturas = null,
+        ?MatriculaMigracaoAptidaoService $migracaoAptidao = null,
     ): AdminMatriculaService {
         return new AdminMatriculaService(
             $repo ?? Mockery::mock(AdminMatriculaRepository::class),
@@ -29,6 +31,7 @@ class AdminMatriculaServiceTest extends TestCase
             $pacotes ?? Mockery::mock(AdminPacoteService::class),
             $pagamentosPlanoAdmin ?? Mockery::mock(AdminPagamentoPlanoService::class),
             $assinaturas ?? Mockery::mock(AdminAssinaturaRepository::class),
+            $migracaoAptidao ?? Mockery::mock(MatriculaMigracaoAptidaoService::class),
         );
     }
 

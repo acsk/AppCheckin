@@ -5,6 +5,7 @@ namespace App\Services\Admin;
 use App\Repositories\AdminAssinaturaRepository;
 use App\Repositories\AdminMatriculaRepository;
 use App\Repositories\MatriculaRepository;
+use App\Services\MatriculaMigracaoAptidaoService;
 use App\Services\PagamentoPlanoService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -18,6 +19,7 @@ class AdminMatriculaService
         private readonly AdminPacoteService $pacotes,
         private readonly AdminPagamentoPlanoService $pagamentosPlanoAdmin,
         private readonly AdminAssinaturaRepository $assinaturas,
+        private readonly MatriculaMigracaoAptidaoService $migracaoAptidao,
     ) {}
 
     /**
@@ -1049,8 +1051,6 @@ class AdminMatriculaService
             );
         }
 
-        $migracao = new \App\Services\Mobile\MobileMigracaoPlanoService();
-
         $novoPlano = $this->matriculas->findPlano($novoPlanoId, $tenantId);
         if (! $novoPlano) {
             return $this->error('Novo plano não encontrado', 404);
@@ -1130,7 +1130,7 @@ class AdminMatriculaService
         $creditoGerado = false;
         $diasRestantes = 0;
 
-        $aptidaoCredito = $migracao->avaliarAptidaoMigracao($matricula, $tenantId);
+        $aptidaoCredito = $this->migracaoAptidao->avaliarAptidaoMigracao($matricula, $tenantId);
         $podeGerarCreditoMigracao = (bool) ($aptidaoCredito['gera_credito'] ?? false);
 
         $usarCreditoExistente = ! empty($data['usar_credito_existente']) && $saldoCreditosExistentes > 0;
