@@ -11,6 +11,7 @@ class MobilePlanoService
 {
     public function __construct(
         private readonly PlanoRepository $planos,
+        private readonly MobileMigracaoPlanoService $migracao,
     ) {}
 
     /**
@@ -84,8 +85,7 @@ class MobilePlanoService
             $matriculaModalidade = $matriculasPorModalidade[$modalidadeId] ?? null;
             $podeMigrar = false;
             if ($matriculaModalidade && (int) $matriculaModalidade['plano_id'] !== $planoId) {
-                $migracao = new MobileMigracaoPlanoService();
-                $aptidao = $migracao->avaliarAptidaoMigracao($matriculaModalidade, $tenantId);
+                $aptidao = $this->migracao->avaliarAptidaoMigracao($matriculaModalidade, $tenantId);
                 $podeMigrar = ! empty($aptidao['apto']);
             }
             $liberacaoMod = $renovacaoPorModalidade[$modalidadeId] ?? null;
@@ -423,13 +423,12 @@ class MobilePlanoService
             return false;
         }
 
-        $migracao = new MobileMigracaoPlanoService();
-        $matricula = $migracao->buscarMatriculaAtivaModalidade((int) $alunoId, $tenantId, $modalidadeId);
+        $matricula = $this->migracao->buscarMatriculaAtivaModalidade((int) $alunoId, $tenantId, $modalidadeId);
         if (! $matricula || (int) $matricula['plano_id'] === $planoId) {
             return false;
         }
 
-        $aptidao = $migracao->avaliarAptidaoMigracao($matricula, $tenantId);
+        $aptidao = $this->migracao->avaliarAptidaoMigracao($matricula, $tenantId);
 
         return ! empty($aptidao['apto']);
     }
