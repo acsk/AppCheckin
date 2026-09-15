@@ -9,9 +9,12 @@ class MobileMigracaoPlanoService
 {
     private ?\App\Services\MatriculaMigracaoService $core = null;
 
-    public function __construct(
-        private readonly MatriculaMigracaoAptidaoService $aptidao,
-    ) {}
+    private readonly MatriculaMigracaoAptidaoService $aptidao;
+
+    public function __construct(?MatriculaMigracaoAptidaoService $aptidao = null)
+    {
+        $this->aptidao = $aptidao ?? app(MatriculaMigracaoAptidaoService::class);
+    }
 
     private function core(): \App\Services\MatriculaMigracaoService
     {

@@ -78,14 +78,15 @@ class MobilePlanoService
             $habilitarPix,
         );
 
-        $planosFormatados = array_map(function (array $plano) use ($planoAtualId, $ciclosPorPlano, $matriculasPorModalidade, $renovacaoPorModalidade, $tenantId) {
+        $migracao = $this->migracao;
+        $planosFormatados = array_map(function (array $plano) use ($planoAtualId, $ciclosPorPlano, $matriculasPorModalidade, $renovacaoPorModalidade, $tenantId, $migracao) {
             $planoId = (int) $plano['id'];
             $isPlanoAtual = $planoAtualId && $planoId === $planoAtualId;
             $modalidadeId = (int) $plano['modalidade_id'];
             $matriculaModalidade = $matriculasPorModalidade[$modalidadeId] ?? null;
             $podeMigrar = false;
             if ($matriculaModalidade && (int) $matriculaModalidade['plano_id'] !== $planoId) {
-                $aptidao = $this->migracao->avaliarAptidaoMigracao($matriculaModalidade, $tenantId);
+                $aptidao = $migracao->avaliarAptidaoMigracao($matriculaModalidade, $tenantId);
                 $podeMigrar = ! empty($aptidao['apto']);
             }
             $liberacaoMod = $renovacaoPorModalidade[$modalidadeId] ?? null;
