@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, Switch, TouchableOpacity } from 'react-native';
+import { View, Text, ScrollView, ActivityIndicator, Switch, TouchableOpacity, TextInput } from 'react-native';
 import { Feather, FontAwesome5 } from '@expo/vector-icons';
 import LayoutBase from '../../components/LayoutBase';
 import parametrosService from '../../services/parametrosService';
@@ -19,9 +19,18 @@ const parseBoolean = (value) => {
   return null;
 };
 
+const getTipoValor = (param) =>
+  String(param?.tipo_valor ?? param?.tipo ?? '').toLowerCase();
+
+const isIntegerLike = (param) => {
+  const tipo = getTipoValor(param);
+  return tipo === 'integer' || tipo === 'decimal';
+};
+
 const isBooleanLike = (param, parsed) => {
+  if (isIntegerLike(param)) return false;
   if (parsed !== null) return true;
-  const tipo = param?.tipo || '';
+  const tipo = getTipoValor(param);
   return /bool|boolean|flag|ativo|habilitar|enable/i.test(tipo);
 };
 
@@ -56,12 +65,16 @@ export default function ParametrosScreen() {
             if (!codigo) return;
             const parsed = parseBoolean(param?.valor);
             const boolLike = isBooleanLike(param, parsed);
-            const normalized = parsed ?? false;
+            const integerLike = isIntegerLike(param);
+            const normalized = integerLike
+              ? String(param?.valor ?? '')
+              : parsed ?? false;
             nextValores[codigo] = normalized;
             nextMeta[codigo] = {
               original: param?.valor,
               tipo: param?.tipo,
               boolLike,
+              integerLike,
             };
           });
         });
@@ -93,6 +106,35 @@ export default function ParametrosScreen() {
         return ordemA - ordemB;
       });
   }, [categorias]);
+
+  const handleSalvarInteiro = async (codigo) => {
+    if (savingCodigo) return;
+    const raw = String(valores[codigo] ?? '').trim();
+    const numerico = raw.replace(/[^0-9]/g, '');
+    const valor = numerico === '' ? 0 : parseInt(numerico, 10);
+    const toastId = showLoading('Salvando parâmetro...');
+    setSavingCodigo(codigo);
+    try {
+      const response = await parametrosService.atualizarParametro(codigo, valor);
+      dismissToast(toastId);
+      if (response?.success) {
+        setValores((prev) => ({ ...prev, [codigo]: String(valor) }));
+        setMeta((prev) => ({
+          ...prev,
+          [codigo]: { ...prev[codigo], original: valor },
+        }));
+        showSuccess(response?.message || 'Parâmetro atualizado');
+      } else {
+        showError(response?.message || 'Erro ao atualizar parâmetro');
+      }
+    } catch (error) {
+      dismissToast(toastId);
+      console.error('Erro ao salvar parâmetro numérico:', error);
+      showError('Erro ao atualizar parâmetro');
+    } finally {
+      setSavingCodigo(null);
+    }
+  };
 
   const handleToggle = async (codigo) => {
     if (savingCodigo) return;
@@ -188,28 +230,55 @@ export default function ParametrosScreen() {
                     const codigo = param?.codigo;
                     if (!codigo) return null;
                     const boolLike = meta[codigo]?.boolLike ?? true;
+                    const integerLike = meta[codigo]?.integerLike ?? false;
                     const value = !!valores[codigo];
                     const label = param?.nome || param?.descricao || param?.codigo;
                     const descricao = param?.descricao && param?.descricao !== param?.nome ? param?.descricao : null;
                     return (
-                      <View key={codigo} className="flex-row items-center justify-between rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                        <View className="flex-1 pr-3">
-                          <Text className="text-[13px] font-semibold text-slate-800">{label}</Text>
-                          <Text className="text-[10px] font-semibold text-slate-400">{codigo}</Text>
-                          {descricao && <Text className="text-[11px] text-slate-500">{descricao}</Text>}
-                          {!boolLike && (
-                            <Text className="text-[11px] text-slate-400">
-                              Valor atual: {String(param?.valor ?? '')}
-                            </Text>
+                      <View key={codigo} className="rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
+                        <View className="flex-row items-start justify-between">
+                          <View className="flex-1 pr-3">
+                            <Text className="text-[13px] font-semibold text-slate-800">{label}</Text>
+                            <Text className="text-[10px] font-semibold text-slate-400">{codigo}</Text>
+                            {descricao && <Text className="text-[11px] text-slate-500">{descricao}</Text>}
+                            {integerLike && codigo === 'max_tolerancia_checkin_antes_minutos' && (
+                              <Text className="mt-1 text-[11px] text-slate-500">
+                                0 = desligado. Ex.: 30 = check-in abre no máximo 30 min antes do início.
+                              </Text>
+                            )}
+                          </View>
+                          {!integerLike && (
+                            <Switch
+                              value={value}
+                              onValueChange={() => handleToggle(codigo)}
+                              disabled={!boolLike || !!savingCodigo}
+                              trackColor={{ false: '#e2e8f0', true: '#fdba74' }}
+                              thumbColor={value ? '#f97316' : '#ffffff'}
+                            />
                           )}
                         </View>
-                        <Switch
-                          value={value}
-                          onValueChange={() => handleToggle(codigo)}
-                          disabled={!boolLike || !!savingCodigo}
-                          trackColor={{ false: '#e2e8f0', true: '#fdba74' }}
-                          thumbColor={value ? '#f97316' : '#ffffff'}
-                        />
+                        {integerLike && (
+                          <View className="mt-2 flex-row items-center gap-2">
+                            <TextInput
+                              className="min-w-[72px] flex-1 rounded-md border border-slate-200 bg-white px-3 py-2 text-[13px] text-slate-800"
+                              value={String(valores[codigo] ?? '')}
+                              onChangeText={(text) => {
+                                const numerico = text.replace(/[^0-9]/g, '');
+                                setValores((prev) => ({ ...prev, [codigo]: numerico }));
+                              }}
+                              keyboardType="numeric"
+                              editable={!savingCodigo}
+                              placeholder="0"
+                            />
+                            <TouchableOpacity
+                              className="rounded-md bg-orange-500 px-3 py-2"
+                              onPress={() => handleSalvarInteiro(codigo)}
+                              disabled={!!savingCodigo}
+                            >
+                              <Text className="text-[12px] font-semibold text-white">Salvar</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
                       </View>
                     );
                   })}

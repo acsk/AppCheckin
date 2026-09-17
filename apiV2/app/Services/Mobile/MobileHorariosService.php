@@ -5,12 +5,14 @@ namespace App\Services\Mobile;
 use App\Repositories\TurmaRepository;
 use App\Services\TurmaCheckinBloqueioService;
 use App\Support\AcademyDateTime;
+use App\Support\CheckinToleranciaAntes;
 
 class MobileHorariosService
 {
     public function __construct(
         private readonly TurmaRepository $turmas,
         private readonly TurmaCheckinBloqueioService $bloqueios,
+        private readonly CheckinToleranciaAntes $toleranciaAntes,
     ) {}
 
     /**
@@ -58,7 +60,9 @@ class MobileHorariosService
             $checkinsCount = $this->turmas->contarCheckinsNaTurma((int) $turma['id'], $tenantId);
 
             $horarioInicio = $turma['horario_inicio'];
-            $toleranciaAntes = (int) ($turma['tolerancia_antes_minutos'] ?? 480);
+            $turmaAntes = (int) ($turma['tolerancia_antes_minutos'] ?? 480);
+            $toleranciaAntes = $this->toleranciaAntes->effectiveAntesMinutos($tenantId, $turmaAntes);
+            $maxAcademia = $this->toleranciaAntes->maxMinutosTenant($tenantId);
             $toleranciaDepois = (int) ($turma['tolerancia_minutos'] ?? 10);
 
             $dataHoraTurma = AcademyDateTime::fromDateAndTime($data, $horarioInicio);
@@ -97,6 +101,8 @@ class MobileHorariosService
                     'abertura' => $horarioAbertura->format('Y-m-d H:i:s'),
                     'fechamento' => $horarioFechamento->format('Y-m-d H:i:s'),
                     'tolerancia_antes_minutos' => $toleranciaAntes,
+                    'tolerancia_antes_turma_minutos' => $turmaAntes,
+                    'max_tolerancia_academia_minutos' => $maxAcademia > 0 ? $maxAcademia : null,
                     'tolerancia_depois_minutos' => $toleranciaDepois,
                 ],
                 'limite_alunos' => (int) $turma['limite_alunos'],

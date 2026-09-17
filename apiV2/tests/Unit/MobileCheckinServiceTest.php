@@ -9,6 +9,7 @@ use App\Repositories\TurmaRepository;
 use App\Repositories\UsuarioRepository;
 use App\Services\Mobile\MobileCheckinService;
 use App\Services\TurmaCheckinBloqueioService;
+use App\Support\CheckinToleranciaAntes;
 use Mockery;
 use Tests\TestCase;
 
@@ -28,6 +29,7 @@ class MobileCheckinServiceTest extends TestCase
         $turmas = Mockery::mock(TurmaRepository::class);
         $checkins = Mockery::mock(CheckinRepository::class);
         $bloqueios = Mockery::mock(TurmaCheckinBloqueioService::class);
+        $toleranciaAntes = Mockery::mock(CheckinToleranciaAntes::class);
 
         $usuarios->shouldReceive('findById')->andReturn(['nome' => 'Test', 'email' => 'a@b.c']);
         $alunos->shouldReceive('findForTenant')->andReturn(['id' => 10, 'foto_caminho' => null]);
@@ -46,6 +48,7 @@ class MobileCheckinServiceTest extends TestCase
             $turmas,
             $checkins,
             $bloqueios,
+            $toleranciaAntes,
         );
 
         $result = $service->registrar(1, 1, []);

@@ -7,6 +7,7 @@ use App\Repositories\TurmaRepository;
 use App\Services\TurmaCheckinBloqueioService;
 use App\Support\AcademyDateTime;
 use App\Support\AniversarioUtil;
+use App\Support\CheckinToleranciaAntes;
 use Illuminate\Support\Facades\DB;
 
 class MobileTurmaService
@@ -15,6 +16,7 @@ class MobileTurmaService
         private readonly TurmaRepository $turmas,
         private readonly CheckinRepository $checkins,
         private readonly TurmaCheckinBloqueioService $bloqueios,
+        private readonly CheckinToleranciaAntes $toleranciaAntes,
     ) {}
 
     /**
@@ -182,7 +184,9 @@ class MobileTurmaService
         $percentualOcupacao = $limite > 0 ? round(($totalAlunos / $limite) * 100, 1) : 0;
         $checkinBloqueado = $this->bloqueios->isBloqueada($turmaId, $tenantId);
 
-        $toleranciaAntes = (int) ($turma['tolerancia_antes_minutos'] ?? 480);
+        $turmaAntes = (int) ($turma['tolerancia_antes_minutos'] ?? 480);
+        $toleranciaAntes = $this->toleranciaAntes->effectiveAntesMinutos($tenantId, $turmaAntes);
+        $maxAcademia = $this->toleranciaAntes->maxMinutosTenant($tenantId);
         $toleranciaDepois = (int) ($turma['tolerancia_minutos'] ?? 10);
         $dataHoraTurma = AcademyDateTime::fromDateAndTime($dataAula, (string) $turma['horario_inicio']);
         $agora = AcademyDateTime::now();
@@ -277,6 +281,8 @@ class MobileTurmaService
                             'abertura' => $horarioAberturaFmt,
                             'fechamento' => $horarioFechamentoFmt,
                             'tolerancia_antes_minutos' => $toleranciaAntes,
+                            'tolerancia_antes_turma_minutos' => $turmaAntes,
+                            'max_tolerancia_academia_minutos' => $maxAcademia > 0 ? $maxAcademia : null,
                             'tolerancia_depois_minutos' => $toleranciaDepois,
                         ],
                         'ativo' => (bool) $turma['ativo'],

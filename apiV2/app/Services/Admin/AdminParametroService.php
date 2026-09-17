@@ -282,6 +282,13 @@ class AdminParametroService
                         'dias_vencimento' => $model->getInt($tenantId, 'dias_tolerancia_vencimento', 5),
                         'pagamento_parcial' => $model->isEnabled($tenantId, 'permitir_pagamento_parcial'),
                     ],
+                    'checkin' => [
+                        'max_tolerancia_antes_minutos' => $model->getInt(
+                            $tenantId,
+                            'max_tolerancia_checkin_antes_minutos',
+                            0,
+                        ),
+                    ],
                 ],
             ],
         ];

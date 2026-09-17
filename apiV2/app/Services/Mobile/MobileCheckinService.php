@@ -9,6 +9,7 @@ use App\Repositories\TurmaRepository;
 use App\Repositories\UsuarioRepository;
 use App\Services\TurmaCheckinBloqueioService;
 use App\Support\AcademyDateTime;
+use App\Support\CheckinToleranciaAntes;
 use Illuminate\Support\Facades\DB;
 
 class MobileCheckinService
@@ -20,6 +21,7 @@ class MobileCheckinService
         private readonly TurmaRepository $turmas,
         private readonly CheckinRepository $checkins,
         private readonly TurmaCheckinBloqueioService $bloqueios,
+        private readonly CheckinToleranciaAntes $toleranciaAntes,
     ) {}
 
     /**
@@ -150,7 +152,7 @@ class MobileCheckinService
             return $this->fail('Sem vagas disponíveis nesta turma', 400);
         }
 
-        $toleranciaErro = $this->validarToleranciaAntes($turma);
+        $toleranciaErro = $this->validarToleranciaAntes($tenantId, $turma);
         if ($toleranciaErro !== null) {
             return $toleranciaErro;
         }
@@ -384,7 +386,7 @@ class MobileCheckinService
      * @param  array<string, mixed>  $turma
      * @return ?array{status: int, body: array<string, mixed>}
      */
-    private function validarToleranciaAntes(array $turma): ?array
+    private function validarToleranciaAntes(int $tenantId, array $turma): ?array
     {
         if (empty($turma['dia_id']) || empty($turma['horario_inicio'])) {
             return null;
@@ -405,7 +407,8 @@ class MobileCheckinService
             return null;
         }
 
-        $toleranciaAntes = (int) ($turma['tolerancia_antes_minutos'] ?? 480);
+        $turmaAntes = (int) ($turma['tolerancia_antes_minutos'] ?? 480);
+        $toleranciaAntes = $this->toleranciaAntes->effectiveAntesMinutos($tenantId, $turmaAntes);
         $dataMaisCedo = clone $dataHorarioInicio;
         $dataMaisCedo->modify("-{$toleranciaAntes} minutes");
 
@@ -422,6 +425,8 @@ class MobileCheckinService
                         'data_aula' => $dia->data,
                         'horario_inicio' => $turma['horario_inicio'],
                         'tolerancia_minutos' => $toleranciaAntes,
+                        'tolerancia_antes_turma_minutos' => $turmaAntes,
+                        'max_tolerancia_academia_minutos' => $this->toleranciaAntes->maxMinutosTenant($tenantId),
                         'abertura_checkin' => $dataMaisCedo->format('Y-m-d H:i:s'),
                         'tempo_esperar_minutos' => $minutosAinda,
                     ],

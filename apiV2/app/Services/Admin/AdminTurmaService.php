@@ -5,6 +5,7 @@ namespace App\Services\Admin;
 use App\Repositories\DiaRepository;
 use App\Repositories\TurmaRepository;
 use App\Services\TurmaCheckinBloqueioService;
+use App\Support\CheckinToleranciaAntes;
 use DateInterval;
 use DateTime;
 
@@ -14,6 +15,7 @@ class AdminTurmaService
         private readonly TurmaRepository $turmas,
         private readonly DiaRepository $dias,
         private readonly TurmaCheckinBloqueioService $checkinBloqueio,
+        private readonly CheckinToleranciaAntes $toleranciaAntes,
     ) {}
 
     /**
@@ -122,6 +124,7 @@ class AdminTurmaService
 
         try {
             $data['tenant_id'] = $tenantId;
+            $this->aplicarTetoToleranciaAntes($tenantId, $data);
             $id = $this->turmas->criar($data);
             $turma = $this->turmas->findById($id);
 
@@ -186,6 +189,7 @@ class AdminTurmaService
         }
 
         try {
+            $this->aplicarTetoToleranciaAntes($tenantId, $data);
             $this->turmas->atualizar($id, $data);
 
             return [
@@ -785,6 +789,19 @@ class AdminTurmaService
                 'checkins_removidos' => $checkinsRemovidos,
             ],
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function aplicarTetoToleranciaAntes(int $tenantId, array &$data): void
+    {
+        if (! array_key_exists('tolerancia_antes_minutos', $data)) {
+            return;
+        }
+
+        $informado = (int) $data['tolerancia_antes_minutos'];
+        $data['tolerancia_antes_minutos'] = $this->toleranciaAntes->clampParaTurma($tenantId, $informado);
     }
 
     /**
