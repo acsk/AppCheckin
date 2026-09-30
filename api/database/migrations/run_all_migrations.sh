@@ -159,7 +159,6 @@ MIGRATIONS=(
     "064_add_modalidade_id_to_wods.sql"
     "065_fix_wods_unique_constraint.sql"
     "066_add_whatsapp_links_to_tenants.sql"
-    "067_max_tolerancia_checkin_antes_minutos.sql"
 )
 
 echo -e "${BLUE}📋 EXECUTANDO MIGRATIONS${NC}"

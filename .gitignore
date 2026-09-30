@@ -1,3 +1,4 @@
 node_modules
 mobile.zip
 *.sql
+!api/database/migrations/*.sql

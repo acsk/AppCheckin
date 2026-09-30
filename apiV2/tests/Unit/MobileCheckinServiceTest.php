@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Models\Parametro;
 use App\Repositories\AlunoRepository;
 use App\Repositories\CheckinRepository;
 use App\Repositories\MatriculaRepository;
@@ -29,7 +30,7 @@ class MobileCheckinServiceTest extends TestCase
         $turmas = Mockery::mock(TurmaRepository::class);
         $checkins = Mockery::mock(CheckinRepository::class);
         $bloqueios = Mockery::mock(TurmaCheckinBloqueioService::class);
-        $toleranciaAntes = Mockery::mock(CheckinToleranciaAntes::class);
+        $toleranciaAntes = new CheckinToleranciaAntes(Mockery::mock(Parametro::class));
 
         $usuarios->shouldReceive('findById')->andReturn(['nome' => 'Test', 'email' => 'a@b.c']);
         $alunos->shouldReceive('findForTenant')->andReturn(['id' => 10, 'foto_caminho' => null]);
