@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Repositories\MatriculaRepository;
+use App\Support\AcademyDateTime;
+use App\Support\StatusPagamentoPlano;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -19,7 +21,7 @@ class MatriculaMigracaoAptidaoService
         return DB::table('pagamentos_plano')
             ->where('tenant_id', $tenantId)
             ->where('matricula_id', $matriculaId)
-            ->whereIn('status_pagamento_id', [1, 3])
+            ->whereIn('status_pagamento_id', StatusPagamentoPlano::EM_ABERTO)
             ->whereNull('data_pagamento')
             ->where('data_vencimento', '<', DB::raw('CURDATE()'))
             ->exists();
@@ -33,9 +35,12 @@ class MatriculaMigracaoAptidaoService
     {
         $status = strtolower(trim((string) ($matricula['status_codigo'] ?? '')));
         $matriculaId = (int) ($matricula['id'] ?? 0);
-        $acessoAte = (string) ($matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'] ?? '');
-        $cicloVigenteAte = (string) ($matricula['data_vencimento'] ?? $matricula['proxima_data_vencimento'] ?? '');
-        $hoje = date('Y-m-d');
+        // Normalizadas para Y-m-d: o banco pode devolver datetime ("2026-10-01 00:00:00").
+        $acessoAte = AcademyDateTime::dateOnly($matricula['proxima_data_vencimento'] ?? null)
+            ?? AcademyDateTime::dateOnly($matricula['data_vencimento'] ?? null);
+        $cicloVigenteAte = AcademyDateTime::dateOnly($matricula['data_vencimento'] ?? null)
+            ?? AcademyDateTime::dateOnly($matricula['proxima_data_vencimento'] ?? null);
+        $hoje = AcademyDateTime::today();
 
         if (in_array($status, ['cancelada', 'vencida', 'finalizada'], true)) {
             return [
@@ -57,7 +62,7 @@ class MatriculaMigracaoAptidaoService
             ];
         }
 
-        if ($acessoAte !== '' && $acessoAte !== '0000-00-00' && $acessoAte < $hoje) {
+        if ($acessoAte !== null && $acessoAte < $hoje) {
             return [
                 'apto' => false,
                 'gera_credito' => false,
@@ -77,7 +82,7 @@ class MatriculaMigracaoAptidaoService
             ];
         }
 
-        if ($cicloVigenteAte !== '' && $cicloVigenteAte !== '0000-00-00' && $cicloVigenteAte <= $hoje) {
+        if ($cicloVigenteAte !== null && $cicloVigenteAte <= $hoje) {
             return [
                 'apto' => true,
                 'gera_credito' => false,
@@ -126,7 +131,7 @@ class MatriculaMigracaoAptidaoService
         $id = DB::table('pagamentos_plano')
             ->where('matricula_id', $matriculaId)
             ->where('tenant_id', $tenantId)
-            ->where('status_pagamento_id', 2)
+            ->where('status_pagamento_id', StatusPagamentoPlano::PAGO)
             ->orderByDesc('data_vencimento')
             ->value('id');
 

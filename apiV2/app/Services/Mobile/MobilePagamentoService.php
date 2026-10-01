@@ -2,6 +2,7 @@
 
 namespace App\Services\Mobile;
 
+use App\Support\ReferenciaExterna;
 use App\Repositories\MatriculaRepository;
 use App\Services\MercadoPagoService;
 use App\Services\PagamentoPlanoService;
@@ -286,7 +287,7 @@ class MobilePagamentoService
             return;
         }
 
-        $externalReference = $pixData['external_reference'] ?? ('MAT-'.$matricula['id'].'-'.time());
+        $externalReference = $pixData['external_reference'] ?? ReferenciaExterna::matricula($matricula['id']);
         $assinaturaId = DB::table('assinaturas')
             ->where('matricula_id', $matricula['id'])
             ->where('tenant_id', $tenantId)

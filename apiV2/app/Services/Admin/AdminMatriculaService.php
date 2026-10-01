@@ -7,11 +7,15 @@ use App\Repositories\AdminMatriculaRepository;
 use App\Repositories\MatriculaRepository;
 use App\Services\MatriculaMigracaoAptidaoService;
 use App\Services\PagamentoPlanoService;
+use App\Support\AcademyDateTime;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class AdminMatriculaService
 {
+    /** Teto da janela de "próximos vencimentos" (1 ano) para evitar consultas abusivas. */
+    private const MAX_DIAS_PROXIMOS_VENCIMENTOS = 365;
+
     public function __construct(
         private readonly AdminMatriculaRepository $matriculas,
         private readonly PagamentoPlanoService $pagamentosPlano,
@@ -268,9 +272,8 @@ class AdminMatriculaService
         }
 
         $observacoes = trim((string) ($matricula['observacoes'] ?? ''));
-        $observacoesAtualizadas = $observacoes !== ''
-            ? $observacoes."\n[Bloqueio ".date('d/m/Y H:i').'] '.$motivo
-            : '[Bloqueio '.date('d/m/Y H:i').'] '.$motivo;
+        $registro = '[Bloqueio '.AcademyDateTime::now()->format('d/m/Y H:i').'] '.$motivo;
+        $observacoesAtualizadas = $observacoes !== '' ? $observacoes."\n".$registro : $registro;
 
         $statusBloqueadoId = $this->matriculas->statusIdPorCodigo('bloqueado');
         if ($statusBloqueadoId === null) {
@@ -310,17 +313,17 @@ class AdminMatriculaService
             return $this->error('Matrícula não está bloqueada', 400);
         }
 
-        $hoje = date('Y-m-d');
-        $acessoAte = $matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'] ?? null;
+        $hoje = AcademyDateTime::today();
+        $acessoAte = AcademyDateTime::dateOnly($matricula['proxima_data_vencimento'] ?? null)
+            ?? AcademyDateTime::dateOnly($matricula['data_vencimento'] ?? null);
         $novoStatus = 'ativa';
         if ($acessoAte && $acessoAte < $hoje) {
             $novoStatus = 'vencida';
         }
 
         $observacoes = trim((string) ($matricula['observacoes'] ?? ''));
-        $observacoesAtualizadas = $observacoes !== ''
-            ? $observacoes."\n[Desbloqueio ".date('d/m/Y H:i')."] Restaurado para {$novoStatus}"
-            : '[Desbloqueio '.date('d/m/Y H:i').'] Restaurado para '.$novoStatus;
+        $registro = '[Desbloqueio '.AcademyDateTime::now()->format('d/m/Y H:i').'] Restaurado para '.$novoStatus;
+        $observacoesAtualizadas = $observacoes !== '' ? $observacoes."\n".$registro : $registro;
 
         $statusRestauradoId = $this->matriculas->statusIdPorCodigo($novoStatus);
         if ($statusRestauradoId === null) {
@@ -415,8 +418,7 @@ class AdminMatriculaService
             }
 
             $dataVencimento = trim((string) $data['proxima_data_vencimento']);
-            $dataObj = \DateTime::createFromFormat('Y-m-d', $dataVencimento);
-            if (! $dataObj || $dataObj->format('Y-m-d') !== $dataVencimento) {
+            if (AcademyDateTime::fromYmd($dataVencimento) === null) {
                 return $this->error('Formato de data inválido. Use YYYY-MM-DD', 422);
             }
 
@@ -425,7 +427,7 @@ class AdminMatriculaService
                 return $this->error('Matrícula não encontrada', 404);
             }
 
-            $hoje = date('Y-m-d');
+            $hoje = AcademyDateTime::today();
             $novoStatusCodigo = null;
 
             if ($dataVencimento < $hoje) {
@@ -487,7 +489,7 @@ class AdminMatriculaService
      */
     public function vencimentosHoje(int $tenantId): array
     {
-        $hoje = date('Y-m-d');
+        $hoje = AcademyDateTime::today();
         $vencimentos = $this->matriculas->vencimentosHoje($tenantId);
 
         return [
@@ -501,12 +503,16 @@ class AdminMatriculaService
     }
 
     /**
+     * @param  int  $dias  janela em dias; normalizada para 0..MAX_DIAS_PROXIMOS_VENCIMENTOS
+     *                     porque chega de query string (valores negativos olhariam o passado
+     *                     e valores enormes gerariam varredura desnecessária).
      * @return array{status: int, body: array<string, mixed>}
      */
     public function proximosVencimentos(int $tenantId, int $dias = 7): array
     {
-        $hoje = date('Y-m-d');
-        $dataLimite = date('Y-m-d', strtotime("+{$dias} days"));
+        $dias = max(0, min($dias, self::MAX_DIAS_PROXIMOS_VENCIMENTOS));
+        $hoje = AcademyDateTime::today();
+        $dataLimite = AcademyDateTime::now()->modify("+{$dias} days")->format('Y-m-d');
         $vencimentos = $this->matriculas->proximosVencimentos($tenantId, $dias);
 
         return [
@@ -614,8 +620,14 @@ class AdminMatriculaService
             $duracaoDias = (int) $plano['duracao_dias'];
         }
 
-        $dataInicio = ! empty($data['data_inicio']) ? (string) $data['data_inicio'] : date('Y-m-d');
-        $dataInicioObj = new \DateTime($dataInicio);
+        // Estrito (como alterarPlano): a mensagem promete YYYY-MM-DD, então não normaliza "2026-7-13".
+        $dataInicio = ! empty($data['data_inicio'])
+            ? AcademyDateTime::fromYmd(trim((string) $data['data_inicio']))?->format('Y-m-d')
+            : AcademyDateTime::today();
+        if ($dataInicio === null) {
+            return $this->error('Formato de data inválido. Use YYYY-MM-DD', 422);
+        }
+        $dataInicioObj = AcademyDateTime::parse($dataInicio);
         $proximaDataVencimento = clone $dataInicioObj;
 
         if ($planoCiclo) {
@@ -628,9 +640,12 @@ class AdminMatriculaService
         if ((float) $plano['valor'] == 0.0) {
             $periodoTeste = 1;
             if (! empty($data['data_inicio_cobranca'])) {
-                $dataInicioCobranca = $data['data_inicio_cobranca'];
+                $dataInicioCobranca = AcademyDateTime::fromYmd(trim((string) $data['data_inicio_cobranca']))?->format('Y-m-d');
+                if ($dataInicioCobranca === null) {
+                    return $this->error('Formato de data_inicio_cobranca inválido. Use YYYY-MM-DD', 422);
+                }
             } else {
-                $dataInicioCobranca = (new \DateTime('first day of next month'))->format('Y-m-d');
+                $dataInicioCobranca = AcademyDateTime::now()->modify('first day of next month')->format('Y-m-d');
             }
         }
 
@@ -671,7 +686,7 @@ class AdminMatriculaService
         if ($matriculaVencida) {
             $statusCodigo = $matriculaVencida['status_codigo'] ?? null;
             $vencimentoAtual = $matriculaVencida['proxima_data_vencimento'] ?? $matriculaVencida['data_vencimento'] ?? null;
-            $hoje = date('Y-m-d');
+            $hoje = AcademyDateTime::today();
             $vencidaPorData = $vencimentoAtual && $vencimentoAtual < $hoje;
 
             if ($vencidaPorData && $statusCodigo !== 'vencida') {
@@ -688,13 +703,13 @@ class AdminMatriculaService
         }
 
         if ($matriculaMesmaModalidade && (int) $matriculaMesmaModalidade['plano_id'] !== $planoId) {
-            $dataVencimentoMatricula = $matriculaMesmaModalidade['data_vencimento'] ?? null;
-            $hoje = date('Y-m-d');
+            $dataVencimentoMatricula = AcademyDateTime::dateOnly($matriculaMesmaModalidade['data_vencimento'] ?? null);
+            $hoje = AcademyDateTime::today();
 
-            if ($dataVencimentoMatricula && $dataVencimentoMatricula >= $hoje) {
+            if ($dataVencimentoMatricula !== null && $dataVencimentoMatricula >= $hoje) {
                 $temPagamento = $this->matriculas->countPagamentoAtivoContasReceber($usuarioId, $tenantId);
                 if ($temPagamento > 0) {
-                    $dataVencimentoFormatada = date('d/m/Y', strtotime((string) $dataVencimentoMatricula));
+                    $dataVencimentoFormatada = AcademyDateTime::parse($dataVencimentoMatricula)->format('d/m/Y');
 
                     return $this->error(
                         "Não é possível alterar o plano enquanto o aluno estiver ativo. O plano atual vence em {$dataVencimentoFormatada}. Aguarde o vencimento ou cancele a matrícula atual.",
@@ -704,11 +719,10 @@ class AdminMatriculaService
             }
         }
 
-        date_default_timezone_set('America/Sao_Paulo');
 
-        $dataMatricula = date('Y-m-d');
-        $dataInicio = ! empty($data['data_inicio']) ? (string) $data['data_inicio'] : $dataMatricula;
-        $dataVencimento = date('Y-m-d', strtotime($dataInicio." +{$duracaoDias} days"));
+        $dataMatricula = AcademyDateTime::today();
+        // $dataInicio já normalizado/validado (Y-m-d) no início do método — não reler o input bruto.
+        $dataVencimento = AcademyDateTime::parse($dataInicio)->modify("+{$duracaoDias} days")->format('Y-m-d');
         $valor = $valorMatricula;
         $motivo = $data['motivo'] ?? 'nova';
         $matriculaAnteriorId = null;
@@ -718,12 +732,13 @@ class AdminMatriculaService
             $planoAnteriorId = (int) $matriculaMesmaModalidade['plano_id'];
             $matriculaAnteriorId = (int) $matriculaMesmaModalidade['id'];
 
-            $dataVencimentoAtual = $matriculaMesmaModalidade['proxima_data_vencimento']
-                ?? $matriculaMesmaModalidade['data_vencimento'];
-            $hoje = date('Y-m-d');
+            $dataVencimentoAtual = AcademyDateTime::dateOnly(
+                $matriculaMesmaModalidade['proxima_data_vencimento'] ?? $matriculaMesmaModalidade['data_vencimento'] ?? null
+            );
+            $hoje = AcademyDateTime::today();
 
-            if ($hoje < $dataVencimentoAtual) {
-                $dataFormatada = date('d/m/Y', strtotime((string) $dataVencimentoAtual));
+            if ($dataVencimentoAtual !== null && $hoje < $dataVencimentoAtual) {
+                $dataFormatada = AcademyDateTime::parse($dataVencimentoAtual)->format('d/m/Y');
 
                 return [
                     'status' => 400,
@@ -894,7 +909,7 @@ class AdminMatriculaService
         }
 
         try {
-            new \DateTime((string) $dataVencimento);
+            AcademyDateTime::parse((string) $dataVencimento);
         } catch (\Throwable) {
             return $this->error('data_vencimento inválida', 400);
         }
@@ -910,7 +925,7 @@ class AdminMatriculaService
         $this->matriculas->atualizarPagamentoBaixa($pagamentoId, [
             'status_pagamento_id' => 2,
             'data_vencimento' => $dataVencimento,
-            'data_pagamento' => $dataPagamento ?: date('Y-m-d'),
+            'data_pagamento' => $dataPagamento ?: AcademyDateTime::today(),
             'forma_pagamento_id' => $formaPagamentoId,
             'observacoes' => $observacoes,
             'baixado_por' => $adminId,
@@ -926,7 +941,7 @@ class AdminMatriculaService
             $pagamentoVencimento = null;
             if (! empty($vencimentoBase)) {
                 try {
-                    $pagamentoVencimento = new \DateTime((string) $vencimentoBase);
+                    $pagamentoVencimento = AcademyDateTime::parse((string) $vencimentoBase);
                 } catch (\Throwable) {
                     $pagamentoVencimento = null;
                 }
@@ -935,7 +950,7 @@ class AdminMatriculaService
             $pagoDate = null;
             if ($dataPagamento) {
                 try {
-                    $pagoDate = new \DateTime((string) $dataPagamento);
+                    $pagoDate = AcademyDateTime::parse((string) $dataPagamento);
                 } catch (\Throwable) {
                     $pagoDate = null;
                 }
@@ -948,7 +963,7 @@ class AdminMatriculaService
             } elseif ($pagoDate) {
                 $baseDate = $pagoDate;
             } else {
-                $baseDate = new \DateTime('now');
+                $baseDate = AcademyDateTime::now();
             }
 
             $mesesCiclo = $pagamento['ciclo_meses'] ?? $pagamento['frequencia_meses'] ?? null;
@@ -1084,11 +1099,10 @@ class AdminMatriculaService
             $mesesCiclo = null;
         }
 
-        date_default_timezone_set('America/Sao_Paulo');
 
-        $dataInicio = ! empty($data['data_inicio']) ? trim((string) $data['data_inicio']) : date('Y-m-d');
-        $dataInicioObj = \DateTime::createFromFormat('Y-m-d', $dataInicio);
-        if (! $dataInicioObj || $dataInicioObj->format('Y-m-d') !== $dataInicio) {
+        $dataInicio = ! empty($data['data_inicio']) ? trim((string) $data['data_inicio']) : AcademyDateTime::today();
+        $dataInicioObj = AcademyDateTime::fromYmd($dataInicio);
+        if ($dataInicioObj === null) {
             return $this->error('Formato de data inválido. Use YYYY-MM-DD', 422);
         }
         $proximaDataVencimento = clone $dataInicioObj;
@@ -1099,7 +1113,7 @@ class AdminMatriculaService
             $proximaDataVencimento->modify("+{$duracaoDias} days");
         }
 
-        $dataVencimento = date('Y-m-d', strtotime($dataInicio." +{$duracaoDias} days"));
+        $dataVencimento = AcademyDateTime::parse($dataInicio)->modify("+{$duracaoDias} days")->format('Y-m-d');
         $diaVencimento = $data['dia_vencimento'] ?? $matricula['dia_vencimento'];
 
         if ($ehRenovacao) {
@@ -1143,16 +1157,19 @@ class AdminMatriculaService
             }
         } elseif ($podeGerarCreditoMigracao && ! empty($data['abater_pagamento_anterior'])) {
             $valorCicloAtual = (float) $matricula['valor'];
-            $hoje = new \DateTime;
-            $dataVencimentoAtual = new \DateTime((string) $matricula['data_vencimento']);
-            $dataInicioAtual = new \DateTime((string) $matricula['data_inicio']);
+            $hoje = AcademyDateTime::now();
+            $vencimentoAtualStr = AcademyDateTime::dateOnly($matricula['data_vencimento'] ?? null);
+            $inicioAtualStr = AcademyDateTime::dateOnly($matricula['data_inicio'] ?? null);
+            $datasValidas = $vencimentoAtualStr !== null && $inicioAtualStr !== null;
+            $dataVencimentoAtual = AcademyDateTime::parse($vencimentoAtualStr ?? AcademyDateTime::today());
+            $dataInicioAtual = AcademyDateTime::parse($inicioAtualStr ?? AcademyDateTime::today());
 
             $totalDiasCicloAtual = max(1, (int) $dataInicioAtual->diff($dataVencimentoAtual)->days);
             $diasRestantes = max(0, (int) $hoje->diff($dataVencimentoAtual)->days);
 
             // Ciclo vigente: só o proporcional dos dias restantes.
-            // Ciclo já encerrado: crédito zero (serviço já foi consumido) — NÃO usar o pagamento cheio.
-            if ($diasRestantes > 0 && $hoje <= $dataVencimentoAtual) {
+            // Ciclo já encerrado ou datas inválidas: crédito zero — NÃO usar o pagamento cheio.
+            if ($datasValidas && $diasRestantes > 0 && $hoje <= $dataVencimentoAtual && $dataInicioAtual < $dataVencimentoAtual) {
                 $creditoValor = round(($valorCicloAtual / $totalDiasCicloAtual) * $diasRestantes, 2);
             } else {
                 $creditoValor = 0.0;
@@ -1543,6 +1560,27 @@ class AdminMatriculaService
     }
 
     /**
+     * Início/vencimento do ciclo para crédito proporcional, sem lançar exceção com dado ruim do banco.
+     * Datas inválidas viram "hoje" e o terceiro item (false) impede gerar crédito.
+     *
+     * @param  array<string, mixed>  $matricula
+     * @return array{0: \DateTime, 1: \DateTime, 2: bool}
+     */
+    private function datasCicloParaCredito(array $matricula): array
+    {
+        $inicio = AcademyDateTime::dateOnly($matricula['data_inicio'] ?? null)
+            ?? AcademyDateTime::dateOnly($matricula['created_at'] ?? null);
+        $vencimento = AcademyDateTime::dateOnly($matricula['data_vencimento'] ?? null)
+            ?? AcademyDateTime::dateOnly($matricula['proxima_data_vencimento'] ?? null);
+
+        return [
+            AcademyDateTime::parse($inicio ?? AcademyDateTime::today()),
+            AcademyDateTime::parse($vencimento ?? AcademyDateTime::today()),
+            $inicio !== null && $vencimento !== null,
+        ];
+    }
+
+    /**
      * @return array{status: int, body: array<string, mixed>}
      */
     private function error(string $message, int $status, ?string $code = null): array
@@ -1586,18 +1624,10 @@ class AdminMatriculaService
     }
 
     /**
-     * Paridade Slim MatriculaController::buscar (motivo_status / limite_ciclo pendente).
-     *
-     * @param  array<string, mixed>  $matricula
-     * @param  list<array<string, mixed>>  $pagamentos
-     * @return array{limite_ciclo: ?array<string, mixed>, motivo_status: ?string}
-     */
-    /**
      * @return array{status: int, body: array<string, mixed>}
      */
     public function simularCancelamento(int $id, int $tenantId): array
     {
-        date_default_timezone_set('America/Sao_Paulo');
 
         $matricula = DB::selectOne('
             SELECT m.*, sm.codigo as status_codigo, p.nome as plano_nome, p.valor as plano_valor, p.duracao_dias,
@@ -1628,16 +1658,15 @@ class AdminMatriculaService
             ->where('status_pagamento_id', 2)
             ->count() > 0;
 
-        $hoje = new \DateTime('today');
-        $dataInicio = new \DateTime($matricula['data_inicio'] ?? $matricula['created_at']);
-        $dataVencimento = new \DateTime($matricula['data_vencimento'] ?? $matricula['proxima_data_vencimento']);
+        $hoje = AcademyDateTime::todayStart();
+        [$dataInicio, $dataVencimento, $datasValidas] = $this->datasCicloParaCredito($matricula);
 
         $diasTotais = max(1, (int) $dataInicio->diff($dataVencimento)->days);
         $diasUtilizados = max(0, (int) $dataInicio->diff($hoje)->days);
         $diasRestantes = max(0, (int) $hoje->diff($dataVencimento)->days);
 
         $valorProporcional = 0.0;
-        if ($temPagamento && $hoje <= $dataVencimento && $diasRestantes > 0) {
+        if ($datasValidas && $temPagamento && $hoje <= $dataVencimento && $diasRestantes > 0 && $dataInicio < $dataVencimento) {
             $valorProporcional = round(($valorPlano / $diasTotais) * $diasRestantes, 2);
         }
 
@@ -1675,7 +1704,6 @@ class AdminMatriculaService
      */
     public function cancelarComCredito(int $id, int $tenantId, ?int $adminId, array $data): array
     {
-        date_default_timezone_set('America/Sao_Paulo');
 
         $matricula = DB::selectOne('
             SELECT m.*, sm.codigo as status_codigo, p.nome as plano_nome, p.valor as plano_valor, p.duracao_dias,
@@ -1716,13 +1744,12 @@ class AdminMatriculaService
                 ->count() > 0;
 
             if ($temPagamento) {
-                $hoje = new \DateTime('today');
-                $dataInicio = new \DateTime($matricula['data_inicio'] ?? $matricula['created_at']);
-                $dataVencimento = new \DateTime($matricula['data_vencimento'] ?? $matricula['proxima_data_vencimento']);
+                $hoje = AcademyDateTime::todayStart();
+                [$dataInicio, $dataVencimento, $datasValidas] = $this->datasCicloParaCredito($matricula);
                 $diasTotais = max(1, (int) $dataInicio->diff($dataVencimento)->days);
                 $diasRestantes = max(0, (int) $hoje->diff($dataVencimento)->days);
 
-                if ($hoje <= $dataVencimento && $diasRestantes > 0) {
+                if ($datasValidas && $hoje <= $dataVencimento && $diasRestantes > 0 && $dataInicio < $dataVencimento) {
                     $creditoValor = round(($valorPlano / $diasTotais) * $diasRestantes, 2);
                 }
             }
@@ -1906,6 +1933,13 @@ class AdminMatriculaService
         return $result;
     }
 
+    /**
+     * Paridade Slim MatriculaController::buscar (motivo_status / limite_ciclo pendente).
+     *
+     * @param  array<string, mixed>  $matricula
+     * @param  list<array<string, mixed>>  $pagamentos
+     * @return array{limite_ciclo: ?array<string, mixed>, motivo_status: ?string}
+     */
     private function resolverMotivoStatusEPendencias(int $matriculaId, array $matricula, array $pagamentos): array
     {
         if (($matricula['status_codigo'] ?? '') !== 'pendente') {
@@ -1921,8 +1955,9 @@ class AdminMatriculaService
                 ];
             }
 
-            $hoje = date('Y-m-d');
-            $acessoAte = $matricula['proxima_data_vencimento'] ?? $matricula['data_vencimento'] ?? null;
+            $hoje = AcademyDateTime::today();
+            $acessoAte = AcademyDateTime::dateOnly($matricula['proxima_data_vencimento'] ?? null)
+                ?? AcademyDateTime::dateOnly($matricula['data_vencimento'] ?? null);
             $temPago = false;
 
             foreach ($pagamentos as $pag) {

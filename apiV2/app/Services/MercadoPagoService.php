@@ -2,9 +2,11 @@
 
 namespace App\Services;
 
+use App\Support\ReferenciaExterna;
 use App\Models\Parametro;
 use Exception;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use PDO;
 
 /**
@@ -356,7 +358,7 @@ class MercadoPagoService
             'items' => $items,
             'payer' => $payer,
             'metadata' => $metadata,
-            'external_reference' => $data['external_reference'] ?? ("MAT-{$data['matricula_id']}-" . time()),
+            'external_reference' => $data['external_reference'] ?? $this->referenciaMatricula($data, 'criarPreferenciaPagamento'),
             'notification_url' => $this->notificationUrl,
             'back_urls' => [
                 'success' => $this->successUrl,
@@ -444,7 +446,7 @@ class MercadoPagoService
             'email_real' => $data['aluno_email'] ?? ''
         ];
 
-        $externalReference = "MAT-{$data['matricula_id']}-" . time();
+        $externalReference = $this->referenciaMatricula($data, 'criarPagamentoPix');
 
         $payment = [
             'transaction_amount' => (float) $data['valor'],
@@ -921,6 +923,32 @@ class MercadoPagoService
     }
     
     /**
+     * external_reference de matrícula a partir do payload do gateway.
+     *
+     * matricula_id chega de $data/metadata_extra e pode vir ausente, vazio, não-numérico ou
+     * nem escalar. Em vez de deixar ReferenciaExterna lançar e derrubar a criação do pagamento
+     * com 500, cai no legado MAT-ASSINATURA: o pagamento continua rastreável (log + metadata),
+     * apenas sem resolução automática da matrícula no webhook.
+     */
+    private function referenciaMatricula(array $data, string $origem): string
+    {
+        $matriculaId = ReferenciaExterna::normalizarId($data['matricula_id'] ?? null);
+
+        if ($matriculaId === null) {
+            Log::warning('MercadoPagoService: matricula_id inválido para external_reference', [
+                'origem' => $origem,
+                'tenant_id' => $data['tenant_id'] ?? null,
+                'matricula_id_tipo' => get_debug_type($data['matricula_id'] ?? null),
+                'matricula_id' => is_scalar($data['matricula_id'] ?? null) ? (string) $data['matricula_id'] : null,
+            ]);
+
+            $matriculaId = ReferenciaExterna::ID_LEGADO_ASSINATURA;
+        }
+
+        return ReferenciaExterna::matricula($matriculaId);
+    }
+
+    /**
      * Tentar criar assinatura via API de preapproval_plan (SEMPRE usado para planos/pacotes)
      * API mais estável que /preapproval para assinaturas do Mercado Pago
      * 
@@ -941,11 +969,10 @@ class MercadoPagoService
         $externalRef = $data['external_reference'] ?? '';
         if (empty($externalRef)) {
             // Se não tiver, criar baseado no tipo
-            if (!empty($data['metadata_extra']['pacote_contrato_id'])) {
-                $externalRef = 'PAC-' . $data['metadata_extra']['pacote_contrato_id'] . '-' . time();
-            } else {
-                $externalRef = 'MAT-' . ($data['matricula_id'] ?? 'ASSINATURA') . '-' . time();
-            }
+            $contratoId = ReferenciaExterna::normalizarId($data['metadata_extra']['pacote_contrato_id'] ?? null);
+            $externalRef = $contratoId !== null
+                ? ReferenciaExterna::pacote($contratoId)
+                : $this->referenciaMatricula($data, 'tentarCriarPreapproval');
         }
         
         // Preparar metadados para serem enviados ao MP

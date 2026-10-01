@@ -13,11 +13,6 @@ use Tests\TestCase;
 
 class AdminTurmaServiceFuturasTest extends TestCase
 {
-    protected function tearDown(): void
-    {
-        Mockery::close();
-        parent::tearDown();
-    }
 
     private function turmaOriginal(): array
     {

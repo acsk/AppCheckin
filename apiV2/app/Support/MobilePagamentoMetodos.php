@@ -15,10 +15,7 @@ final class MobilePagamentoMetodos
      */
     public static function flags(int $tenantId): array
     {
-        $pdo = DB::connection()->getPdo();
-        require_once base_path('../api/app/Models/Parametro.php');
-
-        $parametro = new Parametro($pdo);
+        $parametro = new Parametro(DB::connection()->getPdo());
 
         return [
             'habilitar_pix' => $parametro->isEnabled($tenantId, 'habilitar_pix'),

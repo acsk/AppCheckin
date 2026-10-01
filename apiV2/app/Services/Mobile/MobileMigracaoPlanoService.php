@@ -3,11 +3,11 @@
 namespace App\Services\Mobile;
 
 use App\Services\MatriculaMigracaoAptidaoService;
-use Illuminate\Support\Facades\DB;
+use App\Services\MatriculaMigracaoService;
 
 class MobileMigracaoPlanoService
 {
-    private ?\App\Services\MatriculaMigracaoService $core = null;
+    private ?MatriculaMigracaoService $core = null;
 
     private readonly MatriculaMigracaoAptidaoService $aptidao;
 
@@ -16,21 +16,9 @@ class MobileMigracaoPlanoService
         $this->aptidao = $aptidao ?? app(MatriculaMigracaoAptidaoService::class);
     }
 
-    private function core(): \App\Services\MatriculaMigracaoService
+    private function core(): MatriculaMigracaoService
     {
-        if ($this->core !== null) {
-            return $this->core;
-        }
-
-        $slimServicePath = base_path('../api/app/Services/MatriculaMigracaoService.php');
-        if (! is_file($slimServicePath)) {
-            throw new \RuntimeException('MatriculaMigracaoService Slim não disponível em '.$slimServicePath);
-        }
-
-        require_once $slimServicePath;
-        $this->core = new \App\Services\MatriculaMigracaoService(DB::connection()->getPdo());
-
-        return $this->core;
+        return $this->core ??= app(MatriculaMigracaoService::class);
     }
 
     /**

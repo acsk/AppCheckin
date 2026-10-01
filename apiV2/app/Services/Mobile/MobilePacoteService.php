@@ -2,6 +2,7 @@
 
 namespace App\Services\Mobile;
 
+use App\Support\ReferenciaExterna;
 use App\Models\Parametro;
 use App\Repositories\AdminPacoteRepository;
 use App\Repositories\MobilePacoteRepository;
@@ -153,7 +154,7 @@ class MobilePacoteService
         }
 
         $academiaNome = $this->pacotes->nomeTenant($tenantId);
-        $externalReference = 'PAC-'.$contratoId.'-'.time();
+        $externalReference = ReferenciaExterna::pacote($contratoId);
 
         $dadosPagamento = [
             'tenant_id' => $tenantId,

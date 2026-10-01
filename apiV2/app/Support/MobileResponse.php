@@ -41,7 +41,8 @@ final class MobileResponse
             'error' => $error,
         ];
 
-        if ($message !== null) {
+        // $message costuma ser $e->getMessage(): só expor em debug (pode conter SQL, paths, dados do gateway).
+        if ($message !== null && config('app.debug')) {
             $payload['message'] = $message;
         }
 

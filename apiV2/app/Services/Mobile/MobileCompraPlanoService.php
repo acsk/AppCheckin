@@ -2,6 +2,7 @@
 
 namespace App\Services\Mobile;
 
+use App\Support\ReferenciaExterna;
 use App\Repositories\AlunoRepository;
 use App\Repositories\MatriculaRepository;
 use App\Repositories\UsuarioRepository;
@@ -471,7 +472,7 @@ class MobileCompraPlanoService
             $tipoPagamento = 'pagamento_unico';
             $pixData = null;
             $mpError = null;
-            $externalReference = "MAT-{$matriculaId}-".time();
+            $externalReference = ReferenciaExterna::matricula($matriculaId);
 
             try {
                 if ($metodoPagamento === 'pix') {

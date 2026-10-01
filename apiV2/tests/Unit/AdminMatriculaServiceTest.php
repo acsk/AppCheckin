@@ -10,6 +10,7 @@ use App\Services\Admin\AdminPacoteService;
 use App\Services\Admin\AdminPagamentoPlanoService;
 use App\Services\MatriculaMigracaoAptidaoService;
 use App\Services\PagamentoPlanoService;
+use App\Support\AcademyDateTime;
 use Mockery;
 use Tests\TestCase;
 
@@ -224,6 +225,7 @@ class AdminMatriculaServiceTest extends TestCase
             'data_inicio' => '2026-01-01',
             'data_vencimento' => '2026-02-01',
         ]);
+        $repo->shouldReceive('temParcelaAbertaAtrasada')->with(10, 3)->andReturn(false);
         $repo->shouldReceive('findPlano')->once()->with(20, 3)->andReturn([
             'id' => 20,
             'nome' => 'Trimestral',
@@ -256,6 +258,7 @@ class AdminMatriculaServiceTest extends TestCase
             'data_inicio' => '2026-01-01',
             'data_vencimento' => '2026-02-01',
         ]);
+        $repo->shouldReceive('temParcelaAbertaAtrasada')->with(10, 3)->andReturn(false);
         $repo->shouldReceive('findPlano')->once()->with(20, 3)->andReturn([
             'id' => 20,
             'nome' => 'Trimestral',
@@ -270,7 +273,10 @@ class AdminMatriculaServiceTest extends TestCase
         $repo->shouldReceive('motivoIdPorCodigo')->once()->with('upgrade')->andReturn(1);
         $repo->shouldReceive('findUsuarioIdPorAluno')->once()->with(2)->andReturn(null);
 
-        $service = $this->makeService($repo);
+        $aptidao = Mockery::mock(MatriculaMigracaoAptidaoService::class);
+        $aptidao->shouldReceive('avaliarAptidaoMigracao')->andReturn(['gera_credito' => false]);
+
+        $service = $this->makeService($repo, migracaoAptidao: $aptidao);
         $result = $service->alterarPlano(10, 3, 5, [
             'plano_id' => 20,
             'data_inicio' => '2026-07-13',
@@ -282,6 +288,10 @@ class AdminMatriculaServiceTest extends TestCase
 
     public function test_atualizar_proxima_data_update_falhou(): void
     {
+        // Data sempre futura: evita que o service tente resolver o status 'vencida'
+        // (e torna o teste independente da data em que roda).
+        $dataFutura = AcademyDateTime::now()->modify('+30 days')->format('Y-m-d');
+
         $repo = Mockery::mock(AdminMatriculaRepository::class);
         $repo->shouldReceive('findBasicoComStatus')->once()->with(10, 3)->andReturn([
             'id' => 10,
@@ -295,7 +305,7 @@ class AdminMatriculaServiceTest extends TestCase
 
         $service = $this->makeService($repo);
         $result = $service->atualizarProximaDataVencimento(10, 3, [
-            'proxima_data_vencimento' => '2026-08-01',
+            'proxima_data_vencimento' => $dataFutura,
         ]);
 
         $this->assertSame(500, $result['status']);
@@ -414,5 +424,28 @@ class AdminMatriculaServiceTest extends TestCase
         $this->assertSame(200, $result['status']);
         $this->assertNull($result['body']['matricula']['limite_ciclo']);
         $this->assertSame('aguardando_renovacao', $result['body']['matricula']['motivo_status']);
+    }
+
+    /**
+     * @return array<string, array{int, int}>
+     */
+    public static function diasForaDoIntervalo(): array
+    {
+        return [
+            'negativo vira zero' => [-5, 0],
+            'acima do teto vira 365' => [5000, 365],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('diasForaDoIntervalo')]
+    public function test_proximos_vencimentos_normaliza_dias(int $informado, int $esperado): void
+    {
+        $repo = Mockery::mock(AdminMatriculaRepository::class);
+        $repo->shouldReceive('proximosVencimentos')->once()->with(3, $esperado)->andReturn([]);
+
+        $result = $this->makeService($repo)->proximosVencimentos(3, $informado);
+
+        $this->assertSame(200, $result['status']);
+        $this->assertSame($esperado, $result['body']['periodo']['dias']);
     }
 }
