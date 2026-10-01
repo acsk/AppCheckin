@@ -5,6 +5,7 @@ namespace App\Services\Admin;
 use App\Repositories\DiaRepository;
 use App\Repositories\TurmaRepository;
 use App\Services\TurmaCheckinBloqueioService;
+use App\Support\CheckinJanela;
 use App\Support\CheckinToleranciaAntes;
 use DateInterval;
 use DateTime;
@@ -122,6 +123,11 @@ class AdminTurmaService
             return $this->error('O professor já possui uma turma agendada neste horário neste dia', 400);
         }
 
+        $erroPrazos = $this->normalizarPrazosCheckin($tenantId, $data, null);
+        if ($erroPrazos !== null) {
+            return $this->error($erroPrazos, 400);
+        }
+
         try {
             $data['tenant_id'] = $tenantId;
             $this->aplicarTetoToleranciaAntes($tenantId, $data);
@@ -186,6 +192,11 @@ class AdminTurmaService
             if ($conflitos !== []) {
                 return $this->error('O professor já possui outra turma agendada neste horário neste dia', 400);
             }
+        }
+
+        $erroPrazos = $this->normalizarPrazosCheckin($tenantId, $data, $turma);
+        if ($erroPrazos !== null) {
+            return $this->error($erroPrazos, 400);
         }
 
         try {
@@ -412,6 +423,7 @@ class AdminTurmaService
                         'horario_fim' => $turmaOrigem['horario_fim'],
                         'nome' => $turmaOrigem['nome'] ?? '',
                         'limite_alunos' => (int) $turmaOrigem['limite_alunos'],
+                        ...$this->tolerancias($turmaOrigem),
                         'ativo' => 1,
                     ]);
 
@@ -569,6 +581,7 @@ class AdminTurmaService
                                 'horario_fim' => $turmaOrigem['horario_fim'],
                                 'nome' => $turmaOrigem['nome'] ?? '',
                                 'limite_alunos' => (int) $turmaOrigem['limite_alunos'],
+                                ...$this->tolerancias($turmaOrigem),
                                 'ativo' => 1,
                             ]);
 
@@ -802,6 +815,69 @@ class AdminTurmaService
 
         $informado = (int) $data['tolerancia_antes_minutos'];
         $data['tolerancia_antes_minutos'] = $this->toleranciaAntes->clampParaTurma($tenantId, $informado);
+    }
+
+    /**
+     * Converte vazio em null e valida os prazos opcionais do aluno.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  ?array<string, mixed>  $turmaAtual
+     */
+    private function normalizarPrazosCheckin(int $tenantId, array &$data, ?array $turmaAtual): ?string
+    {
+        $rotulos = [
+            CheckinJanela::CAMPO_FECHAMENTO => 'Check-in fecha (min antes)',
+            CheckinJanela::CAMPO_CANCELAMENTO => 'Cancelamento até (min antes)',
+        ];
+
+        foreach ($rotulos as $campo => $rotulo) {
+            if (! array_key_exists($campo, $data)) {
+                continue;
+            }
+
+            $valor = $data[$campo];
+            if ($valor === null || (is_string($valor) && trim($valor) === '')) {
+                $data[$campo] = null;
+
+                continue;
+            }
+
+            if (filter_var($valor, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0, 'max_range' => 1440]]) === false) {
+                return "{$rotulo}: informe minutos entre 0 e 1440 ou deixe vazio";
+            }
+
+            $data[$campo] = (int) $valor;
+        }
+
+        $fechamento = array_key_exists(CheckinJanela::CAMPO_FECHAMENTO, $data)
+            ? $data[CheckinJanela::CAMPO_FECHAMENTO]
+            : ($turmaAtual[CheckinJanela::CAMPO_FECHAMENTO] ?? null);
+        $abertura = $this->toleranciaAntes->effectiveAntesMinutos(
+            $tenantId,
+            (int) ($data['tolerancia_antes_minutos'] ?? $turmaAtual['tolerancia_antes_minutos'] ?? 480),
+        );
+
+        if ($fechamento !== null && (int) $fechamento >= $abertura) {
+            return "Check-in fecha (min antes) deve ser menor que a abertura ({$abertura} min antes), senão o check-in nunca abre";
+        }
+
+        return null;
+    }
+
+    /**
+     * Tolerâncias copiadas ao replicar turmas.
+     *
+     * @param  array<string, mixed>  $turma
+     * @return array<string, mixed>
+     */
+    private function tolerancias(array $turma): array
+    {
+        return [
+            'tolerancia_minutos' => $turma['tolerancia_minutos'] ?? null,
+            'tolerancia_antes_minutos' => $turma['tolerancia_antes_minutos'] ?? null,
+            CheckinJanela::CAMPO_FECHAMENTO => $turma[CheckinJanela::CAMPO_FECHAMENTO] ?? null,
+            CheckinJanela::CAMPO_CANCELAMENTO => $turma[CheckinJanela::CAMPO_CANCELAMENTO] ?? null,
+        ];
     }
 
     /**

@@ -39,6 +39,8 @@ class TurmaRepository
                 't.ativo',
                 't.tolerancia_minutos',
                 't.tolerancia_antes_minutos',
+                't.tolerancia_antes_checkin_minutos',
+                't.tolerancia_cancelamento_minutos',
                 't.created_at',
                 't.updated_at',
                 'p.nome as professor_nome',
@@ -84,6 +86,8 @@ class TurmaRepository
                 't.horario_fim',
                 't.tolerancia_minutos',
                 't.tolerancia_antes_minutos',
+                't.tolerancia_antes_checkin_minutos',
+                't.tolerancia_cancelamento_minutos',
                 't.ativo',
                 'p.nome as professor_nome',
                 'p.email as professor_email',
@@ -363,6 +367,8 @@ class TurmaRepository
             'limite_alunos' => $data['limite_alunos'] ?? 20,
             'tolerancia_minutos' => $data['tolerancia_minutos'] ?? 10,
             'tolerancia_antes_minutos' => $data['tolerancia_antes_minutos'] ?? 480,
+            'tolerancia_antes_checkin_minutos' => $data['tolerancia_antes_checkin_minutos'] ?? null,
+            'tolerancia_cancelamento_minutos' => $data['tolerancia_cancelamento_minutos'] ?? null,
             'ativo' => $data['ativo'] ?? 1,
         ]);
     }
@@ -388,6 +394,13 @@ class TurmaRepository
             $updates[$campo] = ($campo === 'horario_inicio' || $campo === 'horario_fim')
                 ? self::normalizarHorario((string) $data[$campo])
                 : $data[$campo];
+        }
+
+        // Anuláveis: null limpa o prazo (volta ao comportamento padrão).
+        foreach (['tolerancia_antes_checkin_minutos', 'tolerancia_cancelamento_minutos'] as $campo) {
+            if (array_key_exists($campo, $data)) {
+                $updates[$campo] = $data[$campo];
+            }
         }
 
         if ($updates === []) {

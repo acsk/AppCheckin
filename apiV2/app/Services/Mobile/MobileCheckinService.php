@@ -9,6 +9,7 @@ use App\Repositories\TurmaRepository;
 use App\Repositories\UsuarioRepository;
 use App\Services\TurmaCheckinBloqueioService;
 use App\Support\AcademyDateTime;
+use App\Support\CheckinJanela;
 use App\Support\CheckinToleranciaAntes;
 use Illuminate\Support\Facades\DB;
 
@@ -237,16 +238,25 @@ class MobileCheckinService
             return $this->fail('Dados de horário da aula inválidos', 500);
         }
 
-        if ($agora >= $dataHorarioInicio) {
+        $limiteCancelamento = CheckinJanela::limiteCancelamento($dataHorarioInicio, $turma);
+        if ($agora >= $limiteCancelamento) {
+            $cancelamentoAntes = CheckinJanela::cancelamentoAntesMinutos($turma) ?? 0;
+            $mensagem = $cancelamentoAntes > 0
+                ? "O cancelamento só é permitido até {$cancelamentoAntes} min antes do início da aula (até {$limiteCancelamento->format('H:i')})"
+                : 'O desfazimento só é permitido ANTES do horário de início da aula';
+
             return [
                 'status' => 400,
                 'body' => [
                     'success' => false,
-                    'error' => 'Não é possível desfazer o check-in. A aula já começou ou passou',
+                    'error' => $cancelamentoAntes > 0
+                        ? "Não é possível desfazer o check-in. {$mensagem}"
+                        : 'Não é possível desfazer o check-in. A aula já começou ou passou',
                     'detalhes' => [
                         'aula_inicio' => $dataHorarioInicio->format('Y-m-d H:i:s'),
+                        'limite_cancelamento' => $limiteCancelamento->format('Y-m-d H:i:s'),
                         'agora' => $agora->format('Y-m-d H:i:s'),
-                        'mensagem' => 'O desfazimento só é permitido ANTES do horário de início da aula',
+                        'mensagem' => $mensagem,
                     ],
                 ],
             ];
@@ -432,6 +442,29 @@ class MobileCheckinService
                     ],
                 ],
             ];
+        }
+
+        // Prazo configurado na turma: após ele, só inclusão manual (professor/admin).
+        $fechamentoAntes = CheckinJanela::fechamentoAntesMinutos($turma);
+        if ($fechamentoAntes !== null) {
+            $fechamento = CheckinJanela::fechamento($dataHorarioInicio, $turma);
+            if ($agora > $fechamento) {
+                return [
+                    'status' => 400,
+                    'body' => [
+                        'success' => false,
+                        'error' => "O check-in desta aula encerrou às {$fechamento->format('H:i')} ({$fechamentoAntes} min antes do início). Procure o professor para inclusão manual.",
+                        'code' => 'CHECKIN_ENCERRADO',
+                        'detalhes' => [
+                            'turma_id' => (int) $turma['id'],
+                            'data_aula' => $dia->data,
+                            'horario_inicio' => $turma['horario_inicio'],
+                            'fechamento_checkin' => $fechamento->format('Y-m-d H:i:s'),
+                            'tolerancia_antes_checkin_minutos' => $fechamentoAntes,
+                        ],
+                    ],
+                ];
+            }
         }
 
         return null;

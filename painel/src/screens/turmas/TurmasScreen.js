@@ -15,6 +15,18 @@ import { mascaraHora } from '../../utils/masks';
 import { buscarWodPorDataModalidade } from '../../services/wodService';
 import WodPreviewModal from '../../components/WodPreviewModal';
 
+// Campo vazio = sem prazo (null na API)
+const minutosOuNull = (valor) => (valor === '' || valor === null || valor === undefined ? null : parseInt(valor, 10));
+
+const formatarMinutos = (valor) => {
+  const mins = parseInt(valor, 10) || 0;
+  const horas = Math.floor(mins / 60);
+  const resto = mins % 60;
+  if (horas > 0 && resto > 0) return `${horas}h ${resto}min`;
+  if (horas > 0) return `${horas}h`;
+  return `${resto}min`;
+};
+
 export default function TurmasScreen() {
   const router = useRouter();
   const { width } = useWindowDimensions();
@@ -39,6 +51,8 @@ export default function TurmasScreen() {
     limite_alunos: '',
     tolerancia_antes_minutos: '',
     tolerancia_minutos: '',
+    tolerancia_antes_checkin_minutos: '',
+    tolerancia_cancelamento_minutos: '',
     ativo: true,
   });
   const [submitting, setSubmitting] = useState(false);
@@ -292,7 +306,7 @@ export default function TurmasScreen() {
   const handleNova = async () => {
     console.log('🔴 [handleNova] Iniciando...');
     setDropdownAberto(null);
-    setFormData({ modalidade_id: '', horario_inicio: '', horario_fim: '', professor_id: '', limite_alunos: '', tolerancia_antes_minutos: '', tolerancia_minutos: '', ativo: true });
+    setFormData({ modalidade_id: '', horario_inicio: '', horario_fim: '', professor_id: '', limite_alunos: '', tolerancia_antes_minutos: '', tolerancia_minutos: '', tolerancia_antes_checkin_minutos: '', tolerancia_cancelamento_minutos: '', ativo: true });
     setLoadingDropdowns(true);
     
     try {
@@ -413,6 +427,8 @@ export default function TurmasScreen() {
           limite_alunos: String(turma.limite_alunos) || '',
           tolerancia_antes_minutos: turma.tolerancia_antes_minutos !== undefined && turma.tolerancia_antes_minutos !== null ? String(turma.tolerancia_antes_minutos) : '',
           tolerancia_minutos: turma.tolerancia_minutos !== undefined && turma.tolerancia_minutos !== null ? String(turma.tolerancia_minutos) : '',
+          tolerancia_antes_checkin_minutos: turma.tolerancia_antes_checkin_minutos !== undefined && turma.tolerancia_antes_checkin_minutos !== null ? String(turma.tolerancia_antes_checkin_minutos) : '',
+          tolerancia_cancelamento_minutos: turma.tolerancia_cancelamento_minutos !== undefined && turma.tolerancia_cancelamento_minutos !== null ? String(turma.tolerancia_cancelamento_minutos) : '',
           ativo: turma.ativo,
         });
       } catch (err) {
@@ -725,6 +741,8 @@ ${listaTurmas ? `Turmas deletadas:\n${listaTurmas}` : ''}
         limite_alunos: parseInt(formData.limite_alunos),
         tolerancia_antes_minutos: parseInt(formData.tolerancia_antes_minutos) || 0,
         tolerancia_minutos: parseInt(formData.tolerancia_minutos) || 0,
+        tolerancia_antes_checkin_minutos: minutosOuNull(formData.tolerancia_antes_checkin_minutos),
+        tolerancia_cancelamento_minutos: minutosOuNull(formData.tolerancia_cancelamento_minutos),
       };
       
       console.log('📤 [criarTurma] Enviando:', novaData);
@@ -786,6 +804,8 @@ ${listaTurmas ? `Turmas deletadas:\n${listaTurmas}` : ''}
       limite_alunos: '',
       tolerancia_antes_minutos: '',
       tolerancia_minutos: '',
+      tolerancia_antes_checkin_minutos: '',
+      tolerancia_cancelamento_minutos: '',
       ativo: true,
     });
     setErrors({});
@@ -886,6 +906,8 @@ ${listaTurmas ? `Turmas deletadas:\n${listaTurmas}` : ''}
         limite_alunos: parseInt(formData.limite_alunos),
         tolerancia_antes_minutos: parseInt(formData.tolerancia_antes_minutos) || 0,
         tolerancia_minutos: parseInt(formData.tolerancia_minutos) || 0,
+        tolerancia_antes_checkin_minutos: minutosOuNull(formData.tolerancia_antes_checkin_minutos),
+        tolerancia_cancelamento_minutos: minutosOuNull(formData.tolerancia_cancelamento_minutos),
       };
       
       console.log('📤 [atualizarTurma] Enviando:', dadosAtualizados);
@@ -902,6 +924,8 @@ ${listaTurmas ? `Turmas deletadas:\n${listaTurmas}` : ''}
         limite_alunos: '',
         tolerancia_antes_minutos: '',
         tolerancia_minutos: '',
+        tolerancia_antes_checkin_minutos: '',
+        tolerancia_cancelamento_minutos: '',
         ativo: true,
       });
       carregarDados();
@@ -1620,6 +1644,54 @@ ${listaTurmas ? `Turmas deletadas:\n${listaTurmas}` : ''}
                             })()}
                           </Text>
                         )}
+                      </View>
+                    </View>
+
+                    <View style={styles.horarioRow}>
+                      <View style={[styles.formGroup, styles.horarioFormGroup]}>
+                        <Text style={styles.formLabel}>
+                          Check-in fecha (min antes)
+                        </Text>
+                        <TextInput
+                          style={styles.formInput}
+                          placeholder="Vazio = sem prazo"
+                          placeholderTextColor="#9ca3af"
+                          value={formData.tolerancia_antes_checkin_minutos}
+                          onChangeText={(text) => {
+                            const numerico = text.replace(/[^0-9]/g, '');
+                            setFormData({ ...formData, tolerancia_antes_checkin_minutos: numerico });
+                          }}
+                          keyboardType="numeric"
+                          editable={!submitting}
+                        />
+                        <Text style={styles.fieldHint}>
+                          {formData.tolerancia_antes_checkin_minutos !== ''
+                            ? `Aluno faz check-in até ${formatarMinutos(formData.tolerancia_antes_checkin_minutos)} antes do início. Depois, só inclusão manual.`
+                            : 'Sem prazo: fecha conforme a tolerância após.'}
+                        </Text>
+                      </View>
+
+                      <View style={[styles.formGroup, styles.horarioFormGroup]}>
+                        <Text style={styles.formLabel}>
+                          Cancelamento até (min antes)
+                        </Text>
+                        <TextInput
+                          style={styles.formInput}
+                          placeholder="Vazio = até o início"
+                          placeholderTextColor="#9ca3af"
+                          value={formData.tolerancia_cancelamento_minutos}
+                          onChangeText={(text) => {
+                            const numerico = text.replace(/[^0-9]/g, '');
+                            setFormData({ ...formData, tolerancia_cancelamento_minutos: numerico });
+                          }}
+                          keyboardType="numeric"
+                          editable={!submitting}
+                        />
+                        <Text style={styles.fieldHint}>
+                          {formData.tolerancia_cancelamento_minutos !== ''
+                            ? `Aluno desfaz o check-in até ${formatarMinutos(formData.tolerancia_cancelamento_minutos)} antes do início.`
+                            : 'Sem prazo: pode desfazer até o início da aula.'}
+                        </Text>
                       </View>
                     </View>
 

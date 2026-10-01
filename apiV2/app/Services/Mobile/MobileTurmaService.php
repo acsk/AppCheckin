@@ -7,6 +7,7 @@ use App\Repositories\TurmaRepository;
 use App\Services\TurmaCheckinBloqueioService;
 use App\Support\AcademyDateTime;
 use App\Support\AniversarioUtil;
+use App\Support\CheckinJanela;
 use App\Support\CheckinToleranciaAntes;
 use Illuminate\Support\Facades\DB;
 
@@ -196,12 +197,13 @@ class MobileTurmaService
         $checkinJaFechou = false;
         $horarioAberturaFmt = null;
         $horarioFechamentoFmt = null;
+        $limiteCancelamentoFmt = null;
 
         if ($dataHoraTurma) {
             $horarioAbertura = clone $dataHoraTurma;
             $horarioAbertura->modify("-{$toleranciaAntes} minutes");
-            $horarioFechamento = clone $dataHoraTurma;
-            $horarioFechamento->modify("+{$toleranciaDepois} minutes");
+            $horarioFechamento = CheckinJanela::fechamento($dataHoraTurma, $turma);
+            $limiteCancelamentoFmt = CheckinJanela::limiteCancelamento($dataHoraTurma, $turma)->format('Y-m-d H:i:s');
 
             $checkinDisponivel = $agora >= $horarioAbertura && $agora <= $horarioFechamento;
             $checkinJaAbriu = $agora >= $horarioAbertura;
@@ -284,6 +286,9 @@ class MobileTurmaService
                             'tolerancia_antes_turma_minutos' => $turmaAntes,
                             'max_tolerancia_academia_minutos' => $maxAcademia > 0 ? $maxAcademia : null,
                             'tolerancia_depois_minutos' => $toleranciaDepois,
+                            'tolerancia_antes_checkin_minutos' => CheckinJanela::fechamentoAntesMinutos($turma),
+                            'tolerancia_cancelamento_minutos' => CheckinJanela::cancelamentoAntesMinutos($turma),
+                            'cancelamento_ate' => $limiteCancelamentoFmt,
                         ],
                         'ativo' => (bool) $turma['ativo'],
                         'checkin_bloqueado' => $checkinBloqueado,

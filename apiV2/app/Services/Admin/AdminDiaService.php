@@ -4,6 +4,7 @@ namespace App\Services\Admin;
 
 use App\Repositories\DiaRepository;
 use App\Repositories\TurmaRepository;
+use App\Support\CheckinJanela;
 use DateInterval;
 use DateTime;
 
@@ -56,6 +57,8 @@ class AdminDiaService
                     'vagas_disponiveis' => $vagasDisponiveis,
                     'tolerancia_minutos' => (int) $turma['tolerancia_minutos'],
                     'tolerancia_antes_minutos' => (int) $turma['tolerancia_antes_minutos'],
+                    'tolerancia_antes_checkin_minutos' => CheckinJanela::fechamentoAntesMinutos($turma),
+                    'tolerancia_cancelamento_minutos' => CheckinJanela::cancelamentoAntesMinutos($turma),
                     'ativo' => (bool) $turma['ativo'],
                 ];
             },
@@ -115,6 +118,8 @@ class AdminDiaService
                         : 0,
                     'tolerancia_minutos' => (int) $turma['tolerancia_minutos'],
                     'tolerancia_antes_minutos' => (int) $turma['tolerancia_antes_minutos'],
+                    'tolerancia_antes_checkin_minutos' => CheckinJanela::fechamentoAntesMinutos($turma),
+                    'tolerancia_cancelamento_minutos' => CheckinJanela::cancelamentoAntesMinutos($turma),
                     'ativo' => (bool) $turma['ativo'],
                 ];
             },

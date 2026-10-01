@@ -201,7 +201,20 @@ export default function TurmaDetalhesScreen() {
     return d;
   };
 
+  const parseApiDateTime = (valor?: string | null) => {
+    if (!valor) return null;
+    const d = new Date(valor.replace(" ", "T"));
+    return Number.isNaN(d.getTime()) ? null : d;
+  };
+
   const getCheckinWindow = (turmaData: any) => {
+    // Janela calculada pela API (inclui teto da academia e prazo de fechamento da turma)
+    const abreApi = parseApiDateTime(turmaData?.checkin?.abertura);
+    const fechaApi = parseApiDateTime(turmaData?.checkin?.fechamento);
+    if (abreApi && fechaApi) {
+      return { abre: abreApi, fecha: fechaApi, horarioInicio: null };
+    }
+
     if (!turmaData?.horario?.inicio) return null;
 
     const diaAula = turmaData.dia_aula
@@ -481,6 +494,7 @@ export default function TurmaDetalhesScreen() {
           nome: turmaApi.modalidade || turmaApi.modalidade_nome,
         },
         horario: horarioCompleto,
+        checkin: turmaApi.checkin,
         dia_aula: turmaApi.dia_aula, // Campo essencial para validação de data
         limite_alunos: turmaApi.limite_alunos,
         alunos_inscritos:
