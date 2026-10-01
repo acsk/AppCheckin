@@ -10,10 +10,28 @@ import { horarioService } from '../../services/horarioService';
 import LayoutBase from '../../components/LayoutBase';
 import ConfirmModal from '../../components/ConfirmModal';
 import SearchableDropdown from '../../components/SearchableDropdown';
+import SeletorMeses, { formatarMesAno } from '../../components/SeletorMeses';
 import { showSuccess, showError } from '../../utils/toast';
 import { mascaraHora } from '../../utils/masks';
 import { buscarWodPorDataModalidade } from '../../services/wodService';
 import WodPreviewModal from '../../components/WodPreviewModal';
+
+// Segunda a domingo da semana que contém a data (YYYY-MM-DD)
+const semanaDaData = (dataStr) => {
+  if (!dataStr) return null;
+  const [a, m, d] = dataStr.split('-').map(Number);
+  const ref = new Date(a, m - 1, d);
+  const deslocamento = (ref.getDay() + 6) % 7;
+  const inicio = new Date(a, m - 1, d - deslocamento);
+  const fim = new Date(a, m - 1, d - deslocamento + 6);
+  const fmt = (dt) => `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}`;
+  return `${fmt(inicio)} a ${fmt(fim)}`;
+};
+
+const mesAtual = () => {
+  const hoje = new Date();
+  return `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}`;
+};
 
 // Campo vazio = sem prazo (null na API)
 const minutosOuNull = (valor) => (valor === '' || valor === null || valor === undefined ? null : parseInt(valor, 10));
@@ -67,6 +85,7 @@ export default function TurmasScreen() {
   const [periodoReplicacao, setPeriodoReplicacao] = useState('custom');
   const [diasSemanaSelecionados, setDiasSemanaSelecionados] = useState([]);
   const [mesReplicacao, setMesReplicacao] = useState('');
+  const [mesesDestino, setMesesDestino] = useState([]);
   const [modalidadeReplicarId, setModalidadeReplicarId] = useState('');
   const [replicando, setReplicando] = useState(false);
   const [deletandoHorarios, setDeletandoHorarios] = useState(false);
@@ -465,21 +484,10 @@ export default function TurmasScreen() {
       setReplicando(true);
       let resultado;
 
-      if (periodoReplicacao === 'replicar_semana') {
-        const mesesDestino = (mesReplicacao || '')
-          .split(',')
-          .map((mes) => mes.trim())
-          .filter(Boolean);
-
+      if (periodoReplicacao === 'mes_todo') {
+        // Semana da data selecionada vira modelo para todas as semanas dos meses escolhidos
         if (mesesDestino.length === 0) {
-          showError('Informe pelo menos um mês de destino');
-          setReplicando(false);
-          return;
-        }
-
-        const mesInvalido = mesesDestino.find((mes) => !/^\d{4}-\d{2}$/.test(mes));
-        if (mesInvalido) {
-          showError(`Mês inválido: ${mesInvalido}. Use o formato YYYY-MM`);
+          showError('Selecione pelo menos um mês de destino');
           setReplicando(false);
           return;
         }
@@ -521,14 +529,17 @@ export default function TurmasScreen() {
 
       if (resultado.type === 'success') {
         const totalCriadas = resultado.turmas_criadas?.length || resultado.total_criadas || 0;
+        const totalPuladas = resultado.summary?.total_puladas || 0;
+        const sufixoPuladas = totalPuladas > 0 ? ` (${totalPuladas} já existiam e foram puladas)` : '';
         const mensagem = totalCriadas > 0
-          ? `✅ ${totalCriadas} turmas criadas com sucesso!`
-          : (resultado.message || 'Replicação concluída com sucesso!');
+          ? `✅ ${totalCriadas} turmas criadas com sucesso!${sufixoPuladas}`
+          : `${resultado.message || 'Replicação concluída.'}${sufixoPuladas}`;
         
         showSuccess(mensagem);
         setModalReplicarVisible(false);
         setDiasSemanaSelecionados([]);
         setMesReplicacao('');
+        setMesesDestino([]);
         setPeriodoReplicacao('custom');
         setModalidadeReplicarId('');
         carregarDados();
@@ -1868,23 +1879,6 @@ ${listaTurmas ? `Turmas deletadas:\n${listaTurmas}` : ''}
                       </Text>
                     </TouchableOpacity>
 
-                    <TouchableOpacity
-                      style={[
-                        styles.toggleButton,
-                        periodoReplicacao === 'replicar_semana' && styles.toggleButtonActive
-                      ]}
-                      onPress={() => setPeriodoReplicacao('replicar_semana')}
-                      disabled={replicando}
-                    >
-                      <Text
-                        style={[
-                          styles.toggleText,
-                          periodoReplicacao === 'replicar_semana' && styles.toggleTextActive
-                        ]}
-                      >
-                        Replicar Semana
-                      </Text>
-                    </TouchableOpacity>
                   </View>
                 </View>
 
@@ -1919,36 +1913,41 @@ ${listaTurmas ? `Turmas deletadas:\n${listaTurmas}` : ''}
                   </View>
                 )}
 
-                {(periodoReplicacao === 'mes_todo' || periodoReplicacao === 'custom') && (
+                {periodoReplicacao === 'custom' && (
                   <View style={styles.formGroup}>
                     <Text style={styles.formLabel}>Mês (Opcional)</Text>
-                    <TextInput
-                      style={styles.formInput}
-                      placeholder="YYYY-MM (ex: 2026-02)"
-                      placeholderTextColor="#9ca3af"
+                    <SeletorMeses
                       value={mesReplicacao}
-                      onChangeText={setMesReplicacao}
-                      editable={!replicando}
+                      onChange={setMesReplicacao}
+                      mesMinimo={mesAtual()}
+                      disabled={replicando}
                     />
-                    <Text style={styles.helperText}>Deixe vazio para usar o mês atual ({dataSelecionada.substring(0, 7)})</Text>
+                    <Text style={styles.helperText}>
+                      Sem seleção, usa o mês da data de origem ({formatarMesAno(dataSelecionada.substring(0, 7))})
+                    </Text>
                   </View>
                 )}
 
-                {periodoReplicacao === 'replicar_semana' && (
+                {periodoReplicacao === 'mes_todo' && (
                   <View style={styles.formGroup}>
                     <Text style={styles.formLabel}>
                       Meses de Destino
                       <Text style={styles.required}>*</Text>
                     </Text>
-                    <TextInput
-                      style={styles.formInput}
-                      placeholder="YYYY-MM, YYYY-MM (ex: 2026-03, 2026-04)"
-                      placeholderTextColor="#9ca3af"
-                      value={mesReplicacao}
-                      onChangeText={setMesReplicacao}
-                      editable={!replicando}
+                    <Text style={styles.replicarDataTexto}>
+                      Semana modelo: {semanaDaData(dataSelecionada)}
+                    </Text>
+                    <View style={{ height: 10 }} />
+                    <SeletorMeses
+                      value={mesesDestino}
+                      onChange={setMesesDestino}
+                      multiplo
+                      mesMinimo={mesAtual()}
+                      disabled={replicando}
                     />
-                    <Text style={styles.helperText}>Informe um ou mais meses separados por vírgula</Text>
+                    <Text style={styles.helperText}>
+                      As turmas de cada dia da semana modelo são copiadas para o mesmo dia da semana em todas as semanas dos meses escolhidos. Horários que já existem são pulados.
+                    </Text>
                   </View>
                 )}
 
