@@ -9,6 +9,7 @@ use App\Support\CheckinJanela;
 use App\Support\CheckinToleranciaAntes;
 use DateInterval;
 use DateTime;
+use Illuminate\Support\Facades\DB;
 
 class AdminTurmaService
 {
@@ -201,19 +202,68 @@ class AdminTurmaService
 
         try {
             $this->aplicarTetoToleranciaAntes($tenantId, $data);
-            $this->turmas->atualizar($id, $data);
+            $aplicarEmFuturas = filter_var($data['aplicar_em_futuras'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+            $futuras = DB::transaction(function () use ($id, $tenantId, $turma, $data, $aplicarEmFuturas): ?array {
+                $this->turmas->atualizar($id, $data);
+
+                return $aplicarEmFuturas
+                    ? $this->aplicarAlteracoesEmFuturas($tenantId, $turma, $data)
+                    : null;
+            });
+
+            $message = 'Turma atualizada com sucesso';
+            if ($futuras !== null) {
+                $message .= ". Também atualizadas: {$futuras['atualizadas']} aula(s) seguinte(s)";
+                if ($futuras['puladas'] !== []) {
+                    $message .= ', '.count($futuras['puladas']).' pulada(s) por conflito de horário do professor';
+                }
+            }
 
             return [
                 'status' => 200,
                 'body' => [
                     'type' => 'success',
-                    'message' => 'Turma atualizada com sucesso',
+                    'message' => $message,
                     'turma' => $this->turmas->findById($id),
+                    'futuras' => $futuras,
                 ],
             ];
         } catch (\Throwable $e) {
             return $this->error('Erro ao atualizar turma: '.$e->getMessage(), 500);
         }
+    }
+
+    /**
+     * Aulas seguintes equivalentes (mesmo dia da semana, professor, modalidade e horário)
+     * que podem receber as mesmas alterações da turma.
+     *
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function equivalentesFuturas(int $id, int $tenantId): array
+    {
+        $turma = $this->turmas->findById($id, $tenantId);
+        if (! $turma) {
+            return $this->error('Turma não encontrada', 404);
+        }
+
+        $futuras = $this->turmas->listarEquivalentesFuturas($tenantId, $turma);
+
+        return [
+            'status' => 200,
+            'body' => [
+                'type' => 'success',
+                'total' => count($futuras),
+                'turmas' => array_map(static fn (array $t) => [
+                    'id' => (int) $t['id'],
+                    'data' => $t['dia_data'],
+                    'horario_inicio' => $t['horario_inicio'],
+                    'horario_fim' => $t['horario_fim'],
+                    'professor_nome' => $t['professor_nome'] ?? null,
+                    'limite_alunos' => (int) $t['limite_alunos'],
+                ], $futuras),
+            ],
+        ];
     }
 
     /**
@@ -863,6 +913,73 @@ class AdminTurmaService
         }
 
         return null;
+    }
+
+    /**
+     * Copia para as aulas seguintes equivalentes apenas os campos que mudaram na turma original.
+     *
+     * @param  array<string, mixed>  $original  turma antes da alteração
+     * @param  array<string, mixed>  $data  payload já normalizado
+     * @return array{atualizadas: int, puladas: list<array<string, mixed>>, campos: list<string>}
+     */
+    private function aplicarAlteracoesEmFuturas(int $tenantId, array $original, array $data): array
+    {
+        $campos = [
+            'professor_id', 'modalidade_id', 'horario_inicio', 'horario_fim', 'nome', 'limite_alunos',
+            'tolerancia_minutos', 'tolerancia_antes_minutos',
+            CheckinJanela::CAMPO_FECHAMENTO, CheckinJanela::CAMPO_CANCELAMENTO,
+        ];
+
+        $normalizar = static function (string $campo, $valor): ?string {
+            if ($valor === null || $valor === '') {
+                return null;
+            }
+
+            return in_array($campo, ['horario_inicio', 'horario_fim'], true)
+                ? TurmaRepository::normalizarHorario((string) $valor)
+                : (string) $valor;
+        };
+
+        $alteracoes = [];
+        foreach ($campos as $campo) {
+            if (! array_key_exists($campo, $data)) {
+                continue;
+            }
+            if ($normalizar($campo, $data[$campo]) !== $normalizar($campo, $original[$campo] ?? null)) {
+                $alteracoes[$campo] = $data[$campo];
+            }
+        }
+
+        if ($alteracoes === []) {
+            return ['atualizadas' => 0, 'puladas' => [], 'campos' => []];
+        }
+
+        $mudaAgenda = array_intersect(array_keys($alteracoes), ['horario_inicio', 'horario_fim', 'professor_id']) !== [];
+        $atualizadas = 0;
+        $puladas = [];
+
+        foreach ($this->turmas->listarEquivalentesFuturas($tenantId, $original) as $futura) {
+            if ($mudaAgenda) {
+                $conflitos = $this->turmas->verificarHorarioOcupado(
+                    $tenantId,
+                    (int) $futura['dia_id'],
+                    (string) ($alteracoes['horario_inicio'] ?? $futura['horario_inicio']),
+                    (string) ($alteracoes['horario_fim'] ?? $futura['horario_fim']),
+                    (int) $futura['id'],
+                    (int) ($alteracoes['professor_id'] ?? $futura['professor_id']),
+                );
+                if ($conflitos !== []) {
+                    $puladas[] = ['turma_id' => (int) $futura['id'], 'data' => $futura['dia_data']];
+
+                    continue;
+                }
+            }
+
+            $this->turmas->atualizar((int) $futura['id'], $alteracoes);
+            $atualizadas++;
+        }
+
+        return ['atualizadas' => $atualizadas, 'puladas' => $puladas, 'campos' => array_keys($alteracoes)];
     }
 
     /**

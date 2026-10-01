@@ -44,6 +44,7 @@ export default function TurmasScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState({ visible: false, id: null, nome: '' });
   const [confirmDeletePermanente, setConfirmDeletePermanente] = useState({ visible: false, id: null, nome: '' });
+  const [confirmFuturas, setConfirmFuturas] = useState({ visible: false, turmaId: null, dados: null, turmas: [] });
   const [searchText, setSearchText] = useState('');
   const [dataSelecionada, setDataSelecionada] = useState(obterHoje());
   const [calendarVisible, setCalendarVisible] = useState(false);
@@ -923,10 +924,37 @@ ${listaTurmas ? `Turmas deletadas:\n${listaTurmas}` : ''}
         tolerancia_cancelamento_minutos: minutosOuNull(formData.tolerancia_cancelamento_minutos),
       };
       
-      console.log('📤 [atualizarTurma] Enviando:', dadosAtualizados);
+      // Se houver aulas seguintes equivalentes, pergunta antes de salvar
+      let futuras = [];
+      try {
+        const resp = await turmaService.equivalentesFuturas(turmaId);
+        futuras = resp?.turmas || [];
+      } catch (e) {
+        futuras = [];
+      }
 
-      await turmaService.atualizar(turmaId, dadosAtualizados);
-      showSuccess('Turma atualizada com sucesso!');
+      if (futuras.length > 0) {
+        setConfirmFuturas({ visible: true, turmaId, dados: dadosAtualizados, turmas: futuras });
+        return;
+      }
+
+      await salvarAtualizacaoTurma(turmaId, dadosAtualizados, false);
+    } catch (error) {
+      console.error('Erro ao atualizar turma:', error);
+      showError(error.response?.data?.message || error.message || 'Erro ao atualizar turma');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const salvarAtualizacaoTurma = async (turmaId, dadosAtualizados, aplicarEmFuturas) => {
+    try {
+      setSubmitting(true);
+      const payload = { ...dadosAtualizados, aplicar_em_futuras: aplicarEmFuturas };
+      console.log('📤 [atualizarTurma] Enviando:', payload);
+
+      const resposta = await turmaService.atualizar(turmaId, payload);
+      showSuccess(resposta?.message || 'Turma atualizada com sucesso!');
       setModalCriarVisible(false);
       setErrors({});
       setFormData({
@@ -1774,6 +1802,33 @@ ${listaTurmas ? `Turmas deletadas:\n${listaTurmas}` : ''}
           confirmText="Sim, excluir"
           cancelText="Não"
           type="danger"
+        />
+
+        <ConfirmModal
+          visible={confirmFuturas.visible}
+          title="Aplicar nas próximas aulas?"
+          message={(() => {
+            const lista = confirmFuturas.turmas || [];
+            if (lista.length === 0) return '';
+            const diaSemana = new Date(lista[0].data + 'T00:00:00').toLocaleDateString('pt-BR', { weekday: 'long' });
+            const datas = lista.slice(0, 6).map((t) => t.data.substring(8, 10) + '/' + t.data.substring(5, 7)).join(', ');
+            const mais = lista.length > 6 ? ` e mais ${lista.length - 6}` : '';
+            return `Existem ${lista.length} aula(s) seguinte(s) de ${diaSemana} no mesmo horário e com o mesmo professor (${datas}${mais}). Deseja aplicar as mesmas alterações nelas também?`;
+          })()}
+          confirmText="Aplicar em todas"
+          cancelText="Só esta aula"
+          type="warning"
+          onConfirm={() => {
+            const { turmaId, dados } = confirmFuturas;
+            setConfirmFuturas({ visible: false, turmaId: null, dados: null, turmas: [] });
+            salvarAtualizacaoTurma(turmaId, dados, true);
+          }}
+          onCancel={() => {
+            const { turmaId, dados } = confirmFuturas;
+            setConfirmFuturas({ visible: false, turmaId: null, dados: null, turmas: [] });
+            salvarAtualizacaoTurma(turmaId, dados, false);
+          }}
+          onDismiss={() => setConfirmFuturas({ visible: false, turmaId: null, dados: null, turmas: [] })}
         />
 
         {/* Modal Replicar Turmas */}

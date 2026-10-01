@@ -13,6 +13,7 @@ Route::post('/turmas/replicar', [TurmaController::class, 'replicar']);
 Route::post('/turmas/replicar-semana', [TurmaController::class, 'replicarSemana']);
 Route::post('/turmas/desativar', [TurmaController::class, 'desativar']);
 Route::get('/turmas/{id}/vagas', [TurmaController::class, 'vagas']);
+Route::get('/turmas/{id}/equivalentes-futuras', [TurmaController::class, 'equivalentesFuturas']);
 Route::post('/turmas/{id}/bloquear-checkin', [TurmaController::class, 'bloquearCheckin']);
 Route::post('/turmas/{id}/desbloquear-checkin', [TurmaController::class, 'desbloquearCheckin']);
 Route::get('/turmas/{id}', [TurmaController::class, 'show']);

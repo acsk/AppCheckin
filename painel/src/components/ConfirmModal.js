@@ -8,6 +8,7 @@ export default function ConfirmModal({
   message, 
   onConfirm, 
   onCancel,
+  onDismiss,
   confirmText = 'Confirmar',
   cancelText = 'Cancelar',
   type = 'danger' // danger, warning, info
@@ -17,7 +18,7 @@ export default function ConfirmModal({
       visible={visible}
       transparent
       animationType="fade"
-      onRequestClose={onCancel}
+      onRequestClose={onDismiss || onCancel}
     >
       <View style={styles.overlay}>
         <View style={styles.modal}>

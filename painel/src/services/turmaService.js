@@ -112,9 +112,20 @@ export const turmaService = {
   async atualizar(id, data) {
     try {
       const response = await api.put(`/admin/turmas/${id}`, data);
-      return response.data.turma;
+      return response.data;
     } catch (error) {
       console.error('Erro ao atualizar turma:', error);
+      throw error;
+    }
+  },
+
+  // Aulas seguintes equivalentes (mesmo dia da semana, professor, modalidade e horário)
+  async equivalentesFuturas(id) {
+    try {
+      const response = await api.get(`/admin/turmas/${id}/equivalentes-futuras`);
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao buscar aulas seguintes:', error);
       throw error;
     }
   },

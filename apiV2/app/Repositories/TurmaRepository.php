@@ -468,6 +468,37 @@ class TurmaRepository
     /**
      * Turma com mesmo professor/modalidade/horário em outro dia (usado no desativar em lote).
      */
+    /**
+     * Turmas equivalentes (mesmo professor, modalidade e horário) nas datas seguintes,
+     * no mesmo dia da semana da turma de referência.
+     *
+     * @param  array<string, mixed>  $turma  linha de findById (precisa de dia_data)
+     * @return list<array<string, mixed>>
+     */
+    public function listarEquivalentesFuturas(int $tenantId, array $turma): array
+    {
+        if (empty($turma['dia_data'])) {
+            return [];
+        }
+
+        return DB::table('turmas as t')
+            ->join('dias as d', 't.dia_id', '=', 'd.id')
+            ->leftJoin('professores as p', 't.professor_id', '=', 'p.id')
+            ->where('t.tenant_id', $tenantId)
+            ->where('t.id', '!=', (int) $turma['id'])
+            ->where('t.ativo', 1)
+            ->where('t.professor_id', (int) $turma['professor_id'])
+            ->where('t.modalidade_id', (int) $turma['modalidade_id'])
+            ->where('t.horario_inicio', (string) $turma['horario_inicio'])
+            ->where('t.horario_fim', (string) $turma['horario_fim'])
+            ->where('d.data', '>', (string) $turma['dia_data'])
+            ->whereRaw('DAYOFWEEK(d.data) = DAYOFWEEK(?)', [(string) $turma['dia_data']])
+            ->orderBy('d.data')
+            ->get(['t.*', 'd.data as dia_data', 'p.nome as professor_nome'])
+            ->map(static fn ($row) => (array) $row)
+            ->all();
+    }
+
     public function buscarSimilarEmOutroDia(
         int $tenantId,
         int $diaId,
