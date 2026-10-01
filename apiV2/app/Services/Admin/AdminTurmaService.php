@@ -477,18 +477,19 @@ class AdminTurmaService
         $modalidadeId = isset($data['modalidade_id']) ? (int) $data['modalidade_id'] : null;
 
         try {
+            // Semana modelo: domingo a sábado da data informada.
             $dataRef = new DateTime($semanaData);
-            $diaSemana = (int) $dataRef->format('N');
+            $diaSemana = (int) $dataRef->format('w');
 
-            $segundaOrigem = clone $dataRef;
-            $segundaOrigem->sub(new DateInterval('P'.($diaSemana - 1).'D'));
+            $inicioOrigem = clone $dataRef;
+            $inicioOrigem->sub(new DateInterval('P'.$diaSemana.'D'));
 
-            $domingoOrigem = clone $segundaOrigem;
-            $domingoOrigem->add(new DateInterval('P6D'));
+            $fimOrigem = clone $inicioOrigem;
+            $fimOrigem->add(new DateInterval('P6D'));
 
             $diasOrigem = $this->dias->buscarDiasEntreDatas(
-                $segundaOrigem->format('Y-m-d'),
-                $domingoOrigem->format('Y-m-d'),
+                $inicioOrigem->format('Y-m-d'),
+                $fimOrigem->format('Y-m-d'),
             );
 
             if ($diasOrigem === []) {
@@ -512,8 +513,8 @@ class AdminTurmaService
                         'type' => 'success',
                         'message' => 'Nenhuma turma encontrada na semana de origem',
                         'semana_origem' => [
-                            'inicio' => $segundaOrigem->format('Y-m-d'),
-                            'fim' => $domingoOrigem->format('Y-m-d'),
+                            'inicio' => $inicioOrigem->format('Y-m-d'),
+                            'fim' => $fimOrigem->format('Y-m-d'),
                         ],
                         'summary' => [
                             'total_turmas_origem' => 0,
@@ -608,8 +609,8 @@ class AdminTurmaService
                     'type' => 'success',
                     'message' => 'Replicação de semana concluída com sucesso',
                     'semana_origem' => [
-                        'inicio' => $segundaOrigem->format('Y-m-d'),
-                        'fim' => $domingoOrigem->format('Y-m-d'),
+                        'inicio' => $inicioOrigem->format('Y-m-d'),
+                        'fim' => $fimOrigem->format('Y-m-d'),
                         'total_turmas' => count($turmasOrigem),
                     ],
                     'summary' => [

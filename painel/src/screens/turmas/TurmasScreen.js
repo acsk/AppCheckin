@@ -11,22 +11,11 @@ import LayoutBase from '../../components/LayoutBase';
 import ConfirmModal from '../../components/ConfirmModal';
 import SearchableDropdown from '../../components/SearchableDropdown';
 import SeletorMeses, { formatarMesAno } from '../../components/SeletorMeses';
+import SeletorSemana, { domingoDaSemana, descreverSemana } from '../../components/SeletorSemana';
 import { showSuccess, showError } from '../../utils/toast';
 import { mascaraHora } from '../../utils/masks';
 import { buscarWodPorDataModalidade } from '../../services/wodService';
 import WodPreviewModal from '../../components/WodPreviewModal';
-
-// Segunda a domingo da semana que contém a data (YYYY-MM-DD)
-const semanaDaData = (dataStr) => {
-  if (!dataStr) return null;
-  const [a, m, d] = dataStr.split('-').map(Number);
-  const ref = new Date(a, m - 1, d);
-  const deslocamento = (ref.getDay() + 6) % 7;
-  const inicio = new Date(a, m - 1, d - deslocamento);
-  const fim = new Date(a, m - 1, d - deslocamento + 6);
-  const fmt = (dt) => `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}`;
-  return `${fmt(inicio)} a ${fmt(fim)}`;
-};
 
 const mesAtual = () => {
   const hoje = new Date();
@@ -86,6 +75,7 @@ export default function TurmasScreen() {
   const [diasSemanaSelecionados, setDiasSemanaSelecionados] = useState([]);
   const [mesReplicacao, setMesReplicacao] = useState('');
   const [mesesDestino, setMesesDestino] = useState([]);
+  const [semanaModelo, setSemanaModelo] = useState('');
   const [modalidadeReplicarId, setModalidadeReplicarId] = useState('');
   const [replicando, setReplicando] = useState(false);
   const [deletandoHorarios, setDeletandoHorarios] = useState(false);
@@ -481,10 +471,21 @@ export default function TurmasScreen() {
 
   const handleReplicar = async () => {
     try {
+      if (!modalidadeReplicarId) {
+        showError('Selecione a modalidade');
+        return;
+      }
+
       setReplicando(true);
       let resultado;
 
       if (periodoReplicacao === 'mes_todo') {
+        if (!semanaModelo) {
+          showError('Selecione a semana modelo');
+          setReplicando(false);
+          return;
+        }
+
         // Semana da data selecionada vira modelo para todas as semanas dos meses escolhidos
         if (mesesDestino.length === 0) {
           showError('Selecione pelo menos um mês de destino');
@@ -493,12 +494,12 @@ export default function TurmasScreen() {
         }
 
         console.log('🔵 [handleReplicar] Chamando API replicar-semana:', {
-          semanaData: dataSelecionada,
+          semanaModelo,
           mesesDestino,
           modalidadeId: modalidadeReplicarId,
         });
 
-        resultado = await turmaService.replicarSemana(dataSelecionada, mesesDestino, modalidadeReplicarId);
+        resultado = await turmaService.replicarSemana(semanaModelo, mesesDestino, modalidadeReplicarId);
       } else {
         if (periodoReplicacao === 'custom' && diasSemanaSelecionados.length === 0) {
           showError('Selecione pelo menos um dia da semana');
@@ -596,6 +597,7 @@ export default function TurmasScreen() {
     }
     
     console.log('🟣 [handleAbrirReplicar] Abrindo modal de replicar');
+    setSemanaModelo(domingoDaSemana(dataSelecionada));
     setModalReplicarVisible(true);
   };
 
@@ -1797,26 +1799,28 @@ ${listaTurmas ? `Turmas deletadas:\n${listaTurmas}` : ''}
               </View>
 
               <ScrollView className="px-6 py-4" showsVerticalScrollIndicator={false}>
-                <View style={styles.formGroup}>
-                  <Text style={styles.formLabel}>Data de Origem</Text>
-                  <Text style={styles.replicarDataTexto}>
-                    {formatarDataExibicao(dataSelecionada)} ({obterDiaSemana(dataSelecionada)})
-                  </Text>
-                </View>
+                {periodoReplicacao !== 'mes_todo' && (
+                  <View style={styles.formGroup}>
+                    <Text style={styles.formLabel}>Data de Origem</Text>
+                    <Text style={styles.replicarDataTexto}>
+                      {formatarDataExibicao(dataSelecionada)} ({obterDiaSemana(dataSelecionada)})
+                    </Text>
+                  </View>
+                )}
 
                 <View style={styles.formGroup}>
                   <Text style={styles.formLabel}>
-                    Modalidade (Opcional)
+                    Modalidade
+                    <Text style={styles.required}>*</Text>
                   </Text>
                   <SearchableDropdown
                     data={modalidades}
                     value={modalidadeReplicarId}
                     onChange={setModalidadeReplicarId}
-                    placeholder="Todas as modalidades"
+                    placeholder="Selecione uma modalidade"
                     labelKey="nome"
                     valueKey="id"
                   />
-                  <Text style={styles.helperText}>Deixe vazio para replicar todas as modalidades</Text>
                 </View>
 
                 <View style={styles.formGroup}>
@@ -1931,13 +1935,22 @@ ${listaTurmas ? `Turmas deletadas:\n${listaTurmas}` : ''}
                 {periodoReplicacao === 'mes_todo' && (
                   <View style={styles.formGroup}>
                     <Text style={styles.formLabel}>
+                      Semana Modelo (domingo a sábado)
+                      <Text style={styles.required}>*</Text>
+                    </Text>
+                    <SeletorSemana
+                      value={semanaModelo}
+                      onChange={setSemanaModelo}
+                      disabled={replicando}
+                    />
+                    {semanaModelo !== '' && (
+                      <Text style={styles.helperText}>Modelo: {descreverSemana(semanaModelo)}</Text>
+                    )}
+                    <View style={{ height: 14 }} />
+                    <Text style={styles.formLabel}>
                       Meses de Destino
                       <Text style={styles.required}>*</Text>
                     </Text>
-                    <Text style={styles.replicarDataTexto}>
-                      Semana modelo: {semanaDaData(dataSelecionada)}
-                    </Text>
-                    <View style={{ height: 10 }} />
                     <SeletorMeses
                       value={mesesDestino}
                       onChange={setMesesDestino}
@@ -1946,7 +1959,7 @@ ${listaTurmas ? `Turmas deletadas:\n${listaTurmas}` : ''}
                       disabled={replicando}
                     />
                     <Text style={styles.helperText}>
-                      As turmas de cada dia da semana modelo são copiadas para o mesmo dia da semana em todas as semanas dos meses escolhidos. Horários que já existem são pulados.
+                      As turmas de cada dia da semana modelo são copiadas para o mesmo dia da semana em todas as semanas dos meses escolhidos (ex.: domingo → todos os domingos). Horários que já existem são pulados.
                     </Text>
                   </View>
                 )}
