@@ -44,6 +44,21 @@
 - ✅ Modal de confirmação antes de cancelar
 - ✅ Modal de sucesso/erro após cancelar
 
+**Assinatura atual e histórico financeiro:**
+
+- Cada assinatura tem um único card, com valor, ciclo, status e datas da assinatura atual.
+- A seção “Histórico de pagamentos” mostra os pagamentos separadamente, do mais recente para o mais antigo, com valor, status, data, forma de pagamento e informação da baixa.
+- Pagamentos antigos não usam o ciclo nem as datas atuais como se fossem da compra anterior. Por exemplo, uma assinatura atual de R$ 360,00 mantém o pagamento antigo de R$ 200,00 apenas no histórico.
+- Parcelas futuras em aberto continuam representadas pela próxima cobrança, sem aparecer no histórico; pagamentos cancelados não são exibidos.
+- As ações aparecem uma vez por assinatura. Um pagamento anterior quitado não bloqueia uma renovação liberada pela API.
+- O histórico é limitado aos pagamentos enviados pelo endpoint (atualmente até oito por matrícula), não substituindo o financeiro completo da matrícula.
+
+Teste de regressão (Node.js 22.6+), a partir da pasta `mobile`:
+
+```sh
+node --experimental-strip-types --test tests/assinaturaFinanceiro.test.mjs
+```
+
 **Header:**
 
 - Ícone de voltar (arrow-left)

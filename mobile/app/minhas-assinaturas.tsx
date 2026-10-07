@@ -3,6 +3,12 @@ import { getApiUrlRuntime } from "@/src/config/urls";
 import { authService } from "@/src/services/authService";
 import { colors } from "@/src/theme/colors";
 import { handleUnauthorizedResponse } from "@/src/utils/authHelpers";
+import {
+  criarCardsAssinaturas,
+  isPagamentoPago,
+  podePagarAssinatura,
+  type PagamentoAssinatura,
+} from "@/src/utils/assinaturaFinanceiro";
 import { isSessionExpiredVisible } from "@/src/utils/sessionExpired";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -41,20 +47,6 @@ interface GatewayAssinatura {
 interface PlanoAssinatura {
   nome: string;
   modalidade: string;
-}
-
-interface PagamentoAssinatura {
-  id: number;
-  valor: number;
-  data_vencimento?: string | null;
-  data_pagamento?: string | null;
-  status?: string | null;
-  status_pagamento_id?: number | null;
-  forma_pagamento?: string | null;
-  baixado_por_nome?: string | null;
-  criado_por_nome?: string | null;
-  tipo_baixa_nome?: string | null;
-  origem?: string | null;
 }
 
 interface Assinatura {
@@ -129,12 +121,10 @@ interface ErrorModalData {
   type: "error" | "success" | "warning";
 }
 
-/** Um card da lista = um pagamento (ou a assinatura se ainda sem parcelas). */
 type AssinaturaCardItem = {
   key: string;
   assinatura: Assinatura;
-  pagamento: PagamentoAssinatura | null;
-  showActions: boolean;
+  pagamentos: PagamentoAssinatura[];
 };
 
 export default function MinhasAssinaturasScreen() {
@@ -631,160 +621,33 @@ export default function MinhasAssinaturasScreen() {
       day: "2-digit",
     }).format(new Date());
 
-    const isPagamentoPago = (pagamento: PagamentoAssinatura) => {
-      const statusId = Number(pagamento.status_pagamento_id ?? 0);
-      const status = String(pagamento.status || "").toLowerCase();
-      return (
-        statusId === 2 ||
-        !!pagamento.data_pagamento ||
-        status.includes("pago")
-      );
-    };
-
-    const isParcelaFuturaAberta = (pagamento: PagamentoAssinatura) => {
-      if (isPagamentoPago(pagamento)) return false;
-      const venc = String(pagamento.data_vencimento || "").slice(0, 10);
-      if (!venc) return false;
-      return venc > hojeIso;
-    };
-
-    const cards: AssinaturaCardItem[] = [];
-    for (const assinatura of assinaturas) {
-      const pagamentos = Array.isArray(assinatura.pagamentos)
-        ? assinatura.pagamentos.filter((p) => !isParcelaFuturaAberta(p))
-        : [];
-      const pagos = pagamentos.filter(isPagamentoPago);
-      const abertos = pagamentos.filter((pagamento) => {
-        if (isPagamentoPago(pagamento)) return false;
-        const statusId = Number(pagamento.status_pagamento_id ?? 0);
-        // Alinhado ao backend: só Aguardando (1) ou Atrasado (3).
-        return statusId === 1 || statusId === 3;
-      });
-
-      // Pagos + abertos/vencidos juntos (igual backend). Parcelas futuras já filtradas.
-      const lista = [...pagos, ...abertos].sort((a, b) => {
-        const da = String(a.data_pagamento || a.data_vencimento || "");
-        const db = String(b.data_pagamento || b.data_vencimento || "");
-        if (da === db) {
-          return Number(b.id ?? 0) - Number(a.id ?? 0);
-        }
-        return db.localeCompare(da);
-      });
-
-      if (lista.length === 0) {
-        const statusCodigo = String(assinatura.status?.codigo || "").toLowerCase();
-        if (statusCodigo === "pendente" || statusCodigo === "pending") {
-          continue;
-        }
-        cards.push({
-          key: `assinatura-${assinatura.id}`,
-          assinatura,
-          pagamento: null,
-          // Ações no card da assinatura: cancelar (recorrente) e/ou pagar.
-          // O render já filtra por podePagar / isAvulso / status.
-          showActions: true,
-        });
-        continue;
-      }
-
-      // Action stack num único card: prioriza fatura em aberto (pagar + cancelar);
-      // senão o primeiro da lista (histórico pago / cancelar).
-      let actionIndex = 0;
-      if (assinatura.pode_pagar) {
-        const unpaidIdx = lista.findIndex((p) => !isPagamentoPago(p));
-        if (unpaidIdx >= 0) {
-          actionIndex = unpaidIdx;
-        }
-      }
-
-      lista.forEach((pagamento, index) => {
-        cards.push({
-          key: `pagamento-${assinatura.id}-${pagamento.id}`,
-          assinatura,
-          pagamento,
-          showActions: index === actionIndex,
-        });
-      });
-    }
-    return cards;
+    return criarCardsAssinaturas(assinaturas, hojeIso);
   }, [assinaturas]);
 
   const renderAssinaturaCard = ({ item }: { item: AssinaturaCardItem }) => {
-    const { assinatura, pagamento, showActions } = item;
+    const { assinatura, pagamentos } = item;
     const dataInicioText = formatDate(assinatura.data_inicio) || "-";
     const isAtiva = assinatura.status.codigo === "ativa";
     const isCancelada =
       assinatura.status.codigo === "cancelada" ||
       assinatura.status.codigo === "cancelled";
-    const isPendente = assinatura.status.codigo === "pendente";
-    const statusCodigo =
-      typeof assinatura.status.codigo === "string"
-        ? assinatura.status.codigo.toLowerCase()
-        : "";
-    const isAssinaturaPaga =
-      statusCodigo === "paga" ||
-      statusCodigo === "pago" ||
-      statusCodigo === "paid" ||
-      statusCodigo === "approved";
+    const isPendente = ["pendente", "pending"].includes(
+      assinatura.status.codigo.toLowerCase(),
+    );
     const isAvulso =
       assinatura.tipo_cobranca === "avulso" || assinatura.recorrente === false;
     const proximaCobrancaText = formatDate(assinatura.proxima_cobranca);
     const fimAcessoText = formatDate(assinatura.data_fim);
     const ultimaCobrancaText = formatDate(assinatura.ultima_cobranca);
-    const estePagamentoEstaPago = pagamento
-      ? String(pagamento.status || "")
-          .toLowerCase()
-          .includes("pago") || !!pagamento.data_pagamento
-      : false;
-    // Badge/UI: sem pagamento individual, usa status da assinatura.
-    const pagamentoPago = pagamento ? estePagamentoEstaPago : isAssinaturaPaga;
-    // Pagar: respeita pode_pagar do backend; só bloqueia se ESTE card for um pagamento já pago.
-    // Não usar isAssinaturaPaga aqui — quebraria renovação/avulso em card sem pagamento.
-    const podePagar =
-      !!assinatura.pode_pagar &&
-      (isPendente ? !!assinatura.payment_url : true) &&
-      !estePagamentoEstaPago;
-    const isManual =
-      !!pagamento &&
-      (pagamento.origem === "manual" ||
-        (!!pagamento.baixado_por_nome &&
-          pagamento.origem !== "mercadopago"));
-    const nomeBaixa = pagamento
-      ? pagamento.baixado_por_nome || pagamento.criado_por_nome || ""
-      : "";
-    const primeiroNome = nomeBaixa.trim().split(/\s+/)[0] || "";
-    const labelBaixa =
-      pagamento && pagamentoPago
-        ? isManual && primeiroNome
-          ? `Baixa manual por ${primeiroNome}`
-          : "Baixa Automática por Integração"
-        : null;
-
-    const statusBadgeLabel = pagamento?.status || assinatura.status.nome;
-    const statusBadgeColor = pagamentoPago
-      ? "#28A745"
-      : pagamento
-        ? "#FFA500"
-        : assinatura.status.cor;
-    const valorExibido = formatCurrency(
-      pagamento ? pagamento.valor : assinatura.valor,
-    );
-    // Não misturar vencimento sob o rótulo "Pagamento" — confunde quando ainda não pagou.
-    const dataReferenciaLabel = pagamentoPago ? "Pago em" : "Vencimento";
-    const dataReferenciaText = pagamento
-      ? pagamentoPago
-        ? formatDate(pagamento.data_pagamento) || "—"
-        : formatDate(pagamento.data_vencimento) || "—"
-      : null;
-
-    const statusPagamentoLower = String(
-      pagamento?.status || assinatura.status.nome || "",
-    ).toLowerCase();
+    const temPagamentoAberto = pagamentos.some((p) => !isPagamentoPago(p));
+    const temPagamentoPago = pagamentos.some(isPagamentoPago);
+    const podePagar = podePagarAssinatura(assinatura, pagamentos);
+    const statusBadgeLabel = assinatura.status.nome;
+    const statusBadgeColor = assinatura.status.cor;
+    const valorExibido = formatCurrency(assinatura.valor);
     const isPagamentoPendente =
-      !pagamentoPago &&
-      (statusPagamentoLower.includes("aguard") ||
-        statusPagamentoLower.includes("pendente") ||
-        (!pagamento && (isPendente || !!podePagar)));
+      !isCancelada &&
+      (temPagamentoAberto || (isPendente && !temPagamentoPago));
 
     return (
       <View
@@ -872,64 +735,95 @@ export default function MinhasAssinaturasScreen() {
           ) : null}
         </View>
 
-        {pagamento && dataReferenciaText ? (
-          <View style={styles.pagamentoDetalheBox}>
-            <View style={styles.pagamentoDetalheRow}>
-              <Text style={styles.pagamentoDetalheLabel}>
-                {dataReferenciaLabel}
-              </Text>
-              <Text style={styles.pagamentoDetalheValue}>
-                {dataReferenciaText}
-                {pagamentoPago && pagamento.forma_pagamento
-                  ? ` · ${pagamento.forma_pagamento}`
-                  : ""}
-              </Text>
-            </View>
-            {labelBaixa ? (
-              <Text style={styles.historicoBaixa} numberOfLines={2}>
-                {labelBaixa}
-              </Text>
-            ) : null}
+        {pagamentos.length > 0 ? (
+          <View style={styles.historicoContainer}>
+            <Text style={styles.historicoTitulo}>Histórico de pagamentos</Text>
+            {pagamentos.map((pagamento) => {
+              const pago = isPagamentoPago(pagamento);
+              const isManual =
+                pagamento.origem === "manual" ||
+                (!!pagamento.baixado_por_nome &&
+                  pagamento.origem !== "mercadopago");
+              const nomeBaixa =
+                pagamento.baixado_por_nome || pagamento.criado_por_nome || "";
+              const primeiroNome = nomeBaixa.trim().split(/\s+/)[0] || "";
+              const labelBaixa = pago
+                ? isManual && primeiroNome
+                  ? `Baixa manual por ${primeiroNome}`
+                  : "Baixa Automática por Integração"
+                : null;
+              return (
+                <View key={pagamento.id} style={styles.pagamentoDetalheBox}>
+                  <View style={styles.historicoResumo}>
+                    <Text style={styles.pagamentoDetalheValue}>
+                      {formatCurrency(pagamento.valor)}
+                    </Text>
+                    <Text style={styles.pagamentoDetalheLabel}>
+                      {pagamento.status || (pago ? "Pago" : "Pendente")}
+                    </Text>
+                  </View>
+                  <View style={styles.pagamentoDetalheRow}>
+                    <Text style={styles.pagamentoDetalheLabel}>
+                      {pago ? "Pago em" : "Vencimento"}
+                    </Text>
+                    <Text style={styles.pagamentoDetalheValue}>
+                      {formatDate(
+                        pago
+                          ? pagamento.data_pagamento
+                          : pagamento.data_vencimento,
+                      ) || "—"}
+                      {pago && pagamento.forma_pagamento
+                        ? ` · ${pagamento.forma_pagamento}`
+                        : ""}
+                    </Text>
+                  </View>
+                  {labelBaixa ? (
+                    <Text style={styles.historicoBaixa} numberOfLines={2}>
+                      {labelBaixa}
+                    </Text>
+                  ) : null}
+                </View>
+              );
+            })}
           </View>
         ) : null}
 
-        {showActions &&
-          (podePagar || (!isAvulso && (isAtiva || isPendente))) && (
-            <View style={styles.actionStack}>
-              {podePagar && (
-                <TouchableOpacity
-                  style={styles.botaoPagar}
-                  onPress={() => handlePagarAssinatura(assinatura)}
-                  activeOpacity={0.8}
-                >
-                  <Feather name="credit-card" size={15} color="#fff" />
-                  <Text style={styles.botaoPagarTexto}>
-                    {assinatura.pode_renovar ? "Renovar agora" : "Pagar agora"}
-                  </Text>
-                </TouchableOpacity>
-              )}
+        {(podePagar || (!isAvulso && (isAtiva || isPendente))) && (
+          <View style={styles.actionStack}>
+            {podePagar && (
+              <TouchableOpacity
+                style={styles.botaoPagar}
+                onPress={() => handlePagarAssinatura(assinatura)}
+                activeOpacity={0.8}
+              >
+                <Feather name="credit-card" size={15} color="#fff" />
+                <Text style={styles.botaoPagarTexto}>
+                  {assinatura.pode_renovar ? "Renovar agora" : "Pagar agora"}
+                </Text>
+              </TouchableOpacity>
+            )}
 
-              {!isAvulso && (isAtiva || isPendente) && (
-                <TouchableOpacity
-                  style={styles.botaoCancelar}
-                  onPress={() => handleCancelarAssinatura(assinatura)}
-                  disabled={cancelando === assinatura.id}
-                  activeOpacity={0.7}
-                >
-                  {cancelando === assinatura.id ? (
-                    <ActivityIndicator color="#DC3545" size="small" />
-                  ) : (
-                    <>
-                      <Feather name="trash-2" size={15} color="#DC3545" />
-                      <Text style={styles.botaoCancelarTexto}>
-                        Cancelar Assinatura
-                      </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
+            {!isAvulso && (isAtiva || isPendente) && (
+              <TouchableOpacity
+                style={styles.botaoCancelar}
+                onPress={() => handleCancelarAssinatura(assinatura)}
+                disabled={cancelando === assinatura.id}
+                activeOpacity={0.7}
+              >
+                {cancelando === assinatura.id ? (
+                  <ActivityIndicator color="#DC3545" size="small" />
+                ) : (
+                  <>
+                    <Feather name="trash-2" size={15} color="#DC3545" />
+                    <Text style={styles.botaoCancelarTexto}>
+                      Cancelar Assinatura
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
       </View>
     );
   };
@@ -1719,6 +1613,21 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#475569",
     marginTop: 2,
+  },
+
+  historicoContainer: {
+    marginTop: 14,
+  },
+  historicoTitulo: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#475569",
+  },
+  historicoResumo: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
   },
 
   pagamentoDetalheBox: {
