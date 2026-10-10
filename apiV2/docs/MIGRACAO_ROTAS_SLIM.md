@@ -44,6 +44,22 @@ Rotas modulares em `apiV2/routes/v2/**/*.php`, carregadas por `routes/api.php`. 
 
 Legenda: ✅ completo para o escopo do painel · ⚠️ parcial · ❌ pendente
 
+### Migração de plano no mobile: assinatura por matrícula
+
+O schema mantém `assinaturas.matricula_id` único. Ao gerar o checkout da migração,
+`MatriculaMigracaoService` reutiliza a assinatura da matrícula no tenant, independentemente
+do status anterior, atualizando plano, valor, ciclo e referência do gateway para pendente.
+Os dados de cancelamento e o método de pagamento anterior são substituídos; o ID e a
+data de criação são preservados. O histórico financeiro permanece em `pagamentos_plano`
+e `historico_planos`, seguindo as regras de crédito da migração.
+
+A gravação local de PIX e assinatura ocorre em uma transação, com bloqueio da matrícula.
+Se o gateway já criou o pagamento e a persistência falhar, o log crítico registra
+`matricula_id`, `tenant_id`, `external_reference`, `preference_id` e `pix_payment_id`.
+Antes de repetir uma compra que falhou nessa etapa, reconciliar esses identificadores
+com o gateway e os registros locais para evitar criar uma cobrança adicional.
+Reverter a transação local não cancela o pagamento externo.
+
 ---
 
 ## Denylist atual (`painel/src/config/apiRouting.js`)

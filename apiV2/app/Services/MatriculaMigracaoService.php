@@ -1063,11 +1063,6 @@ class MatriculaMigracaoService
     ): void {
         $gatewayId = $this->lookupId('assinatura_gateways', 'mercadopago', 1);
         $statusPendenteId = $this->lookupId('assinatura_status', 'pendente', 1);
-        $statusPagaId = $this->lookupId(
-            'assinatura_status',
-            'paga',
-            $this->lookupId('assinatura_status', 'ativa', null)
-        );
         // Preferir a frequência vinculada ao ciclo; busca por nome só como fallback (legado).
         $frequenciaId ??= $this->lookupId('assinatura_frequencias', strtolower($cicloNome), 4);
 
@@ -1099,74 +1094,43 @@ class MatriculaMigracaoService
                 : null,
             'data_fim' => ! $isRecorrente ? $dataVencimento : null,
             'tipo_cobranca' => $isRecorrente ? 'recorrente' : 'avulso',
+            'metodo_pagamento_id' => $metodoPagamentoId,
+            'cancelado_por_id' => null,
+            'motivo_cancelamento' => null,
             'atualizado_em' => $agora->format('Y-m-d H:i:s'),
         ];
 
-        if ($metodoPagamentoId !== null) {
-            $payload['metodo_pagamento_id'] = $metodoPagamentoId;
+        // O schema permite uma assinatura por matrícula; o histórico fica em pagamentos_plano.
+        // A matrícula serializa também a criação quando ainda não existe uma assinatura.
+        $matricula = DB::table('matriculas')
+            ->where('id', $matriculaId)
+            ->where('tenant_id', $tenantId)
+            ->lockForUpdate()
+            ->first(['id']);
+        if (! $matricula) {
+            throw new \RuntimeException("Matrícula {$matriculaId} não encontrada no tenant {$tenantId}");
         }
 
-        // Reutilizar só assinatura PENDENTE da matrícula.
-        // Assinatura já paga/ativa NÃO deve ser sobrescrita — senão some da tela.
         $pdo = $this->db();
-        $stmtPend = $pdo->prepare("
-            SELECT a.id
-            FROM assinaturas a
-            INNER JOIN assinatura_status s ON s.id = a.status_id
-            WHERE a.matricula_id = ? AND a.tenant_id = ?
-              AND s.codigo IN ('pendente', 'pending')
-            ORDER BY a.id DESC
-            LIMIT 1
-        ");
-        $stmtPend->execute([$matriculaId, $tenantId]);
-        $pendenteId = $stmtPend->fetchColumn();
+        $assinatura = DB::table('assinaturas')
+            ->where('matricula_id', $matriculaId)
+            ->where('tenant_id', $tenantId)
+            ->lockForUpdate()
+            ->first(['id']);
 
-        if ($pendenteId) {
+        if ($assinatura) {
             $sets = [];
             $params = [];
             foreach ($payload as $col => $val) {
                 $sets[] = "{$col} = ?";
                 $params[] = $val;
             }
-            $params[] = (int) $pendenteId;
+            $params[] = (int) $assinatura->id;
             $params[] = $tenantId;
             $pdo->prepare('UPDATE assinaturas SET '.implode(', ', $sets).' WHERE id = ? AND tenant_id = ?')
                 ->execute($params);
 
             return;
-        }
-
-        // Encerrar a assinatura vigente (paga/ativa) preservando histórico na listagem.
-        $stmtVigente = $pdo->prepare("
-            SELECT a.id
-            FROM assinaturas a
-            INNER JOIN assinatura_status s ON s.id = a.status_id
-            WHERE a.matricula_id = ? AND a.tenant_id = ?
-              AND s.codigo NOT IN ('pendente', 'pending', 'cancelada', 'cancelled')
-            ORDER BY a.id DESC
-            LIMIT 1
-        ");
-        $stmtVigente->execute([$matriculaId, $tenantId]);
-        $vigenteId = $stmtVigente->fetchColumn();
-        if ($vigenteId && $statusPagaId !== null && $statusPagaId > 0 && $statusPagaId !== $statusPendenteId) {
-            $pdo->prepare("
-                UPDATE assinaturas
-                SET status_id = ?,
-                    status_gateway = CASE
-                        WHEN status_gateway IS NULL OR status_gateway = '' OR status_gateway = 'pending'
-                        THEN 'approved'
-                        ELSE status_gateway
-                    END,
-                    data_fim = COALESCE(data_fim, ?),
-                    atualizado_em = NOW()
-                WHERE id = ? AND tenant_id = ?
-            ")->execute([$statusPagaId, $agora->format('Y-m-d'), (int) $vigenteId, $tenantId]);
-        } elseif ($vigenteId) {
-            Log::warning('MatriculaMigracaoService: status final de assinatura não configurado; assinatura vigente preservada', [
-                'tenant_id' => $tenantId,
-                'matricula_id' => $matriculaId,
-                'assinatura_id' => (int) $vigenteId,
-            ]);
         }
 
         $cols = array_merge(['tenant_id', 'matricula_id', 'criado_em'], array_keys($payload));

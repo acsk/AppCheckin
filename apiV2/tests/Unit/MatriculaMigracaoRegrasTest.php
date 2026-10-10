@@ -303,6 +303,10 @@ class MatriculaMigracaoRegrasTest extends TestCase
     {
         $this->inserirMatricula();
         $this->inserirPlano(2, 500.0);
+        DB::table('assinaturas')->insert([
+            'id' => 72, 'tenant_id' => self::TENANT, 'matricula_id' => self::MATRICULA,
+            'status_id' => 2, 'valor' => 300.0, 'gateway_preference_id' => 'checkout-anterior',
+        ]);
         DB::table('assinatura_frequencias')->insert(['id' => 3, 'nome' => 'Trimestral', 'codigo' => 'trimestral', 'meses' => 3]);
         DB::table('plano_ciclos')->insert([
             'id' => 7, 'plano_id' => 2, 'tenant_id' => self::TENANT, 'ativo' => 1, 'valor' => 900.0,
@@ -322,7 +326,12 @@ class MatriculaMigracaoRegrasTest extends TestCase
         $this->assertSame('assinatura', $result['body']['data']['tipo_pagamento']);
 
         $assinatura = DB::table('assinaturas')->first();
+        $this->assertSame(1, DB::table('assinaturas')->count());
+        $this->assertSame(72, (int) $assinatura->id);
         $this->assertSame('recorrente', $assinatura->tipo_cobranca);
+        $this->assertSame('sub-1', $assinatura->gateway_assinatura_id);
+        $this->assertNull($assinatura->gateway_preference_id);
+        $this->assertSame(1, (int) $assinatura->metodo_pagamento_id);
         $this->assertSame(3, (int) $assinatura->frequencia_id);
         $this->assertSame(
             AcademyDateTime::now()->modify('+3 months')->format('Y-m-d'),
@@ -330,14 +339,14 @@ class MatriculaMigracaoRegrasTest extends TestCase
         );
     }
 
-    public function test_migrar_reaproveita_assinatura_pendente_e_encerra_so_do_tenant(): void
+    public function test_migrar_reaproveita_assinatura_pendente_sem_alterar_outro_tenant(): void
     {
         $this->inserirMatricula();
         $this->inserirPlano(2, 500.0);
         // Assinatura pendente desta matrícula (reaproveitada) e uma de outro tenant que não pode mudar.
         DB::table('assinaturas')->insert([
             ['id' => 70, 'tenant_id' => self::TENANT, 'matricula_id' => self::MATRICULA, 'status_id' => 1, 'valor' => 300.0, 'payment_url' => 'antiga'],
-            ['id' => 71, 'tenant_id' => 999, 'matricula_id' => self::MATRICULA, 'status_id' => 1, 'valor' => 1.0, 'payment_url' => 'outro-tenant'],
+            ['id' => 71, 'tenant_id' => 999, 'matricula_id' => 999, 'status_id' => 1, 'valor' => 1.0, 'payment_url' => 'outro-tenant'],
         ]);
 
         $mp = $this->mercadoPago();
@@ -352,7 +361,7 @@ class MatriculaMigracaoRegrasTest extends TestCase
         $this->assertSame(2, DB::table('assinaturas')->count());
     }
 
-    public function test_migrar_preserva_assinatura_vigente_quando_status_final_nao_existe(): void
+    public function test_migrar_reutiliza_assinatura_vigente_quando_status_final_nao_existe(): void
     {
         $this->inserirMatricula();
         $this->inserirPlano(2, 500.0);
@@ -374,8 +383,69 @@ class MatriculaMigracaoRegrasTest extends TestCase
         $result = $this->service()->migrar(self::USER, self::TENANT, ['plano_id' => 2, 'metodo_pagamento' => 'checkout']);
 
         $this->assertSame(200, $result['status'], json_encode($result['body']));
-        $this->assertSame(3, (int) DB::table('assinaturas')->where('id', 72)->value('status_id'));
-        $this->assertSame('approved', DB::table('assinaturas')->where('id', 72)->value('status_gateway'));
+        $this->assertSame(1, DB::table('assinaturas')->count());
+        $this->assertSame(1, (int) DB::table('assinaturas')->where('id', 72)->value('status_id'));
+        $this->assertSame('pending', DB::table('assinaturas')->where('id', 72)->value('status_gateway'));
+        $this->assertSame('pref-status-final', DB::table('assinaturas')->where('id', 72)->value('gateway_preference_id'));
+    }
+
+    public static function statusAssinaturaExistente(): array
+    {
+        return [
+            'pendente' => [1, 'pendente'],
+            'paga' => [2, 'paga'],
+            'ativa' => [3, 'ativa'],
+            'cancelada' => [4, 'cancelada'],
+        ];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('statusAssinaturaExistente')]
+    public function test_migrar_respeita_assinatura_unica_e_preserva_historico_financeiro(int $statusId, string $codigo): void
+    {
+        $this->inserirMatricula();
+        $this->aptidaoApta(geraCredito: false);
+        $this->inserirPlano(2, 500.0);
+        $this->pagamentoPago(501);
+        $pagamentoAnterior = $this->row('pagamentos_plano', 501);
+        if ($statusId > 2) {
+            DB::table('assinatura_status')->insert(['id' => $statusId, 'codigo' => $codigo]);
+        }
+        DB::table('assinaturas')->insert([
+            'id' => 72, 'tenant_id' => self::TENANT, 'matricula_id' => self::MATRICULA,
+            'status_id' => $statusId, 'status_gateway' => 'approved', 'valor' => 300.0,
+            'criado_em' => '2026-05-21 12:00:00',
+            'gateway_assinatura_id' => 'recorrencia-anterior',
+            'metodo_pagamento_id' => 1,
+            'cancelado_por_id' => $codigo === 'cancelada' ? 1 : null,
+            'motivo_cancelamento' => $codigo === 'cancelada' ? 'Cancelamento anterior' : null,
+        ]);
+        $mp = $this->mercadoPago();
+        $mp->shouldReceive('criarPreferenciaPagamento')->once()->andReturn([
+            'id' => 'pref-migracao', 'init_point' => 'https://mp/nova', 'external_reference' => 'MAT-30-nova',
+        ]);
+
+        $result = $this->service()->migrar(self::USER, self::TENANT, [
+            'plano_id' => 2, 'metodo_pagamento' => 'checkout',
+        ]);
+
+        $this->assertSame(200, $result['status'], json_encode($result['body']));
+        $this->assertSame(1, DB::table('assinaturas')->count());
+        $assinatura = $this->row('assinaturas', 72);
+        $this->assertSame(1, (int) $assinatura['status_id']);
+        $this->assertSame('pending', $assinatura['status_gateway']);
+        $this->assertSame('pref-migracao', $assinatura['gateway_preference_id']);
+        $this->assertSame('MAT-30-nova', $assinatura['external_reference']);
+        $this->assertSame('https://mp/nova', $assinatura['payment_url']);
+        $this->assertEquals(500.0, $assinatura['valor']);
+        $this->assertSame(2, (int) $assinatura['plano_id']);
+        $this->assertNull($assinatura['gateway_assinatura_id']);
+        $this->assertNull($assinatura['metodo_pagamento_id']);
+        $this->assertNull($assinatura['cancelado_por_id']);
+        $this->assertNull($assinatura['motivo_cancelamento']);
+        $this->assertSame('2026-05-21 12:00:00', $assinatura['criado_em']);
+        $this->assertSame($pagamentoAnterior, $this->row('pagamentos_plano', 501));
+        $this->assertSame(2, DB::table('pagamentos_plano')->count());
+        $this->assertSame(1, DB::table('historico_planos')->count());
     }
 
     public function test_migrar_ciclo_sem_frequencia_vinculada_usa_nome_pela_duracao(): void
@@ -862,7 +932,7 @@ class MatriculaMigracaoRegrasTest extends TestCase
             'CREATE TABLE assinatura_status (id INTEGER PRIMARY KEY, codigo TEXT)',
             'CREATE TABLE assinatura_gateways (id INTEGER PRIMARY KEY, codigo TEXT)',
             'CREATE TABLE metodos_pagamento (id INTEGER PRIMARY KEY, codigo TEXT)',
-            'CREATE TABLE assinaturas (id INTEGER PRIMARY KEY, tenant_id INTEGER, matricula_id INTEGER, criado_em TEXT, aluno_id INTEGER, plano_id INTEGER, gateway_id INTEGER, gateway_assinatura_id TEXT, gateway_preference_id TEXT, external_reference TEXT, payment_url TEXT, status_id INTEGER, status_gateway TEXT, valor REAL, frequencia_id INTEGER, dia_cobranca INTEGER, data_inicio TEXT, proxima_cobranca TEXT, data_fim TEXT, tipo_cobranca TEXT, atualizado_em TEXT, metodo_pagamento_id INTEGER)',
+            'CREATE TABLE assinaturas (id INTEGER PRIMARY KEY, tenant_id INTEGER, matricula_id INTEGER UNIQUE, criado_em TEXT, aluno_id INTEGER, plano_id INTEGER, gateway_id INTEGER, gateway_assinatura_id TEXT, gateway_preference_id TEXT, external_reference TEXT, payment_url TEXT, status_id INTEGER, status_gateway TEXT, valor REAL, frequencia_id INTEGER, dia_cobranca INTEGER, data_inicio TEXT, proxima_cobranca TEXT, data_fim TEXT, tipo_cobranca TEXT, atualizado_em TEXT, metodo_pagamento_id INTEGER, cancelado_por_id INTEGER, motivo_cancelamento TEXT)',
             'CREATE TABLE pagamentos_pix (id INTEGER PRIMARY KEY, tenant_id INTEGER, matricula_id INTEGER, payment_id TEXT, ticket_url TEXT, qr_code TEXT, qr_code_base64 TEXT, expires_at TEXT, status TEXT)',
         ];
         foreach ($ddl as $sql) {
