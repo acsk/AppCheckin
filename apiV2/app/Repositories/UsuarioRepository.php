@@ -887,7 +887,11 @@ class UsuarioRepository
                     'ativo' => $data['ativo'] ?? 1,
                 ]);
 
-                DB::table('alunos')->insert([
+                $sexo = \App\Support\SexoAluno::colunaExiste()
+                    ? ['sexo' => \App\Support\SexoAluno::normalizar($data['sexo'] ?? null)]
+                    : [];
+
+                DB::table('alunos')->insert($sexo + [
                     'usuario_id' => $usuarioId,
                     'nome' => $nome,
                     'telefone' => $telefone,

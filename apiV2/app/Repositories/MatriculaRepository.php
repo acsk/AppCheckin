@@ -242,20 +242,29 @@ class MatriculaRepository
                 }
 
                 // 2) Financeiro: parcela vencida/atrasada
-                $temParcelaVencida = DB::table('pagamentos_plano')
+                $vencParcelaAberta = DB::table('pagamentos_plano')
                     ->where('matricula_id', $matriculaId)
                     ->whereIn('status_pagamento_id', [1, 3])
                     ->whereNull('data_pagamento')
                     ->whereNotNull('data_vencimento')
                     ->where('data_vencimento', '<=', $hoje)
-                    ->exists();
+                    ->min('data_vencimento');
 
-                if ($temParcelaVencida) {
+                if ($vencParcelaAberta !== null) {
+                    $vencParcela = substr((string) $vencParcelaAberta, 0, 10);
+                    $vencParcelaTxt = \App\Helpers\DateBr::vencimentoSuffix($vencParcela);
+
+                    // Parcela que vence hoje (ex.: compra/renovação recém-feita no app,
+                    // boleto/PIX ainda não compensado) não está em atraso.
+                    $mensagem = $vencParcela < $hoje
+                        ? 'Há pagamento em atraso na sua matrícula.' . $vencParcelaTxt
+                            . ' Regularize para voltar a fazer check-in.'
+                        : 'Sua matrícula está aguardando a confirmação do pagamento.' . $vencParcelaTxt
+                            . ' Assim que o pagamento for confirmado, o check-in será liberado.';
+
                     return [
                         'code' => 'MATRICULA_PENDENTE',
-                        'mensagem' => 'Há pagamento em atraso na sua matrícula.'
-                            . $vencTxt
-                            . ' Regularize para voltar a fazer check-in.',
+                        'mensagem' => $mensagem,
                         'matricula_id' => $matriculaId,
                         'status_codigo' => $statusCodigo,
                         'status' => $statusNome,

@@ -19,6 +19,7 @@ import BuscarAlunoCpfModal from '../../components/BuscarAlunoCpfModal';
 import { showSuccess, showError } from '../../utils/toast';
 import { mascaraTelefone, mascaraData } from '../../utils/masks';
 import { formatarData } from '../../utils/formatadores';
+import { SEXO_OPCOES } from '../../utils/constants';
 import api from '../../services/api';
 import { authService } from '../../services/authService';
 
@@ -39,6 +40,7 @@ export default function FormAlunoScreen() {
     telefone: '',
     cpf: '',
     data_nascimento: '',
+    sexo: '',
     cep: '',
     logradouro: '',
     numero: '',
@@ -108,6 +110,7 @@ export default function FormAlunoScreen() {
         data_nascimento: aluno.data_nascimento
           ? formatarData(String(aluno.data_nascimento).split('T')[0])
           : '',
+        sexo: aluno.sexo || '',
         cep: aluno.cep ? formatCEP(aluno.cep) : '',
         logradouro: aluno.logradouro || '',
         numero: aluno.numero || '',
@@ -267,6 +270,10 @@ export default function FormAlunoScreen() {
       }
     }
 
+    if (!isEdit && !formData.sexo) {
+      newErrors.sexo = 'Sexo é obrigatório';
+    }
+
     if (formData.cep && formData.cep.replace(/\D/g, '').length !== 8) {
       newErrors.cep = 'CEP inválido';
     }
@@ -307,6 +314,10 @@ export default function FormAlunoScreen() {
         payload.data_nascimento = null;
       }
       
+      if (!payload.sexo) {
+        delete payload.sexo;
+      }
+
       if (isEdit && !payload.senha) {
         delete payload.senha;
       }
@@ -328,6 +339,7 @@ export default function FormAlunoScreen() {
         if (lower.includes('email')) fieldErrors.email = msg;
         else if (lower.includes('cpf')) fieldErrors.cpf = msg;
         else if (lower.includes('senha')) fieldErrors.senha = msg;
+        else if (lower.includes('sexo')) fieldErrors.sexo = msg;
         else if (lower.includes('nome')) fieldErrors.nome = msg;
       });
       if (Object.keys(fieldErrors).length > 0) {
@@ -440,7 +452,8 @@ export default function FormAlunoScreen() {
             </View>
           </View>
 
-          <View style={styles.inputGroup}>
+          <View style={styles.row}>
+          <View style={[styles.inputGroup, styles.halfWidth]}>
             <Text style={styles.label}>
               Data de Nascimento{isEdit ? '' : ' *'}
             </Text>
@@ -459,6 +472,25 @@ export default function FormAlunoScreen() {
             {errors.data_nascimento && (
               <Text style={styles.errorText}>{errors.data_nascimento}</Text>
             )}
+          </View>
+
+          <View style={[styles.inputGroup, styles.halfWidth]}>
+            <Text style={styles.label}>Sexo{isEdit ? '' : ' *'}</Text>
+            <View style={[styles.pickerContainer, errors.sexo && styles.inputError]}>
+              <Picker
+                selectedValue={formData.sexo}
+                onValueChange={(value) => handleChange('sexo', value)}
+                enabled={!saving}
+                style={styles.picker}
+              >
+                <Picker.Item label="Selecione" value="" />
+                {SEXO_OPCOES.map((opcao) => (
+                  <Picker.Item key={opcao.value} label={opcao.label} value={opcao.value} />
+                ))}
+              </Picker>
+            </View>
+            {errors.sexo && <Text style={styles.errorText}>{errors.sexo}</Text>}
+          </View>
           </View>
 
           <Text style={styles.sectionTitle}>Endereço</Text>

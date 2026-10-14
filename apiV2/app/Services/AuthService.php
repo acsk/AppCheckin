@@ -559,6 +559,8 @@ class AuthService
         $emailNorm = $email !== '' ? mb_strtolower($email, 'UTF-8') : '';
         $cpf = trim((string) ($data['cpf'] ?? ''));
         $dataNascimento = trim((string) ($data['data_nascimento'] ?? ''));
+        $sexoInformado = trim((string) ($data['sexo'] ?? ''));
+        $sexo = \App\Support\SexoAluno::normalizar($sexoInformado);
         $tenantId = isset($data['tenant_id']) ? (int) $data['tenant_id'] : null;
         if ($tenantId !== null && $tenantId <= 0) {
             $tenantId = null;
@@ -579,6 +581,11 @@ class AuthService
         }
         if ($dataNascimento === '') {
             $erros[] = 'data_nascimento é obrigatória';
+        }
+        if ($sexoInformado === '') {
+            $erros[] = 'sexo é obrigatório';
+        } elseif ($sexo === null) {
+            $erros[] = \App\Support\SexoAluno::mensagemInvalido();
         }
 
         $cpfLimpo = preg_replace('/[^0-9]/', '', $cpf) ?: '';
@@ -621,6 +628,7 @@ class AuthService
             'senha' => $cpfLimpo,
             'cpf' => $cpfLimpo,
             'data_nascimento' => $dataNascimento,
+            'sexo' => $sexo,
             'telefone' => $telefone,
             'whatsapp' => $whatsapp,
             'ativo' => 1,
@@ -689,6 +697,7 @@ class AuthService
                 'whatsapp' => $whatsapp,
                 'cpf' => $cpfLimpo,
                 'data_nascimento' => $dataNascimento,
+                'sexo' => $sexo,
                 'tenant_id' => $tenantId,
             ],
         ], 201, [], JSON_UNESCAPED_UNICODE);

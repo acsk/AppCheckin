@@ -19,6 +19,7 @@ import { creditoService } from '../../services/creditoService';
 import LayoutBase from '../../components/LayoutBase';
 import { showSuccess, showError } from '../../utils/toast';
 import { formatarData } from '../../utils/formatadores';
+import { sexoLabel } from '../../utils/constants';
 
 export default function DetalheAlunoScreen() {
   const router = useRouter();
@@ -380,6 +381,10 @@ export default function DetalheAlunoScreen() {
                 ? formatarData(String(aluno.data_nascimento).split('T')[0])
                 : '-'}
             </Text>
+          </View>
+          <View style={styles.infoRow}>
+            <Text style={styles.infoLabel}>Sexo</Text>
+            <Text style={styles.infoValue}>{sexoLabel(aluno.sexo)}</Text>
           </View>
           <View style={styles.infoRow}>
             <Text style={styles.infoLabel}>ID do Usuário</Text>

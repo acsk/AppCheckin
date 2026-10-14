@@ -9,11 +9,15 @@ use App\Services\JwtService;
 use App\Services\PasswordRecoveryMailer;
 use App\Services\WelcomeAlunoMailer;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Mockery;
+use Tests\Concerns\RequiresSqlite;
 use Tests\TestCase;
 
 class AuthServiceRegisterRecoveryTest extends TestCase
 {
+    use RequiresSqlite;
+
     protected function tearDown(): void
     {
         Mockery::close();
@@ -163,6 +167,62 @@ class AuthServiceRegisterRecoveryTest extends TestCase
         $this->assertSame(422, $response->getStatusCode());
         $this->assertSame('VALIDATION_ERROR', $data['code']);
         $this->assertContains('nome é obrigatório', $data['errors']);
+    }
+
+    public function test_register_mobile_exige_sexo(): void
+    {
+        $this->criarTabelaRateLimits();
+        $service = $this->authService(Mockery::mock(JwtService::class), Mockery::mock(UsuarioRepository::class));
+
+        $sem = $service->registerMobile(Request::create('/v2/auth/register-mobile', 'POST', $this->dadosMobile(['sexo' => ''])));
+        $this->assertSame(422, $sem->getStatusCode());
+        $this->assertContains('sexo é obrigatório', $sem->getData(true)['errors']);
+
+        $invalido = $service->registerMobile(Request::create('/v2/auth/register-mobile', 'POST', $this->dadosMobile(['sexo' => 'x'])));
+        $this->assertSame(422, $invalido->getStatusCode());
+        $this->assertStringStartsWith('sexo inválido', $invalido->getData(true)['errors'][0]);
+    }
+
+    public function test_register_mobile_grava_sexo_normalizado(): void
+    {
+        $this->criarTabelaRateLimits();
+        $usuarios = Mockery::mock(UsuarioRepository::class);
+        $usuarios->shouldReceive('emailExists')->andReturn(false);
+        $usuarios->shouldReceive('cpfExists')->andReturn(false);
+        $usuarios->shouldReceive('createMobileAluno')
+            ->once()
+            ->withArgs(fn (array $payload) => $payload['sexo'] === 'prefiro_nao_informar')
+            ->andReturn(10);
+        $usuarios->shouldReceive('findAlunoId')->with(10)->andReturn(20);
+        $jwt = Mockery::mock(JwtService::class);
+        $jwt->shouldReceive('encode')->andReturn('token');
+        $mailer = Mockery::mock(WelcomeAlunoMailer::class);
+        $mailer->shouldReceive('send');
+
+        $service = new AuthService($jwt, $usuarios, Mockery::mock(TenantRepository::class), Mockery::mock(PasswordRecoveryMailer::class), $mailer);
+        $response = $service->registerMobile(Request::create('/v2/auth/register-mobile', 'POST', $this->dadosMobile(['sexo' => 'Prefiro não informar'])));
+
+        $this->assertSame(201, $response->getStatusCode());
+        $this->assertSame('prefiro_nao_informar', $response->getData(true)['user']['sexo']);
+    }
+
+    private function criarTabelaRateLimits(): void
+    {
+        $this->requireSqlite();
+        config(['appcheckin.rate_limit_register_max' => 1000]);
+        DB::statement('CREATE TABLE IF NOT EXISTS rate_limits (id INTEGER PRIMARY KEY, ip TEXT, action TEXT, attempts INTEGER, expires_at TEXT, created_at TEXT, updated_at TEXT)');
+    }
+
+    /** @param array<string, mixed> $extra */
+    private function dadosMobile(array $extra = []): array
+    {
+        return $extra + [
+            'nome' => 'Maria Teste',
+            'email' => 'maria@example.com',
+            'cpf' => '52998224725',
+            'data_nascimento' => '1990-05-10',
+            'tenant_id' => 1,
+        ];
     }
 
     private function authService($jwt, $usuarios): AuthService

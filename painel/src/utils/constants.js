@@ -52,3 +52,13 @@ export const HORARIOS_PADRAO = [
   { id: 14, hora: '19:00' },
   { id: 15, hora: '20:00' }
 ];
+
+/** Sexo do aluno (alunos.sexo na apiV2 — App\Support\SexoAluno). */
+export const SEXO_OPCOES = [
+  { value: 'feminino', label: 'Feminino' },
+  { value: 'masculino', label: 'Masculino' },
+  { value: 'outro', label: 'Outro' },
+  { value: 'prefiro_nao_informar', label: 'Prefiro não informar' },
+];
+
+export const sexoLabel = (value) => SEXO_OPCOES.find((o) => o.value === value)?.label || '-';

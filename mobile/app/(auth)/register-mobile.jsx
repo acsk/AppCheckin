@@ -23,6 +23,7 @@ const INITIAL_FORM = {
   email: "",
   cpf: "",
   data_nascimento: "",
+  sexo: "",
   telefone: "",
   whatsapp: "",
   cep: "",
@@ -33,6 +34,14 @@ const INITIAL_FORM = {
   cidade: "",
   estado: "",
 };
+
+/** Valores aceitos pela apiV2 em alunos.sexo (App\Support\SexoAluno). */
+const SEXO_OPCOES = [
+  { value: "feminino", label: "Feminino" },
+  { value: "masculino", label: "Masculino" },
+  { value: "outro", label: "Outro" },
+  { value: "prefiro_nao_informar", label: "Prefiro não informar" },
+];
 
 const normalizeCpf = (value) => value.replace(/\D/g, "");
 const normalizeCep = (value) => value.replace(/\D/g, "");
@@ -318,6 +327,10 @@ export default function RegisterMobileScreen() {
       }
     }
 
+    if (!form.sexo) {
+      errors.sexo = "Informe o sexo";
+    }
+
     setFieldErrors(errors);
     return errors;
   };
@@ -384,6 +397,7 @@ export default function RegisterMobileScreen() {
       email: form.email.trim().toLowerCase(),
       cpf: cpfDigits,
       tenant_id: Number(selectedTenantId),
+      sexo: form.sexo,
     };
 
     // Converter data_nascimento de DD/MM/YYYY para YYYY-MM-DD
@@ -758,6 +772,43 @@ export default function RegisterMobileScreen() {
                 </Text>
               ) : null}
 
+              <Text style={styles.sexoLabel}>Sexo *</Text>
+              <View
+                style={styles.sexoOptions}
+                accessibilityRole="radiogroup"
+                accessibilityLabel="Sexo"
+              >
+                {SEXO_OPCOES.map((opcao) => {
+                  const selected = form.sexo === opcao.value;
+                  return (
+                    <TouchableOpacity
+                      key={opcao.value}
+                      style={[
+                        styles.sexoOption,
+                        selected && styles.sexoOptionSelected,
+                        fieldErrors.sexo && !selected && styles.inputWrapperError,
+                      ]}
+                      onPress={() => handleChange("sexo", opcao.value)}
+                      disabled={loading}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: selected }}
+                    >
+                      <Text
+                        style={[
+                          styles.sexoOptionText,
+                          selected && styles.sexoOptionTextSelected,
+                        ]}
+                      >
+                        {opcao.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              {fieldErrors.sexo ? (
+                <Text style={styles.fieldErrorText}>{fieldErrors.sexo}</Text>
+              ) : null}
+
               <View
                 style={[
                   styles.inputWrapper,
@@ -1124,6 +1175,42 @@ const styles = StyleSheet.create({
     marginTop: -6,
     marginBottom: 10,
     marginLeft: 4,
+  },
+  sexoLabel: {
+    color: "#0f172a",
+    fontSize: 14,
+    fontWeight: "600",
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+  sexoOptions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 12,
+  },
+  sexoOption: {
+    flexGrow: 1,
+    flexBasis: "45%",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: "#efe7df",
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+  },
+  sexoOptionSelected: {
+    borderColor: colors.primary,
+    backgroundColor: "#fff4ee",
+  },
+  sexoOptionText: {
+    color: "#334155",
+    fontSize: 14,
+  },
+  sexoOptionTextSelected: {
+    color: colors.primaryDark,
+    fontWeight: "600",
   },
   inputRow: {
     flexDirection: "row",

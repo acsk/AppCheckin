@@ -2,6 +2,7 @@
 
 namespace App\Services\Admin;
 
+use App\Support\SexoAluno;
 use App\Repositories\AdminAlunoRepository;
 use App\Repositories\UsuarioRepository;
 use Illuminate\Support\Facades\DB;
@@ -125,7 +126,7 @@ class AdminAlunoService
                 $alunoCriado = $this->alunos->findByUsuarioId($usuarioId);
                 if ($alunoCriado) {
                     $extra = array_intersect_key($data, array_flip([
-                        'data_nascimento', 'whatsapp', 'logradouro', 'numero',
+                        'data_nascimento', 'sexo', 'whatsapp', 'logradouro', 'numero',
                         'complemento', 'bairro', 'cidade', 'estado', 'foto_url', 'foto_base64',
                     ]));
                     if ($extra !== []) {
@@ -559,6 +560,10 @@ class AdminAlunoService
             } elseif ($this->usuarios->cpfExists((string) $cpfLimpo, $usuarioIdExcluir)) {
                 $errors[] = 'CPF já cadastrado';
             }
+        }
+
+        if (isset($data['sexo']) && $data['sexo'] !== '' && SexoAluno::normalizar($data['sexo']) === null) {
+            $errors[] = 'Sexo inválido';
         }
 
         if (! empty($data['telefone'])) {

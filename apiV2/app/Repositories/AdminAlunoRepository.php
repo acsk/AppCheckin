@@ -2,6 +2,7 @@
 
 namespace App\Repositories;
 
+use App\Support\SexoAluno;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -22,6 +23,7 @@ class AdminAlunoRepository
                 'a.id', 'a.nome', 'a.telefone', 'a.cpf', 'a.foto_caminho', 'a.ativo', 'a.usuario_id',
                 'u.email',
                 'a.cep', 'a.logradouro', 'a.numero', 'a.complemento', 'a.bairro', 'a.cidade', 'a.estado',
+                ...(SexoAluno::colunaExiste() ? ['a.sexo'] : []),
             ])
             ->orderBy('a.nome');
 
@@ -411,6 +413,7 @@ class AdminAlunoRepository
                 'cpf' => $aluno['cpf'],
                 'telefone' => $aluno['telefone'],
                 'data_nascimento' => $aluno['data_nascimento'] ?? null,
+                'sexo' => $aluno['sexo'] ?? null,
                 'ativo' => $aluno['ativo'],
             ],
             'usuario' => $usuarioData ? (array) $usuarioData : null,
@@ -518,6 +521,9 @@ class AdminAlunoRepository
             'usuario_id', 'nome', 'telefone', 'whatsapp', 'cpf', 'data_nascimento', 'cep', 'logradouro',
             'numero', 'complemento', 'bairro', 'cidade', 'estado', 'foto_url', 'foto_base64', 'ativo',
         ];
+        if (SexoAluno::colunaExiste()) {
+            $allowed[] = 'sexo';
+        }
 
         $out = [];
         foreach ($allowed as $field) {
@@ -529,6 +535,8 @@ class AdminAlunoRepository
             if (in_array($field, ['cpf', 'cep', 'telefone', 'whatsapp'], true)) {
                 $value = $value ? preg_replace('/[^0-9]/', '', (string) $value) : null;
                 $value = ($value !== null && $value !== '') ? $value : null;
+            } elseif ($field === 'sexo') {
+                $value = SexoAluno::normalizar($value);
             } elseif (in_array($field, ['nome', 'logradouro', 'complemento', 'bairro', 'cidade', 'estado'], true)) {
                 $value = $value ? mb_strtoupper(trim((string) $value), 'UTF-8') : null;
                 if ($field === 'estado' && $value) {
