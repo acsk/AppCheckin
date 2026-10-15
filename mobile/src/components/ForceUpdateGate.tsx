@@ -64,7 +64,13 @@ export default function ForceUpdateGate({ children }: Props) {
       }
       if ("serviceWorker" in navigator) {
         const regs = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(regs.map((reg) => reg.unregister()));
+        await Promise.all(
+          regs.map(async (reg) => {
+            reg.waiting?.postMessage("SKIP_WAITING");
+            await reg.update();
+          }),
+        );
+        await navigator.serviceWorker.register("/sw.js").catch(() => null);
       }
     } catch {
       /* segue o reload mesmo se o cache falhar */

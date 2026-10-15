@@ -9,6 +9,7 @@ const appJsonPath = path.join(__dirname, "../app.json");
 const buildInfoPath = path.join(__dirname, "../buildInfo.json");
 const buildNumberPath = path.join(__dirname, "../buildNumber.json");
 const envProductionPath = path.join(__dirname, "../.env.production");
+const swPath = path.join(__dirname, "../public/sw.js");
 const DEFAULT_PROD_API_BASE = "https://apiv2.appcheckin.com.br/v2";
 
 function loadEnvFile(filePath) {
@@ -107,6 +108,15 @@ const run = async () => {
     buildNumberPath,
     JSON.stringify({ number: nextBuildNumber }, null, 2) + "\n",
   );
+
+  if (fs.existsSync(swPath)) {
+    const swSource = fs.readFileSync(swPath, "utf-8");
+    const stamped = swSource.replace(
+      /const CACHE_VERSION = ["'][^"']*["']/,
+      `const CACHE_VERSION = "${buildVersion}"`,
+    );
+    fs.writeFileSync(swPath, stamped);
+  }
 
   console.log(`✅ Build incrementado: ${buildVersion}`);
   console.log(`📅 Build gerado: ${buildInfo.buildDate}`);
