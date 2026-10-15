@@ -3,23 +3,48 @@ import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
-import {
-  Image,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { colors } from "../src/theme/colors";
 import { normalizeUtf8 } from "../src/utils/utf8";
 
 import AppHeader from "@/src/components/ds/AppHeader";
-import { ds } from "@/src/components/ds/tokens";
+import Avatar from "@/src/components/ds/Avatar";
+import Badge from "@/src/components/ds/Badge";
+import InfoChips, { InfoChip } from "@/src/components/ds/InfoChips";
+import Section from "@/src/components/ds/Section";
+import { ds, space } from "@/src/components/ds/tokens";
+
 const getPhotoUrl = (foto?: string | null) => {
   if (!foto) return null;
   if (/^https?:\/\//i.test(foto)) return foto;
   return `${getApiUrlRuntime()}${foto}`;
+};
+
+// "2026-10-15 15:20:00" ou ISO → Date (sem deslocar o fuso de datas sem hora).
+const parseData = (raw: string): Date | null => {
+  if (!raw) return null;
+  const s = raw.trim();
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(`${s}T12:00:00`) : new Date(s.replace(" ", "T"));
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+// "15/10/2026 às 15:20"
+const formatDataHora = (raw: string) => {
+  const d = parseData(raw);
+  if (!d) return raw || null;
+  const data = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
+  const temHora = /\d{2}:\d{2}/.test(raw);
+  return temHora
+    ? `${data} às ${d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+    : data;
+};
+
+type Estado = "present" | "absent" | "pending";
+
+const ESTADO: Record<Estado, { label: string; tone: "success" | "danger" | "neutral"; icon: "check" | "x" | "clock"; ring: string }> = {
+  present: { label: "Presente", tone: "success", icon: "check", ring: ds.success },
+  absent: { label: "Faltou", tone: "danger", icon: "x", ring: ds.danger },
+  pending: { label: "Aguardando confirmação", tone: "neutral", icon: "clock", ring: ds.line },
 };
 
 export default function CheckinDetalhesScreen() {
@@ -27,185 +52,132 @@ export default function CheckinDetalhesScreen() {
   const params = useLocalSearchParams();
 
   const alunoNome = normalizeUtf8(String(params.alunoNome || "Aluno"));
-  const turmaNome = normalizeUtf8(String(params.turmaNome || "Turma"));
+  const turmaNome = normalizeUtf8(String(params.turmaNome || "Turma")).replace(/\s+-\s+/g, " · ");
   const horario = normalizeUtf8(String(params.horario || ""));
   const dataAulaRaw = String(params.dataAula || "");
   const presenteRaw = String(params.presente ?? "");
   const presente = presenteRaw === "true" ? true : presenteRaw === "false" ? false : null;
-  const presencaConfirmadaEm = normalizeUtf8(
-    String(params.presencaConfirmadaEm || ""),
-  );
+  const presencaConfirmadaEm = normalizeUtf8(String(params.presencaConfirmadaEm || ""));
   const dataCheckin = normalizeUtf8(String(params.dataCheckin || ""));
   const foto = typeof params.foto === "string" ? params.foto : "";
   const photoUrl = getPhotoUrl(foto);
   const alunoId = Number(params.alunoId || 0);
   const showResumoFinanceiro = String(params.showResumoFinanceiro || "") === "1";
 
+  const estado: Estado = presente === true ? "present" : presente === false ? "absent" : "pending";
+  const e = ESTADO[estado];
+
+  const dataAula = parseData(dataAulaRaw);
+  const chips: InfoChip[] = [];
+  if (horario) chips.push({ icon: "clock", text: horario.replace(" - ", " – ") });
+  if (dataAula) {
+    const t = dataAula.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit", month: "2-digit" });
+    chips.push({ icon: "calendar", text: t.charAt(0).toUpperCase() + t.slice(1).replace(".", "") });
+  }
+
+  const linhas = [
+    dataCheckin ? { icon: "check-square" as const, label: "Check-in feito em", value: formatDataHora(dataCheckin) } : null,
+    {
+      icon: "user-check" as const,
+      label: "Presença",
+      value: presencaConfirmadaEm ? `Confirmada em ${formatDataHora(presencaConfirmadaEm)}` : "Ainda não confirmada pelo professor",
+    },
+  ].filter(Boolean) as { icon: "check-square" | "user-check"; label: string; value: string | null }[];
+
   return (
     <SafeAreaView style={styles.container} edges={["left", "right"]}>
       <AppHeader
-        title="Detalhes do Check-in"
+        eyebrow="Detalhes do check-in"
+        title={turmaNome}
         onBack={() => router.back()}
+        bottom={chips.length ? <InfoChips items={chips} /> : undefined}
       />
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {/* Aluno e situação da presença */}
         <View style={styles.card}>
-          <View style={styles.avatarWrap}>
-            {photoUrl ? (
-              <Image source={{ uri: photoUrl }} style={styles.avatar} />
-            ) : (
-              <Feather name="user" size={28} color="#9ca3af" />
-            )}
+          <View style={[styles.ring, { borderColor: e.ring }]}>
+            <Avatar name={alunoNome} uri={photoUrl} size={72} />
           </View>
-          <Text style={styles.name}>{alunoNome}</Text>
-          <Text style={styles.subtitle}>{turmaNome}</Text>
-
-          {!!horario && (
-            <View style={styles.row}>
-              <Feather name="clock" size={16} color={colors.textMuted} />
-              <Text style={styles.rowText}>{horario}</Text>
+          {estado !== "pending" ? (
+            <View style={[styles.mark, { backgroundColor: e.ring }]}>
+              <Feather name={e.icon} size={14} color={ds.onInverse} />
             </View>
-          )}
-
-          {!!dataAulaRaw && (
-            <View style={styles.row}>
-              <Feather name="calendar" size={16} color={colors.textMuted} />
-              <Text style={styles.rowText}>
-                {new Date(dataAulaRaw).toLocaleDateString("pt-BR", {
-                  weekday: "long",
-                  day: "2-digit",
-                  month: "long",
-                  year: "numeric",
-                })}
-              </Text>
-            </View>
-          )}
-
-          {!!dataCheckin && (
-            <Text style={styles.confirmedText}>Check-in em {dataCheckin}</Text>
-          )}
-
-          <View style={styles.statusPill}>
-            <Text style={styles.statusText}>
-              {presente === null
-                ? "Presença não confirmada"
-                : presente
-                  ? "Presente"
-                  : "Falta"}
-            </Text>
+          ) : null}
+          <Text style={styles.name}>{alunoNome.toUpperCase()}</Text>
+          <View style={{ alignItems: "center" }}>
+            <Badge tone={e.tone} icon={e.icon}>
+              {e.label}
+            </Badge>
           </View>
-          {!!presencaConfirmadaEm && (
-            <Text style={styles.confirmedText}>
-              Confirmado em {presencaConfirmadaEm}
-            </Text>
-          )}
         </View>
 
-        {showResumoFinanceiro && alunoId > 0 && (
-          <View style={styles.financeCard}>
+        <Section title="Check-in">
+          {linhas.map((l) => (
+            <View key={l.label} style={styles.kvRow}>
+              <View style={styles.kvIcon}>
+                <Feather name={l.icon} size={18} color={ds.inkMuted} />
+              </View>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={styles.kvK}>{l.label.toUpperCase()}</Text>
+                <Text style={styles.kvV}>{l.value}</Text>
+              </View>
+            </View>
+          ))}
+        </Section>
+
+        {showResumoFinanceiro && alunoId > 0 ? (
+          <Section title="Financeiro" bare>
             <AlunoResumoFinanceiro alunoId={alunoId} />
-          </View>
-        )}
+          </Section>
+        ) : null}
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: ds.ground,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    backgroundColor: ds.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: ds.line,
-  },
-  backButton: {
-    padding: 8,
-    borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.2)",
-  },
-  headerTitle: {
-    color: ds.ink,
-    fontSize: 18,
-    fontWeight: "700",
-  },
-  content: {
-    padding: 16,
-    gap: 12,
-  },
+  container: { flex: 1, backgroundColor: ds.ground },
+  content: { padding: space[4], paddingBottom: space[8], gap: space[5] },
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 18,
-    padding: 20,
     alignItems: "center",
     gap: 10,
+    paddingVertical: space[5],
+    paddingHorizontal: space[4],
+    backgroundColor: ds.surface,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: ds.line,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 2,
   },
-  financeCard: {
-    width: "100%",
-  },
-  avatarWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: "#e5e7eb",
+  ring: { borderWidth: 3, borderRadius: 999, padding: 3, backgroundColor: ds.surface },
+  mark: {
+    marginTop: -26,
+    marginLeft: 56,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    overflow: "hidden",
-  },
-  avatar: {
-    width: "100%",
-    height: "100%",
+    borderWidth: 2,
+    borderColor: ds.surface,
   },
   name: {
     fontSize: 20,
-    fontWeight: "800",
-    color: colors.text,
+    lineHeight: 24,
+    fontWeight: "900",
+    letterSpacing: -0.2,
+    color: ds.ink,
     textAlign: "center",
   },
-  subtitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.textSecondary,
-    textAlign: "center",
-  },
-  row: {
-    flexDirection: "row",
+  kvRow: { flexDirection: "row", alignItems: "center", gap: space[3], paddingVertical: 10, paddingHorizontal: space[4] },
+  kvIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: ds.surfaceSunken,
     alignItems: "center",
-    gap: 8,
+    justifyContent: "center",
   },
-  rowText: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    fontWeight: "600",
-  },
-  statusPill: {
-    marginTop: 8,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: colors.primary + "15",
-  },
-  statusText: {
-    color: colors.primaryText,
-    fontWeight: "700",
-    fontSize: 13,
-  },
-  confirmedText: {
-    fontSize: 12,
-    color: colors.textMuted,
-  },
+  kvK: { fontSize: 11, lineHeight: 14, fontWeight: "800", letterSpacing: 0.66, color: ds.inkMuted },
+  kvV: { fontSize: 15, lineHeight: 20, fontWeight: "800", color: ds.ink, marginTop: 2 },
 });

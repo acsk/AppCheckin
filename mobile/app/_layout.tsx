@@ -31,15 +31,20 @@ if (Platform.OS !== "web") {
   require("react-native-reanimated");
 }
 
-// Web: remove o contorno azul que o navegador desenha nos campos em foco.
+// Web: estilos globais — sem contorno azul nos campos em foco e selo do reCAPTCHA controlado.
 // O foco continua visível pela borda do próprio campo (TextField do design system).
 if (Platform.OS === "web" && typeof document !== "undefined") {
   const STYLE_ID = "ac-no-input-outline";
   if (!document.getElementById(STYLE_ID)) {
     const style = document.createElement("style");
     style.id = STYLE_ID;
-    style.textContent =
-      "input:focus, textarea:focus, select:focus, input:focus-visible, textarea:focus-visible { outline: none !important; box-shadow: none; }";
+    style.textContent = [
+      "input:focus, textarea:focus, select:focus, input:focus-visible, textarea:focus-visible { outline: none !important; box-shadow: none; }",
+      // Selo do reCAPTCHA: só aparece no login e no cadastro (data-recaptcha-visible),
+      // telas sem a barra inferior. Nas demais fica oculto para não cobrir a barra.
+      ".grecaptcha-badge { visibility: hidden !important; opacity: 0 !important; pointer-events: none !important; }",
+      'body[data-recaptcha-visible="true"] .grecaptcha-badge { visibility: visible !important; opacity: 1 !important; pointer-events: auto !important; bottom: 16px !important; z-index: 9999 !important; }',
+    ].join("\n");
     document.head.appendChild(style);
   }
 }
