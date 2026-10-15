@@ -17,27 +17,32 @@ export default function TabLayout() {
     <>
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: "#fff",
-        tabBarInactiveTintColor: "rgba(255,255,255,0.65)",
+        tabBarActiveTintColor: NAV.ink,
+        tabBarInactiveTintColor: NAV.inkMuted,
         tabBarStyle: {
-          borderTopWidth: 0,
-          backgroundColor: colors.primary,
-          paddingBottom: isWeb ? 14 : 10,
-          paddingTop: isWeb ? 14 : 10,
-          height: isWeb ? 82 : 76,
-          shadowColor: "#000",
-          shadowOffset: { width: 0, height: -1 },
-          shadowOpacity: 0.2,
-          shadowRadius: 6,
-          elevation: 10,
+          borderTopWidth: 1,
+          borderTopColor: NAV.line,
+          backgroundColor: NAV.surface,
+          paddingBottom: isWeb ? 10 : 8,
+          paddingTop: 8,
+          height: isWeb ? 76 : 72,
+          shadowColor: "#171a21",
+          shadowOffset: { width: 0, height: -8 },
+          shadowOpacity: 0.07,
+          shadowRadius: 24,
+          elevation: 12,
         },
         tabBarItemStyle: {
-          marginHorizontal: 6,
+          paddingTop: 2,
         },
-        tabBarLabelStyle: {
-          fontSize: 13,
-          fontWeight: "700",
-        },
+        tabBarLabel: ({ focused, color, children }) => (
+          <Text
+            style={[styles.tabBarLabel, { color, fontWeight: focused ? "800" : "700" }]}
+            numberOfLines={1}
+          >
+            {children}
+          </Text>
+        ),
         headerStyle: {
           backgroundColor: isDark ? "#1a1a1a" : "#fff",
           borderBottomColor: isDark ? "#333" : "#e5e5e5",
@@ -50,18 +55,12 @@ export default function TabLayout() {
         },
       }}
     >
+      {/* Ordem: Início · WOD · Check-in (centro) · Planos · Conta */}
       <Tabs.Screen
         name="account"
         options={{
-          title: "Minha Conta",
-          tabBarLabel: ({ color }) => (
-            <Text style={[styles.tabBarLabel, { color }]} numberOfLines={1}>
-              Minha Conta
-            </Text>
-          ),
-          tabBarIcon: ({ color, size }) => (
-            <Feather name="user" size={size + 6} color={color} />
-          ),
+          title: "Início",
+          tabBarIcon: ({ focused }) => <TabIcon name="home" focused={focused} />,
           headerShown: false,
         }}
       />
@@ -69,34 +68,39 @@ export default function TabLayout() {
         name="wod"
         options={{
           title: "WOD",
-          tabBarIcon: ({ color, size }) => (
-            <Feather name="target" size={size + 6} color={color} />
-          ),
+          tabBarIcon: ({ focused }) => <TabIcon name="target" focused={focused} />,
           headerShown: false,
         }}
       />
       <Tabs.Screen
         name="checkin"
         options={{
-          title: "Checkin",
-          tabBarIcon: ({ color, size }) => (
-            <Feather name="check-square" size={size + 6} color={color} />
-          ),
+          title: "Check-in",
+          tabBarIcon: ({ focused }) => <TabIcon name="check-square" focused={focused} />,
           headerShown: false,
         }}
       />
       <Tabs.Screen
+        name="planos"
+        options={{
+          title: "Planos",
+          tabBarIcon: ({ focused }) => <TabIcon name="shopping-cart" focused={focused} />,
+          headerShown: false,
+        }}
+      />
+      <Tabs.Screen
+        name="conta"
+        options={{
+          title: "Conta",
+          tabBarIcon: ({ focused }) => <TabIcon name="user" focused={focused} />,
+          headerShown: false,
+        }}
+      />
+      {/* Sair não é aba: fica no fim da tela Conta. A rota continua existindo. */}
+      <Tabs.Screen
         name="logout"
         options={{
-          title: "Sair",
-          tabBarLabel: ({ color }) => (
-            <Text style={[styles.tabBarLabel, { color }]} numberOfLines={1}>
-              Sair
-            </Text>
-          ),
-          tabBarIcon: ({ color, size }) => (
-            <Feather name="log-out" size={size + 6} color={color} />
-          ),
+          href: null,
           headerShown: false,
         }}
       />
@@ -104,16 +108,6 @@ export default function TabLayout() {
         name="index"
         options={{
           href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="planos"
-        options={{
-          title: "Planos",
-          tabBarIcon: ({ color, size }) => (
-            <Feather name="shopping-cart" size={size + 6} color={color} />
-          ),
-          headerShown: false,
         }}
       />
       <Tabs.Screen
@@ -176,10 +170,42 @@ export default function TabLayout() {
   );
 }
 
+// Tokens do design system AppCheckin para a barra inferior.
+const NAV = {
+  surface: "#ffffff",
+  line: "#e4e6ea",
+  ink: "#171a21",
+  inkMuted: "#5b6270",
+};
+
+function TabIcon({
+  name,
+  focused,
+}: {
+  name: React.ComponentProps<typeof Feather>["name"];
+  focused: boolean;
+}) {
+  return (
+    <View style={[styles.pill, focused && styles.pillActive]}>
+      <Feather name={name} size={22} color={focused ? NAV.ink : NAV.inkMuted} />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   tabBarLabel: {
-    fontSize: 13,
-    fontWeight: "700",
-    marginTop: 2,
+    fontSize: 11,
+    lineHeight: 14,
+    marginTop: 4,
+  },
+  pill: {
+    width: 52,
+    height: 30,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  pillActive: {
+    backgroundColor: colors.primary,
   },
 });

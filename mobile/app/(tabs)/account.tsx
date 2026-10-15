@@ -22,14 +22,13 @@ import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
     Animated,
     Dimensions,
     Image,
-    Linking,
     Modal,
     Platform,
     Pressable,
@@ -202,16 +201,6 @@ export default function AccountScreen() {
   };
 
   const getTenantDisplayName = () => getTenantName();
-
-  const currentWhatsappLinks = useMemo(() => {
-    const currentId =
-      currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
-    if (!currentId || !Array.isArray(userProfile?.tenants)) {
-      return [];
-    }
-    const tenant = userProfile.tenants.find((t) => t.id === currentId);
-    return Array.isArray(tenant?.whatsapp_links) ? tenant.whatsapp_links : [];
-  }, [currentTenant, userProfile]);
 
   const userRoleLabels = React.useMemo(() => {
     if (!Array.isArray(userRoles) || userRoles.length === 0) {
@@ -1170,57 +1159,6 @@ export default function AccountScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {currentWhatsappLinks.length > 0 && (
-          <View style={styles.whatsappHomeSection}>
-            <View style={styles.whatsappHomeHeader}>
-              <View style={styles.whatsappHomeHeaderIcon}>
-                <MaterialCommunityIcons name="whatsapp" size={22} color="#fff" />
-              </View>
-              <View style={styles.whatsappHomeHeaderText}>
-                <Text style={styles.whatsappHomeTitle}>Grupos WhatsApp</Text>
-                <Text style={styles.whatsappHomeSubtitle}>
-                  Entre nos grupos da sua academia
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.whatsappHomeLinks}>
-              {currentWhatsappLinks.map((link) => (
-                <TouchableOpacity
-                  key={link.url}
-                  style={styles.whatsappHomeLink}
-                  activeOpacity={0.85}
-                  onPress={() => Linking.openURL(link.url)}
-                  accessibilityRole="link"
-                  accessibilityLabel={`Entrar no grupo ${link.nome}`}
-                >
-                  <View style={styles.whatsappHomeLinkIconWrap}>
-                    <MaterialCommunityIcons
-                      name="whatsapp"
-                      size={22}
-                      color="#fff"
-                    />
-                  </View>
-                  <View style={styles.whatsappHomeLinkContent}>
-                    <Text
-                      style={styles.whatsappHomeLinkText}
-                      numberOfLines={2}
-                    >
-                      {link.nome}
-                    </Text>
-                    <Text style={styles.whatsappHomeLinkHint}>
-                      Toque para entrar no grupo
-                    </Text>
-                  </View>
-                  <View style={styles.whatsappHomeLinkChevron}>
-                    <Feather name="chevron-right" size={18} color="#128C7E" />
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        )}
-
         {/* Calendário Semanal de Check-ins */}
         <View style={styles.weekCalendarSection} className="notranslate">
           <View style={styles.weekCalendarHeader}>
@@ -1535,14 +1473,6 @@ export default function AccountScreen() {
           </View>
         )}
 
-        {/* Change Password Button */}
-        <TouchableOpacity
-          style={styles.changePasswordButton}
-          onPress={() => setShowRecoveryModal(true)}
-        >
-          <Feather name="key" size={20} color="#fff" />
-          <Text style={styles.changePasswordText}>Alterar Senha</Text>
-        </TouchableOpacity>
       </ScrollView>
 
       <Modal transparent visible={showSidebar} animationType="none">
