@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import {
     ActivityIndicator,
     Alert,
+    Image,
     KeyboardAvoidingView,
     Modal,
     Platform,
@@ -21,6 +22,34 @@ import urlsConfig from "../../src/config/urls";
 import { authService } from "../../src/services/authService";
 import { colors } from "../../src/theme/colors";
 import AsyncStorage from "../../src/utils/storage";
+
+const LOGO = require("../../assets/images/appcheckin-logo.png");
+
+// Tokens do design system AppCheckin (login: sempre claro).
+const DS = {
+  ground: "#f2f3f5",
+  surface: "#ffffff",
+  line: "#e4e6ea",
+  lineStrong: "#8b929e",
+  ink: "#171a21",
+  inkMuted: "#5b6270",
+  brand: "#ff7a00",
+  brandYellow: "#fdb400",
+  brandRed: "#f2400a",
+  brandInk: "#c2410c",
+  danger: "#b91c1c",
+  dangerSoft: "#fdecec",
+};
+
+// Recortes low-poly nos cantos, nas cores do degradê da logo (TechBackground).
+const FACETS = [
+  { top: -70, left: -60, size: 170, rotate: "28deg", color: DS.brandYellow, opacity: 0.9 },
+  { top: -40, left: 40, size: 110, rotate: "52deg", color: DS.brand, opacity: 0.85 },
+  { top: 50, left: -50, size: 90, rotate: "15deg", color: DS.brandRed, opacity: 0.75 },
+  { bottom: -80, right: -60, size: 190, rotate: "34deg", color: DS.brandRed, opacity: 0.9 },
+  { bottom: -30, right: 70, size: 110, rotate: "60deg", color: DS.brand, opacity: 0.85 },
+  { bottom: 70, right: -40, size: 90, rotate: "18deg", color: DS.brandYellow, opacity: 0.8 },
+];
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -375,9 +404,25 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View pointerEvents="none" style={styles.backgroundDecor}>
-        <View style={styles.headerAccent} />
-        <View style={styles.accentCircle} />
-        <View style={styles.accentCircleSmall} />
+        {FACETS.map((f, i) => (
+          <View
+            key={i}
+            style={[
+              styles.facet,
+              {
+                top: f.top,
+                left: f.left,
+                bottom: f.bottom,
+                right: f.right,
+                width: f.size,
+                height: f.size,
+                backgroundColor: f.color,
+                opacity: f.opacity,
+                transform: [{ rotate: f.rotate }],
+              },
+            ]}
+          />
+        ))}
       </View>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -390,124 +435,109 @@ export default function LoginScreen() {
         >
           {/* Logo */}
           <View style={styles.logoContainer}>
-            <View style={styles.logoCircle}>
-              <Feather name="check-circle" size={60} color="#fff" />
-            </View>
-            <Text style={styles.appName}>AppCheckin</Text>
-            <Text style={styles.tagline}>Registre sua presença</Text>
+            <Image
+              source={LOGO}
+              style={styles.logo}
+              resizeMode="contain"
+              accessibilityLabel="AppCheckin"
+            />
+            <Text style={styles.tagline}>SEU CHECK-IN MAIS SIMPLES</Text>
           </View>
 
           {/* Formulário */}
-          <View style={styles.formContainer}>
-            <View style={styles.formCard}>
-              <Text style={styles.welcomeSubtext}>
-                Faça login para continuar
-              </Text>
-
-              {formError ? (
-                <View style={styles.formError}>
-                  <Feather name="alert-circle" size={16} color="#b91c1c" />
-                  <Text style={styles.formErrorText}>{formError}</Text>
-                </View>
-              ) : null}
-
-              {/* Email Input */}
-              <View style={styles.inputWrapper}>
-                <Feather
-                  name="mail"
-                  size={20}
-                  color={colors.primary}
-                  style={styles.inputIcon}
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Email"
-                  placeholderTextColor="#999"
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  value={email}
-                  onChangeText={setEmail}
-                  editable={!loading}
-                />
+          <View style={styles.form}>
+            {formError ? (
+              <View style={styles.formError}>
+                <Feather name="alert-circle" size={16} color={DS.danger} />
+                <Text style={styles.formErrorText}>{formError}</Text>
               </View>
+            ) : null}
 
-              {/* Senha Input */}
-              <View style={styles.inputWrapper}>
-                <Feather
-                  name="lock"
-                  size={20}
-                  color={colors.primary}
-                  style={styles.inputIcon}
-                />
-                <TextInput
-                  style={[styles.input, { paddingRight: 50 }]}
-                  placeholder="Senha"
-                  placeholderTextColor="#999"
-                  secureTextEntry={!showPassword}
-                  value={senha}
-                  onChangeText={setSenha}
-                  editable={!loading}
-                />
-                <TouchableOpacity
-                  style={styles.eyeIcon}
-                  onPress={() => setShowPassword(!showPassword)}
-                >
-                  <Feather
-                    name={showPassword ? "eye-off" : "eye"}
-                    size={20}
-                    color={colors.primary}
-                  />
-                </TouchableOpacity>
-              </View>
+            {/* Email Input */}
+            <View style={styles.inputWrapper}>
+              <Feather name="mail" size={20} color={DS.inkMuted} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="E-mail ou usuário"
+                placeholderTextColor={DS.inkMuted}
+                accessibilityLabel="E-mail ou usuário"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoComplete="username"
+                value={email}
+                onChangeText={setEmail}
+                editable={!loading}
+              />
+            </View>
 
-              {/* Remember Me */}
+            {/* Senha Input */}
+            <View style={styles.inputWrapper}>
+              <Feather name="lock" size={20} color={DS.inkMuted} style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Senha"
+                placeholderTextColor={DS.inkMuted}
+                accessibilityLabel="Senha"
+                autoComplete="current-password"
+                secureTextEntry={!showPassword}
+                value={senha}
+                onChangeText={setSenha}
+                onSubmitEditing={handleLogin}
+                editable={!loading}
+              />
+              <TouchableOpacity
+                style={styles.eyeIcon}
+                onPress={() => setShowPassword(!showPassword)}
+                accessibilityLabel={showPassword ? "Ocultar senha" : "Mostrar senha"}
+              >
+                <Feather name={showPassword ? "eye-off" : "eye"} size={20} color={DS.inkMuted} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Lembrar de mim + Esqueceu a senha */}
+            <View style={styles.formRow}>
               <TouchableOpacity
                 style={styles.rememberRow}
                 onPress={() => setRememberMe((prev) => !prev)}
                 disabled={loading}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: rememberMe }}
               >
-                <View
-                  style={[
-                    styles.rememberBox,
-                    rememberMe && styles.rememberBoxChecked,
-                  ]}
-                >
-                  {rememberMe ? (
-                    <Feather name="check" size={14} color="#fff" />
-                  ) : null}
+                <View style={[styles.rememberBox, rememberMe && styles.rememberBoxChecked]}>
+                  {rememberMe ? <Feather name="check" size={14} color={DS.ink} /> : null}
                 </View>
-                <Text style={styles.rememberText}>Lembrar-me</Text>
+                <Text style={styles.rememberText}>Lembrar de mim</Text>
               </TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowRecoveryModal(true)} style={styles.linkHit}>
+                <Text style={styles.link}>Esqueceu sua senha?</Text>
+              </TouchableOpacity>
+            </View>
 
-              {/* Login Button */}
-              <TouchableOpacity
-                style={[styles.loginButton, loading && { opacity: 0.7 }]}
-                onPress={handleLogin}
-                disabled={loading}
-              >
-                {loading ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
+            {/* Login Button */}
+            <TouchableOpacity
+              style={[styles.loginButton, loading && { opacity: 0.7 }]}
+              onPress={handleLogin}
+              disabled={loading}
+              accessibilityRole="button"
+            >
+              {loading ? (
+                <ActivityIndicator color={DS.ink} size="small" />
+              ) : (
+                <>
                   <Text style={styles.loginButtonText}>Entrar</Text>
-                )}
-              </TouchableOpacity>
+                  <Feather name="arrow-right" size={20} color={DS.ink} />
+                </>
+              )}
+            </TouchableOpacity>
 
-              {/* Forgot Password Link */}
+            <View style={styles.signup}>
+              <Text style={styles.signupText}>Não tem uma conta?</Text>
               <TouchableOpacity
-                style={styles.forgotPasswordContainer}
-                onPress={() => setShowRecoveryModal(true)}
-              >
-                <Text style={styles.forgotPasswordText}>
-                  Esqueceu sua senha?
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.registerContainer}
                 onPress={() => router.push("/(auth)/register-mobile")}
+                style={styles.linkHit}
               >
-                <Text style={styles.registerText}>Criar uma conta</Text>
+                <Text style={styles.link}>Cadastre-se</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -582,38 +612,15 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#fff3ea",
+    backgroundColor: DS.surface,
   },
   backgroundDecor: {
     ...StyleSheet.absoluteFillObject,
+    overflow: "hidden",
   },
-  headerAccent: {
+  facet: {
     position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 220,
-    backgroundColor: colors.primary,
-    borderBottomLeftRadius: 32,
-    borderBottomRightRadius: 32,
-  },
-  accentCircle: {
-    position: "absolute",
-    top: -60,
-    right: -40,
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: "rgba(255,255,255,0.2)",
-  },
-  accentCircleSmall: {
-    position: "absolute",
-    top: 120,
-    left: -40,
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: "rgba(255,255,255,0.18)",
+    borderRadius: 6,
   },
   keyboardView: {
     flex: 1,
@@ -621,158 +628,143 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
     justifyContent: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 24,
+    paddingHorizontal: 24,
+    paddingTop: 32,
+    paddingBottom: 24,
+    width: "100%",
+    maxWidth: 440,
+    alignSelf: "center",
   },
   logoContainer: {
     alignItems: "center",
-    marginBottom: 28,
+    gap: 12,
+    marginBottom: 32,
   },
-  logoCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: colors.primaryDark,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 16,
-    boxShadow: "0px 12px 20px rgba(255, 107, 53, 0.35)",
-    elevation: 6,
-  },
-  appName: {
-    fontSize: 32,
-    fontWeight: "bold",
-    color: colors.primary,
-    marginBottom: 4,
+  logo: {
+    width: 135,
+    height: 150,
   },
   tagline: {
-    fontSize: 16,
-    color: "rgba(255,255,255,0.8)",
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "800",
+    letterSpacing: 3.5,
+    color: DS.inkMuted,
+    textAlign: "center",
   },
-  formContainer: {
-    width: "100%",
-  },
-  formCard: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    paddingVertical: 24,
-    paddingHorizontal: 20,
-    borderWidth: 1,
-    borderColor: "#fde2c2",
-    boxShadow: "0px 12px 20px rgba(255, 107, 53, 0.15)",
-    elevation: 6,
-  },
-  welcomeText: {
-    fontSize: 24,
-    fontWeight: "600",
-    color: "#111827",
-    marginBottom: 8,
-  },
-  welcomeSubtext: {
-    fontSize: 14,
-    color: "#6b7280",
-    marginBottom: 24,
+  form: {
+    gap: 16,
   },
   inputWrapper: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 14,
     borderWidth: 1,
-    borderColor: "#fde2c2",
+    borderColor: DS.lineStrong,
     borderRadius: 12,
     paddingHorizontal: 14,
-    backgroundColor: "#fff7f2",
-    height: 52,
+    backgroundColor: DS.surface,
+    height: 48,
   },
   inputIcon: {
-    marginRight: 12,
+    marginRight: 10,
   },
   input: {
     flex: 1,
-    height: 52,
+    height: 46,
     fontSize: 16,
-    color: "#111827",
+    fontWeight: "500",
+    color: DS.ink,
   },
   eyeIcon: {
-    padding: 10,
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: -10,
+  },
+  formRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginVertical: -6,
   },
   rememberRow: {
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 4,
-    marginBottom: 6,
+    minHeight: 44,
   },
   rememberBox: {
     width: 20,
     height: 20,
-    borderRadius: 5,
-    borderWidth: 1,
-    borderColor: "#f4b07e",
-    backgroundColor: "#fff7f2",
+    borderRadius: 6,
+    borderWidth: 1.5,
+    borderColor: DS.lineStrong,
+    backgroundColor: DS.surface,
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 10,
+    marginRight: 8,
   },
   rememberBoxChecked: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    backgroundColor: DS.brand,
+    borderColor: DS.brand,
   },
   rememberText: {
-    fontSize: 14,
-    color: "#6b7280",
-    fontWeight: "500",
+    fontSize: 15,
+    color: DS.ink,
+    fontWeight: "600",
+  },
+  linkHit: {
+    minHeight: 44,
+    justifyContent: "center",
+  },
+  link: {
+    fontSize: 15,
+    color: DS.brandInk,
+    fontWeight: "700",
   },
   loginButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 14,
-    height: 52,
+    flexDirection: "row",
+    gap: 8,
+    backgroundColor: DS.brand,
+    borderRadius: 12,
+    height: 56,
     justifyContent: "center",
     alignItems: "center",
-    marginTop: 18,
-    boxShadow: "0px 6px 14px rgba(255, 107, 53, 0.35)",
-    elevation: 5,
+    marginTop: 4,
+    boxShadow: "0px 8px 20px rgba(242, 64, 10, 0.25)",
+    elevation: 4,
   },
   loginButtonText: {
-    color: "#fff",
+    color: DS.ink,
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "800",
   },
   formError: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fef2f2",
-    borderWidth: 1,
-    borderColor: "#fecaca",
+    backgroundColor: DS.dangerSoft,
     paddingHorizontal: 12,
     paddingVertical: 10,
-    borderRadius: 10,
-    marginBottom: 14,
+    borderRadius: 12,
     gap: 8,
   },
   formErrorText: {
     flex: 1,
     fontSize: 13,
-    color: "#b91c1c",
-  },
-  forgotPasswordContainer: {
-    alignItems: "center",
-    marginTop: 16,
-    paddingVertical: 8,
-  },
-  forgotPasswordText: {
-    fontSize: 14,
-    color: colors.primary,
-    fontWeight: "500",
-  },
-  registerContainer: {
-    alignItems: "center",
-    marginTop: 4,
-    paddingVertical: 6,
-  },
-  registerText: {
-    fontSize: 14,
-    color: colors.primary,
     fontWeight: "600",
+    color: DS.danger,
+  },
+  signup: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    marginTop: 8,
+  },
+  signupText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: DS.inkMuted,
   },
   tenantModalOverlay: {
     flex: 1,
