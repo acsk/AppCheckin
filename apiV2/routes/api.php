@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\V2\Admin\MatriculaController as AdminMatriculaContr
 use App\Http\Controllers\Api\V2\Admin\ModalidadeController as AdminModalidadeController;
 use App\Http\Controllers\Api\V2\Admin\PlanoCicloController as AdminPlanoCicloController;
 use App\Http\Controllers\Api\V2\Admin\PlanoController as AdminPlanoController;
+use App\Http\Controllers\Api\V2\AppVersionController;
 use App\Http\Controllers\Api\V2\AuthController;
 use App\Http\Controllers\Api\V2\HealthController;
 use App\Http\Controllers\Api\V2\MeController;
@@ -32,6 +33,8 @@ Route::prefix('v2')->group(function () {
     Route::get('/ping', [HealthController::class, 'ping']);
     Route::get('/health', [HealthController::class, 'health']);
     Route::get('/health/basic', [HealthController::class, 'healthBasic']);
+    Route::get('/version/mobile', [AppVersionController::class, 'mobile']);
+    Route::post('/version/mobile', [AppVersionController::class, 'updateMobile']);
 
     // Rotas públicas (paridade Slim)
     Route::get('/cep/{cep}', [CepController::class, 'buscar'])->where('cep', '[0-9\\-]+');

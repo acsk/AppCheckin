@@ -54,6 +54,7 @@ export const CONFIG = {
     "/auth/password-recovery/request",
     "/auth/password-recovery/validate-token",
     "/auth/password-recovery/reset",
+    "/version/mobile",
   ],
 
   // Headers padrão

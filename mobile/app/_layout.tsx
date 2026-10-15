@@ -24,6 +24,7 @@ import {
 } from "react-native-safe-area-context";
 
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import ForceUpdateGate from "@/src/components/ForceUpdateGate";
 import { colors } from "@/src/theme/colors";
 
 // Importar Reanimated apenas no mobile
@@ -202,25 +203,18 @@ export default function RootLayout() {
     router.replace("/(auth)/login");
   }, [router]);
 
-  // Não renderizar nada até verificar autenticação
-  if (!isTokenChecked) {
-    return (
-      <SafeAreaProvider>
-        <ThemeProvider
-          value={colorScheme === "dark" ? DarkTheme : APP_THEME}
-        >
-          <View style={[styles.root, styles.bootSplash]}>
-            <ActivityIndicator size="large" color={colors.primary} />
-          </View>
-        </ThemeProvider>
-      </SafeAreaProvider>
-    );
-  }
+  const bootScreen = (
+    <View style={[styles.root, styles.bootSplash]}>
+      <ActivityIndicator size="large" color={colors.primary} />
+    </View>
+  );
 
   return (
     <SafeAreaProvider>
       <ThemeProvider value={colorScheme === "dark" ? DarkTheme : APP_THEME}>
         <ErrorBoundary>
+          <ForceUpdateGate>
+          {!isTokenChecked ? bootScreen : (
           <View style={styles.root}>
             <StatusBarBackground />
             <Stack screenOptions={{ contentStyle: { backgroundColor: "#f2f3f5" } }}>
@@ -259,6 +253,8 @@ export default function RootLayout() {
               onConfirm={handleSessionExpiredConfirm}
             />
           </View>
+          )}
+          </ForceUpdateGate>
           <StatusBar style="light" backgroundColor={colors.primary} />
         </ErrorBoundary>
       </ThemeProvider>

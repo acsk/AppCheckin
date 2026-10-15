@@ -4,6 +4,7 @@
     "jsx": "react",
     "jsx": "react",
     "strict": true,
+    "resolveJsonModule": true,
     "paths": {
       "@/*": [
         "./*"

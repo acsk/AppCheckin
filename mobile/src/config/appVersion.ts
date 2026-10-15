@@ -1,0 +1,85 @@
+import appJson from "../../app.json";
+import buildInfo from "../../buildInfo.json";
+import { getApiUrlRuntime } from "@/src/config/urls";
+
+export const APP_VERSION = String((appJson as { expo?: { version?: string } })?.expo?.version ?? "1.0.0");
+export const APP_BUILD_VERSION = String((buildInfo as { version?: string })?.version ?? "v1.0");
+export const APP_BUILD_DATE = String((buildInfo as { buildDate?: string })?.buildDate ?? "");
+export const APP_BUILD_NUMBER = Number((buildInfo as { buildNumber?: number })?.buildNumber ?? 0);
+
+export type RemoteAppVersion = {
+  app: string;
+  version: string;
+  release_date: string;
+};
+
+export function isProductionRuntime(): boolean {
+  const appEnv = (process.env.EXPO_PUBLIC_APP_ENV || "").toLowerCase();
+  if (appEnv === "production") return true;
+  if (appEnv === "development") return false;
+
+  if (typeof window !== "undefined" && window.location?.hostname) {
+    const hostname = window.location.hostname;
+    const isLocal =
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname.startsWith("192.168.") ||
+      hostname.startsWith("10.") ||
+      hostname.endsWith(".local");
+    return !isLocal;
+  }
+
+  return false;
+}
+
+export function compareBuildVersions(left: string, right: string): number {
+  const normalize = (value: string) =>
+    String(value || "")
+      .trim()
+      .replace(/^v/i, "")
+      .split(".")
+      .map((part) => Number.parseInt(part, 10) || 0);
+
+  const leftParts = normalize(left);
+  const rightParts = normalize(right);
+  const max = Math.max(leftParts.length, rightParts.length);
+
+  for (let i = 0; i < max; i++) {
+    const a = leftParts[i] ?? 0;
+    const b = rightParts[i] ?? 0;
+    if (a > b) return 1;
+    if (a < b) return -1;
+  }
+
+  return 0;
+}
+
+export function formatDateToPtBr(dateStr: string): string {
+  if (!dateStr || dateStr === "-") return dateStr;
+  const match = String(dateStr).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!match) return dateStr;
+  const [, year, month, day] = match;
+  return `${day}/${month}/${year}`;
+}
+
+export async function fetchMobileVersion(): Promise<RemoteAppVersion | null> {
+  try {
+    const base = String(getApiUrlRuntime() || "").replace(/\/$/, "");
+    const url = `${base}/version/mobile`;
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    });
+    if (!response.ok) return null;
+    const raw: any = await response.json().catch(() => ({}));
+    const body = raw?.data ?? raw?.body ?? raw ?? {};
+    if (!body?.version) return null;
+    return {
+      app: String(body.app ?? "mobile"),
+      version: String(body.version),
+      release_date: String(body.release_date ?? ""),
+    };
+  } catch {
+    return null;
+  }
+}

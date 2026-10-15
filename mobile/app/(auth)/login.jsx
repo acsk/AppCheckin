@@ -26,6 +26,10 @@ import TechBackground from "../../src/components/ds/TechBackground";
 import TextField from "../../src/components/ds/TextField";
 import { ds as DS } from "../../src/components/ds/tokens";
 import { useBrowserThemeColor } from "../../src/hooks/useBrowserThemeColor";
+import {
+  APP_BUILD_VERSION,
+  APP_VERSION,
+} from "../../src/config/appVersion";
 
 const LOGO = require("../../assets/images/appcheckin-logo.png");
 
@@ -502,6 +506,9 @@ export default function LoginScreen() {
                 <Text style={styles.link}>Cadastre-se</Text>
               </TouchableOpacity>
             </View>
+            <Text style={styles.versionText}>
+              App {APP_VERSION} · {APP_BUILD_VERSION}
+            </Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -675,6 +682,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
     color: DS.inkMuted,
+  },
+  versionText: {
+    marginTop: 12,
+    textAlign: "center",
+    fontSize: 12,
+    color: DS.inkMuted,
+    fontWeight: "500",
   },
   tenantModalOverlay: {
     flex: 1,

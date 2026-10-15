@@ -35,6 +35,14 @@ return [
     'error_alert_from_name' => env('ERROR_ALERT_FROM_NAME', 'AppCheckin Ops'),
     'error_alert_throttle_minutes' => (int) env('ERROR_ALERT_THROTTLE_MINUTES', 15),
     'ops_view_token' => env('OPS_VIEW_TOKEN', ''),
+    'app_version_update_token' => env('APP_VERSION_UPDATE_TOKEN', ''),
+    'app_versions' => [
+        'mobile' => [
+            'version' => (int) env('APP_MOBILE_VERSION', 1),
+            'release' => (int) env('APP_MOBILE_RELEASE', 0),
+            'release_date' => env('APP_MOBILE_RELEASE_DATE', '2026-10-15'),
+        ],
+    ],
 
     /*
     | Diretório absoluto das fotos de perfil (produção Hostinger).
