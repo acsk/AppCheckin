@@ -1,7 +1,7 @@
 import { DebugLogsViewer } from "@/components/DebugLogsViewer";
 import PasswordRecoveryModal from "@/components/PasswordRecoveryModal";
 import AuthService from "@/src/services/authService";
-import ProfileDrawer from "@/src/components/ds/ProfileDrawer";
+import SideMenu, { SideMenuGroup } from "@/src/components/ds/SideMenu";
 import { ds } from "@/src/components/ds/tokens";
 import MobileService from "@/src/services/mobileService";
 import { colors } from "@/src/theme/colors";
@@ -32,6 +32,7 @@ import {
     Animated,
     Dimensions,
     Image,
+    Linking,
     Modal,
     Platform,
     Pressable,
@@ -61,6 +62,7 @@ export default function AccountScreen() {
   const [currentTenant, setCurrentTenant] = useState<any | null>(null);
   const [tenants, setTenants] = useState<any[]>([]);
   const [showTenantModal, setShowTenantModal] = useState(false);
+  const [switchingTenantId, setSwitchingTenantId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [rankingLoading, setRankingLoading] = useState(false);
   const [rankingError, setRankingError] = useState<string | null>(null);
@@ -755,16 +757,155 @@ export default function AccountScreen() {
 
   // loadWeekCheckins replaced by memoized version above
 
+  // Props do menu lateral (SideMenu do design system) a partir do perfil carregado.
+  const renderSideMenu = (profile: UserProfile) => {
+    const currentId = currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
+    const tenantAtual =
+      profile.tenants?.find((t) => Number(t.id) === Number(currentId)) ??
+      (profile.tenants?.length === 1 ? profile.tenants[0] : undefined);
+    const whatsappLinks = Array.isArray(tenantAtual?.whatsapp_links) ? tenantAtual.whatsapp_links : [];
+
+    const plano = profile.plano;
+    const statusCodigo = plano?.matricula_status?.codigo;
+    const vencido = (plano?.vencimento?.dias_restantes ?? 0) < 0;
+    const pendente = statusCodigo === "pendente";
+    // Check-ins da semana na modalidade do plano (todas, se o plano não tiver modalidade).
+    const modalidadePlano = plano?.modalidade?.nome?.trim().toLowerCase();
+    const usadosSemana = weekDias.filter(
+      (d) => !modalidadePlano || d.modalidade?.nome?.trim().toLowerCase() === modalidadePlano,
+    ).length;
+    const renovaEm = plano?.vencimento?.data
+      ? new Date(`${String(plano.vencimento.data).slice(0, 10)}T00:00:00`).toLocaleDateString("pt-BR", {
+          day: "2-digit",
+          month: "2-digit",
+        })
+      : null;
+
+    const posicaoRanking =
+      profile.ranking_modalidades?.find((item) => item.modalidade_id === selectedModalidadeId)?.posicao ??
+      profile.ranking_modalidades?.[0]?.posicao ??
+      null;
+    const stats = [
+      profile.estatisticas ? { value: profile.estatisticas.checkins_mes ?? 0, label: "check-ins no mês" } : null,
+      profile.estatisticas
+        ? { value: profile.estatisticas.sequencia_dias ?? 0, label: "dias seguidos", icon: "flame" as const }
+        : null,
+      posicaoRanking ? { value: `${posicaoRanking}º`, label: "no ranking" } : null,
+    ].filter((x): x is NonNullable<typeof x> => Boolean(x));
+
+    const goTo = (path: string) => () => {
+      closeSidebar();
+      router.push(path as any);
+    };
+
+    const groups: SideMenuGroup[] = [
+      {
+        title: "Minha conta",
+        items: [
+          { icon: "user", label: "Dados pessoais", hint: profile.email, onPress: goTo("/(tabs)/conta") },
+          {
+            icon: "file-text",
+            tone: "brand",
+            label: "Minhas assinaturas",
+            hint: pendente ? "Pagamento pendente" : vencido ? "Bloqueado" : plano?.nome || null,
+            hintTone: pendente ? "warning" : vencido ? "danger" : null,
+            count: pendente ? 1 : null,
+            onPress: goTo("/minhas-assinaturas"),
+          },
+          {
+            icon: "key",
+            label: "Alterar senha",
+            onPress: () => {
+              closeSidebar();
+              setShowRecoveryModal(true);
+            },
+          },
+        ],
+      },
+      {
+        title: "Grupos do WhatsApp",
+        items: whatsappLinks.map((link) => ({
+          icon: "message-circle" as const,
+          mcIcon: "whatsapp" as const,
+          tone: "success" as const,
+          label: link.nome,
+          hint: "Toque para entrar",
+          onPress: () => {
+            closeSidebar();
+            void Linking.openURL(link.url);
+          },
+        })),
+      },
+    ];
+
+    return (
+      <SideMenu
+        user={{
+          name: profile.nome,
+          avatarUri: userPhotoUri,
+          roles: userRoleLabels,
+          memberSince: profile.membro_desde
+            ? new Date(profile.membro_desde).toLocaleDateString("pt-BR")
+            : null,
+        }}
+        gym={
+          currentId || tenants.length
+            ? {
+                name: getTenantDisplayName(),
+                count: tenants.length,
+                onSwitch: () => {
+                  closeSidebar();
+                  setShowTenantModal(true);
+                },
+              }
+            : null
+        }
+        stats={stats}
+        plan={
+          plano?.nome
+            ? {
+                name: plano.nome,
+                status: plano.matricula_status?.nome ?? null,
+                tone: pendente ? "warning" : vencido || statusCodigo === "vencida" ? "danger" : "success",
+                used: usadosSemana,
+                total: Number(plano.checkins_semanais) || 0,
+                renews: renovaEm,
+                onPress: goTo("/minhas-assinaturas"),
+              }
+            : null
+        }
+        groups={groups}
+        version={Constants.expoConfig?.version ?? null}
+        updatingPhoto={updatingPhoto}
+        onClose={closeSidebar}
+        onEditPhoto={handleChangePhoto}
+        onLogout={() => {
+          closeSidebar();
+          router.push("/logout");
+        }}
+      />
+    );
+  };
+
   const handleSelectTenant = async (tenantId: number) => {
+    const currentId = currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
+    if (switchingTenantId != null) return;
+    if (currentId != null && Number(currentId) === Number(tenantId)) {
+      setShowTenantModal(false);
+      return;
+    }
+    setSwitchingTenantId(Number(tenantId));
     try {
       await AuthService.selectTenant(tenantId);
       setShowTenantModal(false);
       const ct = await AuthService.getCurrentTenant();
       setCurrentTenant(ct);
-      // Perfil será recarregado pelo efeito que depende de currentTenant
+      // Perfil, semana e ranking são recarregados pelos efeitos que dependem de currentTenant
     } catch (e: any) {
       console.warn("⚠️ Falha ao selecionar tenant", e);
       Alert.alert("Erro", "Não foi possível trocar de academia.");
+    } finally {
+      setSwitchingTenantId(null);
     }
   };
 
@@ -836,22 +977,6 @@ export default function AccountScreen() {
   };
 
   // CPF mascarado no menu: só os dois últimos dígitos visíveis.
-  const maskCPF = (cpf: string) => {
-    const d = String(cpf || "").replace(/\D/g, "");
-    return d.length >= 2 ? `•••.•••.•••-${d.slice(-2)}` : "•••";
-  };
-
-
-
-  const formatPhone = (phone: string) => {
-    if (!phone) return "";
-    const cleaned = phone.replace(/\D/g, "");
-    if (cleaned.length === 11) {
-      return cleaned.replace(/(\d{2})(\d{5})(\d{4})/, "($1) $2-$3");
-    }
-    return cleaned.replace(/(\d{2})(\d{4})(\d{4})/, "($1) $2-$3");
-  };
-
   // loadUserProfile replaced by memoized version above
 
   const handleChangePhoto = async () => {
@@ -1489,124 +1614,71 @@ export default function AccountScreen() {
             { transform: [{ translateX: sidebarTranslateX }] },
           ]}
         >
-          <ProfileDrawer
-            user={{
-              name: userProfile.nome,
-              avatarUri: userPhotoUri,
-              roles: userRoleLabels,
-              memberSince: userProfile.membro_desde
-                ? new Date(userProfile.membro_desde).toLocaleDateString("pt-BR")
-                : null,
-            }}
-            version={Constants.expoConfig?.version ?? null}
-            updatingPhoto={updatingPhoto}
-            info={[
-              { icon: "mail" as const, label: "E-mail", value: userProfile.email },
-              userProfile.cpf
-                ? { icon: "credit-card" as const, label: "CPF", value: maskCPF(userProfile.cpf) }
-                : null,
-              userProfile.telefone
-                ? { icon: "phone" as const, label: "Telefone", value: formatPhone(userProfile.telefone) }
-                : null,
-              userProfile.data_nascimento
-                ? {
-                    icon: "calendar" as const,
-                    label: "Nascimento",
-                    value: new Date(userProfile.data_nascimento).toLocaleDateString("pt-BR"),
-                  }
-                : null,
-            ].filter((x): x is { icon: "mail"; label: string; value: string } => Boolean(x))}
-            gyms={(userProfile.tenants || []).map((tenant) => {
-              const currentId = currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
-              const isCurrent = currentId != null && Number(tenant.id) === Number(currentId);
-              return {
-                name: tenant.nome,
-                phone: tenant.telefone ? formatPhone(tenant.telefone) : null,
-                email: tenant.email || null,
-                current: isCurrent,
-                onPress: () => {
-                  closeSidebar();
-                  if (!isCurrent && tenants.length > 1) {
-                    setShowTenantModal(true);
-                  }
-                },
-              };
-            })}
-            menu={[
-              {
-                icon: "file-text",
-                label: "Minhas assinaturas",
-                hint:
-                  userProfile.plano?.matricula_status?.codigo === "pendente"
-                    ? "Pagamento pendente"
-                    : (userProfile.plano?.vencimento?.dias_restantes ?? 0) < 0
-                      ? "Bloqueado"
-                      : userProfile.plano?.nome || null,
-                hintTone:
-                  userProfile.plano?.matricula_status?.codigo === "pendente"
-                    ? "warning"
-                    : (userProfile.plano?.vencimento?.dias_restantes ?? 0) < 0
-                      ? "danger"
-                      : null,
-                onPress: () => {
-                  closeSidebar();
-                  router.push("/minhas-assinaturas");
-                },
-              },
-              {
-                icon: "key",
-                label: "Alterar senha",
-                onPress: () => {
-                  closeSidebar();
-                  setShowRecoveryModal(true);
-                },
-              },
-            ]}
-            onClose={closeSidebar}
-            onEditPhoto={handleChangePhoto}
-            onLogout={() => {
-              closeSidebar();
-              router.push("/logout");
-            }}
-          />
+          {renderSideMenu(userProfile)}
         </Animated.View>
       </Modal>
 
-      {/* Tenant Switch Modal */}
-      <Modal transparent visible={showTenantModal} animationType="fade">
+      {/* Troca de academia (aberta pela pílula "Academia · Trocar" do menu lateral) */}
+      <Modal
+        transparent
+        visible={showTenantModal}
+        animationType="fade"
+        onRequestClose={() => setShowTenantModal(false)}
+      >
         <Pressable
           style={styles.tenantModalOverlay}
           onPress={() => setShowTenantModal(false)}
+          accessibilityLabel="Fechar"
         />
-        <View style={styles.tenantModalContainer}>
-          <View style={styles.tenantModalCard}>
+        <View style={styles.tenantModalContainer} pointerEvents="box-none">
+          <View style={styles.tenantModalCard} accessibilityViewIsModal>
             <Text style={styles.tenantModalTitle}>Trocar de academia</Text>
-            <View style={{ gap: 10 }}>
-              {tenants.map((t) => {
-                const id = t?.tenant?.id ?? t?.id;
+            <Text style={styles.tenantModalSubtitle}>
+              Escolha a academia que você quer ver no app.
+            </Text>
+            <View style={styles.tenantList}>
+              {tenants.map((t, i) => {
+                const id = Number(t?.tenant?.id ?? t?.id);
                 const nome = t?.tenant?.nome ?? t?.nome ?? "Academia";
+                const currentId = currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
+                const isCurrent = currentId != null && Number(currentId) === id;
+                const isSwitching = switchingTenantId === id;
                 return (
                   <TouchableOpacity
                     key={String(id)}
-                    style={styles.tenantOptionButton}
+                    style={[styles.tenantOption, i > 0 && styles.tenantOptionDivided]}
                     onPress={() => handleSelectTenant(id)}
-                    activeOpacity={0.8}
+                    disabled={switchingTenantId != null}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isCurrent, busy: isSwitching }}
                   >
-                    <Feather name="home" size={16} color={ds.onBrand} />
-                    <Text style={styles.tenantOptionText}>{nome}</Text>
+                    <View style={[styles.tenantOptionIcon, isCurrent && styles.tenantOptionIconCurrent]}>
+                      <Feather name="briefcase" size={18} color={isCurrent ? ds.brandInk : ds.ink} />
+                    </View>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={styles.tenantOptionText} numberOfLines={1}>
+                        {nome}
+                      </Text>
+                      {isCurrent ? <Text style={styles.tenantOptionHint}>Academia atual</Text> : null}
+                    </View>
+                    {isSwitching ? (
+                      <ActivityIndicator size="small" color={ds.ink} />
+                    ) : isCurrent ? (
+                      <Feather name="check" size={20} color={ds.success} />
+                    ) : (
+                      <Feather name="chevron-right" size={18} color={ds.inkMuted} />
+                    )}
                   </TouchableOpacity>
                 );
               })}
             </View>
             <TouchableOpacity
-              style={[
-                styles.tenantOptionButton,
-                { marginTop: 14, backgroundColor: "#6b7280" },
-              ]}
+              style={styles.tenantCancel}
               onPress={() => setShowTenantModal(false)}
+              accessibilityRole="button"
             >
-              <Feather name="x" size={16} color={ds.onBrand} />
-              <Text style={styles.tenantOptionText}>Cancelar</Text>
+              <Text style={styles.tenantCancelText}>Cancelar</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -2653,24 +2725,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
   },
-  tenantOptionButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    backgroundColor: colors.primary,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRadius: 12,
-    justifyContent: "center",
-  },
-  tenantOptionText: {
-    color: ds.onBrand,
-    fontWeight: "700",
-    fontSize: 16,
-  },
   tenantModalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
+    backgroundColor: ds.scrim,
   },
   tenantModalContainer: {
     position: "absolute",
@@ -2684,25 +2741,79 @@ const styles = StyleSheet.create({
   },
   tenantModalCard: {
     width: "100%",
-    maxWidth: 520,
-    backgroundColor: "#fff",
+    maxWidth: 420,
+    backgroundColor: ds.ground,
     borderRadius: 16,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: "#f0f1f4",
-    ...withShadow("0px 6px 10px rgba(0, 0, 0, 0.1)", {
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.1,
-      shadowRadius: 10,
-      elevation: 3,
-    }),
+    padding: 16,
+    gap: 12,
   },
   tenantModalTitle: {
-    fontSize: 18,
+    fontSize: 22,
+    lineHeight: 28,
     fontWeight: "800",
-    color: colors.text,
-    marginBottom: 12,
-    textAlign: "center",
+    color: ds.ink,
+  },
+  tenantModalSubtitle: {
+    marginTop: -8,
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: "500",
+    color: ds.inkMuted,
+  },
+  tenantList: {
+    backgroundColor: ds.surface,
+    borderWidth: 1,
+    borderColor: ds.line,
+    borderRadius: 16,
+    overflow: "hidden",
+  },
+  tenantOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    minHeight: 60,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+  },
+  tenantOptionDivided: {
+    borderTopWidth: 1,
+    borderTopColor: ds.line,
+  },
+  tenantOptionIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: ds.surfaceSunken,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tenantOptionIconCurrent: {
+    backgroundColor: ds.brandSoft,
+  },
+  tenantOptionText: {
+    color: ds.ink,
+    fontWeight: "800",
+    fontSize: 16,
+    lineHeight: 20,
+  },
+  tenantOptionHint: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "700",
+    color: ds.brandInk,
+  },
+  tenantCancel: {
+    height: 48,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: ds.lineStrong,
+    backgroundColor: ds.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tenantCancelText: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: ds.ink,
   },
 });

@@ -9,11 +9,8 @@ import {
     Animated,
     Image,
     Modal,
-    Platform,
-    Pressable,
     ScrollView,
     StyleSheet,
-    Switch,
     Text,
     TextInput,
     TouchableOpacity,
@@ -27,7 +24,9 @@ import { normalizeUtf8 } from "../../src/utils/utf8";
 import { normalizeVencimentoMessage } from "../../src/utils/dateBr";
 import { weekdayAbbrev } from "../../src/utils/weekdayAbbrev";
 
-import ClassCard, { ClassStatus } from "@/src/components/ds/ClassCard";
+import ClassTimeline, { ClassSlotProps, SlotStatus } from "@/src/components/ds/ClassTimeline";
+import DayPicker from "@/src/components/ds/DayPicker";
+import Segmented from "@/src/components/ds/Segmented";
 import { ds } from "@/src/components/ds/tokens";
 const getRouteParam = (value?: string | string[]) => {
   if (value == null) return undefined;
@@ -79,7 +78,9 @@ export default function CheckinScreen() {
     type: "info" | "success" | "error" | "warning";
   }>({ message: "", type: "info" });
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [showOnlyAvailable, setShowOnlyAvailable] = useState(true);
+  // Filtro da linha do tempo: todas, só as que aceitam check-in, ou as minhas.
+  const [filtroAulas, setFiltroAulas] = useState<"todas" | "disp" | "minhas">("todas");
+  const [acaoTurmaId, setAcaoTurmaId] = useState<number | null>(null);
   type LimiteCicloDetalhes = {
     plano?: string;
     checkins_semanais?: number;
@@ -1428,25 +1429,6 @@ export default function CheckinScreen() {
     }
   };
 
-  const isCheckinDisabled = (turma: any): boolean => {
-    if (!turma) return true;
-    if (turma.checkin_bloqueado) return true;
-    if (isTurmaDisabled(turma, selectedDate)) return true;
-    const hasVagasByField =
-      typeof turma.vagas_disponiveis === "number"
-        ? turma.vagas_disponiveis > 0
-        : true;
-
-    const hasVagasByCount =
-      typeof turma.limite_alunos === "number" &&
-      typeof turma.alunos_inscritos === "number"
-        ? turma.alunos_inscritos < turma.limite_alunos
-        : true;
-
-    if (!hasVagasByField && !hasVagasByCount) return true;
-    return false;
-  };
-
   const formatDateDisplay = (date: Date) => {
     const day = date.getDate();
     const dayName = weekdayAbbrev(date, { uppercase: true });
@@ -1527,11 +1509,130 @@ export default function CheckinScreen() {
     if (!isProfessorOuAdmin) {
       list = list.filter((turma) => !turma?.checkin_bloqueado);
     }
-    if (showOnlyAvailable && !isProfessorOuAdmin) {
-      list = list.filter((turma) => !isCheckinDisabled(turma));
-    }
     return list;
   })();
+
+  const horaAgora = () => {
+    const d = new Date();
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  };
+
+  const isHojeSelecionado = formatDateParam(selectedDate) === formatDateParam(new Date());
+
+  // Hora limite para cancelar o check-in (turma.checkin.cancelamento_ate), se ainda não passou.
+  const getCancelamentoAte = (turma: any): string | null => {
+    const raw: string | undefined = turma?.checkin?.cancelamento_ate;
+    if (!raw) return null;
+    const d = raw.includes(" ") ? new Date(raw.replace(" ", "T")) : new Date(raw);
+    if (Number.isNaN(d.getTime()) || d.getTime() < Date.now()) return null;
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  };
+
+  // Evita toques duplos: uma ação de check-in/cancelamento por vez, com loading no botão da aula.
+  const runAcaoTurma = async (turma: any, acao: () => Promise<void>) => {
+    if (acaoTurmaId != null) return;
+    setAcaoTurmaId(Number(turma.id));
+    try {
+      await acao();
+    } finally {
+      setAcaoTurmaId(null);
+    }
+  };
+
+  const getSlotStatus = (turma: any): SlotStatus => {
+    if (turma?.checkin_bloqueado) return "blocked";
+    if (turma?.meu_checkin_id) return "checked";
+    if (isTurmaDisabled(turma, selectedDate)) return "closed";
+    const lotada =
+      Number(turma.limite_alunos) > 0 &&
+      Number(turma.alunos_inscritos) >= Number(turma.limite_alunos);
+    if (lotada) return "full";
+    if (getMinutosParaAbrirCheckin(turma) > 0) return "soon";
+    return "open";
+  };
+
+  const toSlot = (turma: any): ClassSlotProps => {
+    const status = getSlotStatus(turma);
+    const professorName =
+      normalizeUtf8(String(turma.professor?.nome || turma.professor || "")) || "Sem professor";
+    const displayName = cleanTurmaName(turma.nome, turma.modalidade, turma.professor);
+    const modalidadeNome = normalizeUtf8(String(turma.modalidade?.nome || "")).trim();
+    const shouldShowName =
+      !!displayName &&
+      displayName !== "Turma" &&
+      (!modalidadeNome || displayName.toLowerCase() !== modalidadeNome.toLowerCase());
+    const minutosParaAbrir = getMinutosParaAbrirCheckin(turma);
+    const cancelarAte = status === "checked" ? getCancelamentoAte(turma) : null;
+    const busy = acaoTurmaId === Number(turma.id);
+    const verTurma = {
+      label: "Ver turma",
+      variant: "secondary" as const,
+      onPress: () => openParticipants(turma),
+    };
+
+    let action: ClassSlotProps["action"] = null;
+    if (isProfessorOuAdmin) {
+      action = verTurma;
+    } else if (status === "open") {
+      action = {
+        label: "Fazer check-in",
+        icon: "check",
+        loading: busy,
+        disabled: acaoTurmaId != null && !busy,
+        onPress: () => void runAcaoTurma(turma, () => handleCheckin(turma)),
+      };
+    } else if (status === "checked" && cancelarAte) {
+      action = {
+        label: "Cancelar",
+        variant: "secondary",
+        loading: busy,
+        disabled: acaoTurmaId != null && !busy,
+        onPress: () =>
+          void runAcaoTurma(turma, () => handleUndoCheckin(Number(turma.meu_checkin_id), turma)),
+      };
+    } else if (status === "full" || status === "soon" || status === "checked") {
+      action = verTurma;
+    }
+
+    const disabled = isProfessorOuAdmin ? false : status === "closed";
+    return {
+      id: turma.id,
+      start: String(getHoraInicio(turma) || "").slice(0, 5),
+      end: String(getHoraFim(turma) || "").slice(0, 5),
+      instructor: professorName,
+      room: shouldShowName ? displayName : null,
+      modality: turma.modalidade
+        ? { name: modalidadeNome, icon: turma.modalidade.icone || null }
+        : null,
+      booked: turma.alunos_inscritos,
+      capacity: turma.limite_alunos,
+      status,
+      deadline: getHoraLimiteCheckin(turma),
+      opensIn: minutosParaAbrir > 0 ? formatMinutos(minutosParaAbrir) : null,
+      attendees: Array.isArray(turma.participantes_preview)
+        ? turma.participantes_preview.map((n: string) => normalizeUtf8(String(n)))
+        : [],
+      note: cancelarAte ? `Cancele até ${cancelarAte}` : null,
+      action,
+      onPress: disabled ? undefined : () => openParticipants(turma),
+    };
+  };
+
+  const slots = schedulesToRender
+    .slice()
+    .sort((a, b) =>
+      String(getHoraInicio(a) || "").localeCompare(String(getHoraInicio(b) || "")),
+    )
+    .map(toSlot);
+  const slotsDisponiveis = slots.filter((x) => x.status === "open" || x.status === "soon");
+  const slotsMinhas = slots.filter((x) => x.status === "checked");
+  const slotsFiltrados =
+    filtroAulas === "disp" ? slotsDisponiveis : filtroAulas === "minhas" ? slotsMinhas : slots;
+  const agora = isHojeSelecionado ? horaAgora() : null;
+  // Marcador "Agora" depois das aulas que já começaram (entre as não encerradas).
+  const nowBefore = agora
+    ? slotsFiltrados.filter((x) => x.status !== "closed" && x.start <= agora).length
+    : 0;
 
   const handleToggleCheckinBloqueioTurma = async () => {
     if (!participantsTurma?.id || !isProfessorOuAdmin) return;
@@ -1648,18 +1749,6 @@ export default function CheckinScreen() {
                   <Feather name="refresh-cw" size={22} color={ds.ink} />
                 )}
               </TouchableOpacity>
-              <View style={styles.switchRow}>
-                <Text style={styles.switchLabel}>Só disponíveis</Text>
-                <Switch
-                  value={showOnlyAvailable}
-                  onValueChange={setShowOnlyAvailable}
-                  trackColor={{
-                    false: ds.lineStrong,
-                    true: ds.lineStrong,
-                  }}
-                  thumbColor={ds.surface}
-                />
-              </View>
             </View>
           </View>
         </View>
@@ -1719,137 +1808,54 @@ export default function CheckinScreen() {
           </View>
         </Modal>
 
-        {/* Calendar */}
-        <View style={styles.calendarSection} className="notranslate">
-            <ScrollView
-              horizontal
-              nestedScrollEnabled
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.calendarContainer}
-              keyboardShouldPersistTaps="handled"
-            >
-              {calendarDays.map((date) => {
-                const { day, dayName } = formatDateDisplay(date);
-                const dayKey = formatDateParam(date);
-                const isSelected =
-                  selectedDate &&
-                  formatDateParam(selectedDate) === dayKey;
-
-                return (
-                  <Pressable
-                    key={dayKey}
-                    focusable={Platform.OS === "web" ? false : undefined}
-                    onPress={() => selectCalendarDay(date)}
-                    style={({ pressed }) => [
-                      styles.calendarDay,
-                      isSelected && styles.calendarDaySelected,
-                      pressed && styles.calendarDayPressed,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.calendarDayName,
-                        isSelected && styles.calendarDayNameSelected,
-                      ]}
-                      className="notranslate"
-                      autoCorrect={false}
-                      spellCheck={
-                        Platform.OS === "web" ? false : undefined
-                      }
-                    >
-                      {dayName}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.calendarDayNumber,
-                        isSelected && styles.calendarDayNumberSelected,
-                      ]}
-                    >
-                      {day}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          </View>
+        {/* Dias: fila de chips colada no cabeçalho */}
+        <View className="notranslate">
+          <DayPicker
+            days={calendarDays.map((date) => {
+              const { day, dayName } = formatDateDisplay(date);
+              return { id: formatDateParam(date), weekday: dayName, day };
+            })}
+            value={formatDateParam(selectedDate)}
+            onChange={(id) => {
+              const date = calendarDays.find((d) => formatDateParam(d) === id);
+              if (date) selectCalendarDay(date);
+            }}
+          />
+        </View>
 
         <ScrollView
           contentContainerStyle={[styles.scrollContent, styles.scrollGrow]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Available Schedules */}
           <View style={styles.schedulesSection}>
             {loading ? (
               <Text style={styles.loadingText}>Carregando...</Text>
-            ) : schedulesToRender.length > 0 ? (
+            ) : slots.length > 0 ? (
               <View style={styles.schedulesList}>
-                <View style={styles.sectionHead}>
-                  <Text style={styles.sectionHeadTitle}>AULAS DO DIA</Text>
-                  <Text style={styles.sectionHeadAside}>
-                    {schedulesToRender.length} {schedulesToRender.length === 1 ? "aula" : "aulas"}
-                  </Text>
-                </View>
-                {schedulesToRender.map((turma) => {
-                  const isClosed = isTurmaDisabled(turma, selectedDate);
-                  const isCheckinBloqueado = !!turma?.checkin_bloqueado;
-                  const disabled = isProfessorOuAdmin ? false : isClosed;
-                  const statusColor = isClosed ? "#d9534f" : "#2e7d32";
-                  const professorName =
-                    turma.professor?.nome || turma.professor || "";
-                  const horaLimite = getHoraLimiteCheckin(turma);
-                  const displayName = cleanTurmaName(
-                    turma.nome,
-                    turma.modalidade,
-                    turma.professor,
-                  );
-                  const modalidadeNome = normalizeUtf8(
-                    String(turma.modalidade?.nome || ""),
-                  ).trim();
-                  const shouldShowName =
-                    !!displayName &&
-                    displayName !== "Turma" &&
-                    (!modalidadeNome ||
-                      displayName.toLowerCase() !==
-                        modalidadeNome.toLowerCase());
-
-                  const minutosParaAbrir = getMinutosParaAbrirCheckin(turma);
-                  const lotada =
-                    Number(turma.limite_alunos) > 0 &&
-                    Number(turma.alunos_inscritos) >= Number(turma.limite_alunos);
-                  const status: ClassStatus = isCheckinBloqueado
-                    ? "blocked"
-                    : isClosed
-                      ? "closed"
-                      : lotada
-                        ? "full"
-                        : "open";
-
-                  return (
-                    <ClassCard
-                      key={turma.id}
-                      start={String(turma.horario.inicio).slice(0, 5)}
-                      end={String(turma.horario.fim).slice(0, 5)}
-                      instructor={professorName ? normalizeUtf8(String(professorName)) : null}
-                      title={shouldShowName ? displayName : null}
-                      modality={
-                        turma.modalidade
-                          ? {
-                              name: normalizeUtf8(turma.modalidade.nome),
-                              icon: turma.modalidade.icone || null,
-                            }
-                          : null
-                      }
-                      booked={turma.alunos_inscritos}
-                      capacity={turma.limite_alunos}
-                      deadline={!disabled ? horaLimite : null}
-                      opensIn={minutosParaAbrir > 0 ? formatMinutos(minutosParaAbrir) : null}
-                      status={status}
-                      actionLabel={isProfessorOuAdmin ? "Ver turma" : "Check-in"}
-                      onPress={disabled ? undefined : () => openParticipants(turma)}
-                    />
-                  );
-                })}
+                <Segmented
+                  size="sm"
+                  label="Filtrar aulas"
+                  value={filtroAulas}
+                  onChange={(id) => setFiltroAulas(id as typeof filtroAulas)}
+                  options={[
+                    { id: "todas", label: "Todas", count: slots.length },
+                    { id: "disp", label: "Disponíveis", count: slotsDisponiveis.length },
+                    ...(isProfessorOuAdmin
+                      ? []
+                      : [{ id: "minhas", label: "Minhas", count: slotsMinhas.length }]),
+                  ]}
+                />
+                <ClassTimeline
+                  items={slotsFiltrados}
+                  now={agora}
+                  nowBefore={nowBefore}
+                  emptyText={
+                    filtroAulas === "minhas"
+                      ? "Você ainda não fez check-in neste dia."
+                      : "Nenhuma aula disponível agora."
+                  }
+                />
               </View>
             ) : (
               <View style={styles.emptyState}>

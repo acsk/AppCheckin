@@ -39,6 +39,8 @@ export interface UserProfile {
     id?: number;
     nome?: string;
     valor?: number;
+    /** Limite de check-ins por semana do plano (0 = sem limite informado). */
+    checkins_semanais?: number | null;
     matricula_id?: number;
     data_inicio?: string;
     data_fim?: string;

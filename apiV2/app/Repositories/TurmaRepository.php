@@ -62,6 +62,41 @@ class TurmaRepository
             ->count('aluno_id');
     }
 
+    /**
+     * Check-in do próprio usuário e prévia de quem vai, por turma, numa consulta só.
+     *
+     * @param  list<int>  $turmaIds
+     * @return array<int, array{meu_checkin_id: ?int, nomes: list<string>}>
+     */
+    public function resumoCheckinsPorTurmas(array $turmaIds, int $tenantId, int $userId, int $limiteNomes = 5): array
+    {
+        if ($turmaIds === []) {
+            return [];
+        }
+
+        $rows = DB::table('checkins as c')
+            ->join('alunos as a', 'a.id', '=', 'c.aluno_id')
+            ->whereIn('c.turma_id', $turmaIds)
+            ->where('c.tenant_id', $tenantId)
+            ->orderBy('c.id')
+            ->get(['c.id', 'c.turma_id', 'a.usuario_id', 'a.nome']);
+
+        $resumo = [];
+        foreach ($rows as $row) {
+            $turmaId = (int) $row->turma_id;
+            $resumo[$turmaId] ??= ['meu_checkin_id' => null, 'nomes' => []];
+
+            if ((int) $row->usuario_id === $userId) {
+                $resumo[$turmaId]['meu_checkin_id'] = (int) $row->id;
+            }
+            if (count($resumo[$turmaId]['nomes']) < $limiteNomes && $row->nome) {
+                $resumo[$turmaId]['nomes'][] = (string) $row->nome;
+            }
+        }
+
+        return $resumo;
+    }
+
     /** Contagem por turma_id apenas (paridade Slim detalheTurma). */
     public function contarCheckinsPorTurmaId(int $turmaId): int
     {

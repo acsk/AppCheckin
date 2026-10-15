@@ -123,11 +123,18 @@ class MobileHorariosService
             array_map(static fn (array $t) => $t['id'], $turmasFormatadas),
         );
         $ehStaff = $this->bloqueios->usuarioEhStaffNoTenant($userId, $tenantId);
+        $resumoCheckins = $this->turmas->resumoCheckinsPorTurmas(
+            array_map(static fn (array $t) => $t['id'], $turmasFormatadas),
+            $tenantId,
+            $userId,
+        );
 
         $turmasFormatadas = array_values(array_filter(
-            array_map(static function (array $turma) use ($bloqueadas) {
+            array_map(static function (array $turma) use ($bloqueadas, $resumoCheckins) {
                 $id = (int) $turma['id'];
                 $turma['checkin_bloqueado'] = isset($bloqueadas[$id]);
+                $turma['meu_checkin_id'] = $resumoCheckins[$id]['meu_checkin_id'] ?? null;
+                $turma['participantes_preview'] = $resumoCheckins[$id]['nomes'] ?? [];
 
                 return $turma;
             }, $turmasFormatadas),

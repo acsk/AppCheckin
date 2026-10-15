@@ -155,6 +155,7 @@ class MobilePerfilRepository
                     'p.valor',
                     'p.duracao_dias',
                     'p.descricao',
+                    'p.checkins_semanais',
                     'm.id as matricula_id',
                     'm.data_inicio',
                     'm.data_vencimento as data_fim',
