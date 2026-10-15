@@ -29,6 +29,7 @@ import { useBrowserThemeColor } from "../../src/hooks/useBrowserThemeColor";
 import {
   APP_BUILD_VERSION,
   APP_VERSION,
+  ensureAppIsCurrent,
 } from "../../src/config/appVersion";
 
 const LOGO = require("../../assets/images/appcheckin-logo.png");
@@ -293,6 +294,11 @@ export default function LoginScreen() {
         // Pequeno delay para garantir que o token foi salvo
         await new Promise((resolve) => setTimeout(resolve, 800));
 
+        const updateState = await ensureAppIsCurrent();
+        if (updateState === "reloading") {
+          return;
+        }
+
         console.log("🔄 Redirecionando para /(tabs)...");
         // NÃO chama setLoading(false) aqui - deixa loading=true para bloquear interações
         router.replace("/(tabs)");
@@ -383,6 +389,10 @@ export default function LoginScreen() {
         console.log("✅ Tenant selecionado com sucesso");
         await new Promise((resolve) => setTimeout(resolve, 800));
         setTenantSelectionVisible(false);
+        const updateState = await ensureAppIsCurrent();
+        if (updateState === "reloading") {
+          return;
+        }
         router.replace("/(tabs)");
       } else {
         Alert.alert("Erro", "Não foi possível selecionar a academia");

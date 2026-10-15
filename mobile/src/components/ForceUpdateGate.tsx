@@ -6,12 +6,13 @@ import {
   forceReloadApp,
   formatDateToPtBr,
   isProductionRuntime,
+  startPwaUpdateWatcher,
 } from "@/src/config/appVersion";
 import { colors } from "@/src/theme/colors";
 import { Feather } from "@expo/vector-icons";
 import React, { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
+  AppState,
   Platform,
   StyleSheet,
   Text,
@@ -24,50 +25,73 @@ type Props = {
 };
 
 export default function ForceUpdateGate({ children }: Props) {
-  const [checking, setChecking] = useState(() => isProductionRuntime());
   const [mustUpdate, setMustUpdate] = useState(false);
   const [remoteVersion, setRemoteVersion] = useState("");
   const [remoteDate, setRemoteDate] = useState("");
 
-  const checkVersion = useCallback(async () => {
+  const checkVersion = useCallback(async (autoReload: boolean) => {
     if (!isProductionRuntime()) {
-      setChecking(false);
       setMustUpdate(false);
       return;
     }
 
-    setChecking(true);
     const remote = await fetchMobileVersion();
-    if (remote && compareBuildVersions(remote.version, APP_BUILD_VERSION) > 0) {
-      setRemoteVersion(remote.version);
-      setRemoteDate(remote.release_date);
-      setMustUpdate(true);
-    } else {
+    if (!remote || compareBuildVersions(remote.version, APP_BUILD_VERSION) <= 0) {
       setMustUpdate(false);
+      return;
     }
-    setChecking(false);
+
+    setRemoteVersion(remote.version);
+    setRemoteDate(remote.release_date);
+
+    if (autoReload && Platform.OS === "web") {
+      try {
+        const key = "appcheckin_auto_reload_for";
+        const last = sessionStorage.getItem(key);
+        if (last !== remote.version) {
+          sessionStorage.setItem(key, remote.version);
+          await forceReloadApp();
+          return;
+        }
+      } catch {
+        await forceReloadApp();
+        return;
+      }
+    }
+
+    setMustUpdate(true);
   }, []);
 
   useEffect(() => {
-    void checkVersion();
+    const stop = startPwaUpdateWatcher();
+    void checkVersion(true);
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void checkVersion(true);
+    });
+    const onVisible = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        void checkVersion(true);
+      }
+    };
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVisible);
+    }
+    return () => {
+      stop();
+      sub.remove();
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVisible);
+      }
+    };
   }, [checkVersion]);
 
   const handleUpdate = async () => {
     if (Platform.OS !== "web" || typeof window === "undefined") {
-      await checkVersion();
+      await checkVersion(false);
       return;
     }
     await forceReloadApp();
   };
-
-  if (checking) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.checkingText}>Verificando versão…</Text>
-      </View>
-    );
-  }
 
   if (mustUpdate) {
     return (
@@ -99,17 +123,6 @@ export default function ForceUpdateGate({ children }: Props) {
 }
 
 const styles = StyleSheet.create({
-  center: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#fff",
-    gap: 12,
-  },
-  checkingText: {
-    color: "#64748b",
-    fontSize: 14,
-  },
   overlay: {
     flex: 1,
     backgroundColor: "#0f172a",

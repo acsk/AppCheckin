@@ -88,7 +88,27 @@
 
         if ("serviceWorker" in navigator) {
           window.addEventListener("load", function () {
-            navigator.serviceWorker.register("/sw.js").catch(function () {});
+            navigator.serviceWorker
+              .register("/sw.js", { updateViaCache: "none" })
+              .then(function (reg) {
+                reg.update();
+                setInterval(function () {
+                  reg.update();
+                }, 60 * 1000);
+                document.addEventListener("visibilitychange", function () {
+                  if (document.visibilityState === "visible") {
+                    reg.update();
+                  }
+                });
+              })
+              .catch(function () {});
+
+            var reloading = false;
+            navigator.serviceWorker.addEventListener("controllerchange", function () {
+              if (reloading) return;
+              reloading = true;
+              window.location.reload();
+            });
           });
         }
       })();

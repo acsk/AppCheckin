@@ -62,6 +62,80 @@ export function formatDateToPtBr(dateStr: string): string {
   return `${day}/${month}/${year}`;
 }
 
+const AUTO_RELOAD_KEY = "appcheckin_auto_reload_for";
+
+export function startPwaUpdateWatcher(): () => void {
+  if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
+    return () => {};
+  }
+
+  let cancelled = false;
+  let reloading = false;
+
+  const onControllerChange = () => {
+    if (reloading || cancelled) return;
+    reloading = true;
+    window.location.reload();
+  };
+
+  navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
+
+  let intervalId = 0;
+  const onVisible = () => {
+    if (document.visibilityState === "visible" && !cancelled) {
+      navigator.serviceWorker.getRegistration("/sw.js").then((reg) => {
+        void reg?.update();
+      });
+    }
+  };
+
+  navigator.serviceWorker
+    .register("/sw.js", { updateViaCache: "none" })
+    .then((reg) => {
+      const tick = () => {
+        if (!cancelled) void reg.update();
+      };
+      tick();
+      intervalId = window.setInterval(tick, 60 * 1000);
+      document.addEventListener("visibilitychange", onVisible);
+    })
+    .catch(() => {});
+
+  return () => {
+    cancelled = true;
+    if (intervalId) window.clearInterval(intervalId);
+    document.removeEventListener("visibilitychange", onVisible);
+    navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
+  };
+}
+
+/**
+ * Se o servidor tiver versão mais nova, recarrega uma vez (como o AppEscola).
+ * Se já tentou e o bundle ainda é antigo, retorna "blocked".
+ */
+export async function ensureAppIsCurrent(): Promise<"ok" | "reloading" | "blocked"> {
+  const remote = await fetchMobileVersion();
+  if (!remote) return "ok";
+  if (compareBuildVersions(remote.version, APP_BUILD_VERSION) <= 0) return "ok";
+
+  try {
+    const last =
+      typeof sessionStorage !== "undefined"
+        ? sessionStorage.getItem(AUTO_RELOAD_KEY)
+        : null;
+    if (last !== remote.version) {
+      sessionStorage?.setItem(AUTO_RELOAD_KEY, remote.version);
+      await forceReloadApp();
+      return "reloading";
+    }
+  } catch {
+    await forceReloadApp();
+    return "reloading";
+  }
+
+  return "blocked";
+}
+
 /** Limpa cache/PWA e recarrega o app web para buscar a versão nova. */
 export async function forceReloadApp(): Promise<void> {
   if (typeof window === "undefined") return;

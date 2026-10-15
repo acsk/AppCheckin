@@ -24,10 +24,22 @@
   RewriteRule ^(.*)$ /dist/index.html [L]
 </IfModule>
 
-# Cache settings
+# HTML, SW e manifest nunca em cache — senão o PWA instalado não vê versão nova.
+<IfModule mod_headers.c>
+  <FilesMatch "(sw\.js|site\.webmanifest|index\.html)$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set Expires "0"
+  </FilesMatch>
+  <FilesMatch "\.(html)$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+  </FilesMatch>
+</IfModule>
+
+# Cache settings (JS/CSS com hash no nome podem cachear; HTML não)
 <IfModule mod_expires.c>
   ExpiresActive On
-  ExpiresByType text/html "access plus 1 hour"
+  ExpiresByType text/html "access plus 0 seconds"
   ExpiresByType application/javascript "access plus 1 year"
   ExpiresByType text/css "access plus 1 year"
   ExpiresByType image/gif "access plus 1 year"
