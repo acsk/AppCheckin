@@ -6,6 +6,7 @@ import {
   StyleProp,
   StyleSheet,
   Text,
+  TextStyle,
   TouchableOpacity,
   TouchableOpacityProps,
   View,
@@ -24,6 +25,8 @@ type Props = Omit<TouchableOpacityProps, "style"> & {
   iconRight?: React.ComponentProps<typeof Feather>["name"];
   loading?: boolean;
   style?: StyleProp<ViewStyle>;
+  /** Ajuste fino do rótulo (ex.: fonte menor em barras com dois botões). */
+  textStyle?: StyleProp<TextStyle>;
 };
 
 const VARIANT: Record<ButtonVariant, { bg: string; fg: string; border?: string }> = {
@@ -46,6 +49,7 @@ export default function Button({
   loading,
   disabled,
   style,
+  textStyle,
   ...rest
 }: Props) {
   const v = VARIANT[variant];
@@ -59,7 +63,10 @@ export default function Button({
         <Feather name={icon} size={size === "sm" ? 18 : 20} color={v.fg} />
       ) : null}
       {children ? (
-        <Text style={[styles.text, { color: v.fg, fontSize: size === "lg" ? 17 : size === "sm" ? 14 : 16 }]}>
+        <Text
+          numberOfLines={1}
+          style={[styles.text, { color: v.fg, fontSize: size === "lg" ? 17 : size === "sm" ? 14 : 16 }, textStyle]}
+        >
           {children}
         </Text>
       ) : null}

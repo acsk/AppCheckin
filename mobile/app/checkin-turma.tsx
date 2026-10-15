@@ -8,12 +8,10 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
-  Image,
   Modal,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -25,6 +23,12 @@ import { normalizeVencimentoMessage } from "../src/utils/dateBr";
 import { weekdayAbbrev } from "../src/utils/weekdayAbbrev";
 
 import AppHeader from "@/src/components/ds/AppHeader";
+import AttendeeRow from "@/src/components/ds/AttendeeRow";
+import Button from "@/src/components/ds/Button";
+import InfoChips from "@/src/components/ds/InfoChips";
+import RosterSummary from "@/src/components/ds/RosterSummary";
+import Section from "@/src/components/ds/Section";
+import StudentSearch from "@/src/components/ds/StudentSearch";
 import { ds } from "@/src/components/ds/tokens";
 const getRouteParam = (value?: string | string[]) => {
   if (value == null) return undefined;
@@ -968,21 +972,6 @@ export default function CheckinTurmaScreen() {
     }
   };
 
-  const togglePresenca = (checkinId: number) => {
-    setPresencas((prev) => {
-      const atual = prev[checkinId];
-      let novo: boolean | null;
-      if (atual === null || atual === undefined) {
-        novo = true;
-      } else if (atual === true) {
-        novo = false;
-      } else {
-        novo = null;
-      }
-      return { ...prev, [checkinId]: novo };
-    });
-  };
-
   const confirmarPresencas = async () => {
     if (!participantsTurma?.id) return;
 
@@ -1430,607 +1419,258 @@ export default function CheckinTurmaScreen() {
     <>
       <SafeAreaView style={styles.container} edges={["left", "right"]}>
         <AppHeader
-          title={getHeaderTitle(participantsTurma)}
           onBack={goBackToCheckin}
-          leading={
-            <View
-              style={[
-                styles.headerIconCircle,
-                {
-                  backgroundColor: `${participantsTurma?.modalidade?.cor || colors.primary}35`,
-                },
-              ]}
-            >
-              {participantsTurma?.modalidade?.icone ? (
-                <MaterialCommunityIcons
-                  name={participantsTurma.modalidade.icone as any}
-                  size={18}
-                  color={ds.ink}
-                />
-              ) : (
-                <Feather name="activity" size={18} color={ds.ink} />
-              )}
-            </View>
+          eyebrow={getHeaderTitle(participantsTurma).replace(" - ", " · ")}
+          title={
+            participantsTurma && getHoraInicio(participantsTurma)
+              ? `Turma das ${String(getHoraInicio(participantsTurma)).slice(0, 5)}`
+              : "Turma"
           }
           bottom={
             participantsTurma ? (
-            <View style={styles.headerMetaRow}>
-              <View style={styles.headerChipsWrap}>
-                <View style={styles.headerChip}>
-                  <Feather name="clock" size={14} color={ds.ink} />
-                  <Text style={styles.headerChipText}>
-                    {getHoraInicio(participantsTurma)?.slice(0, 5)} -{" "}
-                    {getHoraFim(participantsTurma)?.slice(0, 5)}
-                  </Text>
-                </View>
-                {!participantsTurma.checkin_bloqueado &&
-                getHoraLimiteCheckin(participantsTurma) ? (
-                  <View style={styles.headerChip}>
-                    <Feather name="clock" size={14} color={ds.ink} />
-                    <Text style={styles.headerChipText}>
-                      Check-in até {getHoraLimiteCheckin(participantsTurma)}
-                    </Text>
-                  </View>
-                ) : null}
-                {participantsTurma.checkin_bloqueado ? (
-                  <View style={[styles.headerChip, styles.headerChipBloqueado]}>
-                    <MaterialCommunityIcons
-                      name="lock"
-                      size={14}
-                      color={ds.onInverse}
-                    />
-                    <Text style={[styles.headerChipText, { color: ds.onInverse }]}>
-                      Check-in bloqueado
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-              {isProfessorOuAdmin ? (
-                <TouchableOpacity
-                  style={[
-                    styles.bloqueioCheckinButtonCompact,
-                    participantsTurma.checkin_bloqueado
-                      ? styles.bloqueioCheckinButtonCompactLiberar
-                      : styles.bloqueioCheckinButtonCompactBloquear,
-                    bloqueioAulaDesabilitado &&
-                      styles.bloqueioCheckinButtonCompactDisabled,
-                  ]}
-                  onPress={onPressBloqueioCheckin}
-                  disabled={
-                    turmaCheckinBloqueioLoading || bloqueioAulaDesabilitado
-                  }
-                  activeOpacity={bloqueioAulaDesabilitado ? 1 : 0.85}
-                >
-                  {turmaCheckinBloqueioLoading ? (
-                    <ActivityIndicator
-                      size="small"
-                      color={
-                        participantsTurma.checkin_bloqueado ? "#047857" : "#fff"
+              <InfoChips
+                items={[
+                  {
+                    icon: "clock",
+                    text: `${String(getHoraInicio(participantsTurma) || "").slice(0, 5)} – ${String(getHoraFim(participantsTurma) || "").slice(0, 5)}`,
+                  },
+                  ...(!participantsTurma.checkin_bloqueado && getHoraLimiteCheckin(participantsTurma)
+                    ? [{ icon: "check-square" as const, text: `Check-in até ${getHoraLimiteCheckin(participantsTurma)}` }]
+                    : []),
+                  ...(participantsTurma.checkin_bloqueado
+                    ? [{ icon: "lock" as const, text: "Check-in bloqueado", tone: "dark" as const }]
+                    : []),
+                  ...(Number(participantsTurma.limite_alunos) > 0
+                    ? [{ icon: "users" as const, text: `${checkinsRecentes.length}/${participantsTurma.limite_alunos}` }]
+                    : []),
+                ]}
+                action={
+                  isProfessorOuAdmin
+                    ? {
+                        label: participantsTurma.checkin_bloqueado ? "Liberar" : "Bloquear",
+                        icon: participantsTurma.checkin_bloqueado ? "unlock" : "lock",
+                        tone: participantsTurma.checkin_bloqueado ? "default" : "danger",
+                        onPress: onPressBloqueioCheckin,
+                        loading: turmaCheckinBloqueioLoading,
+                        disabled: bloqueioAulaDesabilitado,
                       }
-                    />
-                  ) : (
-                    <>
-                      <MaterialCommunityIcons
-                        name={
-                          participantsTurma.checkin_bloqueado
-                            ? "lock-open-variant"
-                            : "lock"
-                        }
-                        size={18}
-                        color={
-                          bloqueioAulaDesabilitado
-                            ? "#9ca3af"
-                            : participantsTurma.checkin_bloqueado
-                              ? "#047857"
-                              : "#fff"
-                        }
-                      />
-                      <Text
-                        style={[
-                          styles.bloqueioCheckinButtonCompactText,
-                          participantsTurma.checkin_bloqueado &&
-                            styles.bloqueioCheckinButtonCompactTextLiberar,
-                          bloqueioAulaDesabilitado &&
-                            styles.bloqueioCheckinButtonCompactTextDisabled,
-                        ]}
-                      >
-                        {participantsTurma.checkin_bloqueado
-                          ? "Liberar"
-                          : "Bloquear"}
-                      </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              ) : null}
-            </View>
-          ) : null
+                    : null
+                }
+              />
+            ) : null
           }
         />
 
         <ScrollView
-          contentContainerStyle={[styles.scrollContent, styles.scrollGrow]}
+          contentContainerStyle={styles.turmaScroll}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.schedulesSection}>
-            <View style={styles.participantsWrapper}>
-              <View style={styles.participantsContent}>
-                {participantsLoading ? (
-                  <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={colors.primary} />
-                    <Text style={styles.loadingText}>Carregando...</Text>
-                  </View>
-                ) : (
-                  <>
-                    {isProfessorOuAdmin && !participantsTurma?.checkin_bloqueado && (
-                      <View style={styles.manualCheckinBox}>
-                        <Text style={styles.manualCheckinTitle}>
-                          Adicionar aluno ao check-in
-                        </Text>
-                        <View style={styles.manualCheckinRow}>
-                          <TextInput
-                            style={styles.manualCheckinInput}
-                            placeholder="Nome, CPF ou e-mail"
-                            placeholderTextColor="#9ca3af"
-                            value={manualSearchQuery}
-                            onChangeText={(text) => {
-                              setManualSearchQuery(text);
-                              if (manualSearchError) {
-                                setManualSearchError(null);
-                              }
-                              if (!text.trim()) {
-                                setManualSearchResults([]);
-                              }
-                            }}
-                            autoCapitalize="none"
-                            autoCorrect={false}
-                            returnKeyType="search"
-                            onSubmitEditing={handleManualSearch}
-                          />
-                          {!!manualSearchQuery.trim() && (
-                            <TouchableOpacity
-                              style={styles.manualCheckinClearButton}
-                              onPress={() => {
-                                setManualSearchQuery("");
-                                setManualSearchResults([]);
-                                setManualSearchError(null);
-                              }}
-                            >
-                              <Feather name="x" size={16} color="#6b7280" />
-                            </TouchableOpacity>
-                          )}
-                          <TouchableOpacity
-                            style={[
-                              styles.manualCheckinSearchButton,
-                              (!manualSearchQuery.trim() ||
-                                manualSearchLoading) &&
-                                styles.manualCheckinSearchButtonDisabled,
-                            ]}
-                            onPress={handleManualSearch}
-                            disabled={
-                              !manualSearchQuery.trim() || manualSearchLoading
-                            }
-                          >
-                            <Feather name="search" size={16} color={ds.onBrand} />
-                          </TouchableOpacity>
-                        </View>
-                        {!!manualSearchError && (
-                          <Text style={styles.manualCheckinError}>
-                            {manualSearchError}
-                          </Text>
-                        )}
-                        {manualSearchLoading ? (
-                          <View style={styles.inlineLoadingRow}>
-                            <ActivityIndicator
-                              size="small"
-                              color={colors.primary}
-                            />
-                            <Text style={styles.loadingText}>Buscando...</Text>
-                          </View>
-                        ) : null}
-                        {manualSearchResults.length > 0 && (
-                          <View style={styles.manualCheckinResults}>
-                            {manualSearchResults.map((aluno, idx) => {
-                              const alunoId = Number(
-                                aluno.id ?? aluno.aluno_id ?? 0,
-                              );
-                              const alreadyCheckedIn =
-                                checkinsRecentes.some(
-                                  (c) =>
-                                    Number(c.aluno_id) === Number(alunoId),
-                                ) ||
-                                participants.some(
-                                  (p) =>
-                                    Number(p.aluno_id) === Number(alunoId) &&
-                                    Number(p.checkins) > 0,
-                                );
-                              const photoUrl = getUserPhotoUrl(
-                                aluno.foto_caminho || null,
-                              );
-                              const isLoading =
-                                !!manualCheckinLoading[alunoId];
-
-                              return (
-                                <View
-                                  key={alunoId || idx}
-                                  style={styles.manualCheckinItem}
-                                >
-                                  <View style={styles.manualCheckinAvatar}>
-                                    {photoUrl ? (
-                                      <Image
-                                        source={{ uri: photoUrl }}
-                                        style={styles.manualCheckinAvatarImage}
-                                      />
-                                    ) : (
-                                      <Feather
-                                        name="user"
-                                        size={18}
-                                        color="#9ca3af"
-                                      />
-                                    )}
-                                  </View>
-                                  <View style={styles.manualCheckinItemInfo}>
-                                    <View style={styles.participantNameRow}>
-                                      <Text style={styles.manualCheckinItemName}>
-                                        {normalizeUtf8(
-                                          aluno.nome ||
-                                            aluno.usuario_nome ||
-                                            "Aluno",
-                                        )}
-                                      </Text>
-                                      <BirthdayBadge
-                                        show={!!aluno.aniversario_hoje}
-                                      />
-                                    </View>
-                                    {!!aluno.email && (
-                                      <Text
-                                        style={styles.manualCheckinItemMeta}
-                                      >
-                                        {normalizeUtf8(aluno.email)}
-                                      </Text>
-                                    )}
-                                  </View>
-                                  <TouchableOpacity
-                                    style={[
-                                      styles.manualCheckinAddButton,
-                                      (alreadyCheckedIn || isLoading) &&
-                                        styles.manualCheckinAddButtonDisabled,
-                                    ]}
-                                    onPress={() =>
-                                      openManualConfirm({
-                                        ...aluno,
-                                        id: alunoId || aluno.id,
-                                      })
-                                    }
-                                    disabled={alreadyCheckedIn || isLoading}
-                                  >
-                                    <Text
-                                      style={styles.manualCheckinAddButtonText}
-                                    >
-                                      {alreadyCheckedIn
-                                        ? "Já incluído"
-                                        : isLoading
-                                          ? "Incluindo..."
-                                          : "Adicionar"}
-                                    </Text>
-                                  </TouchableOpacity>
-                                </View>
-                              );
-                            })}
-                          </View>
-                        )}
-                      </View>
-                    )}
-
-                    {checkinsRecentes.length > 0 && (
-                      <View style={styles.participantsListContainer}>
-                        {checkinsRecentes.map((c, idx) => {
-                          const presencaAtual = presencas[c.checkin_id];
-                          const alunoFoto = participants.find(
-                            (p) =>
-                              Number(p.aluno_id) === Number(c.aluno_id),
-                          )?.foto_caminho;
-                          const photoUrl = getUserPhotoUrl(
-                            c.foto_caminho || alunoFoto || null,
-                          );
-                          const isConfirmed = Boolean(
-                            c.presenca_confirmada_em,
-                          );
-                          let statusBorderColor = "#9ca3af";
-                          if (isConfirmed) {
-                            statusBorderColor = c.presente
-                              ? "#10b981"
-                              : "#ef4444";
-                          }
-                          return (
-                            <TouchableOpacity
-                              key={c.checkin_id || idx}
-                              style={styles.participantItem}
-                              activeOpacity={0.7}
-                              onPress={() => navigateToCheckinDetalhes(c)}
-                            >
-                              <View
-                                style={[
-                                  styles.participantAvatar,
-                                  {
-                                    borderWidth: 3,
-                                    borderColor: statusBorderColor,
-                                  },
-                                ]}
-                              >
-                                {photoUrl ? (
-                                  <Image
-                                    source={{ uri: photoUrl }}
-                                    style={styles.participantAvatarImage}
-                                  />
-                                ) : (
-                                  <Feather
-                                    name="user"
-                                    size={18}
-                                    color="#9ca3af"
-                                  />
-                                )}
-                              </View>
-                              <View style={styles.participantInfo}>
-                                <View style={styles.participantNameRow}>
-                                  <Text style={styles.participantName}>
-                                    {formatParticipantName(
-                                      c.usuario_nome || "Aluno",
-                                    ).toUpperCase()}
-                                  </Text>
-                                  <BirthdayBadge
-                                    show={isAniversariante(
-                                      c.aluno_id,
-                                      c,
-                                      participants,
-                                    )}
-                                  />
-                                </View>
-                              </View>
-                              {isProfessorOuAdmin && (
-                                <View style={styles.presencaButtons}>
-                                  <TouchableOpacity
-                                    style={[
-                                      styles.presencaBtn,
-                                      styles.removeCheckinBtn,
-                                      removingCheckinId ===
-                                        Number(c.checkin_id) &&
-                                        styles.removeCheckinBtnDisabled,
-                                    ]}
-                                    onPress={(e) => {
-                                      e.stopPropagation?.();
-                                      openRemoveConfirm(c);
-                                    }}
-                                    disabled={
-                                      removingCheckinId === Number(c.checkin_id)
-                                    }
-                                    hitSlop={{
-                                      top: 8,
-                                      bottom: 8,
-                                      left: 8,
-                                      right: 8,
-                                    }}
-                                  >
-                                    {removingCheckinId ===
-                                    Number(c.checkin_id) ? (
-                                      <ActivityIndicator
-                                        size="small"
-                                        color="#ef4444"
-                                      />
-                                    ) : (
-                                      <Feather
-                                        name="user-minus"
-                                        size={18}
-                                        color="#ef4444"
-                                      />
-                                    )}
-                                  </TouchableOpacity>
-                                  <TouchableOpacity
-                                    style={[
-                                      styles.presencaBtn,
-                                      presencaAtual === true &&
-                                        styles.presencaBtnPresente,
-                                    ]}
-                                    onPress={(e) => {
-                                      e.stopPropagation?.();
-                                      togglePresenca(c.checkin_id);
-                                    }}
-                                  >
-                                    <Feather
-                                      name="check"
-                                      size={22}
-                                      color={
-                                        presencaAtual === true
-                                          ? "#fff"
-                                          : "#9ca3af"
-                                      }
-                                    />
-                                  </TouchableOpacity>
-                                  <TouchableOpacity
-                                    style={[
-                                      styles.presencaBtn,
-                                      presencaAtual === false &&
-                                        styles.presencaBtnFalta,
-                                    ]}
-                                    onPress={(e) => {
-                                      e.stopPropagation?.();
-                                      setPresencas((prev) => ({
-                                        ...prev,
-                                        [c.checkin_id]:
-                                          prev[c.checkin_id] === false
-                                            ? null
-                                            : false,
-                                      }));
-                                    }}
-                                  >
-                                    <Feather
-                                      name="x"
-                                      size={22}
-                                      color={
-                                        presencaAtual === false
-                                          ? "#fff"
-                                          : "#9ca3af"
-                                      }
-                                    />
-                                  </TouchableOpacity>
-                                </View>
-                              )}
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-                    )}
-
-                    {(!isProfessorOuAdmin ||
-                      checkinsRecentes.length === 0) &&
-                      participants.length === 0 &&
-                      manualSearchResults.length === 0 &&
-                      !manualSearchLoading && (
-                        <Text style={styles.loadingText}>
-                          Nenhum participante ainda
-                        </Text>
-                      )}
-                  </>
-                )}
-              </View>
-
-              {isProfessorOuAdmin && checkinsRecentes.length > 0 && (
-                <TouchableOpacity
-                  style={[
-                    styles.checkinButton,
-                    { backgroundColor: "#3b82f6" },
-                    confirmandoPresenca && styles.checkinButtonDisabled,
-                  ]}
-                  onPress={confirmarPresencas}
-                  disabled={confirmandoPresenca}
-                >
-                  {confirmandoPresenca ? (
-                    <>
-                      <ActivityIndicator size="small" color="#fff" />
-                      <Text style={styles.checkinButtonText}>
-                        Confirmando...
-                      </Text>
-                    </>
-                  ) : (
-                    <>
-                      <Feather name="check-square" size={18} color="#fff" />
-                      <Text style={styles.checkinButtonText}>
-                        Confirmar Presenças
-                      </Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              )}
-
-              {podeFazerCheckinProprio &&
-                participantsTurma &&
-                (() => {
-                  const minutosParaAbrir =
-                    getMinutosParaAbrirCheckin(participantsTurma);
-                  const checkinNaoAbriu = minutosParaAbrir > 0;
-                  const checkinBloqueado =
-                    !!participantsTurma.checkin_bloqueado && !userCheckinId;
-
-                  if (checkinBloqueado) {
-                    return (
-                      <View style={styles.checkinBlockedBanner}>
-                        <MaterialCommunityIcons
-                          name="lock"
-                          size={20}
-                          color="#B91C1C"
-                        />
-                        <Text style={styles.checkinBlockedBannerText}>
-                          Check-in bloqueado para esta aula
-                        </Text>
-                      </View>
-                    );
-                  }
-
-                  return (
-                    <>
-                      <TouchableOpacity
-                        style={[
-                          styles.checkinButton,
-                          {
-                            backgroundColor:
-                              participantsTurma?.modalidade?.cor ||
-                              colors.primary,
-                          },
-                          userCheckinId ? styles.checkinButtonUndo : null,
-                          (checkinLoading ||
-                            checkinNaoAbriu ||
-                            (!userCheckinId &&
-                              isCheckinDisabled(participantsTurma))) &&
-                            styles.checkinButtonDisabled,
-                        ]}
-                        onPress={() => {
-                          if (userCheckinId) {
-                            handleUndoCheckin(
-                              userCheckinId,
-                              participantsTurma,
-                            );
-                          } else {
-                            if (checkinNaoAbriu) {
-                              const aberturaStr =
-                                getDataAberturaCheckin(participantsTurma);
-                              const label =
-                                aberturaStr instanceof Date
-                                  ? `Abre em ${formatMinutos(minutosParaAbrir)}`
-                                  : "Ainda não disponível";
-                              showErrorModal(label, "warning");
-                              return;
-                            }
-                            handleCheckin(participantsTurma);
-                          }
-                        }}
-                        disabled={
-                          checkinLoading ||
-                          checkinNaoAbriu ||
-                          (!userCheckinId &&
-                            isCheckinDisabled(participantsTurma))
-                        }
-                      >
-                        {checkinLoading ? (
-                          <>
-                            <ActivityIndicator size="small" color="#fff" />
-                            <Text style={styles.checkinButtonText}>
-                              Processando...
-                            </Text>
-                          </>
-                        ) : userCheckinId ? (
-                          <>
-                            <Feather
-                              name="rotate-ccw"
-                              size={18}
-                              color="#fff"
-                            />
-                            <Text style={styles.checkinButtonText}>
-                              Desfazer Check-in
-                            </Text>
-                          </>
-                        ) : (
-                          <>
-                            <Feather
-                              name="check-circle"
-                              size={18}
-                              color="#fff"
-                            />
-                            <Text style={styles.checkinButtonText}>
-                              Fazer Check-in
-                            </Text>
-                          </>
-                        )}
-                      </TouchableOpacity>
-                      {checkinNaoAbriu ? (
-                        <Text style={styles.outOfPeriodHint}>
-                          Abre em {formatMinutos(minutosParaAbrir)}
-                        </Text>
-                      ) : null}
-                    </>
-                  );
-                })()}
+          {participantsLoading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={styles.loadingText}>Carregando...</Text>
             </View>
-          </View>
+          ) : (
+            <>
+              {/* Resumo da chamada (professor) */}
+              {isProfessorOuAdmin && checkinsRecentes.length > 0 ? (
+                <RosterSummary
+                  present={checkinsRecentes.filter((c) => presencas[c.checkin_id] === true).length}
+                  absent={checkinsRecentes.filter((c) => presencas[c.checkin_id] === false).length}
+                  pending={
+                    checkinsRecentes.filter(
+                      (c) => presencas[c.checkin_id] !== true && presencas[c.checkin_id] !== false,
+                    ).length
+                  }
+                  capacity={Number(participantsTurma?.limite_alunos) || null}
+                  onAllPresent={() =>
+                    setPresencas((prev) => {
+                      const next = { ...prev };
+                      checkinsRecentes.forEach((c) => {
+                        if (next[c.checkin_id] !== true && next[c.checkin_id] !== false) {
+                          next[c.checkin_id] = true;
+                        }
+                      });
+                      return next;
+                    })
+                  }
+                />
+              ) : null}
+
+              {/* Adicionar aluno (professor) */}
+              {isProfessorOuAdmin && !participantsTurma?.checkin_bloqueado ? (
+                <Section title="Adicionar aluno" bare>
+                  <StudentSearch
+                    value={manualSearchQuery}
+                    onChangeText={(text) => {
+                      setManualSearchQuery(text);
+                      if (manualSearchError) setManualSearchError(null);
+                      if (!text.trim()) setManualSearchResults([]);
+                    }}
+                    onSubmit={handleManualSearch}
+                    onClear={() => {
+                      setManualSearchQuery("");
+                      setManualSearchResults([]);
+                      setManualSearchError(null);
+                    }}
+                    searching={manualSearchLoading}
+                    error={manualSearchError}
+                    results={manualSearchResults.map((aluno, idx) => {
+                      const alunoId = Number(aluno.id ?? aluno.aluno_id ?? 0);
+                      const alreadyCheckedIn =
+                        checkinsRecentes.some((c) => Number(c.aluno_id) === alunoId) ||
+                        participants.some(
+                          (p) => Number(p.aluno_id) === alunoId && Number(p.checkins) > 0,
+                        );
+                      return {
+                        key: alunoId || idx,
+                        name: normalizeUtf8(aluno.nome || aluno.usuario_nome || "Aluno"),
+                        detail: aluno.email ? normalizeUtf8(aluno.email) : null,
+                        avatarUri: getUserPhotoUrl(aluno.foto_caminho || null),
+                        added: alreadyCheckedIn,
+                        loading: !!manualCheckinLoading[alunoId],
+                        extra: <BirthdayBadge show={!!aluno.aniversario_hoje} />,
+                        _aluno: { ...aluno, id: alunoId || aluno.id },
+                      };
+                    })}
+                    onAdd={(r: any) => openManualConfirm(r._aluno)}
+                  />
+                </Section>
+              ) : null}
+
+              {/* Alunos na turma */}
+              {checkinsRecentes.length > 0 ? (
+                <Section
+                  title="Alunos na turma"
+                  aside={`${checkinsRecentes.length} ${checkinsRecentes.length === 1 ? "aluno" : "alunos"}`}
+                >
+                  {checkinsRecentes.map((c, idx) => {
+                    const presencaAtual = presencas[c.checkin_id];
+                    const alunoFoto = participants.find(
+                      (p) => Number(p.aluno_id) === Number(c.aluno_id),
+                    )?.foto_caminho;
+                    const state =
+                      presencaAtual === true ? "present" : presencaAtual === false ? "absent" : "pending";
+                    return (
+                      <AttendeeRow
+                        key={c.checkin_id || idx}
+                        name={formatParticipantName(c.usuario_nome || "Aluno")}
+                        avatarUri={getUserPhotoUrl(c.foto_caminho || alunoFoto || null)}
+                        state={state}
+                        note={c.presenca_confirmada_em ? "confirmada" : null}
+                        extra={<BirthdayBadge show={isAniversariante(c.aluno_id, c, participants)} />}
+                        onPress={() => navigateToCheckinDetalhes(c)}
+                        onPresent={
+                          isProfessorOuAdmin
+                            ? () =>
+                                setPresencas((prev) => ({
+                                  ...prev,
+                                  [c.checkin_id]: prev[c.checkin_id] === true ? null : true,
+                                }))
+                            : undefined
+                        }
+                        onAbsent={
+                          isProfessorOuAdmin
+                            ? () =>
+                                setPresencas((prev) => ({
+                                  ...prev,
+                                  [c.checkin_id]: prev[c.checkin_id] === false ? null : false,
+                                }))
+                            : undefined
+                        }
+                        onRemove={isProfessorOuAdmin ? () => openRemoveConfirm(c) : undefined}
+                        removing={removingCheckinId === Number(c.checkin_id)}
+                      />
+                    );
+                  })}
+                </Section>
+              ) : participants.length === 0 && manualSearchResults.length === 0 && !manualSearchLoading ? (
+                <View style={styles.emptyTurma}>
+                  <Feather name="users" size={32} color={ds.inkMuted} />
+                  <Text style={styles.emptyTurmaText}>Nenhum aluno na turma ainda</Text>
+                </View>
+              ) : null}
+
+              {/* Aluno: aviso de bloqueio */}
+              {podeFazerCheckinProprio &&
+              participantsTurma &&
+              !!participantsTurma.checkin_bloqueado &&
+              !userCheckinId ? (
+                <View style={styles.blockedNote}>
+                  <Feather name="lock" size={18} color={ds.danger} />
+                  <Text style={styles.blockedNoteText}>Check-in bloqueado para esta aula</Text>
+                </View>
+              ) : null}
+            </>
+          )}
         </ScrollView>
+
+        {/* Ações fixas acima da barra inferior */}
+        {participantsTurma && !participantsLoading
+          ? (() => {
+              const minutosParaAbrir = getMinutosParaAbrirCheckin(participantsTurma);
+              const checkinNaoAbriu = minutosParaAbrir > 0;
+              const mostrarProprio =
+                podeFazerCheckinProprio && !(participantsTurma.checkin_bloqueado && !userCheckinId);
+              const mostrarConfirmar = isProfessorOuAdmin && checkinsRecentes.length > 0;
+              if (!mostrarProprio && !mostrarConfirmar) return null;
+              const proprioDisabled =
+                checkinLoading ||
+                checkinNaoAbriu ||
+                (!userCheckinId && isCheckinDisabled(participantsTurma));
+              const onProprio = () => {
+                if (userCheckinId) {
+                  handleUndoCheckin(userCheckinId, participantsTurma);
+                  return;
+                }
+                if (checkinNaoAbriu) {
+                  showErrorModal(`Abre em ${formatMinutos(minutosParaAbrir)}`, "warning");
+                  return;
+                }
+                handleCheckin(participantsTurma);
+              };
+              return (
+                <View style={styles.actionsBar}>
+                  {mostrarProprio ? (
+                    <View style={{ flex: 1 }}>
+                      <Button
+                        block
+                        variant={mostrarConfirmar ? "secondary" : userCheckinId ? "secondary" : "primary"}
+                        size={mostrarConfirmar ? "md" : "lg"}
+                        icon={mostrarConfirmar ? undefined : userCheckinId ? "rotate-ccw" : "check-square"}
+                        style={mostrarConfirmar ? { paddingHorizontal: 10 } : undefined}
+                        textStyle={mostrarConfirmar ? { fontSize: 14 } : undefined}
+                        loading={checkinLoading}
+                        disabled={proprioDisabled && !userCheckinId}
+                        onPress={onProprio}
+                      >
+                        {userCheckinId
+                          ? "Desfazer check-in"
+                          : checkinNaoAbriu
+                            ? `Abre em ${formatMinutos(minutosParaAbrir)}`
+                            : "Fazer check-in"}
+                      </Button>
+                    </View>
+                  ) : null}
+                  {mostrarConfirmar ? (
+                    <View style={{ flex: 1.25 }}>
+                      <Button
+                        block
+                        icon="check"
+                        style={{ paddingHorizontal: 10 }}
+                        textStyle={{ fontSize: 14 }}
+                        loading={confirmandoPresenca}
+                        onPress={confirmarPresencas}
+                      >
+                        {confirmandoPresenca ? "Confirmando…" : "Confirmar presenças"}
+                      </Button>
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })()
+          : null}
       </SafeAreaView>
 
       <Modal
@@ -2462,6 +2102,49 @@ export default function CheckinTurmaScreen() {
 }
 
 const styles = StyleSheet.create({
+  actionsBar: {
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: ds.surface,
+    borderTopWidth: 1,
+    borderTopColor: ds.line,
+    shadowColor: "#171a21",
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: 0.07,
+    shadowRadius: 24,
+    elevation: 12,
+  },
+  blockedNoteText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: "800",
+    color: ds.danger,
+  },
+  blockedNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: ds.dangerSoft,
+  },
+  emptyTurmaText: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: ds.inkMuted,
+  },
+  emptyTurma: {
+    alignItems: "center",
+    gap: 8,
+    paddingVertical: 32,
+  },
+  turmaScroll: {
+    padding: 16,
+    paddingBottom: 24,
+    gap: 20,
+  },
   container: {
     flex: 1,
     backgroundColor: ds.ground,

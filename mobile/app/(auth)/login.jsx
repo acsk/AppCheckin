@@ -25,11 +25,14 @@ import Button from "../../src/components/ds/Button";
 import TechBackground from "../../src/components/ds/TechBackground";
 import TextField from "../../src/components/ds/TextField";
 import { ds as DS } from "../../src/components/ds/tokens";
+import { useBrowserThemeColor } from "../../src/hooks/useBrowserThemeColor";
 
 const LOGO = require("../../assets/images/appcheckin-logo.png");
 
 export default function LoginScreen() {
   const router = useRouter();
+  // Login é claro: a barra do navegador acompanha o fundo.
+  useBrowserThemeColor(DS.surfaceSunken);
   const LOGIN_EMAIL_KEY = "@appcheckin:login_email";
   const LOGIN_PASSWORD_KEY = "@appcheckin:login_password";
   const LOGIN_PASSWORD_SECURE_KEY = "appcheckin.login_password";

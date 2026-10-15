@@ -15,12 +15,13 @@ export default function TabLayout() {
       screenOptions={{
         // Fundo das telas: ground (cinza claro do design system), nunca branco.
         sceneStyle: { backgroundColor: ds.ground },
-        // Troca de aba com um leve deslocamento (Bottom Tabs v7).
-        animation: "shift",
+        // Troca de aba com um esmaecimento curto (o "shift" ficava estranho no celular).
+        animation: "fade",
+        transitionSpec: { animation: "timing", config: { duration: 140 } },
         headerShown: false,
       }}
     >
-      {/* Ordem: Início · WOD · Check-in (centro) · Planos · Conta */}
+      {/* Barra: Início · Check-in · Planos · Conta (WOD oculto) */}
       <Tabs.Screen
         name="account"
         options={{
@@ -31,6 +32,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="wod"
         options={{
+          // Oculta da barra inferior; a rota /wod continua existindo.
+          href: null,
           title: "WOD",
           headerShown: false,
         }}

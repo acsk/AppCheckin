@@ -29,7 +29,7 @@ const nav = {
 /** Rotas que aparecem na barra, na ordem, com o ícone de cada uma. */
 export const TAB_ICONS: Record<string, TabIconName> = {
   account: "home",
-  wod: "target",
+  // WOD fica fora da barra (a tela continua acessível por rota).
   checkin: "check-square",
   planos: "cart",
   conta: "user",

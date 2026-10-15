@@ -11,7 +11,6 @@ import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  FlatList,
   Linking,
   Modal,
   ScrollView,
@@ -23,6 +22,9 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AppHeader from "@/src/components/ds/AppHeader";
+import PlanCard from "@/src/components/ds/PlanCard";
+import Section from "@/src/components/ds/Section";
+import Stepper from "@/src/components/ds/Stepper";
 import { ds } from "@/src/components/ds/tokens";
 // NOVO ARQUIVO - SEM CÓDIGO ANTIGO
 
@@ -1406,59 +1408,79 @@ export default function PlanosScreen() {
     );
   };
 
-  const renderPlanListItem = ({ item: plano }: { item: Plan }) => {
-    const ciclos = (plano.ciclos || []).sort((a, b) => a.meses - b.meses);
-    const baseCiclo = ciclos[0];
-    const priceLabel = baseCiclo?.valor_formatado || plano.valor_formatado;
+  // ---- Lista de planos no modelo "TelasPlanos" (PlanCard do design system) ----
+  const fmtPreco = (v: number) => {
+    const inteiro = Math.abs(v - Math.round(v)) < 0.005;
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+      minimumFractionDigits: inteiro ? 0 : 2,
+      maximumFractionDigits: 2,
+    }).format(v || 0);
+  };
+  const menorMensal = (plano: Plan) => {
+    const mensais = (plano.ciclos || [])
+      .map((c) => Number(c.valor_mensal) || (c.meses ? Number(c.valor) / c.meses : Number(c.valor)))
+      .filter((v) => v > 0);
+    return mensais.length ? Math.min(...mensais) : Number(plano.valor) || 0;
+  };
+  const isAvulso = (plano: Plan) => !plano.checkins_semanais && Number(plano.duracao_dias) <= 1;
+  const precoPorAula = (plano: Plan) =>
+    plano.checkins_semanais > 0 ? menorMensal(plano) / (plano.checkins_semanais * 4) : null;
 
+  const planosAtuais = planos.filter((p) => p.is_plano_atual);
+  const planosSemanais = planos
+    .filter((p) => !p.is_plano_atual && !isAvulso(p))
+    .sort((a, b) => (a.checkins_semanais || 0) - (b.checkins_semanais || 0) || menorMensal(a) - menorMensal(b));
+  const planosAvulsos = planos.filter((p) => !p.is_plano_atual && isAvulso(p));
+  // Selo só para um fato verificável: o menor preço por aula entre os planos semanais.
+  const idMenorPorAula =
+    planosSemanais.length > 1
+      ? planosSemanais
+          .filter((p) => precoPorAula(p) != null)
+          .sort((a, b) => (precoPorAula(a) as number) - (precoPorAula(b) as number))[0]?.id
+      : undefined;
+
+  const renderPlanCardDs = (plano: Plan) => {
+    const avulso = isAvulso(plano);
+    const n = Number(plano.checkins_semanais) || 0;
+    const porAula = precoPorAula(plano);
+    const ciclosCount = (plano.ciclos || []).length;
     return (
-      <TouchableOpacity
-        style={styles.planListCard}
-        activeOpacity={0.9}
-        onPress={() =>
+      <PlanCard
+        key={plano.id}
+        current={!!plano.is_plano_atual}
+        name={plano.nome}
+        modality={plano.modalidade?.nome}
+        detail={plano.is_plano_atual ? plano.label || "Ativo" : avulso ? "uma aula" : null}
+        freq={avulso ? "1" : n > 0 ? `${n}x` : "∞"}
+        freqUnit={avulso ? "dia" : n > 0 ? "semana" : "livre"}
+        price={fmtPreco(menorMensal(plano))}
+        unit={avulso ? "/aula" : "/mês"}
+        from={!avulso && ciclosCount > 1}
+        perClass={
+          porAula
+            ? `≈ ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(porAula)}`
+            : null
+        }
+        features={n > 0 ? [`≈ ${n * 4} aulas por mês`] : undefined}
+        tag={!plano.is_plano_atual && plano.id === idMenorPorAula ? "Menor preço por aula" : null}
+        actionLabel={
+          plano.is_plano_atual
+            ? plano.pode_renovar
+              ? "Renovar"
+              : "Ver meu plano"
+            : plano.pode_migrar
+              ? "Migrar"
+              : "Escolher"
+        }
+        onSelect={() =>
           router.push({
             pathname: "/plano-detalhes",
             params: { id: plano.id },
           })
         }
-      >
-        <View style={styles.planListTop}>
-          <View style={styles.planListInfo}>
-            <Text style={styles.planListName}>{plano.nome}</Text>
-            <Text style={styles.planListModalidade}>
-              {plano.modalidade.nome}
-            </Text>
-          </View>
-          {plano.is_plano_atual && (
-            <View style={styles.planListBadge}>
-              <Feather name="check" size={12} color="#fff" />
-              <Text style={styles.planListBadgeText}>Atual</Text>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.planListBottom}>
-          <View>
-            <Text style={styles.planListPriceLabel}>A partir de</Text>
-            <Text style={styles.planListPrice}>{priceLabel}</Text>
-            {!!baseCiclo?.valor_mensal_formatado && (
-              <Text style={styles.planListMonthly}>
-                {baseCiclo.valor_mensal_formatado}/mês
-              </Text>
-            )}
-          </View>
-          <View style={styles.planListCta}>
-            <Text style={styles.planListCtaText}>
-              {plano.pode_migrar
-                ? "Migrar"
-                : plano.is_plano_atual
-                  ? "Ver plano"
-                  : "Ver detalhes"}
-            </Text>
-            <Feather name="arrow-right" size={16} color={ds.onBrand} />
-          </View>
-        </View>
-      </TouchableOpacity>
+      />
     );
   };
 
@@ -1546,21 +1568,37 @@ export default function PlanosScreen() {
     );
   }
 
+  // Modalidades da lista, para o subtítulo do cabeçalho.
+  const modalidadesNomes = Array.from(
+    new Set(planos.map((p) => p.modalidade?.nome).filter(Boolean) as string[]),
+  );
+
   return (
     <SafeAreaView style={styles.container} edges={["left", "right"]}>
       <AppHeader
         title="Planos"
+        subtitle={modalidadesNomes.join(" · ") || undefined}
         onBack={() => {
-            if (selectedPlanoId) {
-              setSelectedPlanoId(null);
-              return;
-            }
-            router.replace("/(tabs)/checkin");
-          }}
-        actions={[{ icon: "list", label: "Atualizar", onPress: () => router.push("/minhas-assinaturas") }, { icon: "refresh-cw", label: "Atualizar", onPress: () => {
+          if (selectedPlanoId) {
+            setSelectedPlanoId(null);
+            return;
+          }
+          router.replace("/(tabs)/checkin");
+        }}
+        actions={[
+          { icon: "file-text", label: "Minhas assinaturas", onPress: () => router.push("/minhas-assinaturas") },
+          {
+            icon: "refresh-cw",
+            label: "Atualizar",
+            onPress: () => {
               setLoading(true);
               fetchPlanos(apiUrl);
-            } }]}
+            },
+          },
+        ]}
+        bottom={
+          <Stepper tone="brand" steps={["Plano", "Ciclo e pagamento"]} current={selectedPlanoId ? 1 : 0} />
+        }
       />
 
       {error ? (
@@ -1601,22 +1639,6 @@ export default function PlanosScreen() {
           contentContainerStyle={styles.detailContainer}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.stepHeader}>
-            <View>
-              <Text style={styles.stepLabel}>Etapa 2 de 2</Text>
-              <Text style={styles.stepTitle}>
-                {planos.find((p) => p.id === selectedPlanoId)?.nome ||
-                  "Detalhes do plano"}
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={styles.stepAction}
-              onPress={() => setSelectedPlanoId(null)}
-            >
-              <Text style={styles.stepActionText}>Ver todos</Text>
-              <Feather name="grid" size={16} color={colors.primary} />
-            </TouchableOpacity>
-          </View>
           {(() => {
             const selectedPlano = planos.find((p) => p.id === selectedPlanoId);
             if (!selectedPlano) return null;
@@ -1624,22 +1646,32 @@ export default function PlanosScreen() {
           })()}
         </ScrollView>
       ) : (
-        <View style={styles.listWrapper}>
-          <View style={[styles.stepHeader, styles.stepHeaderPadded]}>
-            <View>
-              <Text style={styles.stepLabel}>Etapa 1 de 2</Text>
-              <Text style={styles.stepTitle}>Escolha um plano</Text>
-            </View>
+        <ScrollView
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {planosAtuais.length > 0 ? (
+            <Section title="Seu plano atual" bare>
+              <View style={styles.planStack}>{planosAtuais.map(renderPlanCardDs)}</View>
+            </Section>
+          ) : null}
+          {planosSemanais.length > 0 ? (
+            <Section title="Planos por semana" aside="Preço por mês" bare>
+              <View style={styles.planStack}>{planosSemanais.map(renderPlanCardDs)}</View>
+            </Section>
+          ) : null}
+          {planosAvulsos.length > 0 ? (
+            <Section title="Avulso" bare>
+              <View style={styles.planStack}>{planosAvulsos.map(renderPlanCardDs)}</View>
+            </Section>
+          ) : null}
+          <View style={styles.note}>
+            <Feather name="info" size={18} color={ds.info} />
+            <Text style={styles.noteText}>
+              Na próxima etapa você escolhe o ciclo de cobrança e paga com PIX.
+            </Text>
           </View>
-          <FlatList
-            data={planos}
-            renderItem={renderPlanListItem}
-            keyExtractor={(item) => item.id.toString()}
-            contentContainerStyle={styles.listContent}
-            scrollEnabled={true}
-            showsVerticalScrollIndicator={false}
-          />
-        </View>
+        </ScrollView>
       )}
 
       {/* Confirmação de migração de plano */}
@@ -1896,6 +1928,25 @@ export default function PlanosScreen() {
   );
 }
 const styles = StyleSheet.create({
+  noteText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "600",
+    color: ds.ink,
+  },
+  note: {
+    flexDirection: "row",
+    gap: 12,
+    alignItems: "flex-start",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    backgroundColor: ds.infoSoft,
+  },
+  planStack: {
+    gap: 12,
+  },
   container: {
     flex: 1,
     backgroundColor: ds.ground,
@@ -1933,10 +1984,9 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   listContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 16,
+    padding: 16,
     paddingBottom: 32,
-    gap: 16,
+    gap: 24,
   },
   listWrapper: {
     flex: 1,

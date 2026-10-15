@@ -156,7 +156,7 @@ export default function AppHeader({
       >
         <BrandFacets />
         {row}
-        {bottom ? <View>{bottom}</View> : null}
+        {bottom ? <View style={styles.layer}>{bottom}</View> : null}
       </LinearGradient>
     </View>
   );
@@ -184,7 +184,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: ds.line,
   },
+  // Acima dos recortes: na web o SVG absoluto seria pintado por cima do conteúdo.
+  layer: { position: "relative", zIndex: 1 },
   row: {
+    position: "relative",
+    zIndex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: space[3],
