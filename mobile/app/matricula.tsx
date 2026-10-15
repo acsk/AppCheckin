@@ -15,7 +15,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-export default function MatriculaScreen() {
+
+import { ds } from "@/src/components/ds/tokens";export default function MatriculaScreen() {
   const router = useRouter();
   const { matriculaId } = useLocalSearchParams();
   const [matricula, setMatricula] = useState(null);
@@ -107,7 +108,7 @@ export default function MatriculaScreen() {
       <SafeAreaView style={styles.container}>
         <View style={styles.headerTop}>
           <TouchableOpacity onPress={() => router.back()}>
-            <Feather name="arrow-left" size={24} color="#fff" />
+            <Feather name="arrow-left" size={24} color={ds.ink} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Matrícula</Text>
           <View style={{ width: 24 }} />
@@ -124,7 +125,7 @@ export default function MatriculaScreen() {
     <SafeAreaView style={styles.container} edges={["right", "bottom", "left"]}>
       <View style={styles.headerTop}>
         <TouchableOpacity onPress={() => router.back()}>
-          <Feather name="arrow-left" size={24} color="#fff" />
+          <Feather name="arrow-left" size={24} color={ds.ink} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Detalhes da Matrícula</Text>
         <View style={{ width: 24 }} />
@@ -369,7 +370,7 @@ export default function MatriculaScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: ds.ground,
   },
   headerTop: {
     flexDirection: "row",
@@ -377,18 +378,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 18,
     paddingVertical: 16,
-    backgroundColor: colors.primary,
-    borderBottomWidth: 0,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 8,
+    backgroundColor: ds.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: ds.line,
   },
   headerTitle: {
     fontSize: 22,
     fontWeight: "800",
-    color: "#fff",
+    color: ds.ink,
   },
   scrollContent: {
     padding: 16,
@@ -405,7 +402,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#000",
+    color: ds.ink,
     marginBottom: 12,
   },
   card: {
@@ -433,12 +430,12 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 12,
-    color: "#999",
+    color: ds.inkMuted,
     marginBottom: 4,
   },
   value: {
     fontSize: 14,
-    color: "#000",
+    color: ds.ink,
     fontWeight: "600",
   },
   modalidadeBadge: {
@@ -481,13 +478,13 @@ const styles = StyleSheet.create({
   },
   financialLabel: {
     fontSize: 12,
-    color: "#999",
+    color: ds.inkMuted,
     marginBottom: 4,
   },
   financialValue: {
     fontSize: 18,
     fontWeight: "700",
-    color: colors.primary,
+    color: colors.primaryText,
   },
   progressBar: {
     height: 6,
@@ -525,12 +522,12 @@ const styles = StyleSheet.create({
   paymentValue: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#000",
+    color: ds.ink,
     marginBottom: 4,
   },
   paymentDate: {
     fontSize: 12,
-    color: "#999",
+    color: ds.inkMuted,
   },
   paymentStatusBadge: {
     paddingHorizontal: 10,
@@ -552,11 +549,11 @@ const styles = StyleSheet.create({
   },
   paymentDetailText: {
     fontSize: 12,
-    color: "#666",
+    color: ds.inkMuted,
   },
   paymentMethod: {
     fontSize: 12,
-    color: "#999",
+    color: ds.inkMuted,
     fontStyle: "italic",
   },
   emptyContainer: {
@@ -567,7 +564,7 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#999",
+    color: ds.inkMuted,
     marginTop: 12,
   },
 });

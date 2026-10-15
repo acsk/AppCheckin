@@ -1,6 +1,8 @@
 import { DebugLogsViewer } from "@/components/DebugLogsViewer";
 import PasswordRecoveryModal from "@/components/PasswordRecoveryModal";
 import AuthService from "@/src/services/authService";
+import ProfileDrawer from "@/src/components/ds/ProfileDrawer";
+import { ds } from "@/src/components/ds/tokens";
 import MobileService from "@/src/services/mobileService";
 import { colors } from "@/src/theme/colors";
 import {
@@ -20,6 +22,7 @@ import AsyncStorage from "@/src/utils/storage";
 import { weekdayAbbrev } from "@/src/utils/weekdayAbbrev";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
+import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -45,26 +48,6 @@ const ROLE_NAME_FALLBACK: Record<number, string> = {
   2: "Professor",
   3: "Admin",
   4: "Super Admin",
-};
-
-// Tokens do design system AppCheckin usados no menu lateral.
-const SB = {
-  ground: "#f2f3f5",
-  surface: "#ffffff",
-  line: "#e4e6ea",
-  ink: "#171a21",
-  inkMuted: "#5b6270",
-  onInverse: "#ffffff",
-  brand: "#ff7a00",
-  brandInk: "#c2410c",
-  brandSoft: "#fff3e6",
-  info: "#1d5fd1",
-  infoSoft: "#e8f0fe",
-  tones: {
-    success: { fg: "#15703a", bg: "#e7f6ec" },
-    warning: { fg: "#9a5b00", bg: "#fff4db" },
-    danger: { fg: "#b91c1c", bg: "#fdecec" },
-  },
 };
 
 const withShadow = (
@@ -852,11 +835,13 @@ export default function AccountScreen() {
     return "";
   };
 
-  const formatCPF = (cpf: string) => {
-    if (!cpf) return "";
-    const cleaned = cpf.replace(/\D/g, "");
-    return cleaned.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+  // CPF mascarado no menu: só os dois últimos dígitos visíveis.
+  const maskCPF = (cpf: string) => {
+    const d = String(cpf || "").replace(/\D/g, "");
+    return d.length >= 2 ? `•••.•••.•••-${d.slice(-2)}` : "•••";
   };
+
+
 
   const formatPhone = (phone: string) => {
     if (!phone) return "";
@@ -1103,7 +1088,12 @@ export default function AccountScreen() {
       <View style={styles.headerTop}>
         <View style={styles.headerUserRow}>
           <View style={styles.headerUserLeft}>
-            <View style={styles.headerPhotoWrapper}>
+            <TouchableOpacity
+              style={styles.headerPhotoWrapper}
+              onPress={openSidebar}
+              accessibilityRole="button"
+              accessibilityLabel="Abrir menu do perfil"
+            >
               <View style={styles.headerPhotoContainer}>
                 {shouldRenderUserPhoto ? (
                   <Image
@@ -1131,25 +1121,43 @@ export default function AccountScreen() {
                     styles.matriculaStatusBadge,
                     {
                       backgroundColor:
-                        userProfile.plano.matricula_status.cor || "#6C757D",
+                        userProfile.plano.matricula_status.codigo === "ativa"
+                          ? ds.successSoft
+                          : userProfile.plano.matricula_status.codigo === "pendente"
+                            ? ds.warningSoft
+                            : ds.dangerSoft,
                     },
                   ]}
                 >
-                  <Text style={styles.matriculaStatusBadgeText}>
+                  <Text
+                    style={[
+                      styles.matriculaStatusBadgeText,
+                      {
+                        color:
+                          userProfile.plano.matricula_status.codigo === "ativa"
+                            ? ds.success
+                            : userProfile.plano.matricula_status.codigo === "pendente"
+                              ? ds.warning
+                              : ds.danger,
+                      },
+                    ]}
+                  >
                     {userProfile.plano.matricula_status.nome}
                   </Text>
                 </View>
               ) : null}
-            </View>
+            </TouchableOpacity>
             <View style={styles.headerUserInfo}>
-              <Text style={styles.headerUserName}>
-                {userProfile?.nome || "Usuário"}
-              </Text>
-              {userRoleLabels.length > 0 ? (
-                <Text style={styles.headerUserRoles}>
-                  {userRoleLabels.join(" • ")}
+              {userRoleLabels.length > 0 || getTenantDisplayName() ? (
+                <Text style={styles.headerUserRoles} numberOfLines={1}>
+                  {[getTenantDisplayName(), userRoleLabels.join(" · ").toLowerCase()]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </Text>
               ) : null}
+              <Text style={styles.headerUserName} numberOfLines={2}>
+                {`Olá, ${(userProfile?.nome || "").trim().split(/\s+/)[0]?.replace(/^(.)(.*)$/, (_m, a, b) => a.toUpperCase() + b.toLowerCase()) || "aluno"}`}
+              </Text>
               {/* {getTenantDisplayName() && (
                   <TouchableOpacity
                     style={styles.tenantSwitchButton}
@@ -1170,7 +1178,7 @@ export default function AccountScreen() {
             onPress={openSidebar}
             accessibilityLabel="Abrir menu"
           >
-            <Feather name="menu" size={22} color="#fff" />
+            <Feather name="menu" size={22} color={ds.onBrand} />
           </TouchableOpacity>
         </View>
       </View>
@@ -1182,7 +1190,7 @@ export default function AccountScreen() {
         {/* Calendário Semanal de Check-ins */}
         <View style={styles.weekCalendarSection} className="notranslate">
           <View style={styles.weekCalendarHeader}>
-            <Text style={styles.sectionTitle}>Minha Semana</Text>
+            <Text style={styles.sectionTitle}>MINHA SEMANA</Text>
             <Text style={styles.weekPeriodText}>{formatWeekPeriod()}</Text>
           </View>
 
@@ -1298,7 +1306,7 @@ export default function AccountScreen() {
         {/* Ranking de Check-ins */}
         <View style={styles.rankingSection}>
           <Text style={styles.sectionTitle}>
-            Ranking de Check-ins{rankingPeriodo ? ` • ${rankingPeriodo}` : ""}
+            RANKING{rankingPeriodo ? ` · ${rankingPeriodo.toUpperCase()}` : ""}
           </Text>
           {rankingModalidades.length > 0 && (
             <ScrollView
@@ -1316,8 +1324,8 @@ export default function AccountScreen() {
                       styles.modalidadeTab,
                       active && styles.modalidadeTabActive,
                       {
-                        borderColor: active ? chipColor : "#f3e6d9",
-                        backgroundColor: active ? chipColor : "#fff",
+                        borderColor: active ? ds.inverse : ds.lineStrong,
+                        backgroundColor: active ? ds.inverse : ds.surface,
                       },
                     ]}
                     onPress={() => {
@@ -1329,27 +1337,20 @@ export default function AccountScreen() {
                         <MaterialCommunityIcons
                           name={modalidade.icone as any}
                           size={14}
-                          color={active ? "#fff" : chipColor}
+                          color={active ? ds.onInverse : chipColor}
                         />
                       ) : null}
                       <Text
                         style={[
                           styles.modalidadeChipText,
                           active && styles.modalidadeChipTextActive,
-                          { color: active ? "#fff" : "#8b6b3b" },
+                          { color: active ? ds.onInverse : ds.ink },
                         ]}
                       >
                         {modalidade.nome}
                       </Text>
                     </View>
-                    {active && (
-                      <View
-                        style={[
-                          styles.modalidadeTabIndicator,
-                          { backgroundColor: chipColor },
-                        ]}
-                      />
-                    )}
+
                   </TouchableOpacity>
                 );
               })}
@@ -1374,15 +1375,10 @@ export default function AccountScreen() {
                     const isSilver = pos === 2;
                     const isBronze = pos === 3;
                     const badgeColor = isGold
-                      ? "#f59e0b"
+                      ? ds.medalGold
                       : isSilver
-                        ? "#94a3b8"
-                        : "#d97706";
-                    const badgeSoft = isGold
-                      ? "#fff7ed"
-                      : isSilver
-                        ? "#f8fafc"
-                        : "#fff7ed";
+                        ? ds.medalSilver
+                        : ds.medalBronze;
                     return (
                       <View
                         key={item.aluno?.id ?? item.posicao}
@@ -1403,7 +1399,7 @@ export default function AccountScreen() {
                             <MaterialCommunityIcons
                               name="crown"
                               size={14}
-                              color="#fff"
+                              color={ds.ink}
                             />
                           )}
                           <Text style={styles.rankingPositionNumber}>
@@ -1433,21 +1429,7 @@ export default function AccountScreen() {
                             <Text style={styles.rankingName}>
                               {item.aluno?.nome ?? "Usuário"}
                             </Text>
-                            <View
-                              style={[
-                                styles.rankingTopBadge,
-                                { backgroundColor: badgeSoft },
-                              ]}
-                            >
-                              <Text
-                                style={[
-                                  styles.rankingTopBadgeText,
-                                  { color: badgeColor },
-                                ]}
-                              >
-                                TOP {item.posicao}
-                              </Text>
-                            </View>
+
                           </View>
                           <Text style={styles.rankingCheckins}>
                             {item.total_checkins} check-ins
@@ -1460,7 +1442,7 @@ export default function AccountScreen() {
                 <View style={styles.rankingDivider} />
                 <View style={styles.rankingUserRow}>
                   <View>
-                    <Text style={styles.rankingUserLabel}>Sua posicao</Text>
+                    <Text style={styles.rankingUserLabel}>SUA POSIÇÃO</Text>
                     <Text style={styles.rankingUserName}>
                       {userProfile.nome}
                     </Text>
@@ -1495,7 +1477,7 @@ export default function AccountScreen() {
 
       </ScrollView>
 
-      <Modal transparent visible={showSidebar} animationType="none">
+      <Modal transparent visible={showSidebar} animationType="none" onRequestClose={closeSidebar}>
         <Pressable
           style={styles.sidebarOverlay}
           onPress={closeSidebar}
@@ -1507,271 +1489,86 @@ export default function AccountScreen() {
             { transform: [{ translateX: sidebarTranslateX }] },
           ]}
         >
-          <SafeAreaView style={{ flex: 1 }} edges={["top", "bottom"]}>
-            <View style={styles.sidebarTopBar}>
-              <Text style={styles.sidebarTopTitle}>Menu</Text>
-              <TouchableOpacity
-                style={styles.sidebarCloseButton}
-                onPress={closeSidebar}
-                accessibilityLabel="Fechar menu"
-              >
-                <Feather name="x" size={22} color={SB.ink} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView
-              contentContainerStyle={styles.sidebarContent}
-              showsVerticalScrollIndicator={false}
-            >
-              {/* Perfil */}
-              <View style={styles.sidebarCard}>
-                <View style={styles.sidebarHeader}>
-                  <View style={styles.sidebarPhotoWrapper}>
-                    <TouchableOpacity
-                      style={styles.sidebarPhotoContainer}
-                      onPress={handleChangePhoto}
-                      disabled={updatingPhoto}
-                      accessibilityLabel="Alterar foto"
-                    >
-                      {userPhotoUri ? (
-                        <Image
-                          source={{ uri: userPhotoUri }}
-                          style={styles.sidebarPhotoImage}
-                        />
-                      ) : (
-                        <Text style={styles.sidebarPhotoInitials}>
-                          {getInitials(userProfile.nome)}
-                        </Text>
-                      )}
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.sidebarPhotoCameraBadge}
-                      onPress={handleChangePhoto}
-                      disabled={updatingPhoto}
-                      accessibilityLabel="Alterar foto"
-                    >
-                      {updatingPhoto ? (
-                        <ActivityIndicator size="small" color={SB.onInverse} />
-                      ) : (
-                        <Feather name="camera" size={14} color={SB.onInverse} />
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                  <View style={styles.sidebarHeaderInfo}>
-                    <Text style={styles.sidebarUserName} numberOfLines={2}>
-                      {userProfile.nome}
-                    </Text>
-                    {userProfile?.plano ? (
-                      <View style={styles.sidebarPlanInfoContainer}>
-                        {userProfile.plano.matricula_status?.nome ? (() => {
-                          const codigo = userProfile.plano.matricula_status.codigo;
-                          const tone =
-                            codigo === "ativa"
-                              ? SB.tones.success
-                              : codigo === "pendente"
-                                ? SB.tones.warning
-                                : SB.tones.danger;
-                          return (
-                            <View
-                              style={[
-                                styles.sidebarStatusBadgeInline,
-                                { backgroundColor: tone.bg },
-                              ]}
-                            >
-                              <Feather
-                                name={
-                                  codigo === "ativa"
-                                    ? "check-circle"
-                                    : codigo === "pendente"
-                                      ? "clock"
-                                      : "alert-circle"
-                                }
-                                size={12}
-                                color={tone.fg}
-                              />
-                              <Text
-                                style={[
-                                  styles.sidebarStatusBadgeInlineText,
-                                  { color: tone.fg },
-                                ]}
-                              >
-                                {userProfile.plano.matricula_status.nome}
-                              </Text>
-                            </View>
-                          );
-                        })() : null}
-                        {userProfile.plano.vencimento?.texto ? (
-                          <Text
-                            style={[
-                              styles.sidebarVencimentoText,
-                              (userProfile.plano.vencimento.dias_restantes ?? 0) < 0 && {
-                                color: SB.tones.danger.fg,
-                              },
-                            ]}
-                          >
-                            {(userProfile.plano.vencimento.dias_restantes ?? 0) < 0
-                              ? "Bloqueado"
-                              : userProfile.plano.vencimento.texto}
-                          </Text>
-                        ) : null}
-                      </View>
-                    ) : null}
-                  </View>
-                </View>
-              </View>
-
-              {/* Informações pessoais */}
-              <Text style={styles.sidebarSectionTitle}>INFORMAÇÕES PESSOAIS</Text>
-              <View style={styles.sidebarCard}>
-                {[
-                  { icon: "mail", label: "E-mail", value: userProfile.email },
-                  userProfile.cpf
-                    ? { icon: "credit-card", label: "CPF", value: formatCPF(userProfile.cpf) }
-                    : null,
-                  userProfile.telefone
-                    ? { icon: "phone", label: "Telefone", value: formatPhone(userProfile.telefone) }
-                    : null,
-                  userProfile.data_nascimento
-                    ? {
-                        icon: "gift",
-                        label: "Data de nascimento",
-                        value: new Date(userProfile.data_nascimento).toLocaleDateString("pt-BR"),
-                      }
-                    : null,
-                ]
-                  .filter(Boolean)
-                  .map((item: any, i: number) => (
-                    <View
-                      key={item.label}
-                      style={[styles.sidebarInfoItem, i > 0 && styles.sidebarDivided]}
-                    >
-                      <View style={styles.sidebarIconBubble}>
-                        <Feather name={item.icon} size={18} color={SB.info} />
-                      </View>
-                      <View style={styles.infoContent}>
-                        <Text style={styles.infoLabelSidebar}>{item.label}</Text>
-                        <Text style={styles.infoValueSidebar} numberOfLines={1}>
-                          {item.value}
-                        </Text>
-                      </View>
-                    </View>
-                  ))}
-              </View>
-
-              {userProfile.tenants && userProfile.tenants.length > 0 && (
-                <>
-                  <Text style={styles.sidebarSectionTitle}>MINHAS ACADEMIAS</Text>
-                  <View style={styles.sidebarCard}>
-                    {userProfile.tenants.map((tenant, i) => (
-                      <TouchableOpacity
-                        key={tenant.id}
-                        style={[styles.academiaCardSidebar, i > 0 && styles.sidebarDivided]}
-                        onPress={() => {
-                          closeSidebar();
-                          router.push(`/planos?tenantId=${tenant.id}`);
-                        }}
-                        activeOpacity={0.7}
-                      >
-                        <View style={[styles.sidebarIconBubble, styles.sidebarIconBrand]}>
-                          <Feather name="home" size={18} color={SB.brandInk} />
-                        </View>
-                        <View style={styles.academiaCardContent}>
-                          <Text style={styles.academiaNameSidebar}>{tenant.nome}</Text>
-                          {tenant.email && (
-                            <View style={styles.academiaInfoSidebar}>
-                              <Feather name="mail" size={13} color={SB.inkMuted} />
-                              <Text style={styles.academiaInfoTextSidebar} numberOfLines={1}>
-                                {tenant.email}
-                              </Text>
-                            </View>
-                          )}
-                          {tenant.telefone && (
-                            <View style={styles.academiaInfoSidebar}>
-                              <Feather name="phone" size={13} color={SB.inkMuted} />
-                              <Text style={styles.academiaInfoTextSidebar}>
-                                {tenant.telefone}
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-                        <Feather name="chevron-right" size={20} color={SB.inkMuted} />
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </>
-              )}
-
-              {/* Atalhos */}
-              <Text style={styles.sidebarSectionTitle}>ATALHOS</Text>
-              <View style={styles.sidebarCard}>
-                <TouchableOpacity
-                  style={styles.sidebarMenuItem}
-                  onPress={async () => {
-                    try {
-                      // Verificar se existe token antes de navegar
-                      const token = await AsyncStorage.getItem("@appcheckin:token");
-                      if (!token) {
-                        console.warn(
-                          "⚠️ Token não encontrado - redirecionando para login",
-                        );
-                        router.replace("/(auth)/login");
-                        return;
-                      }
-                      closeSidebar();
-                      router.push("/planos");
-                    } catch (err) {
-                      console.error("❌ Erro ao navegar para planos:", err);
-                    }
-                  }}
-                >
-                  <View style={[styles.sidebarIconBubble, styles.sidebarIconBrand]}>
-                    <Feather name="shopping-cart" size={18} color={SB.brandInk} />
-                  </View>
-                  <Text style={styles.sidebarMenuItemText}>Planos</Text>
-                  <Feather name="chevron-right" size={20} color={SB.inkMuted} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.sidebarMenuItem, styles.sidebarDivided]}
-                  onPress={() => {
-                    closeSidebar();
-                    router.push("/minhas-assinaturas");
-                  }}
-                >
-                  <View style={[styles.sidebarIconBubble, styles.sidebarIconBrand]}>
-                    <Feather name="file-text" size={18} color={SB.brandInk} />
-                  </View>
-                  <Text style={styles.sidebarMenuItemText}>Minhas assinaturas</Text>
-                  <Feather name="chevron-right" size={20} color={SB.inkMuted} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.sidebarMenuItem, styles.sidebarDivided]}
-                  onPress={() => {
-                    closeSidebar();
-                    router.push("/conta");
-                  }}
-                >
-                  <View style={styles.sidebarIconBubble}>
-                    <Feather name="user" size={18} color={SB.info} />
-                  </View>
-                  <Text style={styles.sidebarMenuItemText}>Conta</Text>
-                  <Feather name="chevron-right" size={20} color={SB.inkMuted} />
-                </TouchableOpacity>
-              </View>
-
-              <TouchableOpacity
-                style={styles.sidebarLogoutButton}
-                onPress={() => {
+          <ProfileDrawer
+            user={{
+              name: userProfile.nome,
+              avatarUri: userPhotoUri,
+              roles: userRoleLabels,
+              memberSince: userProfile.membro_desde
+                ? new Date(userProfile.membro_desde).toLocaleDateString("pt-BR")
+                : null,
+            }}
+            version={Constants.expoConfig?.version ?? null}
+            updatingPhoto={updatingPhoto}
+            info={[
+              { icon: "mail" as const, label: "E-mail", value: userProfile.email },
+              userProfile.cpf
+                ? { icon: "credit-card" as const, label: "CPF", value: maskCPF(userProfile.cpf) }
+                : null,
+              userProfile.telefone
+                ? { icon: "phone" as const, label: "Telefone", value: formatPhone(userProfile.telefone) }
+                : null,
+              userProfile.data_nascimento
+                ? {
+                    icon: "calendar" as const,
+                    label: "Nascimento",
+                    value: new Date(userProfile.data_nascimento).toLocaleDateString("pt-BR"),
+                  }
+                : null,
+            ].filter((x): x is { icon: "mail"; label: string; value: string } => Boolean(x))}
+            gyms={(userProfile.tenants || []).map((tenant) => {
+              const currentId = currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
+              const isCurrent = currentId != null && Number(tenant.id) === Number(currentId);
+              return {
+                name: tenant.nome,
+                phone: tenant.telefone ? formatPhone(tenant.telefone) : null,
+                email: tenant.email || null,
+                current: isCurrent,
+                onPress: () => {
                   closeSidebar();
-                  router.push("/logout");
-                }}
-              >
-                <Feather name="log-out" size={20} color={SB.tones.danger.fg} />
-                <Text style={styles.sidebarLogoutText}>Sair da conta</Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </SafeAreaView>
+                  if (!isCurrent && tenants.length > 1) {
+                    setShowTenantModal(true);
+                  }
+                },
+              };
+            })}
+            menu={[
+              {
+                icon: "file-text",
+                label: "Minhas assinaturas",
+                hint:
+                  userProfile.plano?.matricula_status?.codigo === "pendente"
+                    ? "Pagamento pendente"
+                    : (userProfile.plano?.vencimento?.dias_restantes ?? 0) < 0
+                      ? "Bloqueado"
+                      : userProfile.plano?.nome || null,
+                hintTone:
+                  userProfile.plano?.matricula_status?.codigo === "pendente"
+                    ? "warning"
+                    : (userProfile.plano?.vencimento?.dias_restantes ?? 0) < 0
+                      ? "danger"
+                      : null,
+                onPress: () => {
+                  closeSidebar();
+                  router.push("/minhas-assinaturas");
+                },
+              },
+              {
+                icon: "key",
+                label: "Alterar senha",
+                onPress: () => {
+                  closeSidebar();
+                  setShowRecoveryModal(true);
+                },
+              },
+            ]}
+            onClose={closeSidebar}
+            onEditPhoto={handleChangePhoto}
+            onLogout={() => {
+              closeSidebar();
+              router.push("/logout");
+            }}
+          />
         </Animated.View>
       </Modal>
 
@@ -1795,7 +1592,7 @@ export default function AccountScreen() {
                     onPress={() => handleSelectTenant(id)}
                     activeOpacity={0.8}
                   >
-                    <Feather name="home" size={16} color="#fff" />
+                    <Feather name="home" size={16} color={ds.onBrand} />
                     <Text style={styles.tenantOptionText}>{nome}</Text>
                   </TouchableOpacity>
                 );
@@ -1808,7 +1605,7 @@ export default function AccountScreen() {
               ]}
               onPress={() => setShowTenantModal(false)}
             >
-              <Feather name="x" size={16} color="#fff" />
+              <Feather name="x" size={16} color={ds.onBrand} />
               <Text style={styles.tenantOptionText}>Cancelar</Text>
             </TouchableOpacity>
           </View>
@@ -1830,7 +1627,7 @@ export default function AccountScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.backgroundSecondary,
+    backgroundColor: ds.ground,
   },
   errorBanner: {
     backgroundColor: "#fee2e2",
@@ -1849,30 +1646,22 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   headerTop: {
-    paddingHorizontal: 20,
-    paddingTop: 18,
-    paddingBottom: 20,
-    backgroundColor: colors.primary,
-    borderBottomWidth: 0,
-    borderBottomLeftRadius: 22,
-    borderBottomRightRadius: 22,
-    ...withShadow("0px 3px 8px rgba(0, 0, 0, 0.18)", {
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 3 },
-      shadowOpacity: 0.18,
-      shadowRadius: 8,
-      elevation: 6,
-    }),
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    paddingBottom: 24,
+    backgroundColor: ds.brand,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
   },
   headerUserRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-end",
     justifyContent: "space-between",
     gap: 12,
   },
   headerUserLeft: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-end",
     gap: 12,
     flex: 1,
   },
@@ -1882,50 +1671,45 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   headerUserName: {
-    fontSize: 17,
+    fontSize: 32,
+    lineHeight: 36,
     fontWeight: "800",
-    color: "#fff",
+    letterSpacing: -0.6,
+    color: ds.onBrand,
     flexShrink: 1,
-    lineHeight: 22,
-    includeFontPadding: false,
   },
   headerUserRoles: {
-    fontSize: 12,
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: "700",
-    color: "rgba(255,255,255,0.9)",
-    lineHeight: 16,
-    includeFontPadding: false,
-    marginTop: 0,
+    color: ds.onBrand,
+    opacity: 0.8,
   },
   headerMenuButton: {
-    marginLeft: 6,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.25)",
+    width: 44,
+    height: 44,
+    borderRadius: 12,
     justifyContent: "center",
     alignItems: "center",
   },
   headerPhotoWrapper: {
     position: "relative",
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    marginBottom: 12,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    marginBottom: 10,
     overflow: "visible",
   },
   headerPhotoContainer: {
-    width: 84,
-    height: 84,
-    borderRadius: 42,
-    backgroundColor: "rgba(255,255,255,0.2)",
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: ds.surfaceSunken,
     justifyContent: "center",
     alignItems: "center",
     overflow: "hidden",
     borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.6)",
+    borderColor: ds.surface,
   },
   headerPhotoImage: {
     width: "100%",
@@ -1935,10 +1719,7 @@ const styles = StyleSheet.create({
   headerPhotoInitials: {
     fontSize: 20,
     fontWeight: "800",
-    color: "#fff",
-    lineHeight: 20,
-    includeFontPadding: false,
-    textAlignVertical: "center",
+    color: ds.ink,
   },
   headerPhotoLoading: {
     position: "absolute",
@@ -1951,268 +1732,46 @@ const styles = StyleSheet.create({
   matriculaStatusBadge: {
     position: "absolute",
     bottom: -10,
-    alignSelf: "center",
-    left: -6,
-    right: -6,
+    left: -8,
+    right: -8,
+    height: 20,
     paddingHorizontal: 6,
-    paddingVertical: 3,
-    borderRadius: 10,
-    zIndex: 10,
+    borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
-    overflow: "visible",
-    ...Platform.select({
-      ios: {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 4,
-      },
-      web: {
-        boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-      },
-    }),
+    borderWidth: 2,
+    borderColor: ds.surface,
   },
   matriculaStatusBadgeText: {
-    color: "#fff",
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 0.5,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
     textAlign: "center",
   },
   sidebarOverlay: {
     flex: 1,
-    backgroundColor: "rgba(18, 21, 26, 0.56)",
+    backgroundColor: ds.scrim,
   },
   sidebarContainer: {
     position: "absolute",
     top: 0,
     left: 0,
     bottom: 0,
-    width: "86%",
-    maxWidth: 380,
-    backgroundColor: SB.ground,
-    borderTopRightRadius: 16,
-    borderBottomRightRadius: 16,
-    overflow: "hidden",
-  },
-  sidebarTopBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    minHeight: 64,
-    paddingLeft: 16,
-    paddingRight: 8,
-    backgroundColor: SB.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: SB.line,
-  },
-  sidebarTopTitle: {
-    fontSize: 22,
-    lineHeight: 28,
-    fontWeight: "800",
-    color: SB.ink,
-  },
-  sidebarCloseButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  sidebarContent: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-  sidebarCard: {
-    backgroundColor: SB.surface,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: SB.line,
-    overflow: "hidden",
-  },
-  sidebarDivided: {
-    borderTopWidth: 1,
-    borderTopColor: SB.line,
-  },
-  sidebarHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 14,
-    padding: 16,
-  },
-  sidebarHeaderInfo: {
-    flex: 1,
-  },
-  sidebarUserName: {
-    fontSize: 17,
-    lineHeight: 22,
-    fontWeight: "800",
-    color: SB.ink,
-  },
-  sidebarPlanInfoContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginTop: 6,
-    flexWrap: "wrap",
-  },
-  sidebarStatusBadgeInline: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-  },
-  sidebarStatusBadgeInlineText: {
-    fontSize: 12,
-    fontWeight: "800",
-  },
-  sidebarVencimentoText: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: SB.inkMuted,
-  },
-  sidebarPhotoWrapper: {
-    position: "relative",
-    width: 72,
-    height: 72,
-  },
-  sidebarPhotoContainer: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: SB.brand,
-    justifyContent: "center",
-    alignItems: "center",
-    overflow: "hidden",
-  },
-  sidebarPhotoImage: {
-    width: "100%",
-    height: "100%",
-    borderRadius: 999,
-  },
-  sidebarPhotoCameraBadge: {
-    position: "absolute",
-    right: -4,
-    bottom: -4,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: SB.ink,
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 2,
-    borderColor: SB.surface,
-  },
-  sidebarPhotoInitials: {
-    fontSize: 26,
-    fontWeight: "800",
-    color: SB.ink,
-  },
-  sidebarSectionTitle: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: "700",
-    letterSpacing: 0.96,
-    color: SB.inkMuted,
-    marginTop: 24,
-    marginBottom: 8,
-    paddingHorizontal: 4,
-  },
-  sidebarInfoItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    minHeight: 60,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  sidebarIconBubble: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: SB.infoSoft,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  sidebarIconBrand: {
-    backgroundColor: SB.brandSoft,
-  },
-  infoLabelSidebar: {
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: "700",
-    color: SB.inkMuted,
-  },
-  infoValueSidebar: {
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: "600",
-    color: SB.ink,
-  },
-  academiaCardSidebar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    minHeight: 64,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  academiaNameSidebar: {
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: "700",
-    color: SB.ink,
-    marginBottom: 2,
-  },
-  academiaInfoSidebar: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginTop: 2,
-  },
-  academiaInfoTextSidebar: {
-    flexShrink: 1,
-    fontSize: 13,
-    fontWeight: "600",
-    color: SB.inkMuted,
-  },
-  sidebarMenuItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-    minHeight: 56,
-    paddingHorizontal: 16,
-  },
-  sidebarMenuItemText: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: "700",
-    color: SB.ink,
-  },
-  sidebarLogoutButton: {
-    marginTop: 24,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 8,
-    height: 48,
-    borderRadius: 12,
-    backgroundColor: SB.tones.danger.bg,
-  },
-  sidebarLogoutText: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: SB.tones.danger.fg,
+    width: 340,
+    maxWidth: "88%",
+    backgroundColor: ds.ground,
+    shadowColor: "#000",
+    shadowOffset: { width: 16, height: 0 },
+    shadowOpacity: 0.35,
+    shadowRadius: 40,
+    elevation: 16,
   },
   scrollContent: {
-    padding: 18,
+    padding: 16,
+    paddingTop: 24,
     paddingBottom: 48,
+    gap: 24,
   },
   loadingContainer: {
     flex: 1,
@@ -2232,7 +1791,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   retryButtonText: {
-    color: "#fff",
+    color: ds.onBrand,
     fontWeight: "600",
   },
   statisticsSection: {
@@ -2335,30 +1894,22 @@ const styles = StyleSheet.create({
   },
   // Calendário Semanal
   weekCalendarSection: {
-    backgroundColor: "#fff",
+    backgroundColor: ds.surface,
     borderRadius: 16,
-    padding: 18,
-    marginBottom: 20,
+    padding: 16,
     borderWidth: 1,
-    borderColor: "#f0f1f4",
-    ...withShadow("0px 6px 10px rgba(0, 0, 0, 0.06)", {
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.06,
-      shadowRadius: 10,
-      elevation: 2,
-    }),
+    borderColor: ds.line,
   },
   weekCalendarHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
+    alignItems: "baseline",
+    marginBottom: 8,
   },
   weekPeriodText: {
-    fontSize: 12,
-    color: colors.textMuted,
-    fontWeight: "500",
+    fontSize: 13,
+    fontWeight: "600",
+    color: ds.inkMuted,
   },
   weekCalendarLoading: {
     paddingVertical: 40,
@@ -2375,48 +1926,49 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 2,
     borderRadius: 12,
-    backgroundColor: "#F1F3F5",
+    backgroundColor: ds.surfaceSunken,
+    borderWidth: 1,
+    borderColor: ds.line,
     minWidth: 38,
   },
   weekDayItemToday: {
-    backgroundColor: colors.primary + "15",
-    borderWidth: 2,
-    borderColor: colors.primary,
+    backgroundColor: ds.inverse,
+    borderColor: ds.inverse,
   },
   weekDayItemChecked: {
-    backgroundColor: "#dcfce7",
-    borderWidth: 2,
-    borderColor: "#10b981",
+    backgroundColor: ds.successSoft,
+    borderColor: ds.success,
   },
   weekDayItemMissed: {
-    backgroundColor: colors.gray100,
-    borderWidth: 1,
-    borderColor: colors.gray200,
+    backgroundColor: ds.surfaceSunken,
+    borderColor: ds.line,
   },
   weekDayName: {
     fontSize: 11,
-    fontWeight: "600",
-    color: colors.textMuted,
+    fontWeight: "800",
+    letterSpacing: 0.6,
+    textTransform: "uppercase",
+    color: ds.inkMuted,
     marginBottom: 2,
   },
   weekDayNameToday: {
-    color: colors.primary,
+    color: ds.onInverse,
   },
   weekDayNameChecked: {
-    color: "#059669",
-    fontWeight: "700",
+    color: ds.success,
   },
   weekDayNumber: {
     fontSize: 18,
-    fontWeight: "700",
-    color: colors.text,
+    fontWeight: "800",
+    color: ds.ink,
     marginBottom: 6,
+    fontVariant: ["tabular-nums"],
   },
   weekDayNumberToday: {
-    color: colors.primary,
+    color: ds.onInverse,
   },
   weekDayNumberChecked: {
-    color: "#059669",
+    color: ds.success,
   },
   weekDayCheckContainer: {
     height: 26,
@@ -2427,26 +1979,17 @@ const styles = StyleSheet.create({
     width: 26,
     height: 26,
     borderRadius: 13,
-    backgroundColor: "#10b981",
+    backgroundColor: ds.success,
     justifyContent: "center",
     alignItems: "center",
-    ...withShadow("0px 2px 3px rgba(16, 185, 129, 0.25)", {
-      shadowColor: "#10b981",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.25,
-      shadowRadius: 3,
-      elevation: 2,
-    }),
   },
   weekDayMissedIcon: {
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: colors.gray100,
+    backgroundColor: ds.dangerSoft,
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 1,
-    borderColor: colors.gray200,
   },
   weekDayIconContainer: {
     width: 24,
@@ -2473,7 +2016,7 @@ const styles = StyleSheet.create({
     marginTop: 14,
     paddingTop: 14,
     borderTopWidth: 1,
-    borderTopColor: "#f0f1f4",
+    borderTopColor: ds.line,
   },
   weekLegendItem: {
     flexDirection: "row",
@@ -2486,14 +2029,18 @@ const styles = StyleSheet.create({
     borderRadius: 5,
   },
   weekLegendText: {
-    fontSize: 11,
-    color: colors.textMuted,
+    fontSize: 12,
+    fontWeight: "600",
+    color: ds.inkMuted,
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: 12,
+    lineHeight: 16,
     fontWeight: "800",
-    color: colors.text,
-    marginBottom: 16,
+    letterSpacing: 0.96,
+    color: ds.inkMuted,
+    marginBottom: 8,
+    paddingHorizontal: 4,
   },
   statsGrid: {
     flexDirection: "row",
@@ -2684,7 +2231,8 @@ const styles = StyleSheet.create({
   },
   memberSinceText: {
     fontSize: 13,
-    color: colors.textMuted,
+    fontWeight: "600",
+    color: ds.inkMuted,
   },
   contratosSection: {
     marginBottom: 20,
@@ -2693,25 +2241,23 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   rankingSection: {
-    marginBottom: 20,
+
   },
   modalidadeTabs: {
-    gap: 12,
-    paddingVertical: 8,
-    paddingHorizontal: 4,
-    marginBottom: 16,
+    gap: 8,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+    marginBottom: 12,
   },
   modalidadeTab: {
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 16,
-    backgroundColor: "#fff",
-    borderWidth: 1,
-    borderColor: "#fde3c8",
+    height: 36,
+    paddingHorizontal: 14,
+    justifyContent: "center",
+    borderRadius: 12,
+    borderWidth: 1.5,
   },
   modalidadeTabActive: {
-    backgroundColor: "transparent",
-    borderColor: "transparent",
+
   },
   modalidadeTabIndicator: {
     marginTop: 6,
@@ -2725,67 +2271,53 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   modalidadeChipText: {
-    fontSize: 15,
-    color: "#9a5b1e",
+    fontSize: 14,
     fontWeight: "800",
   },
   modalidadeChipTextActive: {
     color: "#fff",
   },
   rankingCard: {
-    backgroundColor: "#fff7ed",
-    borderRadius: 18,
-    padding: 18,
+    backgroundColor: ds.surface,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.primary + "35",
-    ...withShadow("0px 6px 12px rgba(0, 0, 0, 0.1)", {
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 6 },
-      shadowOpacity: 0.1,
-      shadowRadius: 12,
-      elevation: 4,
-    }),
+    borderColor: ds.line,
+    overflow: "hidden",
   },
   rankingList: {
-    gap: 10,
+
   },
   rankingListItem: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    paddingHorizontal: 14,
+    gap: 12,
+    paddingHorizontal: 16,
     paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: colors.primary + "25",
+    minHeight: 64,
+    borderBottomWidth: 1,
+    borderBottomColor: ds.line,
   },
   rankingListItemGold: {
-    borderColor: "#f59e0b55",
-    backgroundColor: "#fffbeb",
+
   },
   rankingListItemSilver: {
-    borderColor: "#94a3b855",
-    backgroundColor: "#f8fafc",
+
   },
   rankingListItemBronze: {
-    borderColor: "#d9770655",
-    backgroundColor: "#fff7ed",
+
   },
   rankingPosition: {
-    minWidth: 46,
-    height: 40,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.6)",
+    width: 36,
+    height: 36,
+    borderRadius: 8,
     alignItems: "center",
     justifyContent: "center",
-    gap: 2,
   },
   rankingPositionNumber: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#fff",
+    fontSize: 15,
+    fontWeight: "900",
+    color: ds.ink,
+    fontVariant: ["tabular-nums"],
   },
   rankingAvatar: {
     width: 36,
@@ -2805,7 +2337,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: "#e5e7eb",
+    backgroundColor: ds.surfaceSunken,
     justifyContent: "center",
     alignItems: "center",
   },
@@ -2832,60 +2364,74 @@ const styles = StyleSheet.create({
   },
   rankingName: {
     fontSize: 15,
+    lineHeight: 20,
     fontWeight: "700",
-    color: "#111827",
+    color: ds.ink,
+    textTransform: "uppercase",
   },
   rankingCheckins: {
     fontSize: 13,
-    color: colors.textSecondary,
+    fontWeight: "600",
+    color: ds.inkMuted,
     marginTop: 2,
   },
   rankingLoading: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    paddingVertical: 8,
+    padding: 16,
   },
   rankingLoadingText: {
     fontSize: 13,
-    color: "#6b7280",
+    fontWeight: "600",
+    color: ds.inkMuted,
   },
   rankingErrorText: {
     fontSize: 13,
-    color: "#b91c1c",
+    fontWeight: "600",
+    color: ds.danger,
+    padding: 16,
   },
   rankingDivider: {
-    height: 1,
-    backgroundColor: colors.primary + "30",
-    marginVertical: 14,
+    height: 0,
   },
   rankingUserRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: ds.brandSoft,
   },
   rankingUserLabel: {
-    fontSize: 13,
-    color: colors.textSecondary,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "800",
+    letterSpacing: 0.66,
+    color: ds.brandInk,
     marginBottom: 2,
   },
   rankingUserName: {
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: "700",
-    color: "#111827",
+    color: ds.ink,
+    textTransform: "uppercase",
   },
   rankingUserPosition: {
+    minWidth: 44,
+    height: 36,
     paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-    backgroundColor: colors.primary,
-    borderWidth: 1,
-    borderColor: colors.primary,
+    borderRadius: 8,
+    backgroundColor: ds.brand,
+    alignItems: "center",
+    justifyContent: "center",
   },
   rankingUserPositionText: {
-    fontSize: 14,
-    fontWeight: "800",
-    color: "#fff",
+    fontSize: 15,
+    fontWeight: "900",
+    color: ds.onBrand,
+    fontVariant: ["tabular-nums"],
   },
   academiaCard: {
     backgroundColor: "#fff",
@@ -3118,7 +2664,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   tenantOptionText: {
-    color: "#fff",
+    color: ds.onBrand,
     fontWeight: "700",
     fontSize: 16,
   },

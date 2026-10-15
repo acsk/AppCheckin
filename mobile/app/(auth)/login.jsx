@@ -12,7 +12,6 @@ import {
     ScrollView,
     StyleSheet,
     Text,
-    TextInput,
     TouchableOpacity,
     View,
 } from "react-native";
@@ -22,34 +21,12 @@ import urlsConfig from "../../src/config/urls";
 import { authService } from "../../src/services/authService";
 import { colors } from "../../src/theme/colors";
 import AsyncStorage from "../../src/utils/storage";
+import Button from "../../src/components/ds/Button";
+import TechBackground from "../../src/components/ds/TechBackground";
+import TextField from "../../src/components/ds/TextField";
+import { ds as DS } from "../../src/components/ds/tokens";
 
 const LOGO = require("../../assets/images/appcheckin-logo.png");
-
-// Tokens do design system AppCheckin (login: sempre claro).
-const DS = {
-  ground: "#f2f3f5",
-  surface: "#ffffff",
-  line: "#e4e6ea",
-  lineStrong: "#8b929e",
-  ink: "#171a21",
-  inkMuted: "#5b6270",
-  brand: "#ff7a00",
-  brandYellow: "#fdb400",
-  brandRed: "#f2400a",
-  brandInk: "#c2410c",
-  danger: "#b91c1c",
-  dangerSoft: "#fdecec",
-};
-
-// Recortes low-poly nos cantos, nas cores do degradê da logo (TechBackground).
-const FACETS = [
-  { top: -70, left: -60, size: 170, rotate: "28deg", color: DS.brandYellow, opacity: 0.9 },
-  { top: -40, left: 40, size: 110, rotate: "52deg", color: DS.brand, opacity: 0.85 },
-  { top: 50, left: -50, size: 90, rotate: "15deg", color: DS.brandRed, opacity: 0.75 },
-  { bottom: -80, right: -60, size: 190, rotate: "34deg", color: DS.brandRed, opacity: 0.9 },
-  { bottom: -30, right: 70, size: 110, rotate: "60deg", color: DS.brand, opacity: 0.85 },
-  { bottom: 70, right: -40, size: 90, rotate: "18deg", color: DS.brandYellow, opacity: 0.8 },
-];
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -59,9 +36,10 @@ export default function LoginScreen() {
   const LOGIN_REMEMBER_KEY = "@appcheckin:login_remember";
   const [email, setEmail] = useState(__DEV__ ? "andrecabrall@gmail.com" : "");
   const [senha, setSenha] = useState(__DEV__ ? "123456" : "");
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [formError, setFormError] = useState("");
+  const [emailError, setEmailError] = useState("");
+  const [senhaError, setSenhaError] = useState("");
   const [showRecoveryModal, setShowRecoveryModal] = useState(false);
   const [tenantSelectionVisible, setTenantSelectionVisible] = useState(false);
   const [tenantOptions, setTenantOptions] = useState([]);
@@ -275,13 +253,23 @@ export default function LoginScreen() {
       return;
     }
 
-    if (!email.trim() || !senha.trim()) {
-      Alert.alert("Atenção", "Preencha email e senha");
+    // Validação no próprio campo (Alert.alert não aparece na web).
+    const emailVal = email.trim();
+    let nextEmailError = "";
+    if (!emailVal) {
+      nextEmailError = "Informe seu e-mail ou usuário.";
+    } else if (emailVal.includes("@") && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal)) {
+      nextEmailError = "E-mail inválido. Confira o endereço digitado.";
+    }
+    const nextSenhaError = senha.trim() ? "" : "Informe sua senha.";
+    setEmailError(nextEmailError);
+    setSenhaError(nextSenhaError);
+    setFormError("");
+    if (nextEmailError || nextSenhaError) {
       return;
     }
 
     setLoading(true);
-    setFormError("");
     try {
       console.log("🔐 Iniciando login para:", email);
       const recaptchaToken = await getRecaptchaToken();
@@ -317,7 +305,7 @@ export default function LoginScreen() {
         setLoading(false);
       } else {
         console.log("⚠️ Login sem token", response);
-        Alert.alert("Erro", "Não foi possível fazer login");
+        setFormError("Não foi possível fazer login. Tente de novo.");
         setLoading(false);
       }
     } catch (error) {
@@ -352,8 +340,12 @@ export default function LoginScreen() {
         mensagem = "Erro de conexão. Verifique sua internet.";
       }
 
-      setFormError(mensagem);
-      Alert.alert("Erro ao fazer login", mensagem);
+      // Credenciais erradas aparecem no campo da senha; o resto, no aviso do topo.
+      if (error?.code === "INVALID_CREDENTIALS" || error?.status === 401 || error?.response?.status === 401) {
+        setSenhaError("Senha incorreta. Tente de novo ou redefina.");
+      } else {
+        setFormError(mensagem);
+      }
       setLoading(false);
     }
   };
@@ -403,27 +395,7 @@ export default function LoginScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View pointerEvents="none" style={styles.backgroundDecor}>
-        {FACETS.map((f, i) => (
-          <View
-            key={i}
-            style={[
-              styles.facet,
-              {
-                top: f.top,
-                left: f.left,
-                bottom: f.bottom,
-                right: f.right,
-                width: f.size,
-                height: f.size,
-                backgroundColor: f.color,
-                opacity: f.opacity,
-                transform: [{ rotate: f.rotate }],
-              },
-            ]}
-          />
-        ))}
-      </View>
+      <TechBackground />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.keyboardView}
@@ -447,53 +419,46 @@ export default function LoginScreen() {
           {/* Formulário */}
           <View style={styles.form}>
             {formError ? (
-              <View style={styles.formError}>
+              <View style={styles.formError} accessibilityLiveRegion="polite">
                 <Feather name="alert-circle" size={16} color={DS.danger} />
                 <Text style={styles.formErrorText}>{formError}</Text>
               </View>
             ) : null}
 
-            {/* Email Input */}
-            <View style={styles.inputWrapper}>
-              <Feather name="mail" size={20} color={DS.inkMuted} style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="E-mail ou usuário"
-                placeholderTextColor={DS.inkMuted}
-                accessibilityLabel="E-mail ou usuário"
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoComplete="username"
-                value={email}
-                onChangeText={setEmail}
-                editable={!loading}
-              />
-            </View>
+            <TextField
+              icon="mail"
+              placeholder="E-mail ou usuário"
+              accessibilityLabel="E-mail ou usuário"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="username"
+              value={email}
+              onChangeText={(v) => {
+                setEmail(v);
+                if (emailError) setEmailError("");
+              }}
+              editable={!loading}
+              error={emailError}
+              returnKeyType="next"
+            />
 
-            {/* Senha Input */}
-            <View style={styles.inputWrapper}>
-              <Feather name="lock" size={20} color={DS.inkMuted} style={styles.inputIcon} />
-              <TextInput
-                style={styles.input}
-                placeholder="Senha"
-                placeholderTextColor={DS.inkMuted}
-                accessibilityLabel="Senha"
-                autoComplete="current-password"
-                secureTextEntry={!showPassword}
-                value={senha}
-                onChangeText={setSenha}
-                onSubmitEditing={handleLogin}
-                editable={!loading}
-              />
-              <TouchableOpacity
-                style={styles.eyeIcon}
-                onPress={() => setShowPassword(!showPassword)}
-                accessibilityLabel={showPassword ? "Ocultar senha" : "Mostrar senha"}
-              >
-                <Feather name={showPassword ? "eye-off" : "eye"} size={20} color={DS.inkMuted} />
-              </TouchableOpacity>
-            </View>
+            <TextField
+              icon="lock"
+              password
+              placeholder="Senha"
+              accessibilityLabel="Senha"
+              autoComplete="current-password"
+              value={senha}
+              onChangeText={(v) => {
+                setSenha(v);
+                if (senhaError) setSenhaError("");
+              }}
+              onSubmitEditing={handleLogin}
+              editable={!loading}
+              error={senhaError}
+              returnKeyType="go"
+            />
 
             {/* Lembrar de mim + Esqueceu a senha */}
             <View style={styles.formRow}>
@@ -505,7 +470,7 @@ export default function LoginScreen() {
                 accessibilityState={{ checked: rememberMe }}
               >
                 <View style={[styles.rememberBox, rememberMe && styles.rememberBoxChecked]}>
-                  {rememberMe ? <Feather name="check" size={14} color={DS.ink} /> : null}
+                  {rememberMe ? <Feather name="check" size={14} color={DS.onBrand} /> : null}
                 </View>
                 <Text style={styles.rememberText}>Lembrar de mim</Text>
               </TouchableOpacity>
@@ -514,22 +479,16 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Login Button */}
-            <TouchableOpacity
-              style={[styles.loginButton, loading && { opacity: 0.7 }]}
+            <Button
+              variant="glow"
+              size="lg"
+              block
+              iconRight="arrow-right"
+              loading={loading}
               onPress={handleLogin}
-              disabled={loading}
-              accessibilityRole="button"
             >
-              {loading ? (
-                <ActivityIndicator color={DS.ink} size="small" />
-              ) : (
-                <>
-                  <Text style={styles.loginButtonText}>Entrar</Text>
-                  <Feather name="arrow-right" size={20} color={DS.ink} />
-                </>
-              )}
-            </TouchableOpacity>
+              {loading ? "Entrando…" : "Entrar"}
+            </Button>
 
             <View style={styles.signup}>
               <Text style={styles.signupText}>Não tem uma conta?</Text>
@@ -612,15 +571,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: DS.surface,
-  },
-  backgroundDecor: {
-    ...StyleSheet.absoluteFillObject,
-    overflow: "hidden",
-  },
-  facet: {
-    position: "absolute",
-    borderRadius: 6,
+    backgroundColor: DS.surfaceSunken,
   },
   keyboardView: {
     flex: 1,
@@ -654,33 +605,6 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: 16,
-  },
-  inputWrapper: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: DS.lineStrong,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    backgroundColor: DS.surface,
-    height: 48,
-  },
-  inputIcon: {
-    marginRight: 10,
-  },
-  input: {
-    flex: 1,
-    height: 46,
-    fontSize: 16,
-    fontWeight: "500",
-    color: DS.ink,
-  },
-  eyeIcon: {
-    width: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: -10,
   },
   formRow: {
     flexDirection: "row",
@@ -721,23 +645,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: DS.brandInk,
     fontWeight: "700",
-  },
-  loginButton: {
-    flexDirection: "row",
-    gap: 8,
-    backgroundColor: DS.brand,
-    borderRadius: 12,
-    height: 56,
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 4,
-    boxShadow: "0px 8px 20px rgba(242, 64, 10, 0.25)",
-    elevation: 4,
-  },
-  loginButtonText: {
-    color: DS.ink,
-    fontSize: 16,
-    fontWeight: "800",
   },
   formError: {
     flexDirection: "row",

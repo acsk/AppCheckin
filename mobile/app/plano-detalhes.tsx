@@ -1,6 +1,7 @@
 import { useProtectedRoute } from "@/hooks/useProtectedRoute";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { authService } from "@/src/services/authService";
+import PixPaymentSheet from "@/src/components/ds/PixPaymentSheet";
 import { colors } from "@/src/theme/colors";
 import { handleUnauthorizedResponse } from "@/src/utils/authHelpers";
 import { isSessionExpiredVisible } from "@/src/utils/sessionExpired";
@@ -10,7 +11,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Image,
   Linking,
   Modal,
   SafeAreaView,
@@ -18,10 +18,10 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  useWindowDimensions,
   View,
 } from "react-native";
 
+import { ds } from "@/src/components/ds/tokens";
 interface Ciclo {
   id: number;
   nome: string;
@@ -141,7 +141,6 @@ export default function PlanoDetalhesScreen() {
     expires_at?: string | null;
   } | null>(null);
   const [pixLoading, setPixLoading] = useState(false);
-  const [pixCopied, setPixCopied] = useState(false);
   const [pixChecking, setPixChecking] = useState(false);
   const [pixPollingActive, setPixPollingActive] = useState(false);
   const [pixStatusMessage, setPixStatusMessage] = useState<string | null>(null);
@@ -154,7 +153,6 @@ export default function PlanoDetalhesScreen() {
   >(null);
   const [confirmandoMigracao, setConfirmandoMigracao] = useState(false);
   const pixCheckRunning = useRef(false);
-  const { width: screenWidth } = useWindowDimensions();
 
   const handleBack = () => {
     router.replace("/planos");
@@ -180,12 +178,7 @@ export default function PlanoDetalhesScreen() {
     }
   };
 
-  const formatDateTime = (value?: string | null) => {
-    if (!value) return "";
-    const d = new Date(value);
-    if (isNaN(d.getTime())) return value;
-    return d.toLocaleString("pt-BR");
-  };
+
 
   const copyToClipboard = async (value: string) => {
     try {
@@ -1000,7 +993,7 @@ export default function PlanoDetalhesScreen() {
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-            <Feather name="arrow-left" size={24} color="#fff" />
+            <Feather name="arrow-left" size={24} color={ds.ink} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Detalhes do Plano</Text>
           <View style={{ width: 40 }} />
@@ -1018,7 +1011,7 @@ export default function PlanoDetalhesScreen() {
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-            <Feather name="arrow-left" size={24} color="#fff" />
+            <Feather name="arrow-left" size={24} color={ds.ink} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Detalhes do Plano</Text>
           <View style={{ width: 40 }} />
@@ -1030,7 +1023,7 @@ export default function PlanoDetalhesScreen() {
             {error || "Plano não encontrado"}
           </Text>
           <TouchableOpacity style={styles.retryButton} onPress={handleBack}>
-            <Feather name="arrow-left" size={18} color="#fff" />
+            <Feather name="arrow-left" size={18} color={ds.ink} />
             <Text style={styles.retryButtonText}>Voltar aos Planos</Text>
           </TouchableOpacity>
           {typeof error === "string" &&
@@ -1039,7 +1032,7 @@ export default function PlanoDetalhesScreen() {
                 style={styles.loginButton}
                 onPress={() => router.replace("/(auth)/login")}
               >
-                <Feather name="log-in" size={18} color="#fff" />
+                <Feather name="log-in" size={18} color={ds.ink} />
                 <Text style={styles.loginButtonText}>Fazer Login</Text>
               </TouchableOpacity>
             )}
@@ -1098,13 +1091,12 @@ export default function PlanoDetalhesScreen() {
   // Plano ativo sem renovação e sem troca de ciclo: botão estático.
   const bloquearCompraPorAtivo =
     isPlanoAtivo && !podeRenovar && !cicloDiferenteDoAtual;
-  const qrSize = Math.min(320, Math.round(screenWidth * 0.72));
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <Feather name="arrow-left" size={24} color="#fff" />
+          <Feather name="arrow-left" size={24} color={ds.ink} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Detalhes do Plano</Text>
         <View style={{ width: 40 }} />
@@ -1246,7 +1238,7 @@ export default function PlanoDetalhesScreen() {
                   >
                     {isSelected && (
                       <View style={styles.cicloCheck}>
-                        <Feather name="check" size={12} color="#fff" />
+                        <Feather name="check" size={12} color={ds.onBrand} />
                       </View>
                     )}
 
@@ -1341,7 +1333,7 @@ export default function PlanoDetalhesScreen() {
             >
               {comprando || pixLoading ? (
                 <>
-                  <ActivityIndicator color="#fff" size="small" />
+                  <ActivityIndicator color={ds.onBrand} size="small" />
                   <Text style={styles.footerButtonText}>Processando...</Text>
                 </>
               ) : (
@@ -1357,7 +1349,7 @@ export default function PlanoDetalhesScreen() {
                             : "zap"
                     }
                     size={18}
-                    color="#fff"
+                    color={ds.onBrand}
                   />
                   <Text style={styles.footerButtonText}>
                     {selectedCiclo
@@ -1606,183 +1598,36 @@ export default function PlanoDetalhesScreen() {
         </View>
       </Modal>
 
-      {/* PIX Modal */}
-      <Modal visible={pixModalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Pagamento via PIX</Text>
-            <Text style={styles.modalMessage}>
-              Escaneie o QR Code ou copie o código abaixo.
-            </Text>
-
-            <View style={styles.pixInfoRow}>
-              <View style={styles.pixInfoCard}>
-                <Text style={styles.pixInfoLabel}>Valor</Text>
-                <Text style={styles.pixInfoValue}>
-                  {formatCurrency(pixData?.valor || 0)}
-                </Text>
-              </View>
-              <View style={styles.pixInfoCard}>
-                <Text style={styles.pixInfoLabel}>Validade</Text>
-                <Text style={styles.pixInfoValue}>
-                  {formatDateTime(pixData?.expires_at)}
-                </Text>
-              </View>
-            </View>
-
-            {pixData?.qr_code_base64 ? (
-              <View style={styles.pixQrBox}>
-                <Image
-                  source={{
-                    uri: `data:image/png;base64,${pixData.qr_code_base64}`,
-                  }}
-                  style={[styles.pixQrImage, { width: qrSize, height: qrSize }]}
-                />
-              </View>
-            ) : null}
-
-            {!!pixData?.qr_code && (
-              <>
-                <Text style={styles.pixCodeLabel}>Código de pagamento</Text>
-                <View style={styles.pixCodeInput}>
-                  <Text
-                    style={styles.pixCodeText}
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                  >
-                    {pixData.qr_code}
-                  </Text>
-                  <TouchableOpacity
-                    style={[
-                      styles.pixCopyIconButton,
-                      pixCopied && styles.pixCopyIconButtonCopied,
-                    ]}
-                    onPress={async () => {
-                      const ok = await copyToClipboard(pixData.qr_code || "");
-                      if (ok) {
-                        setPixCopied(true);
-                        setTimeout(() => setPixCopied(false), 1800);
-                      } else {
-                        showErrorModal(
-                          "⚠️ Não foi possível copiar",
-                          "Copie manualmente o código PIX.",
-                          "warning",
-                        );
-                      }
-                    }}
-                  >
-                    <Feather name="copy" size={16} color="#fff" />
-                  </TouchableOpacity>
-                </View>
-                {pixCopied && (
-                  <Text style={styles.pixCopiedText}>Código copiado!</Text>
-                )}
-              </>
-            )}
-
-            {!!pixData?.ticket_url && (
-              <TouchableOpacity
-                style={styles.pixOpenLink}
-                onPress={() => {
-                  if (pixData?.ticket_url) {
-                    Linking.openURL(pixData.ticket_url);
-                  }
-                }}
-              >
-                <Feather
-                  name="external-link"
-                  size={14}
-                  color={colors.primary}
-                />
-                <Text style={styles.pixOpenLinkText}>Abrir no banco</Text>
-              </TouchableOpacity>
-            )}
-
-            <TouchableOpacity
-              style={[
-                styles.pixCheckButton,
-                pixChecking && styles.pixCheckButtonLoading,
-              ]}
-              onPress={() => {
-                checkPixAprovacao(true);
-              }}
-              disabled={pixChecking}
-            >
-              {pixChecking ? (
-                <>
-                  <ActivityIndicator color="#fff" size="small" />
-                  <Text style={styles.pixCheckButtonText}>
-                    Consultando pagamento...
-                  </Text>
-                </>
-              ) : (
-                <>
-                  <Feather name="check-circle" size={16} color="#fff" />
-                  <Text style={styles.pixCheckButtonText}>
-                    Já pagou? Consultar pagamento
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-
-            {!!pixStatusMessage && (
-              <Text style={styles.pixStatusMessage}>{pixStatusMessage}</Text>
-            )}
-
-            <TouchableOpacity
-              style={[styles.modalButton, { backgroundColor: "#6b7280" }]}
-              onPress={() => {
-                setPixModalVisible(false);
-                setPixPollingActive(false);
-                setPixStatusMessage(null);
-                setPixChecking(false);
-                setPixWaitSeconds(0);
-              }}
-            >
-              <Text style={styles.modalButtonText}>Fechar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* PIX Checking Modal */}
-      <Modal
-        visible={pixChecking || pixPollingActive}
-        transparent
-        animationType="fade"
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View
-              style={[
-                styles.modalIcon,
-                { backgroundColor: "rgba(15, 118, 110, 0.1)" },
-              ]}
-            >
-              <ActivityIndicator size="large" color="#0f766e" />
-            </View>
-            <Text style={styles.modalTitle}>Consultando pagamento</Text>
-            <Text style={styles.modalMessage}>
-              {pixStatusMessage ||
-                "Aguardando confirmação do pagamento. Isso pode levar alguns instantes."}
-            </Text>
-            <Text style={styles.pixWaitCounter}>
-              {`Tempo aguardando: ${pixWaitSeconds}s`}
-            </Text>
-            <TouchableOpacity
-              style={styles.pixCancelWaitButton}
-              onPress={() => {
-                setPixChecking(false);
-                setPixPollingActive(false);
-                setPixStatusMessage(null);
-                setPixWaitSeconds(0);
-              }}
-            >
-              <Text style={styles.pixCancelWaitButtonText}>Cancelar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      {/* PIX: folha inferior do design system */}
+      <PixPaymentSheet
+        visible={pixModalVisible}
+        amount={formatCurrency(pixData?.valor || 0)}
+        description={plano?.nome || null}
+        code={pixData?.qr_code}
+        qrBase64={pixData?.qr_code_base64}
+        expiresAt={pixData?.expires_at}
+        ticketUrl={pixData?.ticket_url}
+        status={pixChecking || pixPollingActive ? "checking" : "waiting"}
+        notice={
+          pixPollingActive
+            ? `${pixStatusMessage || "Aguardando a confirmação do pagamento."} Tempo aguardando: ${pixWaitSeconds}s.`
+            : pixStatusMessage
+        }
+        onCopy={copyToClipboard}
+        onCheck={() => checkPixAprovacao(true)}
+        onOpenBank={() => {
+          if (pixData?.ticket_url) {
+            Linking.openURL(pixData.ticket_url);
+          }
+        }}
+        onClose={() => {
+          setPixModalVisible(false);
+          setPixPollingActive(false);
+          setPixStatusMessage(null);
+          setPixChecking(false);
+          setPixWaitSeconds(0);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -1790,7 +1635,7 @@ export default function PlanoDetalhesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F6F7F9",
+    backgroundColor: ds.ground,
   },
 
   /* Header */
@@ -1800,17 +1645,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 18,
     paddingVertical: 16,
-    backgroundColor: colors.primary,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 8,
+    backgroundColor: ds.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: ds.line,
   },
   headerTitle: {
     fontSize: 22,
     fontWeight: "800",
-    color: "#fff",
+    color: ds.ink,
     flex: 1,
     textAlign: "center",
   },
@@ -1862,7 +1704,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   retryButtonText: {
-    color: "#fff",
+    color: ds.onBrand,
     fontSize: 14,
     fontWeight: "600",
   },
@@ -1896,7 +1738,7 @@ const styles = StyleSheet.create({
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#eef2f7",
+    borderColor: ds.line,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.04,
@@ -1930,7 +1772,7 @@ const styles = StyleSheet.create({
   modalidadeText: {
     fontSize: 11,
     fontWeight: "600",
-    color: colors.primary,
+    color: colors.primaryText,
   },
   ativoBadge: {
     flexDirection: "row",
@@ -1957,7 +1799,7 @@ const styles = StyleSheet.create({
   priceValue: {
     fontSize: 48,
     fontWeight: "800",
-    color: colors.primary,
+    color: colors.primaryText,
   },
   priceCiclo: {
     fontSize: 12,
@@ -1977,7 +1819,7 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: "#eef2f7",
+    borderColor: ds.line,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.03,
@@ -2064,7 +1906,7 @@ const styles = StyleSheet.create({
   },
   cicloCard: {
     borderWidth: 1.5,
-    borderColor: "#e5e7eb",
+    borderColor: ds.line,
     borderRadius: 12,
     paddingVertical: 12,
     paddingHorizontal: 12,
@@ -2106,7 +1948,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   cicloNomeSelected: {
-    color: colors.primary,
+    color: colors.primaryText,
   },
   cicloMeses: {
     fontSize: 10,
@@ -2118,7 +1960,7 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   cicloValorSelected: {
-    color: colors.primary,
+    color: colors.primaryText,
   },
   cicloRecorrenciaBadge: {
     flexDirection: "row",
@@ -2180,7 +2022,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingBottom: 22,
     borderTopWidth: 1,
-    borderTopColor: "#eef2f7",
+    borderTopColor: ds.line,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -3 },
     shadowOpacity: 0.08,
@@ -2224,7 +2066,7 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   footerButtonText: {
-    color: "#fff",
+    color: ds.onBrand,
     fontSize: 14,
     fontWeight: "700",
   },
@@ -2261,13 +2103,13 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontWeight: "700",
-    color: "#111827",
+    color: ds.ink,
     marginBottom: 14,
     textAlign: "center",
   },
   modalMessage: {
     fontSize: 14,
-    color: "#6b7280",
+    color: ds.inkMuted,
     textAlign: "center",
     marginBottom: 28,
     lineHeight: 20,
@@ -2280,7 +2122,7 @@ const styles = StyleSheet.create({
   },
   migracaoLinha: {
     fontSize: 16,
-    color: "#4b5563",
+    color: ds.inkMuted,
     textAlign: "center",
     lineHeight: 22,
     fontWeight: "500",
@@ -2297,7 +2139,7 @@ const styles = StyleSheet.create({
   migracaoCicloLabel: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#6b7280",
+    color: ds.inkMuted,
     textTransform: "uppercase",
     letterSpacing: 0.4,
     marginBottom: 2,
@@ -2305,7 +2147,7 @@ const styles = StyleSheet.create({
   migracaoCicloTexto: {
     fontSize: 18,
     fontWeight: "800",
-    color: "#111827",
+    color: ds.ink,
     textAlign: "center",
   },
   migracaoPagarBox: {
@@ -2359,17 +2201,17 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: ds.line,
   },
   pixInfoLabel: {
     fontSize: 11,
-    color: "#6b7280",
+    color: ds.inkMuted,
     fontWeight: "700",
     textTransform: "uppercase",
   },
   pixInfoValue: {
     fontSize: 13,
-    color: "#111827",
+    color: ds.ink,
     fontWeight: "700",
     marginTop: 4,
   },
@@ -2397,7 +2239,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: ds.line,
     backgroundColor: "#fff",
     paddingHorizontal: 12,
     paddingVertical: 10,
@@ -2407,7 +2249,7 @@ const styles = StyleSheet.create({
   pixCodeText: {
     flex: 1,
     fontSize: 12,
-    color: "#4b5563",
+    color: ds.inkMuted,
   },
   pixCopyIconButton: {
     width: 36,
@@ -2434,7 +2276,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   pixOpenLinkText: {
-    color: colors.primary,
+    color: colors.primaryText,
     fontSize: 13,
     fontWeight: "700",
     textDecorationLine: "underline",

@@ -1,6 +1,7 @@
 import { useProtectedRoute } from "@/hooks/useProtectedRoute";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { authService } from "@/src/services/authService";
+import PixPaymentSheet from "@/src/components/ds/PixPaymentSheet";
 import { colors } from "@/src/theme/colors";
 import { handleUnauthorizedResponse } from "@/src/utils/authHelpers";
 import { isSessionExpiredVisible } from "@/src/utils/sessionExpired";
@@ -11,7 +12,6 @@ import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   Linking,
   Modal,
   SafeAreaView,
@@ -22,6 +22,7 @@ import {
   View,
 } from "react-native";
 
+import { ds } from "@/src/components/ds/tokens";
 // NOVO ARQUIVO - SEM CÓDIGO ANTIGO
 
 interface Ciclo {
@@ -371,12 +372,7 @@ export default function PlanosScreen() {
     }
   };
 
-  const formatDateTime = (value?: string | null) => {
-    if (!value) return "";
-    const d = new Date(value);
-    if (isNaN(d.getTime())) return value;
-    return d.toLocaleString("pt-BR");
-  };
+
 
   const copyToClipboard = async (value: string) => {
     try {
@@ -1329,13 +1325,13 @@ export default function PlanosScreen() {
               >
                 {bloquearPorAtivo ? (
                   <>
-                    <Feather name="check" size={18} color="#fff" />
+                    <Feather name="check" size={18} color={ds.onBrand} />
                     <Text style={styles.contratarButtonText}>Plano Ativo</Text>
                   </>
                 ) : (comprando || pixLoading) &&
                   planoComprando === plano.id ? (
                   <>
-                    <ActivityIndicator color="#fff" size="small" />
+                    <ActivityIndicator color={ds.onBrand} size="small" />
                     <Text style={styles.contratarButtonText}>
                       Processando...
                     </Text>
@@ -1351,7 +1347,7 @@ export default function PlanosScreen() {
                             : "shopping-cart"
                       }
                       size={18}
-                      color="#fff"
+                      color={ds.onBrand}
                     />
                     <Text style={styles.contratarButtonText}>
                       {selectedCiclo
@@ -1458,7 +1454,7 @@ export default function PlanosScreen() {
                   ? "Ver plano"
                   : "Ver detalhes"}
             </Text>
-            <Feather name="arrow-right" size={16} color="#fff" />
+            <Feather name="arrow-right" size={16} color={ds.onBrand} />
           </View>
         </View>
       </TouchableOpacity>
@@ -1479,7 +1475,7 @@ export default function PlanosScreen() {
               router.replace("/(tabs)/checkin");
             }}
           >
-            <Feather name="arrow-left" size={24} color="#fff" />
+            <Feather name="arrow-left" size={24} color={ds.ink} />
           </TouchableOpacity>
           <Text style={styles.headerTitleCentered}>Planos</Text>
           <View style={{ width: 40 }} />
@@ -1513,7 +1509,7 @@ export default function PlanosScreen() {
             style={styles.headerBackButton}
             onPress={() => router.replace("/(tabs)/checkin")}
           >
-            <Feather name="arrow-left" size={24} color="#fff" />
+            <Feather name="arrow-left" size={24} color={ds.ink} />
           </TouchableOpacity>
           <Text style={styles.headerTitleCentered}>Planos</Text>
           <View style={{ width: 40 }} />
@@ -1554,7 +1550,7 @@ export default function PlanosScreen() {
             ]}
             onPress={() => router.replace("/(tabs)/checkin")}
           >
-            <Text style={{ color: "#fff", fontWeight: "600" }}>Voltar</Text>
+            <Text style={{ color: ds.ink, fontWeight: "600" }}>Voltar</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -1574,7 +1570,7 @@ export default function PlanosScreen() {
             router.replace("/(tabs)/checkin");
           }}
         >
-          <Feather name="arrow-left" size={24} color="#fff" />
+          <Feather name="arrow-left" size={24} color={ds.ink} />
         </TouchableOpacity>
         <Text style={styles.headerTitleCentered}>Planos</Text>
         <View style={{ flexDirection: "row", gap: 8 }}>
@@ -1582,7 +1578,7 @@ export default function PlanosScreen() {
             style={styles.headerBackButton}
             onPress={() => router.push("/minhas-assinaturas")}
           >
-            <Feather name="list" size={20} color="#fff" />
+            <Feather name="list" size={20} color={ds.ink} />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerBackButton}
@@ -1591,7 +1587,7 @@ export default function PlanosScreen() {
               fetchPlanos(apiUrl);
             }}
           >
-            <Feather name="refresh-cw" size={20} color="#fff" />
+            <Feather name="refresh-cw" size={20} color={ds.ink} />
           </TouchableOpacity>
         </View>
       </View>
@@ -1616,7 +1612,7 @@ export default function PlanosScreen() {
                 style={styles.loginButton}
                 onPress={() => router.replace("/(auth)/login")}
               >
-                <Feather name="log-in" size={18} color="#fff" />
+                <Feather name="log-in" size={18} color={ds.ink} />
                 <Text style={styles.loginButtonText}>Fazer Login</Text>
               </TouchableOpacity>
             )}
@@ -1909,113 +1905,29 @@ export default function PlanosScreen() {
         </View>
       </Modal>
 
-      {/* PIX Modal */}
-      <Modal
+      {/* PIX: folha inferior do design system */}
+      <PixPaymentSheet
         visible={pixModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setPixModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, styles.modalSuccess]}>
-            <View style={[styles.iconCircle, styles.iconCircleSuccess]}>
-              <Feather name="zap" size={40} color="#0a7f3c" />
-            </View>
-            <Text style={styles.modalTitle}>Pagamento via PIX</Text>
-            <Text style={styles.modalMessage}>
-              Escaneie o QR Code ou copie o código abaixo.
-            </Text>
-
-            <View style={styles.pixInfoRow}>
-              <View style={styles.pixInfoCard}>
-                <Text style={styles.pixInfoLabel}>Valor</Text>
-                <Text style={styles.pixInfoValue}>
-                  {formatCurrency(pixData?.valor || 0)}
-                </Text>
-              </View>
-              <View style={styles.pixInfoCard}>
-                <Text style={styles.pixInfoLabel}>Validade</Text>
-                <Text style={styles.pixInfoValue}>
-                  {formatDateTime(pixData?.expires_at)}
-                </Text>
-              </View>
-            </View>
-
-            {pixData?.qr_code_base64 ? (
-              <View style={styles.pixQrBox}>
-                <Image
-                  source={{
-                    uri: `data:image/png;base64,${pixData.qr_code_base64}`,
-                  }}
-                  style={styles.pixQrImage}
-                />
-              </View>
-            ) : null}
-
-            {!!pixData?.qr_code && (
-              <View style={styles.pixCodeBox}>
-                <ScrollView style={styles.pixCodeScroll}>
-                  <Text style={styles.pixCodeText} selectable>
-                    {pixData.qr_code}
-                  </Text>
-                </ScrollView>
-              </View>
-            )}
-
-            {!!pixData?.qr_code && (
-              <TouchableOpacity
-                style={styles.pixCopyButton}
-                onPress={async () => {
-                  const ok = await copyToClipboard(pixData.qr_code || "");
-                  if (ok) {
-                    showErrorModal(
-                      "✅ Código copiado",
-                      "O código PIX foi copiado para a área de transferência.",
-                      "success",
-                    );
-                  } else {
-                    showErrorModal(
-                      "⚠️ Não foi possível copiar",
-                      "Copie manualmente o código PIX.",
-                      "warning",
-                    );
-                  }
-                }}
-              >
-                <Feather name="copy" size={16} color="#fff" />
-                <Text style={styles.pixCopyButtonText}>Copiar código</Text>
-              </TouchableOpacity>
-            )}
-
-            {!!pixData?.ticket_url && (
-              <TouchableOpacity
-                style={styles.pixOpenButton}
-                onPress={() => {
-                  if (pixData?.ticket_url) {
-                    Linking.openURL(pixData.ticket_url);
-                  }
-                }}
-              >
-                <Text style={styles.pixOpenButtonText}>Abrir no banco</Text>
-              </TouchableOpacity>
-            )}
-
-            <TouchableOpacity
-              style={[styles.modalButton, styles.buttonSuccess]}
-              onPress={() => setPixModalVisible(false)}
-            >
-              <Text style={styles.modalButtonText}>Fechar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+        amount={formatCurrency(pixData?.valor || 0)}
+        code={pixData?.qr_code}
+        qrBase64={pixData?.qr_code_base64}
+        expiresAt={pixData?.expires_at}
+        ticketUrl={pixData?.ticket_url}
+        onCopy={copyToClipboard}
+        onOpenBank={() => {
+          if (pixData?.ticket_url) {
+            Linking.openURL(pixData.ticket_url);
+          }
+        }}
+        onClose={() => setPixModalVisible(false)}
+      />
     </SafeAreaView>
   );
 }
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F6F7F9",
+    backgroundColor: ds.ground,
   },
   headerTop: {
     flexDirection: "row",
@@ -2023,17 +1935,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 18,
     paddingVertical: 16,
-    backgroundColor: colors.primary,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 8,
+    backgroundColor: ds.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: ds.line,
   },
   headerTitleCentered: {
     fontSize: 22,
     fontWeight: "800",
-    color: "#fff",
+    color: ds.ink,
     flex: 1,
     textAlign: "center",
   },
@@ -2104,7 +2013,7 @@ const styles = StyleSheet.create({
   stepActionText: {
     fontSize: 12,
     fontWeight: "700",
-    color: colors.primary,
+    color: colors.primaryText,
   },
   planListCard: {
     backgroundColor: "#fff",
@@ -2168,7 +2077,7 @@ const styles = StyleSheet.create({
   planListPrice: {
     fontSize: 18,
     fontWeight: "800",
-    color: colors.primary,
+    color: colors.primaryText,
   },
   planListMonthly: {
     fontSize: 11,
@@ -2192,7 +2101,7 @@ const styles = StyleSheet.create({
   },
   planListCtaText: {
     fontSize: 12,
-    color: "#fff",
+    color: ds.onBrand,
     fontWeight: "700",
   },
   planCard: {
@@ -2213,7 +2122,7 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: "#eef2f7",
+    borderColor: ds.line,
   },
   planHeroTop: {
     flexDirection: "row",
@@ -2272,7 +2181,7 @@ const styles = StyleSheet.create({
   planPricePillValue: {
     fontSize: 18,
     fontWeight: "800",
-    color: colors.primary,
+    color: colors.primaryText,
   },
   planPricePillLabel: {
     fontSize: 11,
@@ -2312,7 +2221,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 10,
     borderWidth: 1,
-    borderColor: "#eef2f7",
+    borderColor: ds.line,
   },
   economiaText: {
     fontSize: 12,
@@ -2398,7 +2307,7 @@ const styles = StyleSheet.create({
   cicloChipPrice: {
     fontSize: 15,
     fontWeight: "700",
-    color: colors.primary,
+    color: colors.primaryText,
     marginTop: 6,
   },
   cicloChipPriceSelected: {
@@ -2426,7 +2335,7 @@ const styles = StyleSheet.create({
   contratarButtonText: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#fff",
+    color: ds.onBrand,
   },
   pixButton: {
     marginTop: 10,
@@ -2460,7 +2369,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: ds.line,
   },
   pixInfoLabel: {
     fontSize: 11,
@@ -2490,7 +2399,7 @@ const styles = StyleSheet.create({
     maxHeight: 120,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: ds.line,
     backgroundColor: "#fff",
     padding: 10,
     marginBottom: 12,
@@ -2527,7 +2436,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   pixOpenButtonText: {
-    color: "#fff",
+    color: ds.onBrand,
     fontSize: 15,
     fontWeight: "700",
   },
@@ -2557,7 +2466,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   retryButtonText: {
-    color: "#fff",
+    color: ds.onBrand,
     fontWeight: "600",
     fontSize: 14,
   },
@@ -2656,7 +2565,7 @@ const styles = StyleSheet.create({
   },
   migracaoLinha: {
     fontSize: 16,
-    color: "#4b5563",
+    color: ds.inkMuted,
     textAlign: "center",
     lineHeight: 22,
     fontWeight: "500",
@@ -2673,7 +2582,7 @@ const styles = StyleSheet.create({
   migracaoCicloLabel: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#6b7280",
+    color: ds.inkMuted,
     textTransform: "uppercase",
     letterSpacing: 0.4,
     marginBottom: 2,
@@ -2681,7 +2590,7 @@ const styles = StyleSheet.create({
   migracaoCicloTexto: {
     fontSize: 18,
     fontWeight: "800",
-    color: "#111827",
+    color: ds.ink,
     textAlign: "center",
   },
   migracaoPagarBox: {

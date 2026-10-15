@@ -24,6 +24,7 @@ import { normalizeUtf8 } from "../src/utils/utf8";
 import { normalizeVencimentoMessage } from "../src/utils/dateBr";
 import { weekdayAbbrev } from "../src/utils/weekdayAbbrev";
 
+import { ds } from "@/src/components/ds/tokens";
 const getRouteParam = (value?: string | string[]) => {
   if (value == null) return undefined;
   return Array.isArray(value) ? value[0] : value;
@@ -1423,7 +1424,7 @@ export default function CheckinTurmaScreen() {
                 style={styles.headerBackButton}
                 onPress={goBackToCheckin}
               >
-                <Feather name="arrow-left" size={18} color="#fff" />
+                <Feather name="arrow-left" size={18} color={ds.ink} />
               </TouchableOpacity>
               <Text style={styles.headerTitle}>Turma</Text>
             </View>
@@ -1446,7 +1447,7 @@ export default function CheckinTurmaScreen() {
                 style={styles.headerBackButton}
                 onPress={goBackToCheckin}
               >
-                <Feather name="arrow-left" size={18} color="#fff" />
+                <Feather name="arrow-left" size={18} color={ds.ink} />
               </TouchableOpacity>
               <View
                 style={[
@@ -1460,10 +1461,10 @@ export default function CheckinTurmaScreen() {
                   <MaterialCommunityIcons
                     name={participantsTurma.modalidade.icone as any}
                     size={18}
-                    color="#fff"
+                    color={ds.ink}
                   />
                 ) : (
-                  <Feather name="activity" size={18} color="#fff" />
+                  <Feather name="activity" size={18} color={ds.ink} />
                 )}
               </View>
               <View style={styles.headerTextBlock}>
@@ -1478,7 +1479,7 @@ export default function CheckinTurmaScreen() {
             <View style={styles.headerMetaRow}>
               <View style={styles.headerChipsWrap}>
                 <View style={styles.headerChip}>
-                  <Feather name="clock" size={14} color="#fff" />
+                  <Feather name="clock" size={14} color={ds.ink} />
                   <Text style={styles.headerChipText}>
                     {getHoraInicio(participantsTurma)?.slice(0, 5)} -{" "}
                     {getHoraFim(participantsTurma)?.slice(0, 5)}
@@ -1487,7 +1488,7 @@ export default function CheckinTurmaScreen() {
                 {!participantsTurma.checkin_bloqueado &&
                 getHoraLimiteCheckin(participantsTurma) ? (
                   <View style={styles.headerChip}>
-                    <Feather name="clock" size={14} color="#fff" />
+                    <Feather name="clock" size={14} color={ds.ink} />
                     <Text style={styles.headerChipText}>
                       Check-in até {getHoraLimiteCheckin(participantsTurma)}
                     </Text>
@@ -1498,7 +1499,7 @@ export default function CheckinTurmaScreen() {
                     <MaterialCommunityIcons
                       name="lock"
                       size={14}
-                      color="#fff"
+                      color={ds.ink}
                     />
                     <Text style={styles.headerChipText}>
                       Check-in bloqueado
@@ -1630,7 +1631,7 @@ export default function CheckinTurmaScreen() {
                               !manualSearchQuery.trim() || manualSearchLoading
                             }
                           >
-                            <Feather name="search" size={16} color="#fff" />
+                            <Feather name="search" size={16} color={ds.onBrand} />
                           </TouchableOpacity>
                         </View>
                         {!!manualSearchError && (
@@ -2484,7 +2485,7 @@ export default function CheckinTurmaScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.backgroundSecondary,
+    backgroundColor: ds.ground,
   },
   headerTop: {
     flexDirection: "row",
@@ -2492,13 +2493,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 18,
     paddingVertical: 16,
-    backgroundColor: colors.primary,
-    borderBottomWidth: 0,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 8,
+    backgroundColor: ds.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: ds.line,
   },
   headerTopDetailed: {
     flexDirection: "column",
@@ -2514,7 +2511,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: "800",
-    color: "#fff",
+    color: ds.ink,
   },
   headerLeft: {
     flexDirection: "row",
@@ -2525,7 +2522,7 @@ const styles = StyleSheet.create({
   headerBackButton: {
     padding: 6,
     borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.18)",
+    backgroundColor: ds.surfaceSunken,
   },
   headerIconCircle: {
     width: 32,
@@ -2559,17 +2556,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.2)",
+    backgroundColor: ds.surfaceSunken,
   },
   headerChipText: {
-    color: "#fff",
+    color: ds.ink,
     fontSize: 12,
     fontWeight: "700",
   },
   headerChipBloqueado: {
     backgroundColor: "#B91C1C",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.45)",
+    borderColor: ds.line,
   },
   bloqueioCheckinButtonCompact: {
     flexDirection: "row",
@@ -2622,7 +2619,7 @@ const styles = StyleSheet.create({
     borderColor: "#d1d5db",
   },
   bloqueioCheckinButtonCompactTextDisabled: {
-    color: "#6b7280",
+    color: ds.inkMuted,
   },
   scrollContent: {
     paddingBottom: 48,
@@ -2641,7 +2638,7 @@ const styles = StyleSheet.create({
     padding: 18,
     gap: 12,
     borderWidth: 1,
-    borderColor: "#eef2f7",
+    borderColor: ds.line,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.06,
@@ -2653,7 +2650,7 @@ const styles = StyleSheet.create({
   },
   participantsListContainer: {
     borderTopWidth: 1,
-    borderTopColor: "#eef2f7",
+    borderTopColor: ds.line,
     paddingTop: 6,
     gap: 2,
   },
@@ -2663,7 +2660,7 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 10,
     borderWidth: 1,
-    borderColor: "#eef2f7",
+    borderColor: ds.line,
     marginBottom: 8,
   },
   manualCheckinTitle: {
@@ -2683,7 +2680,7 @@ const styles = StyleSheet.create({
     height: 42,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: ds.line,
     paddingHorizontal: 12,
     fontSize: 14,
     color: colors.text,
@@ -2724,7 +2721,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 10,
     borderWidth: 1,
-    borderColor: "#eef2f7",
+    borderColor: ds.line,
   },
   manualCheckinAvatar: {
     width: 44,
@@ -2823,7 +2820,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: "#eef2f7",
+    borderBottomColor: ds.line,
     gap: 8,
   },
   participantAvatar: {
@@ -2865,7 +2862,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
-    borderColor: "#e5e7eb",
+    borderColor: ds.line,
   },
   presencaBtnPresente: {
     backgroundColor: "#10b981",
@@ -2900,7 +2897,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   toastText: {
-    color: "#111827",
+    color: ds.ink,
     fontSize: 14,
     flex: 1,
     fontWeight: "600",
@@ -2974,7 +2971,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 24,
     fontWeight: "700",
-    color: "#000",
+    color: ds.ink,
     marginBottom: 12,
     textAlign: "center",
   },
@@ -3085,13 +3082,13 @@ const styles = StyleSheet.create({
     backgroundColor: "#e5e7eb",
   },
   confirmButtonConfirm: {
-    backgroundColor: colors.primary,
+    backgroundColor: ds.inverse,
   },
   confirmButtonDanger: {
     backgroundColor: "#DC2626",
   },
   confirmButtonText: {
-    color: "#111827",
+    color: ds.ink,
     fontSize: 16,
     fontWeight: "700",
   },

@@ -27,6 +27,7 @@ import { normalizeUtf8 } from "../../src/utils/utf8";
 import { normalizeVencimentoMessage } from "../../src/utils/dateBr";
 import { weekdayAbbrev } from "../../src/utils/weekdayAbbrev";
 
+import { ds } from "@/src/components/ds/tokens";
 const getRouteParam = (value?: string | string[]) => {
   if (value == null) return undefined;
   return Array.isArray(value) ? value[0] : value;
@@ -1627,9 +1628,9 @@ export default function CheckinScreen() {
                 accessibilityLabel="Recarregar horários"
               >
                 {loading ? (
-                  <ActivityIndicator size="small" color="#fff" />
+                  <ActivityIndicator size="small" color={ds.ink} />
                 ) : (
-                  <Feather name="refresh-cw" size={22} color="#fff" />
+                  <Feather name="refresh-cw" size={22} color={ds.ink} />
                 )}
               </TouchableOpacity>
               <View style={styles.switchRow}>
@@ -1638,10 +1639,10 @@ export default function CheckinScreen() {
                   value={showOnlyAvailable}
                   onValueChange={setShowOnlyAvailable}
                   trackColor={{
-                    false: "rgba(255,255,255,0.25)",
-                    true: "rgba(255,255,255,0.5)",
+                    false: ds.lineStrong,
+                    true: ds.lineStrong,
                   }}
-                  thumbColor="#fff"
+                  thumbColor={ds.surface}
                 />
               </View>
             </View>
@@ -1678,7 +1679,7 @@ export default function CheckinScreen() {
                         style={styles.tenantOptionButton}
                         onPress={() => selectTenantAndReload(t.id)}
                       >
-                        <Feather name="home" size={16} color="#fff" />
+                        <Feather name="home" size={16} color={ds.ink} />
                         <Text style={styles.tenantOptionText}>
                           {normalizeUtf8(t.nome || String(t.id))}
                         </Text>
@@ -1694,7 +1695,7 @@ export default function CheckinScreen() {
                   style={[styles.modalButton, styles.modalButtonInfo]}
                   onPress={() => setTenantModalVisible(false)}
                 >
-                  <Text style={{ color: "#fff", fontWeight: "700" }}>
+                  <Text style={{ color: ds.onInverse, fontWeight: "700" }}>
                     Fechar
                   </Text>
                 </TouchableOpacity>
@@ -2188,7 +2189,7 @@ export default function CheckinScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.backgroundSecondary,
+    backgroundColor: ds.ground,
   },
   headerTop: {
     flexDirection: "row",
@@ -2196,13 +2197,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 18,
     paddingVertical: 16,
-    backgroundColor: colors.primary,
-    borderBottomWidth: 0,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 8,
+    backgroundColor: ds.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: ds.line,
   },
   headerTopDetailed: {
     flexDirection: "column",
@@ -2218,12 +2215,12 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: "800",
-    color: "#fff",
+    color: ds.ink,
   },
   headerSubtitle: {
     fontSize: 12,
     fontWeight: "700",
-    color: "rgba(255,255,255,0.8)",
+    color: ds.inkMuted,
   },
   headerLeft: {
     flexDirection: "row",
@@ -2240,7 +2237,7 @@ const styles = StyleSheet.create({
   headerBackButton: {
     padding: 6,
     borderRadius: 10,
-    backgroundColor: "rgba(255,255,255,0.18)",
+    backgroundColor: ds.surfaceSunken,
   },
   headerIconCircle: {
     width: 32,
@@ -2264,17 +2261,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.2)",
+    backgroundColor: ds.surfaceSunken,
   },
   headerChipText: {
-    color: "#fff",
+    color: ds.ink,
     fontSize: 12,
     fontWeight: "700",
   },
   headerChipBloqueado: {
     backgroundColor: "#B91C1C",
     borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.45)",
+    borderColor: ds.line,
   },
   bloqueioCheckinButton: {
     flexDirection: "row",
@@ -2382,7 +2379,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     minWidth: 70,
     borderWidth: 1,
-    borderColor: "#eef2f7",
+    borderColor: ds.line,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
@@ -2403,15 +2400,15 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   calendarDayNameSelected: {
-    color: "#fff",
+    color: ds.onBrand,
   },
   calendarDayNumber: {
     fontSize: 20,
     fontWeight: "bold",
-    color: colors.primary,
+    color: colors.primaryText,
   },
   calendarDayNumberSelected: {
-    color: "#fff",
+    color: ds.onBrand,
   },
   schedulesSection: {
     paddingHorizontal: 16,
@@ -2428,7 +2425,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     borderWidth: 1,
-    borderColor: "#eef2f7",
+    borderColor: ds.line,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.06,
@@ -2557,7 +2554,7 @@ const styles = StyleSheet.create({
     padding: 18,
     gap: 12,
     borderWidth: 1,
-    borderColor: "#eef2f7",
+    borderColor: ds.line,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.06,
@@ -2584,7 +2581,7 @@ const styles = StyleSheet.create({
   },
   participantsListContainer: {
     borderTopWidth: 1,
-    borderTopColor: "#eef2f7",
+    borderTopColor: ds.line,
     paddingTop: 6,
     gap: 2,
   },
@@ -2597,7 +2594,7 @@ const styles = StyleSheet.create({
     padding: 16,
     gap: 10,
     borderWidth: 1,
-    borderColor: "#eef2f7",
+    borderColor: ds.line,
     marginBottom: 8,
   },
   manualCheckinTitle: {
@@ -2617,7 +2614,7 @@ const styles = StyleSheet.create({
     height: 42,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: ds.line,
     paddingHorizontal: 12,
     fontSize: 14,
     color: colors.text,
@@ -2658,7 +2655,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 10,
     borderWidth: 1,
-    borderColor: "#eef2f7",
+    borderColor: ds.line,
   },
   manualCheckinAvatar: {
     width: 44,
@@ -2749,7 +2746,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: "#eef2f7",
+    borderBottomColor: ds.line,
     gap: 8,
   },
   participantAvatar: {
@@ -2806,7 +2803,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 2,
-    borderColor: "#e5e7eb",
+    borderColor: ds.line,
   },
   presencaBtnPresente: {
     backgroundColor: "#10b981",
@@ -2847,7 +2844,7 @@ const styles = StyleSheet.create({
   },
   checkinsList: {
     borderTopWidth: 1,
-    borderTopColor: "#eef2f7",
+    borderTopColor: ds.line,
     paddingTop: 8,
     gap: 8,
   },
@@ -2875,7 +2872,7 @@ const styles = StyleSheet.create({
   },
   checkinHourText: {
     fontSize: 13,
-    color: colors.primary,
+    color: colors.primaryText,
     fontWeight: "700",
   },
   toastContainer: {
@@ -2896,7 +2893,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   toastText: {
-    color: "#111827",
+    color: ds.ink,
     fontSize: 14,
     flex: 1,
     fontWeight: "600",
@@ -2927,7 +2924,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 1,
-    borderColor: "#eef2f7",
+    borderColor: ds.line,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.06,
@@ -3006,7 +3003,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 24,
     fontWeight: "700",
-    color: "#000",
+    color: ds.ink,
     marginBottom: 12,
     textAlign: "center",
   },
@@ -3098,7 +3095,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#388e3c",
   },
   modalButtonInfo: {
-    backgroundColor: colors.primary,
+    backgroundColor: ds.inverse,
   },
   modalButtonText: {
     color: "#fff",
@@ -3123,7 +3120,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   confirmButtonText: {
-    color: "#111827",
+    color: ds.ink,
     fontSize: 16,
     fontWeight: "700",
   },
@@ -3156,7 +3153,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   tenantOptionText: {
-    color: "#fff",
+    color: ds.onBrand,
     fontWeight: "700",
     fontSize: 16,
   },

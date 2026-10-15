@@ -28,6 +28,7 @@ import {
   View,
 } from "react-native";
 
+import { ds } from "@/src/components/ds/tokens";
 interface StatusAssinatura {
   id: number;
   codigo: string;
@@ -796,7 +797,7 @@ export default function MinhasAssinaturasScreen() {
                 onPress={() => handlePagarAssinatura(assinatura)}
                 activeOpacity={0.8}
               >
-                <Feather name="credit-card" size={15} color="#fff" />
+                <Feather name="credit-card" size={15} color={ds.onBrand} />
                 <Text style={styles.botaoPagarTexto}>
                   {assinatura.pode_renovar ? "Renovar agora" : "Pagar agora"}
                 </Text>
@@ -927,10 +928,10 @@ export default function MinhasAssinaturasScreen() {
             activeOpacity={0.8}
           >
             {pagandoPacoteId === contratoId ? (
-              <ActivityIndicator size="small" color="#fff" />
+              <ActivityIndicator size="small" color={ds.onBrand} />
             ) : (
               <>
-                <Feather name="credit-card" size={16} color="#fff" />
+                <Feather name="credit-card" size={16} color={ds.onBrand} />
                 <Text style={styles.pacotePagarButtonText}>{buttonLabel}</Text>
               </>
             )}
@@ -967,7 +968,7 @@ export default function MinhasAssinaturasScreen() {
             }
           }}
         >
-          <Feather name="shopping-cart" size={18} color="#fff" />
+          <Feather name="shopping-cart" size={18} color={ds.onBrand} />
           <Text style={styles.botaoVerPlanosText}>Ver Planos Disponíveis</Text>
         </TouchableOpacity>
       )}
@@ -983,7 +984,7 @@ export default function MinhasAssinaturasScreen() {
         style={styles.botaoTentarNovamente}
         onPress={() => fetchAssinaturasCallback(apiUrl)}
       >
-        <Feather name="refresh-cw" size={18} color="#fff" />
+        <Feather name="refresh-cw" size={18} color={ds.onBrand} />
         <Text style={styles.botaoTentarNovamenteText}>Tentar Novamente</Text>
       </TouchableOpacity>
       {typeof error === "string" && error.toLowerCase().includes("tenant") && (
@@ -1006,7 +1007,7 @@ export default function MinhasAssinaturasScreen() {
           style={styles.headerBackButton}
           onPress={() => router.replace("/(tabs)/checkin")}
         >
-          <Feather name="arrow-left" size={24} color="#fff" />
+          <Feather name="arrow-left" size={24} color={ds.ink} />
         </TouchableOpacity>
         <Text style={styles.headerTitleCentered}>Minhas Assinaturas</Text>
         <View style={{ flexDirection: "row", gap: 8 }}>
@@ -1014,7 +1015,7 @@ export default function MinhasAssinaturasScreen() {
             style={styles.headerBackButton}
             onPress={() => fetchAssinaturasCallback(apiUrl)}
           >
-            <Feather name="refresh-cw" size={20} color="#fff" />
+            <Feather name="refresh-cw" size={20} color={ds.ink} />
           </TouchableOpacity>
         </View>
       </View>
@@ -1212,7 +1213,7 @@ export default function MinhasAssinaturasScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F6F7F9",
+    backgroundColor: ds.ground,
   },
 
   /* Header */
@@ -1222,17 +1223,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 18,
     paddingVertical: 16,
-    backgroundColor: colors.primary,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 8,
+    backgroundColor: ds.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: ds.line,
   },
   headerTitleCentered: {
     fontSize: 22,
     fontWeight: "800",
-    color: "#fff",
+    color: ds.ink,
     flex: 1,
     textAlign: "center",
   },
@@ -1271,7 +1269,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 14,
     borderWidth: 1,
-    borderColor: "#eef2f7",
+    borderColor: ds.line,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.04,
@@ -1300,7 +1298,7 @@ const styles = StyleSheet.create({
   pacotesTitle: {
     fontSize: 22,
     fontWeight: "800",
-    color: colors.primary,
+    color: colors.primaryText,
   },
   pacotesSubtitle: {
     fontSize: 12,
@@ -1317,13 +1315,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     borderWidth: 1,
-    borderColor: "#eef2f7",
+    borderColor: ds.line,
     gap: 2,
   },
   assinaturasTitle: {
     fontSize: 18,
     fontWeight: "800",
-    color: colors.primary,
+    color: colors.primaryText,
   },
   assinaturasSubtitle: {
     fontSize: 11,
@@ -1380,7 +1378,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 10,
     borderWidth: 1,
-    borderColor: "#eef2f7",
+    borderColor: ds.line,
   },
   pacoteMetaItem: {
     flex: 1,
@@ -1434,7 +1432,7 @@ const styles = StyleSheet.create({
   },
   pacoteBeneficiarioText: {
     fontSize: 11,
-    color: colors.primary,
+    color: colors.primaryText,
     fontWeight: "700",
   },
   pacotePagarButton: {
@@ -1447,7 +1445,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   pacotePagarButtonText: {
-    color: "#fff",
+    color: ds.onBrand,
     fontSize: 13,
     fontWeight: "700",
   },
@@ -1575,7 +1573,7 @@ const styles = StyleSheet.create({
   valorText: {
     fontSize: 16,
     fontWeight: "700",
-    color: colors.primary,
+    color: colors.primaryText,
   },
 
   /* Datas */
@@ -1586,7 +1584,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 8,
     borderWidth: 1,
-    borderColor: "#eef2f7",
+    borderColor: ds.line,
     gap: 4,
   },
 
@@ -1598,14 +1596,14 @@ const styles = StyleSheet.create({
 
   dataLabel: {
     fontSize: 10,
-    color: "#9ca3af",
+    color: ds.inkMuted,
     fontWeight: "600",
   },
 
   dataValor: {
     fontSize: 12,
     fontWeight: "700",
-    color: "#111827",
+    color: ds.ink,
   },
 
   historicoBaixa: {
@@ -1637,7 +1635,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderWidth: 1,
-    borderColor: "#eef2f7",
+    borderColor: ds.line,
     gap: 4,
   },
   pagamentoDetalheRow: {
@@ -1646,7 +1644,7 @@ const styles = StyleSheet.create({
   pagamentoDetalheLabel: {
     fontSize: 10,
     fontWeight: "700",
-    color: "#9ca3af",
+    color: ds.inkMuted,
     textTransform: "uppercase",
     letterSpacing: 0.3,
   },
@@ -1672,7 +1670,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   botaoPagarTexto: {
-    color: "#fff",
+    color: ds.onBrand,
     fontSize: 13,
     fontWeight: "700",
   },
@@ -1731,7 +1729,7 @@ const styles = StyleSheet.create({
   },
 
   botaoVerPlanosText: {
-    color: "#fff",
+    color: ds.onBrand,
     fontSize: 14,
     fontWeight: "600",
   },
@@ -1771,7 +1769,7 @@ const styles = StyleSheet.create({
   },
 
   botaoTentarNovamenteText: {
-    color: "#fff",
+    color: ds.onBrand,
     fontSize: 14,
     fontWeight: "600",
   },
@@ -1825,14 +1823,14 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 18,
     fontWeight: "700",
-    color: "#111827",
+    color: ds.ink,
     marginBottom: 10,
     textAlign: "center",
   },
 
   modalMessage: {
     fontSize: 14,
-    color: "#6b7280",
+    color: ds.inkMuted,
     textAlign: "center",
     marginBottom: 28,
     lineHeight: 20,
@@ -1865,7 +1863,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#f3f4f6",
     borderWidth: 1,
-    borderColor: "#e5e7eb",
+    borderColor: ds.line,
   },
 
   confirmButtonManterText: {

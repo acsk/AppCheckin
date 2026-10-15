@@ -18,7 +18,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../src/theme/colors";
 import { normalizeUtf8 } from "../src/utils/utf8";
 
-export default function TurmaDetalhesScreen() {
+
+import { ds } from "@/src/components/ds/tokens";export default function TurmaDetalhesScreen() {
   const router = useRouter();
   const { turmaId, data } = useLocalSearchParams();
   const [loading, setLoading] = useState(true);
@@ -795,7 +796,7 @@ export default function TurmaDetalhesScreen() {
             onPress={() => router.back()}
             style={styles.backButton}
           >
-            <Feather name="arrow-left" size={24} color="#fff" />
+            <Feather name="arrow-left" size={24} color={ds.ink} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Detalhes da Turma</Text>
           <View style={{ width: 40 }} />
@@ -815,7 +816,7 @@ export default function TurmaDetalhesScreen() {
             onPress={() => router.back()}
             style={styles.backButton}
           >
-            <Feather name="arrow-left" size={24} color="#fff" />
+            <Feather name="arrow-left" size={24} color={ds.ink} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Detalhes da Turma</Text>
           <View style={{ width: 40 }} />
@@ -835,7 +836,7 @@ export default function TurmaDetalhesScreen() {
             onPress={() => router.back()}
             style={styles.backButton}
           >
-            <Feather name="arrow-left" size={24} color="#fff" />
+            <Feather name="arrow-left" size={24} color={ds.ink} />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Detalhes da Turma</Text>
           <View style={{ width: 40 }} />
@@ -1145,7 +1146,7 @@ export default function TurmaDetalhesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: ds.ground,
   },
   header: {
     flexDirection: "row",
@@ -1153,13 +1154,9 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     paddingHorizontal: 18,
     paddingVertical: 16,
-    backgroundColor: colors.primary,
-    borderBottomWidth: 0,
-    elevation: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
+    backgroundColor: ds.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: ds.line,
   },
   backButton: {
     padding: 8,
@@ -1167,7 +1164,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 22,
     fontWeight: "800",
-    color: "#fff",
+    color: ds.ink,
   },
   content: {
     flex: 1,
@@ -1180,7 +1177,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     fontSize: 16,
-    color: "#999",
+    color: ds.inkMuted,
   },
   turmaHeader: {
     backgroundColor: "#fff",
@@ -1191,12 +1188,12 @@ const styles = StyleSheet.create({
   turmaNome: {
     fontSize: 20,
     fontWeight: "700",
-    color: "#000",
+    color: ds.ink,
     marginBottom: 4,
   },
   turmaProfessor: {
     fontSize: 14,
-    color: "#666",
+    color: ds.inkMuted,
   },
   metaRow: {
     flexDirection: "row",
@@ -1214,7 +1211,7 @@ const styles = StyleSheet.create({
   },
   metaChipText: {
     fontSize: 12,
-    color: "#333",
+    color: ds.ink,
     fontWeight: "500",
   },
   checkinWindowInfo: {
@@ -1243,7 +1240,7 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#000",
+    color: ds.ink,
     marginBottom: 12,
   },
   participantsList: {
@@ -1277,12 +1274,12 @@ const styles = StyleSheet.create({
   },
   participantName: {
     fontSize: 14,
-    color: "#333",
+    color: ds.ink,
     fontWeight: "500",
   },
   participantNameCurrent: {
     fontWeight: "700",
-    color: colors.primary,
+    color: colors.primaryText,
   },
   participantItemSimple: {
     flexDirection: "row",
@@ -1292,11 +1289,11 @@ const styles = StyleSheet.create({
   },
   participantNameSimple: {
     fontSize: 14,
-    color: "#333",
+    color: ds.ink,
   },
   emptyText: {
     textAlign: "center",
-    color: "#999",
+    color: ds.inkMuted,
     fontSize: 14,
     paddingVertical: 20,
   },
@@ -1393,7 +1390,7 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 22,
     fontWeight: "700",
-    color: "#000",
+    color: ds.ink,
     marginBottom: 12,
     textAlign: "center",
   },

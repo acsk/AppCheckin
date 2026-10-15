@@ -31,6 +31,19 @@ if (Platform.OS !== "web") {
   require("react-native-reanimated");
 }
 
+// Web: remove o contorno azul que o navegador desenha nos campos em foco.
+// O foco continua visível pela borda do próprio campo (TextField do design system).
+if (Platform.OS === "web" && typeof document !== "undefined") {
+  const STYLE_ID = "ac-no-input-outline";
+  if (!document.getElementById(STYLE_ID)) {
+    const style = document.createElement("style");
+    style.id = STYLE_ID;
+    style.textContent =
+      "input:focus, textarea:focus, select:focus, input:focus-visible, textarea:focus-visible { outline: none !important; box-shadow: none; }";
+    document.head.appendChild(style);
+  }
+}
+
 // Rotas que NÃO precisam de autenticação
 const PUBLIC_ROUTES = ["(auth)", "index"];
 

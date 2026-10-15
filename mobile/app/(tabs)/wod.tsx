@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { mobileService } from '../../src/services/mobileService';
 import { colors } from '../../src/theme/colors';
 
+import { ds } from "@/src/components/ds/tokens";
 interface Bloco {
   id: number;
   wod_id: number;
@@ -103,7 +104,7 @@ export default function WodScreen() {
       wodsArray.forEach((wod: any) => {
         const modId = wod.modalidade?.id ?? wod.modalidade_id;
         const modNome = wod.modalidade?.nome ?? wod.modalidade_nome;
-        const modCor = wod.modalidade?.cor ?? wod.modalidade_cor ?? '#999';
+        const modCor = wod.modalidade?.cor ?? wod.modalidade_cor ?? "#999";
         const modIcone = wod.modalidade?.icone ?? wod.modalidade_icone;
 
         if (!modId || !modNome) {
@@ -298,7 +299,7 @@ export default function WodScreen() {
                   setWodDetalhes(null);
                 }}
               >
-                <Feather name="chevron-left" size={24} color="#fff" />
+                <Feather name="chevron-left" size={24} color={ds.ink} />
               </TouchableOpacity>
             )}
             <View>
@@ -436,7 +437,7 @@ export default function WodScreen() {
             style={styles.checkinButton}
             onPress={() => router.push('/(tabs)/checkin')}
           >
-            <Feather name="check-circle" size={18} color="#fff" />
+            <Feather name="check-circle" size={18} color={ds.onBrand} />
             <Text style={styles.checkinButtonText}>Realizar check-in</Text>
           </TouchableOpacity>
 
@@ -548,7 +549,7 @@ export default function WodScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.backgroundSecondary,
+    backgroundColor: ds.ground,
   },
   headerTop: {
     flexDirection: 'row',
@@ -556,13 +557,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 18,
     paddingVertical: 16,
-    backgroundColor: colors.primary,
-    borderBottomWidth: 0,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 8,
+    backgroundColor: ds.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: ds.line,
   },
   headerTitleRow: {
     flexDirection: 'row',
@@ -576,11 +573,11 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 24,
     fontWeight: '800',
-    color: '#fff',
+    color: ds.ink,
   },
   headerSubtitle: {
     fontSize: 14,
-    color: 'rgba(255,255,255,0.8)',
+    color: ds.inkMuted,
     textTransform: 'capitalize',
     marginTop: 4,
   },
@@ -609,7 +606,7 @@ const styles = StyleSheet.create({
   errorTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#FF6B6B',
+    color: "#FF6B6B",
     marginTop: 12,
     marginBottom: 6,
   },
@@ -627,12 +624,12 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   retryButtonText: {
-    color: '#fff',
+    color: ds.onBrand,
     fontSize: 16,
     fontWeight: '600',
   },
   loginButton: {
-    backgroundColor: '#334155',
+    backgroundColor: "#334155",
     paddingHorizontal: 24,
     paddingVertical: 10,
     borderRadius: 10,
@@ -642,14 +639,14 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   loginButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 16,
     fontWeight: '600',
   },
   errorMessageContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff1f2',
+    backgroundColor: "#fff1f2",
     padding: 12,
     borderRadius: 12,
     marginTop: 16,
@@ -658,7 +655,7 @@ const styles = StyleSheet.create({
   errorMessageText: {
     flex: 1,
     fontSize: 15,
-    color: '#ef4444',
+    color: "#ef4444",
   },
   secaoContainer: {
     marginBottom: 16,
@@ -670,13 +667,13 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   wodCard: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 16,
     padding: 14,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: '#f0f1f4',
-    shadowColor: '#000',
+    borderColor: ds.line,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.06,
     shadowRadius: 10,
@@ -702,18 +699,18 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
   },
   wodHeaderBadgeText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#fff',
+    color: "#fff",
   },
   wodHeaderAccent: {
     width: 36,
     height: 6,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: "rgba(255,255,255,0.6)",
   },
   wodTitulo: {
     fontSize: 19,
@@ -744,7 +741,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: '#eef2f7',
+    borderTopColor: ds.line,
     gap: 4,
   },
   criadoPorText: {
@@ -753,13 +750,13 @@ const styles = StyleSheet.create({
     fontStyle: 'italic',
   },
   blocoCard: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 12,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#eef2f7',
-    shadowColor: '#000',
+    borderColor: ds.line,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
@@ -782,7 +779,7 @@ const styles = StyleSheet.create({
   blocoOrdemText: {
     fontSize: 14,
     fontWeight: '700',
-    color: colors.primary,
+    color: colors.primaryText,
   },
   blocoInfo: {
     flex: 1,
@@ -800,7 +797,7 @@ const styles = StyleSheet.create({
   blocoTipoText: {
     fontSize: 12,
     fontWeight: '700',
-    color: colors.primary,
+    color: colors.primaryText,
   },
   blocoTitulo: {
     fontSize: 15,
@@ -814,13 +811,13 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   variacaoCard: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     borderRadius: 12,
     padding: 12,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#eef2f7',
-    shadowColor: '#000',
+    borderColor: ds.line,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
@@ -837,7 +834,7 @@ const styles = StyleSheet.create({
   variacaoNome: {
     fontSize: 13,
     fontWeight: '700',
-    color: colors.primary,
+    color: colors.primaryText,
   },
   variacaoDescricao: {
     fontSize: 14,
@@ -847,13 +844,13 @@ const styles = StyleSheet.create({
   modalidadeListItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     padding: 12,
     borderRadius: 14,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: '#eef2f7',
-    shadowColor: '#000',
+    borderColor: ds.line,
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
@@ -917,7 +914,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   checkinButtonText: {
-    color: '#fff',
+    color: ds.onBrand,
     fontSize: 16,
     fontWeight: '700',
   },

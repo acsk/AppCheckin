@@ -15,6 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../src/theme/colors";
 import { normalizeUtf8 } from "../src/utils/utf8";
 
+import { ds } from "@/src/components/ds/tokens";
 const getPhotoUrl = (foto?: string | null) => {
   if (!foto) return null;
   if (/^https?:\/\//i.test(foto)) return foto;
@@ -44,7 +45,7 @@ export default function CheckinDetalhesScreen() {
     <SafeAreaView style={styles.container} edges={["top"]}>
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Feather name="arrow-left" size={20} color="#fff" />
+          <Feather name="arrow-left" size={20} color={ds.ink} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Detalhes do Check-in</Text>
       </View>
@@ -115,7 +116,7 @@ export default function CheckinDetalhesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.backgroundSecondary,
+    backgroundColor: ds.ground,
   },
   header: {
     flexDirection: "row",
@@ -123,7 +124,9 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingHorizontal: 16,
     paddingVertical: 14,
-    backgroundColor: colors.primary,
+    backgroundColor: ds.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: ds.line,
   },
   backButton: {
     padding: 8,
@@ -131,7 +134,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.2)",
   },
   headerTitle: {
-    color: "#fff",
+    color: ds.ink,
     fontSize: 18,
     fontWeight: "700",
   },
@@ -146,7 +149,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     borderWidth: 1,
-    borderColor: "#eef2f7",
+    borderColor: ds.line,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.06,
@@ -199,7 +202,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary + "15",
   },
   statusText: {
-    color: colors.primary,
+    color: colors.primaryText,
     fontWeight: "700",
     fontSize: 13,
   },

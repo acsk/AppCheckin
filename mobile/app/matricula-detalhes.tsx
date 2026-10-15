@@ -17,7 +17,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-export default function MatriculaDetalhesScreen() {
+
+import { ds } from "@/src/components/ds/tokens";export default function MatriculaDetalhesScreen() {
   const router = useRouter();
   const { matriculaId } = useLocalSearchParams();
   const [matricula, setMatricula] = useState(null);
@@ -137,7 +138,7 @@ export default function MatriculaDetalhesScreen() {
       {/* Header */}
       <View style={styles.headerTop}>
         <TouchableOpacity onPress={() => router.back()}>
-          <Feather name="chevron-left" size={24} color="#fff" />
+          <Feather name="chevron-left" size={24} color={ds.ink} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Detalhes da Matrícula</Text>
         <View style={{ width: 24 }} />
@@ -421,7 +422,7 @@ export default function MatriculaDetalhesScreen() {
             Alert.alert("Pagamento", "Funcionalidade de pagamento em breve!")
           }
         >
-          <Feather name="credit-card" size={20} color="#fff" />
+          <Feather name="credit-card" size={20} color={ds.onBrand} />
           <Text style={styles.actionButtonText}>Realizar Pagamento</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -432,7 +433,7 @@ export default function MatriculaDetalhesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: ds.ground,
   },
   headerTop: {
     flexDirection: "row",
@@ -440,18 +441,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 18,
     paddingVertical: 16,
-    backgroundColor: colors.primary,
-    borderBottomWidth: 0,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 8,
+    backgroundColor: ds.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: ds.line,
   },
   headerTitle: {
     fontSize: 22,
     fontWeight: "800",
-    color: "#fff",
+    color: ds.ink,
   },
   scrollContent: {
     padding: 16,
@@ -465,7 +462,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 16,
-    color: "#666",
+    color: ds.inkMuted,
     marginBottom: 16,
   },
   retryButton: {
@@ -475,7 +472,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   retryButtonText: {
-    color: "#fff",
+    color: ds.onBrand,
     fontWeight: "600",
   },
   matriculaHeader: {
@@ -503,17 +500,17 @@ const styles = StyleSheet.create({
   usuario: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#000",
+    color: ds.ink,
     marginBottom: 4,
   },
   planoNome: {
     fontSize: 14,
     fontWeight: "600",
-    color: colors.primary,
+    color: colors.primaryText,
   },
   modalidade: {
     fontSize: 12,
-    color: "#999",
+    color: ds.inkMuted,
     marginTop: 2,
   },
   statusBadge: {
@@ -540,7 +537,7 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#000",
+    color: ds.ink,
     marginBottom: 12,
   },
   dateItem: {
@@ -556,13 +553,13 @@ const styles = StyleSheet.create({
   },
   dateLabel: {
     fontSize: 12,
-    color: "#999",
+    color: ds.inkMuted,
     marginBottom: 2,
   },
   dateValue: {
     fontSize: 14,
     fontWeight: "600",
-    color: "#000",
+    color: ds.ink,
   },
   infoRow: {
     flexDirection: "row",
@@ -574,13 +571,13 @@ const styles = StyleSheet.create({
   },
   infoLabel: {
     fontSize: 13,
-    color: "#666",
+    color: ds.inkMuted,
     fontWeight: "500",
   },
   infoValue: {
     fontSize: 14,
     fontWeight: "700",
-    color: colors.primary,
+    color: colors.primaryText,
   },
   resumoGrid: {
     flexDirection: "row",
@@ -590,19 +587,19 @@ const styles = StyleSheet.create({
   resumoItem: {
     flex: 1,
     borderLeftWidth: 3,
-    borderLeftColor: "#ddd",
+    borderLeftColor: ds.line,
     paddingLeft: 12,
     paddingVertical: 8,
   },
   resumoLabel: {
     fontSize: 11,
-    color: "#999",
+    color: ds.inkMuted,
     marginBottom: 4,
   },
   resumoValue: {
     fontSize: 16,
     fontWeight: "700",
-    color: "#000",
+    color: ds.ink,
   },
   progressContainer: {
     width: "100%",
@@ -618,7 +615,7 @@ const styles = StyleSheet.create({
   },
   progressText: {
     fontSize: 12,
-    color: "#999",
+    color: ds.inkMuted,
     textAlign: "center",
   },
   pagamentoItem: {
@@ -627,7 +624,7 @@ const styles = StyleSheet.create({
     padding: 12,
     marginVertical: 8,
     borderLeftWidth: 3,
-    borderLeftColor: "#ddd",
+    borderLeftColor: ds.line,
   },
   pagamentoHeader: {
     flexDirection: "row",
@@ -640,13 +637,13 @@ const styles = StyleSheet.create({
   },
   pagamentoData: {
     fontSize: 12,
-    color: "#666",
+    color: ds.inkMuted,
     marginBottom: 2,
   },
   pagamentoValor: {
     fontSize: 14,
     fontWeight: "700",
-    color: "#000",
+    color: ds.ink,
   },
   pagamentoDetails: {
     flexDirection: "row",
@@ -658,7 +655,7 @@ const styles = StyleSheet.create({
   },
   pagamentoDetail: {
     fontSize: 11,
-    color: "#666",
+    color: ds.inkMuted,
     fontWeight: "500",
   },
   actionButton: {
@@ -677,7 +674,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   actionButtonText: {
-    color: "#fff",
+    color: ds.onBrand,
     fontSize: 16,
     fontWeight: "600",
   },
