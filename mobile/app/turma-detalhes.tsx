@@ -20,6 +20,7 @@ import { normalizeUtf8 } from "../src/utils/utf8";
 
 
 import AppHeader from "@/src/components/ds/AppHeader";
+import PendingPaymentModal from "@/src/components/ds/PendingPaymentModal";
 import { ds } from "@/src/components/ds/tokens";export default function TurmaDetalhesScreen() {
   const router = useRouter();
   const { turmaId, data } = useLocalSearchParams();
@@ -975,8 +976,13 @@ import { ds } from "@/src/components/ds/tokens";export default function TurmaDet
         </ScrollView>
       </SafeAreaView>
 
+      <PendingPaymentModal
+        visible={errorModal.visible && errorModal.title === "Pagamento pendente"}
+        message={errorModal.message}
+        onClose={hideErrorModal}
+      />
       <Modal
-        visible={errorModal.visible}
+        visible={errorModal.visible && errorModal.title !== "Pagamento pendente"}
         transparent
         animationType="none"
         onRequestClose={hideErrorModal}

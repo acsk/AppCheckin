@@ -49,6 +49,20 @@ cores semanticas compartilhadas usam essas variaveis no bundle web; o bundle
 nativo mantem as cores anteriores. Componentes novos devem usar esses tokens
 em vez de cores claras fixas.
 
+## Confirmacao manual de check-in
+
+A tela da turma abre a confirmacao manual como uma folha inferior do
+[Modal do design system](./src/components/ds/Modal.tsx), com identificacao do
+aluno, resumo financeiro rolavel e acao fixa "Confirmar check-in".
+Fechar pelo X, pelo fundo ou pelo voltar nao registra o check-in.
+
+O resumo distingue pagamentos pagos, pendentes e atrasados, mantendo as datas
+de vencimento no calendario local. O aviso de atraso e informativo: a
+autorizacao do check-in continua sendo decidida pela API. Erros de matricula
+pendente usam o mesmo [dialogo de pagamento](./src/components/ds/PendingPaymentModal.tsx)
+nas telas de turma e check-in, preservando a mensagem e o vencimento da API.
+As duas sobreposicoes usam os tokens de cores dos temas claro e escuro.
+
 ## Get a fresh project
 
 When you're ready, run:

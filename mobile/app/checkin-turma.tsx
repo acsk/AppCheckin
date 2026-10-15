@@ -29,6 +29,8 @@ import InfoChips from "@/src/components/ds/InfoChips";
 import RosterSummary from "@/src/components/ds/RosterSummary";
 import Section from "@/src/components/ds/Section";
 import StudentSearch from "@/src/components/ds/StudentSearch";
+import DesignModal from "@/src/components/ds/Modal";
+import PendingPaymentModal from "@/src/components/ds/PendingPaymentModal";
 import { ds } from "@/src/components/ds/tokens";
 const getRouteParam = (value?: string | string[]) => {
   if (value == null) return undefined;
@@ -1246,22 +1248,10 @@ export default function CheckinTurmaScreen() {
 
   const openManualConfirm = (aluno: any) => {
     setConfirmManualModal({ visible: true, aluno });
-    Animated.spring(modalScale, {
-      toValue: 1,
-      useNativeDriver: true,
-      tension: 50,
-      friction: 7,
-    }).start();
   };
 
   const closeManualConfirm = () => {
-    Animated.timing(modalScale, {
-      toValue: 0,
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => {
-      setConfirmManualModal({ visible: false, aluno: null });
-    });
+    setConfirmManualModal({ visible: false, aluno: null });
   };
 
   const openConfirmBloqueioModal = () => {
@@ -1673,8 +1663,13 @@ export default function CheckinTurmaScreen() {
           : null}
       </SafeAreaView>
 
+      <PendingPaymentModal
+        visible={errorModal.visible && errorModal.title === "Pagamento pendente"}
+        message={errorModal.message}
+        onClose={hideErrorModal}
+      />
       <Modal
-        visible={errorModal.visible}
+        visible={errorModal.visible && errorModal.title !== "Pagamento pendente"}
         transparent
         animationType="none"
         onRequestClose={hideErrorModal}
@@ -1901,98 +1896,32 @@ export default function CheckinTurmaScreen() {
         </TouchableOpacity>
       </Modal>
 
-      <Modal
+      <DesignModal
         visible={confirmManualModal.visible}
-        transparent
-        animationType="fade"
-        onRequestClose={closeManualConfirm}
+        title="Confirmar check-in"
+        eyebrow={`${getHoraInicio(participantsTurma) ? `Turma das ${String(getHoraInicio(participantsTurma)).slice(0, 5)}` : "Turma"} · ${normalizeUtf8(participantsTurma?.modalidade?.nome || "Check-in manual")}`}
+        icon="check-square"
+        onClose={closeManualConfirm}
+        primary={{
+          label: "Confirmar check-in",
+          icon: "check",
+          onPress: () => {
+            const aluno = confirmManualModal.aluno;
+            closeManualConfirm();
+            if (aluno?.id) void handleManualCheckin(aluno);
+          },
+        }}
       >
-        <TouchableOpacity
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={closeManualConfirm}
-        >
-          <Animated.View
-            style={[
-              styles.modalContainer,
-              { transform: [{ scale: modalScale }] },
-            ]}
-          >
-            <TouchableOpacity
-              activeOpacity={1}
-              onPress={(e) => e.stopPropagation()}
-            >
-              <View style={styles.modalContent}>
-                <View
-                  style={[
-                    styles.modalIconContainer,
-                    styles.modalIconContainerInfo,
-                  ]}
-                >
-                  <Feather
-                    name="help-circle"
-                    size={48}
-                    color={colors.primary}
-                  />
-                </View>
-                <Text style={styles.modalTitle}>Confirmar check-in</Text>
-                <Text style={styles.modalMessage}>
-                  Deseja fazer check-in de{" "}
-                  {normalizeUtf8(
-                    confirmManualModal.aluno?.nome ||
-                      confirmManualModal.aluno?.usuario_nome ||
-                      "Aluno",
-                  )}
-                  ?
-                </Text>
-                {isProfessorOuAdmin && (
-                  <ScrollView
-                    style={styles.modalFinanceScroll}
-                    nestedScrollEnabled
-                    showsVerticalScrollIndicator={false}
-                  >
-                    <AlunoResumoFinanceiro
-                      compact
-                      alunoId={Number(
-                        confirmManualModal.aluno?.id ??
-                          confirmManualModal.aluno?.aluno_id ??
-                          0,
-                      )}
-                    />
-                  </ScrollView>
-                )}
-                <View style={styles.confirmButtonsRow}>
-                  <TouchableOpacity
-                    style={[styles.confirmButton, styles.confirmButtonCancel]}
-                    onPress={closeManualConfirm}
-                  >
-                    <Text style={styles.confirmButtonText}>Cancelar</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.confirmButton, styles.confirmButtonConfirm]}
-                    onPress={async () => {
-                      const aluno = confirmManualModal.aluno;
-                      closeManualConfirm();
-                      if (aluno?.id) {
-                        await handleManualCheckin(aluno);
-                      }
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.confirmButtonText,
-                        styles.confirmButtonTextLight,
-                      ]}
-                    >
-                      Confirmar
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </TouchableOpacity>
-          </Animated.View>
-        </TouchableOpacity>
-      </Modal>
+        {confirmManualModal.visible && isProfessorOuAdmin ? (
+          <AlunoResumoFinanceiro
+            compact
+            studentName={normalizeUtf8(confirmManualModal.aluno?.nome || confirmManualModal.aluno?.usuario_nome || "Aluno")}
+            alunoId={Number(confirmManualModal.aluno?.id ?? confirmManualModal.aluno?.aluno_id ?? 0)}
+          />
+        ) : (
+          <Text style={{ color: ds.ink }}>Deseja fazer check-in de {normalizeUtf8(confirmManualModal.aluno?.nome || confirmManualModal.aluno?.usuario_nome || "Aluno")}?</Text>
+        )}
+      </DesignModal>
 
       <Modal
         visible={confirmRemoveModal.visible}

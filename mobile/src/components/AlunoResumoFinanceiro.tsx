@@ -4,6 +4,9 @@ import { handleUnauthorizedResponse } from "@/src/utils/authHelpers";
 import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useEffect, useState } from "react";
+import Avatar from "./ds/Avatar";
+import Badge from "./ds/Badge";
+import { ds } from "./ds/tokens";
 import {
   ActivityIndicator,
   StyleSheet,
@@ -17,6 +20,7 @@ type Pagamento = {
   data_vencimento: string;
   data_pagamento: string | null;
   status: string;
+  status_pagamento_id?: number;
   forma_pagamento?: string | null;
   baixado_por_nome?: string | null;
   criado_por_nome?: string | null;
@@ -36,13 +40,14 @@ type ResumoFinanceiro = {
 type MatriculaResumo = {
   id: number;
   status: string;
-  plano?: { nome: string; valor: number } | null;
+  plano?: { nome: string; valor: number; checkins_semanais?: number } | null;
   datas?: { vencimento?: string | null };
 };
 
 type Props = {
   alunoId: number;
   compact?: boolean;
+  studentName?: string;
 };
 
 const formatMoney = (value: number) => {
@@ -54,25 +59,26 @@ const formatMoney = (value: number) => {
   }).format(numeric);
 };
 
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case "Pago":
-      return "#4CAF50";
-    case "Aguardando":
-      return "#FF9800";
-    case "Vencido":
-      return "#f44336";
-    default:
-      return "#999";
-  }
-};
-
 const formatDate = (value?: string | null) => {
   if (!value) return "—";
+  const date = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (date) return `${date[3]}/${date[2]}/${date[1]}`;
   return new Date(value).toLocaleDateString("pt-BR");
 };
 
-export function AlunoResumoFinanceiro({ alunoId, compact = false }: Props) {
+const isPaid = (pagamento: Pagamento) =>
+  pagamento.status_pagamento_id === 2 || pagamento.status.toLowerCase() === "pago";
+
+const isOverdue = (pagamento: Pagamento) => {
+  if (isPaid(pagamento)) return false;
+  if (pagamento.status_pagamento_id === 3 || /vencido|atrasado/i.test(pagamento.status)) return true;
+  const today = new Date();
+  const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+  return pagamento.pendente && /^\d{4}-\d{2}-\d{2}/.test(pagamento.data_vencimento) &&
+    pagamento.data_vencimento.slice(0, 10) < todayKey;
+};
+
+export function AlunoResumoFinanceiro({ alunoId, compact = false, studentName }: Props) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [matricula, setMatricula] = useState<MatriculaResumo | null>(null);
@@ -147,82 +153,101 @@ export function AlunoResumoFinanceiro({ alunoId, compact = false }: Props) {
     };
   }, [alunoId]);
 
-  if (loading) {
-    return (
-      <View style={[styles.container, compact && styles.containerCompact]}>
-        <ActivityIndicator size="small" color={colors.primary} />
-        <Text style={styles.loadingText}>Carregando resumo...</Text>
+  const weekly = matricula?.plano?.checkins_semanais;
+  const studentCard = studentName ? (
+    <View style={styles.student}>
+      <Avatar name={studentName} size={44} />
+      <View style={styles.matriculaInfo}>
+        <Text style={styles.studentName}>{studentName}</Text>
+        <Text style={styles.matriculaMeta}>Aluno{weekly ? ` · ${weekly}x por semana` : ""}</Text>
       </View>
-    );
-  }
+    </View>
+  ) : null;
 
-  if (error) {
+  if (loading || error || !matricula) {
     return (
-      <View style={[styles.container, compact && styles.containerCompact]}>
-        <Text style={styles.errorText}>{error}</Text>
-      </View>
-    );
-  }
-
-  if (!matricula) {
-    return (
-      <View style={[styles.container, compact && styles.containerCompact]}>
-        <Text style={styles.emptyText}>Nenhuma matrícula encontrada</Text>
+      <View style={styles.stack}>
+        {studentCard}
+        <View style={[styles.container, styles.status]}>
+          {loading ? (
+            <>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <Text style={styles.loadingText}>Carregando resumo...</Text>
+            </>
+          ) : error ? (
+            <Text style={styles.errorText} accessibilityRole="alert">{error}</Text>
+          ) : (
+            <Text style={styles.emptyText}>Nenhuma matrícula encontrada</Text>
+          )}
+        </View>
       </View>
     );
   }
 
   const progress =
     resumo && resumo.total_previsto > 0
-      ? Math.min((resumo.total_pago / resumo.total_previsto) * 100, 100)
+      ? Math.max(0, Math.min((resumo.total_pago / resumo.total_previsto) * 100, 100))
       : 0;
+  const overdue = pagamentos.filter(isOverdue);
+  const overdueTotal = overdue.reduce((total, pagamento) => total + pagamento.valor, 0);
+  const oldestOverdue = overdue.map(p => p.data_vencimento).sort()[0];
 
   return (
-    <View style={[styles.container, compact && styles.containerCompact]}>
-      <Text style={styles.sectionTitle}>Resumo financeiro</Text>
-
-      <View style={styles.matriculaRow}>
-        <View style={styles.matriculaInfo}>
-          <Text style={styles.planoNome}>{matricula.plano?.nome || "Plano"}</Text>
-          <Text style={styles.matriculaMeta}>
-            {matricula.status}
-            {matricula.datas?.vencimento
-              ? ` · Vence ${formatDate(matricula.datas.vencimento)}`
-              : ""}
-          </Text>
+    <View style={styles.stack}>
+      {studentCard}
+      {compact && overdue.length > 0 ? (
+        <View style={styles.notice} accessibilityRole="alert">
+          <Feather name="alert-circle" size={18} color={ds.danger} />
+          <View style={styles.matriculaInfo}>
+            <Text style={styles.noticeTitle}>{overdue.length} {overdue.length === 1 ? "pagamento atrasado" : "pagamentos atrasados"}</Text>
+            <Text style={styles.noticeText}>{formatMoney(overdueTotal)} {overdue.length === 1 ? "venceu" : "venceram"} em {formatDate(oldestOverdue)}. O check-in pode ser feito mesmo assim.</Text>
+          </View>
         </View>
-      </View>
-
+      ) : null}
+      <View style={styles.container}>
+        <View style={styles.matriculaRow}>
+          <View style={styles.matriculaInfo}>
+            <Text style={styles.sectionTitle}>Resumo financeiro</Text>
+            <Text style={styles.planoNome}>{matricula.plano?.nome || "Plano"}</Text>
+          </View>
+          <View style={styles.matriculaStatus}>
+            <Badge tone={overdue.length ? "danger" : /ativa/i.test(matricula.status) ? "success" : "warning"} icon={overdue.length ? "alert-circle" : "clock"}>
+              {overdue.length ? "Atrasado" : matricula.status}
+            </Badge>
+            {matricula.datas?.vencimento ? <Text style={styles.due}>Vence {formatDate(matricula.datas.vencimento)}</Text> : null}
+          </View>
+        </View>
       {resumo && (
         <>
           <View style={styles.resumoGrid}>
             <View style={styles.resumoItem}>
               <Text style={styles.resumoLabel}>Previsto</Text>
-              <Text style={styles.resumoValue}>
+              <Text style={styles.resumoValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
                 {formatMoney(resumo.total_previsto)}
               </Text>
             </View>
             <View style={[styles.resumoItem, styles.resumoItemPaid]}>
               <Text style={styles.resumoLabel}>Pago</Text>
-              <Text style={[styles.resumoValue, styles.resumoValuePaid]}>
+              <Text style={[styles.resumoValue, styles.resumoValuePaid]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
                 {formatMoney(resumo.total_pago)}
               </Text>
             </View>
             <View style={[styles.resumoItem, styles.resumoItemPending]}>
               <Text style={styles.resumoLabel}>Pendente</Text>
-              <Text style={[styles.resumoValue, styles.resumoValuePending]}>
+              <Text style={[styles.resumoValue, styles.resumoValuePending]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
                 {formatMoney(resumo.total_pendente)}
               </Text>
             </View>
           </View>
 
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressBar, { width: `${progress}%` }]} />
+          <View style={styles.progress}>
+            <View style={styles.progressTrack} accessibilityRole="progressbar" accessibilityLabel="Pagamentos realizados" accessibilityValue={{ min: 0, max: 100, now: progress }}>
+              <View style={[styles.progressBar, { width: `${progress}%` }]} />
+            </View>
+            <Text style={styles.progressText}>
+              <Text style={styles.progressStrong}>{resumo.pagamentos_realizados} de {resumo.quantidade_pagamentos}</Text>{" "}pagamentos realizados
+            </Text>
           </View>
-          <Text style={styles.progressText}>
-            {resumo.pagamentos_realizados} de {resumo.quantidade_pagamentos}{" "}
-            pagamentos realizados
-          </Text>
         </>
       )}
 
@@ -231,6 +256,9 @@ export function AlunoResumoFinanceiro({ alunoId, compact = false }: Props) {
           <Text style={styles.pagamentosTitle}>Últimos pagamentos</Text>
           {pagamentos.map((pagamento) => (
             <View key={pagamento.id} style={styles.pagamentoItem}>
+              <View style={[styles.paymentIcon, { backgroundColor: isPaid(pagamento) ? ds.successSoft : isOverdue(pagamento) ? ds.dangerSoft : ds.warningSoft }]}>
+                <Feather name="file-text" size={18} color={isPaid(pagamento) ? ds.success : isOverdue(pagamento) ? ds.danger : ds.warning} />
+              </View>
               <View style={styles.pagamentoLeft}>
                 <Text style={styles.pagamentoValor}>
                   {formatMoney(pagamento.valor)}
@@ -256,14 +284,9 @@ export function AlunoResumoFinanceiro({ alunoId, compact = false }: Props) {
                   </Text>
                 )}
               </View>
-              <View
-                style={[
-                  styles.statusBadge,
-                  { backgroundColor: getStatusColor(pagamento.status) },
-                ]}
-              >
-                <Text style={styles.statusBadgeText}>{pagamento.status}</Text>
-              </View>
+              <Badge tone={isPaid(pagamento) ? "success" : isOverdue(pagamento) ? "danger" : "warning"} icon={isPaid(pagamento) ? "check" : "alert-circle"}>
+                {isOverdue(pagamento) ? "Atrasado" : pagamento.status}
+              </Badge>
             </View>
           ))}
         </View>
@@ -275,28 +298,39 @@ export function AlunoResumoFinanceiro({ alunoId, compact = false }: Props) {
           <Text style={styles.emptyText}>Nenhum pagamento registrado</Text>
         </View>
       )}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
+  stack: { gap: 12 },
+  student: { flexDirection: "row", alignItems: "center", gap: 12, padding: 16, backgroundColor: ds.surfaceSunken, borderRadius: 16 },
+  studentName: { fontSize: 16, lineHeight: 21, fontWeight: "900", textTransform: "uppercase", color: ds.ink },
+  notice: { flexDirection: "row", alignItems: "flex-start", gap: 12, padding: 16, borderRadius: 16, backgroundColor: ds.dangerSoft },
+  noticeTitle: { fontSize: 15, lineHeight: 20, fontWeight: "800", color: ds.danger },
+  noticeText: { fontSize: 13, lineHeight: 18, fontWeight: "500", color: ds.ink },
+  matriculaStatus: { alignItems: "flex-end", gap: 6, flexShrink: 1 },
+  due: { fontSize: 12, lineHeight: 16, fontWeight: "700", color: ds.inkMuted },
+  paymentIcon: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  progress: { padding: 16, gap: 8 },
+  progressStrong: { color: ds.ink, fontWeight: "800" },
   container: {
     width: "100%",
-    backgroundColor: "#f8fafc",
-    borderRadius: 12,
+    backgroundColor: ds.surface,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#e5e7eb",
-    padding: 12,
-    gap: 10,
+    borderColor: ds.line,
+    overflow: "hidden",
   },
-  containerCompact: {
-    marginTop: 8,
-    maxHeight: 280,
+  status: {
+    padding: 16,
+    gap: 8,
   },
   sectionTitle: {
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: "800",
-    color: colors.text,
+    color: ds.inkMuted,
     textTransform: "uppercase",
     letterSpacing: 0.4,
   },
@@ -307,7 +341,7 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 12,
-    color: "#b3261e",
+    color: ds.danger,
     textAlign: "center",
   },
   emptyText: {
@@ -317,14 +351,17 @@ const styles = StyleSheet.create({
   matriculaRow: {
     flexDirection: "row",
     alignItems: "center",
+    padding: 16,
+    gap: 8,
   },
   matriculaInfo: {
     flex: 1,
     gap: 2,
   },
   planoNome: {
-    fontSize: 14,
-    fontWeight: "700",
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: "800",
     color: colors.text,
   },
   matriculaMeta: {
@@ -334,60 +371,72 @@ const styles = StyleSheet.create({
   },
   resumoGrid: {
     flexDirection: "row",
-    gap: 8,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: ds.line,
   },
   resumoItem: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: "#e5e7eb",
-    borderRadius: 8,
-    padding: 8,
-    backgroundColor: "#fff",
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    backgroundColor: ds.surface,
   },
   resumoItemPaid: {
-    borderColor: "#4CAF50",
+    borderLeftWidth: 1,
+    borderLeftColor: ds.line,
   },
   resumoItemPending: {
-    borderColor: "#FF9800",
+    borderLeftWidth: 1,
+    borderLeftColor: ds.line,
   },
   resumoLabel: {
-    fontSize: 10,
+    fontSize: 11,
     color: colors.textMuted,
-    fontWeight: "600",
+    fontWeight: "800",
+    textTransform: "uppercase",
     marginBottom: 2,
   },
   resumoValue: {
-    fontSize: 12,
-    fontWeight: "800",
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: "900",
     color: colors.text,
   },
   resumoValuePaid: {
-    color: "#4CAF50",
+    color: ds.success,
   },
   resumoValuePending: {
-    color: "#FF9800",
+    color: ds.danger,
   },
   progressTrack: {
-    height: 6,
-    backgroundColor: "#e5e7eb",
+    height: 8,
+    backgroundColor: ds.surfaceSunken,
+    borderWidth: 1,
+    borderColor: ds.line,
     borderRadius: 999,
     overflow: "hidden",
   },
   progressBar: {
     height: "100%",
-    backgroundColor: "#4CAF50",
+    backgroundColor: ds.success,
     borderRadius: 999,
   },
   progressText: {
-    fontSize: 11,
+    fontSize: 13,
+    fontWeight: "600",
     color: colors.textMuted,
   },
   pagamentosSection: {
     gap: 8,
+    backgroundColor: ds.surfaceSunken,
+    borderTopWidth: 1,
+    borderTopColor: ds.line,
+    padding: 16,
   },
   pagamentosTitle: {
-    fontSize: 12,
-    fontWeight: "700",
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase",
     color: colors.textSecondary,
   },
   pagamentoItem: {
@@ -395,39 +444,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 8,
-    backgroundColor: "#fff",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#eef2f7",
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    flexWrap: "wrap",
+    paddingVertical: 6,
   },
   pagamentoLeft: {
     flex: 1,
     gap: 2,
   },
   pagamentoValor: {
-    fontSize: 13,
-    fontWeight: "700",
+    fontSize: 17,
+    fontWeight: "900",
     color: colors.text,
   },
   pagamentoData: {
-    fontSize: 11,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "500",
     color: colors.textMuted,
-  },
-  statusBadge: {
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  statusBadgeText: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "700",
   },
   emptyPayments: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    padding: 16,
   },
 });

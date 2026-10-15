@@ -27,6 +27,7 @@ import ClassTimeline, { ClassSlotProps, SlotStatus } from "@/src/components/ds/C
 import AppHeader from "@/src/components/ds/AppHeader";
 import DayPicker from "@/src/components/ds/DayPicker";
 import Segmented from "@/src/components/ds/Segmented";
+import PendingPaymentModal from "@/src/components/ds/PendingPaymentModal";
 import { ds } from "@/src/components/ds/tokens";
 const getRouteParam = (value?: string | string[]) => {
   if (value == null) return undefined;
@@ -1855,8 +1856,13 @@ export default function CheckinScreen() {
       </SafeAreaView>
 
       {/* Modal de Erro/Aviso Customizado */}
+      <PendingPaymentModal
+        visible={errorModal.visible && errorModal.title === "Pagamento pendente"}
+        message={errorModal.message}
+        onClose={hideErrorModal}
+      />
       <Modal
-        visible={errorModal.visible}
+        visible={errorModal.visible && errorModal.title !== "Pagamento pendente"}
         transparent
         animationType="none"
         onRequestClose={hideErrorModal}
