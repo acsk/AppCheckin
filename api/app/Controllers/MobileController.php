@@ -4463,6 +4463,109 @@ class MobileController
     }
 
     /**
+     * Ranking dos usuários com mais check-ins no ano atual (top 10)
+     */
+    #[OA\Get(
+        path: "/mobile/ranking/anual",
+        summary: "Ranking anual",
+        description: "Retorna os 10 alunos com mais check-ins no ano atual.",
+        tags: ["Mobile"],
+        security: [["bearerAuth" => []]],
+        parameters: [
+            new OA\Parameter(name: "modalidade_id", in: "query", description: "ID da modalidade para filtrar", schema: new OA\Schema(type: "integer"))
+        ],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "Ranking retornado com sucesso",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: "success", type: "boolean", example: true),
+                        new OA\Property(
+                            property: "data",
+                            type: "object",
+                            properties: [
+                                new OA\Property(property: "periodo", type: "string", example: "2026"),
+                                new OA\Property(property: "ranking", type: "array", items: new OA\Items(type: "object"))
+                            ]
+                        )
+                    ]
+                )
+            ),
+            new OA\Response(response: 401, description: "Não autorizado")
+        ]
+    )]
+    public function rankingAnual(Request $request, Response $response): Response
+    {
+        $tenantId = $request->getAttribute('tenantId');
+        $alunoId = $request->getAttribute('aluno_id');
+        $queryParams = $request->getQueryParams();
+        $modalidadeId = isset($queryParams['modalidade_id']) ? (int) $queryParams['modalidade_id'] : null;
+
+        try {
+            $stmtTotal = $this->db->prepare(
+                "SELECT COUNT(*) AS total FROM checkins c
+                 WHERE c.tenant_id = :tenant_id
+                   AND YEAR(COALESCE(c.data_checkin_date, DATE(c.created_at))) = YEAR(CURRENT_DATE())
+                   AND (c.presente IS NULL OR c.presente = 1)"
+            );
+            $stmtTotal->execute(['tenant_id' => (int)$tenantId]);
+            $totalTenantAno = (int) ($stmtTotal->fetch(\PDO::FETCH_ASSOC)['total'] ?? 0);
+
+            $ranking = $this->checkinModel->rankingAnoAtual((int)$tenantId, 10, $modalidadeId);
+
+            $rankingFormatado = array_map(function($item, $index) {
+                return [
+                    'posicao' => $index + 1,
+                    'aluno' => [
+                        'id' => (int) $item['aluno_id'],
+                        'nome' => $item['nome'],
+                        'email' => $item['email'],
+                        'foto_caminho' => $item['foto_caminho'] ?? null
+                    ],
+                    'total_checkins' => (int) $item['total_checkins']
+                ];
+            }, $ranking, array_keys($ranking));
+
+            $minhaPosicao = null;
+            if ($alunoId) {
+                $minhaPosicao = $this->checkinModel->posicaoAlunoAno((int)$tenantId, (int)$alunoId, $modalidadeId);
+            }
+
+            $anoAtual = date('Y');
+            $responseData = [
+                'periodo' => (string) $anoAtual,
+                'ano' => (int) $anoAtual,
+                'modalidade_id' => $modalidadeId,
+                'ranking' => $rankingFormatado,
+                'minha_posicao' => $minhaPosicao,
+                'tenant_id_resolvido' => (int)$tenantId,
+                'total_checkins_tenant_ano' => $totalTenantAno
+            ];
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'data' => $responseData
+            ], JSON_UNESCAPED_UNICODE));
+
+            return $response
+                ->withHeader('Content-Type', 'application/json; charset=utf-8')
+                ->withHeader('Cache-Control', 'private, max-age=300')
+                ->withHeader('Vary', 'Authorization, X-Tenant-Id')
+                ->withStatus(200);
+
+        } catch (\Exception $e) {
+            error_log("Erro em rankingAnual: " . $e->getMessage());
+            $response->getBody()->write(json_encode([
+                'success' => false,
+                'error' => 'Erro ao carregar ranking',
+                'message' => $e->getMessage()
+            ], JSON_UNESCAPED_UNICODE));
+            return $response->withHeader('Content-Type', 'application/json; charset=utf-8')->withStatus(500);
+        }
+    }
+
+    /**
      * Listar todos os contratos de pacote do usuário (pagante ou beneficiário)
      * GET /mobile/pacotes/contratos
      * Query params: ?status=pendente|ativo|cancelado (opcional, sem filtro = todos)

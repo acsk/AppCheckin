@@ -470,6 +470,94 @@ class CheckinRepository
             ->all();
     }
 
+    public function contarCheckinsTenantAno(int $tenantId, ?int $ano = null): int
+    {
+        $ano = $ano ?? AcademyDateTime::currentYear();
+
+        return (int) DB::table('checkins as c')
+            ->where('c.tenant_id', $tenantId)
+            ->whereRaw('YEAR(COALESCE(c.data_checkin_date, DATE(c.created_at))) = ?', [$ano])
+            ->where(function ($q) {
+                $q->whereNull('c.presente')->orWhere('c.presente', 1);
+            })
+            ->count();
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function rankingAnoAtual(
+        int $tenantId,
+        int $limite = 10,
+        ?int $modalidadeId = null,
+        ?int $ano = null,
+    ): array {
+        $ano = $ano ?? AcademyDateTime::currentYear();
+
+        $query = DB::table('checkins as c')
+            ->join('alunos as a', 'c.aluno_id', '=', 'a.id')
+            ->join('usuarios as u', 'a.usuario_id', '=', 'u.id')
+            ->join('turmas as t', function ($join) {
+                $join->on('c.turma_id', '=', 't.id')
+                    ->on('t.tenant_id', '=', 'c.tenant_id');
+            })
+            ->where('c.tenant_id', $tenantId)
+            ->whereRaw('YEAR(COALESCE(c.data_checkin_date, DATE(c.created_at))) = ?', [$ano])
+            ->where(function ($q) {
+                $q->whereNull('c.presente')->orWhere('c.presente', 1);
+            });
+
+        if ($modalidadeId) {
+            $query->where('t.modalidade_id', $modalidadeId);
+        }
+
+        return $query
+            ->groupBy('a.id', 'a.nome', 'u.email', 'a.foto_caminho')
+            ->orderByDesc(DB::raw('COUNT(c.id)'))
+            ->limit($limite)
+            ->get([
+                'a.id as aluno_id',
+                'a.nome',
+                'u.email',
+                'a.foto_caminho',
+                DB::raw('COUNT(c.id) as total_checkins'),
+            ])
+            ->map(fn ($row) => (array) $row)
+            ->all();
+    }
+
+    public function posicaoAlunoAno(
+        int $tenantId,
+        int $alunoId,
+        ?int $modalidadeId = null,
+        ?int $ano = null,
+    ): ?int {
+        $ano = $ano ?? AcademyDateTime::currentYear();
+
+        $sql = 'SELECT posicao FROM (
+                    SELECT c.aluno_id,
+                           RANK() OVER (ORDER BY COUNT(c.id) DESC) as posicao
+                    FROM checkins c
+                    INNER JOIN turmas t ON c.turma_id = t.id AND t.tenant_id = c.tenant_id
+                    WHERE c.tenant_id = ?
+                      AND YEAR(COALESCE(c.data_checkin_date, DATE(c.created_at))) = ?
+                      AND (c.presente IS NULL OR c.presente = 1)';
+        $bindings = [$tenantId, $ano];
+
+        if ($modalidadeId) {
+            $sql .= ' AND t.modalidade_id = ?';
+            $bindings[] = $modalidadeId;
+        }
+
+        $sql .= ' GROUP BY c.aluno_id
+                ) ranking WHERE aluno_id = ?';
+        $bindings[] = $alunoId;
+
+        $row = DB::selectOne($sql, $bindings);
+
+        return $row ? (int) $row->posicao : null;
+    }
+
     public function atualizarPresenca(
         int $checkinId,
         int $turmaId,

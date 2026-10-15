@@ -79,6 +79,7 @@ Checklist por endpoint:
   - `GET /v2/mobile/checkins` (`limit`, `offset`)
   - `GET /v2/mobile/checkins/por-modalidade` (`offset`, `data_referencia`)
   - `GET /v2/mobile/ranking/mensal` (`modalidade_id`)
+  - `GET /v2/mobile/ranking/anual` (`modalidade_id`, top 10)
   - `GET /v2/mobile/wod/hoje` (`data`, `modalidade_id`)
   - `GET /v2/mobile/wods/hoje` (`data`)
   - `GET /v2/mobile/planos-disponiveis` (`modalidade_id`)

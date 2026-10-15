@@ -1765,6 +1765,76 @@ class Checkin
     }
 
     /**
+     * Ranking de usuários com mais check-ins no ano atual
+     */
+    public function rankingAnoAtual(int $tenantId, int $limite = 10, ?int $modalidadeId = null): array
+    {
+        $sql = "SELECT 
+                a.id as aluno_id,
+                a.nome,
+                u.email,
+                a.foto_caminho,
+                COUNT(c.id) as total_checkins
+             FROM checkins c
+             INNER JOIN alunos a ON c.aluno_id = a.id
+             INNER JOIN usuarios u ON a.usuario_id = u.id
+             INNER JOIN turmas t ON c.turma_id = t.id AND t.tenant_id = c.tenant_id
+             WHERE c.tenant_id = :tenant_id
+               AND YEAR(COALESCE(c.data_checkin_date, DATE(c.created_at))) = YEAR(CURRENT_DATE())
+               AND (c.presente IS NULL OR c.presente = 1)";
+
+        if ($modalidadeId) {
+            $sql .= " AND t.modalidade_id = :modalidade_id";
+        }
+
+        $sql .= " GROUP BY a.id, a.nome, u.email, a.foto_caminho
+                  ORDER BY total_checkins DESC
+                  LIMIT :limite";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindValue(':tenant_id', $tenantId, \PDO::PARAM_INT);
+        $stmt->bindValue(':limite', $limite, \PDO::PARAM_INT);
+
+        if ($modalidadeId) {
+            $stmt->bindValue(':modalidade_id', $modalidadeId, \PDO::PARAM_INT);
+        }
+
+        $stmt->execute();
+
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    public function posicaoAlunoAno(int $tenantId, int $alunoId, ?int $modalidadeId = null): ?int
+    {
+        $sql = "SELECT posicao FROM (
+                    SELECT c.aluno_id,
+                           RANK() OVER (ORDER BY COUNT(c.id) DESC) as posicao
+                    FROM checkins c
+                    INNER JOIN turmas t ON c.turma_id = t.id AND t.tenant_id = c.tenant_id
+                    WHERE c.tenant_id = :tenant_id
+                      AND YEAR(COALESCE(c.data_checkin_date, DATE(c.created_at))) = YEAR(CURRENT_DATE())
+                      AND (c.presente IS NULL OR c.presente = 1)";
+
+        if ($modalidadeId) {
+            $sql .= " AND t.modalidade_id = :modalidade_id";
+        }
+
+        $sql .= " GROUP BY c.aluno_id
+                ) ranking WHERE aluno_id = :aluno_id";
+
+        $stmt = $this->db->prepare($sql);
+        $stmt->bindValue(':tenant_id', $tenantId, \PDO::PARAM_INT);
+        $stmt->bindValue(':aluno_id', $alunoId, \PDO::PARAM_INT);
+        if ($modalidadeId) {
+            $stmt->bindValue(':modalidade_id', $modalidadeId, \PDO::PARAM_INT);
+        }
+        $stmt->execute();
+        $posicao = $stmt->fetchColumn();
+
+        return $posicao === false ? null : (int) $posicao;
+    }
+
+    /**
      * Ranking do usuário em cada modalidade no mês atual
      * Retorna a posição do usuário em cada modalidade que ele pratica
      */

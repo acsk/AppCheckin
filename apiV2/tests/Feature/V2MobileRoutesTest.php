@@ -77,6 +77,19 @@ class V2MobileRoutesTest extends TestCase
             ]);
     }
 
+    public function test_ranking_anual_returns_success_shape(): void
+    {
+        $this->getJson('/v2/mobile/ranking/anual', [
+            'Authorization' => 'Bearer '.$this->bearerToken(),
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonStructure([
+                'success',
+                'data' => ['periodo', 'ano', 'ranking', 'minha_posicao'],
+            ]);
+    }
+
     public function test_horarios_disponiveis_requires_jwt(): void
     {
         $this->getJson('/v2/mobile/horarios-disponiveis')

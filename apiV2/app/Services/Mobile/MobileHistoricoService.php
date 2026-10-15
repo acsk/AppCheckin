@@ -211,4 +211,63 @@ class MobileHistoricoService
 
         return $meses[$mes] ?? AcademyDateTime::now()->format('F');
     }
+
+    /**
+     * @return array{status: int, body: array<string, mixed>, headers?: array<string, string>}
+     */
+    public function rankingAnual(?int $tenantId, ?int $modalidadeId, ?int $alunoId): array
+    {
+        if (! $tenantId) {
+            return [
+                'status' => 400,
+                'body' => [
+                    'success' => false,
+                    'error' => 'Nenhum tenant selecionado',
+                ],
+            ];
+        }
+
+        $ano = AcademyDateTime::currentYear();
+        $totalTenantAno = $this->checkins->contarCheckinsTenantAno($tenantId, $ano);
+        $ranking = $this->checkins->rankingAnoAtual($tenantId, 10, $modalidadeId, $ano);
+
+        $rankingFormatado = [];
+        foreach ($ranking as $index => $item) {
+            $rankingFormatado[] = [
+                'posicao' => $index + 1,
+                'aluno' => [
+                    'id' => (int) $item['aluno_id'],
+                    'nome' => $item['nome'],
+                    'email' => $item['email'],
+                    'foto_caminho' => $item['foto_caminho'] ?? null,
+                ],
+                'total_checkins' => (int) $item['total_checkins'],
+            ];
+        }
+
+        $minhaPosicao = null;
+        if ($alunoId) {
+            $minhaPosicao = $this->checkins->posicaoAlunoAno($tenantId, $alunoId, $modalidadeId, $ano);
+        }
+
+        return [
+            'status' => 200,
+            'body' => [
+                'success' => true,
+                'data' => [
+                    'periodo' => (string) $ano,
+                    'ano' => $ano,
+                    'modalidade_id' => $modalidadeId,
+                    'ranking' => $rankingFormatado,
+                    'minha_posicao' => $minhaPosicao,
+                    'tenant_id_resolvido' => $tenantId,
+                    'total_checkins_tenant_ano' => $totalTenantAno,
+                ],
+            ],
+            'headers' => [
+                'Cache-Control' => 'private, max-age=300',
+                'Vary' => 'Authorization, X-Tenant-Id',
+            ],
+        ];
+    }
 }

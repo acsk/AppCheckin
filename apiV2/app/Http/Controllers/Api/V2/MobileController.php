@@ -246,6 +246,25 @@ class MobileController extends Controller
         }
     }
 
+    public function rankingAnual(Request $request): JsonResponse
+    {
+        try {
+            $modalidadeId = $request->query('modalidade_id');
+            $alunoId = $request->attributes->get('aluno_id');
+            $result = $this->historico->rankingAnual(
+                $this->tenantId($request),
+                $modalidadeId !== null && $modalidadeId !== '' ? (int) $modalidadeId : null,
+                $alunoId !== null && $alunoId !== '' ? (int) $alunoId : null,
+            );
+
+            return $this->jsonWithOptionalHeaders($result);
+        } catch (\Throwable $e) {
+            Log::error('rankingAnual v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao carregar ranking', $e->getMessage());
+        }
+    }
+
     public function wodHoje(Request $request): JsonResponse
     {
         try {

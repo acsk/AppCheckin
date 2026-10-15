@@ -15,6 +15,8 @@ export interface RankingItem {
   total_checkins: number;
 }
 
+export type RankingPeriodoTipo = "mensal" | "anual";
+
 export interface RankingModalidade {
   id: number;
   nome: string;

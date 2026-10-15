@@ -10,6 +10,7 @@ import {
     DiaCheckin,
     RankingItem,
     RankingModalidade,
+    RankingPeriodoTipo,
     UserProfile,
 } from "@/src/types";
 import { APP_BUILD_VERSION, forceReloadApp } from "@/src/config/appVersion";
@@ -69,6 +70,11 @@ export default function AccountScreen() {
   const [rankingError, setRankingError] = useState<string | null>(null);
   const [ranking, setRanking] = useState<RankingItem[]>([]);
   const [rankingPeriodo, setRankingPeriodo] = useState<string>("");
+  const [rankingPeriodoTipo, setRankingPeriodoTipo] =
+    useState<RankingPeriodoTipo>("mensal");
+  const [rankingMinhaPosicao, setRankingMinhaPosicao] = useState<
+    number | null
+  >(null);
   const [rankingModalidades, setRankingModalidades] = useState<
     RankingModalidade[]
   >([]);
@@ -92,7 +98,7 @@ export default function AccountScreen() {
   ).current;
   // Flags para evitar chamadas duplicadas e controlar ciclo de fetch
   const hasLoadedWeekRef = useRef(false);
-  const lastRankingCalledIdRef = useRef<number | null>(null);
+  const lastRankingCalledIdRef = useRef<string | null>(null);
   const hasVerifiedTokenTenantRef = useRef(false);
   const latestProfileReqRef = useRef<number>(0);
   const latestRankingReqRef = useRef<number>(0);
@@ -475,10 +481,15 @@ export default function AccountScreen() {
           return;
         }
         const params = modalidadeId ? `?modalidade_id=${modalidadeId}` : "";
-        const url = `${getApiUrlRuntime()}/mobile/ranking/mensal${params}`;
+        const path =
+          rankingPeriodoTipo === "anual"
+            ? "/mobile/ranking/anual"
+            : "/mobile/ranking/mensal";
+        const url = `${getApiUrlRuntime()}${path}${params}`;
         console.log("🏆 [Ranking] Request iniciada", {
           tenantId: expectedTenantId,
           modalidadeId: modalidadeId ?? null,
+          periodo: rankingPeriodoTipo,
           url,
         });
         console.log("🏆 [loadRankingMemo] Iniciando carregamento...");
@@ -513,6 +524,11 @@ export default function AccountScreen() {
         });
         setRanking(rankingData?.ranking || []);
         setRankingPeriodo(rankingData?.periodo || "");
+        setRankingMinhaPosicao(
+          typeof rankingData?.minha_posicao === "number"
+            ? rankingData.minha_posicao
+            : null,
+        );
         const apiModalidades = normalizeApiModalidades(
           Array.isArray(rankingData?.modalidades)
             ? rankingData.modalidades
@@ -532,7 +548,7 @@ export default function AccountScreen() {
         setRankingLoading(false);
       }
     },
-    [currentTenant, userProfile],
+    [currentTenant, userProfile, rankingPeriodoTipo],
   );
 
   useEffect(() => {
@@ -692,6 +708,7 @@ export default function AccountScreen() {
     loadRankingMemo,
     selectedModalidadeId,
     rankingModalidades.length,
+    rankingPeriodoTipo,
   ]);
 
   // Debug: quando apiUrl ou userProfile mudam
@@ -708,23 +725,31 @@ export default function AccountScreen() {
     }
   }, [userProfile, apiUrl, photoUrl]);
 
-  // Carregar ranking quando modalidade selecionada muda
+  // Carregar ranking quando modalidade ou período (mensal/anual) mudam
 
   useEffect(() => {
     const tenantId = currentTenant?.tenant?.id ?? currentTenant?.id;
     if (!tenantId) return; // Aguarda tenant carregado
     if (selectedModalidadeId && userProfile) {
-      console.log("🔸 [Ranking] Trigger por mudança de modalidade", {
+      const rankingKey = `${rankingPeriodoTipo}:${selectedModalidadeId}`;
+      console.log("🔸 [Ranking] Trigger por mudança de modalidade/período", {
         tenantId,
         selectedModalidadeId,
+        rankingPeriodoTipo,
       });
-      if (lastRankingCalledIdRef.current === selectedModalidadeId) {
+      if (lastRankingCalledIdRef.current === rankingKey) {
         return;
       }
-      lastRankingCalledIdRef.current = selectedModalidadeId;
+      lastRankingCalledIdRef.current = rankingKey;
       loadRankingMemo(selectedModalidadeId);
     }
-  }, [selectedModalidadeId, userProfile, loadRankingMemo, currentTenant]);
+  }, [
+    selectedModalidadeId,
+    rankingPeriodoTipo,
+    userProfile,
+    loadRankingMemo,
+    currentTenant,
+  ]);
 
   // Carregar check-ins da semana quando userProfile xcarrega
   useEffect(() => {
@@ -1414,6 +1439,30 @@ export default function AccountScreen() {
           <Text style={styles.sectionTitle}>
             RANKING{rankingPeriodo ? ` · ${rankingPeriodo.toUpperCase()}` : ""}
           </Text>
+          <View style={styles.periodoTabs}>
+            {(["mensal", "anual"] as RankingPeriodoTipo[]).map((periodo) => {
+              const active = rankingPeriodoTipo === periodo;
+              return (
+                <TouchableOpacity
+                  key={periodo}
+                  style={[
+                    styles.periodoTab,
+                    active && styles.periodoTabActive,
+                  ]}
+                  onPress={() => setRankingPeriodoTipo(periodo)}
+                >
+                  <Text
+                    style={[
+                      styles.periodoTabText,
+                      active && styles.periodoTabTextActive,
+                    ]}
+                  >
+                    {periodo === "mensal" ? "Mensal" : "Anual"}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
           {rankingModalidades.length > 0 && (
             <ScrollView
               horizontal
@@ -1475,7 +1524,14 @@ export default function AccountScreen() {
             ) : (
               <>
                 <View style={styles.rankingList}>
-                  {ranking.slice(0, 3).map((item) => {
+                  {ranking.length === 0 ? (
+                    <Text style={styles.rankingEmptyText}>
+                      Nenhum check-in neste período.
+                    </Text>
+                  ) : null}
+                  {ranking
+                    .slice(0, rankingPeriodoTipo === "anual" ? 10 : 3)
+                    .map((item) => {
                     const pos = Number(item.posicao) || 0;
                     const isGold = pos === 1;
                     const isSilver = pos === 2;
@@ -1484,7 +1540,9 @@ export default function AccountScreen() {
                       ? ds.medalGold
                       : isSilver
                         ? ds.medalSilver
-                        : ds.medalBronze;
+                        : isBronze
+                          ? ds.medalBronze
+                          : ds.lineStrong;
                     return (
                       <View
                         key={item.aluno?.id ?? item.posicao}
@@ -1555,13 +1613,20 @@ export default function AccountScreen() {
                   </View>
                   <View style={styles.rankingUserPosition}>
                     <Text style={styles.rankingUserPositionText}>
-                      {userProfile.ranking_modalidades?.find(
-                        (item) => item.modalidade_id === selectedModalidadeId,
-                      )?.posicao ||
-                        ranking.find(
-                          (item) => item.aluno?.id === userProfile.id,
-                        )?.posicao ||
-                        "--"}
+                      {rankingPeriodoTipo === "anual"
+                        ? rankingMinhaPosicao ??
+                          ranking.find(
+                            (item) => item.aluno?.id === userProfile.id,
+                          )?.posicao ??
+                          "--"
+                        : userProfile.ranking_modalidades?.find(
+                            (item) =>
+                              item.modalidade_id === selectedModalidadeId,
+                          )?.posicao ||
+                          ranking.find(
+                            (item) => item.aluno?.id === userProfile.id,
+                          )?.posicao ||
+                          "--"}
                     </Text>
                   </View>
                 </View>
@@ -2295,6 +2360,41 @@ const styles = StyleSheet.create({
   },
   rankingSection: {
 
+  },
+  periodoTabs: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 12,
+  },
+  periodoTab: {
+    flex: 1,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: ds.lineStrong,
+    backgroundColor: ds.surface,
+  },
+  periodoTabActive: {
+    backgroundColor: ds.inverse,
+    borderColor: ds.inverse,
+  },
+  periodoTabText: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: ds.ink,
+  },
+  periodoTabTextActive: {
+    color: ds.onInverse,
+  },
+  rankingEmptyText: {
+    paddingHorizontal: 16,
+    paddingVertical: 20,
+    textAlign: "center",
+    color: ds.inkMuted,
+    fontSize: 13,
+    fontWeight: "600",
   },
   modalidadeTabs: {
     gap: 8,
