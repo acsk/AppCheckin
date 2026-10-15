@@ -3,6 +3,7 @@ import {
   APP_VERSION,
   compareBuildVersions,
   fetchMobileVersion,
+  forceReloadApp,
   formatDateToPtBr,
   isProductionRuntime,
 } from "@/src/config/appVersion";
@@ -56,29 +57,7 @@ export default function ForceUpdateGate({ children }: Props) {
       await checkVersion();
       return;
     }
-
-    try {
-      if ("caches" in window) {
-        const keys = await caches.keys();
-        await Promise.all(keys.map((key) => caches.delete(key)));
-      }
-      if ("serviceWorker" in navigator) {
-        const regs = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(
-          regs.map(async (reg) => {
-            reg.waiting?.postMessage("SKIP_WAITING");
-            await reg.update();
-          }),
-        );
-        await navigator.serviceWorker.register("/sw.js").catch(() => null);
-      }
-    } catch {
-      /* segue o reload mesmo se o cache falhar */
-    }
-
-    const url = new URL(window.location.href);
-    url.searchParams.set("_v", String(Date.now()));
-    window.location.replace(url.toString());
+    await forceReloadApp();
   };
 
   if (checking) {

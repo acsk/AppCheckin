@@ -12,6 +12,7 @@ import {
     RankingModalidade,
     UserProfile,
 } from "@/src/types";
+import { APP_BUILD_VERSION, forceReloadApp } from "@/src/config/appVersion";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { getTokenTenantId, handleAuthError } from "@/src/utils/authHelpers";
 import { isSessionExpiredVisible } from "@/src/utils/sessionExpired";
@@ -23,7 +24,6 @@ import AsyncStorage from "@/src/utils/storage";
 import { weekdayAbbrev } from "@/src/utils/weekdayAbbrev";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
-import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -77,6 +77,7 @@ export default function AccountScreen() {
   >(null);
   // Removido: carregamento de modalidades a partir de turmas (não utilizado)
   const [updatingPhoto, setUpdatingPhoto] = useState(false);
+  const [forcingUpdate, setForcingUpdate] = useState(false);
   const [photoUrl, setPhotoUrl] = useState<string | null>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [hasPhotoLoadError, setHasPhotoLoadError] = useState(false);
@@ -876,10 +877,15 @@ export default function AccountScreen() {
             : null
         }
         groups={groups}
-        version={Constants.expoConfig?.version ?? null}
+        version={APP_BUILD_VERSION}
         updatingPhoto={updatingPhoto}
+        forcingUpdate={forcingUpdate}
         onClose={closeSidebar}
         onEditPhoto={handleChangePhoto}
+        onForceUpdate={async () => {
+          setForcingUpdate(true);
+          await forceReloadApp();
+        }}
         onLogout={() => {
           closeSidebar();
           router.push("/logout");

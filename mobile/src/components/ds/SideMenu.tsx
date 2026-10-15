@@ -57,9 +57,11 @@ type Props = {
   groups?: SideMenuGroup[];
   version?: string | null;
   updatingPhoto?: boolean;
+  forcingUpdate?: boolean;
   onClose: () => void;
   onEditPhoto?: () => void;
   onLogout?: () => void;
+  onForceUpdate?: () => void;
 };
 
 const TONE_BOX = {
@@ -90,12 +92,19 @@ export default function SideMenu({
   groups = [],
   version,
   updatingPhoto,
+  forcingUpdate,
   onClose,
   onEditPhoto,
   onLogout,
+  onForceUpdate,
 }: Props) {
   const canSwitch = !!gym && gym.count > 1 && !!gym.onSwitch;
-  const foot = [user.memberSince ? `Membro desde ${user.memberSince}` : null, version ? `v${version}` : null]
+  const versionLabel = version
+    ? version.toLowerCase().startsWith("v")
+      ? version
+      : `v${version}`
+    : null;
+  const foot = [user.memberSince ? `Membro desde ${user.memberSince}` : null, versionLabel]
     .filter(Boolean)
     .join(" · ");
 
@@ -297,6 +306,25 @@ export default function SideMenu({
               </View>
             ))}
 
+          {onForceUpdate ? (
+            <TouchableOpacity
+              style={styles.forceUpdate}
+              onPress={onForceUpdate}
+              disabled={forcingUpdate}
+              accessibilityRole="button"
+              accessibilityLabel="Forçar atualização do app"
+            >
+              {forcingUpdate ? (
+                <ActivityIndicator size="small" color={ds.brandInk} />
+              ) : (
+                <Feather name="refresh-cw" size={18} color={ds.brandInk} />
+              )}
+              <Text style={styles.forceUpdateText}>
+                {forcingUpdate ? "Atualizando…" : "Forçar atualização"}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+
           {onLogout ? (
             <TouchableOpacity style={styles.logout} onPress={onLogout} accessibilityRole="button">
               <Feather name="log-out" size={19} color={ds.danger} />
@@ -406,6 +434,18 @@ const styles = StyleSheet.create({
   itemHint: { fontSize: 12, lineHeight: 16, fontWeight: "700", color: ds.inkMuted },
   count: { minWidth: 22, height: 22, paddingHorizontal: 7, borderRadius: radius.full, backgroundColor: ds.brand, alignItems: "center", justifyContent: "center" },
   countText: { fontSize: 12, fontWeight: "900", color: ds.onBrand },
+  forceUpdate: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: space[2],
+    height: 48,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: ds.brand,
+    backgroundColor: ds.brandSoft,
+  },
+  forceUpdateText: { fontSize: 16, fontWeight: "800", color: ds.brandInk },
   logout: {
     flexDirection: "row",
     alignItems: "center",

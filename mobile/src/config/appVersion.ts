@@ -62,6 +62,34 @@ export function formatDateToPtBr(dateStr: string): string {
   return `${day}/${month}/${year}`;
 }
 
+/** Limpa cache/PWA e recarrega o app web para buscar a versão nova. */
+export async function forceReloadApp(): Promise<void> {
+  if (typeof window === "undefined") return;
+
+  try {
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    }
+    if ("serviceWorker" in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(
+        regs.map(async (reg) => {
+          reg.waiting?.postMessage("SKIP_WAITING");
+          await reg.update();
+        }),
+      );
+      await navigator.serviceWorker.register("/sw.js").catch(() => null);
+    }
+  } catch {
+    /* recarrega mesmo se o cache falhar */
+  }
+
+  const url = new URL(window.location.href);
+  url.searchParams.set("_v", String(Date.now()));
+  window.location.replace(url.toString());
+}
+
 export async function fetchMobileVersion(): Promise<RemoteAppVersion | null> {
   try {
     const base = String(getApiUrlRuntime() || "").replace(/\/$/, "");
