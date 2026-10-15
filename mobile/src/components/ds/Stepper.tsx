@@ -27,26 +27,26 @@ export default function Stepper({ steps, current, tone = "surface" }: Props) {
             <View
               style={[
                 styles.bar,
-                { backgroundColor: on ? ds.ink : brand ? "rgba(255,255,255,0.35)" : ds.line },
+                { backgroundColor: on ? (brand ? ds.onBrand : ds.ink) : brand ? "rgba(255,255,255,0.35)" : ds.line },
               ]}
             />
             <View style={styles.labelRow}>
               <View
                 style={[
                   styles.num,
-                  { backgroundColor: on ? ds.ink : brand ? "rgba(255,255,255,0.35)" : ds.line },
+                  { backgroundColor: on ? (brand ? ds.onBrand : ds.ink) : brand ? "rgba(255,255,255,0.35)" : ds.line },
                 ]}
               >
                 {done ? (
                   <Feather name="check" size={12} color={ds.onInverse} />
                 ) : (
-                  <Text style={[styles.numText, { color: on ? ds.onInverse : ds.ink }]}>{i + 1}</Text>
+                  <Text style={[styles.numText, { color: on ? ds.onInverse : brand ? ds.onBrand : ds.ink }]}>{i + 1}</Text>
                 )}
               </View>
               <Text
                 style={[
                   styles.label,
-                  { color: on ? ds.ink : brand ? "rgba(23,26,33,0.7)" : ds.inkMuted },
+                  { color: on ? (brand ? ds.onBrand : ds.ink) : brand ? "rgba(23,26,33,0.7)" : ds.inkMuted },
                 ]}
                 numberOfLines={1}
               >

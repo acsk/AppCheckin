@@ -59,6 +59,7 @@ export function BrandFacets() {
 }
 
 export function HeaderButton({ icon, label, onPress, loading, disabled, surface }: HeaderAction & { surface?: boolean }) {
+  const iconColor = surface ? ds.ink : ds.onInverse;
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -66,12 +67,12 @@ export function HeaderButton({ icon, label, onPress, loading, disabled, surface 
       accessibilityRole="button"
       accessibilityLabel={label}
       activeOpacity={0.7}
-      style={[styles.btn, surface ? styles.btnSurface : null, disabled ? { opacity: 0.5 } : null]}
+      style={[styles.btn, surface ? styles.btnSurface : styles.btnBrand, disabled ? { opacity: 0.5 } : null]}
     >
       {loading ? (
-        <ActivityIndicator size="small" color={surface ? ds.ink : ds.onBrand} />
+        <ActivityIndicator size="small" color={iconColor} />
       ) : (
-        <Feather name={icon} size={20} color={surface ? ds.ink : ds.onBrand} />
+        <Feather name={icon} size={22} color={iconColor} />
       )}
     </TouchableOpacity>
   );
@@ -208,14 +209,19 @@ const styles = StyleSheet.create({
   titleHero: { fontSize: 32, lineHeight: 36 },
   sub: { fontSize: 13, lineHeight: 18, fontWeight: "700", color: ds.onBrand },
   subSurface: { color: ds.inkMuted, fontWeight: "600" },
-  actions: { flexDirection: "row", gap: space[2] },
+  actions: { flexDirection: "row", gap: space[2], zIndex: 2 },
   btn: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "rgba(23, 26, 33, 0.14)",
+  },
+  btnBrand: {
+    backgroundColor: "rgba(255, 255, 255, 0.32)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.55)",
   },
   btnSurface: { backgroundColor: "transparent" },
 });

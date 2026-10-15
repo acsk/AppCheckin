@@ -1,3 +1,5 @@
+import { ds } from "../components/ds/tokens";
+
 // Tema de cores alinhado ao design system AppCheckin
 // (fonte única: src/components/ds/tokens.ts — mantenha os dois em sincronia).
 export const colors = {
@@ -8,44 +10,44 @@ export const colors = {
   primaryDark: '#f2400a',
   onPrimary: '#171a21',
   // Laranja como TEXTO (links, preços, valor selecionado)
-  primaryText: '#c2410c',
-  primarySoft: '#fff3e6',
+  primaryText: ds.brandInk,
+  primarySoft: ds.brandSoft,
 
   // Cores de fundo
-  background: '#FFFFFF',
-  backgroundSecondary: '#f2f3f5',
-  backgroundTertiary: '#f7f7f9',
+  background: ds.surface,
+  backgroundSecondary: ds.ground,
+  backgroundTertiary: ds.surfaceSunken,
 
   // Cores de texto
-  text: '#171a21',
-  textPrimary: '#171a21',
-  textSecondary: '#5b6270',
-  textMuted: '#5b6270',
+  text: ds.ink,
+  textPrimary: ds.ink,
+  textSecondary: ds.inkMuted,
+  textMuted: ds.inkMuted,
   textLight: '#FFFFFF',
 
   // Cinzas
-  gray50: '#f7f7f9',
-  gray100: '#f2f3f5',
-  gray200: '#e4e6ea',
+  gray50: ds.surfaceSunken,
+  gray100: ds.ground,
+  gray200: ds.line,
   gray300: '#D1D5DB',
-  gray400: '#8b929e',
-  gray500: '#5b6270',
+  gray400: ds.lineStrong,
+  gray500: ds.inkMuted,
   gray600: '#4B5563',
   gray700: '#374151',
   gray800: '#1F2937',
   gray900: '#171a21',
 
   // Estados (texto sobre o -soft correspondente)
-  success: '#15703a',
-  warning: '#9a5b00',
-  error: '#b91c1c',
-  info: '#1d5fd1',
+  success: ds.success,
+  warning: ds.warning,
+  error: ds.danger,
+  info: ds.info,
 
   // Sombras e bordas
-  border: '#e4e6ea',
-  borderStrong: '#8b929e',
+  border: ds.line,
+  borderStrong: ds.lineStrong,
   shadow: 'rgba(0, 0, 0, 0.1)',
-  overlay: 'rgba(18, 21, 26, 0.56)',
+  overlay: ds.scrim,
 
   // Tema invertido (escuro) para contraste
   dark: '#171a21',

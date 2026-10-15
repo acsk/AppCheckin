@@ -26,6 +26,8 @@ import {
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import ForceUpdateGate from "@/src/components/ForceUpdateGate";
 import { colors } from "@/src/theme/colors";
+import { ThemePreferenceProvider } from "@/src/theme/ThemePreference";
+import { ds } from "@/src/components/ds/tokens";
 
 // Importar Reanimated apenas no mobile
 if (Platform.OS !== "web") {
@@ -53,7 +55,12 @@ if (Platform.OS === "web" && typeof document !== "undefined") {
 // Tema claro com o fundo ground do design system (as telas não ficam brancas).
 const APP_THEME = {
   ...DefaultTheme,
-  colors: { ...DefaultTheme.colors, background: "#f2f3f5", card: "#ffffff", text: "#171a21", border: "#e4e6ea", primary: "#ff7a00" },
+  colors: { ...DefaultTheme.colors, background: ds.ground, card: ds.surface, text: ds.ink, border: ds.line, primary: ds.brand },
+};
+
+const APP_DARK_THEME = {
+  ...DarkTheme,
+  colors: { ...DarkTheme.colors, ...APP_THEME.colors },
 };
 
 // Rotas que NÃO precisam de autenticação
@@ -74,6 +81,14 @@ const PROTECTED_ROUTES = [
 ];
 
 export default function RootLayout() {
+  return (
+    <ThemePreferenceProvider>
+      <RootContent />
+    </ThemePreferenceProvider>
+  );
+}
+
+function RootContent() {
   const colorScheme = useColorScheme();
   const router = useRouter();
   const appState = useRef(AppState.currentState);
@@ -211,13 +226,13 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <ThemeProvider value={colorScheme === "dark" ? DarkTheme : APP_THEME}>
+      <ThemeProvider value={colorScheme === "dark" ? (Platform.OS === "web" ? APP_DARK_THEME : DarkTheme) : APP_THEME}>
         <ErrorBoundary>
           <ForceUpdateGate>
           {!isTokenChecked ? bootScreen : (
           <View style={styles.root}>
             <StatusBarBackground />
-            <Stack screenOptions={{ contentStyle: { backgroundColor: "#f2f3f5" } }}>
+            <Stack screenOptions={{ contentStyle: { backgroundColor: ds.ground } }}>
               <Stack.Screen name="index" options={{ headerShown: false }} />
               <Stack.Screen name="(auth)" options={{ headerShown: false }} />
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
@@ -280,7 +295,7 @@ const styles = StyleSheet.create({
   bootSplash: {
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#fff",
+    backgroundColor: ds.surface,
   },
   statusBarFill: {
     backgroundColor: colors.primary,

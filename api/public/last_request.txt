@@ -14319,3 +14319,5 @@
 [2026-07-24 14:58:57] GET /mobile/planos-disponiveis
 [2026-07-24 14:58:59] GET /mobile/planos/8
 [2026-07-24 14:59:05] POST /mobile/simular-migracao
+[2026-10-15 20:48:18] GET /
+[2026-10-15 20:48:19] GET /mobile/planos-disponiveis

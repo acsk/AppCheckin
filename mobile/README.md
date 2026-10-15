@@ -25,6 +25,30 @@ In the output, you'll find options to open the app in a
 
 You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
 
+## Selecao de academia no login
+
+Quando a conta possui mais de uma academia, o login abre o
+[TenantSelectionModal](./src/components/ds/TenantSelectionModal.tsx). Selecionar
+uma opcao apenas marca a academia; a autenticacao continua ao confirmar em
+"Entrar na ...".
+
+"Lembrar minha escolha" salva uma preferencia local por usuario, usada para
+pre-selecionar a academia no proximo login, sem pular a confirmacao. Desmarcar
+essa opcao e concluir a entrada remove a preferencia. O selo "Ultimo acesso"
+indica a ultima academia escolhida com sucesso nesse dispositivo.
+
+## Tema na versao web
+
+O menu lateral oferece **Claro**, **Escuro** e **Sistema** em **Aparencia**.
+A escolha e salva neste navegador e permanece ao recarregar ou sair da conta.
+Sem escolha explicita, o tema acompanha a preferencia do sistema operacional.
+
+As paletas ficam em [theme.css](./src/theme/theme.css), com variaveis CSS sob
+`data-theme="light"` e `data-theme="dark"`. Os tokens do design system e as
+cores semanticas compartilhadas usam essas variaveis no bundle web; o bundle
+nativo mantem as cores anteriores. Componentes novos devem usar esses tokens
+em vez de cores claras fixas.
+
 ## Get a fresh project
 
 When you're ready, run:

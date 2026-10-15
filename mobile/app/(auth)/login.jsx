@@ -3,11 +3,8 @@ import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
     Image,
     KeyboardAvoidingView,
-    Modal,
     Platform,
     ScrollView,
     StyleSheet,
@@ -19,11 +16,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import PasswordRecoveryModal from "../../components/PasswordRecoveryModal";
 import urlsConfig from "../../src/config/urls";
 import { authService } from "../../src/services/authService";
-import { colors } from "../../src/theme/colors";
 import AsyncStorage from "../../src/utils/storage";
 import Button from "../../src/components/ds/Button";
 import TechBackground from "../../src/components/ds/TechBackground";
 import TextField from "../../src/components/ds/TextField";
+import TenantSelectionModal from "../../src/components/ds/TenantSelectionModal";
 import { ds as DS } from "../../src/components/ds/tokens";
 import { useBrowserThemeColor } from "../../src/hooks/useBrowserThemeColor";
 import {
@@ -33,6 +30,8 @@ import {
 } from "../../src/config/appVersion";
 
 const LOGO = require("../../assets/images/appcheckin-logo.png");
+const tenantPreferenceKey = (userId) => `@appcheckin:preferred_tenant:${userId}`;
+const lastTenantKey = (userId) => `@appcheckin:last_tenant:${userId}`;
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -52,7 +51,10 @@ export default function LoginScreen() {
   const [tenantSelectionVisible, setTenantSelectionVisible] = useState(false);
   const [tenantOptions, setTenantOptions] = useState([]);
   const [pendingTenantLogin, setPendingTenantLogin] = useState(null);
-  const [selectingTenantId, setSelectingTenantId] = useState(null);
+  const [selectedTenantId, setSelectedTenantId] = useState(null);
+  const [lastAccessTenantId, setLastAccessTenantId] = useState(null);
+  const [rememberTenant, setRememberTenant] = useState(true);
+  const [tenantSelectionError, setTenantSelectionError] = useState("");
   const [credentialsHydrated, setCredentialsHydrated] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
 
@@ -309,10 +311,23 @@ export default function LoginScreen() {
         response.tenants.length > 0
       ) {
         console.log("🏷️ Seleção de tenant necessária");
+        const [preferredId, lastId] = await Promise.all([
+          AsyncStorage.getItem(tenantPreferenceKey(response.user.id)),
+          AsyncStorage.getItem(lastTenantKey(response.user.id)),
+        ]);
+        const preferredTenant = response.tenants.find(
+          (item) => String((item.tenant || item).id) === preferredId,
+        );
+        const initialTenant = preferredTenant || response.tenants[0];
+        setSelectedTenantId((initialTenant.tenant || initialTenant).id);
+        setLastAccessTenantId(lastId);
+        setRememberTenant(preferredId != null || lastId == null);
+        setTenantSelectionError("");
         setTenantOptions(response.tenants);
         setPendingTenantLogin({
           userId: response?.user?.id,
           email,
+          nome: response?.user?.nome,
         });
         setTenantSelectionVisible(true);
         setLoading(false);
@@ -364,19 +379,22 @@ export default function LoginScreen() {
   };
 
   const handleSelectTenant = async (tenant) => {
+    if (loading) return;
     const tenantData = tenant?.tenant || tenant;
     const tenantId = tenantData?.id ?? tenant?.id;
 
     if (!tenantId) {
-      Alert.alert("Erro", "Tenant inválido");
+      console.warn("Tenant inválido na seleção de academia");
+      setTenantSelectionError("Academia inválida. Entre novamente.");
       return;
     }
     if (!pendingTenantLogin?.userId || !pendingTenantLogin?.email) {
-      Alert.alert("Erro", "Dados de login incompletos");
+      console.warn("Dados de login incompletos na seleção de academia");
+      setTenantSelectionError("Dados de login incompletos. Entre novamente.");
       return;
     }
 
-    setSelectingTenantId(tenantId);
+    setTenantSelectionError("");
     setLoading(true);
     try {
       const response = await authService.selectTenantPublic(
@@ -387,6 +405,18 @@ export default function LoginScreen() {
 
       if (response && response.token) {
         console.log("✅ Tenant selecionado com sucesso");
+        await AsyncStorage.setItem(
+          lastTenantKey(pendingTenantLogin.userId),
+          String(tenantId),
+        );
+        if (rememberTenant) {
+          await AsyncStorage.setItem(
+            tenantPreferenceKey(pendingTenantLogin.userId),
+            String(tenantId),
+          );
+        } else {
+          await AsyncStorage.removeItem(tenantPreferenceKey(pendingTenantLogin.userId));
+        }
         await new Promise((resolve) => setTimeout(resolve, 800));
         setTenantSelectionVisible(false);
         const updateState = await ensureAppIsCurrent();
@@ -395,7 +425,8 @@ export default function LoginScreen() {
         }
         router.replace("/(tabs)");
       } else {
-        Alert.alert("Erro", "Não foi possível selecionar a academia");
+        console.warn("Seleção de academia retornou sem token");
+        setTenantSelectionError("Não foi possível selecionar a academia");
       }
     } catch (error) {
       const mensagem =
@@ -403,10 +434,10 @@ export default function LoginScreen() {
         error?.error ||
         "Não foi possível selecionar a academia";
       setFormError(mensagem);
-      Alert.alert("Erro", mensagem);
+      setTenantSelectionError(mensagem);
+      console.error("Erro ao selecionar academia:", error);
     } finally {
       setLoading(false);
-      setSelectingTenantId(null);
     }
   };
 
@@ -529,61 +560,23 @@ export default function LoginScreen() {
         onClose={() => setShowRecoveryModal(false)}
       />
 
-      {/* Tenant Selection Modal */}
-      <Modal
+      <TenantSelectionModal
         visible={tenantSelectionVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setTenantSelectionVisible(false)}
-      >
-        <View style={styles.tenantModalOverlay}>
-          <View style={styles.tenantModalCard}>
-            <Text style={styles.tenantModalTitle}>Selecione a academia</Text>
-            <ScrollView
-              contentContainerStyle={styles.tenantList}
-              showsVerticalScrollIndicator={false}
-            >
-              {tenantOptions.map((item, index) => {
-                const t = item?.tenant || item;
-                const tenantId = t?.id ?? item?.id ?? index;
-                const nome = t?.nome ?? t?.name ?? "Academia";
-                const status = item?.status ?? null;
-                const isSelecting = selectingTenantId === tenantId;
-                return (
-                  <TouchableOpacity
-                    key={tenantId}
-                    style={styles.tenantOptionButton}
-                    onPress={() => handleSelectTenant(item)}
-                    disabled={loading}
-                  >
-                    {isSelecting ? (
-                      <ActivityIndicator color="#fff" size="small" />
-                    ) : (
-                      <>
-                        <Text style={styles.tenantOptionText}>{nome}</Text>
-                        {status ? (
-                          <Text style={styles.tenantOptionSubtext}>
-                            Status: {status}
-                          </Text>
-                        ) : null}
-                      </>
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-            <View style={styles.tenantModalActions}>
-              <TouchableOpacity
-                style={styles.tenantCancelButton}
-                onPress={() => setTenantSelectionVisible(false)}
-                disabled={loading}
-              >
-                <Text style={styles.tenantCancelText}>Voltar</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+        userName={pendingTenantLogin?.nome}
+        options={tenantOptions}
+        selectedId={selectedTenantId}
+        lastAccessId={lastAccessTenantId}
+        remember={rememberTenant}
+        loading={loading}
+        error={tenantSelectionError}
+        onSelect={(tenantId) => {
+          setSelectedTenantId(tenantId);
+          setTenantSelectionError("");
+        }}
+        onRememberChange={setRememberTenant}
+        onConfirm={handleSelectTenant}
+        onClose={() => setTenantSelectionVisible(false)}
+      />
     </SafeAreaView>
   );
 }
@@ -699,58 +692,5 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: DS.inkMuted,
     fontWeight: "500",
-  },
-  tenantModalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
-    justifyContent: "center",
-    padding: 20,
-  },
-  tenantModalCard: {
-    backgroundColor: "#fff",
-    borderRadius: 18,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: "#f5d0c5",
-    maxHeight: "80%",
-  },
-  tenantModalTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#111827",
-    marginBottom: 16,
-  },
-  tenantList: {
-    gap: 12,
-    paddingBottom: 8,
-  },
-  tenantOptionButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-  },
-  tenantOptionText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  tenantOptionSubtext: {
-    color: "rgba(255,255,255,0.85)",
-    marginTop: 4,
-    fontSize: 12,
-  },
-  tenantModalActions: {
-    marginTop: 16,
-    alignItems: "center",
-  },
-  tenantCancelButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-  },
-  tenantCancelText: {
-    color: colors.primary,
-    fontSize: 14,
-    fontWeight: "600",
   },
 });

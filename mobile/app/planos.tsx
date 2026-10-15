@@ -1496,6 +1496,9 @@ export default function PlanosScreen() {
               }
               router.replace("/(tabs)/checkin");
             }}
+          bottom={
+            <Stepper tone="brand" steps={["Plano", "Ciclo e pagamento"]} current={selectedPlanoId ? 1 : 0} />
+          }
         />
         <View style={styles.centerContent}>
           <ActivityIndicator size="large" color={colors.primary} />

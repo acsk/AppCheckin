@@ -33,6 +33,7 @@ export default function Segmented({ options, value, onChange, label, size = "md"
             onPress={() => onChange(o.id)}
             accessibilityRole="tab"
             accessibilityState={{ selected: on }}
+            aria-selected={on}
             style={[styles.opt, size === "sm" && styles.optSm, on && styles.optOn]}
           >
             {o.icon ? <Feather name={o.icon} size={16} color={on ? ds.ink : ds.inkMuted} /> : null}
@@ -41,7 +42,7 @@ export default function Segmented({ options, value, onChange, label, size = "md"
             </Text>
             {o.count != null ? (
               <View style={[styles.count, on && styles.countOn]}>
-                <Text style={styles.countText}>{o.count}</Text>
+                <Text style={[styles.countText, on && { color: ds.onBrand }]}>{o.count}</Text>
               </View>
             ) : null}
           </TouchableOpacity>

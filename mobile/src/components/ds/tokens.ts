@@ -1,34 +1,41 @@
-// Tokens do design system AppCheckin (tema claro).
+import { Platform } from "react-native";
+
+// No bundle web, as cores semanticas sao resolvidas pelo CSS; no nativo, pelo tema claro.
+const themed = (name: string, light: string) =>
+  Platform.OS === "web" ? `var(--ac-${name}, ${light})` : light;
+
+// Tokens do design system AppCheckin.
 // Fonte: artefato "AppCheckin" (Design System) — tokens.json.
 export const ds = {
-  ground: "#f2f3f5",
-  surface: "#ffffff",
-  surfaceSunken: "#f7f7f9",
-  line: "#e4e6ea",
-  lineStrong: "#8b929e",
-  ink: "#171a21",
-  inkMuted: "#5b6270",
+  ground: themed("ground", "#f2f3f5"),
+  surface: themed("surface", "#ffffff"),
+  surfaceSunken: themed("surface-sunken", "#f7f7f9"),
+  line: themed("line", "#e4e6ea"),
+  lineStrong: themed("line-strong", "#8b929e"),
+  ink: themed("ink", "#171a21"),
+  inkMuted: themed("ink-muted", "#5b6270"),
   inverse: "#171a21",
   onInverse: "#ffffff",
   brand: "#ff7a00",
   brandYellow: "#fdb400",
   brandRed: "#f2400a",
   onBrand: "#171a21",
-  brandInk: "#c2410c",
-  brandSoft: "#fff3e6",
-  success: "#15703a",
-  successSoft: "#e7f6ec",
-  onSuccess: "#ffffff",
-  warning: "#9a5b00",
-  warningSoft: "#fff4db",
-  danger: "#b91c1c",
-  dangerSoft: "#fdecec",
-  info: "#1d5fd1",
-  infoSoft: "#e8f0fe",
+  brandInk: themed("brand-ink", "#c2410c"),
+  brandSoft: themed("brand-soft", "#fff3e6"),
+  success: themed("success", "#15703a"),
+  successSoft: themed("success-soft", "#e7f6ec"),
+  onSuccess: themed("on-success", "#ffffff"),
+  onDanger: themed("on-danger", "#ffffff"),
+  warning: themed("warning", "#9a5b00"),
+  warningSoft: themed("warning-soft", "#fff4db"),
+  danger: themed("danger", "#b91c1c"),
+  dangerSoft: themed("danger-soft", "#fdecec"),
+  info: themed("info", "#1d5fd1"),
+  infoSoft: themed("info-soft", "#e8f0fe"),
   medalGold: "#f2b705",
   medalSilver: "#c2cad6",
   medalBronze: "#e09a5e",
-  scrim: "rgba(18, 21, 26, 0.56)",
+  scrim: themed("scrim", "rgba(18, 21, 26, 0.56)"),
 } as const;
 
 export const space = { 1: 4, 2: 8, 3: 12, 4: 16, 5: 20, 6: 24, 8: 32 } as const;

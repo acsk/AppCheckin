@@ -59,7 +59,7 @@ export default function AttendeeRow({
         </View>
         {state !== "pending" ? (
           <View style={[styles.mark, { backgroundColor: state === "present" ? ds.success : ds.danger }]}>
-            <Feather name={state === "present" ? "check" : "x"} size={11} color={ds.onInverse} />
+            <Feather name={state === "present" ? "check" : "x"} size={11} color={state === "present" ? ds.onSuccess : ds.onDanger} />
           </View>
         ) : null}
       </View>
@@ -84,7 +84,7 @@ export default function AttendeeRow({
             accessibilityState={{ selected: state === "present" }}
             style={[styles.tbtn, state === "present" && { backgroundColor: ds.success }]}
           >
-            <Feather name="check" size={18} color={state === "present" ? ds.onInverse : ds.inkMuted} />
+            <Feather name="check" size={18} color={state === "present" ? ds.onSuccess : ds.inkMuted} />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={onAbsent}
@@ -93,7 +93,7 @@ export default function AttendeeRow({
             accessibilityState={{ selected: state === "absent" }}
             style={[styles.tbtn, state === "absent" && { backgroundColor: ds.danger }]}
           >
-            <Feather name="x" size={18} color={state === "absent" ? ds.onInverse : ds.inkMuted} />
+            <Feather name="x" size={18} color={state === "absent" ? ds.onDanger : ds.inkMuted} />
           </TouchableOpacity>
         </View>
       ) : null}

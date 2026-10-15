@@ -4,6 +4,7 @@ import React from "react";
 import {
   ActivityIndicator,
   Image,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,7 +15,9 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Polygon } from "react-native-svg";
 import Avatar from "./Avatar";
 import Badge from "./Badge";
+import Segmented from "./Segmented";
 import { ds, radius, space, type } from "./tokens";
+import { useThemePreference } from "@/src/theme/ThemePreference";
 
 const LOGO_WHITE = require("../../../assets/images/appcheckin-logo-h-white.png");
 
@@ -98,6 +101,7 @@ export default function SideMenu({
   onLogout,
   onForceUpdate,
 }: Props) {
+  const { preference, setPreference, error: themeError } = useThemePreference();
   const canSwitch = !!gym && gym.count > 1 && !!gym.onSwitch;
   const versionLabel = version
     ? version.toLowerCase().startsWith("v")
@@ -306,6 +310,25 @@ export default function SideMenu({
               </View>
             ))}
 
+          {Platform.OS === "web" ? (
+            <View style={styles.group}>
+              <Text style={styles.groupTitle}>Aparência</Text>
+              <Segmented
+                label="Tema da interface"
+                value={preference}
+                options={[
+                  { id: "light", label: "Claro", icon: "sun" },
+                  { id: "dark", label: "Escuro", icon: "moon" },
+                  { id: "system", label: "Sistema", icon: "monitor" },
+                ]}
+                onChange={(next) => {
+                  if (next === "light" || next === "dark" || next === "system") setPreference(next);
+                }}
+              />
+              {themeError ? <Text style={styles.themeError} accessibilityRole="alert">{themeError}</Text> : null}
+            </View>
+          ) : null}
+
           {onForceUpdate ? (
             <TouchableOpacity
               style={styles.forceUpdate}
@@ -373,7 +396,7 @@ const styles = StyleSheet.create({
   roles: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   role: { height: 22, paddingHorizontal: 9, borderRadius: radius.full, backgroundColor: "rgba(255, 255, 255, 0.55)", justifyContent: "center" },
   roleMain: { backgroundColor: ds.inverse },
-  roleText: { fontSize: 11, fontWeight: "800", letterSpacing: 0.66, textTransform: "uppercase", color: ds.ink },
+  roleText: { fontSize: 11, fontWeight: "800", letterSpacing: 0.66, textTransform: "uppercase", color: ds.onBrand },
   roleTextMain: { color: "#ffffff" },
   gym: {
     flexDirection: "row",
@@ -382,7 +405,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: radius.md,
-    backgroundColor: "rgba(255, 255, 255, 0.85)",
+    backgroundColor: ds.surface,
   },
   gymText: { flex: 1, minWidth: 0 },
   gymLabel: { fontSize: 11, lineHeight: 14, fontWeight: "800", letterSpacing: 0.66, textTransform: "uppercase", color: ds.inkMuted },
@@ -424,6 +447,7 @@ const styles = StyleSheet.create({
   planFootStrong: { color: ds.ink, fontWeight: "900" },
   group: { gap: space[2] },
   groupTitle: { ...type.label, color: ds.inkMuted, paddingHorizontal: space[1] },
+  themeError: { fontSize: 12, lineHeight: 16, color: ds.danger },
   list: { backgroundColor: ds.surface, borderWidth: 1, borderColor: ds.line, borderRadius: radius.lg, overflow: "hidden" },
   item: { flexDirection: "row", alignItems: "center", gap: space[3], minHeight: 56, paddingVertical: 8, paddingHorizontal: space[3] },
   itemDivided: { borderTopWidth: 1, borderTopColor: ds.line },

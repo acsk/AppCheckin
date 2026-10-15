@@ -6,6 +6,7 @@ import Button from "@/src/components/ds/Button";
 import PixPaymentSheet from "@/src/components/ds/PixPaymentSheet";
 import PlanOption from "@/src/components/ds/PlanOption";
 import Section from "@/src/components/ds/Section";
+import Stepper from "@/src/components/ds/Stepper";
 import { colors } from "@/src/theme/colors";
 import { handleUnauthorizedResponse } from "@/src/utils/authHelpers";
 import { isSessionExpiredVisible } from "@/src/utils/sessionExpired";
@@ -998,7 +999,10 @@ export default function PlanoDetalhesScreen() {
       <SafeAreaView style={styles.container} edges={["left", "right"]}>
         <AppHeader
           title="Detalhes do Plano"
-          onBack={() => { handleBack; }}
+          onBack={handleBack}
+          bottom={
+            <Stepper tone="brand" steps={["Plano", "Ciclo e pagamento"]} current={1} />
+          }
         />
         <View style={styles.centerContent}>
           <ActivityIndicator size="large" color={colors.primary} />
@@ -1013,7 +1017,10 @@ export default function PlanoDetalhesScreen() {
       <SafeAreaView style={styles.container} edges={["left", "right"]}>
         <AppHeader
           title="Detalhes do Plano"
-          onBack={() => { handleBack; }}
+          onBack={handleBack}
+          bottom={
+            <Stepper tone="brand" steps={["Plano", "Ciclo e pagamento"]} current={1} />
+          }
         />
         <View style={styles.errorContainer}>
           <Feather name="alert-circle" size={48} color="#dc2626" />
@@ -1108,6 +1115,9 @@ export default function PlanoDetalhesScreen() {
         eyebrow={plano.modalidade?.nome || "Detalhes do plano"}
         title={plano.nome}
         onBack={handleBack}
+        bottom={
+          <Stepper tone="brand" steps={["Plano", "Ciclo e pagamento"]} current={1} />
+        }
         right={
           isPlanoAtivo || podeRenovar ? (
             <Badge tone="solid" icon={podeRenovar ? "refresh-cw" : "check"}>
