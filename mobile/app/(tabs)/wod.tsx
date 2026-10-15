@@ -16,6 +16,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { mobileService } from '../../src/services/mobileService';
 import { colors } from '../../src/theme/colors';
 
+import AppHeader from "@/src/components/ds/AppHeader";
 import { ds } from "@/src/components/ds/tokens";
 interface Bloco {
   id: number;
@@ -237,10 +238,10 @@ export default function WodScreen() {
   // Estado: Carregando modalidades
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.headerTop}>
-          <Text style={styles.headerTitle}>WOD do Dia</Text>
-        </View>
+      <SafeAreaView style={styles.container} edges={["left", "right"]}>
+        <AppHeader
+          title="WOD do Dia"
+        />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Carregando treino...</Text>
@@ -252,10 +253,10 @@ export default function WodScreen() {
   // Estado: Erro
   if (error && !selectedModality) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.headerTop}>
-          <Text style={styles.headerTitle}>WOD do Dia</Text>
-        </View>
+      <SafeAreaView style={styles.container} edges={["left", "right"]}>
+        <AppHeader
+          title="WOD do Dia"
+        />
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           refreshControl={
@@ -288,28 +289,19 @@ export default function WodScreen() {
   // Estado: Exibir detalhes do WOD (apenas 1 modalidade)
   if (selectedModality && wodDetalhes) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.headerTop}>
-          <View style={styles.headerTitleRow}>
-            {modalidades.length > 1 && (
-              <TouchableOpacity 
-                style={styles.backButton}
-                onPress={() => {
+      <SafeAreaView style={styles.container} edges={["left", "right"]}>
+        <AppHeader
+          title="WOD do dia"
+          subtitle={formatDate(wodDetalhes.data)}
+          onBack={
+            modalidades.length > 1
+              ? () => {
                   setSelectedModality(null);
                   setWodDetalhes(null);
-                }}
-              >
-                <Feather name="chevron-left" size={24} color={ds.ink} />
-              </TouchableOpacity>
-            )}
-            <View>
-              <Text style={styles.headerTitle}>WOD do Dia</Text>
-              <Text style={styles.headerSubtitle}>
-                {formatDate(wodDetalhes.data)}
-              </Text>
-            </View>
-          </View>
-        </View>
+                }
+              : undefined
+          }
+        />
 
         <ScrollView
           style={styles.scrollView}
@@ -454,15 +446,11 @@ export default function WodScreen() {
 
   // Estado: Seleção de modalidades (múltiplas)
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.headerTop}>
-        <View>
-          <Text style={styles.headerTitle}>WOD do Dia</Text>
-          <Text style={styles.headerSubtitle}>
-            {formatDate(new Date().toISOString().split('T')[0])}
-          </Text>
-        </View>
-      </View>
+    <SafeAreaView style={styles.container} edges={["left", "right"]}>
+      <AppHeader
+        title="WOD do dia"
+        subtitle={formatDate(new Date().toISOString().split('T')[0])}
+      />
 
       <ScrollView
         style={styles.scrollView}

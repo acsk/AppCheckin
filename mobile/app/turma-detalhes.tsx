@@ -19,6 +19,7 @@ import { colors } from "../src/theme/colors";
 import { normalizeUtf8 } from "../src/utils/utf8";
 
 
+import AppHeader from "@/src/components/ds/AppHeader";
 import { ds } from "@/src/components/ds/tokens";export default function TurmaDetalhesScreen() {
   const router = useRouter();
   const { turmaId, data } = useLocalSearchParams();
@@ -790,17 +791,11 @@ import { ds } from "@/src/components/ds/tokens";export default function TurmaDet
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.backButton}
-          >
-            <Feather name="arrow-left" size={24} color={ds.ink} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Detalhes da Turma</Text>
-          <View style={{ width: 40 }} />
-        </View>
+      <SafeAreaView style={styles.container} edges={["left", "right"]}>
+        <AppHeader
+          title="Detalhes da Turma"
+          onBack={() => router.back()}
+        />
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>Carregando...</Text>
         </View>
@@ -810,17 +805,11 @@ import { ds } from "@/src/components/ds/tokens";export default function TurmaDet
 
   if (!turma) {
     return (
-      <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.backButton}
-          >
-            <Feather name="arrow-left" size={24} color={ds.ink} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Detalhes da Turma</Text>
-          <View style={{ width: 40 }} />
-        </View>
+      <SafeAreaView style={styles.container} edges={["left", "right"]}>
+        <AppHeader
+          title="Detalhes da Turma"
+          onBack={() => router.back()}
+        />
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>Turma não encontrada</Text>
         </View>
@@ -830,17 +819,11 @@ import { ds } from "@/src/components/ds/tokens";export default function TurmaDet
 
   return (
     <>
-      <SafeAreaView style={styles.container} edges={["top", "bottom"]}>
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.backButton}
-          >
-            <Feather name="arrow-left" size={24} color={ds.ink} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Detalhes da Turma</Text>
-          <View style={{ width: 40 }} />
-        </View>
+      <SafeAreaView style={styles.container} edges={["left", "right"]}>
+        <AppHeader
+          title="Detalhes da Turma"
+          onBack={() => router.back()}
+        />
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
           <View style={styles.turmaHeader}>

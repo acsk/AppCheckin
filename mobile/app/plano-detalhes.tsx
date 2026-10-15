@@ -17,14 +17,15 @@ import {
   ActivityIndicator,
   Linking,
   Modal,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
+import AppHeader from "@/src/components/ds/AppHeader";
 import { ds } from "@/src/components/ds/tokens";
 interface Ciclo {
   id: number;
@@ -994,14 +995,11 @@ export default function PlanoDetalhesScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-            <Feather name="arrow-left" size={24} color={ds.ink} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Detalhes do Plano</Text>
-          <View style={{ width: 40 }} />
-        </View>
+      <SafeAreaView style={styles.container} edges={["left", "right"]}>
+        <AppHeader
+          title="Detalhes do Plano"
+          onBack={() => { handleBack; }}
+        />
         <View style={styles.centerContent}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Carregando detalhes...</Text>
@@ -1012,14 +1010,11 @@ export default function PlanoDetalhesScreen() {
 
   if (error || !plano) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-            <Feather name="arrow-left" size={24} color={ds.ink} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Detalhes do Plano</Text>
-          <View style={{ width: 40 }} />
-        </View>
+      <SafeAreaView style={styles.container} edges={["left", "right"]}>
+        <AppHeader
+          title="Detalhes do Plano"
+          onBack={() => { handleBack; }}
+        />
         <View style={styles.errorContainer}>
           <Feather name="alert-circle" size={48} color="#dc2626" />
           <Text style={styles.errorTitle}>Erro ao carregar plano</Text>
@@ -1107,24 +1102,20 @@ export default function PlanoDetalhesScreen() {
     mensais.filter((m) => m.desconto > 0).sort((x, y) => x.mensal - y.mensal)[0]?.id ?? null;
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Cabeçalho: voltar, modalidade e nome do plano */}
-      <View style={styles.header}>
-        <Button variant="ghost" icon="arrow-left" accessibilityLabel="Voltar" onPress={handleBack} />
-        <View style={styles.headerTitles}>
-          <Text style={styles.headerEyebrow} numberOfLines={1}>
-            {plano.modalidade?.nome || "Detalhes do plano"}
-          </Text>
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {plano.nome}
-          </Text>
-        </View>
-        {isPlanoAtivo || podeRenovar ? (
-          <Badge tone={podeRenovar ? "warning" : "success"} icon={podeRenovar ? "refresh-cw" : "check"}>
-            {podeRenovar ? "Renovar" : "Seu plano"}
-          </Badge>
-        ) : null}
-      </View>
+    <SafeAreaView style={styles.container} edges={["left", "right"]}>
+      {/* Cabeçalho no degradê da logo: modalidade e nome do plano */}
+      <AppHeader
+        eyebrow={plano.modalidade?.nome || "Detalhes do plano"}
+        title={plano.nome}
+        onBack={handleBack}
+        right={
+          isPlanoAtivo || podeRenovar ? (
+            <Badge tone="solid" icon={podeRenovar ? "refresh-cw" : "check"}>
+              {podeRenovar ? "Renovar" : "Seu plano"}
+            </Badge>
+          ) : null
+        }
+      />
 
       <ScrollView
         contentContainerStyle={styles.content}

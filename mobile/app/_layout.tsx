@@ -44,6 +44,12 @@ if (Platform.OS === "web" && typeof document !== "undefined") {
   }
 }
 
+// Tema claro com o fundo ground do design system (as telas não ficam brancas).
+const APP_THEME = {
+  ...DefaultTheme,
+  colors: { ...DefaultTheme.colors, background: "#f2f3f5", card: "#ffffff", text: "#171a21", border: "#e4e6ea", primary: "#ff7a00" },
+};
+
 // Rotas que NÃO precisam de autenticação
 const PUBLIC_ROUTES = ["(auth)", "index"];
 
@@ -196,7 +202,7 @@ export default function RootLayout() {
     return (
       <SafeAreaProvider>
         <ThemeProvider
-          value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
+          value={colorScheme === "dark" ? DarkTheme : APP_THEME}
         >
           <View style={[styles.root, styles.bootSplash]}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -208,11 +214,11 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+      <ThemeProvider value={colorScheme === "dark" ? DarkTheme : APP_THEME}>
         <ErrorBoundary>
           <View style={styles.root}>
             <StatusBarBackground />
-            <Stack>
+            <Stack screenOptions={{ contentStyle: { backgroundColor: "#f2f3f5" } }}>
               <Stack.Screen name="index" options={{ headerShown: false }} />
               <Stack.Screen name="(auth)" options={{ headerShown: false }} />
               <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

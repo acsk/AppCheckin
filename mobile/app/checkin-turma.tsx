@@ -24,6 +24,7 @@ import { normalizeUtf8 } from "../src/utils/utf8";
 import { normalizeVencimentoMessage } from "../src/utils/dateBr";
 import { weekdayAbbrev } from "../src/utils/weekdayAbbrev";
 
+import AppHeader from "@/src/components/ds/AppHeader";
 import { ds } from "@/src/components/ds/tokens";
 const getRouteParam = (value?: string | string[]) => {
   if (value == null) return undefined;
@@ -1416,20 +1417,8 @@ export default function CheckinTurmaScreen() {
 
   if (!routeTurmaId) {
     return (
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <View style={[styles.headerTop, styles.headerTopDetailed]}>
-          <View style={styles.headerTopRow}>
-            <View style={styles.headerLeft}>
-              <TouchableOpacity
-                style={styles.headerBackButton}
-                onPress={goBackToCheckin}
-              >
-                <Feather name="arrow-left" size={18} color={ds.ink} />
-              </TouchableOpacity>
-              <Text style={styles.headerTitle}>Turma</Text>
-            </View>
-          </View>
-        </View>
+      <SafeAreaView style={styles.container} edges={["left", "right"]}>
+        <AppHeader title="Turma" onBack={goBackToCheckin} />
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>Turma não informada</Text>
         </View>
@@ -1439,43 +1428,32 @@ export default function CheckinTurmaScreen() {
 
   return (
     <>
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        <View style={[styles.headerTop, styles.headerTopDetailed]}>
-          <View style={styles.headerTopRow}>
-            <View style={styles.headerLeft}>
-              <TouchableOpacity
-                style={styles.headerBackButton}
-                onPress={goBackToCheckin}
-              >
-                <Feather name="arrow-left" size={18} color={ds.ink} />
-              </TouchableOpacity>
-              <View
-                style={[
-                  styles.headerIconCircle,
-                  {
-                    backgroundColor: `${participantsTurma?.modalidade?.cor || colors.primary}35`,
-                  },
-                ]}
-              >
-                {participantsTurma?.modalidade?.icone ? (
-                  <MaterialCommunityIcons
-                    name={participantsTurma.modalidade.icone as any}
-                    size={18}
-                    color={ds.ink}
-                  />
-                ) : (
-                  <Feather name="activity" size={18} color={ds.ink} />
-                )}
-              </View>
-              <View style={styles.headerTextBlock}>
-                <Text style={styles.headerTitle} numberOfLines={2}>
-                  {getHeaderTitle(participantsTurma)}
-                </Text>
-              </View>
+      <SafeAreaView style={styles.container} edges={["left", "right"]}>
+        <AppHeader
+          title={getHeaderTitle(participantsTurma)}
+          onBack={goBackToCheckin}
+          leading={
+            <View
+              style={[
+                styles.headerIconCircle,
+                {
+                  backgroundColor: `${participantsTurma?.modalidade?.cor || colors.primary}35`,
+                },
+              ]}
+            >
+              {participantsTurma?.modalidade?.icone ? (
+                <MaterialCommunityIcons
+                  name={participantsTurma.modalidade.icone as any}
+                  size={18}
+                  color={ds.ink}
+                />
+              ) : (
+                <Feather name="activity" size={18} color={ds.ink} />
+              )}
             </View>
-          </View>
-
-          {participantsTurma ? (
+          }
+          bottom={
+            participantsTurma ? (
             <View style={styles.headerMetaRow}>
               <View style={styles.headerChipsWrap}>
                 <View style={styles.headerChip}>
@@ -1499,9 +1477,9 @@ export default function CheckinTurmaScreen() {
                     <MaterialCommunityIcons
                       name="lock"
                       size={14}
-                      color={ds.ink}
+                      color={ds.onInverse}
                     />
-                    <Text style={styles.headerChipText}>
+                    <Text style={[styles.headerChipText, { color: ds.onInverse }]}>
                       Check-in bloqueado
                     </Text>
                   </View>
@@ -1565,8 +1543,9 @@ export default function CheckinTurmaScreen() {
                 </TouchableOpacity>
               ) : null}
             </View>
-          ) : null}
-        </View>
+          ) : null
+          }
+        />
 
         <ScrollView
           contentContainerStyle={[styles.scrollContent, styles.scrollGrow]}
@@ -2525,9 +2504,9 @@ const styles = StyleSheet.create({
     backgroundColor: ds.surfaceSunken,
   },
   headerIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -2539,7 +2518,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: 10,
-    width: "100%",
+    paddingHorizontal: 16,
+    paddingBottom: 16,
   },
   headerChipsWrap: {
     flex: 1,
@@ -2553,20 +2533,22 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    height: 30,
     paddingHorizontal: 12,
-    paddingVertical: 6,
     borderRadius: 999,
-    backgroundColor: ds.surfaceSunken,
+    backgroundColor: "rgba(255, 255, 255, 0.28)",
+    borderWidth: 1,
+    borderColor: "rgba(255, 255, 255, 0.45)",
   },
   headerChipText: {
-    color: ds.ink,
-    fontSize: 12,
-    fontWeight: "700",
+    color: ds.onBrand,
+    fontSize: 13,
+    fontWeight: "800",
+    fontVariant: ["tabular-nums"],
   },
   headerChipBloqueado: {
-    backgroundColor: "#B91C1C",
-    borderWidth: 1,
-    borderColor: ds.line,
+    backgroundColor: ds.ink,
+    borderColor: ds.ink,
   },
   bloqueioCheckinButtonCompact: {
     flexDirection: "row",

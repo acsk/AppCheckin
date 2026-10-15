@@ -30,7 +30,6 @@ const isPublicAuthEndpoint = (endpoint = "") =>
   endpoint === "/auth/register" ||
   endpoint === "/auth/register-mobile" ||
   endpoint === "/auth/tenants-public" ||
-  endpoint === "/auth/select-tenant" ||
   endpoint === "/auth/select-tenant-public" ||
   endpoint === "/auth/select-tenant-initial" ||
   endpoint === "/auth/password-recovery/request" ||

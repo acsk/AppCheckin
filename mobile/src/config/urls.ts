@@ -49,7 +49,6 @@ export const CONFIG = {
     "/auth/register",
     "/auth/register-mobile",
     "/auth/tenants-public",
-    "/auth/select-tenant",
     "/auth/select-tenant-public",
     "/auth/select-tenant-initial",
     "/auth/password-recovery/request",

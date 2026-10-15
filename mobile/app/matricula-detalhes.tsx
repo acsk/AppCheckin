@@ -18,6 +18,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 
+import AppHeader from "@/src/components/ds/AppHeader";
 import { ds } from "@/src/components/ds/tokens";export default function MatriculaDetalhesScreen() {
   const router = useRouter();
   const { matriculaId } = useLocalSearchParams();
@@ -82,7 +83,7 @@ import { ds } from "@/src/components/ds/tokens";export default function Matricul
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={["left", "right"]}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -92,7 +93,7 @@ import { ds } from "@/src/components/ds/tokens";export default function Matricul
 
   if (!matricula) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={["left", "right"]}>
         <View style={styles.loadingContainer}>
           <Text style={styles.errorText}>Matrícula não encontrada</Text>
           <TouchableOpacity
@@ -134,15 +135,12 @@ import { ds } from "@/src/components/ds/tokens";export default function Matricul
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["left", "right"]}>
       {/* Header */}
-      <View style={styles.headerTop}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Feather name="chevron-left" size={24} color={ds.ink} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Detalhes da Matrícula</Text>
-        <View style={{ width: 24 }} />
-      </View>
+      <AppHeader
+        title="Detalhes da Matrícula"
+        onBack={() => router.back()}
+      />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}

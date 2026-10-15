@@ -2,6 +2,7 @@ import { DebugLogsViewer } from "@/components/DebugLogsViewer";
 import PasswordRecoveryModal from "@/components/PasswordRecoveryModal";
 import AuthService from "@/src/services/authService";
 import SideMenu, { SideMenuGroup } from "@/src/components/ds/SideMenu";
+import AppHeader from "@/src/components/ds/AppHeader";
 import { ds } from "@/src/components/ds/tokens";
 import MobileService from "@/src/services/mobileService";
 import { colors } from "@/src/theme/colors";
@@ -1197,7 +1198,7 @@ export default function AccountScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={["left", "right"]}>
       {/* Mostrar erro de foto se houver */}
       {photoError ? (
         <View style={styles.errorBanner}>
@@ -1209,104 +1210,78 @@ export default function AccountScreen() {
         </View>
       ) : null}
 
-      {/* Header com dados do usuário */}
-      <View style={styles.headerTop}>
-        <View style={styles.headerUserRow}>
-          <View style={styles.headerUserLeft}>
-            <TouchableOpacity
-              style={styles.headerPhotoWrapper}
-              onPress={openSidebar}
-              accessibilityRole="button"
-              accessibilityLabel="Abrir menu do perfil"
-            >
-              <View style={styles.headerPhotoContainer}>
-                {shouldRenderUserPhoto ? (
-                  <Image
-                    source={{ uri: userPhotoUriSafe }}
-                    style={styles.headerPhotoImage}
-                    onError={(event) => {
-                      const reason =
-                        event?.nativeEvent?.error || "Erro desconhecido";
-                      console.warn("⚠️ Falha ao carregar foto do usuário:", {
-                        uri: userPhotoUriSafe,
-                        reason,
-                      });
-                      setHasPhotoLoadError(true);
-                    }}
-                  />
-                ) : (
-                  <Text style={styles.headerPhotoInitials}>
-                    {getInitials(userProfile?.nome || "User")}
-                  </Text>
-                )}
-              </View>
-              {userProfile?.plano?.matricula_status?.nome ? (
-                <View
-                  style={[
-                    styles.matriculaStatusBadge,
-                    {
-                      backgroundColor:
-                        userProfile.plano.matricula_status.codigo === "ativa"
-                          ? ds.successSoft
-                          : userProfile.plano.matricula_status.codigo === "pendente"
-                            ? ds.warningSoft
-                            : ds.dangerSoft,
-                    },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.matriculaStatusBadgeText,
-                      {
-                        color:
-                          userProfile.plano.matricula_status.codigo === "ativa"
-                            ? ds.success
-                            : userProfile.plano.matricula_status.codigo === "pendente"
-                              ? ds.warning
-                              : ds.danger,
-                      },
-                    ]}
-                  >
-                    {userProfile.plano.matricula_status.nome}
-                  </Text>
-                </View>
-              ) : null}
-            </TouchableOpacity>
-            <View style={styles.headerUserInfo}>
-              {userRoleLabels.length > 0 || getTenantDisplayName() ? (
-                <Text style={styles.headerUserRoles} numberOfLines={1}>
-                  {[getTenantDisplayName(), userRoleLabels.join(" · ").toLowerCase()]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </Text>
-              ) : null}
-              <Text style={styles.headerUserName} numberOfLines={2}>
-                {`Olá, ${(userProfile?.nome || "").trim().split(/\s+/)[0]?.replace(/^(.)(.*)$/, (_m, a, b) => a.toUpperCase() + b.toLowerCase()) || "aluno"}`}
+      {/* Cabeçalho: hero da home no degradê da logo (AppHeader variant="brand") */}
+      <AppHeader
+        variant="brand"
+        eyebrow={
+          [getTenantDisplayName(), userRoleLabels.join(" · ").toLowerCase()]
+            .filter(Boolean)
+            .join(" · ") || null
+        }
+        title={`Olá, ${(userProfile?.nome || "").trim().split(/\s+/)[0]?.replace(/^(.)(.*)$/, (_m, a, b) => a.toUpperCase() + b.toLowerCase()) || "aluno"}`}
+        leading={
+        <TouchableOpacity
+          style={styles.headerPhotoWrapper}
+          onPress={openSidebar}
+          accessibilityRole="button"
+          accessibilityLabel="Abrir menu do perfil"
+        >
+          <View style={styles.headerPhotoContainer}>
+            {shouldRenderUserPhoto ? (
+              <Image
+                source={{ uri: userPhotoUriSafe }}
+                style={styles.headerPhotoImage}
+                onError={(event) => {
+                  const reason =
+                    event?.nativeEvent?.error || "Erro desconhecido";
+                  console.warn("⚠️ Falha ao carregar foto do usuário:", {
+                    uri: userPhotoUriSafe,
+                    reason,
+                  });
+                  setHasPhotoLoadError(true);
+                }}
+              />
+            ) : (
+              <Text style={styles.headerPhotoInitials}>
+                {getInitials(userProfile?.nome || "User")}
               </Text>
-              {/* {getTenantDisplayName() && (
-                  <TouchableOpacity
-                    style={styles.tenantSwitchButton}
-                    onPress={() => setShowTenantModal(true)}
-                    accessibilityLabel="Trocar de academia"
-                    activeOpacity={0.8}
-                  >
-                    <Feather name="building" size={12} color={colors.primary} />
-                    <Text style={styles.tenantSwitchButtonText}>
-                      {getTenantDisplayName()}
-                    </Text>
-                  </TouchableOpacity>
-                )} */}
-            </View>
+            )}
           </View>
-          <TouchableOpacity
-            style={styles.headerMenuButton}
-            onPress={openSidebar}
-            accessibilityLabel="Abrir menu"
-          >
-            <Feather name="menu" size={22} color={ds.onBrand} />
-          </TouchableOpacity>
-        </View>
-      </View>
+          {userProfile?.plano?.matricula_status?.nome ? (
+            <View
+              style={[
+                styles.matriculaStatusBadge,
+                {
+                  backgroundColor:
+                    userProfile.plano.matricula_status.codigo === "ativa"
+                      ? ds.successSoft
+                      : userProfile.plano.matricula_status.codigo === "pendente"
+                        ? ds.warningSoft
+                        : ds.dangerSoft,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.matriculaStatusBadgeText,
+                  {
+                    color:
+                      userProfile.plano.matricula_status.codigo === "ativa"
+                        ? ds.success
+                        : userProfile.plano.matricula_status.codigo === "pendente"
+                          ? ds.warning
+                          : ds.danger,
+                  },
+                ]}
+              >
+                {userProfile.plano.matricula_status.nome}
+              </Text>
+            </View>
+          ) : null}
+        </TouchableOpacity>
+        }
+        actions={[{ icon: "menu", label: "Abrir menu", onPress: openSidebar }]}
+      />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}

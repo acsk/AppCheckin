@@ -21,13 +21,14 @@ import {
   Linking,
   Modal,
   Platform,
-  SafeAreaView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
+import AppHeader from "@/src/components/ds/AppHeader";
 import Badge from "@/src/components/ds/Badge";
 import Button from "@/src/components/ds/Button";
 import { ds } from "@/src/components/ds/tokens";
@@ -974,25 +975,15 @@ export default function MinhasAssinaturasScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Cabeçalho */}
-      <View style={styles.headerTop}>
-        <Button
-          variant="ghost"
-          icon="arrow-left"
-          accessibilityLabel="Voltar"
-          onPress={() => router.replace("/(tabs)/checkin")}
-        />
-        <Text style={styles.headerTitleCentered} numberOfLines={1}>
-          Minhas assinaturas
-        </Text>
-        <Button
-          variant="ghost"
-          icon="refresh-cw"
-          accessibilityLabel="Atualizar"
-          onPress={() => fetchAssinaturasCallback(apiUrl)}
-        />
-      </View>
+    <SafeAreaView style={styles.container} edges={["left", "right"]}>
+      {/* Cabeçalho no degradê da logo */}
+      <AppHeader
+        title="Minhas assinaturas"
+        onBack={() => router.replace("/(tabs)/checkin")}
+        actions={[
+          { icon: "refresh-cw", label: "Atualizar", onPress: () => fetchAssinaturasCallback(apiUrl), loading },
+        ]}
+      />
 
       {loading ? (
         <View style={styles.centerContent}>

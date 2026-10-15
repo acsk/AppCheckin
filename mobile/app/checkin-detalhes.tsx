@@ -8,13 +8,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../src/theme/colors";
 import { normalizeUtf8 } from "../src/utils/utf8";
 
+import AppHeader from "@/src/components/ds/AppHeader";
 import { ds } from "@/src/components/ds/tokens";
 const getPhotoUrl = (foto?: string | null) => {
   if (!foto) return null;
@@ -42,13 +42,11 @@ export default function CheckinDetalhesScreen() {
   const showResumoFinanceiro = String(params.showResumoFinanceiro || "") === "1";
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Feather name="arrow-left" size={20} color={ds.ink} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Detalhes do Check-in</Text>
-      </View>
+    <SafeAreaView style={styles.container} edges={["left", "right"]}>
+      <AppHeader
+        title="Detalhes do Check-in"
+        onBack={() => router.back()}
+      />
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.card}>

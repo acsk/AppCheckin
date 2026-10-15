@@ -10,12 +10,12 @@ import {
     ScrollView,
     StyleSheet,
     Text,
-    TouchableOpacity,
     View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 
+import AppHeader from "@/src/components/ds/AppHeader";
 import { ds } from "@/src/components/ds/tokens";export default function MatriculaScreen() {
   const router = useRouter();
   const { matriculaId } = useLocalSearchParams();
@@ -95,7 +95,7 @@ import { ds } from "@/src/components/ds/tokens";export default function Matricul
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={["left", "right"]}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
         </View>
@@ -105,14 +105,11 @@ import { ds } from "@/src/components/ds/tokens";export default function Matricul
 
   if (!matricula) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.headerTop}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Feather name="arrow-left" size={24} color={ds.ink} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Matrícula</Text>
-          <View style={{ width: 24 }} />
-        </View>
+      <SafeAreaView style={styles.container} edges={["left", "right"]}>
+        <AppHeader
+          title="Matrícula"
+          onBack={() => router.back()}
+        />
         <View style={styles.emptyContainer}>
           <Feather name="alert-circle" size={48} color="#ddd" />
           <Text style={styles.emptyText}>Matrícula não encontrada</Text>
@@ -122,14 +119,11 @@ import { ds } from "@/src/components/ds/tokens";export default function Matricul
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={["right", "bottom", "left"]}>
-      <View style={styles.headerTop}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Feather name="arrow-left" size={24} color={ds.ink} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Detalhes da Matrícula</Text>
-        <View style={{ width: 24 }} />
-      </View>
+    <SafeAreaView style={styles.container} edges={["left", "right"]}>
+      <AppHeader
+        title="Detalhes da Matrícula"
+        onBack={() => router.back()}
+      />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}

@@ -6,6 +6,7 @@ import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { getTokenTenantId, handleAuthError } from "@/src/utils/authHelpers";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
+import AppHeader from "@/src/components/ds/AppHeader";
 import { useRouter } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
 import {
@@ -176,10 +177,8 @@ export default function ContaScreen() {
   const plano = profile?.plano;
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Conta</Text>
-      </View>
+    <SafeAreaView style={styles.container} edges={["left", "right"]}>
+      <AppHeader title="Conta" subtitle={tenantNome || undefined} />
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {/* Perfil */}

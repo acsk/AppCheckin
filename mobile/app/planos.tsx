@@ -14,14 +14,15 @@ import {
   FlatList,
   Linking,
   Modal,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
+import AppHeader from "@/src/components/ds/AppHeader";
 import { ds } from "@/src/components/ds/tokens";
 // NOVO ARQUIVO - SEM CÓDIGO ANTIGO
 
@@ -1463,23 +1464,17 @@ export default function PlanosScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.headerTop}>
-          <TouchableOpacity
-            style={styles.headerBackButton}
-            onPress={() => {
+      <SafeAreaView style={styles.container} edges={["left", "right"]}>
+        <AppHeader
+          title="Planos"
+          onBack={() => {
               if (selectedPlanoId) {
                 setSelectedPlanoId(null);
                 return;
               }
               router.replace("/(tabs)/checkin");
             }}
-          >
-            <Feather name="arrow-left" size={24} color={ds.ink} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitleCentered}>Planos</Text>
-          <View style={{ width: 40 }} />
-        </View>
+        />
         <View style={styles.centerContent}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Carregando planos...</Text>
@@ -1491,7 +1486,7 @@ export default function PlanosScreen() {
   // Verificar se a permissão está sendo carregada
   if (hasPermission === null) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={styles.container} edges={["left", "right"]}>
         <View style={styles.centerContent}>
           <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>Verificando permissões...</Text>
@@ -1503,17 +1498,11 @@ export default function PlanosScreen() {
   // Bloquear acesso se o usuário não tem permissão
   if (hasPermission === false) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.headerTop}>
-          <TouchableOpacity
-            style={styles.headerBackButton}
-            onPress={() => router.replace("/(tabs)/checkin")}
-          >
-            <Feather name="arrow-left" size={24} color={ds.ink} />
-          </TouchableOpacity>
-          <Text style={styles.headerTitleCentered}>Planos</Text>
-          <View style={{ width: 40 }} />
-        </View>
+      <SafeAreaView style={styles.container} edges={["left", "right"]}>
+        <AppHeader
+          title="Planos"
+          onBack={() => router.replace("/(tabs)/checkin")}
+        />
         <View style={styles.centerContent}>
           <Feather name="lock" size={64} color="#dc2626" />
           <Text
@@ -1558,39 +1547,21 @@ export default function PlanosScreen() {
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.headerTop}>
-        <TouchableOpacity
-          style={styles.headerBackButton}
-          onPress={() => {
+    <SafeAreaView style={styles.container} edges={["left", "right"]}>
+      <AppHeader
+        title="Planos"
+        onBack={() => {
             if (selectedPlanoId) {
               setSelectedPlanoId(null);
               return;
             }
             router.replace("/(tabs)/checkin");
           }}
-        >
-          <Feather name="arrow-left" size={24} color={ds.ink} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitleCentered}>Planos</Text>
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          <TouchableOpacity
-            style={styles.headerBackButton}
-            onPress={() => router.push("/minhas-assinaturas")}
-          >
-            <Feather name="list" size={20} color={ds.ink} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.headerBackButton}
-            onPress={() => {
+        actions={[{ icon: "list", label: "Atualizar", onPress: () => router.push("/minhas-assinaturas") }, { icon: "refresh-cw", label: "Atualizar", onPress: () => {
               setLoading(true);
               fetchPlanos(apiUrl);
-            }}
-          >
-            <Feather name="refresh-cw" size={20} color={ds.ink} />
-          </TouchableOpacity>
-        </View>
-      </View>
+            } }]}
+      />
 
       {error ? (
         <View style={styles.errorContainer}>

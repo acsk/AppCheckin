@@ -5,7 +5,6 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
     Animated,
     Image,
     Modal,
@@ -25,6 +24,7 @@ import { normalizeVencimentoMessage } from "../../src/utils/dateBr";
 import { weekdayAbbrev } from "../../src/utils/weekdayAbbrev";
 
 import ClassTimeline, { ClassSlotProps, SlotStatus } from "@/src/components/ds/ClassTimeline";
+import AppHeader from "@/src/components/ds/AppHeader";
 import DayPicker from "@/src/components/ds/DayPicker";
 import Segmented from "@/src/components/ds/Segmented";
 import { ds } from "@/src/components/ds/tokens";
@@ -1715,43 +1715,40 @@ export default function CheckinScreen() {
 
   return (
     <>
-      <SafeAreaView style={styles.container} edges={["top"]}>
-        {/* Header com Botão Recarregar */}
-        <View style={styles.headerTop}>
-          <View style={styles.headerTopRow}>
-            <View style={styles.headerLeft}>
-              <View>
-                <Text style={styles.headerTitle}>Check-in</Text>
-                {selectedDate ? (
-                  <Text style={styles.headerSubtitle}>
-                    {(() => {
-                      const t = selectedDate.toLocaleDateString("pt-BR", {
-                        weekday: "long",
-                        day: "numeric",
-                        month: "long",
-                      });
-                      return t.charAt(0).toUpperCase() + t.slice(1).replace("-feira", "");
-                    })()}
-                  </Text>
-                ) : null}
-              </View>
+      <SafeAreaView style={styles.container} edges={[]}>
+        {/* Cabeçalho no degradê da logo, com os dias dentro do mesmo bloco */}
+        <AppHeader
+          title="Check-in"
+          subtitle={(() => {
+            const base = selectedDate || new Date();
+            const t = base.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+            return t.charAt(0).toUpperCase() + t.slice(1);
+          })()}
+          actions={[
+            {
+              icon: "refresh-cw",
+              label: "Atualizar horários",
+              onPress: () => void reloadSchedulesList(),
+              loading,
+            },
+          ]}
+          bottom={
+            <View className="notranslate">
+              <DayPicker
+                days={calendarDays.map((date) => {
+                  const { day, dayName } = formatDateDisplay(date);
+                  return { id: formatDateParam(date), weekday: dayName, day };
+                })}
+                value={formatDateParam(selectedDate)}
+                today={formatDateParam(new Date())}
+                onChange={(id) => {
+                  const date = calendarDays.find((d) => formatDateParam(d) === id);
+                  if (date) selectCalendarDay(date);
+                }}
+              />
             </View>
-            <View style={styles.headerRight}>
-              <TouchableOpacity
-                style={styles.refreshButton}
-                onPress={() => void reloadSchedulesList()}
-                disabled={loading}
-                accessibilityLabel="Recarregar horários"
-              >
-                {loading ? (
-                  <ActivityIndicator size="small" color={ds.ink} />
-                ) : (
-                  <Feather name="refresh-cw" size={22} color={ds.ink} />
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+          }
+        />
 
         {/* Modal para trocar de tenant */}
         <Modal
@@ -1807,21 +1804,6 @@ export default function CheckinScreen() {
             </View>
           </View>
         </Modal>
-
-        {/* Dias: fila de chips colada no cabeçalho */}
-        <View className="notranslate">
-          <DayPicker
-            days={calendarDays.map((date) => {
-              const { day, dayName } = formatDateDisplay(date);
-              return { id: formatDateParam(date), weekday: dayName, day };
-            })}
-            value={formatDateParam(selectedDate)}
-            onChange={(id) => {
-              const date = calendarDays.find((d) => formatDateParam(d) === id);
-              if (date) selectCalendarDay(date);
-            }}
-          />
-        </View>
 
         <ScrollView
           contentContainerStyle={[styles.scrollContent, styles.scrollGrow]}
