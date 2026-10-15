@@ -1,7 +1,11 @@
 import { useProtectedRoute } from "@/hooks/useProtectedRoute";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { authService } from "@/src/services/authService";
+import Badge from "@/src/components/ds/Badge";
+import Button from "@/src/components/ds/Button";
 import PixPaymentSheet from "@/src/components/ds/PixPaymentSheet";
+import PlanOption from "@/src/components/ds/PlanOption";
+import Section from "@/src/components/ds/Section";
 import { colors } from "@/src/theme/colors";
 import { handleUnauthorizedResponse } from "@/src/utils/authHelpers";
 import { isSessionExpiredVisible } from "@/src/utils/sessionExpired";
@@ -1091,63 +1095,68 @@ export default function PlanoDetalhesScreen() {
   // Plano ativo sem renovação e sem troca de ciclo: botão estático.
   const bloquearCompraPorAtivo =
     isPlanoAtivo && !podeRenovar && !cicloDiferenteDoAtual;
+  // Preço mensal de cada ciclo: o menor vira "a partir de" e o maior é o preço cheio riscado.
+  const mensais = ciclos.map((c) => ({
+    id: c.id,
+    mensal: Number(c.valor_mensal) || (c.meses ? Number(c.valor) / c.meses : Number(c.valor)),
+    desconto: Number(c.desconto_percentual) || 0,
+  }));
+  const menorMensal = mensais.length ? Math.min(...mensais.map((m) => m.mensal)) : 0;
+  const maiorMensal = mensais.length ? Math.max(...mensais.map((m) => m.mensal)) : 0;
+  const cicloMelhorPrecoId =
+    mensais.filter((m) => m.desconto > 0).sort((x, y) => x.mensal - y.mensal)[0]?.id ?? null;
+
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
+      {/* Cabeçalho: voltar, modalidade e nome do plano */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <Feather name="arrow-left" size={24} color={ds.ink} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Detalhes do Plano</Text>
-        <View style={{ width: 40 }} />
+        <Button variant="ghost" icon="arrow-left" accessibilityLabel="Voltar" onPress={handleBack} />
+        <View style={styles.headerTitles}>
+          <Text style={styles.headerEyebrow} numberOfLines={1}>
+            {plano.modalidade?.nome || "Detalhes do plano"}
+          </Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {plano.nome}
+          </Text>
+        </View>
+        {isPlanoAtivo || podeRenovar ? (
+          <Badge tone={podeRenovar ? "warning" : "success"} icon={podeRenovar ? "refresh-cw" : "check"}>
+            {podeRenovar ? "Renovar" : "Seu plano"}
+          </Badge>
+        ) : null}
       </View>
 
       <ScrollView
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        {/* Hero Card */}
-        <View style={styles.heroCard}>
-          <View style={styles.heroTop}>
-            <View style={styles.heroInfo}>
-              <Text style={styles.heroNome}>{plano.nome}</Text>
-              <View style={styles.modalidadeBadge}>
-                <Feather name="activity" size={12} color={colors.primary} />
-                <Text style={styles.modalidadeText}>
-                  {plano.modalidade.nome}
-                </Text>
-              </View>
-            </View>
-            {(isPlanoAtivo || podeRenovar) && (
-              <View style={styles.ativoBadge}>
-                <Feather name={podeRenovar ? "refresh-cw" : "check-circle"} size={14} color="#fff" />
-                <Text style={styles.ativoBadgeText}>
-                  {plano.label || (podeRenovar ? "Renovação disponível" : "Seu plano")}
-                </Text>
-              </View>
-            )}
+        {/* O que está incluso: três fatos */}
+        <View style={styles.factsCard}>
+          <View style={styles.fact}>
+            <Text style={styles.factK}>AULAS</Text>
+            <Text style={styles.factV}>
+              {plano.checkins_semanais ? `${plano.checkins_semanais}/semana` : "Livre"}
+            </Text>
           </View>
-
-          {selectedCiclo && (
-            <View style={styles.priceSection}>
-              <Text style={styles.priceValue}>
-                {selectedCiclo.valor_formatado}
-              </Text>
-              <Text style={styles.priceCiclo}>/{selectedCiclo.nome}</Text>
-              {!!selectedCiclo.valor_mensal_formatado &&
-                selectedCiclo.meses > 1 && (
-                  <Text style={styles.priceMonthly}>
-                    ({selectedCiclo.valor_mensal_formatado}/mês)
-                  </Text>
-                )}
-            </View>
-          )}
+          <View style={[styles.fact, styles.factDivider]}>
+            <Text style={styles.factK}>DURAÇÃO</Text>
+            <Text style={styles.factV} numberOfLines={1}>
+              {plano.duracao_texto ||
+                `${plano.duracao_dias} ${plano.duracao_dias === 1 ? "dia" : "dias"}`}
+            </Text>
+          </View>
+          <View style={[styles.fact, styles.factDivider]}>
+            <Text style={styles.factK}>A PARTIR DE</Text>
+            <Text style={styles.factV} numberOfLines={1}>
+              {menorMensal ? `${formatCurrency(menorMensal)}/mês` : plano.valor_formatado}
+            </Text>
+          </View>
         </View>
 
         {podeRenovar &&
         (plano.motivo_renovacao === "limite_checkins_ciclo" || isPendente) ? (
           <View style={styles.pendingBanner}>
-            <Feather name="refresh-cw" size={16} color="#b45309" />
+            <Feather name="refresh-cw" size={18} color={ds.warning} />
             <View style={styles.pendingBannerContent}>
               <Text style={styles.pendingBannerTitle}>Renovação disponível</Text>
               <Text style={styles.pendingBannerText}>
@@ -1158,7 +1167,7 @@ export default function PlanoDetalhesScreen() {
           </View>
         ) : isPendente ? (
           <View style={styles.pendingBanner}>
-            <Feather name="alert-circle" size={16} color="#b45309" />
+            <Feather name="clock" size={18} color={ds.warning} />
             <View style={styles.pendingBannerContent}>
               <Text style={styles.pendingBannerTitle}>Pagamento pendente</Text>
               <Text style={styles.pendingBannerText}>
@@ -1169,209 +1178,109 @@ export default function PlanoDetalhesScreen() {
           </View>
         ) : null}
 
-        {/* Descrição */}
-        {!!plano.descricao && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Sobre o Plano</Text>
-            <Text style={styles.descricaoText}>{plano.descricao}</Text>
-          </View>
-        )}
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Informações do plano</Text>
-          <View style={styles.featuresList}>
-            <View style={styles.featureItem}>
-              <View style={styles.featureIconCircle}>
-                <Feather name="calendar" size={16} color={colors.primary} />
-              </View>
-              <View style={styles.featureContent}>
-                <Text style={styles.featureLabel}>Duração</Text>
-                <Text style={styles.featureValue}>
-                  {plano.duracao_texto ||
-                    `${plano.duracao_dias} ${
-                      plano.duracao_dias === 1 ? "dia" : "dias"
-                    }`}
-                </Text>
-              </View>
-            </View>
-            <View style={styles.featureDivider} />
-            <View style={styles.featureItem}>
-              <View style={styles.featureIconCircle}>
-                <Feather name="check-square" size={16} color={colors.primary} />
-              </View>
-              <View style={styles.featureContent}>
-                <Text style={styles.featureLabel}>Check-ins</Text>
-                <Text style={styles.featureValue}>
-                  {plano.checkins_semanais} por semana
-                </Text>
-              </View>
-            </View>
-            <View style={styles.featureDivider} />
-            <View style={styles.featureItem}>
-              <View style={styles.featureIconCircle}>
-                <Feather name="activity" size={16} color={colors.primary} />
-              </View>
-              <View style={styles.featureContent}>
-                <Text style={styles.featureLabel}>Modalidade</Text>
-                <Text style={styles.featureValue}>{plano.modalidade.nome}</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Seleção de Ciclo */}
+        {/* Ciclos: preço por mês em destaque */}
         {ciclos.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Escolha o ciclo de cobrança</Text>
-            <View style={styles.ciclosGrid}>
+          <Section title="Escolha o ciclo" aside="Preço por mês" bare>
+            <View style={styles.ciclosList} accessibilityRole="radiogroup" accessibilityLabel="Ciclo de cobrança">
               {ciclos.map((ciclo) => {
-                const isSelected = selectedCicloId === ciclo.id;
+                const mensal = Number(ciclo.valor_mensal) || (ciclo.meses ? Number(ciclo.valor) / ciclo.meses : Number(ciclo.valor));
+                const desconto = Number(ciclo.desconto_percentual) || 0;
+                const economiaValor = ciclo.economia_valor
+                  ? /^econom/i.test(ciclo.economia_valor)
+                    ? ciclo.economia_valor
+                    : `Economize ${ciclo.economia_valor}`
+                  : null;
                 return (
-                  <TouchableOpacity
+                  <PlanOption
                     key={ciclo.id}
-                    style={[
-                      styles.cicloCard,
-                      isSelected && styles.cicloCardSelected,
-                    ]}
-                    onPress={() => setSelectedCicloId(ciclo.id)}
-                    activeOpacity={0.7}
-                  >
-                    {isSelected && (
-                      <View style={styles.cicloCheck}>
-                        <Feather name="check" size={12} color={ds.onBrand} />
-                      </View>
-                    )}
-
-                    {ciclo.permite_recorrencia ? (
-                      <View style={styles.cicloRecorrenciaBadge}>
-                        <Feather
-                          name="zap"
-                          size={12}
-                          color={styles.cicloRecorrenciaText.color}
-                        />
-                        <Text style={styles.cicloRecorrenciaText}>
-                          {`Cobrança automática a cada ${ciclo.meses} ${
-                            ciclo.meses === 1 ? "mês" : "meses"
-                          }`}
-                        </Text>
-                      </View>
-                    ) : (
-                      <View style={styles.cicloAvulsaBadge}>
-                        <Feather
-                          name="dollar-sign"
-                          size={12}
-                          color={styles.cicloAvulsaText.color}
-                        />
-                        <Text style={styles.cicloAvulsaText}>
-                          Pagamento único
-                        </Text>
-                      </View>
-                    )}
-                    <View style={styles.cicloRow}>
-                      <Text
-                        style={[
-                          styles.cicloNome,
-                          isSelected && styles.cicloNomeSelected,
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {ciclo.nome}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.cicloValor,
-                          isSelected && styles.cicloValorSelected,
-                        ]}
-                        numberOfLines={1}
-                      >
-                        {ciclo.valor_formatado}
-                      </Text>
-                    </View>
-                    <Text style={styles.cicloMeses} numberOfLines={1}>
-                      {ciclo.meses} {ciclo.meses === 1 ? "mês" : "meses"}
-                      {!!ciclo.valor_mensal_formatado && ciclo.meses > 1
-                        ? ` • ${ciclo.valor_mensal_formatado}/mês`
-                        : ""}
-                    </Text>
-
-                    {ciclo.economia && (
-                      <View style={styles.economiaBadge}>
-                        <Text style={styles.economiaText}>
-                          {ciclo.economia}
-                        </Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
+                    label={ciclo.nome}
+                    detail={
+                      ciclo.permite_recorrencia
+                        ? `Cobrança automática a cada ${ciclo.meses} ${ciclo.meses === 1 ? "mês" : "meses"}`
+                        : ciclo.meses > 1
+                          ? `${ciclo.meses} meses, à vista`
+                          : "Pagamento único"
+                    }
+                    monthly={ciclo.valor_mensal_formatado || formatCurrency(mensal)}
+                    fullMonthly={maiorMensal && mensal < maiorMensal - 0.009 ? formatCurrency(maiorMensal) : null}
+                    total={ciclo.valor_formatado}
+                    saving={desconto > 0 ? `−${Math.round(desconto)}%` : null}
+                    savingAmount={economiaValor}
+                    tag={ciclos.length > 1 && cicloMelhorPrecoId === ciclo.id ? "Melhor preço" : null}
+                    selected={selectedCicloId === ciclo.id}
+                    onSelect={() => setSelectedCicloId(ciclo.id)}
+                  />
                 );
               })}
             </View>
-          </View>
+          </Section>
+        )}
+
+        {/* Descrição */}
+        {!!plano.descricao && (
+          <Section title="Sobre o plano" padded>
+            <Text style={styles.descricaoText}>{plano.descricao}</Text>
+          </Section>
         )}
       </ScrollView>
 
-      {/* Footer fixo com botão */}
+      {/* Resumo fixo: ciclo, total e pagamento */}
       <View style={styles.footer}>
         {bloquearCompraPorAtivo ? (
-          <View style={styles.footerButtonAtivo}>
-            <Feather name="check" size={18} color="#fff" />
-            <Text style={styles.footerButtonText}>Plano Ativo</Text>
+          <View style={styles.footerAtivo}>
+            <Feather name="check-circle" size={20} color={ds.success} />
+            <Text style={styles.footerAtivoText}>Este já é o seu plano ativo</Text>
           </View>
         ) : (
-          <View style={styles.footerStack}>
-            <TouchableOpacity
-              style={[
-                styles.footerButton,
-                !canBuy && styles.footerButtonDisabled,
-              ]}
+          <>
+            <View style={styles.summaryText}>
+              <Text style={styles.summaryLabel} numberOfLines={1}>
+                {selectedCiclo
+                  ? `${selectedCiclo.nome} · ${selectedCiclo.meses} ${selectedCiclo.meses === 1 ? "mês" : "meses"}`
+                  : "Escolha um ciclo"}
+              </Text>
+              <Text style={styles.summaryTotal} numberOfLines={1}>
+                {selectedCiclo ? selectedCiclo.valor_formatado : "—"}
+              </Text>
+            </View>
+            <Button
+              size="lg"
+              icon={
+                podeMigrarAgora
+                  ? "repeat"
+                  : podeRenovar
+                    ? "refresh-cw"
+                    : canCheckout
+                      ? "shopping-cart"
+                      : "zap"
+              }
+              loading={comprando || pixLoading}
+              disabled={!canBuy}
               onPress={
                 podeMigrarAgora || podeRenovar || !canCheckout
                   ? handlePagarPix
                   : handleContratar
               }
-              disabled={!canBuy}
-              activeOpacity={0.8}
             >
-              {comprando || pixLoading ? (
-                <>
-                  <ActivityIndicator color={ds.onBrand} size="small" />
-                  <Text style={styles.footerButtonText}>Processando...</Text>
-                </>
-              ) : (
-                <>
-                  <Feather
-                    name={
-                      podeMigrarAgora
-                        ? "repeat"
-                        : podeRenovar
-                          ? "refresh-cw"
-                          : canCheckout
-                            ? "shopping-cart"
-                            : "zap"
-                    }
-                    size={18}
-                    color={ds.onBrand}
-                  />
-                  <Text style={styles.footerButtonText}>
-                    {selectedCiclo
-                      ? podeMigrarAgora
-                        ? canPix || !canCheckout
-                          ? `Migrar com PIX • ${selectedCiclo.valor_formatado}`
-                          : `Migrar • ${selectedCiclo.valor_formatado}`
-                        : podeRenovar
-                          ? canPix
-                            ? `Renovar com PIX • ${selectedCiclo.valor_formatado}`
-                            : `Renovar • ${selectedCiclo.valor_formatado}`
-                          : canCheckout
-                            ? `Contratar por ${selectedCiclo.valor_formatado}`
-                            : canPix
-                              ? `Pagar com PIX • ${selectedCiclo.valor_formatado}`
-                              : "Pagamento indisponível"
-                      : "Escolha um ciclo"}
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
+              {comprando || pixLoading
+                ? "Processando…"
+                : !selectedCiclo
+                  ? "Escolha"
+                  : podeMigrarAgora
+                    ? canPix || !canCheckout
+                      ? "Migrar com PIX"
+                      : "Migrar"
+                    : podeRenovar
+                      ? canPix
+                        ? "Renovar com PIX"
+                        : "Renovar"
+                      : canCheckout
+                        ? "Contratar"
+                        : canPix
+                          ? "Pagar com PIX"
+                          : "Indisponível"}
+            </Button>
+          </>
         )}
       </View>
 
@@ -1633,6 +1542,85 @@ export default function PlanoDetalhesScreen() {
 }
 
 const styles = StyleSheet.create({
+  summaryTotal: {
+    fontSize: 22,
+    lineHeight: 26,
+    fontWeight: "900",
+    letterSpacing: -0.4,
+    color: ds.ink,
+    fontVariant: ["tabular-nums"],
+  },
+  summaryLabel: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "700",
+    color: ds.inkMuted,
+  },
+  summaryText: {
+    flex: 1,
+    minWidth: 0,
+  },
+  footerAtivoText: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: ds.success,
+  },
+  footerAtivo: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    height: 56,
+    borderRadius: 12,
+    backgroundColor: ds.successSoft,
+  },
+  ciclosList: {
+    gap: 12,
+  },
+  factV: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "800",
+    color: ds.ink,
+    marginTop: 2,
+    fontVariant: ["tabular-nums"],
+  },
+  factK: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "800",
+    letterSpacing: 0.66,
+    color: ds.inkMuted,
+  },
+  factDivider: {
+    borderLeftWidth: 1,
+    borderLeftColor: ds.line,
+  },
+  fact: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
+  factsCard: {
+    flexDirection: "row",
+    backgroundColor: ds.surface,
+    borderWidth: 1,
+    borderColor: ds.line,
+    borderRadius: 16,
+    overflow: "hidden",
+  },
+  headerEyebrow: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "600",
+    color: ds.inkMuted,
+  },
+  headerTitles: {
+    flex: 1,
+    minWidth: 0,
+  },
   container: {
     flex: 1,
     backgroundColor: ds.ground,
@@ -1641,20 +1629,22 @@ const styles = StyleSheet.create({
   /* Header */
   header: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 18,
-    paddingVertical: 16,
+    gap: 8,
+    minHeight: 64,
+    paddingLeft: 4,
+    paddingRight: 16,
+    paddingVertical: 8,
     backgroundColor: ds.surface,
     borderBottomWidth: 1,
     borderBottomColor: ds.line,
   },
   headerTitle: {
     fontSize: 22,
+    lineHeight: 28,
     fontWeight: "800",
+    letterSpacing: -0.2,
     color: ds.ink,
-    flex: 1,
-    textAlign: "center",
   },
   backButton: {
     padding: 8,
@@ -1726,9 +1716,9 @@ const styles = StyleSheet.create({
 
   /* Content */
   content: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 96,
+    padding: 16,
+    paddingBottom: 32,
+    gap: 16,
   },
 
   /* Hero Card */
@@ -1833,34 +1823,34 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   descricaoText: {
-    fontSize: 13,
-    color: colors.textSecondary,
-    lineHeight: 20,
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: "500",
+    color: ds.ink,
   },
   pendingBanner: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 10,
-    backgroundColor: "#fef3c7",
-    borderRadius: 14,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#f59e0b",
-    marginBottom: 12,
+    gap: 12,
+    padding: 16,
+    borderRadius: 16,
+    backgroundColor: ds.warningSoft,
   },
   pendingBannerContent: {
     flex: 1,
-    gap: 4,
+    gap: 2,
   },
   pendingBannerTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#92400e",
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "800",
+    color: ds.warning,
   },
   pendingBannerText: {
-    fontSize: 12,
-    color: "#92400e",
+    fontSize: 13,
     lineHeight: 18,
+    fontWeight: "600",
+    color: ds.ink,
   },
 
   /* Features */
@@ -2013,21 +2003,19 @@ const styles = StyleSheet.create({
 
   /* Footer */
   footer: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: "#fff",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    paddingBottom: 22,
+    paddingVertical: 12,
+    backgroundColor: ds.surface,
     borderTopWidth: 1,
     borderTopColor: ds.line,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: -3 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 10,
+    shadowColor: "#171a21",
+    shadowOffset: { width: 0, height: -8 },
+    shadowOpacity: 0.07,
+    shadowRadius: 24,
+    elevation: 12,
   },
   footerStack: {
     gap: 10,

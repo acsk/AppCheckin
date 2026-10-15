@@ -28,6 +28,8 @@ import {
   View,
 } from "react-native";
 
+import Badge from "@/src/components/ds/Badge";
+import Button from "@/src/components/ds/Button";
 import { ds } from "@/src/components/ds/tokens";
 interface StatusAssinatura {
   id: number;
@@ -644,102 +646,92 @@ export default function MinhasAssinaturasScreen() {
     const temPagamentoPago = pagamentos.some(isPagamentoPago);
     const podePagar = podePagarAssinatura(assinatura, pagamentos);
     const statusBadgeLabel = assinatura.status.nome;
-    const statusBadgeColor = assinatura.status.cor;
     const valorExibido = formatCurrency(assinatura.valor);
     const isPagamentoPendente =
       !isCancelada &&
       (temPagamentoAberto || (isPendente && !temPagamentoPago));
 
+    const statusCodigo = assinatura.status.codigo.toLowerCase();
+    const statusTone = isPagamentoPendente
+      ? "warning"
+      : statusCodigo === "ativa"
+        ? "success"
+        : isCancelada
+          ? "neutral"
+          : ["vencida", "expirada", "bloqueada"].includes(statusCodigo)
+            ? "danger"
+            : "warning";
+    const datas = [
+      { label: "INÍCIO", value: dataInicioText },
+      !isCancelada && proximaCobrancaText
+        ? { label: "PRÓX. COBRANÇA", value: proximaCobrancaText }
+        : fimAcessoText
+          ? { label: isAvulso ? "VÁLIDO ATÉ" : "FIM DO ACESSO", value: fimAcessoText }
+          : null,
+      ultimaCobrancaText ? { label: "ÚLT. COBRANÇA", value: ultimaCobrancaText } : null,
+    ].filter(Boolean) as { label: string; value: string }[];
+
     return (
-      <View
-        style={[styles.card, isPagamentoPendente && styles.cardPendente]}
-      >
+      <View style={[styles.card, isPagamentoPendente && styles.cardPendente]}>
         {isPagamentoPendente ? (
           <View style={styles.pendenteBanner}>
-            <Feather name="alert-circle" size={14} color="#c2410c" />
+            <Feather name="clock" size={16} color={ds.warning} />
             <Text style={styles.pendenteBannerText}>
-              Pagamento pendente — regularize para manter o acesso
+              Pagamento pendente. Regularize para manter o acesso.
             </Text>
           </View>
         ) : null}
-        <View style={styles.cardHeader}>
-          <View style={styles.planoInfo}>
-            <View style={styles.planoTitleRow}>
-              <Text style={styles.planoNome} numberOfLines={1}>
+
+        <View style={styles.subHead}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <View style={styles.subTitleRow}>
+              <Text style={styles.subName} numberOfLines={2}>
                 {assinatura.plano.nome}
               </Text>
-              <View
-                style={[
-                  styles.statusBadge,
-                  { backgroundColor: statusBadgeColor },
-                  isPagamentoPendente && styles.statusBadgePendente,
-                ]}
-              >
-                <Text style={styles.statusText}>{statusBadgeLabel}</Text>
-              </View>
+              <Badge tone={statusTone}>{isPagamentoPendente ? "Pendente" : statusBadgeLabel}</Badge>
             </View>
-            <Text style={styles.modalidadeNome} numberOfLines={1}>
-              {assinatura.plano.modalidade}
-              {assinatura.external_reference
-                ? `  ·  ${assinatura.external_reference}`
-                : ""}
+            <Text style={styles.subMeta} numberOfLines={2}>
+              {[
+                assinatura.plano.modalidade,
+                assinatura.ciclo?.nome
+                  ? `${assinatura.ciclo.nome}${
+                      assinatura.ciclo.meses > 0
+                        ? ` · ${assinatura.ciclo.meses} ${assinatura.ciclo.meses === 1 ? "mês" : "meses"}`
+                        : ""
+                    }`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </Text>
+            {assinatura.external_reference ? (
+              <Text style={styles.subCode} numberOfLines={1}>
+                {assinatura.external_reference}
+              </Text>
+            ) : null}
           </View>
-        </View>
-
-        <View style={styles.cicloValor}>
-          <Text style={styles.cicloValor_text} numberOfLines={1}>
-            {assinatura.ciclo.nome}
-            {assinatura.ciclo.meses > 0
-              ? ` · ${assinatura.ciclo.meses} ${assinatura.ciclo.meses === 1 ? "mês" : "meses"}`
-              : ""}
-          </Text>
-          <Text
-            style={[
-              styles.valorText,
-              isPagamentoPendente && styles.valorTextPendente,
-            ]}
-          >
+          <Text style={[styles.subPrice, isPagamentoPendente && { color: ds.warning }]}>
             {valorExibido}
           </Text>
         </View>
 
-        <View style={styles.datasContainer}>
-          <View style={styles.dataItem}>
-            <Text style={styles.dataLabel} numberOfLines={2}>
-              Início do plano
-            </Text>
-            <Text style={styles.dataValor}>{dataInicioText}</Text>
+        {datas.length > 0 ? (
+          <View style={styles.subDates}>
+            {datas.map((d, i) => (
+              <View key={d.label} style={[styles.subDate, i > 0 && styles.subDateDivider]}>
+                <Text style={styles.kvK} numberOfLines={1}>
+                  {d.label}
+                </Text>
+                <Text style={styles.kvV}>{d.value}</Text>
+              </View>
+            ))}
           </View>
-          {!isCancelada && proximaCobrancaText ? (
-            <View style={styles.dataItem}>
-              <Text style={styles.dataLabel} numberOfLines={2}>
-                Próx. cobrança
-              </Text>
-              <Text style={styles.dataValor}>{proximaCobrancaText}</Text>
-            </View>
-          ) : fimAcessoText ? (
-            <View style={styles.dataItem}>
-              <Text style={styles.dataLabel} numberOfLines={2}>
-                {isAvulso ? "Válido até" : "Fim do acesso"}
-              </Text>
-              <Text style={styles.dataValor}>{fimAcessoText}</Text>
-            </View>
-          ) : null}
-          {ultimaCobrancaText ? (
-            <View style={styles.dataItem}>
-              <Text style={styles.dataLabel} numberOfLines={2}>
-                Últ. cobrança
-              </Text>
-              <Text style={styles.dataValor}>{ultimaCobrancaText}</Text>
-            </View>
-          ) : null}
-        </View>
+        ) : null}
 
         {pagamentos.length > 0 ? (
-          <View style={styles.historicoContainer}>
-            <Text style={styles.historicoTitulo}>Histórico de pagamentos</Text>
-            {pagamentos.map((pagamento) => {
+          <View style={styles.subHist}>
+            <Text style={[styles.kvK, styles.subHistTitle]}>HISTÓRICO DE PAGAMENTOS</Text>
+            {pagamentos.map((pagamento, i) => {
               const pago = isPagamentoPago(pagamento);
               const isManual =
                 pagamento.origem === "manual" ||
@@ -751,38 +743,35 @@ export default function MinhasAssinaturasScreen() {
               const labelBaixa = pago
                 ? isManual && primeiroNome
                   ? `Baixa manual por ${primeiroNome}`
-                  : "Baixa Automática por Integração"
+                  : "Baixa automática"
                 : null;
+              const dataTxt =
+                formatDate(pago ? pagamento.data_pagamento : pagamento.data_vencimento) || "—";
               return (
-                <View key={pagamento.id} style={styles.pagamentoDetalheBox}>
-                  <View style={styles.historicoResumo}>
-                    <Text style={styles.pagamentoDetalheValue}>
-                      {formatCurrency(pagamento.valor)}
-                    </Text>
-                    <Text style={styles.pagamentoDetalheLabel}>
-                      {pagamento.status || (pago ? "Pago" : "Pendente")}
+                <View key={pagamento.id} style={[styles.payRow, i > 0 && styles.payRowDivider]}>
+                  <View
+                    style={[
+                      styles.payIcon,
+                      { backgroundColor: pago ? ds.successSoft : ds.warningSoft },
+                    ]}
+                  >
+                    <Feather name="file-text" size={18} color={pago ? ds.success : ds.warning} />
+                  </View>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={styles.payAmt}>{formatCurrency(pagamento.valor)}</Text>
+                    <Text style={styles.paySub} numberOfLines={2}>
+                      {[
+                        pago ? `Pago em ${dataTxt}` : `Vence em ${dataTxt}`,
+                        pago ? pagamento.forma_pagamento : null,
+                        labelBaixa,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
                     </Text>
                   </View>
-                  <View style={styles.pagamentoDetalheRow}>
-                    <Text style={styles.pagamentoDetalheLabel}>
-                      {pago ? "Pago em" : "Vencimento"}
-                    </Text>
-                    <Text style={styles.pagamentoDetalheValue}>
-                      {formatDate(
-                        pago
-                          ? pagamento.data_pagamento
-                          : pagamento.data_vencimento,
-                      ) || "—"}
-                      {pago && pagamento.forma_pagamento
-                        ? ` · ${pagamento.forma_pagamento}`
-                        : ""}
-                    </Text>
-                  </View>
-                  {labelBaixa ? (
-                    <Text style={styles.historicoBaixa} numberOfLines={2}>
-                      {labelBaixa}
-                    </Text>
-                  ) : null}
+                  <Badge tone={pago ? "success" : "warning"} icon={pago ? "check" : "clock"}>
+                    {pago ? "Pago" : pagamento.status || "Pendente"}
+                  </Badge>
                 </View>
               );
             })}
@@ -792,36 +781,24 @@ export default function MinhasAssinaturasScreen() {
         {(podePagar || (!isAvulso && (isAtiva || isPendente))) && (
           <View style={styles.actionStack}>
             {podePagar && (
-              <TouchableOpacity
-                style={styles.botaoPagar}
+              <Button
+                block
+                icon="credit-card"
                 onPress={() => handlePagarAssinatura(assinatura)}
-                activeOpacity={0.8}
               >
-                <Feather name="credit-card" size={15} color={ds.onBrand} />
-                <Text style={styles.botaoPagarTexto}>
-                  {assinatura.pode_renovar ? "Renovar agora" : "Pagar agora"}
-                </Text>
-              </TouchableOpacity>
+                {assinatura.pode_renovar ? "Renovar agora" : "Pagar agora"}
+              </Button>
             )}
-
             {!isAvulso && (isAtiva || isPendente) && (
-              <TouchableOpacity
-                style={styles.botaoCancelar}
+              <Button
+                variant="danger"
+                block
+                icon="x-circle"
+                loading={cancelando === assinatura.id}
                 onPress={() => handleCancelarAssinatura(assinatura)}
-                disabled={cancelando === assinatura.id}
-                activeOpacity={0.7}
               >
-                {cancelando === assinatura.id ? (
-                  <ActivityIndicator color="#DC3545" size="small" />
-                ) : (
-                  <>
-                    <Feather name="trash-2" size={15} color="#DC3545" />
-                    <Text style={styles.botaoCancelarTexto}>
-                      Cancelar Assinatura
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
+                Cancelar assinatura
+              </Button>
             )}
           </View>
         )}
@@ -838,7 +815,6 @@ export default function MinhasAssinaturasScreen() {
       statusLower.includes("pendente") || statusLower === "pending";
     const statusText =
       item.status_nome || item.status || (isPendente ? "Pendente" : "Ativo");
-    const statusColor = item.status_cor || (isPendente ? "#f59e0b" : "#22c55e");
     const pacoteNome = item.pacote_nome || item.pacote?.nome || "Pacote";
     const pacoteDescricao =
       item.pacote_descricao || item.pacote?.descricao || "";
@@ -865,11 +841,9 @@ export default function MinhasAssinaturasScreen() {
               <Text style={styles.pacoteDescricao}>{pacoteDescricao}</Text>
             )}
           </View>
-          <View
-            style={[styles.pacoteStatusBadge, { backgroundColor: statusColor }]}
-          >
-            <Text style={styles.pacoteStatusText}>{statusText}</Text>
-          </View>
+          <Badge tone={isPendente ? "warning" : "success"} icon={isPendente ? "clock" : "check"}>
+            {statusText}
+          </Badge>
         </View>
 
         <View style={styles.pacoteMetaRow}>
@@ -1001,23 +975,23 @@ export default function MinhasAssinaturasScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header */}
+      {/* Cabeçalho */}
       <View style={styles.headerTop}>
-        <TouchableOpacity
-          style={styles.headerBackButton}
+        <Button
+          variant="ghost"
+          icon="arrow-left"
+          accessibilityLabel="Voltar"
           onPress={() => router.replace("/(tabs)/checkin")}
-        >
-          <Feather name="arrow-left" size={24} color={ds.ink} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitleCentered}>Minhas Assinaturas</Text>
-        <View style={{ flexDirection: "row", gap: 8 }}>
-          <TouchableOpacity
-            style={styles.headerBackButton}
-            onPress={() => fetchAssinaturasCallback(apiUrl)}
-          >
-            <Feather name="refresh-cw" size={20} color={ds.ink} />
-          </TouchableOpacity>
-        </View>
+        />
+        <Text style={styles.headerTitleCentered} numberOfLines={1}>
+          Minhas assinaturas
+        </Text>
+        <Button
+          variant="ghost"
+          icon="refresh-cw"
+          accessibilityLabel="Atualizar"
+          onPress={() => fetchAssinaturasCallback(apiUrl)}
+        />
       </View>
 
       {loading ? (
@@ -1039,15 +1013,9 @@ export default function MinhasAssinaturasScreen() {
               {pacotes.length > 0 && (
                 <View style={styles.pacotesSection}>
                   <View style={styles.sectionHeader}>
-                    <View style={styles.sectionHeaderIcon}>
-                      <Feather name="users" size={18} color={colors.primary} />
-                    </View>
-                    <Text style={styles.pacotesTitle}>Pacotes</Text>
-                    <View style={styles.sectionHeaderLine} />
+                    <Text style={styles.sectionLabel}>PACOTES</Text>
+                    <Text style={styles.sectionAside}>Vinculados ao seu pagamento</Text>
                   </View>
-                  <Text style={styles.pacotesSubtitle}>
-                    Pacotes vinculados ao seu pagamento
-                  </Text>
                   <View style={styles.pacotesList}>
                     {pacotes.map(renderPacoteItem)}
                   </View>
@@ -1055,19 +1023,11 @@ export default function MinhasAssinaturasScreen() {
               )}
               <View style={styles.assinaturasSectionHeader}>
                 <View style={styles.sectionHeader}>
-                  <View style={styles.sectionHeaderIcon}>
-                    <Feather
-                      name="file-text"
-                      size={18}
-                      color={colors.primary}
-                    />
-                  </View>
-                  <Text style={styles.assinaturasTitle}>Assinaturas</Text>
-                  <View style={styles.sectionHeaderLine} />
+                  <Text style={styles.sectionLabel}>ASSINATURAS</Text>
+                  <Text style={styles.sectionAside}>
+                    {assinaturaCards.length} {assinaturaCards.length === 1 ? "assinatura" : "assinaturas"}
+                  </Text>
                 </View>
-                <Text style={styles.assinaturasSubtitle}>
-                  Suas assinaturas individuais
-                </Text>
               </View>
             </View>
           }
@@ -1211,6 +1171,132 @@ export default function MinhasAssinaturasScreen() {
 }
 
 const styles = StyleSheet.create({
+  paySub: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "600",
+    color: ds.inkMuted,
+  },
+  payAmt: {
+    fontSize: 16,
+    lineHeight: 20,
+    fontWeight: "800",
+    color: ds.ink,
+    fontVariant: ["tabular-nums"],
+  },
+  payIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  payRowDivider: {
+    borderTopWidth: 1,
+    borderTopColor: ds.line,
+  },
+  payRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  subHistTitle: {
+    paddingTop: 12,
+    paddingHorizontal: 16,
+  },
+  subHist: {
+    borderTopWidth: 1,
+    borderTopColor: ds.line,
+    backgroundColor: ds.surfaceSunken,
+  },
+  kvV: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "800",
+    color: ds.ink,
+    marginTop: 2,
+    fontVariant: ["tabular-nums"],
+  },
+  kvK: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "800",
+    letterSpacing: 0.66,
+    color: ds.inkMuted,
+  },
+  subDateDivider: {
+    borderLeftWidth: 1,
+    borderLeftColor: ds.line,
+  },
+  subDate: {
+    flex: 1,
+    minWidth: 0,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  subDates: {
+    flexDirection: "row",
+    borderTopWidth: 1,
+    borderTopColor: ds.line,
+  },
+  subPrice: {
+    fontSize: 22,
+    lineHeight: 26,
+    fontWeight: "900",
+    color: ds.brandInk,
+    fontVariant: ["tabular-nums"],
+    textAlign: "right",
+  },
+  subCode: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "600",
+    color: ds.inkMuted,
+    fontVariant: ["tabular-nums"],
+    marginTop: 2,
+  },
+  subMeta: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "600",
+    color: ds.inkMuted,
+  },
+  subName: {
+    fontSize: 20,
+    lineHeight: 24,
+    fontWeight: "800",
+    letterSpacing: -0.2,
+    color: ds.ink,
+    flexShrink: 1,
+  },
+  subTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+    marginBottom: 4,
+  },
+  subHead: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+    padding: 16,
+  },
+  sectionAside: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "600",
+    color: ds.inkMuted,
+  },
+  sectionLabel: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "800",
+    letterSpacing: 0.96,
+    color: ds.inkMuted,
+  },
   container: {
     flex: 1,
     backgroundColor: ds.ground,
@@ -1219,20 +1305,21 @@ const styles = StyleSheet.create({
   /* Header */
   headerTop: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 18,
-    paddingVertical: 16,
+    gap: 4,
+    minHeight: 64,
+    paddingHorizontal: 4,
     backgroundColor: ds.surface,
     borderBottomWidth: 1,
     borderBottomColor: ds.line,
   },
   headerTitleCentered: {
-    fontSize: 22,
-    fontWeight: "800",
-    color: ds.ink,
     flex: 1,
-    textAlign: "center",
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: "800",
+    letterSpacing: -0.2,
+    color: ds.ink,
   },
   headerBackButton: {
     padding: 8,
@@ -1254,33 +1341,25 @@ const styles = StyleSheet.create({
 
   /* List */
   listContent: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    paddingBottom: 28,
-    gap: 10,
+    padding: 16,
+    paddingBottom: 32,
+    gap: 12,
   },
   sectionsWrapper: {
-    gap: 12,
+    gap: 24,
+    marginBottom: 0,
   },
 
   /* Pacotes */
   pacotesSection: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: ds.line,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.04,
-    shadowRadius: 10,
-    elevation: 2,
-    gap: 10,
+
   },
   sectionHeader: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    paddingHorizontal: 4,
+    marginBottom: 8,
   },
   sectionHeaderIcon: {
     width: 28,
@@ -1307,7 +1386,6 @@ const styles = StyleSheet.create({
   },
   pacotesList: {
     gap: 12,
-    marginBottom: 6,
   },
   assinaturasSectionHeader: {
     backgroundColor: "#fff",
@@ -1328,36 +1406,35 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
   },
   pacoteCard: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 12,
+    backgroundColor: ds.surface,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#eff2f6",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
-    gap: 10,
+    borderColor: ds.line,
+    padding: 16,
+    gap: 12,
   },
   pacoteHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    gap: 10,
+    gap: 12,
   },
   pacoteInfo: {
     flex: 1,
     gap: 2,
   },
   pacoteNome: {
-    fontSize: 15,
+    fontSize: 20,
+    lineHeight: 24,
     fontWeight: "800",
-    color: colors.text,
+    color: ds.ink,
   },
   pacoteDescricao: {
-    fontSize: 11,
-    color: colors.textMuted,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "600",
+    color: ds.inkMuted,
+    marginTop: 2,
   },
   pacoteStatusBadge: {
     paddingHorizontal: 8,
@@ -1372,33 +1449,35 @@ const styles = StyleSheet.create({
   },
   pacoteMetaRow: {
     flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f8fafc",
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
     borderWidth: 1,
     borderColor: ds.line,
+    borderRadius: 12,
+    overflow: "hidden",
   },
   pacoteMetaItem: {
     flex: 1,
-    gap: 2,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
   },
   pacoteMetaLabel: {
-    fontSize: 10,
-    color: colors.textMuted,
-    fontWeight: "600",
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "800",
+    letterSpacing: 0.66,
+    textTransform: "uppercase",
+    color: ds.inkMuted,
   },
   pacoteMetaValue: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: colors.text,
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "800",
+    color: ds.ink,
+    marginTop: 2,
+    fontVariant: ["tabular-nums"],
   },
   pacoteMetaDivider: {
     width: 1,
-    height: 28,
-    backgroundColor: "#e5e7eb",
-    marginHorizontal: 6,
+    backgroundColor: ds.line,
   },
   pacoteDatesRow: {
     flexDirection: "row",
@@ -1407,17 +1486,22 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   pacoteDateText: {
-    fontSize: 11,
-    color: colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: "600",
+    color: ds.inkMuted,
   },
   pacoteBeneficiarios: {
     gap: 6,
   },
   pacoteBeneficiariosTitle: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: colors.text,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "800",
+    letterSpacing: 0.96,
+    textTransform: "uppercase",
+    color: ds.inkMuted,
+    marginBottom: 8,
   },
   pacoteBeneficiariosList: {
     flexDirection: "row",
@@ -1425,29 +1509,32 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   pacoteBeneficiarioChip: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingHorizontal: 10,
+    height: 28,
+    justifyContent: "center",
     borderRadius: 999,
-    backgroundColor: "#eef2ff",
+    backgroundColor: ds.surfaceSunken,
+    borderWidth: 1,
+    borderColor: ds.line,
   },
   pacoteBeneficiarioText: {
-    fontSize: 11,
-    color: colors.primaryText,
+    fontSize: 13,
     fontWeight: "700",
+    color: ds.ink,
   },
   pacotePagarButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.primary,
-    borderRadius: 10,
-    paddingVertical: 10,
-    gap: 6,
+    gap: 8,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: ds.brand,
   },
   pacotePagarButtonText: {
+    fontSize: 16,
+    fontWeight: "800",
     color: ds.onBrand,
-    fontSize: 13,
-    fontWeight: "700",
   },
   assinaturasEmptyNote: {
     flexDirection: "row",
@@ -1465,42 +1552,29 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 12,
+    backgroundColor: ds.surface,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: "#eff2f6",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 8,
-    elevation: 2,
-    gap: 8,
+    borderColor: ds.line,
+    overflow: "hidden",
   },
   cardPendente: {
-    backgroundColor: "#fff7ed",
-    borderColor: "#fb923c",
-    borderWidth: 2,
-    shadowColor: "#ea580c",
-    shadowOpacity: 0.16,
-    shadowRadius: 10,
-    elevation: 4,
+    borderColor: ds.warning,
   },
   pendenteBanner: {
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    backgroundColor: "#ffedd5",
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: ds.warningSoft,
   },
   pendenteBannerText: {
     flex: 1,
-    fontSize: 12,
+    fontSize: 13,
+    lineHeight: 18,
     fontWeight: "700",
-    color: "#c2410c",
-    lineHeight: 16,
+    color: ds.warning,
   },
   statusBadgePendente: {
     borderWidth: 1,
@@ -1655,7 +1729,10 @@ const styles = StyleSheet.create({
   },
 
   actionStack: {
-    gap: 6,
+    gap: 8,
+    padding: 16,
+    borderTopWidth: 1,
+    borderTopColor: ds.line,
   },
 
   /* Botão Pagar */

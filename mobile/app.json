@@ -27,16 +27,16 @@
     },
     "web": {
       "meta": {
-        "theme-color": "#FF6B35",
+        "theme-color": "#ff7a00",
         "mobile-web-app-capable": "yes",
         "apple-mobile-web-app-capable": "yes",
         "apple-mobile-web-app-status-bar-style": "black-translucent"
       },
       "output": "static",
-      "favicon": "./assets/images/favicon.png",
+      "favicon": "./public/favicon-32x32.png",
       "bundler": "metro",
       "htmlTemplate": "./public/index.html",
-      "themeColor": "#FF6B35",
+      "themeColor": "#ff7a00",
       "backgroundColor": "#FFFFFF",
       "build": {
         "babel": {

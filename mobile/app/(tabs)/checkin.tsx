@@ -1,5 +1,5 @@
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
-import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -27,6 +27,7 @@ import { normalizeUtf8 } from "../../src/utils/utf8";
 import { normalizeVencimentoMessage } from "../../src/utils/dateBr";
 import { weekdayAbbrev } from "../../src/utils/weekdayAbbrev";
 
+import ClassCard, { ClassStatus } from "@/src/components/ds/ClassCard";
 import { ds } from "@/src/components/ds/tokens";
 const getRouteParam = (value?: string | string[]) => {
   if (value == null) return undefined;
@@ -1618,7 +1619,21 @@ export default function CheckinScreen() {
         <View style={styles.headerTop}>
           <View style={styles.headerTopRow}>
             <View style={styles.headerLeft}>
-              <Text style={styles.headerTitle}>Checkin</Text>
+              <View>
+                <Text style={styles.headerTitle}>Check-in</Text>
+                {selectedDate ? (
+                  <Text style={styles.headerSubtitle}>
+                    {(() => {
+                      const t = selectedDate.toLocaleDateString("pt-BR", {
+                        weekday: "long",
+                        day: "numeric",
+                        month: "long",
+                      });
+                      return t.charAt(0).toUpperCase() + t.slice(1).replace("-feira", "");
+                    })()}
+                  </Text>
+                ) : null}
+              </View>
             </View>
             <View style={styles.headerRight}>
               <TouchableOpacity
@@ -1704,71 +1719,77 @@ export default function CheckinScreen() {
           </View>
         </Modal>
 
+        {/* Calendar */}
+        <View style={styles.calendarSection} className="notranslate">
+            <ScrollView
+              horizontal
+              nestedScrollEnabled
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.calendarContainer}
+              keyboardShouldPersistTaps="handled"
+            >
+              {calendarDays.map((date) => {
+                const { day, dayName } = formatDateDisplay(date);
+                const dayKey = formatDateParam(date);
+                const isSelected =
+                  selectedDate &&
+                  formatDateParam(selectedDate) === dayKey;
+
+                return (
+                  <Pressable
+                    key={dayKey}
+                    focusable={Platform.OS === "web" ? false : undefined}
+                    onPress={() => selectCalendarDay(date)}
+                    style={({ pressed }) => [
+                      styles.calendarDay,
+                      isSelected && styles.calendarDaySelected,
+                      pressed && styles.calendarDayPressed,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.calendarDayName,
+                        isSelected && styles.calendarDayNameSelected,
+                      ]}
+                      className="notranslate"
+                      autoCorrect={false}
+                      spellCheck={
+                        Platform.OS === "web" ? false : undefined
+                      }
+                    >
+                      {dayName}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.calendarDayNumber,
+                        isSelected && styles.calendarDayNumberSelected,
+                      ]}
+                    >
+                      {day}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+
         <ScrollView
           contentContainerStyle={[styles.scrollContent, styles.scrollGrow]}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* Calendar */}
-          <View style={styles.calendarSection} className="notranslate">
-              <ScrollView
-                horizontal
-                nestedScrollEnabled
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.calendarContainer}
-                keyboardShouldPersistTaps="handled"
-              >
-                {calendarDays.map((date) => {
-                  const { day, dayName } = formatDateDisplay(date);
-                  const dayKey = formatDateParam(date);
-                  const isSelected =
-                    selectedDate &&
-                    formatDateParam(selectedDate) === dayKey;
-
-                  return (
-                    <Pressable
-                      key={dayKey}
-                      focusable={Platform.OS === "web" ? false : undefined}
-                      onPress={() => selectCalendarDay(date)}
-                      style={({ pressed }) => [
-                        styles.calendarDay,
-                        isSelected && styles.calendarDaySelected,
-                        pressed && styles.calendarDayPressed,
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.calendarDayName,
-                          isSelected && styles.calendarDayNameSelected,
-                        ]}
-                        className="notranslate"
-                        autoCorrect={false}
-                        spellCheck={
-                          Platform.OS === "web" ? false : undefined
-                        }
-                      >
-                        {dayName}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.calendarDayNumber,
-                          isSelected && styles.calendarDayNumberSelected,
-                        ]}
-                      >
-                        {day}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            </View>
-
           {/* Available Schedules */}
           <View style={styles.schedulesSection}>
             {loading ? (
               <Text style={styles.loadingText}>Carregando...</Text>
             ) : schedulesToRender.length > 0 ? (
               <View style={styles.schedulesList}>
+                <View style={styles.sectionHead}>
+                  <Text style={styles.sectionHeadTitle}>AULAS DO DIA</Text>
+                  <Text style={styles.sectionHeadAside}>
+                    {schedulesToRender.length} {schedulesToRender.length === 1 ? "aula" : "aulas"}
+                  </Text>
+                </View>
                 {schedulesToRender.map((turma) => {
                   const isClosed = isTurmaDisabled(turma, selectedDate);
                   const isCheckinBloqueado = !!turma?.checkin_bloqueado;
@@ -1792,193 +1813,50 @@ export default function CheckinScreen() {
                       displayName.toLowerCase() !==
                         modalidadeNome.toLowerCase());
 
-                  return (
-                    <TouchableOpacity
-                      key={turma.id}
-                      disabled={disabled}
-                      style={[
-                        styles.scheduleItem,
-                        disabled && styles.scheduleItemDisabled,
-                        isProfessorOuAdmin &&
-                          isCheckinBloqueado &&
-                          styles.scheduleItemBloqueado,
-                        {
-                          borderLeftColor: disabled
-                            ? "#cccccc"
-                            : isProfessorOuAdmin && isCheckinBloqueado
-                              ? "#DC2626"
-                              : turma.modalidade?.cor || colors.primary,
-                        },
-                      ]}
-                      onPress={() => openParticipants(turma)}
-                    >
-                      <View style={styles.scheduleContent}>
-                        {isCheckinBloqueado ? (
-                          <View style={styles.scheduleCompactBlocked}>
-                            <Text style={styles.scheduleTimeText}>
-                              {turma.horario.inicio.slice(0, 5)} -{" "}
-                              {turma.horario.fim.slice(0, 5)}
-                            </Text>
-                            <View style={styles.scheduleCompactBadges}>
-                              {turma.modalidade ? (
-                                <View
-                                  style={[
-                                    styles.modalidadeBadge,
-                                    {
-                                      backgroundColor:
-                                        turma.modalidade.cor + "20",
-                                    },
-                                  ]}
-                                >
-                                  {turma.modalidade.icone ? (
-                                    <MaterialCommunityIcons
-                                      name={turma.modalidade.icone as any}
-                                      size={12}
-                                      color={turma.modalidade.cor}
-                                    />
-                                  ) : null}
-                                  <Text
-                                    style={[
-                                      styles.modalidadeText,
-                                      { color: turma.modalidade.cor },
-                                    ]}
-                                  >
-                                    {normalizeUtf8(turma.modalidade.nome)}
-                                  </Text>
-                                </View>
-                              ) : null}
-                              <View style={styles.scheduleBlockedBadge}>
-                                <MaterialCommunityIcons
-                                  name="lock"
-                                  size={14}
-                                  color="#B91C1C"
-                                />
-                                <Text style={styles.scheduleBlockedBadgeText}>
-                                  Bloqueado
-                                </Text>
-                              </View>
-                            </View>
-                          </View>
-                        ) : (
-                          <>
-                        <View style={styles.scheduleHeader}>
-                          <View style={{ flex: 1 }}>
-                            <Text style={styles.scheduleTimeText}>
-                              {turma.horario.inicio.slice(0, 5)} -{" "}
-                              {turma.horario.fim.slice(0, 5)}
-                            </Text>
-                            {shouldShowName && (
-                              <Text style={styles.scheduleName}>
-                                {displayName}
-                              </Text>
-                            )}
-                            {!!professorName && (
-                              <Text style={styles.scheduleSubtitle}>
-                                {normalizeUtf8(professorName)}
-                              </Text>
-                            )}
-                          </View>
-                          <View style={styles.scheduleHeaderBadges}>
-                            {turma.modalidade ? (
-                              <View
-                                style={[
-                                  styles.modalidadeBadge,
-                                  {
-                                    backgroundColor:
-                                      turma.modalidade.cor + "20",
-                                  },
-                                ]}
-                              >
-                                {turma.modalidade.icone ? (
-                                  <MaterialCommunityIcons
-                                    name={turma.modalidade.icone as any}
-                                    size={12}
-                                    color={turma.modalidade.cor}
-                                  />
-                                ) : null}
-                                <Text
-                                  style={[
-                                    styles.modalidadeText,
-                                    { color: turma.modalidade.cor },
-                                  ]}
-                                >
-                                  {normalizeUtf8(turma.modalidade.nome)}
-                                </Text>
-                              </View>
-                            ) : null}
-                          </View>
-                        </View>
+                  const minutosParaAbrir = getMinutosParaAbrirCheckin(turma);
+                  const lotada =
+                    Number(turma.limite_alunos) > 0 &&
+                    Number(turma.alunos_inscritos) >= Number(turma.limite_alunos);
+                  const status: ClassStatus = isCheckinBloqueado
+                    ? "blocked"
+                    : isClosed
+                      ? "closed"
+                      : lotada
+                        ? "full"
+                        : "open";
 
-                        <View style={styles.scheduleInfoRow}>
-                          <View style={styles.infoItem}>
-                            <Feather name="user" size={14} color="#999" />
-                            <Text style={styles.infoText}>
-                              {turma.alunos_inscritos}/{turma.limite_alunos}
-                            </Text>
-                          </View>
-                          {(() => {
-                            const minutos = getMinutosParaAbrirCheckin(turma);
-                            const isFuture = minutos > 0;
-                            return isFuture ? (
-                              <View style={styles.infoItem}>
-                                <Feather name="clock" size={14} color="#999" />
-                                <Text style={styles.infoText}>
-                                  Abre em {formatMinutos(minutos)}
-                                </Text>
-                              </View>
-                            ) : null;
-                          })()}
-                          {!disabled && horaLimite ? (
-                            <View style={styles.infoItem}>
-                              <Feather name="clock" size={14} color="#999" />
-                              <Text style={styles.infoText}>
-                                Até {horaLimite}
-                              </Text>
-                            </View>
-                          ) : null}
-                          {isClosed && (
-                            <>
-                              <View style={styles.statusDot} />
-                              <View style={styles.infoItem}>
-                                <Feather
-                                  name="x-circle"
-                                  size={14}
-                                  color={statusColor}
-                                />
-                                <Text
-                                  style={[
-                                    styles.infoText,
-                                    styles.statusClosedText,
-                                  ]}
-                                >
-                                  Encerrado
-                                </Text>
-                              </View>
-                            </>
-                          )}
-                        </View>
-                          </>
-                        )}
-                      </View>
-                      <Feather
-                        name="chevron-right"
-                        size={20}
-                        color={
-                          disabled
-                            ? "#cccccc"
-                            : turma.modalidade?.cor || colors.primary
-                        }
-                      />
-                    </TouchableOpacity>
+                  return (
+                    <ClassCard
+                      key={turma.id}
+                      start={String(turma.horario.inicio).slice(0, 5)}
+                      end={String(turma.horario.fim).slice(0, 5)}
+                      instructor={professorName ? normalizeUtf8(String(professorName)) : null}
+                      title={shouldShowName ? displayName : null}
+                      modality={
+                        turma.modalidade
+                          ? {
+                              name: normalizeUtf8(turma.modalidade.nome),
+                              icon: turma.modalidade.icone || null,
+                            }
+                          : null
+                      }
+                      booked={turma.alunos_inscritos}
+                      capacity={turma.limite_alunos}
+                      deadline={!disabled ? horaLimite : null}
+                      opensIn={minutosParaAbrir > 0 ? formatMinutos(minutosParaAbrir) : null}
+                      status={status}
+                      actionLabel={isProfessorOuAdmin ? "Ver turma" : "Check-in"}
+                      onPress={disabled ? undefined : () => openParticipants(turma)}
+                    />
                   );
                 })}
               </View>
             ) : (
               <View style={styles.emptyState}>
                 <View style={styles.emptyIconCircle}>
-                  <Feather name="moon" size={48} color={colors.primary} />
+                  <Feather name="moon" size={40} color={ds.inkMuted} />
                 </View>
-                <Text style={styles.emptyTitle}>Rest Day</Text>
+                <Text style={styles.emptyTitle}>Dia de descanso</Text>
                 <Text style={styles.emptySubtitle}>
                   Sem turmas disponíveis neste dia
                 </Text>
@@ -2187,6 +2065,26 @@ export default function CheckinScreen() {
 }
 
 const styles = StyleSheet.create({
+  sectionHeadAside: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "600",
+    color: ds.inkMuted,
+  },
+  sectionHeadTitle: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "800",
+    letterSpacing: 0.96,
+    color: ds.inkMuted,
+  },
+  sectionHead: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    paddingHorizontal: 4,
+    marginBottom: -4,
+  },
   container: {
     flex: 1,
     backgroundColor: ds.ground,
@@ -2195,8 +2093,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 18,
-    paddingVertical: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    minHeight: 64,
     backgroundColor: ds.surface,
     borderBottomWidth: 1,
     borderBottomColor: ds.line,
@@ -2213,13 +2112,16 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 22,
+    lineHeight: 28,
     fontWeight: "800",
+    letterSpacing: -0.2,
     color: ds.ink,
   },
   headerSubtitle: {
-    fontSize: 12,
-    fontWeight: "700",
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "600",
     color: ds.inkMuted,
   },
   headerLeft: {
@@ -2341,11 +2243,15 @@ const styles = StyleSheet.create({
   },
   switchLabel: {
     fontSize: 13,
-    color: "#fff",
     fontWeight: "700",
+    color: ds.inkMuted,
   },
   refreshButton: {
-    padding: 8,
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
   },
   scrollContent: {
     paddingBottom: 48,
@@ -2355,67 +2261,61 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   calendarSection: {
-    paddingVertical: 0,
-    paddingHorizontal: 0,
-    backgroundColor: "#fff",
-    borderBottomWidth: 0,
-    borderBottomColor: "transparent",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    elevation: 2,
+    backgroundColor: ds.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: ds.line,
   },
   calendarContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
     gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   calendarDay: {
-    backgroundColor: "#fff",
-    borderRadius: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    alignItems: "center",
-    minWidth: 70,
+    width: 54,
+    height: 64,
+    borderRadius: 12,
+    backgroundColor: ds.surface,
     borderWidth: 1,
     borderColor: ds.line,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 2,
   },
   calendarDaySelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    backgroundColor: ds.inverse,
+    borderColor: ds.inverse,
   },
   calendarDayPressed: {
     opacity: 0.9,
   },
   calendarDayName: {
-    fontSize: 13,
-    color: colors.textMuted,
-    marginBottom: 4,
-    fontWeight: "500",
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "800",
+    letterSpacing: 0.66,
+    textTransform: "uppercase",
+    color: ds.inkMuted,
   },
   calendarDayNameSelected: {
-    color: ds.onBrand,
+    color: ds.onInverse,
+    opacity: 0.75,
   },
   calendarDayNumber: {
     fontSize: 20,
-    fontWeight: "bold",
-    color: colors.primaryText,
+    lineHeight: 24,
+    fontWeight: "800",
+    color: ds.ink,
+    fontVariant: ["tabular-nums"],
   },
   calendarDayNumberSelected: {
-    color: ds.onBrand,
+    color: ds.onInverse,
   },
   schedulesSection: {
-    paddingHorizontal: 16,
-    paddingVertical: 18,
+    padding: 16,
+    paddingBottom: 32,
   },
   schedulesList: {
-    gap: 10,
+    gap: 12,
   },
   scheduleItem: {
     backgroundColor: "#fff",
@@ -2933,13 +2833,18 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   emptyTitle: {
-    fontSize: 20,
+    fontSize: 22,
+    lineHeight: 28,
     fontWeight: "800",
-    color: colors.text,
+    color: ds.ink,
+    marginTop: 12,
   },
   emptySubtitle: {
-    fontSize: 14,
-    color: colors.textSecondary,
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: "500",
+    color: ds.inkMuted,
+    textAlign: "center",
   },
   // Modal de Erro Customizado
   modalOverlay: {
