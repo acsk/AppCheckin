@@ -149,7 +149,7 @@ class MobileCompraPlanoService
         $isRecorrente = MobilePagamentoMetodos::isRecorrenteEfetivo(
             $permiteRecorrenciaCiclo,
             $habilitarCartao
-        ) && $metodoPagamento === 'cartao';
+        ) && $metodoPagamento === 'cartao' && $provider === 'mercadopago';
 
         if ($valorCompra <= 0) {
             return $this->erro(400, 'PLANO_INVALIDO', 'Este plano não está disponível para compra');
@@ -314,8 +314,9 @@ class MobileCompraPlanoService
                 (int) $pendente['id']
             );
 
-            // Mesmo plano/ciclo: reabre cobrança na matrícula existente.
-            if ($mesmaEscolha) {
+            // PIX na mesma escolha: reabre QR. Cartão/boleto gera cobrança no provedor do método
+            // (não reabre checkout antigo do Mercado Pago).
+            if ($mesmaEscolha && $metodoPagamento === 'pix') {
                 return $this->respostaPendenteExistente(
                     $tenantId,
                     $userId,

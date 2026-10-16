@@ -262,26 +262,43 @@ class PaymentGatewayFactory
     private function aceitaMetodo(object $row, string $metodo): bool
     {
         $metodo = strtolower($metodo);
-        $flags = (array) $row;
-        $ligado = static function (mixed $valor): bool {
-            if ($valor === null) {
-                return true;
-            }
-
-            if ($valor === 0 || $valor === '0' || $valor === false || $valor === 'false') {
-                return false;
-            }
-
-            return $valor === 1 || $valor === true || $valor === '1'
-                || filter_var($valor, FILTER_VALIDATE_BOOLEAN) === true;
-        };
 
         return match ($metodo) {
-            'boleto' => $ligado($flags['enable_boleto'] ?? true),
-            'cartao', 'checkout', 'credit_card' => $ligado($flags['enable_credit_card'] ?? true)
-                || ($metodo === 'checkout' && $ligado($flags['enable_boleto'] ?? true)),
-            default => $ligado($flags['enable_pix'] ?? true),
+            'boleto' => $this->flagMetodo($row, 'enable_boleto', false),
+            'cartao', 'credit_card', 'card' => $this->flagMetodo($row, 'enable_credit_card', false),
+            'checkout' => $this->flagMetodo($row, 'enable_credit_card', false)
+                || $this->flagMetodo($row, 'enable_boleto', false),
+            default => $this->flagMetodo($row, 'enable_pix', true),
         };
+    }
+
+    private function flagMetodo(object $row, string $coluna, bool $quandoAusente): bool
+    {
+        $valor = null;
+        $presente = false;
+        if (property_exists($row, $coluna)) {
+            $presente = true;
+            $valor = $row->{$coluna};
+        } else {
+            foreach ((array) $row as $key => $item) {
+                if ($key === $coluna || str_ends_with((string) $key, $coluna)) {
+                    $presente = true;
+                    $valor = $item;
+                    break;
+                }
+            }
+        }
+
+        if (! $presente || $valor === null || $valor === '') {
+            return $quandoAusente;
+        }
+
+        if ($valor === 0 || $valor === '0' || $valor === false || $valor === 'false') {
+            return false;
+        }
+
+        return $valor === 1 || $valor === true || $valor === '1'
+            || filter_var($valor, FILTER_VALIDATE_BOOLEAN) === true;
     }
 
     private function temCredencialDoAmbiente(object $row): bool

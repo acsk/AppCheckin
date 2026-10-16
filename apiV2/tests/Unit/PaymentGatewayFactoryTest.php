@@ -199,4 +199,27 @@ class PaymentGatewayFactoryTest extends TestCase
         $this->assertTrue($aluno['pix']);
         $this->assertTrue($admin['cartao']);
     }
+
+    public function test_mp_com_pix_nao_entra_na_lista_de_cartao(): void
+    {
+        DB::table('tenant_payment_credentials')->insert([
+            'tenant_id' => 11,
+            'provider' => 'mercadopago',
+            'environment' => 'production',
+            'access_token_test' => '',
+            'access_token_prod' => 'APP_USR-mp',
+            'is_active' => 1,
+            'enable_pix' => 1,
+            'enable_boleto' => 0,
+            'enable_credit_card' => 0,
+        ]);
+
+        $factory = new PaymentGatewayFactory();
+        $this->assertSame(['mercadopago'], array_column($factory->listarDisponiveis(11, false, 'pix'), 'id'));
+        $this->assertSame([], $factory->listarDisponiveis(11, false, 'cartao'));
+        $this->assertFalse($factory->metodosHabilitados(11, false)['cartao']);
+        $escolha = $factory->resolverMetodo(11, false, 'cartao', null);
+        $this->assertFalse($escolha['ok']);
+        $this->assertSame('SEM_GATEWAY', $escolha['code']);
+    }
 }

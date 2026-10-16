@@ -21,16 +21,10 @@ export function opcoesPagamentoVisiveis(
   if (pixDisponivel) {
     set.add("pix");
   }
-  if (set.has("checkout") && !set.has("cartao") && !set.has("boleto")) {
-    set.add("cartao");
-  }
 
-  return METODOS_PAGAMENTO_OPCOES.map((opcao) => opcao.id).filter((id) => {
-    if (id === "cartao") {
-      return set.has("cartao") || set.has("checkout");
-    }
-    return set.has(id);
-  });
+  return METODOS_PAGAMENTO_OPCOES.map((opcao) => opcao.id).filter((id) =>
+    set.has(id),
+  );
 }
 
 export function rotuloPagarMetodo(

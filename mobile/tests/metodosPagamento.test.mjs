@@ -17,8 +17,8 @@ test("mostra boleto e cartão quando o ciclo traz esses métodos", () => {
   ]);
 });
 
-test("checkout legado vira opção de cartão", () => {
-  assert.deepEqual(opcoesPagamentoVisiveis(["checkout"]), ["cartao"]);
+test("checkout sozinho não vira cartão", () => {
+  assert.deepEqual(opcoesPagamentoVisiveis(["checkout"]), []);
 });
 
 test("rótulo do botão segue o método escolhido", () => {
