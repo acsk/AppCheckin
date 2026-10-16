@@ -8,6 +8,8 @@ use App\Repositories\MatriculaRepository;
 use App\Repositories\UsuarioRepository;
 use App\Services\MercadoPagoService;
 use App\Services\PagamentoPlanoService;
+use App\Services\Payment\PaymentGatewayFactory;
+use App\Support\AssinaturaGateway;
 use App\Support\MetodoPagamentoResolver;
 use App\Support\MobilePagamentoMetodos;
 use DateTime;
@@ -22,6 +24,7 @@ class MobileCompraPlanoService
         private readonly MatriculaRepository $matriculas,
         private readonly PagamentoPlanoService $pagamentosPlano,
         private readonly MobilePagamentoService $mobilePagamento,
+        private readonly PaymentGatewayFactory $gateways,
     ) {}
 
     /**
@@ -466,7 +469,8 @@ class MobileCompraPlanoService
                 'apenas_cartao' => $isRecorrente,
             ];
 
-            $mp = new MercadoPagoService($tenantId);
+            $provider = $this->gateways->providerForTenant($tenantId);
+            $mp = $provider === 'asaas' ? null : new MercadoPagoService($tenantId);
             $paymentUrl = null;
             $preferenceId = null;
             $tipoPagamento = 'pagamento_unico';
@@ -480,19 +484,25 @@ class MobileCompraPlanoService
                     if (strlen($cpfPix) !== 11) {
                         return $this->erro(400, 'CPF_OBRIGATORIO_PIX', 'CPF válido é obrigatório para pagamento PIX');
                     }
-                    $pixData = $mp->criarPagamentoPix($dadosPagamento);
+                    $pixData = $this->gateways->pixGateway($tenantId)->criarPagamentoPix($dadosPagamento);
                     $tipoPagamento = 'pix';
                     $paymentUrl = $pixData['ticket_url'] ?? null;
                     $preferenceId = $pixData['id'] ?? null;
                     $externalReference = $pixData['external_reference'] ?? $externalReference;
                     $this->salvarPixRegistro($tenantId, $matriculaId, $pixData);
                 } elseif ($isRecorrente) {
+                    if ($provider === 'asaas' || ! $mp) {
+                        return $this->erro(400, 'ASAAS_SEM_RECORRENCIA', 'Assinatura recorrente ainda não está disponível no Asaas. Use PIX ou Mercado Pago.');
+                    }
                     $preferencia = $mp->criarPreferenciaAssinatura($dadosPagamento, $duracaoMeses);
                     $tipoPagamento = 'assinatura';
                     $paymentUrl = $preferencia['init_point'] ?? null;
                     $preferenceId = $preferencia['id'] ?? null;
                     $externalReference = $preferencia['external_reference'] ?? $externalReference;
                 } else {
+                    if ($provider === 'asaas' || ! $mp) {
+                        return $this->erro(400, 'ASAAS_PIX_ONLY', 'No Asaas o recebimento mobile está disponível via PIX.');
+                    }
                     $preferencia = $mp->criarPreferenciaPagamento($dadosPagamento);
                     $tipoPagamento = 'pagamento_unico';
                     $paymentUrl = $preferencia['init_point'] ?? null;
@@ -512,6 +522,7 @@ class MobileCompraPlanoService
                     $paymentUrl,
                     $externalReference,
                     $cicloNome,
+                    $provider,
                 );
             } catch (\Throwable $e) {
                 $mpError = $e->getMessage();
@@ -663,8 +674,9 @@ class MobileCompraPlanoService
         ?string $paymentUrl,
         string $externalReference,
         string $cicloNome,
+        string $provider = 'mercadopago',
     ): void {
-        $gatewayId = DB::table('assinatura_gateways')->where('codigo', 'mercadopago')->value('id') ?: 1;
+        $gatewayId = AssinaturaGateway::id($provider === 'asaas' ? 'asaas' : 'mercadopago');
         $statusId = DB::table('assinatura_status')->where('codigo', 'pendente')->value('id') ?: 1;
         $frequenciaId = DB::table('assinatura_frequencias')->where('codigo', strtolower($cicloNome))->value('id') ?: 4;
 

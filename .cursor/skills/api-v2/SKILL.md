@@ -80,6 +80,8 @@ Checklist por endpoint:
   - `GET /v2/mobile/checkins/por-modalidade` (`offset`, `data_referencia`)
   - `GET /v2/mobile/ranking/mensal` (`modalidade_id`)
   - `GET /v2/mobile/ranking/anual` (`modalidade_id`, top 10)
+  - `POST /v2/webhooks/asaas` (público — PIX/recebimentos Asaas)
+  - `GET/POST /v2/admin/payment-credentials` (providers `mercadopago` | `asaas`; API key criptografada no banco)
   - `GET /v2/mobile/wod/hoje` (`data`, `modalidade_id`)
   - `GET /v2/mobile/wods/hoje` (`data`)
   - `GET /v2/mobile/planos-disponiveis` (`modalidade_id`)

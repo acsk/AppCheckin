@@ -4,8 +4,9 @@ namespace App\Services\Mobile;
 
 use App\Support\ReferenciaExterna;
 use App\Repositories\MatriculaRepository;
-use App\Services\MercadoPagoService;
 use App\Services\PagamentoPlanoService;
+use App\Services\Payment\PaymentGatewayFactory;
+use App\Support\AssinaturaGateway;
 use App\Support\MetodoPagamentoResolver;
 use Illuminate\Support\Facades\DB;
 
@@ -14,6 +15,7 @@ class MobilePagamentoService
     public function __construct(
         private readonly MatriculaRepository $matriculas,
         private readonly PagamentoPlanoService $pagamentosPlano,
+        private readonly PaymentGatewayFactory $gateways,
     ) {}
 
     /**
@@ -199,7 +201,10 @@ class MobilePagamentoService
                 (int) $matricula['plano_id'],
                 (float) $matricula['valor'],
                 $dataVencParcela,
-                $userId
+                $userId,
+                $this->gateways->providerForTenant($tenantId) === 'asaas'
+                    ? 'Aguardando pagamento via Asaas'
+                    : 'Aguardando pagamento via Mercado Pago'
             );
 
             $academiaNome = DB::table('tenants')->where('id', $tenantId)->value('nome') ?? 'Academia';
@@ -219,8 +224,7 @@ class MobilePagamentoService
                 'academia_nome' => $academiaNome,
             ];
 
-            $mercadoPago = new MercadoPagoService($tenantId);
-            $pixData = $mercadoPago->criarPagamentoPix($dadosPagamento);
+            $pixData = $this->gateways->pixGateway($tenantId)->criarPagamentoPix($dadosPagamento);
 
             $this->salvarPix($tenantId, $matriculaId, $pixData);
             $this->atualizarAssinaturaPix($tenantId, $matricula, $pixData);
@@ -306,7 +310,8 @@ class MobilePagamentoService
             return;
         }
 
-        $gatewayId = DB::table('assinatura_gateways')->where('codigo', 'mercadopago')->value('id') ?: 1;
+        $provider = $this->gateways->providerForTenant($tenantId);
+        $gatewayId = AssinaturaGateway::id($provider === 'asaas' ? 'asaas' : 'mercadopago');
         $statusId = DB::table('assinatura_status')->where('codigo', 'pendente')->value('id') ?: 1;
         $metodoPagamentoId = MetodoPagamentoResolver::resolve('pix');
 

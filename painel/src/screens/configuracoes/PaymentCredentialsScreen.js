@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Switch } from 'react-native';
-import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import LayoutBase from '../../components/LayoutBase';
 import paymentCredentialsService from '../../services/paymentCredentialsService';
 import { showSuccess, showError, showLoading, dismissToast } from '../../utils/toast';
@@ -66,19 +66,34 @@ export default function PaymentCredentialsScreen() {
     const temPublicKeyTest = formData.public_key_test.trim() || credenciaisExistentes?.public_key_test_masked;
     const temPublicKeyProd = formData.public_key_prod.trim() || credenciaisExistentes?.public_key_prod_masked;
     
-    if (!temPublicKeyTest && !temPublicKeyProd) {
-      showError('Preencha ao menos uma Public Key (Teste ou Produção)');
-      return;
-    }
+    const isAsaas = formData.provider === 'asaas';
+    const temTokenTest = formData.access_token_test.trim() || credenciaisExistentes?.has_token_test;
+    const temTokenProd = formData.access_token_prod.trim() || credenciaisExistentes?.has_token_prod;
 
-    if (formData.environment === 'sandbox' && !temPublicKeyTest) {
-      showError('Public Key de Teste é obrigatória para ambiente Sandbox');
-      return;
-    }
+    if (isAsaas) {
+      if (formData.environment === 'sandbox' && !temTokenTest) {
+        showError('Informe a API key de sandbox do Asaas');
+        return;
+      }
+      if (formData.environment === 'production' && !temTokenProd) {
+        showError('Informe a API key de produção do Asaas');
+        return;
+      }
+    } else {
+      if (!temPublicKeyTest && !temPublicKeyProd) {
+        showError('Preencha ao menos uma Public Key (Teste ou Produção)');
+        return;
+      }
 
-    if (formData.environment === 'production' && !temPublicKeyProd) {
-      showError('Public Key de Produção é obrigatória para ambiente Produção');
-      return;
+      if (formData.environment === 'sandbox' && !temPublicKeyTest) {
+        showError('Public Key de Teste é obrigatória para ambiente Sandbox');
+        return;
+      }
+
+      if (formData.environment === 'production' && !temPublicKeyProd) {
+        showError('Public Key de Produção é obrigatória para ambiente Produção');
+        return;
+      }
     }
 
     const toastId = showLoading('Salvando credenciais...');
@@ -136,7 +151,9 @@ export default function PaymentCredentialsScreen() {
   };
 
   const handleTestarConexao = async () => {
-    const toastId = showLoading('Testando conexão com Mercado Pago...');
+    const toastId = showLoading(
+      formData.provider === 'asaas' ? 'Testando conexão com Asaas...' : 'Testando conexão com Mercado Pago...'
+    );
     
     try {
       setTestando(true);
@@ -158,10 +175,11 @@ export default function PaymentCredentialsScreen() {
   };
 
   const ambienteSandbox = formData.environment === 'sandbox';
+  const isAsaas = formData.provider === 'asaas';
 
   if (loading) {
     return (
-      <LayoutBase title="Configurações de Pagamento" subtitle="Configure suas credenciais do Mercado Pago">
+      <LayoutBase title="Configurações de Pagamento" subtitle="Configure Mercado Pago ou Asaas">
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#3b82f6" />
           <Text style={styles.loadingText}>Carregando credenciais...</Text>
@@ -171,14 +189,37 @@ export default function PaymentCredentialsScreen() {
   }
 
   return (
-    <LayoutBase title="Configurações de Pagamento" subtitle="Configure suas credenciais do Mercado Pago">
+    <LayoutBase title="Configurações de Pagamento" subtitle="Configure Mercado Pago ou Asaas">
       <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
-      {/* Provider (fixo por enquanto) */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Provider de Pagamento</Text>
-        <View style={styles.providerCard}>
-          <MaterialCommunityIcons name="bank" size={24} color="#3b82f6" />
-          <Text style={styles.providerText}>Mercado Pago</Text>
+        <View style={styles.environmentContainer}>
+          <TouchableOpacity
+            style={[
+              styles.environmentCard,
+              formData.provider === 'mercadopago' && styles.environmentCardActive,
+            ]}
+            onPress={() => setFormData(prev => ({ ...prev, provider: 'mercadopago' }))}
+            activeOpacity={0.7}
+          >
+            <Text style={[
+              styles.environmentLabel,
+              formData.provider === 'mercadopago' && styles.environmentLabelActive,
+            ]}>Mercado Pago</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.environmentCard,
+              formData.provider === 'asaas' && styles.environmentCardActive,
+            ]}
+            onPress={() => setFormData(prev => ({ ...prev, provider: 'asaas' }))}
+            activeOpacity={0.7}
+          >
+            <Text style={[
+              styles.environmentLabel,
+              formData.provider === 'asaas' && styles.environmentLabelActive,
+            ]}>Asaas</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -249,11 +290,11 @@ export default function PaymentCredentialsScreen() {
         </View>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Access Token (Teste)</Text>
+          <Text style={styles.label}>{isAsaas ? 'API Key (Sandbox)' : 'Access Token (Teste)'}</Text>
           <View style={styles.inputWithIcon}>
             <TextInput
               style={[styles.input, { flex: 1 }]}
-              placeholder={credenciaisExistentes?.has_token_test ? '••••••••••••••••••••••••••' : 'TEST-5463428115477491-...'}
+              placeholder={credenciaisExistentes?.has_token_test ? '••••••••••••••••••••••••••' : (isAsaas ? '$aact_hmlg_…' : 'TEST-5463428115477491-...')}
               value={formData.access_token_test}
               onChangeText={(value) => setFormData(prev => ({ ...prev, access_token_test: value }))}
               secureTextEntry={!mostrarTokens.test}
@@ -272,6 +313,7 @@ export default function PaymentCredentialsScreen() {
           )}
         </View>
 
+        {!isAsaas && (
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Public Key (Teste)</Text>
           {credenciaisExistentes?.public_key_test_masked && !mostrarKeys.test && (
@@ -300,6 +342,7 @@ export default function PaymentCredentialsScreen() {
             <Text style={styles.hint}>Deixe vazio para manter a chave atual</Text>
           )}
         </View>
+        )}
       </View>
 
       {/* Credenciais de Produção */}
@@ -315,11 +358,11 @@ export default function PaymentCredentialsScreen() {
         </View>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>Access Token (Produção)</Text>
+          <Text style={styles.label}>{isAsaas ? 'API Key (Produção)' : 'Access Token (Produção)'}</Text>
           <View style={styles.inputWithIcon}>
             <TextInput
               style={[styles.input, { flex: 1 }]}
-              placeholder={credenciaisExistentes?.has_token_prod ? '••••••••••••••••••••••••••' : 'APP_USR-5463428115477491-...'}
+              placeholder={credenciaisExistentes?.has_token_prod ? '••••••••••••••••••••••••••' : (isAsaas ? '$aact_prod_…' : 'APP_USR-5463428115477491-...')}
               value={formData.access_token_prod}
               onChangeText={(value) => setFormData(prev => ({ ...prev, access_token_prod: value }))}
               secureTextEntry={!mostrarTokens.prod}
@@ -338,6 +381,7 @@ export default function PaymentCredentialsScreen() {
           )}
         </View>
 
+        {!isAsaas && (
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Public Key (Produção)</Text>
           {credenciaisExistentes?.public_key_prod_masked && !mostrarKeys.prod && (
@@ -366,6 +410,7 @@ export default function PaymentCredentialsScreen() {
             <Text style={styles.hint}>Deixe vazio para manter a chave atual</Text>
           )}
         </View>
+        )}
       </View>
 
       {/* Webhook Secret (Opcional) */}
@@ -405,12 +450,31 @@ export default function PaymentCredentialsScreen() {
         <Feather name="info" size={18} color="#3b82f6" />
         <View style={styles.infoTexts}>
           <Text style={styles.infoTitle}>Onde obter as credenciais?</Text>
-          <Text style={styles.infoText}>
-            Acesse: https://www.mercadopago.com.br/developers/panel/app
-          </Text>
-          <Text style={styles.infoText}>
-            Crie uma aplicação e copie as credenciais de teste e produção
-          </Text>
+          {isAsaas ? (
+            <>
+              <Text style={styles.infoText}>
+                Docs: https://docs.asaas.com/reference/comece-por-aqui
+              </Text>
+              <Text style={styles.infoText}>
+                Sandbox: https://sandbox.asaas.com → Integrações → criar API Key. A chave começa com $aact_hmlg_ (o $ faz parte).
+              </Text>
+              <Text style={styles.infoText}>
+                Header access_token (não Bearer). Webhook: POST /v2/webhooks/asaas (asaas-access-token).
+              </Text>
+              <Text style={styles.infoText}>
+                A key é gravada criptografada no banco. Não fica em .env nem no código.
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.infoText}>
+                Acesse: https://www.mercadopago.com.br/developers/panel/app
+              </Text>
+              <Text style={styles.infoText}>
+                Crie uma aplicação e copie as credenciais de teste e produção
+              </Text>
+            </>
+          )}
         </View>
       </View>
 

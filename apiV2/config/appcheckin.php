@@ -55,4 +55,9 @@ return [
     | Pasta uploads da Slim (legado) para fallback e importação.
     */
     'uploads_legacy_dir' => env('UPLOADS_LEGACY_DIR', ''),
+
+    'asaas' => [
+        'sandbox_url' => env('ASAAS_SANDBOX_URL', 'https://api-sandbox.asaas.com/v3'),
+        'production_url' => env('ASAAS_PRODUCTION_URL', 'https://api.asaas.com/v3'),
+    ],
 ];

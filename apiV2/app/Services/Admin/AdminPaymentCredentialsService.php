@@ -5,6 +5,7 @@ namespace App\Services\Admin;
 use App\Repositories\TenantPaymentCredentialsRepository;
 use App\Services\EncryptionService;
 use App\Services\MercadoPagoService;
+use App\Support\AsaasApiKey;
 use Throwable;
 
 /**
@@ -68,14 +69,69 @@ class AdminPaymentCredentialsService
     {
         try {
             $environment = $body['environment'] ?? 'sandbox';
-            $provider = $body['provider'] ?? 'mercadopago';
+            $provider = strtolower((string) ($body['provider'] ?? 'mercadopago'));
+            if (! in_array($provider, ['mercadopago', 'asaas'], true)) {
+                return [
+                    'status' => 400,
+                    'body' => [
+                        'success' => false,
+                        'message' => 'Provider inválido. Use mercadopago ou asaas.',
+                    ],
+                ];
+            }
 
-            $accessTokenTest = isset($body['access_token_test']) && ! empty($body['access_token_test'])
-                ? $this->encryption->encrypt($body['access_token_test'])
-                : null;
-            $accessTokenProd = isset($body['access_token_prod']) && ! empty($body['access_token_prod'])
-                ? $this->encryption->encrypt($body['access_token_prod'])
-                : null;
+            if ($provider === 'asaas') {
+                $existente = $this->credentials->obterPorTenant($tenantId);
+                $temTokenSandbox = ! empty($body['access_token_test']) || ! empty($existente['has_token_test']);
+                $temTokenProd = ! empty($body['access_token_prod']) || ! empty($existente['has_token_prod']);
+                if ($environment === 'sandbox' && ! $temTokenSandbox) {
+                    return [
+                        'status' => 400,
+                        'body' => [
+                            'success' => false,
+                            'message' => 'Informe a API key de sandbox do Asaas.',
+                        ],
+                    ];
+                }
+                if ($environment === 'production' && ! $temTokenProd) {
+                    return [
+                        'status' => 400,
+                        'body' => [
+                            'success' => false,
+                            'message' => 'Informe a API key de produção do Asaas.',
+                        ],
+                    ];
+                }
+            }
+
+            $plainTest = isset($body['access_token_test']) && $body['access_token_test'] !== ''
+                ? AsaasApiKey::normalizar((string) $body['access_token_test'])
+                : '';
+            $plainProd = isset($body['access_token_prod']) && $body['access_token_prod'] !== ''
+                ? AsaasApiKey::normalizar((string) $body['access_token_prod'])
+                : '';
+
+            if ($provider === 'asaas' && $plainTest !== '' && ! AsaasApiKey::valida($plainTest, 'sandbox')) {
+                return [
+                    'status' => 400,
+                    'body' => [
+                        'success' => false,
+                        'message' => AsaasApiKey::mensagemInvalida('sandbox'),
+                    ],
+                ];
+            }
+            if ($provider === 'asaas' && $plainProd !== '' && ! AsaasApiKey::valida($plainProd, 'production')) {
+                return [
+                    'status' => 400,
+                    'body' => [
+                        'success' => false,
+                        'message' => AsaasApiKey::mensagemInvalida('production'),
+                    ],
+                ];
+            }
+
+            $accessTokenTest = $plainTest !== '' ? $this->encryption->encrypt($plainTest) : null;
+            $accessTokenProd = $plainProd !== '' ? $this->encryption->encrypt($plainProd) : null;
             $webhookSecret = isset($body['webhook_secret']) && ! empty($body['webhook_secret'])
                 ? $this->encryption->encrypt($body['webhook_secret'])
                 : null;
@@ -143,6 +199,23 @@ class AdminPaymentCredentialsService
     public function testar(int $tenantId): array
     {
         try {
+            $row = $this->credentials->obterPorTenant($tenantId);
+            $provider = strtolower((string) ($row['provider'] ?? 'mercadopago'));
+
+            if ($provider === 'asaas') {
+                $asaas = new \App\Services\Asaas\AsaasService($tenantId);
+                $resultado = $asaas->testarConexao();
+
+                return [
+                    'status' => 200,
+                    'body' => [
+                        'success' => true,
+                        'message' => $resultado['message'],
+                        'data' => $resultado['account'] ?? [],
+                    ],
+                ];
+            }
+
             $mercadoPago = new MercadoPagoService($tenantId);
             $publicKey = $mercadoPago->getPublicKey();
 
