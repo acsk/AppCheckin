@@ -13,7 +13,9 @@ class PaymentGatewayFactory
      */
     public function listarDisponiveis(int $tenantId, bool $podeSandbox): array
     {
-        $rows = $this->ativos($tenantId);
+        $rows = $podeSandbox
+            ? $this->todosDoTenant($tenantId)
+            : $this->ativos($tenantId);
 
         $out = [];
         foreach ($rows as $row) {
@@ -25,6 +27,11 @@ class PaymentGatewayFactory
             $environment = ((string) ($row->environment ?? 'sandbox')) === 'production'
                 ? 'production'
                 : 'sandbox';
+
+            $ativo = $this->estaAtivo($row);
+            if (! $ativo && ! $podeSandbox) {
+                continue;
+            }
 
             if ($environment === 'sandbox' && ! $podeSandbox) {
                 continue;
@@ -166,6 +173,24 @@ class PaymentGatewayFactory
             })
             ->orderBy('provider')
             ->get();
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    private function todosDoTenant(int $tenantId)
+    {
+        return DB::table('tenant_payment_credentials')
+            ->where('tenant_id', $tenantId)
+            ->orderBy('provider')
+            ->get();
+    }
+
+    private function estaAtivo(object $row): bool
+    {
+        $valor = $row->is_active ?? 0;
+
+        return $valor === 1 || $valor === true || $valor === '1';
     }
 
     private function temCredencialDoAmbiente(object $row): bool

@@ -178,7 +178,6 @@ class AsaasService
         $credentials = DB::table('tenant_payment_credentials')
             ->where('tenant_id', $this->tenantId)
             ->where('provider', 'asaas')
-            ->where('is_active', 1)
             ->first();
 
         if (! $credentials) {

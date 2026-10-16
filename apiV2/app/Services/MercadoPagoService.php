@@ -120,7 +120,6 @@ class MercadoPagoService
             $credentials = DB::table('tenant_payment_credentials')
                 ->where('tenant_id', $this->tenantId)
                 ->where('provider', 'mercadopago')
-                ->where('is_active', 1)
                 ->first();
             $credentials = $credentials ? (array) $credentials : null;
             
