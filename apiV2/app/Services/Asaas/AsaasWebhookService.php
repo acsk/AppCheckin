@@ -7,6 +7,7 @@ use App\Services\PagamentoPlanoService;
 use App\Support\AsaasPagamentoStatus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class AsaasWebhookService
 {
@@ -92,54 +93,12 @@ class AsaasWebhookService
             return ['status' => 200, 'body' => ['success' => true, 'received' => true, 'ignored' => 'matricula_nao_encontrada']];
         }
 
-        if ($pix && AsaasPagamentoStatus::pago((string) ($pix->status ?? ''))) {
-            $this->pagamentosPlano->atualizarStatusMatricula($tenantId, $matriculaId);
-
-            return [
-                'status' => 200,
-                'body' => [
-                    'success' => true,
-                    'received' => true,
-                    'id' => $eventId,
-                    'ignored' => 'ja_processado',
-                    'payment_id' => $paymentId,
-                    'matricula_id' => $matriculaId,
-                ],
-            ];
-        }
-
         DB::table('pagamentos_pix')
             ->where('tenant_id', $tenantId)
             ->where('payment_id', $paymentId)
             ->update(['status' => 'approved']);
 
-        $parcela = DB::table('pagamentos_plano')
-            ->where('tenant_id', $tenantId)
-            ->where('matricula_id', $matriculaId)
-            ->whereIn('status_pagamento_id', [1, 3])
-            ->whereNull('data_pagamento')
-            ->orderBy('data_vencimento')
-            ->orderBy('id')
-            ->first();
-
-        if ($parcela) {
-            $formaId = $this->formaPagamentoId((string) ($payment['billingType'] ?? 'PIX'));
-
-            $dataPagamento = AsaasPagamentoStatus::dataPagamento($payment)
-                ?? substr((string) date('Y-m-d'), 0, 10);
-
-            DB::table('pagamentos_plano')
-                ->where('id', $parcela->id)
-                ->where('tenant_id', $tenantId)
-                ->update([
-                    'status_pagamento_id' => 2,
-                    'data_pagamento' => $dataPagamento !== '' ? $dataPagamento : date('Y-m-d'),
-                    'forma_pagamento_id' => $formaId,
-                    'tipo_baixa_id' => DB::table('tipos_baixa')->where('nome', 'Integração')->value('id') ?: 4,
-                    'observacoes' => trim(($parcela->observacoes ?? '').' [Asaas '.$paymentId.']'),
-                    'updated_at' => now(),
-                ]);
-        }
+        $this->baixarParcelaAberta($tenantId, $matriculaId, $payment);
 
         $statusPagaId = DB::table('assinatura_status')->where('codigo', 'paga')->value('id')
             ?: DB::table('assinatura_status')->where('codigo', 'ativa')->value('id');
@@ -173,6 +132,7 @@ class AsaasWebhookService
             ->update(['updated_at' => now()]);
 
         $this->pagamentosPlano->atualizarStatusMatricula($tenantId, $matriculaId);
+        $this->ativarMatriculaPendente($tenantId, $matriculaId);
 
         return [
             'status' => 200,
@@ -243,6 +203,107 @@ class AsaasWebhookService
         }
 
         return in_array($event, self::EVENTOS_PAGOS, true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payment
+     */
+    private function baixarParcelaAberta(int $tenantId, int $matriculaId, array $payment): void
+    {
+        $paymentId = (string) ($payment['id'] ?? '');
+        if ($paymentId !== '') {
+            $jaBaixada = DB::table('pagamentos_plano')
+                ->where('tenant_id', $tenantId)
+                ->where('matricula_id', $matriculaId)
+                ->where('status_pagamento_id', 2)
+                ->where('observacoes', 'like', '%'.$paymentId.'%')
+                ->exists();
+            if ($jaBaixada) {
+                return;
+            }
+        }
+
+        $abertas = function () use ($tenantId, $matriculaId) {
+            return DB::table('pagamentos_plano')
+                ->where('tenant_id', $tenantId)
+                ->where('matricula_id', $matriculaId)
+                ->whereIn('status_pagamento_id', [1, 3])
+                ->whereNull('data_pagamento');
+        };
+
+        $valor = isset($payment['value']) ? round((float) $payment['value'], 2) : 0.0;
+        $parcela = null;
+        if ($valor > 0) {
+            $parcela = $abertas()
+                ->where('valor', $valor)
+                ->orderByDesc('id')
+                ->first();
+        }
+        if (! $parcela) {
+            $parcela = $abertas()
+                ->where(function ($q) {
+                    $q->where('observacoes', 'like', '%Aguardando pagamento%')
+                        ->orWhere('observacoes', 'like', '%Primeiro pagamento%');
+                })
+                ->orderBy('data_vencimento')
+                ->orderBy('id')
+                ->first();
+        }
+        if (! $parcela) {
+            $parcela = $abertas()
+                ->orderBy('data_vencimento')
+                ->orderBy('id')
+                ->first();
+        }
+
+        if (! $parcela) {
+            return;
+        }
+
+        $dataPagamento = AsaasPagamentoStatus::dataPagamento($payment)
+            ?? substr((string) date('Y-m-d'), 0, 10);
+
+        DB::table('pagamentos_plano')
+            ->where('id', $parcela->id)
+            ->where('tenant_id', $tenantId)
+            ->update([
+                'status_pagamento_id' => 2,
+                'data_pagamento' => $dataPagamento !== '' ? $dataPagamento : date('Y-m-d'),
+                'forma_pagamento_id' => $this->formaPagamentoId((string) ($payment['billingType'] ?? 'PIX')),
+                'tipo_baixa_id' => DB::table('tipos_baixa')->where('nome', 'Integração')->value('id') ?: 4,
+                'observacoes' => trim(($parcela->observacoes ?? '').' [Asaas '.$paymentId.']'),
+                'updated_at' => now(),
+            ]);
+    }
+
+    private function ativarMatriculaPendente(int $tenantId, int $matriculaId): void
+    {
+        if (! Schema::hasTable('status_matricula') || ! Schema::hasColumn('matriculas', 'status_id')) {
+            return;
+        }
+
+        $codigo = (string) (DB::table('matriculas as m')
+            ->leftJoin('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+            ->where('m.id', $matriculaId)
+            ->where('m.tenant_id', $tenantId)
+            ->value('sm.codigo') ?? '');
+
+        if ($codigo !== 'pendente' && $codigo !== '') {
+            return;
+        }
+
+        $ativaId = DB::table('status_matricula')->where('codigo', 'ativa')->value('id');
+        if (! $ativaId) {
+            return;
+        }
+
+        DB::table('matriculas')
+            ->where('id', $matriculaId)
+            ->where('tenant_id', $tenantId)
+            ->update([
+                'status_id' => (int) $ativaId,
+                'updated_at' => now(),
+            ]);
     }
 
     private function formaPagamentoId(string $billingType): ?int

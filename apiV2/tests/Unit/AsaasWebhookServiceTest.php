@@ -43,9 +43,14 @@ class AsaasWebhookServiceTest extends TestCase
             $table->unsignedInteger('status_id')->nullable();
             $table->timestamp('atualizado_em')->nullable();
         });
+        Schema::create('status_matricula', function (Blueprint $table) {
+            $table->id();
+            $table->string('codigo');
+        });
         Schema::create('matriculas', function (Blueprint $table) {
             $table->id();
             $table->unsignedInteger('tenant_id');
+            $table->unsignedInteger('status_id')->nullable();
             $table->date('data_inicio')->nullable();
             $table->timestamp('updated_at')->nullable();
         });
@@ -54,6 +59,7 @@ class AsaasWebhookServiceTest extends TestCase
             $table->unsignedInteger('tenant_id');
             $table->unsignedInteger('matricula_id');
             $table->unsignedInteger('status_pagamento_id');
+            $table->decimal('valor', 10, 2)->nullable();
             $table->date('data_pagamento')->nullable();
             $table->date('data_vencimento')->nullable();
             $table->unsignedInteger('forma_pagamento_id')->nullable();
@@ -81,7 +87,11 @@ class AsaasWebhookServiceTest extends TestCase
         ]);
         DB::table('tipos_baixa')->insert(['id' => 4, 'nome' => 'Integração']);
         DB::table('assinatura_status')->insert(['id' => 1, 'codigo' => 'paga']);
-        DB::table('matriculas')->insert(['id' => 189, 'tenant_id' => 3, 'data_inicio' => null]);
+        DB::table('status_matricula')->insert([
+            ['id' => 1, 'codigo' => 'pendente'],
+            ['id' => 2, 'codigo' => 'ativa'],
+        ]);
+        DB::table('matriculas')->insert(['id' => 189, 'tenant_id' => 3, 'status_id' => 1, 'data_inicio' => null]);
         DB::table('pagamentos_pix')->insert([
             'tenant_id' => 3,
             'matricula_id' => 189,
@@ -92,6 +102,7 @@ class AsaasWebhookServiceTest extends TestCase
             'tenant_id' => 3,
             'matricula_id' => 189,
             'status_pagamento_id' => 1,
+            'valor' => 70,
             'data_pagamento' => null,
             'data_vencimento' => '2026-10-16',
             'observacoes' => 'PIX',
@@ -186,6 +197,41 @@ class AsaasWebhookServiceTest extends TestCase
         $this->assertSame(200, $result['status']);
         $this->assertSame('PAYMENT_UPDATED', $result['body']['ignored']);
         $this->assertSame('pending', DB::table('pagamentos_pix')->value('status'));
+    }
+
+    public function test_pix_ja_approved_ainda_baixa_parcela_aberta(): void
+    {
+        DB::table('pagamentos_pix')->update(['status' => 'approved']);
+        DB::table('pagamentos_plano')->where('matricula_id', 189)->update([
+            'status_pagamento_id' => 1,
+            'valor' => 70,
+            'data_pagamento' => null,
+            'observacoes' => 'Aguardando pagamento via Asaas',
+        ]);
+
+        $pagamentos = Mockery::mock(PagamentoPlanoService::class);
+        $pagamentos->shouldReceive('atualizarStatusMatricula')->once()->with(3, 189);
+
+        $service = new AsaasWebhookService($pagamentos, new EncryptionService());
+        $result = $service->processar([
+            'event' => 'PAYMENT_RECEIVED',
+            'payment' => [
+                'id' => 'pay_xlm9exz869gjx520',
+                'status' => 'RECEIVED',
+                'billingType' => 'PIX',
+                'externalReference' => 'MAT-189-abc',
+                'paymentDate' => '2026-10-16',
+                'value' => 70,
+            ],
+        ], null);
+
+        $this->assertSame(200, $result['status']);
+        $this->assertArrayNotHasKey('ignored', $result['body']);
+        $parcela = DB::table('pagamentos_plano')->first();
+        $this->assertSame(2, (int) $parcela->status_pagamento_id);
+        $this->assertSame('2026-10-16', $parcela->data_pagamento);
+        $this->assertStringContainsString('Asaas pay_xlm9exz869gjx520', (string) $parcela->observacoes);
+        $this->assertSame(2, (int) DB::table('matriculas')->value('status_id'));
     }
 
     public function test_cartao_confirmed_baixa_sem_pix_e_sem_receber_cobranca(): void
