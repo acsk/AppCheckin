@@ -5,7 +5,6 @@ namespace App\Services\Payment;
 use App\Services\Asaas\AsaasService;
 use App\Services\MercadoPagoService;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 class PaymentGatewayFactory
 {
@@ -14,11 +13,7 @@ class PaymentGatewayFactory
      */
     public function listarDisponiveis(int $tenantId, bool $podeSandbox): array
     {
-        $rows = DB::table('tenant_payment_credentials')
-            ->where('tenant_id', $tenantId)
-            ->where('is_active', 1)
-            ->orderBy('provider')
-            ->get();
+        $rows = $this->ativos($tenantId);
 
         $out = [];
         foreach ($rows as $row) {
@@ -32,6 +27,10 @@ class PaymentGatewayFactory
                 : 'sandbox';
 
             if ($environment === 'sandbox' && ! $podeSandbox) {
+                continue;
+            }
+
+            if (! $this->temCredencialDoAmbiente($row)) {
                 continue;
             }
 
@@ -126,12 +125,13 @@ class PaymentGatewayFactory
 
     public function providerForTenant(int $tenantId): string
     {
-        $row = DB::table('tenant_payment_credentials')
-            ->where('tenant_id', $tenantId)
-            ->where('is_active', 1)
-            ->orderByRaw("CASE WHEN environment = 'production' THEN 0 ELSE 1 END")
-            ->orderBy('provider')
-            ->first(['provider']);
+        $row = $this->ativos($tenantId)
+            ->sortBy(function ($item) {
+                $prioridade = ((string) ($item->environment ?? '')) === 'production' ? '0' : '1';
+
+                return $prioridade.'_'.strtolower((string) ($item->provider ?? ''));
+            })
+            ->first();
 
         $provider = strtolower((string) ($row->provider ?? 'mercadopago'));
 
@@ -149,18 +149,33 @@ class PaymentGatewayFactory
             return $this->instancia($escolha['gateways'][0]['id'], $tenantId);
         }
 
-        if ($this->providerForTenant($tenantId) === 'asaas') {
-            $asaas = new AsaasService($tenantId);
-            if ($asaas->credenciaisOficiaisValidas()) {
-                return $asaas;
-            }
-
-            Log::warning('Asaas sem API key oficial ($aact_…); PIX cai no Mercado Pago', [
-                'tenant_id' => $tenantId,
-            ]);
-        }
-
         return new MercadoPagoService($tenantId);
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, object>
+     */
+    private function ativos(int $tenantId)
+    {
+        return DB::table('tenant_payment_credentials')
+            ->where('tenant_id', $tenantId)
+            ->where(function ($query) {
+                $query->where('is_active', 1)
+                    ->orWhere('is_active', true)
+                    ->orWhere('is_active', '1');
+            })
+            ->orderBy('provider')
+            ->get();
+    }
+
+    private function temCredencialDoAmbiente(object $row): bool
+    {
+        $producao = ((string) ($row->environment ?? '')) === 'production';
+        $token = $producao
+            ? (string) ($row->access_token_prod ?? '')
+            : (string) ($row->access_token_test ?? '');
+
+        return trim($token) !== '';
     }
 
     private function instancia(string $provider, int $tenantId): MercadoPagoService|AsaasService

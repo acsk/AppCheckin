@@ -8,6 +8,7 @@ use App\Services\PagamentoPlanoService;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Support\AssinaturaGateway;
 use App\Support\MetodoPagamentoResolver;
+use App\Support\PaymentPixGateway;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -179,21 +180,6 @@ class MobilePagamentoService
                 return ['status' => 400, 'body' => ['success' => false, 'error' => 'CPF válido é obrigatório para pagamento PIX']];
             }
 
-            $pixSalvo = $this->matriculas->findUltimoPix($tenantId, $matriculaId);
-            if ($pixSalvo && ! empty($pixSalvo['expires_at']) && strtotime($pixSalvo['expires_at']) >= time()) {
-                return [
-                    'status' => 200,
-                    'body' => [
-                        'success' => true,
-                        'data' => [
-                            'matricula_id' => $matriculaId,
-                            'valor' => (float) $matricula['valor'],
-                            'pix' => $this->formatPixPayload($pixSalvo),
-                        ],
-                    ],
-                ];
-            }
-
             $escolha = $this->gateways->resolverPix(
                 $tenantId,
                 $podeSandbox,
@@ -211,6 +197,28 @@ class MobilePagamentoService
                 ];
             }
             $provider = (string) $escolha['provider'];
+
+            $pixSalvo = $this->matriculas->findUltimoPix($tenantId, $matriculaId);
+            if ($pixSalvo && ! empty($pixSalvo['expires_at']) && strtotime($pixSalvo['expires_at']) >= time()) {
+                $gatewaySalvo = PaymentPixGateway::inferir(
+                    $pixSalvo['payment_id'] ?? null,
+                    $pixSalvo['ticket_url'] ?? null
+                );
+                if ($gatewaySalvo === $provider) {
+                    return [
+                        'status' => 200,
+                        'body' => [
+                            'success' => true,
+                            'data' => [
+                                'matricula_id' => $matriculaId,
+                                'valor' => (float) $matricula['valor'],
+                                'gateway' => $provider,
+                                'pix' => $this->formatPixPayload($pixSalvo),
+                            ],
+                        ],
+                    ];
+                }
+            }
 
             $dataVencParcela = $matricula['proxima_data_vencimento'] ?? date('Y-m-d');
             $this->pagamentosPlano->garantirParcelaPendenteUnica(
@@ -259,10 +267,11 @@ class MobilePagamentoService
                 'status' => 200,
                 'body' => [
                     'success' => true,
-                    'data' => [
-                        'matricula_id' => $matriculaId,
-                        'valor' => (float) $matricula['valor'],
-                        'pix' => [
+                        'data' => [
+                            'matricula_id' => $matriculaId,
+                            'valor' => (float) $matricula['valor'],
+                            'gateway' => $provider,
+                            'pix' => [
                             'payment_id' => $pixData['id'] ?? null,
                             'status' => $pixData['status'] ?? null,
                             'status_detail' => $pixData['status_detail'] ?? null,

@@ -57,7 +57,8 @@ class PaymentGatewayFactoryTest extends TestCase
                 'tenant_id' => 4,
                 'provider' => 'mercadopago',
                 'environment' => 'production',
-                'access_token_test' => 'mp',
+                'access_token_test' => '',
+                'access_token_prod' => 'mp',
                 'is_active' => 1,
             ],
             [
@@ -81,5 +82,31 @@ class PaymentGatewayFactoryTest extends TestCase
         $this->assertFalse($escolha['ok']);
         $this->assertSame('ESCOLHA_GATEWAY', $escolha['code']);
         $this->assertSame(409, $escolha['status']);
+    }
+
+    public function test_inactive_asaas_is_ignored_even_with_keys(): void
+    {
+        DB::table('tenant_payment_credentials')->insert([
+            [
+                'tenant_id' => 5,
+                'provider' => 'mercadopago',
+                'environment' => 'sandbox',
+                'access_token_test' => 'mp-token',
+                'is_active' => 1,
+            ],
+            [
+                'tenant_id' => 5,
+                'provider' => 'asaas',
+                'environment' => 'sandbox',
+                'access_token_test' => '$aact_hmlg_xxxxxxxx',
+                'is_active' => 0,
+            ],
+        ]);
+
+        $factory = new PaymentGatewayFactory();
+        $admin = $factory->listarDisponiveis(5, true);
+
+        $this->assertSame(['mercadopago'], array_column($admin, 'id'));
+        $this->assertInstanceOf(MercadoPagoService::class, $factory->pixGateway(5));
     }
 }
