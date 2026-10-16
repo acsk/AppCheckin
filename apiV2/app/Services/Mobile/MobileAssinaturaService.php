@@ -263,6 +263,29 @@ class MobileAssinaturaService
         ))));
         $pagamentosPorMatricula = [];
         if ($matriculaIds !== []) {
+            $colunasPagamento = [
+                'pp.id',
+                'pp.matricula_id',
+                'pp.valor',
+                'pp.data_vencimento',
+                'pp.data_pagamento',
+                'pp.status_pagamento_id',
+                'sp.nome as status',
+                'fp.nome as forma_pagamento_nome',
+                'pp.baixado_por',
+                'baixador.nome as baixado_por_nome',
+                'pp.criado_por',
+                'criador.nome as criado_por_nome',
+                'tb.nome as tipo_baixa_nome',
+                'pp.observacoes',
+            ];
+            if (Schema::hasColumn('pagamentos_plano', 'valor_liquido')) {
+                $colunasPagamento[] = 'pp.valor_liquido';
+            }
+            if (Schema::hasColumn('pagamentos_plano', 'desconto_provedor')) {
+                $colunasPagamento[] = 'pp.desconto_provedor';
+            }
+
             $rowsPag = DB::table('pagamentos_plano as pp')
                 ->join('status_pagamento as sp', 'sp.id', '=', 'pp.status_pagamento_id')
                 ->leftJoin('formas_pagamento as fp', 'fp.id', '=', 'pp.forma_pagamento_id')
@@ -274,24 +297,7 @@ class MobileAssinaturaService
                 ->where('pp.status_pagamento_id', '<>', 4)
                 ->orderByRaw('COALESCE(pp.data_pagamento, pp.data_vencimento) DESC')
                 ->orderByDesc('pp.id')
-                ->get(array_values(array_filter([
-                    'pp.id',
-                    'pp.matricula_id',
-                    'pp.valor',
-                    Schema::hasColumn('pagamentos_plano', 'valor_liquido') ? 'pp.valor_liquido' : null,
-                    Schema::hasColumn('pagamentos_plano', 'desconto_provedor') ? 'pp.desconto_provedor' : null,
-                    'pp.data_vencimento',
-                    'pp.data_pagamento',
-                    'pp.status_pagamento_id',
-                    'sp.nome as status',
-                    'fp.nome as forma_pagamento_nome',
-                    'pp.baixado_por',
-                    'baixador.nome as baixado_por_nome',
-                    'pp.criado_por',
-                    'criador.nome as criado_por_nome',
-                    'tb.nome as tipo_baixa_nome',
-                    'pp.observacoes',
-                ])));
+                ->get($colunasPagamento);
 
             $hoje = AcademyDateTime::today();
             foreach ($rowsPag as $pag) {

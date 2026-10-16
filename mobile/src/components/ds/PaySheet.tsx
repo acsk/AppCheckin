@@ -1,4 +1,4 @@
-import { Feather, FontAwesome6 } from "@expo/vector-icons";
+import { Feather } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useState } from "react";
 import {
@@ -14,6 +14,7 @@ import { createPortal } from "react-dom";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BrandFacets } from "./AppHeader";
 import Button from "./Button";
+import PixIcon from "./PixIcon";
 import { ds, space } from "./tokens";
 
 type FeatherName = React.ComponentProps<typeof Feather>["name"];
@@ -24,6 +25,8 @@ type Props = React.PropsWithChildren<{
   visible: boolean;
   /** Ícone do quadro: um nome do Feather, ou "pix" para o símbolo oficial. */
   icon: FeatherName | "pix";
+  /** Substitui o quadro do ícone (ex.: logo do provedor). */
+  media?: React.ReactNode;
   eyebrow: string;
   title: string;
   description?: string | null;
@@ -40,6 +43,7 @@ type Props = React.PropsWithChildren<{
 export default function PaySheet({
   visible,
   icon,
+  media,
   eyebrow,
   title,
   description,
@@ -76,18 +80,16 @@ export default function PaySheet({
           <View style={styles.facets} pointerEvents="none">
             <BrandFacets />
           </View>
-          <LinearGradient
-            colors={[ds.brandYellow, ds.brand, ds.brandRed]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.iconTile}
-          >
-            {icon === "pix" ? (
-              <FontAwesome6 name="pix" brand size={22} color={ds.onBrand} />
-            ) : (
-              <Feather name={icon} size={22} color={ds.onBrand} />
-            )}
-          </LinearGradient>
+          {media ?? (
+            <LinearGradient
+              colors={[ds.brandYellow, ds.brand, ds.brandRed]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.iconTile}
+            >
+              {icon === "pix" ? <PixIcon size={22} color={ds.onBrand} /> : <Feather name={icon} size={22} color={ds.onBrand} />}
+            </LinearGradient>
+          )}
           <View style={styles.heading}>
             <Text style={styles.eyebrow}>{eyebrow}</Text>
             <Text style={styles.title} accessibilityRole="header">
@@ -256,7 +258,7 @@ const styles = StyleSheet.create({
   secureText: { flex: 1, fontSize: 12, lineHeight: 16, fontWeight: "600", color: ds.inkMuted },
   steps: { gap: space[3], paddingTop: 4, paddingHorizontal: 4 },
   step: { flexDirection: "row", gap: space[2], alignItems: "flex-start" },
-  stepN: { width: 22, height: 22, borderRadius: 11, backgroundColor: ds.inverse, alignItems: "center", justifyContent: "center" },
-  stepNText: { fontSize: 12, fontWeight: "900", color: ds.onInverse },
+  stepN: { width: 22, height: 22, borderRadius: 11, backgroundColor: ds.ink, alignItems: "center", justifyContent: "center" },
+  stepNText: { fontSize: 12, fontWeight: "900", color: ds.surface },
   stepText: { flex: 1, fontSize: 14, lineHeight: 19, fontWeight: "500", color: ds.inkMuted },
 });

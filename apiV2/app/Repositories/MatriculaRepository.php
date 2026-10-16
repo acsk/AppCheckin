@@ -543,6 +543,29 @@ class MatriculaRepository
      */
     public function listarPagamentosMatricula(int $matriculaId): array
     {
+        $colunas = [
+            'pp.id',
+            'pp.valor',
+            'pp.data_vencimento',
+            'pp.data_pagamento',
+            'pp.status_pagamento_id',
+            'sp.nome as status_pagamento_nome',
+            'fp.nome as forma_pagamento_nome',
+            'pp.criado_por',
+            'criador.nome as criado_por_nome',
+            'pp.baixado_por',
+            'baixador.nome as baixado_por_nome',
+            'pp.tipo_baixa_id',
+            'tb.nome as tipo_baixa_nome',
+            'pp.observacoes',
+        ];
+        if (Schema::hasColumn('pagamentos_plano', 'valor_liquido')) {
+            $colunas[] = 'pp.valor_liquido';
+        }
+        if (Schema::hasColumn('pagamentos_plano', 'desconto_provedor')) {
+            $colunas[] = 'pp.desconto_provedor';
+        }
+
         return DB::table('pagamentos_plano as pp')
             ->join('status_pagamento as sp', 'pp.status_pagamento_id', '=', 'sp.id')
             ->leftJoin('formas_pagamento as fp', 'pp.forma_pagamento_id', '=', 'fp.id')
@@ -552,24 +575,7 @@ class MatriculaRepository
             ->where('pp.matricula_id', $matriculaId)
             ->orderByDesc('pp.data_vencimento')
             ->orderByDesc('pp.id')
-            ->get(array_values(array_filter([
-                'pp.id',
-                'pp.valor',
-                Schema::hasColumn('pagamentos_plano', 'valor_liquido') ? 'pp.valor_liquido' : null,
-                Schema::hasColumn('pagamentos_plano', 'desconto_provedor') ? 'pp.desconto_provedor' : null,
-                'pp.data_vencimento',
-                'pp.data_pagamento',
-                'pp.status_pagamento_id',
-                'sp.nome as status_pagamento_nome',
-                'fp.nome as forma_pagamento_nome',
-                'pp.criado_por',
-                'criador.nome as criado_por_nome',
-                'pp.baixado_por',
-                'baixador.nome as baixado_por_nome',
-                'pp.tipo_baixa_id',
-                'tb.nome as tipo_baixa_nome',
-                'pp.observacoes',
-            ])))
+            ->get($colunas)
             ->map(fn ($row) => (array) $row)
             ->all();
     }

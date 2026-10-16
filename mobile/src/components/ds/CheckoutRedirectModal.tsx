@@ -2,6 +2,7 @@ import React from "react";
 import { Text } from "react-native";
 import { nomeProvedorPagamento } from "@/src/utils/metodosPagamento";
 import PaySheet, { PaySteps, payStyles, type PayResumo } from "./PaySheet";
+import ProviderLogo, { logoProvedor } from "./ProviderLogo";
 
 type Props = {
   visible: boolean;
@@ -32,6 +33,7 @@ export default function CheckoutRedirectModal({ visible, url, provider, metodo, 
     <PaySheet
       visible={visible}
       icon={boleto ? "file-text" : metodoLabel === "PIX" ? "pix" : "credit-card"}
+      media={logoProvedor(provider, url) ? <ProviderLogo provider={provider} url={url} name={nome} size="lg" /> : null}
       eyebrow={`Pagamento com ${metodoLabel}`}
       title={`Continuar no ${nome}`}
       description={`O pagamento com ${metodoLabel} é concluído no site seguro do ${nome}.`}
@@ -39,7 +41,7 @@ export default function CheckoutRedirectModal({ visible, url, provider, metodo, 
       secureNote={
         boleto
           ? `O boleto é emitido pelo ${nome}. O AppCheckin não guarda seus dados de pagamento.`
-          : "Os dados do cartão ficam com o provedor. O AppCheckin não os guarda."
+          : `Os dados do cartão ficam com o ${nome}. O AppCheckin não os guarda.`
       }
       primary={{ label: `Ir para o ${nome}`, iconRight: "external-link", disabled: !url, onPress: onRedirect }}
       onClose={onClose}
@@ -47,10 +49,15 @@ export default function CheckoutRedirectModal({ visible, url, provider, metodo, 
       <PaySteps
         steps={[
           <>
-            Abrimos o checkout do <Text style={payStyles.bold}>{nome}</Text> no navegador.
+            Abrimos o <Text style={payStyles.bold}>checkout do {nome}</Text> no navegador.
           </>,
-          boleto ? "Você gera e paga o boleto." : `Você paga com ${metodoLabel === "PIX" ? "o PIX" : "o cartão de crédito"}.`,
-          "Volte ao app: o plano ativa sozinho quando o pagamento for aprovado.",
+          <>
+            Você {boleto ? "gera e paga o " : "paga com o "}
+            <Text style={payStyles.bold}>{boleto ? "boleto" : metodoLabel === "PIX" ? "PIX" : "cartão de crédito"}</Text>.
+          </>,
+          <>
+            Volte ao app: o plano <Text style={payStyles.bold}>ativa sozinho</Text> quando o pagamento for aprovado.
+          </>,
         ]}
       />
     </PaySheet>

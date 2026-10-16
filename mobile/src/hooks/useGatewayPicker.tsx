@@ -15,6 +15,7 @@ const ULTIMO_KEY = "pagamento:ultimo-gateway";
 export function GatewayPickerProvider({ children }: { children: React.ReactNode }) {
   const [visible, setVisible] = useState(false);
   const [gateways, setGateways] = useState<PixGateway[]>([]);
+  const [metodo, setMetodo] = useState<string | null>(null);
   const [ultimoUsado, setUltimoUsado] = useState<string | null>(null);
   const resolveRef = useRef<((id: string | null) => void) | null>(null);
 
@@ -24,7 +25,7 @@ export function GatewayPickerProvider({ children }: { children: React.ReactNode 
       .catch(() => {});
   }, []);
 
-  const escolherGateway = useCallback<EscolherGatewayPix>((opcoes) => {
+  const escolherGateway = useCallback<EscolherGatewayPix>((opcoes, contexto) => {
     if (!Array.isArray(opcoes) || opcoes.length === 0) {
       return Promise.resolve(null);
     }
@@ -34,6 +35,7 @@ export function GatewayPickerProvider({ children }: { children: React.ReactNode 
     return new Promise<string | null>((resolve) => {
       resolveRef.current = resolve;
       setGateways(opcoes);
+      setMetodo(contexto?.metodo ?? null);
       setVisible(true);
     });
   }, []);
@@ -55,6 +57,7 @@ export function GatewayPickerProvider({ children }: { children: React.ReactNode 
       <GatewayPickerModal
         visible={visible}
         gateways={gateways}
+        metodo={metodo}
         ultimoUsado={ultimoUsado}
         onSelect={(id) => fechar(id)}
         onCancel={() => fechar(null)}

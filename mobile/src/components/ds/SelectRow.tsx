@@ -11,6 +11,8 @@ type Props = {
   tag?: string | null;
   /** Iniciais no quadro (padrão: a partir do título). */
   mark?: string | null;
+  /** Elemento no lugar das iniciais (ex.: <ProviderLogo />). */
+  lead?: React.ReactNode;
   selected?: boolean;
   disabled?: boolean;
   onSelect?: () => void;
@@ -23,7 +25,7 @@ const iniciais = (t: string) => {
 
 // Opção de escolha única dentro de uma folha (rádio). Selecionada: fundo brand-soft,
 // contorno brand de 2px, iniciais em degradê e rádio laranja com ✓.
-export default function SelectRow({ title, subtitle, tag, mark, selected, disabled, onSelect }: Props) {
+export default function SelectRow({ title, subtitle, tag, mark, lead, selected, disabled, onSelect }: Props) {
   const texto = mark || iniciais(title);
   return (
     <TouchableOpacity
@@ -35,7 +37,9 @@ export default function SelectRow({ title, subtitle, tag, mark, selected, disabl
       accessibilityLabel={[tag, title, subtitle].filter(Boolean).join(", ")}
       style={[styles.row, selected && styles.rowOn, disabled && { opacity: 0.5 }]}
     >
-      {selected ? (
+      {lead ? (
+        lead
+      ) : selected ? (
         <LinearGradient colors={[ds.brandYellow, ds.brand, ds.brandRed]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.mark}>
           <Text style={[styles.markText, { color: ds.onBrand }]}>{texto}</Text>
         </LinearGradient>

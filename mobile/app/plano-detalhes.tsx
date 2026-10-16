@@ -1214,7 +1214,7 @@ export default function PlanoDetalhesScreen() {
 
         {/* Ciclos: preço por mês em destaque */}
         {ciclos.length > 0 && (
-          <Section title="1 · Escolha o ciclo" aside="Preço por mês" bare>
+          <Section title="Escolha o ciclo" aside="Preço por mês" bare>
             <View style={styles.ciclosList} accessibilityRole="radiogroup" accessibilityLabel="Ciclo de cobrança">
               {ciclos.map((ciclo) => {
                 const mensal = Number(ciclo.valor_mensal) || (ciclo.meses ? Number(ciclo.valor) / ciclo.meses : Number(ciclo.valor));
@@ -1250,15 +1250,12 @@ export default function PlanoDetalhesScreen() {
           </Section>
         )}
 
-        {/* Etapa 2: forma de pagamento (o provedor é escolhido no passo seguinte) */}
-        {!bloquearCompraPorAtivo && opcoesMetodo.length > 0 ? (
-          <Section title={ciclos.length > 0 ? "2 · Como você quer pagar?" : "Como você quer pagar?"} bare>
-            <PaymentMethodOptions
-              opcoes={opcoesMetodo}
-              value={metodoSelecionado}
-              onChange={setMetodoSelecionado}
-            />
-          </Section>
+        {/* Sem ciclo escolhido o painel de pagamento não aparece */}
+        {!bloquearCompraPorAtivo && ciclos.length > 0 && !selectedCiclo ? (
+          <View style={styles.cicloNote}>
+            <Feather name="alert-circle" size={18} color={ds.inkMuted} />
+            <Text style={styles.cicloNoteText}>Escolha um ciclo para ver as formas de pagamento.</Text>
+          </View>
         ) : null}
 
         {/* Descrição */}
@@ -1269,16 +1266,34 @@ export default function PlanoDetalhesScreen() {
         )}
       </ScrollView>
 
-      {/* Resumo fixo: ciclo, total e pagamento */}
-      <View style={[styles.footer, !bloquearCompraPorAtivo && styles.footerColumn]}>
-        {bloquearCompraPorAtivo ? (
+      {/* Rodapé: plano ativo, ou o painel de pagamento (CheckoutDock) depois de escolher o ciclo */}
+      {bloquearCompraPorAtivo ? (
+        <View style={styles.footer}>
           <View style={styles.footerAtivo}>
             <Feather name="check-circle" size={20} color={ds.success} />
             <Text style={styles.footerAtivoText}>Este já é o seu plano ativo</Text>
           </View>
-        ) : (
-          <>
-            <View style={styles.footerPayRow}>
+        </View>
+      ) : selectedCiclo || ciclos.length === 0 ? (
+        <View style={styles.dock} accessibilityLabel="Pagamento">
+          {opcoesMetodo.length > 0 ? (
+            <>
+              <View style={styles.dockHead}>
+                <Text style={styles.dockTitle}>Como você quer pagar?</Text>
+                <View style={styles.dockSecure}>
+                  <Feather name="lock" size={12} color={ds.success} />
+                  <Text style={styles.dockSecureText}>Pagamento seguro</Text>
+                </View>
+              </View>
+              <PaymentMethodOptions
+                compact
+                opcoes={opcoesMetodo}
+                value={metodoSelecionado}
+                onChange={setMetodoSelecionado}
+              />
+            </>
+          ) : null}
+          <View style={[styles.dockFoot, opcoesMetodo.length > 0 && styles.dockFootDivider]}>
             <View style={styles.summaryText}>
               <Text style={styles.summaryLabel} numberOfLines={1}>
                 {selectedCiclo
@@ -1298,45 +1313,44 @@ export default function PlanoDetalhesScreen() {
                 {selectedCiclo ? selectedCiclo.valor_formatado : "—"}
               </Text>
             </View>
-            <Button
-              size="lg"
-              icon={
-                podeMigrarAgora
-                  ? "repeat"
-                  : podeRenovar
-                    ? "refresh-cw"
-                    : metodoSelecionado === "pix"
-                      ? "zap"
-                      : metodoSelecionado === "boleto"
-                        ? "file-text"
-                        : "credit-card"
+          <Button
+            size="lg"
+            icon={
+              podeMigrarAgora
+                ? "repeat"
+                : podeRenovar
+                  ? "refresh-cw"
+                  : metodoSelecionado === "pix"
+                    ? "zap"
+                    : metodoSelecionado === "boleto"
+                      ? "file-text"
+                      : "credit-card"
+            }
+            loading={comprando || pixLoading}
+            disabled={!canBuy}
+            onPress={() => {
+              if (!metodoSelecionado) return;
+              if (metodoSelecionado === "pix") {
+                void handlePagarPix();
+                return;
               }
-              loading={comprando || pixLoading}
-              disabled={!canBuy}
-              onPress={() => {
-                if (!metodoSelecionado) return;
-                if (metodoSelecionado === "pix") {
-                  void handlePagarPix();
-                  return;
-                }
-                void handleContratar(metodoSelecionado);
-              }}
-            >
-              {comprando || pixLoading
-                ? "Processando…"
-                : !selectedCiclo
-                  ? "Escolha"
-                  : !metodoSelecionado
-                    ? "Indisponível"
-                    : rotuloPagarMetodo(
-                        metodoSelecionado,
-                        podeMigrarAgora ? "migrar" : podeRenovar ? "renovar" : "pagar",
-                      )}
-            </Button>
-            </View>
-          </>
-        )}
-      </View>
+              void handleContratar(metodoSelecionado);
+            }}
+          >
+            {comprando || pixLoading
+              ? "Processando…"
+              : !selectedCiclo
+                ? "Escolha"
+                : !metodoSelecionado
+                  ? "Indisponível"
+                  : rotuloPagarMetodo(
+                      metodoSelecionado,
+                      podeMigrarAgora ? "migrar" : podeRenovar ? "renovar" : "pagar",
+                    )}
+          </Button>
+          </View>
+        </View>
+      ) : null}
 
       {/* Confirmação de migração de plano */}
       <Modal
@@ -2056,16 +2070,43 @@ const styles = StyleSheet.create({
     shadowRadius: 24,
     elevation: 12,
   },
-  footerColumn: {
-    flexDirection: "column",
-    alignItems: "stretch",
-    gap: 10,
+  dock: {
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 12,
+    backgroundColor: ds.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    shadowColor: "#171a21",
+    shadowOffset: { width: 0, height: -10 },
+    shadowOpacity: 0.12,
+    shadowRadius: 28,
+    elevation: 16,
+    zIndex: 2,
   },
-  footerPayRow: {
+  dockHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  dockTitle: {
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: "800",
+    letterSpacing: 0.88,
+    textTransform: "uppercase",
+    color: ds.inkMuted,
+  },
+  dockSecure: { flexDirection: "row", alignItems: "center", gap: 4 },
+  dockSecureText: { fontSize: 11, lineHeight: 14, fontWeight: "700", color: ds.success },
+  dockFoot: { flexDirection: "row", alignItems: "center", gap: 12 },
+  dockFootDivider: { paddingTop: 12, borderTopWidth: 1, borderTopColor: ds.line },
+  cicloNote: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 10,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: ds.surfaceSunken,
   },
+  cicloNoteText: { flex: 1, fontSize: 14, lineHeight: 19, fontWeight: "600", color: ds.inkMuted },
   footerStack: {
     gap: 10,
   },

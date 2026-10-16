@@ -4,7 +4,13 @@ export type PixGateway = {
   environment?: string;
 };
 
-export type EscolherGatewayPix = (gateways: PixGateway[]) => Promise<string | null>;
+/** Contexto opcional da escolha (ex.: forma de pagamento, para o texto da folha). */
+export type EscolherGatewayContexto = { metodo?: string | null };
+
+export type EscolherGatewayPix = (
+  gateways: PixGateway[],
+  contexto?: EscolherGatewayContexto,
+) => Promise<string | null>;
 
 export function usuarioPodeVerSandboxPagamento(user: any): boolean {
   if (!user) return false;
@@ -100,7 +106,7 @@ export async function solicitarPix(params: {
     if (!escolher) return null;
     params.onEscolherGateway?.();
     await new Promise((resolve) => setTimeout(resolve, 50));
-    return escolher(visiveis);
+    return escolher(visiveis, { metodo: "pix" });
   };
 
   if (!gateway && params.gateways && params.gateways.length > 0) {
@@ -168,7 +174,12 @@ export async function postComRetryGateway(params: {
     if (!escolher) return null;
     params.onEscolherGateway?.();
     await new Promise((resolve) => setTimeout(resolve, 50));
-    return escolher(visiveis);
+    return escolher(visiveis, {
+      metodo:
+        typeof params.body.metodo_pagamento === "string"
+          ? params.body.metodo_pagamento
+          : null,
+    });
   };
 
   for (;;) {
