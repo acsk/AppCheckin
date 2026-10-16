@@ -569,7 +569,7 @@ class MatriculaRepository
                 'pp.tipo_baixa_id',
                 'tb.nome as tipo_baixa_nome',
                 'pp.observacoes',
-            ]))
+            ])))
             ->map(fn ($row) => (array) $row)
             ->all();
     }
