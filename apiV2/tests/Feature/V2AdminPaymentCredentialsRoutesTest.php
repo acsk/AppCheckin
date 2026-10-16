@@ -88,6 +88,33 @@ class V2AdminPaymentCredentialsRoutesTest extends TestCase
             ->assertJsonPath('message', 'Credenciais cadastradas com sucesso');
     }
 
+    public function test_alterar_ambiente_retorna_sucesso(): void
+    {
+        $token = $this->tokenParaPapel(3);
+
+        $service = Mockery::mock(\App\Services\Admin\AdminPaymentCredentialsService::class);
+        $service->shouldReceive('alterarAmbiente')
+            ->once()
+            ->with(3, Mockery::subset(['provider' => 'mercadopago', 'environment' => 'production']))
+            ->andReturn([
+                'status' => 200,
+                'body' => [
+                    'success' => true,
+                    'message' => 'Ambiente de produção ativado. As chaves criptografadas no banco foram mantidas.',
+                ],
+            ]);
+        $this->app->instance(\App\Services\Admin\AdminPaymentCredentialsService::class, $service);
+
+        $this->postJson('/v2/admin/payment-credentials/environment', [
+            'provider' => 'mercadopago',
+            'environment' => 'production',
+        ], [
+            'Authorization' => 'Bearer '.$token,
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+    }
+
     public function test_testar_retorna_erro_sem_credenciais(): void
     {
         $token = $this->tokenParaPapel(3);

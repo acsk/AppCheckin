@@ -115,4 +115,14 @@ class TenantPaymentCredentialsRepository
 
         DB::update($sql, $params);
     }
+
+    public function atualizarAmbiente(int $tenantId, string $provider, string $environment): void
+    {
+        DB::update(
+            'UPDATE tenant_payment_credentials
+             SET environment = ?, updated_at = NOW()
+             WHERE tenant_id = ? AND provider = ?',
+            [$environment, $tenantId, $provider]
+        );
+    }
 }

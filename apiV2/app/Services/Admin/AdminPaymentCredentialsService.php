@@ -202,6 +202,96 @@ class AdminPaymentCredentialsService
     }
 
     /**
+     * Troca sandbox ↔ produção sem reenviar chaves (permanecem criptografadas no banco).
+     *
+     * @param  array<string, mixed>  $body
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function alterarAmbiente(int $tenantId, array $body): array
+    {
+        try {
+            $provider = strtolower((string) ($body['provider'] ?? ''));
+            $environment = strtolower(trim((string) ($body['environment'] ?? '')));
+
+            if (! in_array($provider, self::PROVIDERS, true)) {
+                return [
+                    'status' => 400,
+                    'body' => [
+                        'success' => false,
+                        'message' => 'Provider inválido. Use mercadopago ou asaas.',
+                    ],
+                ];
+            }
+
+            if (! in_array($environment, ['sandbox', 'production'], true)) {
+                return [
+                    'status' => 400,
+                    'body' => [
+                        'success' => false,
+                        'message' => 'Ambiente inválido. Use sandbox ou production.',
+                    ],
+                ];
+            }
+
+            $existente = $this->credentials->obterPorTenantProvider($tenantId, $provider);
+            if (! $existente) {
+                return [
+                    'status' => 400,
+                    'body' => [
+                        'success' => false,
+                        'message' => 'Salve as credenciais deste provedor antes de trocar o ambiente.',
+                    ],
+                ];
+            }
+
+            $temToken = $environment === 'production'
+                ? ! empty($existente['has_token_prod'])
+                : ! empty($existente['has_token_test']);
+
+            if (! $temToken) {
+                $rotulo = $environment === 'production' ? 'produção' : 'sandbox';
+
+                return [
+                    'status' => 400,
+                    'body' => [
+                        'success' => false,
+                        'message' => $provider === 'asaas'
+                            ? "Salve a API key de {$rotulo} do Asaas antes de ativar este ambiente."
+                            : "Salve o Access Token de {$rotulo} do Mercado Pago antes de ativar este ambiente.",
+                    ],
+                ];
+            }
+
+            if (strtolower((string) ($existente['environment'] ?? '')) !== $environment) {
+                $this->credentials->atualizarAmbiente($tenantId, $provider, $environment);
+            }
+
+            $atualizado = $this->credentials->obterPorTenantProvider($tenantId, $provider) ?? $existente;
+
+            return [
+                'status' => 200,
+                'body' => [
+                    'success' => true,
+                    'message' => $environment === 'production'
+                        ? 'Ambiente de produção ativado. As chaves criptografadas no banco foram mantidas.'
+                        : 'Ambiente sandbox ativado. As chaves criptografadas no banco foram mantidas.',
+                    'data' => $this->mascararLinha($atualizado),
+                ],
+            ];
+        } catch (Throwable $e) {
+            error_log('[PaymentCredentials] Erro ao alterar ambiente: '.$e->getMessage());
+
+            return [
+                'status' => 500,
+                'body' => [
+                    'success' => false,
+                    'message' => 'Erro ao alterar ambiente: '.$e->getMessage(),
+                ],
+            ];
+        }
+    }
+
+    /**
      * @param  array<string, mixed>  $body
      * @return array{status: int, body: array<string, mixed>}
      */

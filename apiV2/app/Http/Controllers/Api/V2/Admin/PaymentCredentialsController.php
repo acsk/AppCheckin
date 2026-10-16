@@ -38,6 +38,18 @@ class PaymentCredentialsController extends Controller
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }
 
+    public function alterarAmbiente(Request $request): JsonResponse
+    {
+        $tenantId = $this->requireTenant($request);
+        if ($tenantId instanceof JsonResponse) {
+            return $tenantId;
+        }
+
+        $result = $this->service->alterarAmbiente($tenantId, $request->all());
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
     public function testar(Request $request): JsonResponse
     {
         $tenantId = $this->requireTenant($request);

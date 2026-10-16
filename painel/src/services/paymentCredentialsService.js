@@ -28,6 +28,22 @@ class PaymentCredentialsService {
   }
 
   /**
+   * Troca sandbox/produção sem reenviar chaves (já criptografadas no banco).
+   */
+  async alterarAmbiente(provider, environment) {
+    try {
+      const response = await api.post('/admin/payment-credentials/environment', {
+        provider,
+        environment,
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Erro ao alterar ambiente:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Testar conexão com Mercado Pago
    */
   async testarConexao(provider) {

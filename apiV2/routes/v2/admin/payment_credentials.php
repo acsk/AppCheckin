@@ -8,4 +8,5 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/payment-credentials', [PaymentCredentialsController::class, 'obter']);
 Route::post('/payment-credentials', [PaymentCredentialsController::class, 'salvar']);
+Route::post('/payment-credentials/environment', [PaymentCredentialsController::class, 'alterarAmbiente']);
 Route::post('/payment-credentials/test', [PaymentCredentialsController::class, 'testar']);

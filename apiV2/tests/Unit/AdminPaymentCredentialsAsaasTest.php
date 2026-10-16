@@ -77,4 +77,56 @@ class AdminPaymentCredentialsAsaasTest extends TestCase
         $this->assertSame(200, $result['status']);
         $this->assertTrue($result['body']['success']);
     }
+
+    public function test_alterar_ambiente_keeps_encrypted_keys(): void
+    {
+        $rowSandbox = [
+            'provider' => 'mercadopago',
+            'environment' => 'sandbox',
+            'is_active' => 1,
+            'has_token_test' => true,
+            'has_token_prod' => true,
+            'public_key_test' => null,
+            'public_key_prod' => null,
+        ];
+        $rowProd = [...$rowSandbox, 'environment' => 'production'];
+
+        $repo = Mockery::mock(TenantPaymentCredentialsRepository::class);
+        $repo->shouldReceive('obterPorTenantProvider')
+            ->twice()
+            ->with(1, 'mercadopago')
+            ->andReturn($rowSandbox, $rowProd);
+        $repo->shouldReceive('atualizarAmbiente')->once()->with(1, 'mercadopago', 'production');
+
+        $service = new AdminPaymentCredentialsService($repo, Mockery::mock(EncryptionService::class));
+        $result = $service->alterarAmbiente(1, [
+            'provider' => 'mercadopago',
+            'environment' => 'production',
+        ]);
+
+        $this->assertSame(200, $result['status']);
+        $this->assertSame('production', $result['body']['data']['environment']);
+        $this->assertStringContainsString('criptografadas', $result['body']['message']);
+    }
+
+    public function test_alterar_ambiente_requires_saved_production_token(): void
+    {
+        $repo = Mockery::mock(TenantPaymentCredentialsRepository::class);
+        $repo->shouldReceive('obterPorTenantProvider')->once()->with(1, 'mercadopago')->andReturn([
+            'provider' => 'mercadopago',
+            'environment' => 'sandbox',
+            'has_token_test' => true,
+            'has_token_prod' => false,
+        ]);
+        $repo->shouldNotReceive('atualizarAmbiente');
+
+        $service = new AdminPaymentCredentialsService($repo, Mockery::mock(EncryptionService::class));
+        $result = $service->alterarAmbiente(1, [
+            'provider' => 'mercadopago',
+            'environment' => 'production',
+        ]);
+
+        $this->assertSame(400, $result['status']);
+        $this->assertStringContainsString('produção', $result['body']['message']);
+    }
 }

@@ -153,6 +153,40 @@ export default function PaymentCredentialsScreen() {
     }
   };
 
+  const handleAlterarAmbiente = async (provider, environment) => {
+    const formData = forms[provider];
+    const atual = existentes[provider];
+    if (formData.environment === environment) {
+      return;
+    }
+
+    if (!atual) {
+      showError('Salve as credenciais deste provedor antes de trocar o ambiente.');
+      return;
+    }
+
+    const temToken = environment === 'production' ? atual.has_token_prod : atual.has_token_test;
+    if (!temToken) {
+      showError(environment === 'production'
+        ? 'Salve o token de produção antes de ativar este ambiente. A chave fica criptografada no banco.'
+        : 'Salve o token de sandbox antes de ativar este ambiente. A chave fica criptografada no banco.');
+      return;
+    }
+
+    const toastId = showLoading('Alterando ambiente...');
+    try {
+      const response = await paymentCredentialsService.alterarAmbiente(provider, environment);
+      dismissToast(toastId);
+      if (response.success) {
+        showSuccess(response.message || 'Ambiente atualizado');
+        await carregarCredenciais();
+      }
+    } catch (error) {
+      dismissToast(toastId);
+      showError(error.response?.data?.message || 'Não foi possível alterar o ambiente');
+    }
+  };
+
   const handleTestarConexao = async (provider) => {
     const toastId = showLoading(provider === 'asaas' ? 'Testando Asaas...' : 'Testando Mercado Pago...');
     try {
@@ -212,7 +246,7 @@ export default function PaymentCredentialsScreen() {
                 <View style={styles.environmentContainer}>
                   <TouchableOpacity
                     style={[styles.environmentCard, ambienteSandbox && styles.environmentCardActive]}
-                    onPress={() => atualizarForm(id, { environment: 'sandbox' })}
+                    onPress={() => handleAlterarAmbiente(id, 'sandbox')}
                   >
                     <Text style={[styles.environmentLabel, ambienteSandbox && styles.environmentLabelActive]}>
                       Sandbox
@@ -220,7 +254,7 @@ export default function PaymentCredentialsScreen() {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.environmentCard, !ambienteSandbox && styles.environmentCardActive]}
-                    onPress={() => atualizarForm(id, { environment: 'production' })}
+                    onPress={() => handleAlterarAmbiente(id, 'production')}
                   >
                     <Text style={[styles.environmentLabel, !ambienteSandbox && styles.environmentLabelActive]}>
                       Produção
