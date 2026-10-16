@@ -7,6 +7,7 @@ use App\Support\AcademyDateTime;
 use App\Support\CheckinLimiteFormatter;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class MatriculaRepository
 {
@@ -551,9 +552,11 @@ class MatriculaRepository
             ->where('pp.matricula_id', $matriculaId)
             ->orderByDesc('pp.data_vencimento')
             ->orderByDesc('pp.id')
-            ->get([
+            ->get(array_values(array_filter([
                 'pp.id',
                 'pp.valor',
+                Schema::hasColumn('pagamentos_plano', 'valor_liquido') ? 'pp.valor_liquido' : null,
+                Schema::hasColumn('pagamentos_plano', 'desconto_provedor') ? 'pp.desconto_provedor' : null,
                 'pp.data_vencimento',
                 'pp.data_pagamento',
                 'pp.status_pagamento_id',
@@ -566,7 +569,7 @@ class MatriculaRepository
                 'pp.tipo_baixa_id',
                 'tb.nome as tipo_baixa_nome',
                 'pp.observacoes',
-            ])
+            ]))
             ->map(fn ($row) => (array) $row)
             ->all();
     }

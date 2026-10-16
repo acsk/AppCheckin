@@ -52,27 +52,39 @@ class MobileMatriculaService
             static fn (array $p) => (int) ($p['status_pagamento_id'] ?? 0) !== 4,
         ));
 
-        $pagamentosFormatados = array_map(fn (array $p) => [
-            'id' => (int) $p['id'],
-            'valor' => (float) $p['valor'],
-            'data_vencimento' => $p['data_vencimento'],
-            'data_pagamento' => $p['data_pagamento'],
-            'status' => $p['status_pagamento_nome'],
-            'status_pagamento_id' => (int) ($p['status_pagamento_id'] ?? 0),
-            'forma_pagamento' => $p['forma_pagamento_nome'],
-            'baixado_por' => $p['baixado_por'] !== null ? (int) $p['baixado_por'] : null,
-            'baixado_por_nome' => $p['baixado_por_nome'] ?? null,
-            'criado_por' => $p['criado_por'] !== null ? (int) $p['criado_por'] : null,
-            'criado_por_nome' => $p['criado_por_nome'] ?? null,
-            'tipo_baixa_nome' => $p['tipo_baixa_nome'] ?? null,
-            'origem' => ! empty($p['baixado_por']) ? 'manual' : (
-                stripos((string) ($p['observacoes'] ?? ''), 'Mercado Pago') !== false
-                || stripos((string) ($p['forma_pagamento_nome'] ?? ''), 'Mercado') !== false
-                    ? 'mercadopago'
-                    : (! empty($p['forma_pagamento_nome']) ? 'manual' : null)
-            ),
-            'pendente' => $p['data_pagamento'] === null,
-        ], $pagamentosVisiveis);
+        $pagamentosFormatados = array_map(function (array $p) {
+            $obs = (string) ($p['observacoes'] ?? '');
+            $origem = null;
+            if (! empty($p['baixado_por'])) {
+                $origem = 'manual';
+            } elseif (stripos($obs, 'Asaas') !== false) {
+                $origem = 'asaas';
+            } elseif (stripos($obs, 'Mercado Pago') !== false
+                || stripos((string) ($p['forma_pagamento_nome'] ?? ''), 'Mercado') !== false) {
+                $origem = 'mercadopago';
+            } elseif (! empty($p['forma_pagamento_nome'])) {
+                $origem = 'manual';
+            }
+
+            return [
+                'id' => (int) $p['id'],
+                'valor' => (float) $p['valor'],
+                'valor_liquido' => isset($p['valor_liquido']) ? (float) $p['valor_liquido'] : null,
+                'desconto_provedor' => isset($p['desconto_provedor']) ? (float) $p['desconto_provedor'] : null,
+                'data_vencimento' => $p['data_vencimento'],
+                'data_pagamento' => $p['data_pagamento'],
+                'status' => $p['status_pagamento_nome'],
+                'status_pagamento_id' => (int) ($p['status_pagamento_id'] ?? 0),
+                'forma_pagamento' => $p['forma_pagamento_nome'],
+                'baixado_por' => $p['baixado_por'] !== null ? (int) $p['baixado_por'] : null,
+                'baixado_por_nome' => $p['baixado_por_nome'] ?? null,
+                'criado_por' => $p['criado_por'] !== null ? (int) $p['criado_por'] : null,
+                'criado_por_nome' => $p['criado_por_nome'] ?? null,
+                'tipo_baixa_nome' => $p['tipo_baixa_nome'] ?? null,
+                'origem' => $origem,
+                'pendente' => $p['data_pagamento'] === null,
+            ];
+        }, $pagamentosVisiveis);
 
         $totalPago = array_sum(array_map(
             fn ($p) => (int) ($p['status_pagamento_id'] ?? 0) === 2 ? (float) $p['valor'] : 0,
