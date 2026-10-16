@@ -34,6 +34,6 @@ class PlanoCicloFormatterTest extends TestCase
 
     public function test_metodos_pagamento_avulso_apenas_pix_com_cartao_habilitado(): void
     {
-        $this->assertSame(['pix'], PlanoCicloFormatter::metodosPagamento(false, true, true));
+        $this->assertSame(['pix', 'checkout'], PlanoCicloFormatter::metodosPagamento(false, true, true));
     }
 }

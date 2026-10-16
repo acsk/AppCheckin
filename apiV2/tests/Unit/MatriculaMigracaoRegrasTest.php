@@ -667,7 +667,10 @@ class MatriculaMigracaoRegrasTest extends TestCase
         DB::table('parametros')->update(['valor_padrao' => 'false']);
         $segunda = \App\Support\MobilePagamentoMetodos::flags(self::TENANT);
 
-        $this->assertSame(['habilitar_pix' => true, 'habilitar_cartao_credito' => true], $primeira);
+        $this->assertSame(
+            ['habilitar_pix' => true, 'habilitar_cartao_credito' => true, 'habilitar_boleto' => true],
+            $primeira,
+        );
         $this->assertSame($primeira, $segunda);
     }
 
@@ -953,6 +956,7 @@ class MatriculaMigracaoRegrasTest extends TestCase
         DB::table('parametros')->insert([
             ['id' => 1, 'codigo' => 'habilitar_pix', 'valor_padrao' => 'true', 'tipo_valor' => 'boolean', 'ativo' => 1],
             ['id' => 2, 'codigo' => 'habilitar_cartao_credito', 'valor_padrao' => 'true', 'tipo_valor' => 'boolean', 'ativo' => 1],
+            ['id' => 3, 'codigo' => 'habilitar_boleto', 'valor_padrao' => 'true', 'tipo_valor' => 'boolean', 'ativo' => 1],
         ]);
     }
 }

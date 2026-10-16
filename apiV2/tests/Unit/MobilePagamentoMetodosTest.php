@@ -22,6 +22,7 @@ class MobilePagamentoMetodosTest extends TestCase
         DB::table('parametros')->insert([
             ['id' => 1, 'codigo' => 'habilitar_pix', 'valor_padrao' => 'true', 'tipo_valor' => 'boolean', 'ativo' => 1],
             ['id' => 2, 'codigo' => 'habilitar_cartao_credito', 'valor_padrao' => 'false', 'tipo_valor' => 'boolean', 'ativo' => 1],
+            ['id' => 3, 'codigo' => 'habilitar_boleto', 'valor_padrao' => 'false', 'tipo_valor' => 'boolean', 'ativo' => 1],
         ]);
         // Tenant 99 sobrescreve: cartão ligado.
         DB::table('parametros_tenant')->insert(['tenant_id' => 99, 'parametro_id' => 2, 'valor' => 'true', 'ativo' => 1]);
@@ -37,11 +38,11 @@ class MobilePagamentoMetodosTest extends TestCase
     public function test_flags_le_parametros_sem_codigo_legado(): void
     {
         $this->assertSame(
-            ['habilitar_pix' => true, 'habilitar_cartao_credito' => false],
+            ['habilitar_pix' => true, 'habilitar_cartao_credito' => false, 'habilitar_boleto' => false],
             MobilePagamentoMetodos::flags(98),
         );
         $this->assertSame(
-            ['habilitar_pix' => true, 'habilitar_cartao_credito' => true],
+            ['habilitar_pix' => true, 'habilitar_cartao_credito' => true, 'habilitar_boleto' => false],
             MobilePagamentoMetodos::flags(99),
         );
     }

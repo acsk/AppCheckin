@@ -66,6 +66,7 @@ class PaymentGatewayFactoryTest extends TestCase
                 'provider' => 'asaas',
                 'environment' => 'sandbox',
                 'access_token_test' => '$aact_hmlg_xxxxxxxx',
+                'access_token_prod' => '',
                 'is_active' => 1,
             ],
         ]);
@@ -91,6 +92,7 @@ class PaymentGatewayFactoryTest extends TestCase
                 'tenant_id' => 5,
                 'provider' => 'mercadopago',
                 'environment' => 'production',
+                'access_token_test' => '',
                 'access_token_prod' => 'mp-token',
                 'is_active' => 1,
             ],
@@ -99,6 +101,7 @@ class PaymentGatewayFactoryTest extends TestCase
                 'provider' => 'asaas',
                 'environment' => 'sandbox',
                 'access_token_test' => '$aact_hmlg_xxxxxxxx',
+                'access_token_prod' => '',
                 'is_active' => 0,
             ],
         ]);

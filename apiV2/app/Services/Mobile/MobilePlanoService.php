@@ -70,6 +70,7 @@ class MobilePlanoService
 
         $pagamentoFlags = MobilePagamentoMetodos::flags($tenantId);
         $habilitarCartao = $pagamentoFlags['habilitar_cartao_credito'];
+        $habilitarBoleto = $pagamentoFlags['habilitar_boleto'] ?? false;
         $pixGateways = $this->gateways->listarDisponiveis($tenantId, $podeSandbox);
         $habilitarPix = $pagamentoFlags['habilitar_pix'] && $pixGateways !== [];
 
@@ -79,6 +80,7 @@ class MobilePlanoService
             $this->planos->listarCiclosAtivosPorPlanos($planoIds),
             $habilitarCartao,
             $habilitarPix,
+            $habilitarBoleto,
         );
 
         $migracao = $this->migracao;
@@ -204,6 +206,7 @@ class MobilePlanoService
 
         $pagamentoFlags = MobilePagamentoMetodos::flags($tenantId);
         $habilitarCartao = $pagamentoFlags['habilitar_cartao_credito'];
+        $habilitarBoleto = $pagamentoFlags['habilitar_boleto'] ?? false;
         $pixGateways = $this->gateways->listarDisponiveis($tenantId, $podeSandbox);
         $habilitarPix = $pagamentoFlags['habilitar_pix'] && $pixGateways !== [];
 
@@ -287,6 +290,7 @@ class MobilePlanoService
                         $this->planos->listarCiclosDoPlano($planoId),
                         $habilitarCartao,
                         $habilitarPix,
+                        $habilitarBoleto,
                     ),
                     'matricula_ativa' => $matriculaAtiva,
                     'is_plano_atual' => $matriculaAtiva !== null,

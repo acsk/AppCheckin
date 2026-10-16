@@ -6,6 +6,7 @@ use App\Support\ReferenciaExterna;
 use App\Repositories\AlunoRepository;
 use App\Repositories\MatriculaRepository;
 use App\Repositories\UsuarioRepository;
+use App\Services\Asaas\AsaasService;
 use App\Services\MercadoPagoService;
 use App\Services\PagamentoPlanoService;
 use App\Services\Payment\PaymentGatewayFactory;
@@ -53,17 +54,19 @@ class MobileCompraPlanoService
         $pagamentoFlags = MobilePagamentoMetodos::flags($tenantId);
         $habilitarCartao = $pagamentoFlags['habilitar_cartao_credito'];
         $habilitarPix = $pagamentoFlags['habilitar_pix'];
+        $habilitarBoleto = $pagamentoFlags['habilitar_boleto'] ?? false;
         $metodoPagamento = MobilePagamentoMetodos::normalizarMetodo(
             $metodoPagamento,
             $habilitarCartao,
-            $habilitarPix
+            $habilitarPix,
+            $habilitarBoleto
         );
 
         if ($metodoPagamento === 'pix' && ! $habilitarPix) {
             return $this->erro(400, 'PIX_NAO_DISPONIVEL', 'Pagamento PIX não está habilitado para esta academia');
         }
 
-        if ($metodoPagamento === 'checkout' && ! $habilitarCartao) {
+        if ($metodoPagamento === 'checkout' && ! $habilitarCartao && ! $habilitarBoleto) {
             return $this->erro(400, 'CHECKOUT_NAO_DISPONIVEL', 'Pagamento por checkout não está disponível. Use PIX.');
         }
 
@@ -518,13 +521,18 @@ class MobileCompraPlanoService
                     $externalReference = $preferencia['external_reference'] ?? $externalReference;
                 } else {
                     if ($provider === 'asaas' || ! $mp) {
-                        return $this->erro(400, 'ASAAS_PIX_ONLY', 'No Asaas o recebimento mobile está disponível via PIX.');
+                        $preferencia = (new AsaasService($tenantId))->criarCobrancaCheckout($dadosPagamento);
+                        $tipoPagamento = 'pagamento_unico';
+                        $paymentUrl = $preferencia['ticket_url'] ?? null;
+                        $preferenceId = $preferencia['id'] ?? null;
+                        $externalReference = $preferencia['external_reference'] ?? $externalReference;
+                    } else {
+                        $preferencia = $mp->criarPreferenciaPagamento($dadosPagamento);
+                        $tipoPagamento = 'pagamento_unico';
+                        $paymentUrl = $preferencia['init_point'] ?? null;
+                        $preferenceId = $preferencia['id'] ?? null;
+                        $externalReference = $preferencia['external_reference'] ?? $externalReference;
                     }
-                    $preferencia = $mp->criarPreferenciaPagamento($dadosPagamento);
-                    $tipoPagamento = 'pagamento_unico';
-                    $paymentUrl = $preferencia['init_point'] ?? null;
-                    $preferenceId = $preferencia['id'] ?? null;
-                    $externalReference = $preferencia['external_reference'] ?? $externalReference;
                 }
 
                 $this->salvarAssinatura(

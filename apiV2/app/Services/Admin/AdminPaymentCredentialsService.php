@@ -2,10 +2,12 @@
 
 namespace App\Services\Admin;
 
+use App\Models\Parametro;
 use App\Repositories\TenantPaymentCredentialsRepository;
 use App\Services\EncryptionService;
 use App\Services\MercadoPagoService;
 use App\Support\AsaasApiKey;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
@@ -141,6 +143,7 @@ class AdminPaymentCredentialsService
                 ? $this->encryption->encrypt($body['webhook_secret'])
                 : null;
 
+            $metodos = $this->metodosDoBody($body, $existente);
             $dados = [
                 'provider' => $provider,
                 'environment' => $environment,
@@ -150,6 +153,9 @@ class AdminPaymentCredentialsService
                 'access_token_test' => $accessTokenTest,
                 'access_token_prod' => $accessTokenProd,
                 'webhook_secret' => $webhookSecret,
+                'enable_pix' => $metodos['enable_pix'],
+                'enable_boleto' => $metodos['enable_boleto'],
+                'enable_credit_card' => $metodos['enable_credit_card'],
             ];
 
             if ($this->credentials->existePorTenantProvider($tenantId, $provider)) {
@@ -174,6 +180,10 @@ class AdminPaymentCredentialsService
                     $update['webhook_secret'] = $webhookSecret;
                 }
 
+                $update['enable_pix'] = $metodos['enable_pix'];
+                $update['enable_boleto'] = $metodos['enable_boleto'];
+                $update['enable_credit_card'] = $metodos['enable_credit_card'];
+
                 $this->credentials->atualizar($tenantId, $provider, $update);
                 $message = 'Credenciais atualizadas com sucesso';
             } else {
@@ -184,6 +194,8 @@ class AdminPaymentCredentialsService
             if ($provider === 'asaas' && $isActive) {
                 $this->garantirWebhookAsaas($tenantId);
             }
+
+            $this->sincronizarParametrosMetodos($tenantId);
 
             return [
                 'status' => 200,
@@ -372,6 +384,9 @@ class AdminPaymentCredentialsService
         $provider = strtolower((string) ($row['provider'] ?? ''));
         $row['nome'] = $provider === 'asaas' ? 'Asaas' : 'Mercado Pago';
         $row['is_active'] = $this->boolish($row['is_active'] ?? false);
+        $row['enable_pix'] = $this->boolish($row['enable_pix'] ?? true);
+        $row['enable_boleto'] = $this->boolish($row['enable_boleto'] ?? true);
+        $row['enable_credit_card'] = $this->boolish($row['enable_credit_card'] ?? true);
         $row['has_token_test'] = $this->boolish($row['has_token_test'] ?? false);
         $row['has_token_prod'] = $this->boolish($row['has_token_prod'] ?? false);
         $row['public_key_test_masked'] = $this->mascarar($row['public_key_test'] ?? null);
@@ -391,11 +406,57 @@ class AdminPaymentCredentialsService
             'nome' => $provider === 'asaas' ? 'Asaas' : 'Mercado Pago',
             'environment' => 'sandbox',
             'is_active' => false,
+            'enable_pix' => true,
+            'enable_boleto' => true,
+            'enable_credit_card' => true,
             'has_token_test' => false,
             'has_token_prod' => false,
             'public_key_test_masked' => null,
             'public_key_prod_masked' => null,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $body
+     * @param  array<string, mixed>|null  $existente
+     * @return array{enable_pix: int, enable_boleto: int, enable_credit_card: int}
+     */
+    private function metodosDoBody(array $body, ?array $existente): array
+    {
+        return [
+            'enable_pix' => $this->boolish($body['enable_pix'] ?? $existente['enable_pix'] ?? true) ? 1 : 0,
+            'enable_boleto' => $this->boolish($body['enable_boleto'] ?? $existente['enable_boleto'] ?? true) ? 1 : 0,
+            'enable_credit_card' => $this->boolish($body['enable_credit_card'] ?? $existente['enable_credit_card'] ?? true) ? 1 : 0,
+        ];
+    }
+
+    private function sincronizarParametrosMetodos(int $tenantId): void
+    {
+        $pix = false;
+        $boleto = false;
+        $cartao = false;
+        $temAtivo = false;
+        foreach ($this->credentials->listarPorTenant($tenantId) as $row) {
+            if (! $this->boolish($row['is_active'] ?? false)) {
+                continue;
+            }
+            $temAtivo = true;
+            $pix = $pix || $this->boolish($row['enable_pix'] ?? true);
+            $boleto = $boleto || $this->boolish($row['enable_boleto'] ?? true);
+            $cartao = $cartao || $this->boolish($row['enable_credit_card'] ?? true);
+        }
+        if (! $temAtivo) {
+            return;
+        }
+
+        try {
+            $parametro = new Parametro(DB::connection()->getPdo());
+            $parametro->set($tenantId, 'habilitar_pix', $pix);
+            $parametro->set($tenantId, 'habilitar_boleto', $boleto);
+            $parametro->set($tenantId, 'habilitar_cartao_credito', $cartao);
+        } catch (Throwable $e) {
+            error_log('[PaymentCredentials] Parâmetros de método: '.$e->getMessage());
+        }
     }
 
     private function garantirWebhookAsaas(int $tenantId): void

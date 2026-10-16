@@ -17,7 +17,8 @@ class TenantPaymentCredentialsRepository
         $rows = DB::select(
             'SELECT id, tenant_id, provider, environment,
                     public_key_test, public_key_prod,
-                    is_active, created_at, updated_at,
+                    is_active, enable_pix, enable_boleto, enable_credit_card,
+                    created_at, updated_at,
                     CASE WHEN CHAR_LENGTH(TRIM(IFNULL(access_token_test, \'\'))) > 0 THEN 1 ELSE 0 END as has_token_test,
                     CASE WHEN CHAR_LENGTH(TRIM(IFNULL(access_token_prod, \'\'))) > 0 THEN 1 ELSE 0 END as has_token_prod
              FROM tenant_payment_credentials
@@ -34,7 +35,8 @@ class TenantPaymentCredentialsRepository
         $row = DB::selectOne(
             'SELECT id, tenant_id, provider, environment,
                     public_key_test, public_key_prod,
-                    is_active, created_at, updated_at,
+                    is_active, enable_pix, enable_boleto, enable_credit_card,
+                    created_at, updated_at,
                     CASE WHEN CHAR_LENGTH(TRIM(IFNULL(access_token_test, \'\'))) > 0 THEN 1 ELSE 0 END as has_token_test,
                     CASE WHEN CHAR_LENGTH(TRIM(IFNULL(access_token_prod, \'\'))) > 0 THEN 1 ELSE 0 END as has_token_prod
              FROM tenant_payment_credentials
@@ -82,8 +84,9 @@ class TenantPaymentCredentialsRepository
         DB::insert(
             'INSERT INTO tenant_payment_credentials
                 (tenant_id, provider, environment, access_token_test, access_token_prod,
-                 public_key_test, public_key_prod, webhook_secret, is_active)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                 public_key_test, public_key_prod, webhook_secret, is_active,
+                 enable_pix, enable_boleto, enable_credit_card)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
             [
                 $tenantId,
                 $dados['provider'],
@@ -94,6 +97,9 @@ class TenantPaymentCredentialsRepository
                 $dados['public_key_prod'],
                 $dados['webhook_secret'],
                 $dados['is_active'],
+                $dados['enable_pix'] ?? 1,
+                $dados['enable_boleto'] ?? 1,
+                $dados['enable_credit_card'] ?? 1,
             ]
         );
     }
@@ -108,12 +114,18 @@ class TenantPaymentCredentialsRepository
                     public_key_test = ?,
                     public_key_prod = ?,
                     is_active = ?,
+                    enable_pix = ?,
+                    enable_boleto = ?,
+                    enable_credit_card = ?,
                     updated_at = NOW()';
         $params = [
             $dados['environment'],
             $dados['public_key_test'],
             $dados['public_key_prod'],
             $dados['is_active'],
+            $dados['enable_pix'] ?? 1,
+            $dados['enable_boleto'] ?? 1,
+            $dados['enable_credit_card'] ?? 1,
         ];
 
         if (array_key_exists('access_token_test', $dados)) {

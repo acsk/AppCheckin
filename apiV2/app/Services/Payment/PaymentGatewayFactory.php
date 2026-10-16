@@ -41,6 +41,10 @@ class PaymentGatewayFactory
                 continue;
             }
 
+            if (! $this->aceitaPix($row)) {
+                continue;
+            }
+
             if ($provider === 'asaas') {
                 $asaas = new AsaasService($tenantId);
                 if (! $asaas->credenciaisOficiaisValidas()) {
@@ -189,6 +193,17 @@ class PaymentGatewayFactory
     private function estaAtivo(object $row): bool
     {
         $valor = $row->is_active ?? 0;
+
+        return $valor === 1 || $valor === true || $valor === '1';
+    }
+
+    private function aceitaPix(object $row): bool
+    {
+        if (! isset($row->enable_pix)) {
+            return true;
+        }
+
+        $valor = $row->enable_pix;
 
         return $valor === 1 || $valor === true || $valor === '1';
     }

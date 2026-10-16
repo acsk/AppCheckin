@@ -20,8 +20,17 @@ function formVazio(provider) {
     public_key_prod: '',
     webhook_secret: '',
     is_active: false,
+    enable_pix: true,
+    enable_boleto: true,
+    enable_credit_card: true,
   };
 }
+
+const METODOS = [
+  { campo: 'enable_pix', label: 'PIX' },
+  { campo: 'enable_boleto', label: 'Boleto' },
+  { campo: 'enable_credit_card', label: 'Cartão' },
+];
 
 export default function PaymentCredentialsScreen() {
   const [loading, setLoading] = useState(true);
@@ -63,6 +72,9 @@ export default function PaymentCredentialsScreen() {
           ...formVazio(id),
           environment: row.environment || 'sandbox',
           is_active: !!row.is_active,
+          enable_pix: row.enable_pix !== false && row.enable_pix !== 0,
+          enable_boleto: row.enable_boleto !== false && row.enable_boleto !== 0,
+          enable_credit_card: row.enable_credit_card !== false && row.enable_credit_card !== 0,
         };
       });
 
@@ -86,6 +98,9 @@ export default function PaymentCredentialsScreen() {
       provider,
       environment: formData.environment,
       is_active: formData.is_active,
+      enable_pix: !!formData.enable_pix,
+      enable_boleto: !!formData.enable_boleto,
+      enable_credit_card: !!formData.enable_credit_card,
     };
     if (formData.access_token_test.trim()) dados.access_token_test = formData.access_token_test.trim();
     if (formData.public_key_test.trim()) dados.public_key_test = formData.public_key_test.trim();
@@ -150,6 +165,25 @@ export default function PaymentCredentialsScreen() {
       dismissToast(toastId);
       atualizarForm(provider, { is_active: !value });
       showError(error.response?.data?.message || 'Não foi possível alterar o status');
+    }
+  };
+
+  const handleToggleMetodo = async (provider, campo, value) => {
+    atualizarForm(provider, { [campo]: value });
+    const toastId = showLoading('Atualizando método de pagamento...');
+    try {
+      const response = await paymentCredentialsService.salvarCredenciais(
+        montarPayload(provider, { [campo]: value })
+      );
+      dismissToast(toastId);
+      if (response.success) {
+        showSuccess(response.message || 'Método atualizado');
+        await carregarCredenciais();
+      }
+    } catch (error) {
+      dismissToast(toastId);
+      atualizarForm(provider, { [campo]: !value });
+      showError(error.response?.data?.message || 'Não foi possível alterar o método');
     }
   };
 
@@ -225,6 +259,22 @@ export default function PaymentCredentialsScreen() {
                   trackColor={{ false: '#cbd5e1', true: '#3b82f6' }}
                   thumbColor="#fff"
                 />
+              </View>
+
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Métodos de pagamento</Text>
+                <Text style={styles.metodosHint}>PIX, boleto e cartão no checkout deste provedor</Text>
+                {METODOS.map(({ campo, label }) => (
+                  <View key={campo} style={styles.metodoRow}>
+                    <Text style={styles.metodoLabel}>{label}</Text>
+                    <Switch
+                      value={!!formData[campo]}
+                      onValueChange={(value) => handleToggleMetodo(id, campo, value)}
+                      trackColor={{ false: '#cbd5e1', true: '#3b82f6' }}
+                      thumbColor="#fff"
+                    />
+                  </View>
+                ))}
               </View>
 
               <View style={styles.section}>
@@ -445,6 +495,20 @@ const styles = StyleSheet.create({
   switchLabel: { flex: 1, marginRight: 12 },
   switchText: { fontSize: 15, fontWeight: '600', color: '#0f172a', marginBottom: 4 },
   switchHint: { fontSize: 12, color: '#64748b' },
+  metodosHint: { fontSize: 12, color: '#64748b', marginTop: -4, marginBottom: 8 },
+  metodoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 8,
+  },
+  metodoLabel: { fontSize: 15, fontWeight: '600', color: '#0f172a' },
   actions: { flexDirection: 'row', gap: 12 },
   button: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',

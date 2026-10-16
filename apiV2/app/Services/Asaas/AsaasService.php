@@ -16,6 +16,9 @@ class AsaasService
     private string $baseUrl;
     private bool $productionMode = false;
     private ?int $tenantId = null;
+    private bool $enablePix = true;
+    private bool $enableBoleto = true;
+    private bool $enableCreditCard = true;
 
     public function __construct(?int $tenantId = null)
     {
@@ -27,6 +30,9 @@ class AsaasService
     public function criarPagamentoPix(array $data): array
     {
         $this->validarCredenciais();
+        if (! $this->enablePix) {
+            throw new \RuntimeException('PIX não está habilitado nas credenciais Asaas desta academia.');
+        }
 
         $cpf = isset($data['aluno_cpf']) ? preg_replace('/[^0-9]/', '', (string) $data['aluno_cpf']) : '';
         if (strlen($cpf) !== 11) {
@@ -83,6 +89,75 @@ class AsaasService
             'qr_code_base64' => $encoded !== '' ? $encoded : null,
             'ticket_url' => $payment['invoiceUrl'] ?? $payment['bankSlipUrl'] ?? null,
             'raw' => ['payment' => $payment, 'qr' => $qr],
+        ];
+    }
+
+    /**
+     * Cobrança Asaas com boleto e/ou cartão (invoiceUrl). Vários métodos = UNDEFINED.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    public function criarCobrancaCheckout(array $data): array
+    {
+        $this->validarCredenciais();
+
+        $tipos = $this->billingTypesHabilitados();
+        $tiposCheckout = array_values(array_filter($tipos, static fn (string $tipo) => $tipo !== 'PIX'));
+        if ($tiposCheckout === []) {
+            throw new \RuntimeException('Boleto e cartão não estão habilitados nas credenciais Asaas.');
+        }
+
+        $cpf = isset($data['aluno_cpf']) ? preg_replace('/[^0-9]/', '', (string) $data['aluno_cpf']) : '';
+        if (strlen($cpf) !== 11) {
+            throw new \RuntimeException('CPF válido é obrigatório para pagamento Asaas');
+        }
+
+        $matriculaId = ReferenciaExterna::normalizarId($data['matricula_id'] ?? null);
+        if (! $matriculaId) {
+            throw new \RuntimeException('matricula_id é obrigatório para pagamento Asaas');
+        }
+        $externalReference = ReferenciaExterna::matricula($matriculaId);
+
+        $customerId = $this->encontrarOuCriarCliente([
+            'name' => trim((string) ($data['aluno_nome'] ?? 'Aluno')),
+            'cpfCnpj' => $cpf,
+            'email' => $data['aluno_email'] ?? null,
+            'mobilePhone' => preg_replace('/[^0-9]/', '', (string) ($data['aluno_telefone'] ?? '')) ?: null,
+        ]);
+
+        $billingType = count($tiposCheckout) === 1 ? $tiposCheckout[0] : 'UNDEFINED';
+        $dueDate = AcademyDateTime::today();
+        $payment = $this->request('POST', '/payments', [
+            'customer' => $customerId,
+            'billingType' => $billingType,
+            'value' => round((float) $data['valor'], 2),
+            'dueDate' => $dueDate,
+            'description' => $data['descricao'] ?? $data['plano_nome'] ?? 'Pagamento',
+            'externalReference' => $externalReference,
+        ]);
+
+        $paymentId = (string) ($payment['id'] ?? '');
+        if ($paymentId === '') {
+            throw new \RuntimeException('Asaas não retornou o ID da cobrança');
+        }
+
+        try {
+            $this->garantirWebhook();
+        } catch (\Throwable $e) {
+            Log::warning('Asaas: falha ao garantir webhook', ['error' => $e->getMessage()]);
+        }
+
+        return [
+            'id' => $paymentId,
+            'status' => $this->mapStatus((string) ($payment['status'] ?? 'PENDING')),
+            'status_detail' => $payment['status'] ?? null,
+            'external_reference' => $payment['externalReference'] ?? $externalReference,
+            'date_of_expiration' => $payment['dueDate'] ?? null,
+            'qr_code' => null,
+            'qr_code_base64' => null,
+            'ticket_url' => $payment['invoiceUrl'] ?? $payment['bankSlipUrl'] ?? null,
+            'raw' => ['payment' => $payment, 'billingType' => $billingType],
         ];
     }
 
@@ -275,6 +350,38 @@ class AsaasService
             : (string) ($credentials->access_token_test ?? '');
 
         $this->accessToken = AsaasApiKey::normalizar($this->decryptIfNeeded($encrypted));
+        $flags = (array) $credentials;
+        $this->enablePix = $this->flagCredencial($flags['enable_pix'] ?? true);
+        $this->enableBoleto = $this->flagCredencial($flags['enable_boleto'] ?? true);
+        $this->enableCreditCard = $this->flagCredencial($flags['enable_credit_card'] ?? true);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function billingTypesHabilitados(): array
+    {
+        $tipos = [];
+        if ($this->enablePix) {
+            $tipos[] = 'PIX';
+        }
+        if ($this->enableBoleto) {
+            $tipos[] = 'BOLETO';
+        }
+        if ($this->enableCreditCard) {
+            $tipos[] = 'CREDIT_CARD';
+        }
+
+        return $tipos !== [] ? $tipos : ['PIX', 'BOLETO', 'CREDIT_CARD'];
+    }
+
+    private function flagCredencial(mixed $value): bool
+    {
+        if ($value === null) {
+            return true;
+        }
+
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN) || $value === 1 || $value === '1';
     }
 
     private function decryptIfNeeded(string $value): string

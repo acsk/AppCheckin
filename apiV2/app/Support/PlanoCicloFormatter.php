@@ -12,6 +12,7 @@ final class PlanoCicloFormatter
         array $ciclos,
         bool $habilitarCartao = true,
         bool $habilitarPix = true,
+        bool $habilitarBoleto = false,
     ): array {
         $valorMensalRefPlano = [];
         foreach ($ciclos as $ciclo) {
@@ -53,8 +54,8 @@ final class PlanoCicloFormatter
                 'desconto_percentual' => $economiaPercentual,
                 'permite_recorrencia' => (bool) $ciclo['permite_recorrencia'],
                 'permite_reposicao' => (bool) $ciclo['permite_reposicao'],
-                'pix_disponivel' => in_array('pix', self::metodosPagamento((bool) $ciclo['permite_recorrencia'], $habilitarCartao, $habilitarPix), true),
-                'metodos_pagamento' => self::metodosPagamento((bool) $ciclo['permite_recorrencia'], $habilitarCartao, $habilitarPix),
+                'pix_disponivel' => in_array('pix', self::metodosPagamento((bool) $ciclo['permite_recorrencia'], $habilitarCartao, $habilitarPix, $habilitarBoleto), true),
+                'metodos_pagamento' => self::metodosPagamento((bool) $ciclo['permite_recorrencia'], $habilitarCartao, $habilitarPix, $habilitarBoleto),
                 'economia' => $economiaPercentual > 0 ? 'Economize '.$economiaPercentual.'%' : null,
                 'economia_valor' => $economiaValor > 0
                     ? 'R$ '.number_format($economiaValor, 2, ',', '.').' de economia'
@@ -73,6 +74,7 @@ final class PlanoCicloFormatter
         array $ciclosRaw,
         bool $habilitarCartao = true,
         bool $habilitarPix = true,
+        bool $habilitarBoleto = false,
     ): array {
         $valorMensalBase = 0.0;
         foreach ($ciclosRaw as $c) {
@@ -106,8 +108,8 @@ final class PlanoCicloFormatter
                 'desconto_percentual' => $economiaPercentual,
                 'permite_recorrencia' => (bool) $c['permite_recorrencia'],
                 'permite_reposicao' => (bool) $c['permite_reposicao'],
-                'pix_disponivel' => in_array('pix', self::metodosPagamento((bool) $c['permite_recorrencia'], $habilitarCartao, $habilitarPix), true),
-                'metodos_pagamento' => self::metodosPagamento((bool) $c['permite_recorrencia'], $habilitarCartao, $habilitarPix),
+                'pix_disponivel' => in_array('pix', self::metodosPagamento((bool) $c['permite_recorrencia'], $habilitarCartao, $habilitarPix, $habilitarBoleto), true),
+                'metodos_pagamento' => self::metodosPagamento((bool) $c['permite_recorrencia'], $habilitarCartao, $habilitarPix, $habilitarBoleto),
                 'economia' => $economiaPercentual > 0 ? 'Economize '.$economiaPercentual.'%' : null,
                 'economia_valor' => $economiaValor > 0
                     ? 'R$ '.number_format($economiaValor, 2, ',', '.').' de economia'
@@ -125,11 +127,13 @@ final class PlanoCicloFormatter
         bool $permiteRecorrencia,
         bool $habilitarCartao = true,
         bool $habilitarPix = true,
+        bool $habilitarBoleto = false,
     ): array {
         return MobilePagamentoMetodos::metodosPagamentoCiclo(
             $permiteRecorrencia,
             $habilitarCartao,
             $habilitarPix,
+            $habilitarBoleto,
         );
     }
 

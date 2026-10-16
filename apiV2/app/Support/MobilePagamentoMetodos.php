@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
 final class MobilePagamentoMetodos
 {
     /**
-     * @return array{habilitar_pix: bool, habilitar_cartao_credito: bool}
+     * @return array{habilitar_pix: bool, habilitar_cartao_credito: bool, habilitar_boleto: bool}
      */
     public static function flags(int $tenantId): array
     {
@@ -20,6 +20,7 @@ final class MobilePagamentoMetodos
         return [
             'habilitar_pix' => $parametro->isEnabled($tenantId, 'habilitar_pix'),
             'habilitar_cartao_credito' => $parametro->isEnabled($tenantId, 'habilitar_cartao_credito'),
+            'habilitar_boleto' => $parametro->isEnabled($tenantId, 'habilitar_boleto'),
         ];
     }
 
@@ -30,20 +31,26 @@ final class MobilePagamentoMetodos
         bool $permiteRecorrencia,
         bool $habilitarCartao,
         bool $habilitarPix,
+        bool $habilitarBoleto = false,
     ): array {
-        if (! $habilitarCartao && ! $habilitarPix) {
+        $checkout = $habilitarCartao || $habilitarBoleto;
+        if (! $checkout && ! $habilitarPix) {
             return [];
         }
 
-        if (! $habilitarCartao) {
-            return $habilitarPix ? ['pix'] : [];
-        }
-
-        if ($permiteRecorrencia) {
+        if ($permiteRecorrencia && $habilitarCartao) {
             return ['checkout'];
         }
 
-        return $habilitarPix ? ['pix'] : ['checkout'];
+        $metodos = [];
+        if ($habilitarPix) {
+            $metodos[] = 'pix';
+        }
+        if ($checkout) {
+            $metodos[] = 'checkout';
+        }
+
+        return $metodos;
     }
 
     public static function isRecorrenteEfetivo(bool $permiteRecorrenciaCiclo, bool $habilitarCartao): bool
@@ -55,10 +62,11 @@ final class MobilePagamentoMetodos
         string $metodoPagamento,
         bool $habilitarCartao,
         bool $habilitarPix,
+        bool $habilitarBoleto = false,
     ): string {
         $metodo = strtolower(trim($metodoPagamento));
 
-        if ($metodo === 'checkout' && ! $habilitarCartao && $habilitarPix) {
+        if ($metodo === 'checkout' && ! $habilitarCartao && ! $habilitarBoleto && $habilitarPix) {
             return 'pix';
         }
 

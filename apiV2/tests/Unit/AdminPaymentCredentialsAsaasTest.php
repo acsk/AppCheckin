@@ -57,6 +57,7 @@ class AdminPaymentCredentialsAsaasTest extends TestCase
         $repo = Mockery::mock(TenantPaymentCredentialsRepository::class);
         $repo->shouldReceive('obterPorTenantProvider')->once()->with(1, 'asaas')->andReturn(null);
         $repo->shouldReceive('existePorTenantProvider')->once()->with(1, 'asaas')->andReturn(false);
+        $repo->shouldReceive('listarPorTenant')->andReturn([]);
         $repo->shouldReceive('inserir')->once()->with(1, Mockery::on(function ($dados) {
             return $dados['provider'] === 'asaas'
                 && $dados['environment'] === 'sandbox'
