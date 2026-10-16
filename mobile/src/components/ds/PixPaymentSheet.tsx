@@ -17,6 +17,14 @@ import { ds, radius, space, type } from "./tokens";
 
 export type PixStatus = "waiting" | "checking" | "paid" | "expired";
 
+function uriDoQrPix(qrBase64: string): string {
+  const valor = qrBase64.trim().replace(/^data:image\\\/png;base64,/i, "data:image/png;base64,");
+  if (valor.startsWith("data:")) {
+    return valor;
+  }
+  return `data:image/png;base64,${valor}`;
+}
+
 type Props = {
   visible: boolean;
   /** Valor já formatado, ex.: "R$ 150,00". */
@@ -177,7 +185,7 @@ export default function PixPaymentSheet({
                   {qrBase64 ? (
                     <View style={[styles.qr, { width: qrSize + 20, height: qrSize + 20 }, narrow && { alignSelf: "center" }]}>
                       <Image
-                        source={{ uri: `data:image/png;base64,${qrBase64}` }}
+                        source={{ uri: uriDoQrPix(qrBase64) }}
                         style={{ width: qrSize, height: qrSize }}
                         accessibilityLabel="QR Code do PIX"
                       />
