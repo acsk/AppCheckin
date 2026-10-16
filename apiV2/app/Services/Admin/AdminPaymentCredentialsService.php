@@ -248,14 +248,17 @@ class AdminPaymentCredentialsService
 
             if (! $temToken) {
                 $rotulo = $environment === 'production' ? 'produção' : 'sandbox';
+                $campo = $provider === 'asaas' ? 'API key' : 'Access Token';
+                $nome = $provider === 'asaas' ? 'Asaas' : 'Mercado Pago';
 
                 return [
                     'status' => 400,
                     'body' => [
                         'success' => false,
-                        'message' => $provider === 'asaas'
-                            ? "Salve a API key de {$rotulo} do Asaas antes de ativar este ambiente."
-                            : "Salve o Access Token de {$rotulo} do Mercado Pago antes de ativar este ambiente.",
+                        'code' => 'SEM_TOKEN_AMBIENTE',
+                        'message' => "Não há {$campo} de {$rotulo} do {$nome} salvo nesta academia. "
+                            .'Cole a chave na seção correspondente, clique em Salvar e só então mude o ambiente. '
+                            .'A troca não reutiliza o token do outro ambiente.',
                     ],
                 ];
             }

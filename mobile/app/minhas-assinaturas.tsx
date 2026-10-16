@@ -1,6 +1,7 @@
 import { useProtectedRoute } from "@/hooks/useProtectedRoute";
 import { getApiUrlRuntime } from "@/src/config/urls";
-import { solicitarPix } from "@/src/utils/pagamentoPix";
+import { solicitarPix, usuarioPodeVerSandboxPagamento } from "@/src/utils/pagamentoPix";
+import { useGatewayPicker } from "@/src/hooks/useGatewayPicker";
 import { authService } from "@/src/services/authService";
 import { colors } from "@/src/theme/colors";
 import { handleUnauthorizedResponse } from "@/src/utils/authHelpers";
@@ -138,6 +139,7 @@ export default function MinhasAssinaturasScreen() {
 
   // Verificar autenticação - se não autenticado, redireciona
   useProtectedRoute();
+  const { escolherGateway } = useGatewayPicker();
 
   const [assinaturas, setAssinaturas] = useState<Assinatura[]>([]);
   const [pacotes, setPacotes] = useState<PacoteContrato[]>([]);
@@ -213,9 +215,14 @@ export default function MinhasAssinaturasScreen() {
           apiUrl,
           token,
           matriculaId: Number(assinatura.matricula_id),
+          escolherGateway,
+          podeSandbox: isUserAdmin,
         });
         const pixJson = pixResult.json;
         if (!pixResult.ok) {
+          if (pixResult.cancelled) {
+            return;
+          }
           showErrorModal(
             "⚠️ Não foi possível gerar o pagamento",
             pixJson.error ||
@@ -369,13 +376,7 @@ export default function MinhasAssinaturasScreen() {
           return;
         }
 
-        // Verificar se o usuário é admin (papel_id 3) ou super admin (papel_id 4)
-        const isAdmin = user.papel_id === 3 || user.papel_id === 4;
-        const hasAdminRole =
-          Array.isArray(user.papeis) &&
-          user.papeis.some((r: any) => r.id === 3 || r.id === 4);
-
-        setIsUserAdmin(isAdmin || hasAdminRole);
+        setIsUserAdmin(usuarioPodeVerSandboxPagamento(user));
       } catch (err) {
         console.warn("⚠️ Erro ao verificar status de admin:", err);
         setIsUserAdmin(false);

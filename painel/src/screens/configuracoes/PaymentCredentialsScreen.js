@@ -237,6 +237,9 @@ export default function PaymentCredentialsScreen() {
                     <Text style={[styles.environmentLabel, ambienteSandbox && styles.environmentLabelActive]}>
                       Sandbox
                     </Text>
+                    <Text style={styles.environmentHint}>
+                      {atual?.has_token_test ? 'Token salvo' : 'Sem token'}
+                    </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.environmentCard, !ambienteSandbox && styles.environmentCardActive]}
@@ -244,6 +247,9 @@ export default function PaymentCredentialsScreen() {
                   >
                     <Text style={[styles.environmentLabel, !ambienteSandbox && styles.environmentLabelActive]}>
                       Produção
+                    </Text>
+                    <Text style={styles.environmentHint}>
+                      {atual?.has_token_prod ? 'Token salvo' : 'Sem token'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -418,6 +424,7 @@ const styles = StyleSheet.create({
   environmentCardActive: { borderColor: '#3b82f6', backgroundColor: '#eff6ff' },
   environmentLabel: { fontSize: 16, fontWeight: '600', color: '#64748b' },
   environmentLabelActive: { color: '#3b82f6' },
+  environmentHint: { fontSize: 12, color: '#94a3b8', marginTop: 4 },
   inputGroup: { marginBottom: 16 },
   label: { fontSize: 14, fontWeight: '500', color: '#475569', marginBottom: 8 },
   input: {

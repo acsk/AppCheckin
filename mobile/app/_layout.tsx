@@ -28,6 +28,7 @@ import ForceUpdateGate from "@/src/components/ForceUpdateGate";
 import { colors } from "@/src/theme/colors";
 import { ThemePreferenceProvider } from "@/src/theme/ThemePreference";
 import { ds } from "@/src/components/ds/tokens";
+import { GatewayPickerProvider } from "@/src/hooks/useGatewayPicker";
 
 // Importar Reanimated apenas no mobile
 if (Platform.OS !== "web") {
@@ -228,6 +229,7 @@ function RootContent() {
     <SafeAreaProvider>
       <ThemeProvider value={colorScheme === "dark" ? (Platform.OS === "web" ? APP_DARK_THEME : DarkTheme) : APP_THEME}>
         <ErrorBoundary>
+          <GatewayPickerProvider>
           <ForceUpdateGate>
           {!isTokenChecked ? bootScreen : (
           <View style={styles.root}>
@@ -270,6 +272,7 @@ function RootContent() {
           </View>
           )}
           </ForceUpdateGate>
+          </GatewayPickerProvider>
           <StatusBar style="light" backgroundColor={colors.primary} />
         </ErrorBoundary>
       </ThemeProvider>

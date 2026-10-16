@@ -1,6 +1,7 @@
 import { useProtectedRoute } from "@/hooks/useProtectedRoute";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
-import { solicitarPix } from "@/src/utils/pagamentoPix";
+import { solicitarPix, usuarioPodeVerSandboxPagamento } from "@/src/utils/pagamentoPix";
+import { useGatewayPicker } from "@/src/hooks/useGatewayPicker";
 import { authService } from "@/src/services/authService";
 import Badge from "@/src/components/ds/Badge";
 import Button from "@/src/components/ds/Button";
@@ -121,6 +122,12 @@ export default function PlanoDetalhesScreen() {
 
   // Verificar autenticação - se não autenticado, redireciona
   const { isLoading: isAuthChecking } = useProtectedRoute();
+  const { escolherGateway } = useGatewayPicker();
+  const [podeSandboxPix, setPodeSandboxPix] = useState(false);
+  const onEscolherGateway = () => {
+    setPixLoading(false);
+    setComprando(false);
+  };
 
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [plano, setPlano] = useState<PlanoDetalhes | null>(null);
@@ -347,6 +354,7 @@ export default function PlanoDetalhesScreen() {
         }
 
         console.log("✅ Usuário autenticado com permissão para acessar plano");
+        setPodeSandboxPix(usuarioPodeVerSandboxPagamento(user));
         setHasPermission(true);
       } catch (err) {
         console.error("❌ Erro ao verificar permissão:", err);
@@ -534,6 +542,9 @@ export default function PlanoDetalhesScreen() {
             apiUrl,
             token,
             matriculaId: Number(matriculaId),
+            escolherGateway,
+            onEscolherGateway,
+            podeSandbox: podeSandboxPix,
           });
           const pixJson = pixResult.json;
           if (pixResult.ok) {
@@ -549,6 +560,9 @@ export default function PlanoDetalhesScreen() {
               expires_at: pix.expires_at || null,
             });
             setPixModalVisible(true);
+            return;
+          }
+          if (pixResult.cancelled) {
             return;
           }
         }
@@ -942,10 +956,16 @@ export default function PlanoDetalhesScreen() {
         apiUrl,
         token,
         matriculaId: Number(matriculaId),
+        escolherGateway,
+        onEscolherGateway,
+        podeSandbox: podeSandboxPix,
       });
       const pixJson = pixResult.json;
 
       if (!pixResult.ok) {
+        if (pixResult.cancelled) {
+          return;
+        }
         const msg =
           pixJson?.message ||
           pixJson?.error ||

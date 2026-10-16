@@ -1,40 +1,37 @@
-import { Alert } from "react-native";
-
 export type PixGateway = {
   id: string;
   nome: string;
   environment?: string;
 };
 
+export type EscolherGatewayPix = (gateways: PixGateway[]) => Promise<string | null>;
+
+export function usuarioPodeVerSandboxPagamento(user: any): boolean {
+  if (!user) return false;
+  if (user.is_super_admin === true || user.is_super_admin === 1) return true;
+  const papel = Number(user.papel_id ?? 0);
+  if (papel === 3 || papel === 4) return true;
+  if (!Array.isArray(user.papeis)) return false;
+  return user.papeis.some((role: any) => {
+    const id = Number(role?.id ?? role?.papel_id ?? 0);
+    return id === 3 || id === 4;
+  });
+}
+
+export function filtrarGatewaysPix(
+  gateways: PixGateway[] | undefined,
+  podeSandbox: boolean,
+): PixGateway[] {
+  if (!Array.isArray(gateways)) return [];
+  if (podeSandbox) return gateways;
+  return gateways.filter(
+    (gateway) => String(gateway.environment || "production") !== "sandbox",
+  );
+}
+
 type PixResult =
   | { ok: true; json: any }
   | { ok: false; status: number; json: any; cancelled?: boolean };
-
-export async function escolherGatewayPix(
-  gateways: PixGateway[],
-): Promise<string | null> {
-  if (!Array.isArray(gateways) || gateways.length === 0) {
-    return null;
-  }
-  if (gateways.length === 1) {
-    return gateways[0].id;
-  }
-
-  return new Promise((resolve) => {
-    Alert.alert(
-      "Como deseja pagar?",
-      "Escolha Mercado Pago ou Asaas.",
-      [
-        ...gateways.map((gateway) => ({
-          text: gateway.nome,
-          onPress: () => resolve(gateway.id),
-        })),
-        { text: "Cancelar", style: "cancel" as const, onPress: () => resolve(null) },
-      ],
-      { cancelable: true, onDismiss: () => resolve(null) },
-    );
-  });
-}
 
 export async function postPagamentoPix(params: {
   apiUrl: string;
@@ -77,14 +74,30 @@ export async function solicitarPix(params: {
   matriculaId: number;
   gateway?: string;
   gateways?: PixGateway[];
+  escolherGateway?: EscolherGatewayPix;
+  onEscolherGateway?: () => void;
+  podeSandbox?: boolean;
 }): Promise<PixResult> {
+  const escolher = params.escolherGateway;
+  const podeSandbox = params.podeSandbox === true;
   let gateway = params.gateway;
-  if (!gateway && params.gateways && params.gateways.length > 1) {
-    const chosen = await escolherGatewayPix(params.gateways);
-    if (!chosen) {
+
+  const escolherEntre = async (lista: PixGateway[]): Promise<string | null> => {
+    const visiveis = filtrarGatewaysPix(lista, podeSandbox);
+    if (visiveis.length === 0) return null;
+    if (visiveis.length === 1) return visiveis[0].id;
+    if (!escolher) return null;
+    params.onEscolherGateway?.();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    return escolher(visiveis);
+  };
+
+  if (!gateway && params.gateways && params.gateways.length > 0) {
+    const chosen = await escolherEntre(params.gateways);
+    if (params.gateways.length > 1 && chosen === null) {
       return { ok: false, status: 0, json: {}, cancelled: true };
     }
-    gateway = chosen;
+    if (chosen) gateway = chosen;
   }
 
   for (;;) {
@@ -100,9 +113,21 @@ export async function solicitarPix(params: {
     }
 
     const code = result.json?.code;
-    const opcoes: PixGateway[] = result.json?.gateways ?? [];
+    const opcoes: PixGateway[] =
+      result.json?.gateways ?? result.json?.data?.gateways ?? [];
     if (code === "ESCOLHA_GATEWAY" && opcoes.length > 0) {
-      const chosen = await escolherGatewayPix(opcoes);
+      const visiveis = filtrarGatewaysPix(opcoes, podeSandbox);
+      if (visiveis.length === 0) {
+        return {
+          ok: false,
+          status: 400,
+          json: {
+            code: "SEM_GATEWAY_PIX",
+            error: "Nenhum provedor de PIX disponível.",
+          },
+        };
+      }
+      const chosen = await escolherEntre(opcoes);
       if (!chosen) {
         return { ...result, cancelled: true };
       }

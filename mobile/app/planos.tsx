@@ -1,6 +1,7 @@
 import { useProtectedRoute } from "@/hooks/useProtectedRoute";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
-import { solicitarPix } from "@/src/utils/pagamentoPix";
+import { solicitarPix, usuarioPodeVerSandboxPagamento } from "@/src/utils/pagamentoPix";
+import { useGatewayPicker } from "@/src/hooks/useGatewayPicker";
 import { authService } from "@/src/services/authService";
 import PixPaymentSheet from "@/src/components/ds/PixPaymentSheet";
 import { colors } from "@/src/theme/colors";
@@ -111,14 +112,7 @@ interface ApiResponse {
   error?: string;
 }
 
-const isAdminUser = (user: any) => {
-  if (!user) return false;
-  const isAdmin = user.papel_id === 3 || user.papel_id === 4;
-  const hasAdminRole =
-    Array.isArray(user.papeis) &&
-    user.papeis.some((r: any) => r.id === 3 || r.id === 4);
-  return isAdmin || hasAdminRole;
-};
+const isAdminUser = (user: any) => usuarioPodeVerSandboxPagamento(user);
 
 const isDevPlanName = (nome?: string | null) =>
   String(nome || "")
@@ -131,6 +125,12 @@ export default function PlanosScreen() {
 
   // Verificar autenticação - se não autenticado, redireciona
   const { isLoading: isAuthChecking } = useProtectedRoute();
+  const { escolherGateway } = useGatewayPicker();
+  const [podeSandboxPix, setPodeSandboxPix] = useState(false);
+  const onEscolherGateway = () => {
+    setPixLoading(false);
+    setComprando(false);
+  };
 
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const [planos, setPlanos] = useState<Plan[]>([]);
@@ -451,6 +451,7 @@ export default function PlanosScreen() {
       if (data.success && data.data?.planos) {
         const user = await authService.getCurrentUser();
         const admin = isAdminUser(user);
+        setPodeSandboxPix(admin);
         const planosFiltrados = admin
           ? data.data.planos
           : data.data.planos.filter((plano) => !isDevPlanName(plano?.nome));
@@ -562,6 +563,9 @@ export default function PlanosScreen() {
               apiUrl,
               token,
               matriculaId: Number(matriculaId),
+              escolherGateway,
+              onEscolherGateway,
+              podeSandbox: podeSandboxPix,
             });
             const pixJson = pixResult.json;
             if (pixResult.ok) {
@@ -577,6 +581,9 @@ export default function PlanosScreen() {
                 expires_at: pix.expires_at || null,
               });
               setPixModalVisible(true);
+              return;
+            }
+            if (pixResult.cancelled) {
               return;
             }
           }
@@ -923,6 +930,9 @@ export default function PlanosScreen() {
                 apiUrl,
                 token,
                 matriculaId: matriculaIdRenov,
+                escolherGateway,
+                onEscolherGateway,
+                podeSandbox: podeSandboxPix,
               });
               const pixJsonRenov = pixResultRenov.json;
               if (pixResultRenov.ok) {
@@ -940,6 +950,11 @@ export default function PlanosScreen() {
                   expires_at: pix.expires_at || null,
                 });
                 setPixModalVisible(true);
+                setPixLoading(false);
+                setPlanoComprando(null);
+                return;
+              }
+              if (pixResultRenov.cancelled) {
                 setPixLoading(false);
                 setPlanoComprando(null);
                 return;
@@ -993,9 +1008,17 @@ export default function PlanosScreen() {
             apiUrl,
             token,
             matriculaId: matriculaIdRenov,
+            escolherGateway,
+            onEscolherGateway,
+            podeSandbox: podeSandboxPix,
           });
           const pixJsonRenov = pixResultRenov.json;
           if (!pixResultRenov.ok) {
+            if (pixResultRenov.cancelled) {
+              setPixLoading(false);
+              setPlanoComprando(null);
+              return;
+            }
             showErrorModal(
               "⚠️ Erro ao Gerar PIX",
               pixJsonRenov?.error ||
@@ -1071,10 +1094,18 @@ export default function PlanosScreen() {
           apiUrl,
           token,
           matriculaId: Number(matriculaId),
+          escolherGateway,
+          onEscolherGateway,
+          podeSandbox: podeSandboxPix,
         });
         const pixJson = pixResult.json;
 
         if (!pixResult.ok) {
+          if (pixResult.cancelled) {
+            setPixLoading(false);
+            setPlanoComprando(null);
+            return;
+          }
           const msg =
             pixJson?.message ||
             pixJson?.error ||
