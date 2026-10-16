@@ -17,13 +17,16 @@ import {
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, AppState, Platform, StyleSheet, View } from "react-native";
+import { AppState, Platform, StyleSheet, View } from "react-native";
 import {
     SafeAreaProvider,
     useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
 import { useColorScheme } from "@/hooks/use-color-scheme";
+import AnimatedSplash from "@/src/components/ds/AnimatedSplash";
+import Constants from "expo-constants";
+import * as SplashScreen from "expo-splash-screen";
 import ForceUpdateGate from "@/src/components/ForceUpdateGate";
 import { colors } from "@/src/theme/colors";
 import { ThemePreferenceProvider } from "@/src/theme/ThemePreference";
@@ -80,6 +83,9 @@ const PROTECTED_ROUTES = [
   "checkin-turma",
 ];
 
+// Mantém a splash nativa até a AnimatedSplash desenhar o primeiro quadro (idêntico).
+SplashScreen.preventAutoHideAsync().catch(() => {});
+
 export default function RootLayout() {
   return (
     <ThemePreferenceProvider>
@@ -94,6 +100,7 @@ function RootContent() {
   const appState = useRef(AppState.currentState);
   const segments = useSegments();
   const [isTokenChecked, setIsTokenChecked] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
   const [hasToken, setHasToken] = useState(false);
   const [sessionExpiredVisible, setSessionExpiredVisible] = useState(false);
   const [sessionExpiredMessage, setSessionExpiredMessage] = useState(
@@ -218,11 +225,8 @@ function RootContent() {
     router.replace("/(auth)/login");
   }, [router]);
 
-  const bootScreen = (
-    <View style={[styles.root, styles.bootSplash]}>
-      <ActivityIndicator size="large" color={colors.primary} />
-    </View>
-  );
+  // Por trás da AnimatedSplash enquanto a sessão é verificada.
+  const bootScreen = <View style={[styles.root, styles.bootSplash]} />;
 
   return (
     <SafeAreaProvider>
@@ -270,6 +274,18 @@ function RootContent() {
           </View>
           )}
           </ForceUpdateGate>
+          {showSplash ? (
+            <AnimatedSplash
+              ready={isTokenChecked}
+              onFinish={() => setShowSplash(false)}
+              version={Constants.expoConfig?.version ?? null}
+              onRetry={
+                Platform.OS === "web" && typeof window !== "undefined"
+                  ? () => window.location.reload()
+                  : undefined
+              }
+            />
+          ) : null}
           <StatusBar style="light" backgroundColor={colors.primary} />
         </ErrorBoundary>
       </ThemeProvider>

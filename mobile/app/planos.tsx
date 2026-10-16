@@ -1452,9 +1452,9 @@ export default function PlanosScreen() {
         current={!!plano.is_plano_atual}
         name={plano.nome}
         modality={plano.modalidade?.nome}
-        detail={plano.is_plano_atual ? plano.label || "Ativo" : avulso ? "uma aula" : null}
+        detail={plano.is_plano_atual ? plano.label || "Ativo" : avulso ? "Sem mensalidade" : null}
         freq={avulso ? "1" : n > 0 ? `${n}x` : "∞"}
-        freqUnit={avulso ? "dia" : n > 0 ? "semana" : "livre"}
+        freqUnit={avulso ? "aula" : n > 0 ? "semana" : "livre"}
         price={fmtPreco(menorMensal(plano))}
         unit={avulso ? "/aula" : "/mês"}
         from={!avulso && ciclosCount > 1}
@@ -1463,7 +1463,6 @@ export default function PlanosScreen() {
             ? `≈ ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(porAula)}`
             : null
         }
-        features={n > 0 ? [`≈ ${n * 4} aulas por mês`] : undefined}
         tag={!plano.is_plano_atual && plano.id === idMenorPorAula ? "Menor preço por aula" : null}
         actionLabel={
           plano.is_plano_atual
@@ -1659,7 +1658,7 @@ export default function PlanosScreen() {
             </Section>
           ) : null}
           {planosSemanais.length > 0 ? (
-            <Section title="Planos por semana" aside="Preço por mês" bare>
+            <Section title="Planos por semana" aside="A partir de, por mês" bare>
               <View style={styles.planStack}>{planosSemanais.map(renderPlanCardDs)}</View>
             </Section>
           ) : null}
