@@ -51,7 +51,11 @@ class MobileCompraPlanoService
             return $this->erro(400, 'METODO_PAGAMENTO_INVALIDO', 'Método de pagamento inválido. Use pix, boleto ou cartão.');
         }
 
-        $pagamentoFlags = MobilePagamentoMetodos::flags($tenantId);
+        $pagamentoFlags = MobilePagamentoMetodos::flagsDisponiveis(
+            $this->gateways,
+            $tenantId,
+            $podeSandbox
+        );
         $habilitarCartao = $pagamentoFlags['habilitar_cartao_credito'];
         $habilitarPix = $pagamentoFlags['habilitar_pix'];
         $habilitarBoleto = $pagamentoFlags['habilitar_boleto'] ?? false;
@@ -77,6 +81,19 @@ class MobileCompraPlanoService
         if ($metodoPagamento === 'checkout' && ! $habilitarCartao && ! $habilitarBoleto) {
             return $this->erro(400, 'CHECKOUT_NAO_DISPONIVEL', 'Pagamento por checkout não está disponível. Use PIX.');
         }
+
+        $gatewayPedido = isset($data['gateway']) ? (string) $data['gateway'] : (isset($data['provider']) ? (string) $data['provider'] : null);
+        $escolha = $this->gateways->resolverMetodo(
+            $tenantId,
+            $podeSandbox,
+            $metodoPagamento,
+            $gatewayPedido
+        );
+        if (! ($escolha['ok'] ?? false)) {
+            return $this->respostaEscolhaGateway($escolha);
+        }
+        $provider = (string) $escolha['provider'];
+        $gatewayInstance = $escolha['instance'];
 
         if ($diaVencimento < 1 || $diaVencimento > 31) {
             return $this->erro(400, 'DIA_VENCIMENTO_INVALIDO', 'Dia de vencimento deve estar entre 1 e 31');
@@ -482,20 +499,7 @@ class MobileCompraPlanoService
                 'billing_type' => $metodoPagamento === 'boleto' ? 'BOLETO' : ($metodoPagamento === 'cartao' ? 'CREDIT_CARD' : ''),
             ];
 
-            $gatewayPedido = isset($data['gateway']) ? (string) $data['gateway'] : (isset($data['provider']) ? (string) $data['provider'] : null);
-            $escolha = $this->gateways->resolverMetodo(
-                $tenantId,
-                $podeSandbox,
-                $metodoPagamento,
-                $gatewayPedido
-            );
-            $escolhaPix = $metodoPagamento === 'pix'
-                ? $escolha
-                : $this->gateways->resolverPix($tenantId, $podeSandbox, $gatewayPedido);
-            $provider = ($escolha['ok'] ?? false)
-                ? (string) $escolha['provider']
-                : $this->gateways->providerForTenant($tenantId);
-            $mp = $provider === 'asaas' ? null : new MercadoPagoService($tenantId);
+            $mp = $provider === 'asaas' ? null : $gatewayInstance;
             $paymentUrl = null;
             $preferenceId = null;
             $tipoPagamento = 'pagamento_unico';
@@ -509,26 +513,13 @@ class MobileCompraPlanoService
                     if (strlen($cpfPix) !== 11) {
                         return $this->erro(400, 'CPF_OBRIGATORIO_PIX', 'CPF válido é obrigatório para pagamento PIX');
                     }
-                    if (! ($escolhaPix['ok'] ?? false)) {
-                        if (($escolhaPix['code'] ?? '') !== 'ESCOLHA_GATEWAY') {
-                            return $this->erro(
-                                (int) ($escolhaPix['status'] ?? 400),
-                                (string) ($escolhaPix['code'] ?? 'SEM_GATEWAY_PIX'),
-                                (string) ($escolhaPix['error'] ?? 'Nenhum provedor de PIX disponível.')
-                            );
-                        }
-                    } else {
-                        $pixData = $escolhaPix['instance']->criarPagamentoPix($dadosPagamento);
-                        $tipoPagamento = 'pix';
-                        $paymentUrl = $pixData['ticket_url'] ?? null;
-                        $preferenceId = $pixData['id'] ?? null;
-                        $externalReference = $pixData['external_reference'] ?? $externalReference;
-                        $this->salvarPixRegistro($tenantId, $matriculaId, $pixData);
-                    }
-                } elseif ($isRecorrente) {
-                    if ($provider === 'asaas' || ! $mp) {
-                        return $this->erro(400, 'ASAAS_SEM_RECORRENCIA', 'Assinatura recorrente ainda não está disponível no Asaas. Use PIX ou Mercado Pago.');
-                    }
+                    $pixData = $gatewayInstance->criarPagamentoPix($dadosPagamento);
+                    $tipoPagamento = 'pix';
+                    $paymentUrl = $pixData['ticket_url'] ?? null;
+                    $preferenceId = $pixData['id'] ?? null;
+                    $externalReference = $pixData['external_reference'] ?? $externalReference;
+                    $this->salvarPixRegistro($tenantId, $matriculaId, $pixData);
+                } elseif ($isRecorrente && $mp instanceof MercadoPagoService) {
                     $preferencia = $mp->criarPreferenciaAssinatura($dadosPagamento, $duracaoMeses);
                     $tipoPagamento = 'assinatura';
                     $paymentUrl = $preferencia['init_point'] ?? null;
@@ -536,7 +527,9 @@ class MobileCompraPlanoService
                     $externalReference = $preferencia['external_reference'] ?? $externalReference;
                 } else {
                     if ($provider === 'asaas' || ! $mp) {
-                        $preferencia = (new AsaasService($tenantId))->criarCobrancaCheckout($dadosPagamento);
+                        $preferencia = $gatewayInstance instanceof AsaasService
+                            ? $gatewayInstance->criarCobrancaCheckout($dadosPagamento)
+                            : (new AsaasService($tenantId))->criarCobrancaCheckout($dadosPagamento);
                         $tipoPagamento = 'pagamento_unico';
                         $paymentUrl = $preferencia['ticket_url'] ?? null;
                         $preferenceId = $preferencia['id'] ?? null;
@@ -605,11 +598,6 @@ class MobileCompraPlanoService
             if ($mpError) {
                 $body['mp_error'] = $mpError;
             }
-            if ($metodoPagamento === 'pix' && ! ($escolhaPix['ok'] ?? false) && ($escolhaPix['code'] ?? '') === 'ESCOLHA_GATEWAY') {
-                $body['code'] = 'ESCOLHA_GATEWAY';
-                $body['gateways'] = $escolhaPix['gateways'] ?? [];
-            }
-
             return ['status' => 200, 'body' => $body];
         } catch (\Throwable $e) {
             return [
@@ -1001,6 +989,28 @@ class MobileCompraPlanoService
                 'type' => 'error',
                 'code' => $code,
                 'message' => $message,
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $escolha
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    private function respostaEscolhaGateway(array $escolha): array
+    {
+        $code = (string) ($escolha['code'] ?? 'SEM_GATEWAY');
+        $message = (string) ($escolha['error'] ?? 'Nenhum provedor disponível para este método de pagamento.');
+
+        return [
+            'status' => (int) ($escolha['status'] ?? 400),
+            'body' => [
+                'success' => false,
+                'type' => 'error',
+                'code' => $code,
+                'message' => $message,
+                'error' => $message,
+                'gateways' => $escolha['gateways'] ?? [],
             ],
         ];
     }

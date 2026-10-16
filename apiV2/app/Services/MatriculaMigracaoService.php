@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Repositories\UsuarioRepository;
 use App\Support\AcademyDateTime;
+use App\Services\Asaas\AsaasService;
+use App\Services\Payment\PaymentGatewayFactory;
 use App\Support\MobilePagamentoMetodos;
 use App\Support\ReferenciaExterna;
 use App\Support\StatusPagamentoPlano;
@@ -142,7 +144,7 @@ class MatriculaMigracaoService
      * @param  array<string, mixed>  $data
      * @return array{status: int, body: array<string, mixed>}
      */
-    public function migrar(int $userId, int $tenantId, array $data): array
+    public function migrar(int $userId, int $tenantId, array $data, bool $podeSandbox = false): array
     {
         $planoId = (int) ($data['plano_id'] ?? 0);
         $planoCicloId = ! empty($data['plano_ciclo_id']) ? (int) $data['plano_ciclo_id'] : null;
@@ -227,6 +229,35 @@ class MatriculaMigracaoService
         $novoPlanoId = (int) $novoPlano['id'];
         $novoCicloId = $novoCiclo ? (int) $novoCiclo['id'] : null;
         $ativarDireto = $valorParcela <= self::FLOAT_EPSILON;
+
+        $escolhaGateway = null;
+        if (! $ativarDireto) {
+            $gatewayPedido = isset($data['gateway'])
+                ? (string) $data['gateway']
+                : (isset($data['provider']) ? (string) $data['provider'] : null);
+            $escolhaGateway = $this->resolverGatewayPagamento(
+                $tenantId,
+                $podeSandbox,
+                $metodoPagamento,
+                $gatewayPedido
+            );
+            if (! ($escolhaGateway['ok'] ?? false)) {
+                $code = (string) ($escolhaGateway['code'] ?? 'SEM_GATEWAY');
+                $message = (string) ($escolhaGateway['error'] ?? 'Nenhum provedor disponível para este método de pagamento.');
+
+                return [
+                    'status' => (int) ($escolhaGateway['status'] ?? 400),
+                    'body' => [
+                        'success' => false,
+                        'type' => 'error',
+                        'code' => $code,
+                        'message' => $message,
+                        'error' => $message,
+                        'gateways' => $escolhaGateway['gateways'] ?? [],
+                    ],
+                ];
+            }
+        }
 
         $motivoId = (int) $this->lookupId('motivo_matricula', $motivo, 1);
 
@@ -487,6 +518,7 @@ class MatriculaMigracaoService
             $metodoPagamento,
             $usuario,
             $dataVencimento,
+            $escolhaGateway,
         );
 
         if (isset($mpResult['erro'])) {
@@ -894,6 +926,7 @@ class MatriculaMigracaoService
         string $metodoPagamento,
         array $usuario,
         string $dataVencimento,
+        ?array $escolhaGateway = null,
     ): array {
         $descricaoCompra = $novoCiclo
             ? "{$novoPlano['nome']} ({$cicloNome}) - {$novoPlano['modalidade_nome']}"
@@ -918,6 +951,8 @@ class MatriculaMigracaoService
             'max_parcelas' => 12,
             'academia_nome' => $academiaNome,
             'apenas_cartao' => $isRecorrente,
+            'metodo_pagamento' => $metodoPagamento,
+            'billing_type' => $metodoPagamento === 'boleto' ? 'BOLETO' : ($metodoPagamento === 'cartao' ? 'CREDIT_CARD' : ''),
         ];
 
         $paymentUrl = null;
@@ -925,28 +960,39 @@ class MatriculaMigracaoService
         $tipoPagamento = 'pagamento_unico';
         $pixData = null;
         $externalReference = ReferenciaExterna::matricula($matriculaId);
+        $provider = (string) ($escolhaGateway['provider'] ?? 'mercadopago');
+        $gatewayInstance = $escolhaGateway['instance'] ?? app()->makeWith(MercadoPagoService::class, ['tenantId' => $tenantId]);
 
         try {
-            $mp = app()->makeWith(MercadoPagoService::class, ['tenantId' => $tenantId]);
+            $mp = $gatewayInstance instanceof MercadoPagoService ? $gatewayInstance : null;
 
             if ($metodoPagamento === 'pix') {
                 $cpfPix = preg_replace('/[^0-9]/', '', $usuario['cpf'] ?? '');
                 if (strlen($cpfPix) !== 11) {
                     return ['erro' => $this->erro(400, 'CPF_OBRIGATORIO_PIX', 'CPF válido é obrigatório para pagamento PIX')];
                 }
-                $pixData = $mp->criarPagamentoPix($dadosPagamento);
+                $pixData = $gatewayInstance->criarPagamentoPix($dadosPagamento);
                 $tipoPagamento = 'pix';
                 $paymentUrl = $pixData['ticket_url'] ?? null;
                 $preferenceId = $pixData['id'] ?? null;
                 $externalReference = $pixData['external_reference'] ?? $externalReference;
-            } elseif ($isRecorrente) {
+            } elseif ($isRecorrente && $mp instanceof MercadoPagoService) {
                 $preferencia = $mp->criarPreferenciaAssinatura($dadosPagamento, $duracaoMeses);
                 $tipoPagamento = 'assinatura';
                 $paymentUrl = $preferencia['init_point'] ?? null;
                 $preferenceId = $preferencia['id'] ?? null;
                 $externalReference = $preferencia['external_reference'] ?? $externalReference;
+            } elseif ($provider === 'asaas' || $gatewayInstance instanceof AsaasService) {
+                $asaas = $gatewayInstance instanceof AsaasService
+                    ? $gatewayInstance
+                    : new AsaasService($tenantId);
+                $preferencia = $asaas->criarCobrancaCheckout($dadosPagamento);
+                $tipoPagamento = 'pagamento_unico';
+                $paymentUrl = $preferencia['ticket_url'] ?? null;
+                $preferenceId = $preferencia['id'] ?? null;
+                $externalReference = $preferencia['external_reference'] ?? $externalReference;
             } else {
-                $preferencia = $mp->criarPreferenciaPagamento($dadosPagamento);
+                $preferencia = ($mp ?? new MercadoPagoService($tenantId))->criarPreferenciaPagamento($dadosPagamento);
                 $tipoPagamento = 'pagamento_unico';
                 $paymentUrl = $preferencia['init_point'] ?? null;
                 $preferenceId = $preferencia['id'] ?? null;
@@ -1307,6 +1353,58 @@ class MatriculaMigracaoService
         $id = $stmt->fetchColumn();
 
         return $id !== false ? (int) $id : $fallback;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function resolverGatewayPagamento(
+        int $tenantId,
+        bool $podeSandbox,
+        string $metodoPagamento,
+        ?string $gatewayPedido,
+    ): array {
+        try {
+            $escolha = app(PaymentGatewayFactory::class)->resolverMetodo(
+                $tenantId,
+                $podeSandbox,
+                $metodoPagamento,
+                $gatewayPedido
+            );
+        } catch (\Throwable) {
+            return [
+                'ok' => true,
+                'provider' => 'mercadopago',
+                'gateways' => [],
+            ];
+        }
+
+        if ($escolha['ok'] ?? false) {
+            return $escolha;
+        }
+
+        if (($escolha['code'] ?? '') === 'ESCOLHA_GATEWAY') {
+            return $escolha;
+        }
+
+        $temCredencial = false;
+        try {
+            $temCredencial = DB::table('tenant_payment_credentials')
+                ->where('tenant_id', $tenantId)
+                ->exists();
+        } catch (\Throwable) {
+            $temCredencial = false;
+        }
+
+        if (! $temCredencial) {
+            return [
+                'ok' => true,
+                'provider' => 'mercadopago',
+                'gateways' => [],
+            ];
+        }
+
+        return $escolha;
     }
 
     /**

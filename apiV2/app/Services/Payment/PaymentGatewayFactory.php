@@ -68,6 +68,20 @@ class PaymentGatewayFactory
     }
 
     /**
+     * Métodos que o aluno realmente consegue pagar com os provedores visíveis agora.
+     *
+     * @return array{pix: bool, boleto: bool, cartao: bool}
+     */
+    public function metodosHabilitados(int $tenantId, bool $podeSandbox): array
+    {
+        return [
+            'pix' => $this->listarDisponiveis($tenantId, $podeSandbox, 'pix') !== [],
+            'boleto' => $this->listarDisponiveis($tenantId, $podeSandbox, 'boleto') !== [],
+            'cartao' => $this->listarDisponiveis($tenantId, $podeSandbox, 'cartao') !== [],
+        ];
+    }
+
+    /**
      * @return array{
      *   ok: bool,
      *   provider?: string,
@@ -254,7 +268,12 @@ class PaymentGatewayFactory
                 return true;
             }
 
-            return $valor === 1 || $valor === true || $valor === '1';
+            if ($valor === 0 || $valor === '0' || $valor === false || $valor === 'false') {
+                return false;
+            }
+
+            return $valor === 1 || $valor === true || $valor === '1'
+                || filter_var($valor, FILTER_VALIDATE_BOOLEAN) === true;
         };
 
         return match ($metodo) {

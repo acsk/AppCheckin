@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\Parametro;
+use App\Services\Payment\PaymentGatewayFactory;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -21,6 +22,25 @@ final class MobilePagamentoMetodos
             'habilitar_pix' => $parametro->isEnabled($tenantId, 'habilitar_pix'),
             'habilitar_cartao_credito' => $parametro->isEnabled($tenantId, 'habilitar_cartao_credito'),
             'habilitar_boleto' => $parametro->isEnabled($tenantId, 'habilitar_boleto'),
+        ];
+    }
+
+    /**
+     * Flags efetivas para o app: união dos métodos dos provedores que o usuário vê.
+     *
+     * @return array{habilitar_pix: bool, habilitar_cartao_credito: bool, habilitar_boleto: bool}
+     */
+    public static function flagsDisponiveis(
+        PaymentGatewayFactory $gateways,
+        int $tenantId,
+        bool $podeSandbox,
+    ): array {
+        $live = $gateways->metodosHabilitados($tenantId, $podeSandbox);
+
+        return [
+            'habilitar_pix' => $live['pix'],
+            'habilitar_cartao_credito' => $live['cartao'],
+            'habilitar_boleto' => $live['boleto'],
         ];
     }
 

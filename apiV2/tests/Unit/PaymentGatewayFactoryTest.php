@@ -24,7 +24,10 @@ class PaymentGatewayFactoryTest extends TestCase
             environment TEXT,
             access_token_test TEXT,
             access_token_prod TEXT,
-            is_active INTEGER
+            is_active INTEGER,
+            enable_pix INTEGER DEFAULT 1,
+            enable_boleto INTEGER DEFAULT 1,
+            enable_credit_card INTEGER DEFAULT 1
         )');
     }
 
@@ -113,5 +116,87 @@ class PaymentGatewayFactoryTest extends TestCase
         $this->assertSame(['mercadopago'], array_column($aluno, 'id'));
         $this->assertContains('mercadopago', array_column($admin, 'id'));
         $this->assertContains('asaas', array_column($admin, 'id'));
+    }
+
+    public function test_cartao_desligado_no_mp_nao_lista_mp_para_cartao(): void
+    {
+        DB::table('tenant_payment_credentials')->insert([
+            [
+                'tenant_id' => 8,
+                'provider' => 'mercadopago',
+                'environment' => 'production',
+                'access_token_test' => '',
+                'access_token_prod' => 'APP_USR-mp',
+                'is_active' => 1,
+                'enable_pix' => 1,
+                'enable_boleto' => 1,
+                'enable_credit_card' => 0,
+            ],
+            [
+                'tenant_id' => 8,
+                'provider' => 'asaas',
+                'environment' => 'production',
+                'access_token_test' => '',
+                'access_token_prod' => '$aact_prod_xxxxxxxx',
+                'is_active' => 1,
+                'enable_pix' => 1,
+                'enable_boleto' => 1,
+                'enable_credit_card' => 1,
+            ],
+        ]);
+
+        $factory = new PaymentGatewayFactory();
+        $cartao = $factory->listarDisponiveis(8, false, 'cartao');
+        $pix = $factory->listarDisponiveis(8, false, 'pix');
+        $metodos = $factory->metodosHabilitados(8, false);
+
+        $this->assertSame(['asaas'], array_column($cartao, 'id'));
+        $this->assertSame(['asaas', 'mercadopago'], array_column($pix, 'id'));
+        $this->assertTrue($metodos['cartao']);
+        $this->assertTrue($metodos['pix']);
+
+        $escolhaCartao = $factory->resolverMetodo(8, false, 'cartao', null);
+        $this->assertTrue($escolhaCartao['ok']);
+        $this->assertSame('asaas', $escolhaCartao['provider']);
+
+        $escolhaPix = $factory->resolverPix(8, false, null);
+        $this->assertFalse($escolhaPix['ok']);
+        $this->assertSame('ESCOLHA_GATEWAY', $escolhaPix['code']);
+    }
+
+    public function test_cartao_some_se_nenhum_provedor_visivel_tem_cartao(): void
+    {
+        DB::table('tenant_payment_credentials')->insert([
+            [
+                'tenant_id' => 9,
+                'provider' => 'mercadopago',
+                'environment' => 'production',
+                'access_token_test' => '',
+                'access_token_prod' => 'APP_USR-mp',
+                'is_active' => 1,
+                'enable_pix' => 1,
+                'enable_boleto' => 0,
+                'enable_credit_card' => 0,
+            ],
+            [
+                'tenant_id' => 9,
+                'provider' => 'asaas',
+                'environment' => 'sandbox',
+                'access_token_test' => '$aact_hmlg_xxxxxxxx',
+                'access_token_prod' => '',
+                'is_active' => 1,
+                'enable_pix' => 1,
+                'enable_boleto' => 1,
+                'enable_credit_card' => 1,
+            ],
+        ]);
+
+        $factory = new PaymentGatewayFactory();
+        $aluno = $factory->metodosHabilitados(9, false);
+        $admin = $factory->metodosHabilitados(9, true);
+
+        $this->assertFalse($aluno['cartao']);
+        $this->assertTrue($aluno['pix']);
+        $this->assertTrue($admin['cartao']);
     }
 }

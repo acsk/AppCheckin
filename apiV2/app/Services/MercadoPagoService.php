@@ -29,6 +29,9 @@ class MercadoPagoService
     private string $publicKey = '';
     private string $baseUrl;
     private bool $productionMode = false;
+    private bool $enablePix = true;
+    private bool $enableBoleto = true;
+    private bool $enableCreditCard = true;
     private ?int $tenantId = null;
     private ?PDO $db = null;
     private ?EncryptionService $encryption = null;
@@ -138,6 +141,10 @@ class MercadoPagoService
                 $this->accessToken = $this->decryptIfNeeded($credentials['access_token_test'] ?? '');
                 $this->publicKey = $credentials['public_key_test'] ?? '';
             }
+
+            $this->enablePix = $this->flagCredencial($credentials['enable_pix'] ?? true);
+            $this->enableBoleto = $this->flagCredencial($credentials['enable_boleto'] ?? true);
+            $this->enableCreditCard = $this->flagCredencial($credentials['enable_credit_card'] ?? true);
             
             return !empty($this->accessToken);
             
@@ -188,6 +195,20 @@ class MercadoPagoService
             return $value;
         }
     }
+
+    private function flagCredencial(mixed $value): bool
+    {
+        if ($value === null) {
+            return true;
+        }
+
+        if ($value === 0 || $value === '0' || $value === false || $value === 'false') {
+            return false;
+        }
+
+        return $value === 1 || $value === true || $value === '1'
+            || filter_var($value, FILTER_VALIDATE_BOOLEAN) === true;
+    }
     
     /**
      * Log de inicialização
@@ -236,12 +257,12 @@ class MercadoPagoService
             }
 
             $parametro = new Parametro($pdo);
-            
-            // Verificar quais métodos estão DESABILITADOS
-            $habilitarPix = $parametro->isEnabled($effectiveTenantId, 'habilitar_pix');
-            $habilitarCartaoCredito = $parametro->isEnabled($effectiveTenantId, 'habilitar_cartao_credito');
-            $habilitarCartaoDebito = $parametro->isEnabled($effectiveTenantId, 'habilitar_cartao_debito');
-            $habilitarBoleto = $parametro->isEnabled($effectiveTenantId, 'habilitar_boleto');
+
+            $habilitarPix = $this->enablePix;
+            $habilitarCartaoCredito = $this->enableCreditCard;
+            $habilitarCartaoDebito = $this->enableCreditCard
+                && $parametro->isEnabled($effectiveTenantId, 'habilitar_cartao_debito');
+            $habilitarBoleto = $this->enableBoleto;
             
             error_log("[MercadoPagoService] 💳 Parâmetros de pagamento tenant #{$effectiveTenantId}:");
             error_log("[MercadoPagoService] - PIX: " . ($habilitarPix ? '✅' : '❌'));

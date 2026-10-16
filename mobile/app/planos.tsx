@@ -1,6 +1,6 @@
 import { useProtectedRoute } from "@/hooks/useProtectedRoute";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
-import { solicitarPix, usuarioPodeVerSandboxPagamento } from "@/src/utils/pagamentoPix";
+import { postComRetryGateway, solicitarPix, usuarioPodeVerSandboxPagamento } from "@/src/utils/pagamentoPix";
 import { useGatewayPicker } from "@/src/hooks/useGatewayPicker";
 import { authService } from "@/src/services/authService";
 import PixPaymentSheet from "@/src/components/ds/PixPaymentSheet";
@@ -572,30 +572,26 @@ export default function PlanosScreen() {
         apiUrl,
       });
 
-      const response = await fetch(`${apiUrl}/mobile/migrar-plano`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
+      const migrarResult = await postComRetryGateway({
+        url: `${apiUrl}/mobile/migrar-plano`,
+        token,
+        body: {
           plano_id: plano.id,
           plano_ciclo_id: cicloId,
           metodo_pagamento: metodo,
-        }),
+        },
+        escolherGateway,
+        onEscolherGateway,
+        podeSandbox: podeSandboxPix,
       });
-
-      const responseText = await response.text();
-      let data: any = {};
-      try {
-        data = responseText ? JSON.parse(responseText) : {};
-      } catch {
-        throw new Error("Resposta inválida ao migrar plano");
+      const data = migrarResult.json;
+      if (migrarResult.cancelled) {
+        return;
       }
 
-      console.log("🔄 [Migrar] Resposta:", response.status, data);
+      console.log("🔄 [Migrar] Resposta:", migrarResult.status, data);
 
-      if (!response.ok || !data.success) {
+      if (!migrarResult.ok) {
         if (data.code === "ERRO_PAGAMENTO" && metodo === "pix") {
           const matriculaId = data.matricula_id ?? data.data?.matricula_id;
           if (matriculaId) {
@@ -761,58 +757,46 @@ export default function PlanosScreen() {
         console.log("👤 Usuário ID:", user.id);
 
         // 3. Fazer requisição POST para comprar plano com ciclo
-        const matriculaResponse = await fetch(
-          `${apiUrl}/mobile/comprar-plano`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              plano_id: plano.id,
-              plano_ciclo_id: selectedCiclo.id,
-              metodo_pagamento: metodo,
-            }),
+        const compraResult = await postComRetryGateway({
+          url: `${apiUrl}/mobile/comprar-plano`,
+          token,
+          body: {
+            plano_id: plano.id,
+            plano_ciclo_id: selectedCiclo.id,
+            metodo_pagamento: metodo,
           },
-        );
-
-        console.log("📡 Status criação matrícula:", matriculaResponse.status);
-
-        if (!matriculaResponse.ok) {
-          const errorText = await matriculaResponse.text();
-          console.error("❌ Erro ao criar matrícula:", errorText);
-
-          try {
-            const errorData = JSON.parse(errorText);
-            if (errorData.code === "MIGRACAO_NECESSARIA") {
-              await abrirConfirmacaoMigracao(
-                plano,
-                selectedCiclo.id,
-                metodo,
-              );
-              return;
-            }
-            setComprando(false);
-            setPlanoComprando(null);
-            showErrorModal(
-              "⚠️ Problema na Compra",
-              errorData.message || "Não foi possível processar sua compra",
-              "error",
-            );
-          } catch {
-            setComprando(false);
-            setPlanoComprando(null);
-            showErrorModal(
-              "⚠️ Problema na Compra",
-              "Não foi possível processar sua compra. Tente novamente.",
-              "error",
-            );
-          }
+          escolherGateway,
+          onEscolherGateway,
+          podeSandbox: podeSandboxPix,
+        });
+        if (compraResult.cancelled) {
+          setComprando(false);
+          setPlanoComprando(null);
           return;
         }
+        const matriculaData = compraResult.json;
 
-        const matriculaData = await matriculaResponse.json();
+        console.log("📡 Status criação matrícula:", compraResult.status);
+
+        if (!compraResult.ok) {
+          console.error("❌ Erro ao criar matrícula:", matriculaData);
+          if (matriculaData?.code === "MIGRACAO_NECESSARIA") {
+            await abrirConfirmacaoMigracao(
+              plano,
+              selectedCiclo.id,
+              metodo,
+            );
+            return;
+          }
+          setComprando(false);
+          setPlanoComprando(null);
+          showErrorModal(
+            "⚠️ Problema na Compra",
+            matriculaData?.message || "Não foi possível processar sua compra",
+            "error",
+          );
+          return;
+        }
         console.log("✅ [Contratar] Resposta da API:", matriculaData);
 
         // Verificar se a API retornou sucesso
@@ -936,88 +920,79 @@ export default function PlanosScreen() {
           throw new Error("Token não encontrado");
         }
 
-        const matriculaResponse = await fetch(
-          `${apiUrl}/mobile/comprar-plano`,
-          {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-              plano_id: plano.id,
-              plano_ciclo_id: selectedCiclo.id,
-              metodo_pagamento: "pix",
-            }),
+        const compraResult = await postComRetryGateway({
+          url: `${apiUrl}/mobile/comprar-plano`,
+          token,
+          body: {
+            plano_id: plano.id,
+            plano_ciclo_id: selectedCiclo.id,
+            metodo_pagamento: "pix",
           },
-        );
-
-        if (!matriculaResponse.ok) {
-          const errorText = await matriculaResponse.text();
-          try {
-            const errorData = JSON.parse(errorText);
-            if (errorData.code === "MIGRACAO_NECESSARIA") {
-              await abrirConfirmacaoMigracao(plano, selectedCiclo.id, "pix");
-              return;
-            }
-            // Se a API já liberou renovação em outro formato de erro, tenta PIX
-            if (
-              errorData.code === "RENOVACAO_PIX" &&
-              errorData.data?.matricula_id
-            ) {
-              const matriculaIdRenov = Number(errorData.data.matricula_id);
-              const pixResultRenov = await solicitarPix({
-                apiUrl,
-                token,
-                matriculaId: matriculaIdRenov,
-                escolherGateway,
-                onEscolherGateway,
-                podeSandbox: podeSandboxPix,
-              });
-              const pixJsonRenov = pixResultRenov.json;
-              if (pixResultRenov.ok) {
-                const pix = pixJsonRenov.data?.pix || {};
-                setPixData({
-                  matricula_id: Number(
-                    pixJsonRenov.data?.matricula_id || matriculaIdRenov,
-                  ),
-                  valor: Number(
-                    pixJsonRenov.data?.valor || selectedCiclo.valor || 0,
-                  ),
-                  qr_code: pix.qr_code || null,
-                  qr_code_base64: pix.qr_code_base64 || null,
-                  ticket_url: pix.ticket_url || null,
-                  expires_at: pix.expires_at || null,
-                });
-                setPixModalVisible(true);
-                setPixLoading(false);
-                setPlanoComprando(null);
-                return;
-              }
-              if (pixResultRenov.cancelled) {
-                setPixLoading(false);
-                setPlanoComprando(null);
-                return;
-              }
-            }
-            showErrorModal(
-              "⚠️ Problema na Compra",
-              errorData.message || "Não foi possível processar sua compra",
-              "error",
-            );
-          } catch {
-            showErrorModal(
-              "⚠️ Problema na Compra",
-              "Não foi possível processar sua compra. Tente novamente.",
-              "error",
-            );
-          }
+          escolherGateway,
+          onEscolherGateway,
+          podeSandbox: podeSandboxPix,
+        });
+        if (compraResult.cancelled) {
           setPixLoading(false);
           setPlanoComprando(null);
           return;
         }
+        const matriculaData = compraResult.json;
 
-        const matriculaData = await matriculaResponse.json();
+        if (!compraResult.ok) {
+          if (matriculaData?.code === "MIGRACAO_NECESSARIA") {
+            await abrirConfirmacaoMigracao(plano, selectedCiclo.id, "pix");
+            return;
+          }
+          if (
+            matriculaData?.code === "RENOVACAO_PIX" &&
+            matriculaData.data?.matricula_id
+          ) {
+            const matriculaIdRenov = Number(matriculaData.data.matricula_id);
+            const pixResultRenov = await solicitarPix({
+              apiUrl,
+              token,
+              matriculaId: matriculaIdRenov,
+              gateway: compraResult.gateway,
+              escolherGateway,
+              onEscolherGateway,
+              podeSandbox: podeSandboxPix,
+            });
+            const pixJsonRenov = pixResultRenov.json;
+            if (pixResultRenov.ok) {
+              const pix = pixJsonRenov.data?.pix || {};
+              setPixData({
+                matricula_id: Number(
+                  pixJsonRenov.data?.matricula_id || matriculaIdRenov,
+                ),
+                valor: Number(
+                  pixJsonRenov.data?.valor || selectedCiclo.valor || 0,
+                ),
+                qr_code: pix.qr_code || null,
+                qr_code_base64: pix.qr_code_base64 || null,
+                ticket_url: pix.ticket_url || null,
+                expires_at: pix.expires_at || null,
+              });
+              setPixModalVisible(true);
+              setPixLoading(false);
+              setPlanoComprando(null);
+              return;
+            }
+            if (pixResultRenov.cancelled) {
+              setPixLoading(false);
+              setPlanoComprando(null);
+              return;
+            }
+          }
+          showErrorModal(
+            "⚠️ Problema na Compra",
+            matriculaData?.message || "Não foi possível processar sua compra",
+            "error",
+          );
+          setPixLoading(false);
+          setPlanoComprando(null);
+          return;
+        }
         console.log("✅ [PIX] Resposta da API:", matriculaData);
         if (!matriculaData.success) {
           const errorMessage =
@@ -1134,6 +1109,7 @@ export default function PlanosScreen() {
           apiUrl,
           token,
           matriculaId: Number(matriculaId),
+          gateway: compraResult.gateway,
           escolherGateway,
           onEscolherGateway,
           podeSandbox: podeSandboxPix,

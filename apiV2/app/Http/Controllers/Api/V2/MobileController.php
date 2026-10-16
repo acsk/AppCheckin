@@ -510,6 +510,7 @@ class MobileController extends Controller
                 $this->userId($request),
                 (int) $this->tenantId($request),
                 $request->all(),
+                PaymentSandboxAccess::fromRequest($request),
             );
 
             return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);

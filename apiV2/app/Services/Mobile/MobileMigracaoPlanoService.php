@@ -33,9 +33,9 @@ class MobileMigracaoPlanoService
      * @param  array<string, mixed>  $data
      * @return array{status: int, body: array<string, mixed>}
      */
-    public function migrar(int $userId, int $tenantId, array $data): array
+    public function migrar(int $userId, int $tenantId, array $data, bool $podeSandbox = false): array
     {
-        return $this->core()->migrar($userId, $tenantId, $data);
+        return $this->core()->migrar($userId, $tenantId, $data, $podeSandbox);
     }
 
     public function buscarMatriculaAtivaModalidade(int $alunoId, int $tenantId, int $modalidadeId): ?array

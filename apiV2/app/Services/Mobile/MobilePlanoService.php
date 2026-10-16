@@ -68,11 +68,15 @@ class MobilePlanoService
             );
         }
 
-        $pagamentoFlags = MobilePagamentoMetodos::flags($tenantId);
+        $pagamentoFlags = MobilePagamentoMetodos::flagsDisponiveis(
+            $this->gateways,
+            $tenantId,
+            $podeSandbox
+        );
         $habilitarCartao = $pagamentoFlags['habilitar_cartao_credito'];
         $habilitarBoleto = $pagamentoFlags['habilitar_boleto'] ?? false;
-        $pixGateways = $this->gateways->listarDisponiveis($tenantId, $podeSandbox);
-        $habilitarPix = $pagamentoFlags['habilitar_pix'] && $pixGateways !== [];
+        $pixGateways = $this->gateways->listarDisponiveis($tenantId, $podeSandbox, 'pix');
+        $habilitarPix = $pagamentoFlags['habilitar_pix'];
 
         $lista = $this->planos->listarPlanosPagos($tenantId, $modalidadeId);
         $planoIds = array_map(fn ($p) => (int) $p['id'], $lista);
@@ -204,11 +208,15 @@ class MobilePlanoService
             ];
         }
 
-        $pagamentoFlags = MobilePagamentoMetodos::flags($tenantId);
+        $pagamentoFlags = MobilePagamentoMetodos::flagsDisponiveis(
+            $this->gateways,
+            $tenantId,
+            $podeSandbox
+        );
         $habilitarCartao = $pagamentoFlags['habilitar_cartao_credito'];
         $habilitarBoleto = $pagamentoFlags['habilitar_boleto'] ?? false;
-        $pixGateways = $this->gateways->listarDisponiveis($tenantId, $podeSandbox);
-        $habilitarPix = $pagamentoFlags['habilitar_pix'] && $pixGateways !== [];
+        $pixGateways = $this->gateways->listarDisponiveis($tenantId, $podeSandbox, 'pix');
+        $habilitarPix = $pagamentoFlags['habilitar_pix'];
 
         $matriculaAtiva = null;
         $mat = $this->planos->findMatriculaAtivaNoPlano($userId, $planoId, $tenantId);

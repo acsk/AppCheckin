@@ -30,8 +30,19 @@ export function filtrarGatewaysPix(
 }
 
 type PixResult =
-  | { ok: true; json: any }
-  | { ok: false; status: number; json: any; cancelled?: boolean };
+  | { ok: true; json: any; gateway?: string }
+  | { ok: false; status: number; json: any; cancelled?: boolean; gateway?: string };
+
+function gatewaysDaResposta(json: any): PixGateway[] {
+  const lista = json?.gateways ?? json?.data?.gateways ?? [];
+  return Array.isArray(lista) ? lista : [];
+}
+
+function precisaEscolherGateway(result: { ok: boolean; json: any }): boolean {
+  const code = result.json?.code;
+  if (code !== "ESCOLHA_GATEWAY") return false;
+  return gatewaysDaResposta(result.json).length > 0;
+}
 
 export async function postPagamentoPix(params: {
   apiUrl: string;
@@ -112,10 +123,8 @@ export async function solicitarPix(params: {
       return result;
     }
 
-    const code = result.json?.code;
-    const opcoes: PixGateway[] =
-      result.json?.gateways ?? result.json?.data?.gateways ?? [];
-    if (code === "ESCOLHA_GATEWAY" && opcoes.length > 0) {
+    const opcoes = gatewaysDaResposta(result.json);
+    if (precisaEscolherGateway(result) && opcoes.length > 0) {
       const visiveis = filtrarGatewaysPix(opcoes, podeSandbox);
       if (visiveis.length === 0) {
         return {
@@ -124,6 +133,83 @@ export async function solicitarPix(params: {
           json: {
             code: "SEM_GATEWAY_PIX",
             error: "Nenhum provedor de PIX disponível.",
+          },
+        };
+      }
+      const chosen = await escolherEntre(opcoes);
+      if (!chosen) {
+        return { ...result, cancelled: true };
+      }
+      gateway = chosen;
+      continue;
+    }
+
+    return result;
+  }
+}
+
+export async function postComRetryGateway(params: {
+  url: string;
+  token: string;
+  body: Record<string, unknown>;
+  escolherGateway?: EscolherGatewayPix;
+  onEscolherGateway?: () => void;
+  podeSandbox?: boolean;
+}): Promise<PixResult> {
+  const escolher = params.escolherGateway;
+  const podeSandbox = params.podeSandbox === true;
+  let gateway =
+    typeof params.body.gateway === "string" ? params.body.gateway : undefined;
+
+  const escolherEntre = async (lista: PixGateway[]): Promise<string | null> => {
+    const visiveis = filtrarGatewaysPix(lista, podeSandbox);
+    if (visiveis.length === 0) return null;
+    if (visiveis.length === 1) return visiveis[0].id;
+    if (!escolher) return null;
+    params.onEscolherGateway?.();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    return escolher(visiveis);
+  };
+
+  for (;;) {
+    const body = { ...params.body };
+    if (gateway) {
+      body.gateway = gateway;
+    }
+
+    const response = await fetch(params.url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${params.token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    const text = await response.text();
+    let json: any = {};
+    try {
+      json = text ? JSON.parse(text) : {};
+    } catch {
+      json = {};
+    }
+
+    const result: PixResult =
+      response.ok && json.success
+        ? { ok: true, json, gateway }
+        : { ok: false, status: response.status, json, gateway };
+
+    if (precisaEscolherGateway(result)) {
+      const opcoes = gatewaysDaResposta(json);
+      const visiveis = filtrarGatewaysPix(opcoes, podeSandbox);
+      if (visiveis.length === 0) {
+        return {
+          ok: false,
+          status: 400,
+          json: {
+            code: "SEM_GATEWAY",
+            error: "Nenhum provedor disponível para este pagamento.",
+            message: "Nenhum provedor disponível para este pagamento.",
           },
         };
       }
