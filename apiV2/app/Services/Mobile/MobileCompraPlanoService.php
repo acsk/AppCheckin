@@ -47,8 +47,8 @@ class MobileCompraPlanoService
         $diaVencimento = isset($data['dia_vencimento']) ? (int) $data['dia_vencimento'] : 5;
         $metodoPagamento = strtolower(trim((string) ($data['metodo_pagamento'] ?? 'checkout')));
 
-        if (! in_array($metodoPagamento, ['checkout', 'pix'], true)) {
-            return $this->erro(400, 'METODO_PAGAMENTO_INVALIDO', 'Método de pagamento inválido. Use pix ou checkout.');
+        if (! in_array($metodoPagamento, ['checkout', 'pix', 'boleto', 'cartao', 'credit_card', 'card'], true)) {
+            return $this->erro(400, 'METODO_PAGAMENTO_INVALIDO', 'Método de pagamento inválido. Use pix, boleto ou cartão.');
         }
 
         $pagamentoFlags = MobilePagamentoMetodos::flags($tenantId);
@@ -64,6 +64,14 @@ class MobileCompraPlanoService
 
         if ($metodoPagamento === 'pix' && ! $habilitarPix) {
             return $this->erro(400, 'PIX_NAO_DISPONIVEL', 'Pagamento PIX não está habilitado para esta academia');
+        }
+
+        if ($metodoPagamento === 'boleto' && ! $habilitarBoleto) {
+            return $this->erro(400, 'BOLETO_NAO_DISPONIVEL', 'Pagamento por boleto não está habilitado para esta academia');
+        }
+
+        if ($metodoPagamento === 'cartao' && ! $habilitarCartao) {
+            return $this->erro(400, 'CARTAO_NAO_DISPONIVEL', 'Pagamento com cartão não está habilitado para esta academia');
         }
 
         if ($metodoPagamento === 'checkout' && ! $habilitarCartao && ! $habilitarBoleto) {
@@ -124,7 +132,7 @@ class MobileCompraPlanoService
         $isRecorrente = MobilePagamentoMetodos::isRecorrenteEfetivo(
             $permiteRecorrenciaCiclo,
             $habilitarCartao
-        );
+        ) && $metodoPagamento === 'cartao';
 
         if ($valorCompra <= 0) {
             return $this->erro(400, 'PLANO_INVALIDO', 'Este plano não está disponível para compra');
@@ -470,15 +478,22 @@ class MobileCompraPlanoService
                 'max_parcelas' => 12,
                 'academia_nome' => $academiaNome,
                 'apenas_cartao' => $isRecorrente,
+                'metodo_pagamento' => $metodoPagamento,
+                'billing_type' => $metodoPagamento === 'boleto' ? 'BOLETO' : ($metodoPagamento === 'cartao' ? 'CREDIT_CARD' : ''),
             ];
 
-            $escolhaPix = $this->gateways->resolverPix(
+            $gatewayPedido = isset($data['gateway']) ? (string) $data['gateway'] : (isset($data['provider']) ? (string) $data['provider'] : null);
+            $escolha = $this->gateways->resolverMetodo(
                 $tenantId,
                 $podeSandbox,
-                isset($data['gateway']) ? (string) $data['gateway'] : (isset($data['provider']) ? (string) $data['provider'] : null)
+                $metodoPagamento,
+                $gatewayPedido
             );
-            $provider = ($escolhaPix['ok'] ?? false)
-                ? (string) $escolhaPix['provider']
+            $escolhaPix = $metodoPagamento === 'pix'
+                ? $escolha
+                : $this->gateways->resolverPix($tenantId, $podeSandbox, $gatewayPedido);
+            $provider = ($escolha['ok'] ?? false)
+                ? (string) $escolha['provider']
                 : $this->gateways->providerForTenant($tenantId);
             $mp = $provider === 'asaas' ? null : new MercadoPagoService($tenantId);
             $paymentUrl = null;

@@ -148,24 +148,34 @@ class MatriculaMigracaoService
         $planoCicloId = ! empty($data['plano_ciclo_id']) ? (int) $data['plano_ciclo_id'] : null;
         $metodoPagamento = strtolower(trim((string) ($data['metodo_pagamento'] ?? 'checkout')));
 
-        if (! in_array($metodoPagamento, ['checkout', 'pix'], true)) {
-            return $this->erro(400, 'METODO_PAGAMENTO_INVALIDO', 'Método de pagamento inválido. Use pix ou checkout.');
+        if (! in_array($metodoPagamento, ['checkout', 'pix', 'boleto', 'cartao', 'credit_card', 'card'], true)) {
+            return $this->erro(400, 'METODO_PAGAMENTO_INVALIDO', 'Método de pagamento inválido. Use pix, boleto ou cartão.');
         }
 
         $pagamentoFlags = MobilePagamentoMetodos::flags($tenantId);
         $habilitarCartao = $pagamentoFlags['habilitar_cartao_credito'];
         $habilitarPix = $pagamentoFlags['habilitar_pix'];
+        $habilitarBoleto = $pagamentoFlags['habilitar_boleto'] ?? false;
         $metodoPagamento = MobilePagamentoMetodos::normalizarMetodo(
             $metodoPagamento,
             $habilitarCartao,
-            $habilitarPix
+            $habilitarPix,
+            $habilitarBoleto
         );
 
         if ($metodoPagamento === 'pix' && ! $habilitarPix) {
             return $this->erro(400, 'PIX_NAO_DISPONIVEL', 'Pagamento PIX não está habilitado para esta academia');
         }
 
-        if ($metodoPagamento === 'checkout' && ! $habilitarCartao) {
+        if ($metodoPagamento === 'boleto' && ! $habilitarBoleto) {
+            return $this->erro(400, 'BOLETO_NAO_DISPONIVEL', 'Pagamento por boleto não está habilitado para esta academia');
+        }
+
+        if ($metodoPagamento === 'cartao' && ! $habilitarCartao) {
+            return $this->erro(400, 'CARTAO_NAO_DISPONIVEL', 'Pagamento com cartão não está habilitado para esta academia');
+        }
+
+        if ($metodoPagamento === 'checkout' && ! $habilitarCartao && ! $habilitarBoleto) {
             return $this->erro(400, 'CHECKOUT_NAO_DISPONIVEL', 'Pagamento por checkout não está disponível. Use PIX.');
         }
 

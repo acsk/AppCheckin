@@ -29,7 +29,13 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AppHeader from "@/src/components/ds/AppHeader";
+import PaymentMethodOptions from "@/src/components/ds/PaymentMethodOptions";
 import { ds } from "@/src/components/ds/tokens";
+import {
+  opcoesPagamentoVisiveis,
+  rotuloPagarMetodo,
+  type MetodoPagamentoOpcao,
+} from "@/src/utils/metodosPagamento";
 interface Ciclo {
   id: number;
   nome: string;
@@ -162,11 +168,27 @@ export default function PlanoDetalhesScreen() {
   const [migracaoModalVisible, setMigracaoModalVisible] = useState(false);
   const [migracaoSimulacao, setMigracaoSimulacao] =
     useState<MigracaoSimulacao | null>(null);
+  const [metodoSelecionado, setMetodoSelecionado] =
+    useState<MetodoPagamentoOpcao | null>(null);
   const [migracaoMetodoPendente, setMigracaoMetodoPendente] = useState<
-    "checkout" | "pix" | null
+    MetodoPagamentoOpcao | null
   >(null);
   const [confirmandoMigracao, setConfirmandoMigracao] = useState(false);
   const pixCheckRunning = useRef(false);
+
+  useEffect(() => {
+    const ciclo = plano?.ciclos?.find((item) => item.id === selectedCicloId);
+    const opcoes = opcoesPagamentoVisiveis(
+      ciclo?.metodos_pagamento,
+      ciclo?.pix_disponivel === true,
+    );
+    setMetodoSelecionado((atual) => {
+      if (atual && opcoes.includes(atual)) {
+        return atual;
+      }
+      return opcoes[0] ?? null;
+    });
+  }, [plano, selectedCicloId]);
 
   const handleBack = () => {
     router.replace("/planos");
@@ -499,7 +521,7 @@ export default function PlanoDetalhesScreen() {
     }
   };
 
-  const executarMigracao = async (metodo: "checkout" | "pix") => {
+  const executarMigracao = async (metodo: MetodoPagamentoOpcao) => {
     if (!plano || !selectedCicloId) return;
     const token = await AsyncStorage.getItem("@appcheckin:token");
     if (!token) throw new Error("Token não encontrado");
@@ -614,7 +636,7 @@ export default function PlanoDetalhesScreen() {
     setRedirectModalVisible(true);
   };
 
-  const abrirConfirmacaoMigracao = async (metodo: "checkout" | "pix") => {
+  const abrirConfirmacaoMigracao = async (metodo: MetodoPagamentoOpcao) => {
     if (!plano || !selectedCicloId) {
       throw new Error("Selecione um ciclo antes de migrar");
     }
@@ -684,7 +706,7 @@ export default function PlanoDetalhesScreen() {
     }
   };
 
-  const handleContratar = async () => {
+  const handleContratar = async (metodo: MetodoPagamentoOpcao = "cartao") => {
     if (!plano || !selectedCicloId) return;
 
     const selectedCiclo = plano.ciclos?.find((c) => c.id === selectedCicloId);
@@ -714,7 +736,7 @@ export default function PlanoDetalhesScreen() {
       );
 
       if (plano.pode_migrar) {
-        await abrirConfirmacaoMigracao("checkout");
+        await abrirConfirmacaoMigracao(metodo);
         return;
       }
 
@@ -729,7 +751,7 @@ export default function PlanoDetalhesScreen() {
         (cicloAtualMatricula == null ||
           Number(cicloAtualMatricula) !== Number(selectedCiclo.id))
       ) {
-        await abrirConfirmacaoMigracao("checkout");
+        await abrirConfirmacaoMigracao(metodo);
         return;
       }
 
@@ -748,8 +770,7 @@ export default function PlanoDetalhesScreen() {
         body: JSON.stringify({
           plano_id: plano.id,
           plano_ciclo_id: selectedCiclo.id,
-          metodo_pagamento: "checkout",
-          
+          metodo_pagamento: metodo,
         }),
       });
 
@@ -760,7 +781,7 @@ export default function PlanoDetalhesScreen() {
         try {
           const errorData = JSON.parse(errorText);
           if (errorData.code === "MIGRACAO_NECESSARIA") {
-            await abrirConfirmacaoMigracao("checkout");
+            await abrirConfirmacaoMigracao(metodo);
             return;
           }
           showErrorModal(
@@ -793,7 +814,7 @@ export default function PlanoDetalhesScreen() {
 
       let paymentUrl = data.data?.payment_url;
       const matriculaId = data.data?.matricula_id || data.data?.matricula?.id;
-      const metodoPagamento = String(
+      const metodoPagamentoResposta = String(
         data.data?.metodo_pagamento || "",
       ).toLowerCase();
 
@@ -810,10 +831,10 @@ export default function PlanoDetalhesScreen() {
         return;
       }
 
-      if (metodoPagamento && metodoPagamento !== "checkout") {
+      if (metodoPagamentoResposta === "pix" && metodo !== "pix") {
         showErrorModal(
           "⚠️ Método de pagamento diferente",
-          "O pagamento pendente não é do checkout. Tente novamente ou gere um novo pagamento.",
+          "O pagamento pendente é PIX. Use a opção PIX para concluir.",
           "warning",
         );
       }
@@ -1050,16 +1071,19 @@ export default function PlanoDetalhesScreen() {
 
   const ciclos = (plano.ciclos || []).sort((a, b) => a.meses - b.meses);
   const selectedCiclo = ciclos.find((c) => c.id === selectedCicloId);
-  const metodosPagamento = Array.isArray(selectedCiclo?.metodos_pagamento)
-    ? selectedCiclo?.metodos_pagamento.map((m) => String(m).toLowerCase())
-    : [];
-  const checkoutDisponivel = metodosPagamento.includes("checkout");
-  const pixDisponivel =
-    metodosPagamento.includes("pix") || selectedCiclo?.pix_disponivel === true;
-  const canCheckout = !!selectedCiclo && checkoutDisponivel;
-  const canPix = !!selectedCiclo && pixDisponivel;
+  const opcoesMetodo = opcoesPagamentoVisiveis(
+    selectedCiclo?.metodos_pagamento,
+    selectedCiclo?.pix_disponivel === true,
+  );
+  const canPix = opcoesMetodo.includes("pix");
+  const canCheckout =
+    opcoesMetodo.includes("cartao") || opcoesMetodo.includes("boleto");
   const canBuy =
-    !!selectedCiclo && !comprando && !pixLoading && (canCheckout || canPix);
+    !!selectedCiclo &&
+    !comprando &&
+    !pixLoading &&
+    opcoesMetodo.length > 0 &&
+    !!metodoSelecionado;
   const statusCodigoRaw =
     plano.status_codigo ||
     (typeof plano.status === "string" ? plano.status : plano.status?.codigo) ||
@@ -1227,7 +1251,7 @@ export default function PlanoDetalhesScreen() {
       </ScrollView>
 
       {/* Resumo fixo: ciclo, total e pagamento */}
-      <View style={styles.footer}>
+      <View style={[styles.footer, !bloquearCompraPorAtivo && styles.footerColumn]}>
         {bloquearCompraPorAtivo ? (
           <View style={styles.footerAtivo}>
             <Feather name="check-circle" size={20} color={ds.success} />
@@ -1235,6 +1259,14 @@ export default function PlanoDetalhesScreen() {
           </View>
         ) : (
           <>
+            {opcoesMetodo.length > 0 ? (
+              <PaymentMethodOptions
+                opcoes={opcoesMetodo}
+                value={metodoSelecionado}
+                onChange={setMetodoSelecionado}
+              />
+            ) : null}
+            <View style={styles.footerPayRow}>
             <View style={styles.summaryText}>
               <Text style={styles.summaryLabel} numberOfLines={1}>
                 {selectedCiclo
@@ -1252,36 +1284,35 @@ export default function PlanoDetalhesScreen() {
                   ? "repeat"
                   : podeRenovar
                     ? "refresh-cw"
-                    : canCheckout
-                      ? "shopping-cart"
-                      : "zap"
+                    : metodoSelecionado === "pix"
+                      ? "zap"
+                      : metodoSelecionado === "boleto"
+                        ? "file-text"
+                        : "credit-card"
               }
               loading={comprando || pixLoading}
               disabled={!canBuy}
-              onPress={
-                podeMigrarAgora || podeRenovar || !canCheckout
-                  ? handlePagarPix
-                  : handleContratar
-              }
+              onPress={() => {
+                if (!metodoSelecionado) return;
+                if (metodoSelecionado === "pix") {
+                  void handlePagarPix();
+                  return;
+                }
+                void handleContratar(metodoSelecionado);
+              }}
             >
               {comprando || pixLoading
                 ? "Processando…"
                 : !selectedCiclo
                   ? "Escolha"
-                  : podeMigrarAgora
-                    ? canPix || !canCheckout
-                      ? "Migrar com PIX"
-                      : "Migrar"
-                    : podeRenovar
-                      ? canPix
-                        ? "Renovar com PIX"
-                        : "Renovar"
-                      : canCheckout
-                        ? "Contratar"
-                        : canPix
-                          ? "Pagar com PIX"
-                          : "Indisponível"}
+                  : !metodoSelecionado
+                    ? "Indisponível"
+                    : rotuloPagarMetodo(
+                        metodoSelecionado,
+                        podeMigrarAgora ? "migrar" : podeRenovar ? "renovar" : "pagar",
+                      )}
             </Button>
+            </View>
           </>
         )}
       </View>
@@ -2018,6 +2049,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.07,
     shadowRadius: 24,
     elevation: 12,
+  },
+  footerColumn: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: 10,
+  },
+  footerPayRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
   },
   footerStack: {
     gap: 10,

@@ -33,20 +33,21 @@ final class MobilePagamentoMetodos
         bool $habilitarPix,
         bool $habilitarBoleto = false,
     ): array {
-        $checkout = $habilitarCartao || $habilitarBoleto;
-        if (! $checkout && ! $habilitarPix) {
-            return [];
-        }
-
-        if ($permiteRecorrencia && $habilitarCartao) {
-            return ['checkout'];
+        if ($permiteRecorrencia && $habilitarCartao && ! $habilitarPix && ! $habilitarBoleto) {
+            return ['cartao', 'checkout'];
         }
 
         $metodos = [];
         if ($habilitarPix) {
             $metodos[] = 'pix';
         }
-        if ($checkout) {
+        if ($habilitarBoleto) {
+            $metodos[] = 'boleto';
+        }
+        if ($habilitarCartao) {
+            $metodos[] = 'cartao';
+        }
+        if ($habilitarCartao || $habilitarBoleto) {
             $metodos[] = 'checkout';
         }
 
@@ -65,9 +66,20 @@ final class MobilePagamentoMetodos
         bool $habilitarBoleto = false,
     ): string {
         $metodo = strtolower(trim($metodoPagamento));
+        if ($metodo === 'credit_card' || $metodo === 'card') {
+            $metodo = 'cartao';
+        }
 
-        if ($metodo === 'checkout' && ! $habilitarCartao && ! $habilitarBoleto && $habilitarPix) {
-            return 'pix';
+        if ($metodo === 'checkout') {
+            if ($habilitarCartao) {
+                return 'cartao';
+            }
+            if ($habilitarBoleto) {
+                return 'boleto';
+            }
+            if ($habilitarPix) {
+                return 'pix';
+            }
         }
 
         return $metodo;

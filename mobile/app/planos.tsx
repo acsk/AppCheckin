@@ -24,11 +24,17 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AppHeader from "@/src/components/ds/AppHeader";
+import PaymentMethodOptions from "@/src/components/ds/PaymentMethodOptions";
 import PlanCard from "@/src/components/ds/PlanCard";
 import Section from "@/src/components/ds/Section";
 import Stepper from "@/src/components/ds/Stepper";
 import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
 import { ds } from "@/src/components/ds/tokens";
+import {
+  opcoesPagamentoVisiveis,
+  rotuloPagarMetodo,
+  type MetodoPagamentoOpcao,
+} from "@/src/utils/metodosPagamento";
 // NOVO ARQUIVO - SEM CÓDIGO ANTIGO
 
 interface Ciclo {
@@ -172,8 +178,11 @@ export default function PlanosScreen() {
   const [migracaoPendente, setMigracaoPendente] = useState<{
     plano: Plan;
     cicloId: number;
-    metodo: "checkout" | "pix";
+    metodo: MetodoPagamentoOpcao;
   } | null>(null);
+  const [metodoByPlano, setMetodoByPlano] = useState<
+    Record<number, MetodoPagamentoOpcao>
+  >({});
   const [confirmandoMigracao, setConfirmandoMigracao] = useState(false);
 
   useEffect(() => {
@@ -194,6 +203,37 @@ export default function PlanosScreen() {
       return hasChange ? next : prev;
     });
   }, [planos]);
+
+  useEffect(() => {
+    if (planos.length === 0) return;
+    setMetodoByPlano((prev) => {
+      const next = { ...prev };
+      let hasChange = false;
+      planos.forEach((plano) => {
+        const cicloId = selectedCicloByPlano[plano.id];
+        const ciclo =
+          plano.ciclos?.find((item) => item.id === cicloId) ??
+          plano.ciclos?.[0];
+        const opcoes = opcoesPagamentoVisiveis(
+          ciclo?.metodos_pagamento,
+          ciclo?.pix_disponivel === true,
+        );
+        const atual = next[plano.id];
+        if (opcoes.length === 0) {
+          if (atual) {
+            delete next[plano.id];
+            hasChange = true;
+          }
+          return;
+        }
+        if (!atual || !opcoes.includes(atual)) {
+          next[plano.id] = opcoes[0];
+          hasChange = true;
+        }
+      });
+      return hasChange ? next : prev;
+    });
+  }, [planos, selectedCicloByPlano]);
 
   useEffect(() => {
     if (!selectedPlanoId) return;
@@ -474,7 +514,7 @@ export default function PlanosScreen() {
   };
 
   const abrirConfirmacaoMigracao = React.useCallback(
-    async (plano: Plan, cicloId: number, metodo: "checkout" | "pix") => {
+    async (plano: Plan, cicloId: number, metodo: MetodoPagamentoOpcao) => {
       const token = await AsyncStorage.getItem("@appcheckin:token");
       if (!token) throw new Error("Token não encontrado");
 
@@ -653,7 +693,7 @@ export default function PlanosScreen() {
   }, [apiUrl, migracaoPendente, fetchPlanos]);
 
   const handleContratar = React.useCallback(
-    async (plano: Plan) => {
+    async (plano: Plan, metodo: MetodoPagamentoOpcao = "cartao") => {
       try {
         setComprando(true);
         setPlanoComprando(plano.id);
@@ -679,7 +719,7 @@ export default function PlanosScreen() {
         }
 
         if (plano.pode_migrar) {
-          await abrirConfirmacaoMigracao(plano, selectedCiclo.id, "checkout");
+          await abrirConfirmacaoMigracao(plano, selectedCiclo.id, metodo);
           return;
         }
 
@@ -693,7 +733,7 @@ export default function PlanosScreen() {
           (cicloAtualMatricula == null ||
             Number(cicloAtualMatricula) !== Number(selectedCiclo.id))
         ) {
-          await abrirConfirmacaoMigracao(plano, selectedCiclo.id, "checkout");
+          await abrirConfirmacaoMigracao(plano, selectedCiclo.id, metodo);
           return;
         }
 
@@ -732,7 +772,7 @@ export default function PlanosScreen() {
             body: JSON.stringify({
               plano_id: plano.id,
               plano_ciclo_id: selectedCiclo.id,
-              metodo_pagamento: "checkout",
+              metodo_pagamento: metodo,
             }),
           },
         );
@@ -749,7 +789,7 @@ export default function PlanosScreen() {
               await abrirConfirmacaoMigracao(
                 plano,
                 selectedCiclo.id,
-                "checkout",
+                metodo,
               );
               return;
             }
@@ -819,10 +859,10 @@ export default function PlanosScreen() {
           return;
         }
 
-        if (metodoPagamento && metodoPagamento !== "checkout") {
+        if (metodoPagamento === "pix") {
           showErrorModal(
             "⚠️ Método de pagamento diferente",
-            "O pagamento pendente não é do checkout. Tente novamente ou gere um novo pagamento.",
+            "O pagamento pendente é PIX. Use a opção PIX para concluir.",
             "warning",
           );
         }
@@ -1264,28 +1304,53 @@ export default function PlanosScreen() {
         )}
 
         {(() => {
-          const metodosPagamento = Array.isArray(
+          const opcoesMetodo = opcoesPagamentoVisiveis(
             selectedCiclo?.metodos_pagamento,
-          )
-            ? selectedCiclo?.metodos_pagamento.map((m) =>
-                String(m).toLowerCase(),
-              )
-            : [];
-          const checkoutDisponivel = metodosPagamento.includes("checkout");
-          const pixDisponivel =
-            metodosPagamento.includes("pix") ||
-            selectedCiclo?.pix_disponivel === true;
-          const canCheckout = !!selectedCiclo && checkoutDisponivel;
-          const canPix = !!selectedCiclo && pixDisponivel;
+            selectedCiclo?.pix_disponivel === true,
+          );
+          const metodo =
+            (metodoByPlano[plano.id] &&
+            opcoesMetodo.includes(metodoByPlano[plano.id])
+              ? metodoByPlano[plano.id]
+              : opcoesMetodo[0]) ?? null;
           const podeRenovar = !!(plano.pode_renovar || plano.pode_pagar);
           const bloquearPorAtivo = !!plano.is_plano_atual && !podeRenovar;
           const canBuy =
             !!selectedCiclo &&
             !bloquearPorAtivo &&
-            (canCheckout || canPix);
+            opcoesMetodo.length > 0 &&
+            !!metodo;
+          const contexto = plano.pode_migrar
+            ? "migrar"
+            : podeRenovar
+              ? "renovar"
+              : "pagar";
+          const iconName =
+            bloquearPorAtivo
+              ? "check"
+              : podeRenovar
+                ? "refresh-cw"
+                : plano.pode_migrar
+                  ? "repeat"
+                  : metodo === "pix"
+                    ? "zap"
+                    : metodo === "boleto"
+                      ? "file-text"
+                      : "credit-card";
 
           return (
             <>
+              {!bloquearPorAtivo && selectedCiclo && opcoesMetodo.length > 0 ? (
+                <View style={styles.metodosWrap}>
+                  <PaymentMethodOptions
+                    opcoes={opcoesMetodo}
+                    value={metodo}
+                    onChange={(id) =>
+                      setMetodoByPlano((prev) => ({ ...prev, [plano.id]: id }))
+                    }
+                  />
+                </View>
+              ) : null}
               <TouchableOpacity
                 style={[
                   styles.contratarButton,
@@ -1298,15 +1363,16 @@ export default function PlanosScreen() {
                   !selectedCiclo &&
                     !plano.is_plano_atual &&
                     styles.contratarButtonDisabled,
-                  selectedCiclo &&
-                    !canBuy &&
-                    styles.contratarButtonDisabled,
+                  selectedCiclo && !canBuy && styles.contratarButtonDisabled,
                 ]}
-                onPress={
-                  podeRenovar || !canCheckout
-                    ? () => handlePagarPix(plano)
-                    : () => handleContratar(plano)
-                }
+                onPress={() => {
+                  if (!metodo) return;
+                  if (metodo === "pix") {
+                    void handlePagarPix(plano);
+                    return;
+                  }
+                  void handleContratar(plano, metodo);
+                }}
                 disabled={
                   !selectedCiclo ||
                   bloquearPorAtivo ||
@@ -1330,66 +1396,17 @@ export default function PlanosScreen() {
                   </>
                 ) : (
                   <>
-                    <Feather
-                      name={
-                        podeRenovar
-                          ? "refresh-cw"
-                          : plano.pode_migrar
-                            ? "repeat"
-                            : "shopping-cart"
-                      }
-                      size={18}
-                      color={ds.onBrand}
-                    />
+                    <Feather name={iconName} size={18} color={ds.onBrand} />
                     <Text style={styles.contratarButtonText}>
                       {selectedCiclo
-                        ? podeRenovar
-                          ? canPix
-                            ? `Renovar com PIX • ${selectedCiclo.valor_formatado}`
-                            : `Renovar • ${selectedCiclo.valor_formatado}`
-                          : canCheckout
-                            ? plano.pode_migrar
-                              ? "Migrar de plano"
-                              : `Contratar por ${selectedCiclo.valor_formatado}`
-                            : canPix
-                              ? plano.pode_migrar
-                                ? "Migrar com PIX"
-                                : `Pagar com PIX • ${selectedCiclo.valor_formatado}`
-                              : "Pagamento indisponível"
+                        ? metodo
+                          ? `${rotuloPagarMetodo(metodo, contexto)} • ${selectedCiclo.valor_formatado}`
+                          : "Pagamento indisponível"
                         : "Escolha um ciclo para continuar"}
                     </Text>
                   </>
                 )}
               </TouchableOpacity>
-
-              {!bloquearPorAtivo &&
-                !podeRenovar &&
-                selectedCiclo &&
-                pixDisponivel &&
-                checkoutDisponivel && (
-                <TouchableOpacity
-                  style={[
-                    styles.pixButton,
-                    pixLoading && planoComprando === plano.id
-                      ? styles.pixButtonLoading
-                      : null,
-                  ]}
-                  onPress={() => handlePagarPix(plano)}
-                  disabled={pixLoading && planoComprando === plano.id}
-                >
-                  {pixLoading && planoComprando === plano.id ? (
-                    <>
-                      <ActivityIndicator color="#fff" size="small" />
-                      <Text style={styles.pixButtonText}>Gerando PIX...</Text>
-                    </>
-                  ) : (
-                    <>
-                      <Feather name="zap" size={18} color="#fff" />
-                      <Text style={styles.pixButtonText}>Pagar com PIX</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-              )}
             </>
           );
         })()}
@@ -2253,6 +2270,9 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.text,
     fontWeight: "500",
+  },
+  metodosWrap: {
+    marginBottom: 12,
   },
   contratarButton: {
     backgroundColor: colors.primary,

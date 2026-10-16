@@ -1,214 +1,181 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  View, 
-  Text, 
-  Pressable, 
-  ScrollView, 
-  useWindowDimensions, 
-  TouchableOpacity,
-  Animated,
-  Easing,
-  Platform,
-  StatusBar,
-  LayoutAnimation,
-  UIManager
-} from 'react-native';
-
-if (Platform.OS === 'android') {
-  UIManager.setLayoutAnimationEnabledExperimental?.(true);
-}
-import { Feather } from '@expo/vector-icons';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useWindowDimensions } from 'react-native';
 import { useRouter, usePathname } from 'expo-router';
 import { authService } from '../services/authService';
+import { AppShell, AppHeader, IconButton, PageHeader, Sidebar } from './ck';
 
-const MENU = [
-  { label: 'Dashboard', path: '/', icon: 'home', roles: [3, 4] },
-  { label: 'Academias', path: '/academias', icon: 'briefcase', roles: [4] },
-  { label: 'Contratos', path: '/contratos', icon: 'file-text', roles: [4] },
+// Menu do painel em seções (design system: Geral · Gestão · Sistema).
+// Itens de primeiro nível têm ícone; filhos não. `roles` = papéis que veem o item.
+const SECTIONS = [
   {
-    label: 'Manutenção',
-    icon: 'tool',
-    roles: [3, 4],
-    children: [
-      { label: 'Alunos', path: '/alunos', icon: 'users', roles: [3, 4] },
-      { label: 'Matrículas', path: '/matriculas', icon: 'user-check', roles: [3, 4] },
-      { label: 'Professores', path: '/professores', icon: 'user', roles: [3, 4] },
-      { label: 'Usuários', path: '/usuarios', icon: 'users', roles: [3, 4] },
-      { label: 'Modalidades', path: '/modalidades', icon: 'activity', roles: [3, 4] },
-      { label: 'Planos', path: '/planos', icon: 'package', roles: [3, 4] },
-      { label: 'Pacotes', path: '/pacotes', icon: 'archive', roles: [3, 4] },
+    label: 'Geral',
+    items: [
+      { id: 'dashboard', label: 'Dashboard', path: '/', icon: 'layout-dashboard', roles: [3, 4] },
+      { id: 'academias', label: 'Academias', path: '/academias', icon: 'building-2', roles: [4] },
+      { id: 'contratos', label: 'Contratos', path: '/contratos', icon: 'file-text', roles: [4] },
     ],
   },
   {
-    label: 'Financeiro',
-    icon: 'tool',
-    roles: [3, 4],
-    children: [
-      { label: 'Vencimentos', path: '/matriculas/vencimentos', icon: 'clock', roles: [3, 4] },
-      { label: 'Formas de Pagamento', path: '/formas-pagamento', icon: 'credit-card', roles: [3, 4] },
-      
+    label: 'Gestão',
+    items: [
+      {
+        id: 'manutencao',
+        label: 'Manutenção',
+        icon: 'wrench',
+        children: [
+          { id: 'alunos', label: 'Alunos', path: '/alunos', roles: [3, 4] },
+          { id: 'matriculas', label: 'Matrículas', path: '/matriculas', roles: [3, 4] },
+          { id: 'professores', label: 'Professores', path: '/professores', roles: [3, 4] },
+          { id: 'usuarios', label: 'Usuários', path: '/usuarios', roles: [3, 4] },
+          { id: 'modalidades', label: 'Modalidades', path: '/modalidades', roles: [3, 4] },
+          { id: 'planos', label: 'Planos', path: '/planos', roles: [3, 4] },
+          { id: 'pacotes', label: 'Pacotes', path: '/pacotes', roles: [3, 4] },
+        ],
+      },
+      {
+        id: 'financeiro',
+        label: 'Financeiro',
+        icon: 'wallet',
+        children: [
+          { id: 'vencimentos', label: 'Vencimentos', path: '/matriculas/vencimentos', roles: [3, 4] },
+          { id: 'formas-pagamento', label: 'Formas de pagamento', path: '/formas-pagamento', roles: [3, 4] },
+        ],
+      },
+      {
+        id: 'academia',
+        label: 'Academia',
+        icon: 'dumbbell',
+        children: [
+          { id: 'wods', label: 'WOD', path: '/wods', roles: [3, 4] },
+          { id: 'recordes', label: 'Recordes', path: '/recordes', roles: [3, 4] },
+          { id: 'turmas', label: 'Aulas', path: '/turmas', roles: [3, 4] },
+        ],
+      },
+      {
+        id: 'mercadopago',
+        label: 'Mercado Pago',
+        icon: 'credit-card',
+        children: [
+          { id: 'assinaturas', label: 'Assinaturas', path: '/assinaturas', roles: [3, 4] },
+          { id: 'pagamentos-mp', label: 'Pagamentos', path: '/pagamentos-mp', roles: [3, 4] },
+        ],
+      },
     ],
   },
   {
-    label: 'Academia',
-    icon: 'tool',
-    roles: [3, 4],
-    children: [
-      { label: 'WOD', path: '/wods', icon: 'zap', roles: [3, 4] },
-      { label: 'Recordes', path: '/recordes', icon: 'award', roles: [3, 4] },
-      { label: 'Aulas', path: '/turmas', icon: 'calendar', roles: [3, 4] },
-      
-      
-    ],
-  },
-  {
-    label: 'Configurações',
-    icon: 'tool',
-    roles: [3, 4],
-    children: [
-      
-      { label: 'Planos Sistema', path: '/planos-sistema', icon: 'layers', roles: [4] },
-      { label: 'Configurações de Pagamento', path: '/configuracoes-pagamento', icon: 'settings', roles: [3, 4] },
-      { label: 'Grupos WhatsApp', path: '/grupos-whatsapp', icon: 'message-circle', roles: [3, 4] },
-      
-    ],
-  },
-  {
-    label: 'Mercado Pago',
-    icon: 'dollar-sign',
-    roles: [3, 4],
-    children: [
-      
-      { label: 'Assinaturas', path: '/assinaturas', icon: 'repeat', roles: [3, 4] },
-      { label: 'Pagamentos MP', path: '/pagamentos-mp', icon: 'dollar-sign', roles: [3, 4] },
-      
-    ],
-  },
-  {
-    label: 'Auditoria',
-    icon: 'shield',
-    roles: [3, 4],
-    children: [
-      { label: 'Logs Laravel (API v2)', path: '/superadmin/logs-laravel', icon: 'terminal', roles: [3, 4] },
-      { label: 'Crédito / Migração de Plano', path: '/auditoria/credito-migracao-plano', icon: 'shuffle', roles: [3, 4] },
-      { label: 'Anomalias de Datas', path: '/auditoria/anomalias-datas', icon: 'alert-triangle', roles: [3, 4] },
-      { label: 'Pagamentos Duplicados', path: '/auditoria/pagamentos-duplicados', icon: 'copy', roles: [3, 4] },
-      { label: 'Reparar Próxima Data', path: '/auditoria/reparar-proxima-data-vencimento', icon: 'tool', roles: [3, 4] },
-      { label: 'Check-ins Acima do Limite', path: '/auditoria/checkins-acima-do-limite', icon: 'trending-up', roles: [3, 4] },
-      { label: 'Check-ins Múltiplos no Dia', path: '/auditoria/checkins-multiplos-no-dia', icon: 'repeat', roles: [3, 4] },
+    label: 'Sistema',
+    items: [
+      {
+        id: 'config',
+        label: 'Configurações',
+        icon: 'settings',
+        children: [
+          { id: 'planos-sistema', label: 'Planos do sistema', path: '/planos-sistema', roles: [4] },
+          { id: 'pagamentos', label: 'Pagamentos', path: '/configuracoes-pagamento', roles: [3, 4] },
+          { id: 'whatsapp', label: 'Grupos WhatsApp', path: '/grupos-whatsapp', roles: [3, 4] },
+        ],
+      },
+      {
+        id: 'auditoria',
+        label: 'Auditoria',
+        icon: 'shield-check',
+        children: [
+          { id: 'logs', label: 'Logs Laravel (API v2)', path: '/superadmin/logs-laravel', roles: [3, 4] },
+          { id: 'credito', label: 'Crédito e migração de plano', path: '/auditoria/credito-migracao-plano', roles: [3, 4] },
+          { id: 'anomalias', label: 'Anomalias de datas', path: '/auditoria/anomalias-datas', roles: [3, 4] },
+          { id: 'duplicados', label: 'Pagamentos duplicados', path: '/auditoria/pagamentos-duplicados', roles: [3, 4] },
+          { id: 'reparar', label: 'Reparar próxima data', path: '/auditoria/reparar-proxima-data-vencimento', roles: [3, 4] },
+          { id: 'acima-limite', label: 'Check-ins acima do limite', path: '/auditoria/checkins-acima-do-limite', roles: [3, 4] },
+          { id: 'multiplos', label: 'Check-ins múltiplos no dia', path: '/auditoria/checkins-multiplos-no-dia', roles: [3, 4] },
+        ],
+      },
     ],
   },
 ];
 
-function AccordionChildren({ isOpen, children }) {
-  const fadeAnim = React.useRef(new Animated.Value(0)).current;
-  const translateAnim = React.useRef(new Animated.Value(-8)).current;
+const BREAKPOINT_MOBILE = 768;
+const COLLAPSE_KEY = 'ck:sidebar-collapsed';
 
-  React.useEffect(() => {
-    if (isOpen) {
-      Animated.parallel([
-        Animated.timing(fadeAnim, { toValue: 1, duration: 220, useNativeDriver: true }),
-        Animated.spring(translateAnim, { toValue: 0, tension: 120, friction: 10, useNativeDriver: true }),
-      ]).start();
-    } else {
-      fadeAnim.setValue(0);
-      translateAnim.setValue(-8);
-    }
-  }, [isOpen]);
+const papelLabel = (papelId) => (papelId === 4 ? 'Super admin' : papelId === 3 ? 'Administrador' : 'Usuário');
 
-  if (!isOpen) return null;
-
-  return (
-    <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: translateAnim }] }}>
-      {children}
-    </Animated.View>
-  );
+// Filtra o menu pelo papel do usuário e devolve as seções no formato do Sidebar.
+function buildSections(role) {
+  return SECTIONS.map((s) => ({
+    label: s.label,
+    items: s.items
+      .map((it) => {
+        if (it.children) {
+          const children = it.children.filter((c) => c.roles.includes(role));
+          return children.length ? { ...it, children: children.map((c) => ({ ...c, href: c.path })) } : null;
+        }
+        return it.roles.includes(role) ? { ...it, href: it.path } : null;
+      })
+      .filter(Boolean),
+  })).filter((s) => s.items.length);
 }
 
-const BREAKPOINT_MOBILE = 768;
-const BREAKPOINT_TABLET = 1024;
-const DRAWER_WIDTH = 280;
+// Item ativo = o caminho mais específico que bate com a rota atual.
+function findActive(sections, pathname) {
+  let best = null;
+  sections.forEach((s) =>
+    s.items.forEach((it) => {
+      const nodes = it.children ? it.children.map((c) => ({ node: c, parent: it, section: s })) : [{ node: it, parent: null, section: s }];
+      nodes.forEach((n) => {
+        const p = n.node.path;
+        const hit = pathname === p || (p !== '/' && pathname.startsWith(p + '/'));
+        if (hit && (!best || p.length > best.node.path.length)) best = n;
+      });
+    }),
+  );
+  return best;
+}
 
-export default function LayoutBase({ children, title = 'Dashboard', subtitle = 'Overview', noPadding = false }) {
+export default function LayoutBase({ children, title = 'Dashboard', subtitle = '', noPadding = false }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { width, height } = useWindowDimensions();
-  const [usuarioInfo, setUsuarioInfo] = React.useState(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerVisible, setDrawerVisible] = useState(false);
-  const [openGroups, setOpenGroups] = useState({});
-  
-  // Animações
-  const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(0.95)).current;
-
+  const { width } = useWindowDimensions();
   const isMobile = width < BREAKPOINT_MOBILE;
-  const isTablet = width >= BREAKPOINT_MOBILE && width < BREAKPOINT_TABLET;
 
-  React.useEffect(() => {
-    authService
-      .getCurrentUser()
-      .then((user) => setUsuarioInfo(user))
-      .catch(() => {});
+  const [usuarioInfo, setUsuarioInfo] = useState(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return typeof window !== 'undefined' && window.localStorage.getItem(COLLAPSE_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    authService.getCurrentUser().then(setUsuarioInfo).catch(() => {});
   }, []);
 
-  // Fechar drawer ao mudar de rota no mobile
-  React.useEffect(() => {
-    if (isMobile && drawerOpen) {
-      closeDrawer();
-    }
+  // Fecha o menu do celular ao trocar de rota.
+  useEffect(() => {
+    setDrawerOpen(false);
   }, [pathname]);
 
-  // Animação de abertura/fechamento
-  useEffect(() => {
-    if (drawerOpen) {
-      setDrawerVisible(true);
-      Animated.parallel([
-        Animated.spring(slideAnim, {
-          toValue: 0,
-          tension: 65,
-          friction: 11,
-          useNativeDriver: true,
-        }),
-        Animated.timing(fadeAnim, {
-          toValue: 1,
-          duration: 250,
-          useNativeDriver: true,
-        }),
-        Animated.spring(scaleAnim, {
-          toValue: 1,
-          tension: 65,
-          friction: 11,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      Animated.parallel([
-        Animated.timing(slideAnim, {
-          toValue: -DRAWER_WIDTH,
-          duration: 200,
-          easing: Easing.in(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.timing(fadeAnim, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(scaleAnim, {
-          toValue: 0.95,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start(() => {
-        setDrawerVisible(false);
-      });
-    }
-  }, [drawerOpen]);
+  const role = authService.getEffectivePapelId(usuarioInfo);
+  const sections = useMemo(() => buildSections(role), [role]);
+  const active = useMemo(() => findActive(sections, pathname || '/'), [sections, pathname]);
 
-  const openDrawer = () => setDrawerOpen(true);
-  const closeDrawer = () => setDrawerOpen(false);
+  const allNodes = useMemo(
+    () => sections.flatMap((s) => s.items.flatMap((it) => (it.children ? it.children : [it]))),
+    [sections],
+  );
+  const navigate = (id) => {
+    const node = allNodes.find((n) => n.id === id);
+    if (node?.path) router.push(node.path);
+  };
+
+  const onCollapsedChange = (v) => {
+    setCollapsed(v);
+    try {
+      window.localStorage.setItem(COLLAPSE_KEY, v ? '1' : '0');
+    } catch {
+      // preferência só desta sessão
+    }
+  };
 
   const handleLogout = async () => {
     await authService.logout();
@@ -218,364 +185,58 @@ export default function LayoutBase({ children, title = 'Dashboard', subtitle = '
   const nome = usuarioInfo?.nome || 'Usuário';
   const canAccessParametros = usuarioInfo?.papel_id === 4 || usuarioInfo?.papel_id === 3;
 
-  const toggleGroup = (label) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));
-  };
+  // Trilha: seção/grupo → página atual.
+  const breadcrumbs = [];
+  if (active?.parent) breadcrumbs.push({ label: active.parent.label });
+  else if (active?.section && active.node.id !== 'dashboard') breadcrumbs.push({ label: active.section.label });
+  breadcrumbs.push({ label: title });
 
-  const renderSidebarContent = (isMobileDrawer = false) => (
-    <View className="flex-1">
-      {/* Header do Sidebar */}
-      <View className={`flex-row items-center justify-between ${isMobileDrawer ? 'px-5 pt-4 pb-3' : 'px-4 pt-4 pb-3'}`}>
-        <View className="flex-row items-center gap-2.5">
-          <View className="h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-orange-600" style={{ backgroundColor: '#f97316' }}>
-            <Feather name="activity" size={18} color="#fff" />
-          </View>
-          <View>
-            <Text className="text-sm font-bold text-slate-900">CHECK-IN</Text>
-            <Text className="text-[10px] text-slate-400">Painel Admin</Text>
-          </View>
-        </View>
-        {isMobileDrawer && (
-          <TouchableOpacity
-            className="h-8 w-8 items-center justify-center rounded-full bg-slate-100"
-            onPress={closeDrawer}
-            activeOpacity={0.7}
-          >
-            <Feather name="x" size={18} color="#64748b" />
-          </TouchableOpacity>
-        )}
-      </View>
+  const sidebar = (
+    <Sidebar
+      // Remonta quando o grupo ativo é conhecido (o menu depende do papel, carregado depois),
+      // para o grupo da página atual abrir sozinho.
+      key={`${role ?? 'x'}-${active?.parent?.id ?? 'root'}`}
+      brand={{ name: 'Check-in', subtitle: 'Painel admin' }}
+      sections={sections}
+      activeId={active?.node?.id}
+      onNavigate={navigate}
+      collapsed={isMobile ? false : collapsed}
+      onCollapsedChange={isMobile ? () => setDrawerOpen(false) : onCollapsedChange}
+    />
+  );
 
-      {/* Divider */}
-      <View className={`h-px bg-slate-100 ${isMobileDrawer ? 'mx-5' : 'mx-4'}`} />
-
-      {/* Menu Items */}
-      <ScrollView 
-        className="flex-1" 
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingVertical: 6, paddingHorizontal: isMobileDrawer ? 10 : 8 }}
-      >
-        <View className="gap-0">
-          {(() => {
-            const userRole = authService.getEffectivePapelId(usuarioInfo);
-            const menuItems = MENU.map((item) => {
-              if (item.children) {
-                const children = item.children.filter((child) => child.roles.includes(userRole));
-                if (children.length === 0) return null;
-                return { ...item, children };
-              }
-              if (!item.roles.includes(userRole)) return null;
-              return item;
-            }).filter(Boolean);
-
-            const flatPaths = menuItems.flatMap((item) => (
-              item.children ? item.children.map((child) => child.path) : [item.path]
-            ));
-            const matchingPaths = flatPaths.filter((path) => (
-              pathname === path || (path !== '/' && pathname.startsWith(path + '/'))
-            ));
-            const bestMatchPath = matchingPaths.sort((a, b) => b.length - a.length)[0];
-
-            return menuItems.map((item) => {
-              if (item.children) {
-                const childPaths = item.children.map((c) => c.path);
-                const hasActiveChild = childPaths.some(
-                  (p) => p === bestMatchPath
-                );
-                const isOpen = openGroups[item.label] ?? hasActiveChild;
-
-                return (
-                  <View key={item.label} className="mt-1">
-                    {/* Header do grupo */}
-                    <Pressable
-                      onPress={() => toggleGroup(item.label)}
-                      style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
-                      className={`flex-row items-center gap-2.5 rounded-xl px-3 py-2 ${
-                        isOpen
-                          ? 'bg-orange-50 border border-orange-200'
-                          : hasActiveChild
-                          ? 'bg-orange-50'
-                          : 'bg-transparent'
-                      }`}
-                    >
-                      <View className={`h-7 w-7 items-center justify-center rounded-lg ${
-                        isOpen ? 'bg-orange-500' : hasActiveChild ? 'bg-orange-100' : 'bg-slate-100'
-                      }`}>
-                        <Feather name={item.icon} size={14} color={isOpen ? '#ffffff' : hasActiveChild ? '#f97316' : '#64748b'} />
-                      </View>
-                      <Text className={`flex-1 text-[12px] font-bold ${
-                        isOpen ? 'text-orange-700' : hasActiveChild ? 'text-orange-600' : 'text-slate-500'
-                      }`}>
-                        {item.label}
-                      </Text>
-                      <View className={`h-5 w-5 items-center justify-center rounded-full ${
-                        isOpen ? 'bg-orange-200' : 'bg-slate-100'
-                      }`}>
-                        <Feather
-                          name={isOpen ? 'chevron-up' : 'chevron-down'}
-                          size={12}
-                          color={isOpen ? '#ea580c' : '#94a3b8'}
-                        />
-                      </View>
-                    </Pressable>
-
-                    {/* Sub-itens com borda lateral */}
-                    <AccordionChildren isOpen={isOpen}>
-                      <View className="ml-3 mt-0.5 rounded-b-xl bg-orange-50 border-l-2 border-orange-200 pl-1 pb-1.5 pt-0.5 gap-0">
-                        {item.children.map((child) => {
-                          const selected = child.path === bestMatchPath;
-
-                          return (
-                            <Pressable
-                              key={child.label}
-                              onPress={() => {
-                                router.push(child.path);
-                                if (isMobile) closeDrawer();
-                              }}
-                              style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
-                              className={`flex-row items-center gap-2.5 rounded-lg py-1.5 pl-4 pr-3 ${
-                                selected ? 'bg-orange-500' : 'bg-transparent'
-                              }`}
-                            >
-                              <View className={`h-6 w-6 items-center justify-center rounded-md ${
-                                selected ? 'bg-white/20' : 'bg-slate-50'
-                              }`}>
-                                <Feather name={child.icon} size={13} color={selected ? '#ffffff' : '#64748b'} />
-                              </View>
-                              <Text className={`flex-1 text-[12px] font-medium ${
-                                selected ? 'text-white' : 'text-slate-600'
-                              }`}>
-                                {child.label}
-                              </Text>
-                              {selected && (
-                                <View className="h-1.5 w-1.5 rounded-full bg-white" />
-                              )}
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    </AccordionChildren>
-                  </View>
-                );
-              }
-
-              const selected = item.path === bestMatchPath;
-
-              return (
-                <Pressable
-                  key={item.label}
-                  onPress={() => {
-                    router.push(item.path);
-                    if (isMobile) closeDrawer();
-                  }}
-                  style={({ pressed }) => [
-                    { opacity: pressed ? 0.7 : 1 }
-                  ]}
-                  className={`flex-row items-center gap-2.5 rounded-lg px-3 py-1.5 ${
-                    selected 
-                      ? 'bg-orange-500' 
-                      : 'bg-transparent'
-                  }`}
-                >
-                  <View className={`h-7 w-7 items-center justify-center rounded-md ${
-                    selected ? 'bg-white/20' : 'bg-slate-100'
-                  }`}>
-                    <Feather 
-                      name={item.icon} 
-                      size={14} 
-                      color={selected ? '#ffffff' : '#64748b'} 
-                    />
-                  </View>
-                  <Text className={`flex-1 text-[12px] font-medium ${
-                    selected ? 'text-white' : 'text-slate-600'
-                  }`}>
-                    {item.label}
-                  </Text>
-                  {selected && (
-                    <View className="h-1.5 w-1.5 rounded-full bg-white" />
-                  )}
-                </Pressable>
-              );
-            });
-          })()}
-        </View>
-      </ScrollView>
-
-      {/* Footer do Menu */}
-      <View className={`border-t border-slate-100 ${isMobileDrawer ? 'mx-5 px-0 py-4' : 'mx-4 px-0 py-3'}`}>
-        <View className="flex-row items-center gap-3">
-          <View className="h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-orange-600" style={{ backgroundColor: '#f97316' }}>
-            <Text className="text-sm font-black text-white">{nome.slice(0, 2).toUpperCase()}</Text>
-          </View>
-          <View className="flex-1">
-            <Text className="text-sm font-semibold text-slate-900" numberOfLines={1}>{nome}</Text>
-            <Text className="text-[11px] text-slate-400">
-              {usuarioInfo?.papel_id === 4 ? 'Super Admin' : usuarioInfo?.papel_id === 3 ? 'Admin' : 'Usuário'}
-            </Text>
-          </View>
-          {canAccessParametros && (
-            <TouchableOpacity
-              className="h-9 w-9 items-center justify-center rounded-lg bg-slate-100"
-              onPress={() => router.push('/parametros')}
-              activeOpacity={0.7}
-            >
-              <Feather name="settings" size={16} color="#64748b" />
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity 
-            className="h-9 w-9 items-center justify-center rounded-lg bg-red-50"
-            onPress={handleLogout}
-            activeOpacity={0.7}
-          >
-            <Feather name="log-out" size={16} color="#ef4444" />
-          </TouchableOpacity>
-        </View>
-      </View>
-    </View>
+  const header = (
+    <AppHeader
+      leading={
+        isMobile ? <IconButton icon="menu" label="Abrir menu" onClick={() => setDrawerOpen(true)} /> : null
+      }
+      breadcrumbs={breadcrumbs}
+      search={false}
+      notifications={false}
+      user={{ name: nome, role: papelLabel(usuarioInfo?.papel_id), email: usuarioInfo?.email }}
+      menuItems={canAccessParametros ? [{ label: 'Parâmetros', icon: 'settings', onClick: () => router.push('/parametros') }] : []}
+      onSignOut={handleLogout}
+    />
   );
 
   return (
-    <View className="flex-1 flex-row bg-slate-50">
-      {/* Sidebar Desktop/Tablet */}
-      {!isMobile && (
-        <View className="w-60 border-r border-slate-200 bg-white">
-          {renderSidebarContent(false)}
-        </View>
-      )}
+    <div className="ck-painel" style={{ height: '100vh', width: '100%' }}>
+      <AppShell
+        sidebar={isMobile ? null : sidebar}
+        header={header}
+        className={noPadding ? 'ck-shell--flush' : undefined}
+      >
+        <PageHeader title={title} description={subtitle || undefined} />
+        {children}
+      </AppShell>
 
-      {/* Drawer Mobile com Animação */}
-      {isMobile && drawerVisible && (
-        <View 
-          className="absolute inset-0 z-50"
-          style={{ 
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-          }}
-        >
-          {/* Overlay com blur effect */}
-          <Animated.View 
-            style={{ 
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              backgroundColor: 'rgba(15, 23, 42, 0.6)',
-              opacity: fadeAnim 
-            }}
-          >
-            <TouchableOpacity
-              style={{ flex: 1 }}
-              activeOpacity={1}
-              onPress={closeDrawer}
-            />
-          </Animated.View>
-
-          {/* Drawer Panel */}
-          <Animated.View
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              bottom: 0,
-              width: DRAWER_WIDTH,
-              backgroundColor: '#ffffff',
-              transform: [
-                { translateX: slideAnim },
-                { scale: scaleAnim }
-              ],
-              borderTopRightRadius: 24,
-              borderBottomRightRadius: 24,
-              shadowColor: '#000',
-              shadowOffset: { width: 4, height: 0 },
-              shadowOpacity: 0.15,
-              shadowRadius: 20,
-              elevation: 20,
-            }}
-          >
-            {renderSidebarContent(true)}
-          </Animated.View>
-        </View>
-      )}
-
-      {/* Content Area */}
-      <View className="flex-1 bg-slate-50">
-        {/* Header Bar - Redesigned for Mobile */}
-        <View 
-          className={`flex-row items-center justify-between border-b border-slate-200 bg-white ${isMobile ? 'px-4 py-3' : 'px-5 pt-3 pb-2.5'}`}
-          style={isMobile ? { 
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.05,
-            shadowRadius: 4,
-            elevation: 3,
-          } : {}}
-        >
-          {/* Menu Hamburger - Mobile */}
-          {isMobile && (
-            <TouchableOpacity
-              className="mr-3 items-center justify-center rounded-xl bg-gradient-to-r from-orange-500 to-orange-400 p-2.5"
-              onPress={openDrawer}
-              style={{
-                backgroundColor: '#f97316',
-                shadowColor: '#f97316',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.3,
-                shadowRadius: 4,
-                elevation: 4,
-              }}
-            >
-              <Feather name="menu" size={20} color="#ffffff" />
-            </TouchableOpacity>
-          )}
-
-          <View className="flex-1">
-            <Text className={`${isMobile ? 'text-lg' : 'text-xl'} font-bold text-slate-900`}>{title}</Text>
-            {!isMobile && <Text className="text-[11px] text-slate-500">{subtitle}</Text>}
-          </View>
-
-          <View className={`flex-row items-center ${isMobile ? 'gap-2' : isTablet ? 'gap-2' : 'gap-2.5'}`}>
-            {!isMobile && (
-              <>
-                <Pressable className="rounded-md bg-slate-100 px-2 py-1" onPress={handleLogout}>
-                  <Feather name="log-out" size={14} color="#f97316" />
-                </Pressable>
-                <View className="flex-row items-center gap-2">
-                  <Text className={`text-xs font-semibold text-slate-800 ${isTablet ? 'hidden' : ''}`}>{nome}</Text>
-                  {canAccessParametros && (
-                    <Pressable
-                      className="rounded-md bg-slate-100 px-2 py-1"
-                      onPress={() => router.push('/parametros')}
-                    >
-                      <Feather name="settings" size={14} color="#64748b" />
-                    </Pressable>
-                  )}
-                </View>
-              </>
-            )}
-            <TouchableOpacity 
-              className="h-9 w-9 items-center justify-center rounded-full bg-orange-500"
-              style={{
-                shadowColor: '#f97316',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.3,
-                shadowRadius: 4,
-                elevation: 4,
-              }}
-            >
-              <Text className="text-xs font-black text-white">{nome.slice(0, 2).toUpperCase()}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <ScrollView contentContainerStyle={{ paddingHorizontal: noPadding ? 0 : isMobile ? 12 : 18, paddingTop: noPadding ? 0 : isMobile ? 14 : 16, paddingBottom: noPadding ? 0 : isMobile ? 14 : 16 }}>
-          {children}
-        </ScrollView>
-      </View>
-    </View>
+      {/* Celular: o mesmo Sidebar como gaveta sobre o conteúdo */}
+      {isMobile && drawerOpen ? (
+        <div className="ck-drawer" role="dialog" aria-modal="true" aria-label="Menu principal">
+          <button type="button" className="ck-drawer__scrim" aria-label="Fechar menu" onClick={() => setDrawerOpen(false)} />
+          <div className="ck-drawer__panel">{sidebar}</div>
+        </div>
+      ) : null}
+    </div>
   );
 }

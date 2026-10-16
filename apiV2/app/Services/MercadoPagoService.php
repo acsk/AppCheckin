@@ -215,9 +215,10 @@ class MercadoPagoService
      * @param int|null $tenantId ID do tenant
      * @return array Lista de tipos de pagamento a excluir
      */
-    private function getExcludedPaymentTypes(?int $tenantId = null): array
+    private function getExcludedPaymentTypes(?int $tenantId = null, ?string $metodo = null): array
     {
         $excluded = [];
+        $metodo = strtolower((string) $metodo);
         
         // Se não tem tenant, permitir todos
         $effectiveTenantId = $tenantId ?? $this->tenantId;
@@ -266,6 +267,15 @@ class MercadoPagoService
             // Boleto
             if (!$habilitarBoleto) {
                 $excluded[] = ['id' => 'ticket'];
+            }
+
+            if ($metodo === 'boleto') {
+                $excluded[] = ['id' => 'credit_card'];
+                $excluded[] = ['id' => 'debit_card'];
+                $excluded[] = ['id' => 'bank_transfer'];
+            } elseif (in_array($metodo, ['cartao', 'credit_card', 'card'], true)) {
+                $excluded[] = ['id' => 'ticket'];
+                $excluded[] = ['id' => 'bank_transfer'];
             }
             
             // Sempre excluir métodos que não usamos
@@ -367,7 +377,10 @@ class MercadoPagoService
             'auto_return' => 'approved',
             'payment_methods' => [
                 // Filtrar métodos de pagamento baseado nos parâmetros do sistema
-                'excluded_payment_types' => $this->getExcludedPaymentTypes($data['tenant_id'] ?? null),
+                'excluded_payment_types' => $this->getExcludedPaymentTypes(
+                    $data['tenant_id'] ?? null,
+                    isset($data['metodo_pagamento']) ? (string) $data['metodo_pagamento'] : null,
+                ),
                 'installments' => (int) ($data['max_parcelas'] ?? 12)
             ],
             'statement_descriptor' => substr($data['academia_nome'] ?? 'ACADEMIA', 0, 22)

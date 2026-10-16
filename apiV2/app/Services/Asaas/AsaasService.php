@@ -126,7 +126,17 @@ class AsaasService
             'mobilePhone' => preg_replace('/[^0-9]/', '', (string) ($data['aluno_telefone'] ?? '')) ?: null,
         ]);
 
-        $billingType = count($tiposCheckout) === 1 ? $tiposCheckout[0] : 'UNDEFINED';
+        $pedido = strtoupper((string) ($data['billing_type'] ?? $data['metodo_pagamento'] ?? ''));
+        if ($pedido === 'CARTAO' || $pedido === 'CARD') {
+            $pedido = 'CREDIT_CARD';
+        }
+        if ($pedido === 'BOLETO' && in_array('BOLETO', $tiposCheckout, true)) {
+            $billingType = 'BOLETO';
+        } elseif ($pedido === 'CREDIT_CARD' && in_array('CREDIT_CARD', $tiposCheckout, true)) {
+            $billingType = 'CREDIT_CARD';
+        } else {
+            $billingType = count($tiposCheckout) === 1 ? $tiposCheckout[0] : 'UNDEFINED';
+        }
         $dueDate = AcademyDateTime::today();
         $payment = $this->request('POST', '/payments', [
             'customer' => $customerId,

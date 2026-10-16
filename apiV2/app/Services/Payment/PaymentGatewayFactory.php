@@ -11,7 +11,7 @@ class PaymentGatewayFactory
     /**
      * @return list<array{id: string, nome: string, environment: string}>
      */
-    public function listarDisponiveis(int $tenantId, bool $podeSandbox): array
+    public function listarDisponiveis(int $tenantId, bool $podeSandbox, string $metodo = 'pix'): array
     {
         $rows = $podeSandbox
             ? $this->todosDoTenant($tenantId)
@@ -41,7 +41,7 @@ class PaymentGatewayFactory
                 continue;
             }
 
-            if (! $this->aceitaPix($row)) {
+            if (! $this->aceitaMetodo($row, $metodo)) {
                 continue;
             }
 
@@ -80,7 +80,7 @@ class PaymentGatewayFactory
      */
     public function resolverPix(int $tenantId, bool $podeSandbox, ?string $requested): array
     {
-        $gateways = $this->listarDisponiveis($tenantId, $podeSandbox);
+        $gateways = $this->listarDisponiveis($tenantId, $podeSandbox, 'pix');
         $pedido = strtolower(trim((string) $requested));
 
         if ($gateways === []) {
@@ -197,15 +197,72 @@ class PaymentGatewayFactory
         return $valor === 1 || $valor === true || $valor === '1';
     }
 
-    private function aceitaPix(object $row): bool
+    public function resolverMetodo(int $tenantId, bool $podeSandbox, string $metodo, ?string $requested): array
     {
-        if (! isset($row->enable_pix)) {
-            return true;
+        $metodo = strtolower($metodo);
+        if (in_array($metodo, ['cartao', 'credit_card', 'card'], true)) {
+            $metodo = 'cartao';
+        }
+        $gateways = $this->listarDisponiveis($tenantId, $podeSandbox, $metodo);
+        $pedido = strtolower(trim((string) $requested));
+
+        if ($gateways === []) {
+            return [
+                'ok' => false,
+                'status' => 400,
+                'code' => 'SEM_GATEWAY',
+                'error' => 'Nenhum provedor disponível para este método de pagamento.',
+                'gateways' => [],
+            ];
         }
 
-        $valor = $row->enable_pix;
+        $ids = array_column($gateways, 'id');
+        if ($pedido !== '' && in_array($pedido, $ids, true)) {
+            return [
+                'ok' => true,
+                'provider' => $pedido,
+                'instance' => $this->instancia($pedido, $tenantId),
+                'gateways' => $gateways,
+            ];
+        }
+        if (count($gateways) === 1) {
+            $id = $gateways[0]['id'];
 
-        return $valor === 1 || $valor === true || $valor === '1';
+            return [
+                'ok' => true,
+                'provider' => $id,
+                'instance' => $this->instancia($id, $tenantId),
+                'gateways' => $gateways,
+            ];
+        }
+
+        return [
+            'ok' => false,
+            'status' => 409,
+            'code' => 'ESCOLHA_GATEWAY',
+            'error' => 'Escolha Mercado Pago ou Asaas para continuar.',
+            'gateways' => $gateways,
+        ];
+    }
+
+    private function aceitaMetodo(object $row, string $metodo): bool
+    {
+        $metodo = strtolower($metodo);
+        $flags = (array) $row;
+        $ligado = static function (mixed $valor): bool {
+            if ($valor === null) {
+                return true;
+            }
+
+            return $valor === 1 || $valor === true || $valor === '1';
+        };
+
+        return match ($metodo) {
+            'boleto' => $ligado($flags['enable_boleto'] ?? true),
+            'cartao', 'checkout', 'credit_card' => $ligado($flags['enable_credit_card'] ?? true)
+                || ($metodo === 'checkout' && $ligado($flags['enable_boleto'] ?? true)),
+            default => $ligado($flags['enable_pix'] ?? true),
+        };
     }
 
     private function temCredencialDoAmbiente(object $row): bool

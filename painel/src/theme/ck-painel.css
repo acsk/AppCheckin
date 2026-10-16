@@ -1,0 +1,30 @@
+/* Ajustes do painel sobre o design system (ck.css). */
+
+/* Listas e tabelas do painel precisam de mais largura que as telas de configuração. */
+.ck-painel .ck-shell__inner { max-width: 1280px; }
+.ck-painel .ck-shell__inner.ck-inner--narrow,
+.ck-painel .ck-config { max-width: var(--content-max); margin-left: auto; margin-right: auto; }
+
+/* LayoutBase noPadding: conteúdo encostado nas bordas. */
+.ck-shell--flush .ck-shell__content { padding: 0; }
+.ck-shell--flush .ck-shell__inner { max-width: none; }
+.ck-shell--flush .ck-pagehead { padding: var(--space-6) var(--space-6) 0; }
+
+/* Celular: Sidebar como gaveta sobre o conteúdo. */
+.ck-drawer { position: fixed; inset: 0; z-index: 1000; display: flex; }
+.ck-drawer__scrim { position: absolute; inset: 0; border: 0; padding: 0; margin: 0; background: rgba(11, 13, 16, 0.56); cursor: pointer; }
+.ck-drawer__panel { position: relative; height: 100%; box-shadow: var(--shadow-lg); animation: ck-drawer-in .2s ease-out; }
+@keyframes ck-drawer-in { from { transform: translateX(-24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .ck-drawer__panel { animation: none; } }
+
+@media (max-width: 767px) {
+  .ck-painel .ck-shell__content { padding: var(--space-5) var(--space-4) var(--space-8); }
+  .ck-painel .ck-header { padding-left: var(--space-3); padding-right: var(--space-3); gap: var(--space-2); }
+  .ck-painel .ck-userbtn__name, .ck-painel .ck-userbtn__role { display: none; }
+}
+
+/* Barra de rolagem discreta dentro do Sidebar grafite. */
+.ck-sidebar__nav { scrollbar-width: thin; scrollbar-color: var(--sidebar-line) transparent; }
+.ck-sidebar__nav::-webkit-scrollbar { width: 8px; }
+.ck-sidebar__nav::-webkit-scrollbar-thumb { background: var(--sidebar-line); border-radius: 8px; }
+.ck-sidebar__nav::-webkit-scrollbar-track { background: transparent; }
