@@ -101,24 +101,18 @@ export default function PaymentCredentialsScreen() {
     const isAsaas = provider === 'asaas';
     const temTokenTest = formData.access_token_test.trim() || atual?.has_token_test;
     const temTokenProd = formData.access_token_prod.trim() || atual?.has_token_prod;
-    const temPublicKeyTest = formData.public_key_test.trim() || atual?.public_key_test_masked;
-    const temPublicKeyProd = formData.public_key_prod.trim() || atual?.public_key_prod_masked;
 
     if (formData.is_active) {
-      if (isAsaas) {
-        if (formData.environment === 'sandbox' && !temTokenTest) {
-          showError('Informe a API key de sandbox do Asaas');
-          return;
-        }
-        if (formData.environment === 'production' && !temTokenProd) {
-          showError('Informe a API key de produção do Asaas');
-          return;
-        }
-      } else if (formData.environment === 'sandbox' && !temPublicKeyTest) {
-        showError('Public Key de Teste é obrigatória para Sandbox do Mercado Pago');
+      if (formData.environment === 'sandbox' && !temTokenTest) {
+        showError(isAsaas
+          ? 'Informe a API key de sandbox do Asaas'
+          : 'Informe o Access Token de teste do Mercado Pago');
         return;
-      } else if (formData.environment === 'production' && !temPublicKeyProd) {
-        showError('Public Key de Produção é obrigatória para Produção do Mercado Pago');
+      }
+      if (formData.environment === 'production' && !temTokenProd) {
+        showError(isAsaas
+          ? 'Informe a API key de produção do Asaas'
+          : 'Informe o Access Token de produção do Mercado Pago');
         return;
       }
     }

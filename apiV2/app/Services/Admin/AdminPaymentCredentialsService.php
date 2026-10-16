@@ -84,13 +84,15 @@ class AdminPaymentCredentialsService
             $temTokenSandbox = ! empty($body['access_token_test']) || ! empty($existente['has_token_test']);
             $temTokenProd = ! empty($body['access_token_prod']) || ! empty($existente['has_token_prod']);
 
-            if ($isActive && $provider === 'asaas') {
+            if ($isActive) {
                 if ($environment === 'sandbox' && ! $temTokenSandbox) {
                     return [
                         'status' => 400,
                         'body' => [
                             'success' => false,
-                            'message' => 'Informe a API key de sandbox do Asaas.',
+                            'message' => $provider === 'asaas'
+                                ? 'Informe a API key de sandbox do Asaas.'
+                                : 'Informe o Access Token de teste do Mercado Pago.',
                         ],
                     ];
                 }
@@ -99,7 +101,9 @@ class AdminPaymentCredentialsService
                         'status' => 400,
                         'body' => [
                             'success' => false,
-                            'message' => 'Informe a API key de produção do Asaas.',
+                            'message' => $provider === 'asaas'
+                                ? 'Informe a API key de produção do Asaas.'
+                                : 'Informe o Access Token de produção do Mercado Pago.',
                         ],
                     ];
                 }
