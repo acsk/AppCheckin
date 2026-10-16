@@ -99,6 +99,36 @@ class AsaasPagamentoStatus
             : 'PAYMENT_RECEIVED';
     }
 
+    /**
+     * Tarifa Asaas: value cobrado do aluno, netValue líquido na conta.
+     *
+     * @param  array<string, mixed>  $payment
+     * @return array{valor: float, valor_liquido: ?float, desconto_provedor: ?float}
+     */
+    public static function tarifaProvedor(array $payment): array
+    {
+        $valor = round((float) ($payment['value'] ?? 0), 2);
+        if (! array_key_exists('netValue', $payment) || $payment['netValue'] === null || $payment['netValue'] === '') {
+            return [
+                'valor' => $valor,
+                'valor_liquido' => null,
+                'desconto_provedor' => null,
+            ];
+        }
+
+        $liquido = round((float) $payment['netValue'], 2);
+        $tarifa = round($valor - $liquido, 2);
+        if ($tarifa < 0) {
+            $tarifa = 0.0;
+        }
+
+        return [
+            'valor' => $valor,
+            'valor_liquido' => $liquido,
+            'desconto_provedor' => $tarifa,
+        ];
+    }
+
     public static function formaPagamentoBusca(string $billingType): array
     {
         return match (strtoupper(trim($billingType))) {

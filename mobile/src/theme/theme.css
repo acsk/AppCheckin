@@ -21,6 +21,8 @@
   --ac-info: #1d5fd1;
   --ac-info-soft: #e8f0fe;
   --ac-scrim: rgba(18, 21, 26, 0.56);
+  --ac-pix-ink: #0b766c;
+  --ac-pix-soft: #e7f7f5;
 }
 
 :root[data-theme="dark"] {
@@ -45,6 +47,8 @@
   --ac-info: #7ab0ff;
   --ac-info-soft: #14233f;
   --ac-scrim: rgba(0, 0, 0, 0.7);
+  --ac-pix-ink: #5fd3c6;
+  --ac-pix-soft: #0f2e2b;
 }
 
 html,

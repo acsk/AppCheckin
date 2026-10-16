@@ -33,6 +33,18 @@ class AsaasPagamentoStatusTest extends TestCase
         $this->assertSame('PAYMENT_CONFIRMED', AsaasPagamentoStatus::eventoWebhook('CONFIRMED'));
     }
 
+    public function test_tarifa_provedor_value_menos_net_value(): void
+    {
+        $tarifa = AsaasPagamentoStatus::tarifaProvedor([
+            'value' => 20,
+            'netValue' => 18.01,
+        ]);
+
+        $this->assertSame(20.0, $tarifa['valor']);
+        $this->assertSame(18.01, $tarifa['valor_liquido']);
+        $this->assertSame(1.99, $tarifa['desconto_provedor']);
+    }
+
     public function test_pix_recebido(): void
     {
         $snap = AsaasPagamentoStatus::snapshot([

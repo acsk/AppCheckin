@@ -181,6 +181,12 @@ class AdminMatriculaRepository
             if (Schema::hasColumn('pagamentos_plano', 'motivo_desconto')) {
                 $extraCols .= ', pp.motivo_desconto';
             }
+            if (Schema::hasColumn('pagamentos_plano', 'valor_liquido')) {
+                $extraCols .= ', CAST(pp.valor_liquido AS DECIMAL(10,2)) as valor_liquido';
+            }
+            if (Schema::hasColumn('pagamentos_plano', 'desconto_provedor')) {
+                $extraCols .= ', CAST(pp.desconto_provedor AS DECIMAL(10,2)) as desconto_provedor';
+            }
 
             $tipoBaixaJoin = Schema::hasTable('tipos_baixa')
                 ? 'LEFT JOIN tipos_baixa as tb ON pp.tipo_baixa_id = tb.id'

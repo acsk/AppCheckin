@@ -60,6 +60,8 @@ class AsaasWebhookServiceTest extends TestCase
             $table->unsignedInteger('matricula_id');
             $table->unsignedInteger('status_pagamento_id');
             $table->decimal('valor', 10, 2)->nullable();
+            $table->decimal('valor_liquido', 10, 2)->nullable();
+            $table->decimal('desconto_provedor', 10, 2)->nullable();
             $table->date('data_pagamento')->nullable();
             $table->date('data_vencimento')->nullable();
             $table->unsignedInteger('forma_pagamento_id')->nullable();
@@ -141,6 +143,8 @@ class AsaasWebhookServiceTest extends TestCase
                 'billingType' => 'RECEIVED_IN_CASH',
                 'externalReference' => 'MAT-189-17921701877f63f5e5',
                 'paymentDate' => '2026-10-16',
+                'value' => 20,
+                'netValue' => 18.01,
             ],
         ], null);
 
@@ -152,6 +156,9 @@ class AsaasWebhookServiceTest extends TestCase
         $this->assertSame(2, (int) $parcela->status_pagamento_id);
         $this->assertSame('2026-10-16', $parcela->data_pagamento);
         $this->assertSame(2, (int) $parcela->forma_pagamento_id);
+        $this->assertEquals(18.01, (float) $parcela->valor_liquido);
+        $this->assertEquals(1.99, (float) $parcela->desconto_provedor);
+        $this->assertStringContainsString('desconto_provedor R$ 1,99', (string) $parcela->observacoes);
         $this->assertSame('approved', DB::table('assinaturas')->value('status_gateway'));
         $this->assertSame('2026-10-16', DB::table('matriculas')->value('data_inicio'));
     }

@@ -32,6 +32,11 @@ export const ds = {
   dangerSoft: themed("danger-soft", "#fdecec"),
   info: themed("info", "#1d5fd1"),
   infoSoft: themed("info-soft", "#e8f0fe"),
+  // PIX: cor oficial só como preenchimento do ícone selecionado; texto e contorno em pixInk.
+  pix: "#32bcad",
+  onPix: "#0b2b28",
+  pixInk: themed("pix-ink", "#0b766c"),
+  pixSoft: themed("pix-soft", "#e7f7f5"),
   medalGold: "#f2b705",
   medalSilver: "#c2cad6",
   medalBronze: "#e09a5e",

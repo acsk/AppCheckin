@@ -1214,7 +1214,7 @@ export default function PlanoDetalhesScreen() {
 
         {/* Ciclos: preço por mês em destaque */}
         {ciclos.length > 0 && (
-          <Section title="Escolha o ciclo" aside="Preço por mês" bare>
+          <Section title="1 · Escolha o ciclo" aside="Preço por mês" bare>
             <View style={styles.ciclosList} accessibilityRole="radiogroup" accessibilityLabel="Ciclo de cobrança">
               {ciclos.map((ciclo) => {
                 const mensal = Number(ciclo.valor_mensal) || (ciclo.meses ? Number(ciclo.valor) / ciclo.meses : Number(ciclo.valor));
@@ -1250,6 +1250,17 @@ export default function PlanoDetalhesScreen() {
           </Section>
         )}
 
+        {/* Etapa 2: forma de pagamento (o provedor é escolhido no passo seguinte) */}
+        {!bloquearCompraPorAtivo && opcoesMetodo.length > 0 ? (
+          <Section title={ciclos.length > 0 ? "2 · Como você quer pagar?" : "Como você quer pagar?"} bare>
+            <PaymentMethodOptions
+              opcoes={opcoesMetodo}
+              value={metodoSelecionado}
+              onChange={setMetodoSelecionado}
+            />
+          </Section>
+        ) : null}
+
         {/* Descrição */}
         {!!plano.descricao && (
           <Section title="Sobre o plano" padded>
@@ -1267,18 +1278,20 @@ export default function PlanoDetalhesScreen() {
           </View>
         ) : (
           <>
-            {opcoesMetodo.length > 0 ? (
-              <PaymentMethodOptions
-                opcoes={opcoesMetodo}
-                value={metodoSelecionado}
-                onChange={setMetodoSelecionado}
-              />
-            ) : null}
             <View style={styles.footerPayRow}>
             <View style={styles.summaryText}>
               <Text style={styles.summaryLabel} numberOfLines={1}>
                 {selectedCiclo
-                  ? `${selectedCiclo.nome} · ${selectedCiclo.meses} ${selectedCiclo.meses === 1 ? "mês" : "meses"}`
+                  ? [
+                      selectedCiclo.nome,
+                      metodoSelecionado === "pix"
+                        ? "PIX"
+                        : metodoSelecionado === "boleto"
+                          ? "Boleto"
+                          : metodoSelecionado === "cartao"
+                            ? "Cartão"
+                            : `${selectedCiclo.meses} ${selectedCiclo.meses === 1 ? "mês" : "meses"}`,
+                    ].join(" · ")
                   : "Escolha um ciclo"}
               </Text>
               <Text style={styles.summaryTotal} numberOfLines={1}>
@@ -1519,6 +1532,14 @@ export default function PlanoDetalhesScreen() {
         url={paymentUrlToOpen}
         provider={paymentProvider}
         metodo={paymentMetodo}
+        resumo={(() => {
+          const c = plano?.ciclos?.find((item) => item.id === selectedCicloId);
+          return {
+            titulo: [plano?.nome, c?.nome].filter(Boolean).join(" · ") || null,
+            subtitulo: plano?.modalidade?.nome || null,
+            valor: c ? c.valor_formatado || formatCurrency(c.valor) : null,
+          };
+        })()}
         onRedirect={() => {
           void irParaCheckout();
         }}

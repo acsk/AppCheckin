@@ -179,7 +179,10 @@ class AsaasWebhookService
         $id = (string) ($payment['id'] ?? '');
         $status = (string) ($payment['status'] ?? '');
         $ref = (string) ($payment['externalReference'] ?? '');
-        if ($id === '' || ($status !== '' && $ref !== '')) {
+        $temLiquido = array_key_exists('netValue', $payment)
+            && $payment['netValue'] !== null
+            && $payment['netValue'] !== '';
+        if ($id === '' || ($status !== '' && $ref !== '' && $temLiquido)) {
             return $payment;
         }
 
@@ -226,6 +229,17 @@ class AsaasWebhookService
                 ->where('observacoes', 'like', '%'.$paymentId.'%')
                 ->exists();
             if ($jaBaixada) {
+                $parcelaPaga = DB::table('pagamentos_plano')
+                    ->where('tenant_id', $tenantId)
+                    ->where('matricula_id', $matriculaId)
+                    ->where('status_pagamento_id', 2)
+                    ->where('observacoes', 'like', '%'.$paymentId.'%')
+                    ->orderByDesc('id')
+                    ->first();
+                if ($parcelaPaga) {
+                    $this->persistirTarifaProvedor((int) $parcelaPaga->id, $tenantId, $payment, (string) ($parcelaPaga->observacoes ?? ''), true);
+                }
+
                 return;
             }
         }
@@ -269,18 +283,73 @@ class AsaasWebhookService
 
         $dataPagamento = AsaasPagamentoStatus::dataPagamento($payment)
             ?? substr((string) date('Y-m-d'), 0, 10);
+        $obs = trim(($parcela->observacoes ?? '').' [Asaas '.$paymentId.']');
+
+        $update = [
+            'status_pagamento_id' => 2,
+            'data_pagamento' => $dataPagamento !== '' ? $dataPagamento : date('Y-m-d'),
+            'forma_pagamento_id' => $this->formaPagamentoId((string) ($payment['billingType'] ?? 'PIX')),
+            'tipo_baixa_id' => DB::table('tipos_baixa')->where('nome', 'Integração')->value('id') ?: 4,
+            'observacoes' => $obs,
+            'updated_at' => now(),
+        ];
 
         DB::table('pagamentos_plano')
             ->where('id', $parcela->id)
             ->where('tenant_id', $tenantId)
-            ->update([
-                'status_pagamento_id' => 2,
-                'data_pagamento' => $dataPagamento !== '' ? $dataPagamento : date('Y-m-d'),
-                'forma_pagamento_id' => $this->formaPagamentoId((string) ($payment['billingType'] ?? 'PIX')),
-                'tipo_baixa_id' => DB::table('tipos_baixa')->where('nome', 'Integração')->value('id') ?: 4,
-                'observacoes' => trim(($parcela->observacoes ?? '').' [Asaas '.$paymentId.']'),
-                'updated_at' => now(),
-            ]);
+            ->update(array_merge(
+                $update,
+                $this->camposTarifaProvedor($payment, $obs, true),
+            ));
+    }
+
+    /**
+     * @param  array<string, mixed>  $payment
+     */
+    private function persistirTarifaProvedor(int $parcelaId, int $tenantId, array $payment, string $observacoes, bool $anexarObs): void
+    {
+        $campos = $this->camposTarifaProvedor($payment, $observacoes, $anexarObs);
+        if ($campos === []) {
+            return;
+        }
+
+        DB::table('pagamentos_plano')
+            ->where('id', $parcelaId)
+            ->where('tenant_id', $tenantId)
+            ->update(array_merge($campos, ['updated_at' => now()]));
+    }
+
+    /**
+     * @param  array<string, mixed>  $payment
+     * @return array<string, mixed>
+     */
+    private function camposTarifaProvedor(array $payment, string $observacoes, bool $anexarObs): array
+    {
+        $tarifa = AsaasPagamentoStatus::tarifaProvedor($payment);
+        $campos = [];
+
+        if ($anexarObs && ($tarifa['desconto_provedor'] ?? null) !== null && (float) $tarifa['desconto_provedor'] > 0
+            && ! str_contains($observacoes, 'desconto_provedor')) {
+            $campos['observacoes'] = trim($observacoes.' '.sprintf(
+                'valor R$ %s líquido R$ %s desconto_provedor R$ %s',
+                number_format($tarifa['valor'], 2, ',', '.'),
+                number_format((float) $tarifa['valor_liquido'], 2, ',', '.'),
+                number_format((float) $tarifa['desconto_provedor'], 2, ',', '.'),
+            ));
+        }
+
+        if (($tarifa['valor_liquido'] ?? null) === null) {
+            return $campos;
+        }
+
+        if (Schema::hasColumn('pagamentos_plano', 'valor_liquido')) {
+            $campos['valor_liquido'] = $tarifa['valor_liquido'];
+        }
+        if (Schema::hasColumn('pagamentos_plano', 'desconto_provedor')) {
+            $campos['desconto_provedor'] = $tarifa['desconto_provedor'];
+        }
+
+        return $campos;
     }
 
     private function ativarMatriculaPendente(int $tenantId, int $matriculaId): void

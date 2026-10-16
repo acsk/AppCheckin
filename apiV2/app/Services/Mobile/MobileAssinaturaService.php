@@ -7,6 +7,7 @@ use App\Services\MercadoPagoService;
 use App\Support\AcademyDateTime;
 use App\Support\AsaasPagamentoStatus;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class MobileAssinaturaService
 {
@@ -273,10 +274,12 @@ class MobileAssinaturaService
                 ->where('pp.status_pagamento_id', '<>', 4)
                 ->orderByRaw('COALESCE(pp.data_pagamento, pp.data_vencimento) DESC')
                 ->orderByDesc('pp.id')
-                ->get([
+                ->get(array_values(array_filter([
                     'pp.id',
                     'pp.matricula_id',
                     'pp.valor',
+                    Schema::hasColumn('pagamentos_plano', 'valor_liquido') ? 'pp.valor_liquido' : null,
+                    Schema::hasColumn('pagamentos_plano', 'desconto_provedor') ? 'pp.desconto_provedor' : null,
                     'pp.data_vencimento',
                     'pp.data_pagamento',
                     'pp.status_pagamento_id',
@@ -288,7 +291,7 @@ class MobileAssinaturaService
                     'criador.nome as criado_por_nome',
                     'tb.nome as tipo_baixa_nome',
                     'pp.observacoes',
-                ]);
+                ])));
 
             $hoje = AcademyDateTime::today();
             foreach ($rowsPag as $pag) {
@@ -325,6 +328,8 @@ class MobileAssinaturaService
                 $pagamentosPorMatricula[$mid][] = [
                     'id' => (int) $pag['id'],
                     'valor' => (float) $pag['valor'],
+                    'valor_liquido' => isset($pag['valor_liquido']) ? (float) $pag['valor_liquido'] : null,
+                    'desconto_provedor' => isset($pag['desconto_provedor']) ? (float) $pag['desconto_provedor'] : null,
                     'data_vencimento' => $pag['data_vencimento'],
                     'data_pagamento' => $pag['data_pagamento'],
                     'status' => $pag['status'],
