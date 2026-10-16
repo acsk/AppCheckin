@@ -211,28 +211,18 @@ class MobileMatriculaService
             return ['status' => 404, 'body' => ['success' => false, 'message' => 'Matrícula não encontrada']];
         }
 
-        if ($matricula['status_codigo'] !== 'ativa') {
-            $this->sincronizarPagamentoAsaas($tenantId, (int) $matriculaId);
-            $matricula = $this->matriculas->findComStatusPorUsuario((int) $matriculaId, $userId, $tenantId) ?? $matricula;
-        }
+        $jaAtiva = $matricula['status_codigo'] === 'ativa';
+        $this->sincronizarPagamentoAsaas($tenantId, (int) $matriculaId);
+        $matricula = $this->matriculas->findComStatusPorUsuario((int) $matriculaId, $userId, $tenantId) ?? $matricula;
 
         if ($matricula['status_codigo'] === 'ativa') {
             return [
                 'status' => 200,
                 'body' => [
                     'success' => true,
-                    'message' => 'Matrícula já está ativa',
-                    'data' => ['matricula_id' => (int) $matriculaId, 'status' => 'ativa'],
-                ],
-            ];
-        }
-
-        if ($this->matriculas->ativarSePendente((int) $matriculaId)) {
-            return [
-                'status' => 200,
-                'body' => [
-                    'success' => true,
-                    'message' => 'Pagamento confirmado! Matrícula ativada com sucesso.',
+                    'message' => $jaAtiva
+                        ? 'Matrícula já está ativa'
+                        : 'Pagamento confirmado! Matrícula ativada com sucesso.',
                     'data' => ['matricula_id' => (int) $matriculaId, 'status' => 'ativa'],
                 ],
             ];
@@ -242,7 +232,7 @@ class MobileMatriculaService
             'status' => 200,
             'body' => [
                 'success' => false,
-                'message' => 'Não foi possível atualizar a matrícula. Status atual: '.$matricula['status_codigo'],
+                'message' => 'O pagamento ainda não foi confirmado no gateway. Status atual: '.$matricula['status_codigo'],
                 'data' => ['matricula_id' => (int) $matriculaId, 'status' => $matricula['status_codigo']],
             ],
         ];
@@ -257,14 +247,12 @@ class MobileMatriculaService
         }
 
         try {
-            if (($pix['status'] ?? '') === 'approved') {
-                app(PagamentoPlanoService::class)->atualizarStatusMatricula($tenantId, $matriculaId);
-
-                return;
-            }
-
             $payment = (new AsaasService($tenantId))->obterPagamento($paymentId);
             if ($payment === []) {
+                if (($pix['status'] ?? '') === 'approved') {
+                    app(PagamentoPlanoService::class)->atualizarStatusMatricula($tenantId, $matriculaId);
+                }
+
                 return;
             }
 

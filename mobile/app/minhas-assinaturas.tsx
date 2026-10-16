@@ -149,6 +149,9 @@ export default function MinhasAssinaturasScreen() {
   const [isUserAdmin, setIsUserAdmin] = useState(false);
   const [cancelando, setCancelando] = useState<number | null>(null);
   const [pagandoPacoteId, setPagandoPacoteId] = useState<number | null>(null);
+  const [atualizandoPagamentoId, setAtualizandoPagamentoId] = useState<
+    number | null
+  >(null);
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
   const [assinaturaParaCancelar, setAssinaturaParaCancelar] =
     useState<Assinatura | null>(null);
@@ -347,6 +350,87 @@ export default function MinhasAssinaturasScreen() {
     },
     [router],
   );
+
+  const handleAtualizarPagamento = async (assinatura: Assinatura) => {
+    const matriculaId = Number(assinatura.matricula_id);
+    if (!matriculaId) {
+      showErrorModal(
+        "⚠️ Matrícula não encontrada",
+        "Não foi possível identificar a matrícula desta assinatura.",
+        "warning",
+      );
+      return;
+    }
+
+    try {
+      setAtualizandoPagamentoId(assinatura.id);
+      const token = await AsyncStorage.getItem("@appcheckin:token");
+      if (!token) {
+        showErrorModal(
+          "⚠️ Sessão expirada",
+          "Faça login novamente para atualizar o pagamento.",
+          "error",
+        );
+        return;
+      }
+
+      const baseUrl = apiUrl || getApiUrlRuntime();
+      const response = await fetch(`${baseUrl}/mobile/verificar-pagamento`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ matricula_id: matriculaId }),
+      });
+
+      const text = await response.text();
+      let json: { success?: boolean; message?: string; error?: string } = {};
+      try {
+        json = text ? JSON.parse(text) : {};
+      } catch {
+        json = {};
+      }
+
+      if (await handleUnauthorizedResponse(response)) {
+        return;
+      }
+
+      if (!response.ok) {
+        showErrorModal(
+          "⚠️ Não foi possível atualizar",
+          json.message ||
+            json.error ||
+            "Tente novamente em instantes.",
+          "warning",
+        );
+        return;
+      }
+
+      await fetchAssinaturasCallback(baseUrl, { silent: true });
+
+      if (json.success) {
+        showErrorModal(
+          "✅ Pagamento atualizado",
+          json.message || "O status da matrícula foi conferido com o gateway.",
+          "success",
+        );
+      } else {
+        showErrorModal(
+          "Pagamento ainda pendente",
+          json.message ||
+            "O gateway ainda não confirmou este pagamento. Se você deu baixa no Asaas, aguarde um instante e tente de novo.",
+          "warning",
+        );
+      }
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Erro ao atualizar pagamento";
+      showErrorModal("⚠️ Erro ao atualizar pagamento", msg, "error");
+    } finally {
+      setAtualizandoPagamentoId(null);
+    }
+  };
 
   // Verificar se o usuário é admin
   useEffect(() => {
@@ -651,6 +735,7 @@ export default function MinhasAssinaturasScreen() {
     const isPagamentoPendente =
       !isCancelada &&
       (temPagamentoAberto || (isPendente && !temPagamentoPago));
+    const podeAtualizarPagamento = !isCancelada && (isPendente || isPagamentoPendente);
 
     const statusCodigo = assinatura.status.codigo.toLowerCase();
     const statusTone = isPagamentoPendente
@@ -779,8 +864,21 @@ export default function MinhasAssinaturasScreen() {
           </View>
         ) : null}
 
-        {(podePagar || (!isAvulso && (isAtiva || isPendente))) && (
+        {(podeAtualizarPagamento ||
+          podePagar ||
+          (!isAvulso && (isAtiva || isPendente))) && (
           <View style={styles.actionStack}>
+            {podeAtualizarPagamento && (
+              <Button
+                variant="secondary"
+                block
+                icon="refresh-cw"
+                loading={atualizandoPagamentoId === assinatura.id}
+                onPress={() => handleAtualizarPagamento(assinatura)}
+              >
+                Atualizar pagamento
+              </Button>
+            )}
             {podePagar && (
               <Button
                 block
