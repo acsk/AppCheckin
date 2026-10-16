@@ -28,6 +28,7 @@ import AppHeader from "@/src/components/ds/AppHeader";
 import DayPicker from "@/src/components/ds/DayPicker";
 import Segmented from "@/src/components/ds/Segmented";
 import PendingPaymentModal from "@/src/components/ds/PendingPaymentModal";
+import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
 import { ds } from "@/src/components/ds/tokens";
 const getRouteParam = (value?: string | string[]) => {
   if (value == null) return undefined;
@@ -536,6 +537,7 @@ export default function CheckinScreen() {
   const fetchAvailableSchedules = async (
     date: Date,
     tenantIdOverride?: number,
+    opts?: { silent?: boolean },
   ) => {
     const formattedDate = formatDateParam(date);
     const reqId = Date.now();
@@ -546,7 +548,7 @@ export default function CheckinScreen() {
     }
 
     isFetchingSchedulesRef.current = true;
-    setLoading(true);
+    if (!opts?.silent) setLoading(true);
     try {
       console.log("\n🔄 INICIANDO CARREGAMENTO DE HORÁRIOS");
 
@@ -650,6 +652,17 @@ export default function CheckinScreen() {
       isFetchingSchedulesRef.current = false;
     }
   };
+
+  // Atualiza as aulas sozinho: ao reabrir o app/aba e a cada 60 s (vagas e check-ins mudam).
+  useRefreshOnFocus(
+    () =>
+      fetchAvailableSchedules(
+        selectedDateRef.current ?? selectedDate,
+        currentTenant?.tenant?.id ?? currentTenant?.id ?? undefined,
+        { silent: true },
+      ),
+    { intervalMs: 60_000 },
+  );
 
   const reloadSchedulesList = useCallback(async () => {
     const dateToLoad = selectedDateRef.current ?? selectedDate;

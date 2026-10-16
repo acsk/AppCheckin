@@ -25,6 +25,7 @@ import AppHeader from "@/src/components/ds/AppHeader";
 import PlanCard from "@/src/components/ds/PlanCard";
 import Section from "@/src/components/ds/Section";
 import Stepper from "@/src/components/ds/Stepper";
+import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
 import { ds } from "@/src/components/ds/tokens";
 // NOVO ARQUIVO - SEM CÓDIGO ANTIGO
 
@@ -405,9 +406,9 @@ export default function PlanosScreen() {
     }
   };
 
-  const fetchPlanos = async (baseUrl: string) => {
+  const fetchPlanos = async (baseUrl: string, opts?: { silent?: boolean }) => {
     try {
-      setLoading(true);
+      if (!opts?.silent) setLoading(true);
       setError(null);
 
       const token = await AsyncStorage.getItem("@appcheckin:token");
@@ -1407,6 +1408,9 @@ export default function PlanosScreen() {
       </View>
     );
   };
+
+  // Atualiza sozinho ao voltar para a tela e ao reabrir o app/aba.
+  useRefreshOnFocus(() => (apiUrl ? fetchPlanos(apiUrl, { silent: true }) : undefined), { onScreenFocus: true });
 
   // ---- Lista de planos no modelo "TelasPlanos" (PlanCard do design system) ----
   const fmtPreco = (v: number) => {

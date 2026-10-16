@@ -31,6 +31,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import AppHeader from "@/src/components/ds/AppHeader";
 import Badge from "@/src/components/ds/Badge";
 import Button from "@/src/components/ds/Button";
+import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
 import { ds } from "@/src/components/ds/tokens";
 interface StatusAssinatura {
   id: number;
@@ -280,9 +281,9 @@ export default function MinhasAssinaturasScreen() {
   };
 
   const fetchAssinaturasCallback = useCallback(
-    async (baseUrl: string) => {
+    async (baseUrl: string, opts?: { silent?: boolean }) => {
       try {
-        setLoading(true);
+        if (!opts?.silent) setLoading(true);
         setError(null);
 
         const token = await AsyncStorage.getItem("@appcheckin:token");
@@ -410,6 +411,12 @@ export default function MinhasAssinaturasScreen() {
       initializeAndFetch();
       return () => {};
     }, [fetchAssinaturasCallback]),
+  );
+
+  // Atualiza sozinho: ao reabrir o app/aba e a cada 60 s (pagamento pendente → pago).
+  useRefreshOnFocus(
+    () => (apiUrl ? fetchAssinaturasCallback(apiUrl, { silent: true }) : undefined),
+    { intervalMs: 60_000 },
   );
 
   const confirmarCancelamento = useCallback(

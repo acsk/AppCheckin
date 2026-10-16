@@ -31,6 +31,7 @@ import Section from "@/src/components/ds/Section";
 import StudentSearch from "@/src/components/ds/StudentSearch";
 import DesignModal from "@/src/components/ds/Modal";
 import PendingPaymentModal from "@/src/components/ds/PendingPaymentModal";
+import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
 import { ds } from "@/src/components/ds/tokens";
 const getRouteParam = (value?: string | string[]) => {
   if (value == null) return undefined;
@@ -381,16 +382,19 @@ export default function CheckinTurmaScreen() {
     }
   }, [routeData]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadParticipantsForTurma = async (turma: any) => {
+  const loadParticipantsForTurma = async (turma: any, opts?: { silent?: boolean }) => {
     if (!turma?.id) return;
-    setParticipantsLoading(true);
-    setParticipants([]);
-    setCheckinsRecentes([]);
-    setAlunosTotal(0);
-    setManualSearchQuery("");
-    setManualSearchResults([]);
-    setManualSearchError(null);
-    setParticipantsTurma(turma);
+    const silent = !!opts?.silent;
+    if (!silent) {
+      setParticipantsLoading(true);
+      setParticipants([]);
+      setCheckinsRecentes([]);
+      setAlunosTotal(0);
+      setManualSearchQuery("");
+      setManualSearchResults([]);
+      setManualSearchError(null);
+      setParticipantsTurma(turma);
+    }
 
     try {
       const token = await AsyncStorage.getItem("@appcheckin:token");
@@ -447,12 +451,24 @@ export default function CheckinTurmaScreen() {
           presencasIniciais[c.checkin_id] = c.presente ?? null;
         }
       });
-      setPresencas(presencasIniciais);
+      if (silent) {
+        // Mantém as marcações que o professor ainda não confirmou.
+        setPresencas((prev) => {
+          const next = { ...presencasIniciais };
+          Object.keys(next).forEach((k) => {
+            const id = Number(k);
+            if (next[id] == null && prev[id] != null) next[id] = prev[id];
+          });
+          return next;
+        });
+      } else {
+        setPresencas(presencasIniciais);
+      }
     } catch (error) {
       console.error("Erro participantes:", error);
-      showToast("Não foi possível carregar participantes", "error");
+      if (!silent) showToast("Não foi possível carregar participantes", "error");
     } finally {
-      setParticipantsLoading(false);
+      if (!silent) setParticipantsLoading(false);
     }
   };
 
@@ -472,6 +488,12 @@ export default function CheckinTurmaScreen() {
         reloadTurma();
       }
     }, [routeTurmaId, reloadTurma]),
+  );
+
+  // Atualiza a lista sozinha: ao reabrir o app/aba e a cada 30 s (check-ins chegando).
+  useRefreshOnFocus(
+    () => (routeTurmaId ? loadParticipantsForTurma({ id: routeTurmaId }, { silent: true }) : undefined),
+    { intervalMs: 30_000, enabled: !!routeTurmaId && !confirmandoPresenca },
   );
 
   const checkUserHasCheckin = useCallback(() => {

@@ -6,6 +6,7 @@ import { getApiUrlRuntime } from "@/src/utils/apiConfig";
 import { getTokenTenantId, handleAuthError } from "@/src/utils/authHelpers";
 import { Feather, MaterialCommunityIcons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
+import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
 import AppHeader from "@/src/components/ds/AppHeader";
 import { useRouter } from "expo-router";
 import React, { useCallback, useMemo, useState } from "react";
@@ -150,6 +151,9 @@ export default function ContaScreen() {
       load();
     }, [load]),
   );
+
+  // Atualiza sozinho ao reabrir o app/aba.
+  useRefreshOnFocus(load);
 
   const whatsappLinks = useMemo(() => {
     if (!profile?.tenants?.length) return [];

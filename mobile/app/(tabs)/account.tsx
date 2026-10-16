@@ -3,6 +3,7 @@ import PasswordRecoveryModal from "@/components/PasswordRecoveryModal";
 import AuthService from "@/src/services/authService";
 import SideMenu, { SideMenuGroup } from "@/src/components/ds/SideMenu";
 import AppHeader from "@/src/components/ds/AppHeader";
+import { useRefreshOnFocus } from "@/src/hooks/useRefreshOnFocus";
 import { ds } from "@/src/components/ds/tokens";
 import MobileService from "@/src/services/mobileService";
 import { colors } from "@/src/theme/colors";
@@ -316,6 +317,18 @@ export default function AccountScreen() {
     }, [loadUnreadNotificationsCount]),
   );
 
+  // Atualiza sozinho: ao voltar para a Início, ao reabrir o app/aba e a cada 60 s.
+  useRefreshOnFocus(
+    () =>
+      Promise.all([
+        loadUserProfileMemo({ silent: true }),
+        loadWeekCheckinsMemo({ silent: true }),
+        loadRankingMemo(selectedModalidadeId, { silent: true }),
+        loadUnreadNotificationsCount(),
+      ]),
+    { intervalMs: 60_000, onScreenFocus: true },
+  );
+
   const getTenantImageUrl = () => {
     const raw =
       currentTenant?.tenant?.logo_caminho ??
@@ -336,7 +349,7 @@ export default function AccountScreen() {
   };
 
   // Memoized loaders to satisfy hook dependencies
-  const loadUserProfileMemo = useCallback(async () => {
+  const loadUserProfileMemo = useCallback(async (opts?: { silent?: boolean }) => {
     try {
       console.log("\n🔄 INICIANDO CARREGAMENTO DE PERFIL");
       console.log("📊 [loadUserProfileMemo] currentTenant:", currentTenant);
@@ -382,7 +395,7 @@ export default function AccountScreen() {
       } else {
         const errorMsg =
           profileData?.error || "Não foi possível carregar o perfil";
-        Alert.alert("Erro", errorMsg);
+        if (!opts?.silent) Alert.alert("Erro", errorMsg);
       }
     } catch (error: any) {
       console.error(
@@ -398,22 +411,22 @@ export default function AccountScreen() {
       if (status === 403) {
         const code = error?.code || error?.response?.data?.code;
         if (code === "NO_ACTIVE_CONTRACT") {
-          Alert.alert(
+          if (!opts?.silent) Alert.alert(
             "Contrato Inativo",
             "Seu acesso a esta academia está bloqueado. Verifique seu plano/contrato.",
           );
           return;
         }
       }
-      Alert.alert("Erro", error?.message || "Erro ao conectar com o servidor");
+      if (!opts?.silent) Alert.alert("Erro", error?.message || "Erro ao conectar com o servidor");
     } finally {
       setLoading(false);
     }
   }, [apiUrl, router, currentTenant]);
 
-  const loadWeekCheckinsMemo = useCallback(async () => {
+  const loadWeekCheckinsMemo = useCallback(async (opts?: { silent?: boolean }) => {
     try {
-      setWeekLoading(true);
+      if (!opts?.silent) setWeekLoading(true);
       const expectedTenantId =
         currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
       const reqId = Date.now();
@@ -467,10 +480,10 @@ export default function AccountScreen() {
   // Removido: função loadModalidadesFromTurmas (não utilizada)
 
   const loadRankingMemo = useCallback(
-    async (modalidadeId?: number | null) => {
+    async (modalidadeId?: number | null, opts?: { silent?: boolean }) => {
       try {
         setRankingError(null);
-        setRankingLoading(true);
+        if (!opts?.silent) setRankingLoading(true);
         const expectedTenantId =
           currentTenant?.tenant?.id ?? currentTenant?.id ?? null;
         const reqId = Date.now();
