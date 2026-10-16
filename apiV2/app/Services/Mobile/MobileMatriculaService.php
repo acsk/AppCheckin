@@ -3,11 +3,9 @@
 namespace App\Services\Mobile;
 
 use App\Repositories\MatriculaRepository;
-use App\Services\Asaas\AsaasService;
-use App\Services\Asaas\AsaasWebhookService;
-use App\Services\PagamentoPlanoService;
+use App\Services\Asaas\AsaasPagamentoSync;
+use App\Support\AsaasPagamentoStatus;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
 
 class MobileMatriculaService
 {
@@ -212,10 +210,16 @@ class MobileMatriculaService
         }
 
         $jaAtiva = $matricula['status_codigo'] === 'ativa';
-        $this->sincronizarPagamentoAsaas($tenantId, (int) $matriculaId);
+        $snapshot = app(AsaasPagamentoSync::class)->sincronizar($tenantId, (int) $matriculaId);
         $matricula = $this->matriculas->findComStatusPorUsuario((int) $matriculaId, $userId, $tenantId) ?? $matricula;
+        $ativa = $matricula['status_codigo'] === 'ativa';
+        $asaasPago = AsaasPagamentoStatus::pago((string) ($snapshot['status'] ?? ''));
+        $gateway = $snapshot === [] ? null : array_merge($snapshot, [
+            'aguardando_ativacao' => $asaasPago && ! $ativa,
+            'mensagem' => AsaasPagamentoStatus::mensagem($snapshot, $ativa),
+        ]);
 
-        if ($matricula['status_codigo'] === 'ativa') {
+        if ($ativa) {
             return [
                 'status' => 200,
                 'body' => [
@@ -223,51 +227,46 @@ class MobileMatriculaService
                     'message' => $jaAtiva
                         ? 'Matrícula já está ativa'
                         : 'Pagamento confirmado! Matrícula ativada com sucesso.',
-                    'data' => ['matricula_id' => (int) $matriculaId, 'status' => 'ativa'],
+                    'data' => [
+                        'matricula_id' => (int) $matriculaId,
+                        'status' => 'ativa',
+                        'pagamento_gateway' => $gateway,
+                    ],
                 ],
             ];
         }
+
+        if ($asaasPago) {
+            return [
+                'status' => 200,
+                'body' => [
+                    'success' => false,
+                    'code' => 'AGUARDANDO_ATIVACAO',
+                    'message' => AsaasPagamentoStatus::mensagem($snapshot, false),
+                    'data' => [
+                        'matricula_id' => (int) $matriculaId,
+                        'status' => $matricula['status_codigo'],
+                        'pagamento_gateway' => $gateway,
+                    ],
+                ],
+            ];
+        }
+
+        $statusAsaas = (string) ($snapshot['status_label'] ?? '');
+        $detalhe = $statusAsaas !== '' ? ' Status no Asaas: '.$statusAsaas.'.' : '';
 
         return [
             'status' => 200,
             'body' => [
                 'success' => false,
-                'message' => 'O pagamento ainda não foi confirmado no gateway. Status atual: '.$matricula['status_codigo'],
-                'data' => ['matricula_id' => (int) $matriculaId, 'status' => $matricula['status_codigo']],
+                'message' => 'O pagamento ainda não foi confirmado no gateway. Status atual: '.$matricula['status_codigo'].$detalhe,
+                'data' => [
+                    'matricula_id' => (int) $matriculaId,
+                    'status' => $matricula['status_codigo'],
+                    'pagamento_gateway' => $gateway,
+                ],
             ],
         ];
-    }
-
-    private function sincronizarPagamentoAsaas(int $tenantId, int $matriculaId): void
-    {
-        $pix = $this->matriculas->findUltimoPix($tenantId, $matriculaId);
-        $paymentId = (string) ($pix['payment_id'] ?? '');
-        if ($paymentId === '' || ! str_starts_with($paymentId, 'pay_')) {
-            return;
-        }
-
-        try {
-            $payment = (new AsaasService($tenantId))->obterPagamento($paymentId);
-            if ($payment === []) {
-                if (($pix['status'] ?? '') === 'approved') {
-                    app(PagamentoPlanoService::class)->atualizarStatusMatricula($tenantId, $matriculaId);
-                }
-
-                return;
-            }
-
-            app(AsaasWebhookService::class)->processar([
-                'event' => 'PAYMENT_RECEIVED',
-                'id' => 'poll-'.$paymentId,
-                'payment' => $payment,
-            ], null);
-        } catch (\Throwable $e) {
-            Log::warning('verificarPagamento Asaas: '.$e->getMessage(), [
-                'tenant_id' => $tenantId,
-                'matricula_id' => $matriculaId,
-                'payment_id' => $paymentId,
-            ]);
-        }
     }
 
     /**

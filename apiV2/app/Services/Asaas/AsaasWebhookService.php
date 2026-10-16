@@ -4,6 +4,7 @@ namespace App\Services\Asaas;
 
 use App\Services\EncryptionService;
 use App\Services\PagamentoPlanoService;
+use App\Support\AsaasPagamentoStatus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -42,7 +43,14 @@ class AsaasWebhookService
         }
 
         $pix = DB::table('pagamentos_pix')->where('payment_id', $paymentId)->first();
-        $assinatura = $pix ? null : DB::table('assinaturas')->where('gateway_preference_id', $paymentId)->first();
+        $assinatura = DB::table('assinaturas')->where('gateway_preference_id', $paymentId)->first();
+        if (! $assinatura && $pix) {
+            $assinatura = DB::table('assinaturas')
+                ->where('tenant_id', (int) $pix->tenant_id)
+                ->where('matricula_id', (int) $pix->matricula_id)
+                ->orderByDesc('id')
+                ->first();
+        }
 
         $tenantId = (int) ($pix->tenant_id ?? $assinatura->tenant_id ?? 0);
         if ($tenantId <= 0) {
@@ -72,12 +80,19 @@ class AsaasWebhookService
         if ($matriculaId <= 0) {
             $matriculaId = $this->matriculaIdDaReferencia((string) ($payment['externalReference'] ?? ''));
         }
+        if (! $assinatura && $matriculaId > 0 && $tenantId > 0) {
+            $assinatura = DB::table('assinaturas')
+                ->where('tenant_id', $tenantId)
+                ->where('matricula_id', $matriculaId)
+                ->orderByDesc('id')
+                ->first();
+        }
 
         if ($matriculaId <= 0) {
             return ['status' => 200, 'body' => ['success' => true, 'received' => true, 'ignored' => 'matricula_nao_encontrada']];
         }
 
-        if ($pix && ($pix->status ?? '') === 'approved') {
+        if ($pix && AsaasPagamentoStatus::pago((string) ($pix->status ?? ''))) {
             $this->pagamentosPlano->atualizarStatusMatricula($tenantId, $matriculaId);
 
             return [
@@ -108,15 +123,10 @@ class AsaasWebhookService
             ->first();
 
         if ($parcela) {
-            $formaNome = strtoupper((string) ($payment['billingType'] ?? 'PIX')) === 'RECEIVED_IN_CASH'
-                ? 'dinheiro'
-                : 'pix';
-            $formaId = DB::table('formas_pagamento')
-                ->whereRaw('LOWER(nome) = ?', [$formaNome])
-                ->value('id')
-                ?: DB::table('formas_pagamento')->whereRaw('LOWER(nome) = ?', ['pix'])->value('id');
+            $formaId = $this->formaPagamentoId((string) ($payment['billingType'] ?? 'PIX'));
 
-            $dataPagamento = substr((string) ($payment['paymentDate'] ?? $payment['clientPaymentDate'] ?? date('Y-m-d')), 0, 10);
+            $dataPagamento = AsaasPagamentoStatus::dataPagamento($payment)
+                ?? substr((string) date('Y-m-d'), 0, 10);
 
             DB::table('pagamentos_plano')
                 ->where('id', $parcela->id)
@@ -233,6 +243,30 @@ class AsaasWebhookService
         }
 
         return in_array($event, self::EVENTOS_PAGOS, true);
+    }
+
+    private function formaPagamentoId(string $billingType): ?int
+    {
+        foreach (AsaasPagamentoStatus::formaPagamentoBusca($billingType) as $nome) {
+            $id = DB::table('formas_pagamento')->whereRaw('LOWER(nome) = ?', [$nome])->value('id');
+            if ($id) {
+                return (int) $id;
+            }
+        }
+
+        $billing = strtoupper(trim($billingType));
+        if (in_array($billing, ['CREDIT_CARD', 'DEBIT_CARD'], true)) {
+            $id = DB::table('formas_pagamento')
+                ->whereRaw("LOWER(nome) LIKE '%credito%' OR LOWER(nome) LIKE '%crédito%' OR LOWER(nome) LIKE '%cartao%' OR LOWER(nome) LIKE '%cartão%'")
+                ->value('id');
+            if ($id) {
+                return (int) $id;
+            }
+        }
+
+        $pixId = DB::table('formas_pagamento')->whereRaw('LOWER(nome) = ?', ['pix'])->value('id');
+
+        return $pixId ? (int) $pixId : null;
     }
 
     private function matriculaIdDaReferencia(string $ref): int

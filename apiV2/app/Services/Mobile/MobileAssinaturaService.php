@@ -2,8 +2,10 @@
 
 namespace App\Services\Mobile;
 
+use App\Services\Asaas\AsaasPagamentoSync;
 use App\Services\MercadoPagoService;
 use App\Support\AcademyDateTime;
+use App\Support\AsaasPagamentoStatus;
 use Illuminate\Support\Facades\DB;
 
 class MobileAssinaturaService
@@ -129,6 +131,25 @@ class MobileAssinaturaService
             }
 
             $isPendente = in_array($statusCodigo, ['pendente', 'pending'], true);
+            $pagamentoGateway = $this->sincronizarGatewayAsaasPendente(
+                $tenantId,
+                $matriculaId,
+                (string) ($row['gateway_nome'] ?? ''),
+                (string) ($row['gateway_preference_id'] ?? ''),
+                $isPendente,
+                $matriculaAtiva,
+            );
+            if (($pagamentoGateway['matricula_ativa'] ?? false) === true) {
+                $matriculaAtiva = true;
+                $statusCodigo = 'ativa';
+                $statusNome = 'Ativa';
+                $statusCor = '#16A34A';
+                $isPendente = false;
+            }
+            if (is_array($pagamentoGateway)) {
+                unset($pagamentoGateway['matricula_ativa']);
+            }
+
             $tipoCobranca = $row['tipo_cobranca'] ?? 'recorrente';
             $item = [
                 'id' => (int) $row['id'],
@@ -165,9 +186,13 @@ class MobileAssinaturaService
                     'modalidade' => $row['modalidade_nome'] ?? '',
                 ],
                 'pode_pagar' => false,
+                'pagamento_gateway' => $pagamentoGateway,
             ];
 
-            if ($isPendente && ! empty($row['payment_url'])) {
+            $asaasJaPago = is_array($pagamentoGateway)
+                && AsaasPagamentoStatus::pago((string) ($pagamentoGateway['status'] ?? ''));
+
+            if ($isPendente && ! empty($row['payment_url']) && ! $asaasJaPago) {
                 $item['payment_url'] = $row['payment_url'];
                 $item['pode_pagar'] = true;
             } elseif (
@@ -541,6 +566,8 @@ class MobileAssinaturaService
             return ['status' => 400, 'body' => ['success' => false, 'error' => 'matricula_id é obrigatório']];
         }
 
+        $snapshot = app(AsaasPagamentoSync::class)->sincronizar($tenantId, $matriculaId);
+
         $assinatura = DB::table('assinaturas as a')
             ->join('alunos as al', 'al.id', '=', 'a.aluno_id')
             ->leftJoin('assinatura_status as s', 's.id', '=', 'a.status_id')
@@ -614,6 +641,12 @@ class MobileAssinaturaService
                 's.codigo as status_codigo', 's.nome as status_nome',
             ]);
 
+        $asaasPago = AsaasPagamentoStatus::pago((string) ($snapshot['status'] ?? ''));
+        $gateway = $snapshot === [] ? null : array_merge($snapshot, [
+            'aguardando_ativacao' => $asaasPago,
+            'mensagem' => AsaasPagamentoStatus::mensagem($snapshot, false),
+        ]);
+
         return [
             'status' => 200,
             'body' => [
@@ -625,7 +658,11 @@ class MobileAssinaturaService
                     'status_gateway' => $pendente->status_gateway ?? 'pending',
                     'status_codigo' => $pendente->status_codigo ?? 'pendente',
                     'status_nome' => $pendente->status_nome ?? 'Pendente',
-                ] : null,
+                    'pagamento_gateway' => $gateway,
+                ] : [
+                    'matricula_id' => $matriculaId,
+                    'pagamento_gateway' => $gateway,
+                ],
             ],
         ];
     }
@@ -684,5 +721,42 @@ class MobileAssinaturaService
             'proxima_cobranca' => $proximaCobranca,
             'ultima_cobranca' => $ultimaCobranca,
         ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function sincronizarGatewayAsaasPendente(
+        int $tenantId,
+        int $matriculaId,
+        string $gatewayNome,
+        string $preferenceId,
+        bool $isPendente,
+        bool $matriculaAtiva,
+    ): ?array {
+        $temAsaas = str_contains(strtolower($gatewayNome), 'asaas')
+            || str_starts_with($preferenceId, 'pay_');
+        if ($matriculaId <= 0 || ! $temAsaas || (! $isPendente && $matriculaAtiva)) {
+            return null;
+        }
+
+        $snap = app(AsaasPagamentoSync::class)->sincronizar($tenantId, $matriculaId);
+        if ($snap === []) {
+            return null;
+        }
+
+        $statusMat = (string) (DB::table('matriculas as m')
+            ->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
+            ->where('m.id', $matriculaId)
+            ->where('m.tenant_id', $tenantId)
+            ->value('sm.codigo') ?? '');
+        $ativa = $statusMat === 'ativa';
+        $pago = AsaasPagamentoStatus::pago((string) ($snap['status'] ?? ''));
+
+        return array_merge($snap, [
+            'aguardando_ativacao' => $pago && ! $ativa,
+            'mensagem' => AsaasPagamentoStatus::mensagem($snap, $ativa),
+            'matricula_ativa' => $ativa,
+        ]);
     }
 }

@@ -51,6 +51,16 @@ interface GatewayAssinatura {
   nome: string;
 }
 
+interface PagamentoGatewayAssinatura {
+  provedor?: string | null;
+  status?: string | null;
+  status_label?: string | null;
+  data?: string | null;
+  data_formatada?: string | null;
+  aguardando_ativacao?: boolean;
+  mensagem?: string | null;
+}
+
 interface PlanoAssinatura {
   nome: string;
   modalidade: string;
@@ -80,6 +90,7 @@ interface Assinatura {
   pode_renovar?: boolean;
   motivo_pode_pagar?: string | null;
   pagamentos?: PagamentoAssinatura[] | null;
+  pagamento_gateway?: PagamentoGatewayAssinatura | null;
 }
 
 interface PacoteBeneficiario {
@@ -385,7 +396,15 @@ export default function MinhasAssinaturasScreen() {
       });
 
       const text = await response.text();
-      let json: { success?: boolean; message?: string; error?: string } = {};
+      let json: {
+        success?: boolean;
+        message?: string;
+        error?: string;
+        code?: string;
+        data?: {
+          pagamento_gateway?: PagamentoGatewayAssinatura | null;
+        };
+      } = {};
       try {
         json = text ? JSON.parse(text) : {};
       } catch {
@@ -409,10 +428,22 @@ export default function MinhasAssinaturasScreen() {
 
       await fetchAssinaturasCallback(baseUrl, { silent: true });
 
+      const gateway = json.data?.pagamento_gateway;
       if (json.success) {
         showErrorModal(
           "✅ Pagamento atualizado",
           json.message || "O status da matrícula foi conferido com o gateway.",
+          "success",
+        );
+      } else if (json.code === "AGUARDANDO_ATIVACAO" || gateway?.aguardando_ativacao) {
+        const titulo = gateway?.status_label
+          ? `${gateway.status_label}${gateway.data_formatada ? ` em ${gateway.data_formatada}` : ""}`
+          : "Pagamento reconhecido";
+        showErrorModal(
+          titulo,
+          gateway?.mensagem ||
+            json.message ||
+            "O Asaas já registrou este pagamento. Aguarde a ativação da matrícula.",
           "success",
         );
       } else {
@@ -729,16 +760,25 @@ export default function MinhasAssinaturasScreen() {
     const ultimaCobrancaText = formatDate(assinatura.ultima_cobranca);
     const temPagamentoAberto = pagamentos.some((p) => !isPagamentoPago(p));
     const temPagamentoPago = pagamentos.some(isPagamentoPago);
-    const podePagar = podePagarAssinatura(assinatura, pagamentos);
-    const statusBadgeLabel = assinatura.status.nome;
+    const gatewayPagamento = assinatura.pagamento_gateway;
+    const aguardandoAsaas = !!gatewayPagamento?.aguardando_ativacao;
+    const podePagar =
+      !aguardandoAsaas && podePagarAssinatura(assinatura, pagamentos);
+    const statusBadgeLabel = aguardandoAsaas
+      ? gatewayPagamento?.status_label || "Aguardando"
+      : assinatura.status.nome;
     const valorExibido = formatCurrency(assinatura.valor);
     const isPagamentoPendente =
       !isCancelada &&
+      !aguardandoAsaas &&
       (temPagamentoAberto || (isPendente && !temPagamentoPago));
-    const podeAtualizarPagamento = !isCancelada && (isPendente || isPagamentoPendente);
+    const podeAtualizarPagamento =
+      !isCancelada && (isPendente || isPagamentoPendente || aguardandoAsaas);
 
     const statusCodigo = assinatura.status.codigo.toLowerCase();
-    const statusTone = isPagamentoPendente
+    const statusTone = aguardandoAsaas
+      ? "success"
+      : isPagamentoPendente
       ? "warning"
       : statusCodigo === "ativa"
         ? "success"
@@ -759,7 +799,19 @@ export default function MinhasAssinaturasScreen() {
 
     return (
       <View style={[styles.card, isPagamentoPendente && styles.cardPendente]}>
-        {isPagamentoPendente ? (
+        {aguardandoAsaas ? (
+          <View style={styles.pendenteBanner}>
+            <Feather name="check-circle" size={16} color={ds.success} />
+            <Text style={styles.pendenteBannerText}>
+              {gatewayPagamento?.mensagem ||
+                `Pagamento ${gatewayPagamento?.status_label || "confirmado"} no Asaas${
+                  gatewayPagamento?.data_formatada
+                    ? ` em ${gatewayPagamento.data_formatada}`
+                    : ""
+                }. Aguarde a ativação da matrícula.`}
+            </Text>
+          </View>
+        ) : isPagamentoPendente ? (
           <View style={styles.pendenteBanner}>
             <Feather name="clock" size={16} color={ds.warning} />
             <Text style={styles.pendenteBannerText}>

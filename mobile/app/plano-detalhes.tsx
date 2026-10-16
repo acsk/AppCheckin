@@ -495,6 +495,7 @@ export default function PlanoDetalhesScreen() {
         typeof json?.data?.status_codigo === "string"
           ? json.data.status_codigo.toLowerCase()
           : null;
+      const gateway = json?.data?.pagamento_gateway;
       const aprovado =
         json?.approved === true ||
         statusGateway === "approved" ||
@@ -505,6 +506,18 @@ export default function PlanoDetalhesScreen() {
         setPixModalVisible(false);
         setPixStatusMessage(null);
         router.replace("/minhas-assinaturas");
+        return;
+      }
+
+      if (gateway?.aguardando_ativacao) {
+        setPixStatusMessage(
+          gateway.mensagem ||
+            `PIX ${gateway.status_label || "recebido"} no Asaas. Aguarde a ativação da matrícula.`,
+        );
+        setPixPollingActive(true);
+        if (manual) {
+          setPixWaitSeconds(0);
+        }
         return;
       }
 

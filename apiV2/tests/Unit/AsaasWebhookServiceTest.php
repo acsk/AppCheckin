@@ -77,6 +77,7 @@ class AsaasWebhookServiceTest extends TestCase
         DB::table('formas_pagamento')->insert([
             ['id' => 1, 'nome' => 'pix'],
             ['id' => 2, 'nome' => 'dinheiro'],
+            ['id' => 3, 'nome' => 'credito a vista'],
         ]);
         DB::table('tipos_baixa')->insert(['id' => 4, 'nome' => 'Integração']);
         DB::table('assinatura_status')->insert(['id' => 1, 'codigo' => 'paga']);
@@ -185,6 +186,43 @@ class AsaasWebhookServiceTest extends TestCase
         $this->assertSame(200, $result['status']);
         $this->assertSame('PAYMENT_UPDATED', $result['body']['ignored']);
         $this->assertSame('pending', DB::table('pagamentos_pix')->value('status'));
+    }
+
+    public function test_cartao_confirmed_baixa_sem_pix_e_sem_receber_cobranca(): void
+    {
+        DB::table('pagamentos_pix')->delete();
+        DB::table('assinaturas')->where('matricula_id', 189)->update([
+            'gateway_preference_id' => 'pay_cartao_confirmed',
+            'status_gateway' => 'pending',
+        ]);
+        DB::table('pagamentos_plano')->where('matricula_id', 189)->update([
+            'status_pagamento_id' => 1,
+            'data_pagamento' => null,
+            'forma_pagamento_id' => null,
+        ]);
+
+        $pagamentos = Mockery::mock(PagamentoPlanoService::class);
+        $pagamentos->shouldReceive('atualizarStatusMatricula')->once()->with(3, 189);
+
+        $service = new AsaasWebhookService($pagamentos, new EncryptionService());
+        $result = $service->processar([
+            'event' => 'PAYMENT_CONFIRMED',
+            'payment' => [
+                'id' => 'pay_cartao_confirmed',
+                'status' => 'CONFIRMED',
+                'billingType' => 'CREDIT_CARD',
+                'externalReference' => 'MAT-189-abc',
+                'confirmedDate' => '2026-10-16',
+            ],
+        ], null);
+
+        $this->assertSame(200, $result['status']);
+        $this->assertSame(189, $result['body']['matricula_id']);
+        $parcela = DB::table('pagamentos_plano')->first();
+        $this->assertSame(2, (int) $parcela->status_pagamento_id);
+        $this->assertSame('2026-10-16', $parcela->data_pagamento);
+        $this->assertSame(3, (int) $parcela->forma_pagamento_id);
+        $this->assertSame('approved', DB::table('assinaturas')->value('status_gateway'));
     }
 
     public function test_payload_invalido_retorna_400(): void

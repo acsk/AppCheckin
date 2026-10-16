@@ -112,6 +112,17 @@ test("mantém assinatura ativa sem pagamentos e esconde pendente sem fatura", ()
     ).length,
     0,
   );
+  assert.equal(
+    criarCardsAssinaturas(
+      [{
+        ...semPagamentos,
+        status: { codigo: "pendente" },
+        pagamento_gateway: { aguardando_ativacao: true },
+      }],
+      hoje,
+    ).length,
+    1,
+  );
 });
 
 test("checkout pendente precisa de link; status pago numérico dispensa data", () => {

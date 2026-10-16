@@ -49,6 +49,7 @@ interface AssinaturaFinanceiro {
   pode_pagar?: boolean;
   pode_renovar?: boolean;
   payment_url?: string | null;
+  pagamento_gateway?: { aguardando_ativacao?: boolean } | null;
 }
 
 export function criarCardsAssinaturas<T extends AssinaturaFinanceiro>(
@@ -60,7 +61,8 @@ export function criarCardsAssinaturas<T extends AssinaturaFinanceiro>(
     const codigo = assinatura.status.codigo.toLowerCase();
     if (
       pagamentos.length === 0 &&
-      (codigo === "pendente" || codigo === "pending")
+      (codigo === "pendente" || codigo === "pending") &&
+      !assinatura.pagamento_gateway?.aguardando_ativacao
     ) {
       return [];
     }
