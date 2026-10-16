@@ -74,6 +74,30 @@ class V2SuperAdminAcademiasRoutesTest extends TestCase
             ->assertJsonPath('message', 'Academia e administrador criados com sucesso');
     }
 
+    public function test_listar_admins_da_academia(): void
+    {
+        $token = $this->tokenParaPapel(4);
+
+        $service = Mockery::mock(\App\Services\SuperAdmin\SuperAdminAcademiaService::class);
+        $service->shouldReceive('listarAdminsAcademia')
+            ->once()
+            ->with(3, Mockery::type('array'), 5)
+            ->andReturn([
+                'status' => 200,
+                'body' => [
+                    'admins' => [['id' => 10, 'nome' => 'Admin Teste']],
+                    'total' => 1,
+                ],
+            ]);
+        $this->app->instance(\App\Services\SuperAdmin\SuperAdminAcademiaService::class, $service);
+
+        $this->getJson('/v2/superadmin/academias/3/admins', [
+            'Authorization' => 'Bearer '.$token,
+        ])
+            ->assertOk()
+            ->assertJsonPath('admins.0.nome', 'Admin Teste');
+    }
+
     private function tokenParaPapel(int $papelId): string
     {
         config(['appcheckin.jwt_secret' => 'test-secret-key-with-enough-length-for-hs256-algorithm']);

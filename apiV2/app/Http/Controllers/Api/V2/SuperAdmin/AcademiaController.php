@@ -48,38 +48,77 @@ class AcademiaController extends Controller
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }
 
-    public function listarAdmins(int $tenantId): JsonResponse
+    public function listarAdmins(Request $request, int $tenantId): JsonResponse
     {
-        $result = $this->service->listarAdmins($tenantId);
+        $result = $this->service->listarAdminsAcademia(
+            $tenantId,
+            $this->usuario($request),
+            $this->userId($request),
+        );
 
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }
 
     public function criarAdmin(Request $request, int $tenantId): JsonResponse
     {
-        $result = $this->service->criarAdmin($tenantId, $request->all());
+        $result = $this->service->criarAdminAcademia(
+            $tenantId,
+            $request->all(),
+            $this->usuario($request),
+            $this->userId($request),
+        );
 
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }
 
     public function atualizarAdmin(Request $request, int $tenantId, int $adminId): JsonResponse
     {
-        $result = $this->service->atualizarAdmin($tenantId, $adminId, $request->all());
+        $result = $this->service->atualizarAdminAcademia(
+            $tenantId,
+            $adminId,
+            $request->all(),
+            $this->usuario($request),
+            $this->userId($request),
+        );
 
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }
 
     public function desativarAdmin(Request $request, int $tenantId, int $adminId): JsonResponse
     {
-        $result = $this->service->desativarAdmin($tenantId, $adminId, $request->all());
+        $result = $this->service->desativarAdminAcademia(
+            $tenantId,
+            $adminId,
+            $request->all(),
+            $this->usuario($request),
+            $this->userId($request),
+        );
 
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }
 
-    public function reativarAdmin(int $tenantId, int $adminId): JsonResponse
+    public function reativarAdmin(Request $request, int $tenantId, int $adminId): JsonResponse
     {
-        $result = $this->service->reativarAdmin($tenantId, $adminId);
+        $result = $this->service->reativarAdminAcademia(
+            $tenantId,
+            $adminId,
+            $this->usuario($request),
+            $this->userId($request),
+        );
 
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
+    /** @return array<string, mixed>|null */
+    private function usuario(Request $request): ?array
+    {
+        $usuario = $request->attributes->get('usuario');
+
+        return is_array($usuario) ? $usuario : null;
+    }
+
+    private function userId(Request $request): int
+    {
+        return (int) $request->attributes->get('userId', 0);
     }
 }
