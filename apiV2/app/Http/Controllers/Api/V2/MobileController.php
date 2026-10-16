@@ -521,6 +521,23 @@ class MobileController extends Controller
         }
     }
 
+    public function simularTaxaCartao(Request $request): JsonResponse
+    {
+        try {
+            $result = $this->pagamento->simularTaxaCartao(
+                $this->tenantId($request),
+                $request->all(),
+                PaymentSandboxAccess::fromRequest($request),
+            );
+
+            return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+        } catch (\Throwable $e) {
+            Log::error('simularTaxaCartao v2: '.$e->getMessage());
+
+            return MobileResponse::serverError('Erro ao simular taxa do cartão', $e->getMessage());
+        }
+    }
+
     public function gerarPagamentoPix(Request $request): JsonResponse
     {
         try {

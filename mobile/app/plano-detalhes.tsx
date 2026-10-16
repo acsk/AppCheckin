@@ -31,12 +31,14 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import AppHeader from "@/src/components/ds/AppHeader";
 import CheckoutRedirectModal from "@/src/components/ds/CheckoutRedirectModal";
 import PaymentMethodOptions from "@/src/components/ds/PaymentMethodOptions";
+import TaxaCartaoConfirmSheet from "@/src/components/ds/TaxaCartaoConfirmSheet";
 import { ds } from "@/src/components/ds/tokens";
 import {
   opcoesPagamentoVisiveis,
   rotuloPagarMetodo,
   type MetodoPagamentoOpcao,
 } from "@/src/utils/metodosPagamento";
+import { simularTaxaCartao, type TaxaCartaoSimulacao } from "@/src/utils/taxaCartao";
 interface Ciclo {
   id: number;
   nome: string;
@@ -115,6 +117,7 @@ interface MigracaoSimulacao {
   };
   valor_parcela_formatado?: string;
   valor_parcela?: number;
+  taxa_cartao?: TaxaCartaoSimulacao | null;
 }
 
 interface ErrorModalData {
@@ -176,6 +179,12 @@ export default function PlanoDetalhesScreen() {
     MetodoPagamentoOpcao | null
   >(null);
   const [confirmandoMigracao, setConfirmandoMigracao] = useState(false);
+  const [taxaCartaoVisible, setTaxaCartaoVisible] = useState(false);
+  const [taxaCartaoSimulacao, setTaxaCartaoSimulacao] =
+    useState<TaxaCartaoSimulacao | null>(null);
+  const [taxaCartaoGateway, setTaxaCartaoGateway] = useState<string | undefined>();
+  const [taxaCartaoConfirmando, setTaxaCartaoConfirmando] = useState(false);
+  const [paymentTarifa, setPaymentTarifa] = useState<TaxaCartaoSimulacao | null>(null);
   const pixCheckRunning = useRef(false);
 
   useEffect(() => {
@@ -406,10 +415,12 @@ export default function PlanoDetalhesScreen() {
     url: string,
     provider?: string | null,
     metodo?: string | null,
+    tarifa?: TaxaCartaoSimulacao | null,
   ) => {
     setPaymentUrlToOpen(url);
     setPaymentProvider(provider ?? null);
     setPaymentMetodo(metodo ?? null);
+    setPaymentTarifa(tarifa ?? null);
     setRedirectModalVisible(true);
   };
 
@@ -418,6 +429,7 @@ export default function PlanoDetalhesScreen() {
     setPaymentUrlToOpen(null);
     setPaymentProvider(null);
     setPaymentMetodo(null);
+    setPaymentTarifa(null);
   };
 
   const irParaCheckout = async () => {
@@ -654,6 +666,7 @@ export default function PlanoDetalhesScreen() {
       paymentUrl,
       data.data?.gateway || data.data?.provider || migrarResult.gateway,
       metodo,
+      data.data?.tarifa_cartao || migracaoSimulacao?.taxa_cartao || null,
     );
   };
 
@@ -693,7 +706,29 @@ export default function PlanoDetalhesScreen() {
       throw new Error(simData.message || "Não foi possível simular a migração");
     }
 
-    setMigracaoSimulacao(simData.data || null);
+    const simulacao = simData.data || null;
+    if (
+      metodo === "cartao" &&
+      simulacao &&
+      Number(simulacao.valor_parcela ?? 0) > 0
+    ) {
+      const taxaRes = await simularTaxaCartao({
+        apiUrl,
+        token,
+        valor: Number(simulacao.valor_parcela),
+        escolherGateway,
+        onEscolherGateway,
+        podeSandbox: podeSandboxPix,
+      });
+      if (taxaRes.cancelled) {
+        return;
+      }
+      if (taxaRes.ok && taxaRes.json?.data) {
+        simulacao.taxa_cartao = taxaRes.json.data;
+      }
+    }
+
+    setMigracaoSimulacao(simulacao);
     setMigracaoMetodoPendente(metodo);
     setMigracaoModalVisible(true);
   };
@@ -727,7 +762,10 @@ export default function PlanoDetalhesScreen() {
     }
   };
 
-  const handleContratar = async (metodo: MetodoPagamentoOpcao = "cartao") => {
+  const handleContratar = async (
+    metodo: MetodoPagamentoOpcao = "cartao",
+    opcoes?: { jaSimulouTaxa?: boolean; gateway?: string },
+  ) => {
     if (!plano || !selectedCicloId) return;
 
     const selectedCiclo = plano.ciclos?.find((c) => c.id === selectedCicloId);
@@ -782,6 +820,39 @@ export default function PlanoDetalhesScreen() {
       const userJson = await AsyncStorage.getItem("@appcheckin:user");
       if (!userJson) throw new Error("Dados do usuário não encontrados");
 
+      let gateway = opcoes?.gateway;
+      if (metodo === "cartao" && !opcoes?.jaSimulouTaxa) {
+        const taxaRes = await simularTaxaCartao({
+          apiUrl,
+          token,
+          valor: Number(selectedCiclo.valor),
+          escolherGateway,
+          onEscolherGateway,
+          podeSandbox: podeSandboxPix,
+        });
+        if (taxaRes.cancelled) {
+          return;
+        }
+        if (!taxaRes.ok) {
+          showErrorModal(
+            "⚠️ Taxa do cartão",
+            taxaRes.json?.message ||
+              taxaRes.json?.error ||
+              "Não foi possível simular a taxa do cartão.",
+            "warning",
+          );
+          return;
+        }
+        const taxa = taxaRes.json?.data as TaxaCartaoSimulacao | undefined;
+        gateway = taxaRes.gateway || taxa?.provider;
+        if (taxa?.aplica_repasse) {
+          setTaxaCartaoSimulacao(taxa);
+          setTaxaCartaoGateway(gateway);
+          setTaxaCartaoVisible(true);
+          return;
+        }
+      }
+
       const compraResult = await postComRetryGateway({
         url: `${apiUrl}/mobile/comprar-plano`,
         token,
@@ -789,6 +860,7 @@ export default function PlanoDetalhesScreen() {
           plano_id: plano.id,
           plano_ciclo_id: selectedCiclo.id,
           metodo_pagamento: metodo,
+          ...(gateway ? { gateway } : {}),
         },
         escolherGateway,
         onEscolherGateway,
@@ -856,6 +928,7 @@ export default function PlanoDetalhesScreen() {
         paymentUrl,
         data.data?.gateway || data.data?.provider || compraResult.gateway,
         metodo,
+        data.data?.tarifa_cartao || null,
       );
     } catch (err) {
       const errorMsg =
@@ -1434,10 +1507,22 @@ export default function PlanoDetalhesScreen() {
                     {migracaoSimulacao.credito.motivo}
                   </Text>
                 )}
+              {migracaoSimulacao?.taxa_cartao?.aplica_repasse ? (
+                <>
+                  <Text style={styles.migracaoLinha}>
+                    Plano / diferença: {migracaoSimulacao.taxa_cartao.valor_plano_formatado}
+                  </Text>
+                  <Text style={styles.migracaoLinha}>
+                    Taxa do cartão (Asaas): {migracaoSimulacao.taxa_cartao.tarifa_formatada}
+                  </Text>
+                </>
+              ) : null}
               <View style={styles.migracaoPagarBox}>
                 <Text style={styles.migracaoPagarLabel}>Você paga agora</Text>
                 <Text style={styles.migracaoPagarValor}>
-                  {migracaoSimulacao?.valor_parcela_formatado || "R$ 0,00"}
+                  {migracaoSimulacao?.taxa_cartao?.aplica_repasse
+                    ? migracaoSimulacao.taxa_cartao.valor_cobrar_formatado
+                    : migracaoSimulacao?.valor_parcela_formatado || "R$ 0,00"}
                 </Text>
               </View>
             </View>
@@ -1473,9 +1558,11 @@ export default function PlanoDetalhesScreen() {
                   <Text style={styles.modalButtonText} numberOfLines={1}>
                     {Number(migracaoSimulacao?.valor_parcela ?? 0) <= 0
                       ? "Confirmar migração"
-                      : migracaoSimulacao?.valor_parcela_formatado
-                        ? `Pagar ${migracaoSimulacao.valor_parcela_formatado}`
-                        : "Confirmar"}
+                      : migracaoSimulacao?.taxa_cartao?.aplica_repasse
+                        ? `Pagar ${migracaoSimulacao.taxa_cartao.valor_cobrar_formatado}`
+                        : migracaoSimulacao?.valor_parcela_formatado
+                          ? `Pagar ${migracaoSimulacao.valor_parcela_formatado}`
+                          : "Confirmar"}
                   </Text>
                 )}
               </TouchableOpacity>
@@ -1546,6 +1633,7 @@ export default function PlanoDetalhesScreen() {
         url={paymentUrlToOpen}
         provider={paymentProvider}
         metodo={paymentMetodo}
+        tarifaCartao={paymentTarifa}
         resumo={(() => {
           const c = plano?.ciclos?.find((item) => item.id === selectedCicloId);
           return {
@@ -1558,6 +1646,33 @@ export default function PlanoDetalhesScreen() {
           void irParaCheckout();
         }}
         onClose={fecharCheckout}
+      />
+
+      <TaxaCartaoConfirmSheet
+        visible={taxaCartaoVisible}
+        simulacao={taxaCartaoSimulacao}
+        tituloPlano={[plano?.nome, selectedCiclo?.nome].filter(Boolean).join(" · ") || null}
+        loading={taxaCartaoConfirmando}
+        onClose={() => {
+          if (!taxaCartaoConfirmando) {
+            setTaxaCartaoVisible(false);
+            setTaxaCartaoSimulacao(null);
+          }
+        }}
+        onConfirm={() => {
+          void (async () => {
+            setTaxaCartaoConfirmando(true);
+            setTaxaCartaoVisible(false);
+            try {
+              await handleContratar("cartao", {
+                jaSimulouTaxa: true,
+                gateway: taxaCartaoGateway,
+              });
+            } finally {
+              setTaxaCartaoConfirmando(false);
+            }
+          })();
+        }}
       />
 
       {/* PIX: folha inferior do design system */}

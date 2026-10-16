@@ -19,7 +19,13 @@ import { ds, space } from "./tokens";
 
 type FeatherName = React.ComponentProps<typeof Feather>["name"];
 
-export type PayResumo = { titulo?: string | null; subtitulo?: string | null; valor?: string | null };
+export type PayResumoLinha = { label: string; valor: string; destaque?: boolean };
+export type PayResumo = {
+  titulo?: string | null;
+  subtitulo?: string | null;
+  valor?: string | null;
+  linhas?: PayResumoLinha[] | null;
+};
 
 type Props = React.PropsWithChildren<{
   visible: boolean;
@@ -109,21 +115,38 @@ export default function PaySheet({
 
         <ScrollView style={styles.scroll} contentContainerStyle={styles.body} bounces={false}>
           {description ? <Text style={styles.description}>{description}</Text> : null}
-          {resumo && (resumo.titulo || resumo.valor) ? (
-            <View style={styles.paysum}>
-              <View style={{ flex: 1, minWidth: 0 }}>
-                {resumo.titulo ? (
-                  <Text style={styles.paysumTitle} numberOfLines={1}>
-                    {resumo.titulo}
-                  </Text>
-                ) : null}
-                {resumo.subtitulo ? (
-                  <Text style={styles.paysumSub} numberOfLines={1}>
-                    {resumo.subtitulo}
-                  </Text>
-                ) : null}
-              </View>
-              {resumo.valor ? <Text style={styles.paysumValue}>{resumo.valor}</Text> : null}
+          {resumo && (resumo.titulo || resumo.valor || (resumo.linhas && resumo.linhas.length > 0)) ? (
+            <View style={[styles.paysum, resumo.linhas?.length ? styles.paysumStacked : null]}>
+              {resumo.titulo || resumo.subtitulo ? (
+                <View style={{ flex: 1, minWidth: 0 }}>
+                  {resumo.titulo ? (
+                    <Text style={styles.paysumTitle} numberOfLines={1}>
+                      {resumo.titulo}
+                    </Text>
+                  ) : null}
+                  {resumo.subtitulo ? (
+                    <Text style={styles.paysumSub} numberOfLines={1}>
+                      {resumo.subtitulo}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
+              {resumo.linhas && resumo.linhas.length > 0 ? (
+                <View style={styles.paysumLines}>
+                  {resumo.linhas.map((linha) => (
+                    <View key={linha.label} style={styles.paysumLine}>
+                      <Text style={linha.destaque ? styles.paysumLineLabelStrong : styles.paysumLineLabel}>
+                        {linha.label}
+                      </Text>
+                      <Text style={linha.destaque ? styles.paysumValue : styles.paysumLineValor}>
+                        {linha.valor}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ) : resumo.valor ? (
+                <Text style={styles.paysumValue}>{resumo.valor}</Text>
+              ) : null}
             </View>
           ) : null}
           {children}
@@ -252,6 +275,12 @@ const styles = StyleSheet.create({
   },
   paysumTitle: { fontSize: 15, lineHeight: 20, fontWeight: "800", color: ds.ink },
   paysumSub: { fontSize: 13, lineHeight: 18, fontWeight: "600", color: ds.inkMuted },
+  paysumStacked: { flexDirection: "column", alignItems: "stretch", gap: space[3] },
+  paysumLines: { gap: 8, width: "100%" },
+  paysumLine: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: space[3] },
+  paysumLineLabel: { fontSize: 13, lineHeight: 18, fontWeight: "600", color: ds.inkMuted, flex: 1 },
+  paysumLineLabelStrong: { fontSize: 14, lineHeight: 18, fontWeight: "800", color: ds.ink, flex: 1 },
+  paysumLineValor: { fontSize: 14, lineHeight: 18, fontWeight: "700", color: ds.ink, fontVariant: ["tabular-nums"] },
   paysumValue: { fontSize: 20, lineHeight: 24, fontWeight: "900", letterSpacing: -0.4, color: ds.ink, fontVariant: ["tabular-nums"] },
   footer: { paddingHorizontal: space[5], paddingTop: space[2], gap: space[2] },
   secure: { flexDirection: "row", alignItems: "flex-start", gap: 8, marginBottom: space[2] },

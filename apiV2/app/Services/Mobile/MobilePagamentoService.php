@@ -4,6 +4,7 @@ namespace App\Services\Mobile;
 
 use App\Support\ReferenciaExterna;
 use App\Repositories\MatriculaRepository;
+use App\Services\Asaas\AsaasService;
 use App\Services\PagamentoPlanoService;
 use App\Services\Payment\PaymentGatewayFactory;
 use App\Support\AssinaturaGateway;
@@ -19,6 +20,97 @@ class MobilePagamentoService
         private readonly PagamentoPlanoService $pagamentosPlano,
         private readonly PaymentGatewayFactory $gateways,
     ) {}
+
+    /**
+     * Simula a tarifa de cartão Asaas sem criar cobrança (para o app mostrar o total antes do checkout).
+     *
+     * @param  array<string, mixed>  $body
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function simularTaxaCartao(?int $tenantId, array $body, bool $podeSandbox = false): array
+    {
+        if (! $tenantId) {
+            return ['status' => 400, 'body' => ['success' => false, 'error' => 'Nenhum tenant selecionado']];
+        }
+
+        $valor = round((float) ($body['valor'] ?? 0), 2);
+        if ($valor <= 0) {
+            return [
+                'status' => 400,
+                'body' => [
+                    'success' => false,
+                    'code' => 'VALOR_OBRIGATORIO',
+                    'error' => 'Informe o valor do plano para simular a taxa do cartão.',
+                    'message' => 'Informe o valor do plano para simular a taxa do cartão.',
+                ],
+            ];
+        }
+
+        $escolha = $this->gateways->resolverMetodo(
+            $tenantId,
+            $podeSandbox,
+            'cartao',
+            isset($body['gateway']) ? (string) $body['gateway'] : (isset($body['provider']) ? (string) $body['provider'] : null)
+        );
+        if (! ($escolha['ok'] ?? false)) {
+            return [
+                'status' => (int) ($escolha['status'] ?? 400),
+                'body' => [
+                    'success' => false,
+                    'code' => $escolha['code'] ?? 'SEM_GATEWAY',
+                    'error' => $escolha['error'] ?? 'Nenhum provedor de cartão disponível.',
+                    'message' => $escolha['error'] ?? 'Nenhum provedor de cartão disponível.',
+                    'gateways' => $escolha['gateways'] ?? [],
+                ],
+            ];
+        }
+
+        $provider = (string) ($escolha['provider'] ?? '');
+        $payload = $this->payloadTaxaCartao($provider, $valor, null);
+        if ($provider === 'asaas') {
+            try {
+                $asaas = $escolha['instance'] instanceof AsaasService
+                    ? $escolha['instance']
+                    : new AsaasService($tenantId);
+                $payload = $this->payloadTaxaCartao($provider, $valor, $asaas->valorComTaxaCartaoRepassada($valor));
+            } catch (\Throwable $e) {
+                Log::warning('simularTaxaCartao: '.$e->getMessage(), ['tenant_id' => $tenantId]);
+                $payload['aviso'] = 'Não foi possível consultar a taxa agora. O valor do plano será usado.';
+            }
+        }
+
+        return [
+            'status' => 200,
+            'body' => [
+                'success' => true,
+                'data' => $payload,
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $repasse
+     * @return array<string, mixed>
+     */
+    public static function payloadTaxaCartao(string $provider, float $valorPlano, ?array $repasse): array
+    {
+        $valorPlano = round($valorPlano, 2);
+        $cobrar = $repasse !== null ? round((float) ($repasse['valor_cobrar'] ?? $valorPlano), 2) : $valorPlano;
+        $tarifa = $repasse !== null ? round((float) ($repasse['tarifa'] ?? max(0, $cobrar - $valorPlano)), 2) : 0.0;
+
+        return [
+            'provider' => $provider,
+            'aplica_repasse' => $provider === 'asaas' && $tarifa > 0.001,
+            'valor_plano' => $valorPlano,
+            'valor_plano_formatado' => 'R$ '.number_format($valorPlano, 2, ',', '.'),
+            'tarifa' => $tarifa,
+            'tarifa_formatada' => 'R$ '.number_format($tarifa, 2, ',', '.'),
+            'valor_cobrar' => $cobrar,
+            'valor_cobrar_formatado' => 'R$ '.number_format($cobrar, 2, ',', '.'),
+            'fee_percentage' => is_array($repasse) ? ($repasse['fee_percentage'] ?? null) : null,
+            'operation_fee' => is_array($repasse) ? ($repasse['operation_fee'] ?? null) : null,
+        ];
+    }
 
     /**
      * @param  array<string, mixed>  $body

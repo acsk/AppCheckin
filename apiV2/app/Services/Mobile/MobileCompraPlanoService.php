@@ -506,6 +506,8 @@ class MobileCompraPlanoService
             $tipoPagamento = 'pagamento_unico';
             $pixData = null;
             $mpError = null;
+            $tarifaCartao = null;
+            $valorPlanoCobranca = $valorCompra;
             $externalReference = ReferenciaExterna::matricula($matriculaId);
 
             try {
@@ -535,6 +537,24 @@ class MobileCompraPlanoService
                         $paymentUrl = $preferencia['ticket_url'] ?? null;
                         $preferenceId = $preferencia['id'] ?? null;
                         $externalReference = $preferencia['external_reference'] ?? $externalReference;
+                        $valorCobranca = (float) ($preferencia['valor'] ?? $valorCompra);
+                        if (! empty($preferencia['tarifa_cartao']) && is_array($preferencia['tarifa_cartao'])) {
+                            $tarifaCartao = MobilePagamentoService::payloadTaxaCartao(
+                                $provider,
+                                (float) ($preferencia['valor_plano'] ?? $valorPlanoCobranca),
+                                $preferencia['tarifa_cartao']
+                            );
+                        }
+                        if ($valorCobranca > $valorCompra + 0.001) {
+                            $tarifa = (float) ($preferencia['tarifa_cartao']['tarifa'] ?? ($valorCobranca - $valorCompra));
+                            $this->pagamentosPlano->atualizarValorParcelaAberta(
+                                $tenantId,
+                                $matriculaId,
+                                $valorCobranca,
+                                sprintf('[Taxa cartão Asaas R$ %s embutida no valor]', number_format($tarifa, 2, ',', '.'))
+                            );
+                            $valorCompra = $valorCobranca;
+                        }
                     } else {
                         $preferencia = $mp->criarPreferenciaPagamento($dadosPagamento);
                         $tipoPagamento = 'pagamento_unico';
@@ -575,6 +595,7 @@ class MobileCompraPlanoService
                     'modalidade' => $plano['modalidade_nome'],
                     'valor' => $valorCompra,
                     'valor_formatado' => 'R$ '.number_format($valorCompra, 2, ',', '.'),
+                    'tarifa_cartao' => $tarifaCartao,
                     'status' => 'pendente',
                     'data_inicio' => $dataInicio,
                     'data_vencimento' => $proximaDataVencimento->format('Y-m-d'),

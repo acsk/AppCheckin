@@ -1019,6 +1019,7 @@ class MatriculaMigracaoService
         $preferenceId = null;
         $tipoPagamento = 'pagamento_unico';
         $pixData = null;
+        $tarifaCartao = null;
         $externalReference = ReferenciaExterna::matricula($matriculaId);
         $provider = (string) ($escolhaGateway['provider'] ?? 'mercadopago');
         $gatewayInstance = $escolhaGateway['instance'] ?? app()->makeWith(MercadoPagoService::class, ['tenantId' => $tenantId]);
@@ -1051,6 +1052,24 @@ class MatriculaMigracaoService
                 $paymentUrl = $preferencia['ticket_url'] ?? null;
                 $preferenceId = $preferencia['id'] ?? null;
                 $externalReference = $preferencia['external_reference'] ?? $externalReference;
+                $valorCobranca = (float) ($preferencia['valor'] ?? $valorParcela);
+                if (! empty($preferencia['tarifa_cartao']) && is_array($preferencia['tarifa_cartao'])) {
+                    $tarifaCartao = \App\Services\Mobile\MobilePagamentoService::payloadTaxaCartao(
+                        $provider,
+                        (float) ($preferencia['valor_plano'] ?? $valorParcela),
+                        $preferencia['tarifa_cartao']
+                    );
+                }
+                if ($valorCobranca > $valorParcela + 0.001) {
+                    $tarifa = (float) ($preferencia['tarifa_cartao']['tarifa'] ?? ($valorCobranca - $valorParcela));
+                    $this->pagamentosPlano->atualizarValorParcelaAberta(
+                        $tenantId,
+                        $matriculaId,
+                        $valorCobranca,
+                        sprintf('[Taxa cartão Asaas R$ %s embutida no valor]', number_format($tarifa, 2, ',', '.'))
+                    );
+                    $valorParcela = $valorCobranca;
+                }
             } else {
                 $preferencia = ($mp ?? new MercadoPagoService($tenantId))->criarPreferenciaPagamento($dadosPagamento);
                 $tipoPagamento = 'pagamento_unico';
@@ -1152,6 +1171,7 @@ class MatriculaMigracaoService
                 'gateway' => $provider,
                 'provider' => $provider,
                 'gateway_nome' => $provider === 'asaas' ? 'Asaas' : 'Mercado Pago',
+                'tarifa_cartao' => $tarifaCartao,
                 'pix' => $pixData ? [
                     'payment_id' => $pixData['id'] ?? null,
                     'status' => $pixData['status'] ?? null,

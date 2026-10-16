@@ -141,6 +141,21 @@ class V2MobileRoutesTest extends TestCase
             ->assertJsonPath('code', 'PLANO_OBRIGATORIO');
     }
 
+    public function test_simular_taxa_cartao_requires_jwt(): void
+    {
+        $this->postJson('/v2/mobile/simular-taxa-cartao', ['valor' => 120])
+            ->assertUnauthorized();
+    }
+
+    public function test_simular_taxa_cartao_requires_valor(): void
+    {
+        $this->postJson('/v2/mobile/simular-taxa-cartao', [], [
+            'Authorization' => 'Bearer '.$this->bearerToken(),
+        ])
+            ->assertStatus(400)
+            ->assertJsonPath('code', 'VALOR_OBRIGATORIO');
+    }
+
     public function test_pagamento_pix_requires_matricula_id(): void
     {
         $this->postJson('/v2/mobile/pagamento/pix', [], [

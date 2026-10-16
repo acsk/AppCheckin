@@ -110,6 +110,33 @@ class PagamentoPlanoService
         ]);
     }
 
+    public function atualizarValorParcelaAberta(int $tenantId, int $matriculaId, float $valor, ?string $observacaoExtra = null): int
+    {
+        $id = DB::table('pagamentos_plano')
+            ->where('tenant_id', $tenantId)
+            ->where('matricula_id', $matriculaId)
+            ->whereIn('status_pagamento_id', StatusPagamentoPlano::EM_ABERTO)
+            ->whereNull('data_pagamento')
+            ->orderByDesc('id')
+            ->value('id');
+        if (! $id) {
+            return 0;
+        }
+
+        $campos = [
+            'valor' => round($valor, 2),
+            'updated_at' => now(),
+        ];
+        if ($observacaoExtra) {
+            $obs = (string) (DB::table('pagamentos_plano')->where('id', $id)->value('observacoes') ?? '');
+            if (! str_contains($obs, $observacaoExtra)) {
+                $campos['observacoes'] = trim($obs.' '.$observacaoExtra);
+            }
+        }
+
+        return DB::table('pagamentos_plano')->where('id', $id)->where('tenant_id', $tenantId)->update($campos);
+    }
+
     public function atualizarStatusMatricula(int $tenantId, int $matriculaId): void
     {
         $matriculaMeta = DB::table('matriculas as m')

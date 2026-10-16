@@ -5,6 +5,7 @@ namespace App\Services\Asaas;
 use App\Services\EncryptionService;
 use App\Support\AcademyDateTime;
 use App\Support\AsaasApiKey;
+use App\Support\AsaasTarifaCartao;
 use App\Support\ReferenciaExterna;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -138,12 +139,34 @@ class AsaasService
             $billingType = count($tiposCheckout) === 1 ? $tiposCheckout[0] : 'UNDEFINED';
         }
         $dueDate = AcademyDateTime::today();
+        $valorPlano = round((float) $data['valor'], 2);
+        $valorCobranca = $valorPlano;
+        $tarifaCartao = null;
+        $descricao = (string) ($data['descricao'] ?? $data['plano_nome'] ?? 'Pagamento');
+        if ($billingType === 'CREDIT_CARD') {
+            try {
+                $tarifaCartao = $this->valorComTaxaCartaoRepassada($valorPlano);
+                $valorCobranca = $tarifaCartao['valor_cobrar'];
+                if ($tarifaCartao['tarifa'] > 0) {
+                    $descricao .= sprintf(
+                        ' (inclui taxa cartão Asaas R$ %s)',
+                        number_format($tarifaCartao['tarifa'], 2, ',', '.')
+                    );
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Asaas: simulação de taxa de cartão falhou; cobrando valor do plano', [
+                    'tenant_id' => $this->tenantId,
+                    'valor' => $valorPlano,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
         $payment = $this->request('POST', '/payments', [
             'customer' => $customerId,
             'billingType' => $billingType,
-            'value' => round((float) $data['valor'], 2),
+            'value' => $valorCobranca,
             'dueDate' => $dueDate,
-            'description' => $data['descricao'] ?? $data['plano_nome'] ?? 'Pagamento',
+            'description' => $descricao,
             'externalReference' => $externalReference,
         ]);
 
@@ -167,8 +190,60 @@ class AsaasService
             'qr_code' => null,
             'qr_code_base64' => null,
             'ticket_url' => $payment['invoiceUrl'] ?? $payment['bankSlipUrl'] ?? null,
+            'valor' => $valorCobranca,
+            'valor_plano' => $valorPlano,
+            'tarifa_cartao' => $tarifaCartao,
             'raw' => ['payment' => $payment, 'billingType' => $billingType],
         ];
+    }
+
+    /**
+     * Simula taxas Asaas (POST /payments/simulate) e devolve o valor a cobrar no cartão
+     * para a academia receber o líquido do plano.
+     *
+     * @return array{valor_plano: float, valor_cobrar: float, tarifa: float, fee_percentage: float, operation_fee: float, net_value_simulado: ?float}
+     */
+    public function valorComTaxaCartaoRepassada(float $valorLiquidoDesejado): array
+    {
+        $valorLiquidoDesejado = round($valorLiquidoDesejado, 2);
+        $sim = $this->simularVenda($valorLiquidoDesejado, ['CREDIT_CARD']);
+        $creditCard = is_array($sim['creditCard'] ?? null) ? $sim['creditCard'] : [];
+        $repasse = AsaasTarifaCartao::aPartirDaSimulacao($valorLiquidoDesejado, $creditCard);
+        if ($repasse['tarifa'] <= 0) {
+            return $repasse;
+        }
+
+        $sim2 = $this->simularVenda($repasse['valor_cobrar'], ['CREDIT_CARD']);
+        $cc2 = is_array($sim2['creditCard'] ?? null) ? $sim2['creditCard'] : [];
+        $net2 = isset($cc2['netValue']) ? round((float) $cc2['netValue'], 2) : null;
+        if ($net2 !== null) {
+            $repasse['valor_cobrar'] = AsaasTarifaCartao::ajustarPeloLiquidoSimulado(
+                $repasse['valor_cobrar'],
+                $valorLiquidoDesejado,
+                $net2,
+                (float) ($cc2['feePercentage'] ?? $repasse['fee_percentage'])
+            );
+            $repasse['tarifa'] = round($repasse['valor_cobrar'] - $valorLiquidoDesejado, 2);
+            $repasse['net_value_simulado'] = $net2;
+            $repasse['fee_percentage'] = (float) ($cc2['feePercentage'] ?? $repasse['fee_percentage']);
+            $repasse['operation_fee'] = (float) ($cc2['operationFee'] ?? $repasse['operation_fee']);
+        }
+
+        return $repasse;
+    }
+
+    /**
+     * @param  list<string>  $billingTypes
+     * @return array<string, mixed>
+     */
+    public function simularVenda(float $valor, array $billingTypes = ['CREDIT_CARD']): array
+    {
+        $this->validarCredenciais();
+
+        return $this->request('POST', '/payments/simulate', [
+            'value' => round($valor, 2),
+            'billingTypes' => $billingTypes,
+        ]);
     }
 
     /**
