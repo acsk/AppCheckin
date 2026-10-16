@@ -161,7 +161,7 @@ run('simular: upgrade 1x→2x retorna diferença R$30', function () use ($db) {
     }
 });
 
-run('migrar: upgrade cancela pagamento pago e parcela aberta', function () use ($db) {
+run('migrar: upgrade mantém pagamento pago e cancela parcela aberta', function () use ($db) {
     $fixture = new MigracaoFunctionalFixture();
     $fixture->seed($db);
 
@@ -180,10 +180,10 @@ run('migrar: upgrade cancela pagamento pago e parcela aberta', function () use (
         $stmtPago->execute([$fixture->pagamentoPagoId]);
         $pago = $stmtPago->fetch();
 
-        assertEq(4, (int) $pago['status_pagamento_id'], 'pagamento pago deve ser cancelado');
+        assertEq(2, (int) $pago['status_pagamento_id'], 'pagamento já feito permanece pago');
         assertTrue(
-            str_contains((string) $pago['observacoes'], 'Convertido em crédito'),
-            'observação de conversão em crédito',
+            str_contains((string) $pago['observacoes'], 'abatido na migração'),
+            'observação de abatimento na migração',
         );
 
         $stmtAberto = $db->prepare('SELECT status_pagamento_id FROM pagamentos_plano WHERE id = ?');

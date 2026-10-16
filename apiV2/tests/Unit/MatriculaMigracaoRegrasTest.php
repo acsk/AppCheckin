@@ -282,11 +282,11 @@ class MatriculaMigracaoRegrasTest extends TestCase
         // Pendente mantém a vigência atual até o pagamento confirmar.
         $this->assertSame($this->dia(-10), $matricula['data_inicio']);
 
-        // Valor cheio do plano atual vira crédito e é todo aplicado; pagamento de origem é cancelado.
+        // Valor cheio do plano atual vira crédito e é todo aplicado; o pagamento já feito permanece pago.
         $credito = DB::table('creditos_aluno')->first();
         $this->assertEquals(300.0, $credito->valor);
         $this->assertSame(2, (int) $credito->status_credito_id);
-        $this->assertSame(4, (int) DB::table('pagamentos_plano')->where('id', 501)->value('status_pagamento_id'));
+        $this->assertSame(2, (int) DB::table('pagamentos_plano')->where('id', 501)->value('status_pagamento_id'));
 
         $novo = DB::table('pagamentos_plano')->where('status_pagamento_id', 1)->first();
         $this->assertEquals(200.0, $novo->valor);

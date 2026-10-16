@@ -288,14 +288,13 @@ class MatriculaMigracaoService
                 }
 
                 if ($pagamentoOrigemId && in_array($creditoInfo['tipo_credito'] ?? '', ['valor_cheio', 'valor_cheio_plano'], true)) {
-                    $stmtCancelarPago = $this->db->prepare("
+                    $stmtMarcarPago = $this->db->prepare("
                         UPDATE pagamentos_plano
-                        SET status_pagamento_id = 4,
-                            observacoes = CONCAT(COALESCE(observacoes, ''), ' [Convertido em crédito na migração de plano]'),
+                        SET observacoes = CONCAT(COALESCE(observacoes, ''), ' [Mantido como pago — abatido na migração; diferença cobrada à parte]'),
                             updated_at = NOW()
                         WHERE id = ? AND tenant_id = ? AND status_pagamento_id = 2
                     ");
-                    $stmtCancelarPago->execute([$pagamentoOrigemId, $tenantId]);
+                    $stmtMarcarPago->execute([$pagamentoOrigemId, $tenantId]);
                 }
             }
 
@@ -337,7 +336,12 @@ class MatriculaMigracaoService
                     $creditoId,
                     $creditoValor > 0 ? min($creditoValor, $valorNovo) : null,
                     $dataInicio,
-                    'Primeiro pagamento — migração de plano via app',
+                    ($creditoValor > 0
+                        ? sprintf(
+                            'Diferença após abater R$ %s já pagos — migração de plano via app',
+                            number_format(min($creditoValor, $valorNovo), 2, ',', '.'),
+                        )
+                        : 'Primeiro pagamento — migração de plano via app'),
                     $userId,
                 ]);
                 $novoPagamentoId = (int) $this->db->lastInsertId();

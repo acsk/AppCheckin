@@ -410,15 +410,13 @@ class MatriculaMigracaoService
                 }
 
                 if ($pagamentoOrigemId && in_array($creditoInfo['tipo_credito'] ?? '', ['valor_cheio', 'valor_cheio_plano'], true)) {
-                    $stmtCancelarPago = $pdo->prepare("
+                    $stmtMarcarPago = $pdo->prepare("
                         UPDATE pagamentos_plano
-                        SET status_pagamento_id = ?,
-                            observacoes = CONCAT(COALESCE(observacoes, ''), ' [Convertido em crédito na migração de plano]'),
+                        SET observacoes = CONCAT(COALESCE(observacoes, ''), ' [Mantido como pago — abatido na migração; diferença cobrada à parte]'),
                             updated_at = NOW()
                         WHERE id = ? AND tenant_id = ? AND status_pagamento_id = ?
                     ");
-                    $stmtCancelarPago->execute([
-                        StatusPagamentoPlano::CANCELADO,
+                    $stmtMarcarPago->execute([
                         $pagamentoOrigemId,
                         $tenantId,
                         StatusPagamentoPlano::PAGO,
@@ -463,7 +461,12 @@ class MatriculaMigracaoService
                     $creditoAplicado > 0 ? $creditoAplicado : null,
                     $dataInicio,
                     StatusPagamentoPlano::AGUARDANDO,
-                    'Primeiro pagamento — migração de plano via app',
+                    $creditoAplicado > 0
+                        ? sprintf(
+                            'Diferença após abater R$ %s já pagos — migração de plano via app',
+                            number_format($creditoAplicado, 2, ',', '.'),
+                        )
+                        : 'Primeiro pagamento — migração de plano via app',
                     $userId,
                 ]);
                 $novoPagamentoId = (int) $pdo->lastInsertId();
