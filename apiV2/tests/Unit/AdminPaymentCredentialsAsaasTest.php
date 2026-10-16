@@ -96,6 +96,7 @@ class AdminPaymentCredentialsAsaasTest extends TestCase
             ->twice()
             ->with(1, 'mercadopago')
             ->andReturn($rowSandbox, $rowProd);
+        $repo->shouldReceive('temTokenAmbiente')->once()->with(1, 'mercadopago', 'production')->andReturn(true);
         $repo->shouldReceive('atualizarAmbiente')->once()->with(1, 'mercadopago', 'production');
 
         $service = new AdminPaymentCredentialsService($repo, Mockery::mock(EncryptionService::class));
@@ -118,6 +119,7 @@ class AdminPaymentCredentialsAsaasTest extends TestCase
             'has_token_test' => true,
             'has_token_prod' => false,
         ]);
+        $repo->shouldReceive('temTokenAmbiente')->once()->with(1, 'mercadopago', 'production')->andReturn(false);
         $repo->shouldNotReceive('atualizarAmbiente');
 
         $service = new AdminPaymentCredentialsService($repo, Mockery::mock(EncryptionService::class));

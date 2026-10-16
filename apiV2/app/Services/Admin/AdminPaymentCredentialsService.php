@@ -244,9 +244,7 @@ class AdminPaymentCredentialsService
                 ];
             }
 
-            $temToken = $environment === 'production'
-                ? ! empty($existente['has_token_prod'])
-                : ! empty($existente['has_token_test']);
+            $temToken = $this->credentials->temTokenAmbiente($tenantId, $provider, $environment);
 
             if (! $temToken) {
                 $rotulo = $environment === 'production' ? 'produção' : 'sandbox';

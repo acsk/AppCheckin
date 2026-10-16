@@ -155,25 +155,11 @@ export default function PaymentCredentialsScreen() {
 
   const handleAlterarAmbiente = async (provider, environment) => {
     const formData = forms[provider];
-    const atual = existentes[provider];
     if (formData.environment === environment) {
       return;
     }
 
-    if (!atual) {
-      showError('Salve as credenciais deste provedor antes de trocar o ambiente.');
-      return;
-    }
-
-    const temToken = environment === 'production' ? atual.has_token_prod : atual.has_token_test;
-    if (!temToken) {
-      showError(environment === 'production'
-        ? 'Salve o token de produção antes de ativar este ambiente. A chave fica criptografada no banco.'
-        : 'Salve o token de sandbox antes de ativar este ambiente. A chave fica criptografada no banco.');
-      return;
-    }
-
-    const toastId = showLoading('Alterando ambiente...');
+    const toastId = showLoading('Consultando chave no banco...');
     try {
       const response = await paymentCredentialsService.alterarAmbiente(provider, environment);
       dismissToast(toastId);

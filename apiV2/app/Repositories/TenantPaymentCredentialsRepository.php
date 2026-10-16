@@ -18,8 +18,8 @@ class TenantPaymentCredentialsRepository
             'SELECT id, tenant_id, provider, environment,
                     public_key_test, public_key_prod,
                     is_active, created_at, updated_at,
-                    CASE WHEN access_token_test IS NOT NULL AND access_token_test != \'\' THEN TRUE ELSE FALSE END as has_token_test,
-                    CASE WHEN access_token_prod IS NOT NULL AND access_token_prod != \'\' THEN TRUE ELSE FALSE END as has_token_prod
+                    CASE WHEN CHAR_LENGTH(TRIM(IFNULL(access_token_test, \'\'))) > 0 THEN 1 ELSE 0 END as has_token_test,
+                    CASE WHEN CHAR_LENGTH(TRIM(IFNULL(access_token_prod, \'\'))) > 0 THEN 1 ELSE 0 END as has_token_prod
              FROM tenant_payment_credentials
              WHERE tenant_id = ?
              ORDER BY provider',
@@ -35,8 +35,8 @@ class TenantPaymentCredentialsRepository
             'SELECT id, tenant_id, provider, environment,
                     public_key_test, public_key_prod,
                     is_active, created_at, updated_at,
-                    CASE WHEN access_token_test IS NOT NULL AND access_token_test != \'\' THEN TRUE ELSE FALSE END as has_token_test,
-                    CASE WHEN access_token_prod IS NOT NULL AND access_token_prod != \'\' THEN TRUE ELSE FALSE END as has_token_prod
+                    CASE WHEN CHAR_LENGTH(TRIM(IFNULL(access_token_test, \'\'))) > 0 THEN 1 ELSE 0 END as has_token_test,
+                    CASE WHEN CHAR_LENGTH(TRIM(IFNULL(access_token_prod, \'\'))) > 0 THEN 1 ELSE 0 END as has_token_prod
              FROM tenant_payment_credentials
              WHERE tenant_id = ? AND provider = ?
              LIMIT 1',
@@ -44,6 +44,26 @@ class TenantPaymentCredentialsRepository
         );
 
         return $row ? (array) $row : null;
+    }
+
+    public function temTokenAmbiente(int $tenantId, string $provider, string $environment): bool
+    {
+        $coluna = $environment === 'production' ? 'access_token_prod' : 'access_token_test';
+        $row = DB::selectOne(
+            "SELECT CHAR_LENGTH(TRIM(IFNULL(`{$coluna}`, ''))) AS tamanho
+             FROM tenant_payment_credentials
+             WHERE tenant_id = ? AND provider = ?
+             LIMIT 1",
+            [$tenantId, $provider]
+        );
+
+        if (! $row) {
+            return false;
+        }
+
+        $tamanho = is_object($row) ? $row->tamanho : ($row['tamanho'] ?? 0);
+
+        return (int) $tamanho > 0;
     }
 
     public function existePorTenantProvider(int $tenantId, string $provider): bool
