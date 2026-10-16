@@ -47,7 +47,7 @@ class MobilePagamentoService
                 ->where('u.id', $userId)
                 ->select([
                     'm.id', 'm.valor', 'm.tipo_cobranca', 'm.plano_id', 'm.plano_ciclo_id',
-                    'm.proxima_data_vencimento', 'sm.codigo as status_codigo',
+                    'm.data_inicio', 'm.proxima_data_vencimento', 'sm.codigo as status_codigo',
                     'p.nome as plano_nome', 'md.nome as modalidade_nome',
                     'a.id as aluno_id', 'u.id as usuario_id', 'u.nome as aluno_nome',
                     'u.email as aluno_email', 'u.telefone as aluno_telefone', 'u.cpf as aluno_cpf',
@@ -59,6 +59,30 @@ class MobilePagamentoService
             }
 
             $matricula = (array) $matricula;
+
+            $valorPlano = (float) ($matricula['valor'] ?? 0);
+            $pagoCiclo = $this->pagamentosPlano->somarPagamentosPagosNoCiclo(
+                $tenantId,
+                $matriculaId,
+                isset($matricula['data_inicio']) ? (string) $matricula['data_inicio'] : null
+            );
+            if ($valorPlano > 0 && $pagoCiclo + 0.001 >= $valorPlano) {
+                $this->pagamentosPlano->atualizarStatusMatricula($tenantId, $matriculaId);
+
+                return [
+                    'status' => 200,
+                    'body' => [
+                        'success' => true,
+                        'code' => 'JA_QUITADO',
+                        'message' => 'O valor deste ciclo já foi pago. Nenhum pagamento adicional é necessário.',
+                        'data' => [
+                            'matricula_id' => $matriculaId,
+                            'valor' => 0,
+                            'status' => 'ativa',
+                        ],
+                    ],
+                ];
+            }
 
             if (($matricula['tipo_cobranca'] ?? '') === 'recorrente') {
                 return ['status' => 403, 'body' => ['success' => false, 'error' => 'PIX não disponível para matrícula recorrente']];

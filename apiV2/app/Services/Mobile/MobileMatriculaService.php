@@ -4,6 +4,7 @@ namespace App\Services\Mobile;
 
 use App\Repositories\MatriculaRepository;
 use App\Services\Asaas\AsaasPagamentoSync;
+use App\Services\PagamentoPlanoService;
 use App\Support\AsaasPagamentoStatus;
 use Illuminate\Support\Facades\DB;
 
@@ -223,6 +224,7 @@ class MobileMatriculaService
 
         $jaAtiva = $matricula['status_codigo'] === 'ativa';
         $snapshot = app(AsaasPagamentoSync::class)->sincronizar($tenantId, (int) $matriculaId);
+        app(PagamentoPlanoService::class)->atualizarStatusMatricula($tenantId, (int) $matriculaId);
         $matricula = $this->matriculas->findComStatusPorUsuario((int) $matriculaId, $userId, $tenantId) ?? $matricula;
         $ativa = $matricula['status_codigo'] === 'ativa';
         $asaasPago = AsaasPagamentoStatus::pago((string) ($snapshot['status'] ?? ''));

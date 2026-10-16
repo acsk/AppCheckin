@@ -18,13 +18,38 @@ class MatriculaMigracaoAptidaoService
 
     public function temParcelaAtrasada(int $matriculaId, int $tenantId): bool
     {
-        return DB::table('pagamentos_plano')
+        $atrasada = DB::table('pagamentos_plano')
             ->where('tenant_id', $tenantId)
             ->where('matricula_id', $matriculaId)
             ->whereIn('status_pagamento_id', StatusPagamentoPlano::EM_ABERTO)
             ->whereNull('data_pagamento')
             ->where('data_vencimento', '<', DB::raw('CURDATE()'))
             ->exists();
+
+        if (! $atrasada) {
+            return false;
+        }
+
+        $matricula = DB::table('matriculas')
+            ->where('id', $matriculaId)
+            ->where('tenant_id', $tenantId)
+            ->first(['valor', 'data_inicio']);
+        if (! $matricula) {
+            return true;
+        }
+
+        $pagoCiclo = $this->pagamentos()->somarPagamentosPagosNoCiclo(
+            $tenantId,
+            $matriculaId,
+            isset($matricula->data_inicio) ? (string) $matricula->data_inicio : null
+        );
+
+        return $pagoCiclo + 0.001 < (float) $matricula->valor;
+    }
+
+    private function pagamentos(): PagamentoPlanoService
+    {
+        return app(PagamentoPlanoService::class);
     }
 
     /**
@@ -52,7 +77,22 @@ class MatriculaMigracaoAptidaoService
             ];
         }
 
-        if ($status !== 'ativa') {
+        if ($status === 'pendente') {
+            $pagoCiclo = $this->pagamentos()->somarPagamentosPagosNoCiclo(
+                $tenantId,
+                $matriculaId,
+                AcademyDateTime::dateOnly($matricula['data_inicio'] ?? null)
+            );
+            if ($pagoCiclo <= 0.001) {
+                return [
+                    'apto' => false,
+                    'gera_credito' => false,
+                    'code' => 'MATRICULA_NAO_ATIVA',
+                    'message' => 'Só é possível migrar com matrícula ativa e em dia.',
+                    'motivo' => 'pendente',
+                ];
+            }
+        } elseif ($status !== 'ativa') {
             return [
                 'apto' => false,
                 'gera_credito' => false,

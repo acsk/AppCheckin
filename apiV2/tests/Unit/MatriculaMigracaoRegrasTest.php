@@ -34,7 +34,7 @@ class MatriculaMigracaoRegrasTest extends TestCase
     private MockInterface $aptidao;
 
     /** @var PagamentoPlanoService&MockInterface */
-    private MockInterface $pagamentosPlano;
+    private PagamentoPlanoService|MockInterface $pagamentosPlano;
 
     protected function setUp(): void
     {
@@ -43,7 +43,7 @@ class MatriculaMigracaoRegrasTest extends TestCase
         $this->criarSchema();
 
         $this->aptidao = Mockery::mock(MatriculaMigracaoAptidaoService::class);
-        $this->pagamentosPlano = Mockery::mock(PagamentoPlanoService::class);
+        $this->pagamentosPlano = Mockery::mock(PagamentoPlanoService::class)->makePartial();
         $this->pagamentosPlano->shouldReceive('cancelarParcelasAbertas')->andReturn(0)->byDefault();
         $this->aptidaoApta();
     }
@@ -62,6 +62,77 @@ class MatriculaMigracaoRegrasTest extends TestCase
         $this->assertSame(300.0, $credito['credito']);
         $this->assertSame(0.0, $credito['valor_consumido']);
         $this->assertSame(501, $credito['pagamento_origem_id']);
+    }
+
+    public function test_upgrade_abate_soma_das_parcelas_pagas_do_ciclo(): void
+    {
+        $this->inserirPagamentoPago(601, 70.0, $this->dia(-1));
+        $this->inserirPagamentoPago(602, 50.0, AcademyDateTime::today());
+
+        $credito = $this->service()->calcularCreditoMigracao(
+            $this->matricula(['valor' => 70.0]),
+            self::TENANT,
+            self::MATRICULA,
+            120.0
+        );
+
+        $this->assertSame('valor_pago_ciclo', $credito['tipo_credito']);
+        $this->assertSame(120.0, $credito['credito']);
+        $this->assertSame(602, $credito['pagamento_origem_id']);
+    }
+
+    public function test_migrar_pendente_com_pagos_que_cobrem_o_plano_ativa_sem_cobrar_de_novo(): void
+    {
+        $this->inserirMatricula();
+        DB::table('matriculas')->where('id', self::MATRICULA)->update([
+            'status_id' => 12,
+            'valor' => 70.0,
+        ]);
+        $this->inserirPagamentoPago(701, 70.0, AcademyDateTime::today());
+        $this->inserirPagamentoPago(702, 50.0, AcademyDateTime::today());
+        $this->inserirPlano(2, 120.0);
+        $this->mercadoPagoNaoUsado();
+
+        $result = $this->service()->migrar(self::USER, self::TENANT, ['plano_id' => 2]);
+
+        $this->assertSame(200, $result['status'], json_encode($result['body']));
+        $this->assertSame('ativa', $result['body']['data']['status']);
+        $this->assertSame(11, (int) $this->row('matriculas', self::MATRICULA)['status_id']);
+        $this->assertEquals(120.0, (float) $this->row('matriculas', self::MATRICULA)['valor']);
+        $this->assertSame(0, DB::table('pagamentos_plano')->where('status_pagamento_id', 1)->count());
+    }
+
+    public function test_aptidao_pendente_com_pagamento_quitado_permite_migrar(): void
+    {
+        $this->inserirMatricula();
+        DB::table('matriculas')->where('id', self::MATRICULA)->update(['status_id' => 12]);
+        $this->inserirPagamentoPago(801, 70.0, AcademyDateTime::today());
+        $matriculas = Mockery::mock(\App\Repositories\MatriculaRepository::class);
+        $matriculas->shouldReceive('avaliarLimiteMensalPorMatricula')->andReturn(null);
+        $aptidao = new MatriculaMigracaoAptidaoService($matriculas);
+
+        $resultado = $aptidao->avaliarAptidaoMigracao($this->matricula([
+            'status_id' => 12,
+            'status_codigo' => 'pendente',
+            'valor' => 70.0,
+        ]), self::TENANT);
+
+        $this->assertTrue($resultado['apto']);
+        $this->assertTrue($resultado['gera_credito']);
+        $this->assertSame('OK', $resultado['code']);
+    }
+
+    public function test_aptidao_pendente_sem_pagamento_nao_permite_migrar(): void
+    {
+        $matriculas = Mockery::mock(\App\Repositories\MatriculaRepository::class);
+        $aptidao = new MatriculaMigracaoAptidaoService($matriculas);
+
+        $resultado = $aptidao->avaliarAptidaoMigracao($this->matricula([
+            'status_codigo' => 'pendente',
+        ]), self::TENANT);
+
+        $this->assertFalse($resultado['apto']);
+        $this->assertSame('MATRICULA_NAO_ATIVA', $resultado['code']);
     }
 
     public function test_downgrade_gera_credito_proporcional_aos_dias_restantes(): void
@@ -897,10 +968,15 @@ class MatriculaMigracaoRegrasTest extends TestCase
 
     private function pagamentoPago(int $id): void
     {
+        $this->inserirPagamentoPago($id, 300.0, $this->dia(-10));
+    }
+
+    private function inserirPagamentoPago(int $id, float $valor, string $data): void
+    {
         DB::table('pagamentos_plano')->insert([
             'id' => $id, 'tenant_id' => self::TENANT, 'aluno_id' => self::ALUNO, 'matricula_id' => self::MATRICULA,
-            'plano_id' => 1, 'valor' => 300.0, 'data_vencimento' => $this->dia(-10), 'status_pagamento_id' => 2,
-            'data_pagamento' => $this->dia(-10),
+            'plano_id' => 1, 'valor' => $valor, 'data_vencimento' => $data, 'status_pagamento_id' => 2,
+            'data_pagamento' => $data,
         ]);
     }
 

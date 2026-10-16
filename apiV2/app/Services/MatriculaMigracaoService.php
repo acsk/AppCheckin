@@ -409,17 +409,24 @@ class MatriculaMigracaoService
                     $stmtUtilizar->execute([$novoCredUsado, $statusCreditoId, $creditoId, $tenantId]);
                 }
 
-                if ($pagamentoOrigemId && in_array($creditoInfo['tipo_credito'] ?? '', ['valor_cheio', 'valor_cheio_plano'], true)) {
+                if (in_array($creditoInfo['tipo_credito'] ?? '', ['valor_cheio', 'valor_cheio_plano', 'valor_pago_ciclo'], true)) {
+                    $inicioCiclo = AcademyDateTime::dateOnly($matricula['data_inicio'] ?? null);
                     $stmtMarcarPago = $pdo->prepare("
                         UPDATE pagamentos_plano
                         SET observacoes = CONCAT(COALESCE(observacoes, ''), ' [Mantido como pago — abatido na migração; diferença cobrada à parte]'),
                             updated_at = NOW()
-                        WHERE id = ? AND tenant_id = ? AND status_pagamento_id = ?
+                        WHERE matricula_id = ? AND tenant_id = ? AND status_pagamento_id = ?
+                          AND (
+                            ? IS NULL
+                            OR COALESCE(data_pagamento, data_vencimento) >= ?
+                          )
                     ");
                     $stmtMarcarPago->execute([
-                        $pagamentoOrigemId,
+                        $matriculaId,
                         $tenantId,
                         StatusPagamentoPlano::PAGO,
+                        $inicioCiclo,
+                        $inicioCiclo,
                     ]);
                 }
             }
@@ -778,7 +785,7 @@ class MatriculaMigracaoService
             WHERE m.aluno_id = ?
               AND m.tenant_id = ?
               AND p.modalidade_id = ?
-              AND sm.codigo = 'ativa'
+              AND sm.codigo IN ('ativa', 'pendente')
               AND COALESCE(m.proxima_data_vencimento, m.data_vencimento) >= CURDATE()
             ORDER BY m.updated_at DESC, m.id DESC
             LIMIT 1
@@ -801,9 +808,32 @@ class MatriculaMigracaoService
     {
         $valorCicloAtual = (float) $matricula['valor'];
         $planoNome = (string) ($matricula['plano_nome'] ?? 'plano atual');
+        $dataInicioCiclo = AcademyDateTime::dateOnly($matricula['data_inicio'] ?? null);
+        $pagoCiclo = $this->pagamentosPlano->somarPagamentosPagosNoCiclo($tenantId, $matriculaId, $dataInicioCiclo);
 
         $aptidao = $this->avaliarAptidaoMigracao($matricula, $tenantId);
         if (! $aptidao['gera_credito']) {
+            $pendenteComPago = strtolower(trim((string) ($matricula['status_codigo'] ?? ''))) === 'pendente'
+                && $pagoCiclo > self::FLOAT_EPSILON;
+            if ($pendenteComPago) {
+                return [
+                    'tipo_credito' => 'valor_pago_ciclo',
+                    'tem_credito' => true,
+                    'valor_plano_atual' => $valorCicloAtual,
+                    'valor_consumido' => 0.0,
+                    'credito' => $pagoCiclo,
+                    'dias_totais' => 0,
+                    'dias_restantes' => 0,
+                    'dias_usados' => 0,
+                    'pagamento_origem_id' => $this->buscarUltimoPagamentoPagoId($matriculaId, $tenantId),
+                    'motivo' => sprintf(
+                        'Crédito dos pagamentos já quitados neste ciclo (R$ %s)',
+                        number_format($pagoCiclo, 2, ',', '.')
+                    ),
+                    'aptidao' => $aptidao,
+                ];
+            }
+
             return [
                 'tipo_credito' => 'sem_credito',
                 'tem_credito' => false,
@@ -859,22 +889,49 @@ class MatriculaMigracaoService
 
         // Upgrade com ciclo ainda vigente: crédito do valor cheio do plano atual.
         if ($valorNovo !== null && $valorNovo > $valorCicloAtual) {
+            $creditoUpgrade = round(max($valorCicloAtual, $pagoCiclo), 2);
             $pagamentoOrigemId = $this->buscarUltimoPagamentoPagoId($matriculaId, $tenantId);
+            $usouPagoCiclo = $pagoCiclo > $valorCicloAtual + self::FLOAT_EPSILON;
 
             return [
-                'tipo_credito' => 'valor_cheio_plano',
-                'tem_credito' => $valorCicloAtual > 0,
+                'tipo_credito' => $usouPagoCiclo ? 'valor_pago_ciclo' : 'valor_cheio_plano',
+                'tem_credito' => $creditoUpgrade > 0,
                 'valor_plano_atual' => $valorCicloAtual,
                 'valor_consumido' => 0.0,
-                'credito' => round($valorCicloAtual, 2),
+                'credito' => $creditoUpgrade,
                 'dias_totais' => (int) $base['dias_totais'],
                 'dias_restantes' => (int) $base['dias_restantes'],
                 'dias_usados' => (int) $base['dias_usados'],
                 'pagamento_origem_id' => $pagamentoOrigemId,
+                'motivo' => $usouPagoCiclo
+                    ? sprintf(
+                        'Crédito dos pagamentos já quitados neste ciclo (R$ %s)',
+                        number_format($pagoCiclo, 2, ',', '.')
+                    )
+                    : sprintf(
+                        'Crédito do plano atual (%s — R$%s)',
+                        $planoNome,
+                        number_format($valorCicloAtual, 2, ',', '.')
+                    ),
+                'aptidao' => $aptidao,
+            ];
+        }
+
+        $creditoProporcional = (float) $base['credito'];
+        if ($pagoCiclo > $creditoProporcional + self::FLOAT_EPSILON) {
+            return [
+                'tipo_credito' => 'valor_pago_ciclo',
+                'tem_credito' => true,
+                'valor_plano_atual' => $valorCicloAtual,
+                'valor_consumido' => 0.0,
+                'credito' => $pagoCiclo,
+                'dias_totais' => (int) $base['dias_totais'],
+                'dias_restantes' => (int) $base['dias_restantes'],
+                'dias_usados' => (int) $base['dias_usados'],
+                'pagamento_origem_id' => $this->buscarUltimoPagamentoPagoId($matriculaId, $tenantId),
                 'motivo' => sprintf(
-                    'Crédito do plano atual (%s — R$%s)',
-                    $planoNome,
-                    number_format($valorCicloAtual, 2, ',', '.')
+                    'Crédito dos pagamentos já quitados neste ciclo (R$ %s)',
+                    number_format($pagoCiclo, 2, ',', '.')
                 ),
                 'aptidao' => $aptidao,
             ];

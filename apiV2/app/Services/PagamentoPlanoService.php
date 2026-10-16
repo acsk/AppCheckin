@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Support\AcademyDateTime;
+use App\Support\StatusPagamentoPlano;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -9,6 +11,32 @@ use Illuminate\Support\Facades\DB;
  */
 class PagamentoPlanoService
 {
+    private const FLOAT_EPSILON = 0.001;
+
+    /**
+     * Soma parcelas pagas do ciclo vigente (a partir de data_inicio da matrícula).
+     */
+    public function somarPagamentosPagosNoCiclo(int $tenantId, int $matriculaId, ?string $dataInicio): float
+    {
+        $q = DB::table('pagamentos_plano')
+            ->where('tenant_id', $tenantId)
+            ->where('matricula_id', $matriculaId)
+            ->where('status_pagamento_id', StatusPagamentoPlano::PAGO);
+
+        $inicio = AcademyDateTime::dateOnly($dataInicio);
+        if ($inicio !== null) {
+            $q->where(function ($inner) use ($inicio) {
+                $inner->whereDate('data_pagamento', '>=', $inicio)
+                    ->orWhere(function ($or) use ($inicio) {
+                        $or->whereNull('data_pagamento')
+                            ->whereDate('data_vencimento', '>=', $inicio);
+                    });
+            });
+        }
+
+        return round((float) $q->sum('valor'), 2);
+    }
+
     public function cancelarParcelasAbertas(int $tenantId, int $matriculaId, string $motivo): int
     {
         return DB::update(
@@ -50,6 +78,23 @@ class PagamentoPlanoService
             return (int) $existente;
         }
 
+        $dataInicio = DB::table('matriculas')
+            ->where('id', $matriculaId)
+            ->where('tenant_id', $tenantId)
+            ->value('data_inicio');
+        $pagoCiclo = $this->somarPagamentosPagosNoCiclo($tenantId, $matriculaId, $dataInicio ? (string) $dataInicio : null);
+        if ($valor > 0 && $pagoCiclo + self::FLOAT_EPSILON >= $valor) {
+            $this->cancelarParcelasAbertas($tenantId, $matriculaId, 'Valor já quitado neste ciclo');
+            $pagoId = DB::table('pagamentos_plano')
+                ->where('tenant_id', $tenantId)
+                ->where('matricula_id', $matriculaId)
+                ->where('status_pagamento_id', StatusPagamentoPlano::PAGO)
+                ->orderByDesc('id')
+                ->value('id');
+
+            return (int) ($pagoId ?? 0);
+        }
+
         return (int) DB::table('pagamentos_plano')->insertGetId([
             'tenant_id' => $tenantId,
             'aluno_id' => $alunoId,
@@ -72,7 +117,14 @@ class PagamentoPlanoService
             ->leftJoin('planos as p', 'p.id', '=', 'm.plano_id')
             ->where('m.tenant_id', $tenantId)
             ->where('m.id', $matriculaId)
-            ->first(['m.tipo_cobranca', 'm.data_vencimento', 'sm.codigo as status_codigo', 'p.duracao_dias']);
+            ->first([
+                'm.tipo_cobranca',
+                'm.data_vencimento',
+                'm.data_inicio',
+                'm.valor',
+                'sm.codigo as status_codigo',
+                'p.duracao_dias',
+            ]);
 
         if (! $matriculaMeta) {
             return;
@@ -89,19 +141,29 @@ class PagamentoPlanoService
         // Pendente só enquanto falta pagar a cobrança de ativação (1ª parcela / MP).
         // Parcela futura "após confirmação" (ex. bimestral) não deve manter matrícula pendente.
         if ($statusAtual === 'pendente') {
-            $aguardandoAtivacao = DB::table('pagamentos_plano')
-                ->where('tenant_id', $tenantId)
-                ->where('matricula_id', $matriculaId)
-                ->whereIn('status_pagamento_id', [1, 3])
-                ->whereNull('data_pagamento')
-                ->where(function ($q) {
-                    $q->where('observacoes', 'like', '%Primeiro pagamento%')
-                        ->orWhere('observacoes', 'like', '%Aguardando pagamento%');
-                })
-                ->exists();
+            $valorPlano = (float) ($matriculaMeta->valor ?? 0);
+            $pagoCiclo = $this->somarPagamentosPagosNoCiclo(
+                $tenantId,
+                $matriculaId,
+                isset($matriculaMeta->data_inicio) ? (string) $matriculaMeta->data_inicio : null
+            );
+            if ($valorPlano > 0 && $pagoCiclo + self::FLOAT_EPSILON >= $valorPlano) {
+                $this->cancelarParcelasAbertas($tenantId, $matriculaId, 'Valor já quitado neste ciclo');
+            } else {
+                $aguardandoAtivacao = DB::table('pagamentos_plano')
+                    ->where('tenant_id', $tenantId)
+                    ->where('matricula_id', $matriculaId)
+                    ->whereIn('status_pagamento_id', [1, 3])
+                    ->whereNull('data_pagamento')
+                    ->where(function ($q) {
+                        $q->where('observacoes', 'like', '%Primeiro pagamento%')
+                            ->orWhere('observacoes', 'like', '%Aguardando pagamento%');
+                    })
+                    ->exists();
 
-            if ($aguardandoAtivacao) {
-                return;
+                if ($aguardandoAtivacao) {
+                    return;
+                }
             }
         }
 
