@@ -24,6 +24,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import AppHeader from "@/src/components/ds/AppHeader";
+import CheckoutRedirectModal from "@/src/components/ds/CheckoutRedirectModal";
 import PaymentMethodOptions from "@/src/components/ds/PaymentMethodOptions";
 import PlanCard from "@/src/components/ds/PlanCard";
 import Section from "@/src/components/ds/Section";
@@ -156,8 +157,9 @@ export default function PlanosScreen() {
     type: "error",
   });
   const [redirectModalVisible, setRedirectModalVisible] = useState(false);
-  const [countdown, setCountdown] = useState(3);
   const [paymentUrlToOpen, setPaymentUrlToOpen] = useState<string | null>(null);
+  const [paymentProvider, setPaymentProvider] = useState<string | null>(null);
+  const [paymentMetodo, setPaymentMetodo] = useState<string | null>(null);
   const [pixModalVisible, setPixModalVisible] = useState(false);
   const [pixData, setPixData] = useState<{
     matricula_id: number;
@@ -303,29 +305,32 @@ export default function PlanosScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasPermission]);
 
-  // Countdown para modal de redirecionamento
-  useEffect(() => {
-    if (redirectModalVisible && countdown > 0) {
-      const timer = setTimeout(() => {
-        setCountdown(countdown - 1);
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
+  const abrirCheckout = (
+    url: string,
+    provider?: string | null,
+    metodo?: string | null,
+  ) => {
+    setPaymentUrlToOpen(url);
+    setPaymentProvider(provider ?? null);
+    setPaymentMetodo(metodo ?? null);
+    setRedirectModalVisible(true);
+  };
 
-    // Quando chegar a 0, abrir o link e fechar modal
-    if (redirectModalVisible && countdown === 0 && paymentUrlToOpen) {
-      (async () => {
-        const supported = await Linking.canOpenURL(paymentUrlToOpen);
-        if (supported) {
-          console.log("🔗 Abrindo URL de pagamento:", paymentUrlToOpen);
-          await Linking.openURL(paymentUrlToOpen);
-        }
-        setRedirectModalVisible(false);
-        setCountdown(3);
-        setPaymentUrlToOpen(null);
-      })();
+  const fecharCheckout = () => {
+    setRedirectModalVisible(false);
+    setPaymentUrlToOpen(null);
+    setPaymentProvider(null);
+    setPaymentMetodo(null);
+  };
+
+  const irParaCheckout = async () => {
+    if (!paymentUrlToOpen) return;
+    const supported = await Linking.canOpenURL(paymentUrlToOpen);
+    if (supported) {
+      await Linking.openURL(paymentUrlToOpen);
     }
-  }, [redirectModalVisible, countdown, paymentUrlToOpen]);
+    fecharCheckout();
+  };
 
   // Monitorar retorno do Mercado Pago
   useEffect(() => {
@@ -672,9 +677,11 @@ export default function PlanosScreen() {
         return;
       }
 
-      setPaymentUrlToOpen(paymentUrl);
-      setCountdown(3);
-      setRedirectModalVisible(true);
+      abrirCheckout(
+        paymentUrl,
+        data.data?.gateway || data.data?.provider || migrarResult.gateway,
+        metodo,
+      );
     } catch (err) {
       const errorMsg =
         err instanceof Error ? err.message : "Erro ao migrar plano";
@@ -856,10 +863,13 @@ export default function PlanosScreen() {
         setComprando(false);
         setPlanoComprando(null);
 
-        // 4. Mostrar modal de redirecionamento com countdown
-        setPaymentUrlToOpen(paymentUrl);
-        setCountdown(3);
-        setRedirectModalVisible(true);
+        abrirCheckout(
+          paymentUrl,
+          matriculaData.data?.gateway ||
+            matriculaData.data?.provider ||
+            compraResult.gateway,
+          metodo,
+        );
       } catch (err) {
         const errorMsg =
           err instanceof Error ? err.message : "Erro ao processar compra";
@@ -1853,47 +1863,16 @@ export default function PlanosScreen() {
         </View>
       </Modal>
 
-      {/* Redirect Modal com Countdown */}
-      <Modal
+      <CheckoutRedirectModal
         visible={redirectModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setRedirectModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, styles.modalSuccess]}>
-            {/* Icon Circle */}
-            <View style={[styles.iconCircle, styles.iconCircleSuccess]}>
-              <Feather name="arrow-right" size={40} color="#0a7f3c" />
-            </View>
-
-            {/* Title */}
-            <Text style={styles.modalTitle}>Redirecionando para Pagamento</Text>
-
-            {/* Message */}
-            <Text style={styles.modalMessage}>
-              Você será redirecionado para o Mercado Pago em{" "}
-              <Text
-                style={{
-                  fontWeight: "800",
-                  fontSize: 24,
-                  color: colors.primary,
-                }}
-              >
-                {countdown}
-              </Text>
-              {"\n"}segundos
-            </Text>
-
-            {/* Loading Indicator */}
-            <ActivityIndicator
-              size="large"
-              color={colors.primary}
-              style={{ marginBottom: 24 }}
-            />
-          </View>
-        </View>
-      </Modal>
+        url={paymentUrlToOpen}
+        provider={paymentProvider}
+        metodo={paymentMetodo}
+        onRedirect={() => {
+          void irParaCheckout();
+        }}
+        onClose={fecharCheckout}
+      />
 
       {/* PIX: folha inferior do design system */}
       <PixPaymentSheet

@@ -27,6 +27,35 @@ export function opcoesPagamentoVisiveis(
   );
 }
 
+export function idProvedorPagamento(
+  raw?: string | null,
+  url?: string | null,
+): "asaas" | "mercadopago" | null {
+  const id = String(raw || "").toLowerCase();
+  if (id.includes("asaas")) return "asaas";
+  if (id.includes("mercado")) return "mercadopago";
+  const href = String(url || "").toLowerCase();
+  if (href.includes("asaas")) return "asaas";
+  if (
+    href.includes("mercadopago") ||
+    href.includes("mercadolivre") ||
+    href.includes("mpago")
+  ) {
+    return "mercadopago";
+  }
+  return null;
+}
+
+export function nomeProvedorPagamento(
+  raw?: string | null,
+  url?: string | null,
+): string {
+  const id = idProvedorPagamento(raw, url);
+  if (id === "asaas") return "Asaas";
+  if (id === "mercadopago") return "Mercado Pago";
+  return "checkout";
+}
+
 export function rotuloPagarMetodo(
   metodo: MetodoPagamentoOpcao,
   contexto: "pagar" | "renovar" | "migrar" = "pagar",

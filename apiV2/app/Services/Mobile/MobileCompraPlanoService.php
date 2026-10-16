@@ -583,6 +583,9 @@ class MobileCompraPlanoService
                     'preference_id' => $preferenceId,
                     'tipo_pagamento' => $tipoPagamento,
                     'metodo_pagamento' => $metodoPagamento,
+                    'gateway' => $provider,
+                    'provider' => $provider,
+                    'gateway_nome' => $provider === 'asaas' ? 'Asaas' : 'Mercado Pago',
                     'tipo_cobranca' => $isRecorrente ? 'recorrente' : 'avulso',
                     'recorrente' => $isRecorrente,
                     'pix' => $pixData ? [

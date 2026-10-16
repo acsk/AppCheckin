@@ -1089,6 +1089,9 @@ class MatriculaMigracaoService
                 'preference_id' => $preferenceId,
                 'tipo_pagamento' => $tipoPagamento,
                 'metodo_pagamento' => $metodoPagamento,
+                'gateway' => $provider,
+                'provider' => $provider,
+                'gateway_nome' => $provider === 'asaas' ? 'Asaas' : 'Mercado Pago',
                 'pix' => $pixData ? [
                     'payment_id' => $pixData['id'] ?? null,
                     'status' => $pixData['status'] ?? null,
