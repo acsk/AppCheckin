@@ -10,38 +10,74 @@ class AsaasPagamentoSync
 {
     public function paymentIdDaMatricula(int $tenantId, int $matriculaId): string
     {
-        $pixId = (string) (DB::table('pagamentos_pix')
-            ->where('tenant_id', $tenantId)
-            ->where('matricula_id', $matriculaId)
-            ->where('payment_id', 'like', 'pay_%')
-            ->orderByDesc('id')
-            ->value('payment_id') ?? '');
-        if (str_starts_with($pixId, 'pay_')) {
-            return $pixId;
-        }
+        $ids = $this->paymentIdsDaMatricula($tenantId, $matriculaId);
 
+        return $ids[0] ?? '';
+    }
+
+    /**
+     * Cobrança atual da assinatura primeiro; PIX antigos depois.
+     *
+     * @return list<string>
+     */
+    public function paymentIdsDaMatricula(int $tenantId, int $matriculaId): array
+    {
+        $ids = [];
         $pref = (string) (DB::table('assinaturas')
             ->where('tenant_id', $tenantId)
             ->where('matricula_id', $matriculaId)
             ->where('gateway_preference_id', 'like', 'pay_%')
             ->orderByDesc('id')
             ->value('gateway_preference_id') ?? '');
+        if (str_starts_with($pref, 'pay_')) {
+            $ids[] = $pref;
+        }
 
-        return str_starts_with($pref, 'pay_') ? $pref : '';
+        $pixIds = DB::table('pagamentos_pix')
+            ->where('tenant_id', $tenantId)
+            ->where('matricula_id', $matriculaId)
+            ->where('payment_id', 'like', 'pay_%')
+            ->orderByDesc('id')
+            ->pluck('payment_id');
+
+        foreach ($pixIds as $pixId) {
+            $pixId = (string) $pixId;
+            if (str_starts_with($pixId, 'pay_') && ! in_array($pixId, $ids, true)) {
+                $ids[] = $pixId;
+            }
+        }
+
+        return $ids;
     }
 
     /**
-     * Consulta a cobrança no Asaas (PIX ou cartão) e aplica o webhook local.
+     * Consulta as cobranças Asaas (cartão atual e PIX) e aplica o webhook local.
      *
      * @return array<string, mixed>
      */
     public function sincronizar(int $tenantId, int $matriculaId): array
     {
-        $paymentId = $this->paymentIdDaMatricula($tenantId, $matriculaId);
-        if ($paymentId === '') {
+        $ids = $this->paymentIdsDaMatricula($tenantId, $matriculaId);
+        if ($ids === []) {
             return [];
         }
 
+        $principal = [];
+        foreach ($ids as $index => $paymentId) {
+            $snapshot = $this->sincronizarPagamento($tenantId, $matriculaId, $paymentId);
+            if ($index === 0) {
+                $principal = $snapshot;
+            }
+        }
+
+        return $principal;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function sincronizarPagamento(int $tenantId, int $matriculaId, string $paymentId): array
+    {
         try {
             $payment = (new AsaasService($tenantId))->obterPagamento($paymentId);
         } catch (\Throwable $e) {

@@ -234,6 +234,47 @@ class AsaasWebhookServiceTest extends TestCase
         $this->assertSame(2, (int) DB::table('matriculas')->value('status_id'));
     }
 
+    public function test_pix_antigo_nao_sobrescreve_preference_id_do_cartao(): void
+    {
+        DB::table('assinaturas')->where('matricula_id', 189)->update([
+            'gateway_preference_id' => 'pay_cartao_novo',
+            'status_gateway' => 'pending',
+        ]);
+        DB::table('pagamentos_plano')->insert([
+            'tenant_id' => 3,
+            'matricula_id' => 189,
+            'status_pagamento_id' => 1,
+            'valor' => 50,
+            'data_pagamento' => null,
+            'data_vencimento' => '2026-10-16',
+            'observacoes' => 'Aguardando pagamento via Asaas',
+        ]);
+        DB::table('pagamentos_plano')->where('valor', 70)->update([
+            'status_pagamento_id' => 2,
+            'data_pagamento' => '2026-10-16',
+            'observacoes' => 'Aguardando pagamento via Asaas [Asaas pay_xlm9exz869gjx520]',
+        ]);
+
+        $pagamentos = Mockery::mock(PagamentoPlanoService::class);
+        $pagamentos->shouldReceive('atualizarStatusMatricula')->once()->with(3, 189);
+
+        $service = new AsaasWebhookService($pagamentos, new EncryptionService());
+        $service->processar([
+            'event' => 'PAYMENT_RECEIVED',
+            'payment' => [
+                'id' => 'pay_xlm9exz869gjx520',
+                'status' => 'RECEIVED',
+                'billingType' => 'PIX',
+                'externalReference' => 'MAT-189-abc',
+                'paymentDate' => '2026-10-16',
+                'value' => 70,
+            ],
+        ], null);
+
+        $this->assertSame('pay_cartao_novo', DB::table('assinaturas')->value('gateway_preference_id'));
+        $this->assertSame(1, (int) DB::table('pagamentos_plano')->where('valor', 50)->value('status_pagamento_id'));
+    }
+
     public function test_cartao_confirmed_baixa_sem_pix_e_sem_receber_cobranca(): void
     {
         DB::table('pagamentos_pix')->delete();

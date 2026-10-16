@@ -180,7 +180,7 @@ class MobileAssinaturaService
                     'nome' => $row['ciclo_nome'] ?? 'Mensal',
                     'meses' => (int) ($row['ciclo_meses'] ?? 1),
                 ],
-                'gateway' => ['nome' => $row['gateway_nome'] ?? 'Mercado Pago'],
+                'gateway' => ['nome' => $this->nomeGatewayAssinatura($row)],
                 'plano' => [
                     'nome' => $row['plano_nome'] ?? '',
                     'modalidade' => $row['modalidade_nome'] ?? '',
@@ -191,6 +191,12 @@ class MobileAssinaturaService
 
             $asaasJaPago = is_array($pagamentoGateway)
                 && AsaasPagamentoStatus::pago((string) ($pagamentoGateway['status'] ?? ''));
+            $parcelaAindaAberta = $matriculaId > 0 && DB::table('pagamentos_plano')
+                ->where('tenant_id', $tenantId)
+                ->where('matricula_id', $matriculaId)
+                ->whereIn('status_pagamento_id', [1, 3])
+                ->whereNull('data_pagamento')
+                ->exists();
 
             if ($isPendente && ! empty($row['payment_url']) && ! $asaasJaPago) {
                 $item['payment_url'] = $row['payment_url'];
@@ -205,7 +211,9 @@ class MobileAssinaturaService
                 $hoje = AcademyDateTime::today();
                 $acessoAte = $datas['data_fim'] ?? ($row['matricula_proxima_vencimento'] ?? null);
                 $parcelaVenc = $row['proxima_parcela_vencimento'] ?? null;
-                $liberar = ($acessoAte && $acessoAte <= $hoje) || ($parcelaVenc && $parcelaVenc <= $hoje);
+                $liberar = $parcelaAindaAberta && (
+                    ($acessoAte && $acessoAte <= $hoje) || ($parcelaVenc && $parcelaVenc <= $hoje)
+                );
 
                 if (! $liberar && ! empty($row['modalidade_id'])) {
                     // Espelho simples: se atingiu limite ×4 no ciclo [venc-1mês, venc)
@@ -305,12 +313,14 @@ class MobileAssinaturaService
                 $origem = null;
                 if (! empty($pag['baixado_por'])) {
                     $origem = 'manual';
+                } elseif (stripos($obs, 'Asaas') !== false) {
+                    $origem = 'asaas';
                 } elseif ($forma && (stripos((string) $forma, 'Mercado') !== false || stripos($obs, 'Mercado Pago') !== false)) {
+                    $origem = 'mercadopago';
+                } elseif (stripos($obs, 'Mercado Pago') !== false) {
                     $origem = 'mercadopago';
                 } elseif ($forma) {
                     $origem = 'manual';
-                } elseif (stripos($obs, 'Mercado Pago') !== false) {
-                    $origem = 'mercadopago';
                 }
                 $pagamentosPorMatricula[$mid][] = [
                     'id' => (int) $pag['id'],
@@ -736,7 +746,25 @@ class MobileAssinaturaService
     ): ?array {
         $temAsaas = str_contains(strtolower($gatewayNome), 'asaas')
             || str_starts_with($preferenceId, 'pay_');
-        if ($matriculaId <= 0 || ! $temAsaas || (! $isPendente && $matriculaAtiva)) {
+        if ($matriculaId <= 0 || ! $temAsaas) {
+            return null;
+        }
+
+        $temParcelaAberta = DB::table('pagamentos_plano')
+            ->where('tenant_id', $tenantId)
+            ->where('matricula_id', $matriculaId)
+            ->whereIn('status_pagamento_id', [1, 3])
+            ->whereNull('data_pagamento')
+            ->exists();
+        $cobrancaNova = str_starts_with($preferenceId, 'pay_')
+            && ! DB::table('pagamentos_plano')
+                ->where('tenant_id', $tenantId)
+                ->where('matricula_id', $matriculaId)
+                ->where('status_pagamento_id', 2)
+                ->where('observacoes', 'like', '%'.$preferenceId.'%')
+                ->exists();
+
+        if (! $isPendente && $matriculaAtiva && ! $temParcelaAberta && ! $cobrancaNova) {
             return null;
         }
 
@@ -758,5 +786,21 @@ class MobileAssinaturaService
             'mensagem' => AsaasPagamentoStatus::mensagem($snap, $ativa),
             'matricula_ativa' => $ativa,
         ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function nomeGatewayAssinatura(array $row): string
+    {
+        $pref = (string) ($row['gateway_preference_id'] ?? '');
+        $url = strtolower((string) ($row['payment_url'] ?? ''));
+        if (str_starts_with($pref, 'pay_') || str_contains($url, 'asaas')) {
+            return 'Asaas';
+        }
+
+        $nome = trim((string) ($row['gateway_nome'] ?? ''));
+
+        return $nome !== '' ? $nome : 'Mercado Pago';
     }
 }

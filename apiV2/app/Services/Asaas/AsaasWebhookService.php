@@ -105,9 +105,16 @@ class AsaasWebhookService
 
         $assinaturaUpdate = [
             'status_gateway' => 'approved',
-            'gateway_preference_id' => $paymentId,
             'atualizado_em' => now(),
         ];
+        $prefAtual = (string) (DB::table('assinaturas')
+            ->where('tenant_id', $tenantId)
+            ->where('matricula_id', $matriculaId)
+            ->orderByDesc('id')
+            ->value('gateway_preference_id') ?? '');
+        if ($prefAtual === '' || $prefAtual === $paymentId) {
+            $assinaturaUpdate['gateway_preference_id'] = $paymentId;
+        }
         if ($statusPagaId) {
             $assinaturaUpdate['status_id'] = $statusPagaId;
         }

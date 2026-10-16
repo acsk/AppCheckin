@@ -70,4 +70,36 @@ class AsaasPagamentoStatusTest extends TestCase
 
         $this->assertSame('pay_cartao_abc', $id);
     }
+
+    public function test_payment_ids_priorizam_cartao_atual_sobre_pix_antigo(): void
+    {
+        $this->requireSqlite();
+        Schema::create('pagamentos_pix', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedInteger('tenant_id');
+            $table->unsignedInteger('matricula_id');
+            $table->string('payment_id');
+        });
+        Schema::create('assinaturas', function (Blueprint $table) {
+            $table->id();
+            $table->unsignedInteger('tenant_id');
+            $table->unsignedInteger('matricula_id');
+            $table->string('gateway_preference_id')->nullable();
+        });
+        DB::table('pagamentos_pix')->insert([
+            'tenant_id' => 3,
+            'matricula_id' => 189,
+            'payment_id' => 'pay_pix_antigo',
+        ]);
+        DB::table('assinaturas')->insert([
+            'tenant_id' => 3,
+            'matricula_id' => 189,
+            'gateway_preference_id' => 'pay_mbavvt_cartao',
+        ]);
+
+        $ids = (new AsaasPagamentoSync())->paymentIdsDaMatricula(3, 189);
+
+        $this->assertSame(['pay_mbavvt_cartao', 'pay_pix_antigo'], $ids);
+        $this->assertSame('pay_mbavvt_cartao', (new AsaasPagamentoSync())->paymentIdDaMatricula(3, 189));
+    }
 }
