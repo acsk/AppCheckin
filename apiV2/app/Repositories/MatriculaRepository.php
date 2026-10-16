@@ -2,6 +2,7 @@
 
 namespace App\Repositories;
 
+use App\Services\PagamentoPlanoService;
 use App\Support\AcademyDateTime;
 use App\Support\CheckinLimiteFormatter;
 use Illuminate\Support\Facades\DB;
@@ -34,35 +35,15 @@ class MatriculaRepository
     public function atualizarStatusMatriculasVencidas(int $userId, int $tenantId): void
     {
         try {
-            $hoje = date('Y-m-d');
-
-            $matriculasVencidas = DB::table('matriculas as m')
+            $ids = DB::table('matriculas as m')
                 ->join('alunos as a', 'a.id', '=', 'm.aluno_id')
-                ->join('status_matricula as sm', 'sm.id', '=', 'm.status_id')
                 ->where('a.usuario_id', $userId)
                 ->where('m.tenant_id', $tenantId)
-                ->where('sm.permite_checkin', 1)
-                ->where('sm.ativo', 1)
-                ->whereRaw('COALESCE(m.proxima_data_vencimento, m.data_vencimento) < ?', [$hoje])
-                ->select([
-                    'm.id',
-                    DB::raw('DATEDIFF(?, COALESCE(m.proxima_data_vencimento, m.data_vencimento)) as dias_vencido'),
-                ])
-                ->addBinding($hoje, 'select')
-                ->get();
+                ->pluck('m.id');
 
-            foreach ($matriculasVencidas as $matricula) {
-                $diasVencido = (int) $matricula->dias_vencido;
-                $novoStatus = $diasVencido >= 5 ? 'cancelada' : 'vencida';
-
-                DB::table('matriculas')
-                    ->where('id', $matricula->id)
-                    ->update([
-                        'status_id' => DB::table('status_matricula')
-                            ->where('codigo', $novoStatus)
-                            ->value('id'),
-                        'updated_at' => now(),
-                    ]);
+            $pagamentos = app(PagamentoPlanoService::class);
+            foreach ($ids as $matriculaId) {
+                $pagamentos->atualizarStatusMatricula($tenantId, (int) $matriculaId);
             }
         } catch (\Throwable $e) {
             Log::warning('[MatriculaRepository] Erro ao atualizar matrículas vencidas: '.$e->getMessage());

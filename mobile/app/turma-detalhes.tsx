@@ -17,6 +17,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { colors } from "../src/theme/colors";
 import { normalizeUtf8 } from "../src/utils/utf8";
+import { feedbackBloqueioCheckin } from "../src/utils/checkinFeedback";
 
 
 import AppHeader from "@/src/components/ds/AppHeader";
@@ -635,17 +636,16 @@ import { ds } from "@/src/components/ds/tokens";export default function TurmaDet
             "Limite de check-ins",
             limiteDetalhes,
           );
-        } else if (
-          responseData?.code === "MATRICULA_PENDENTE" ||
-          responseData?.codigo === "MATRICULA_PENDENTE"
-        ) {
+        } else {
+          const fb = feedbackBloqueioCheckin(
+            responseData?.code || responseData?.codigo,
+            apiMessage,
+          );
           showErrorModal(
             normalizeUtf8(String(apiMessage)),
-            "warning",
-            "Pagamento pendente",
+            fb.type,
+            fb.title,
           );
-        } else {
-          showErrorModal(normalizeUtf8(String(apiMessage)), "error");
         }
         return;
       }

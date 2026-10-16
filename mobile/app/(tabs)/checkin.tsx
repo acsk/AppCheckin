@@ -22,6 +22,7 @@ import { handleAuthError } from "../../src/utils/authHelpers";
 import { normalizeUtf8 } from "../../src/utils/utf8";
 import { normalizeVencimentoMessage } from "../../src/utils/dateBr";
 import { weekdayAbbrev } from "../../src/utils/weekdayAbbrev";
+import { feedbackBloqueioCheckin } from "../../src/utils/checkinFeedback";
 
 import ClassTimeline, { ClassSlotProps, SlotStatus } from "@/src/components/ds/ClassTimeline";
 import AppHeader from "@/src/components/ds/AppHeader";
@@ -749,23 +750,15 @@ export default function CheckinScreen() {
             "Limite de check-ins",
             limiteDetalhes,
           );
-        } else if (
-          data?.code === "MATRICULA_PENDENTE" ||
-          data?.codigo === "MATRICULA_PENDENTE"
-        ) {
-          showErrorModal(
-            normalizeUtf8(String(apiMessage)),
-            "warning",
-            "Pagamento pendente",
-          );
         } else {
+          const fb = feedbackBloqueioCheckin(
+            data?.code || data?.codigo,
+            apiMessage,
+          );
           showErrorModal(
             normalizeUtf8(String(apiMessage)),
-            data?.code === "MATRICULA_CANCELADA" ||
-              data?.codigo === "MATRICULA_CANCELADA"
-              ? "warning"
-              : "error",
-            undefined,
+            fb.type,
+            fb.title,
             limiteDetalhes,
           );
         }

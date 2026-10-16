@@ -21,6 +21,7 @@ import { colors } from "../src/theme/colors";
 import { normalizeUtf8 } from "../src/utils/utf8";
 import { normalizeVencimentoMessage } from "../src/utils/dateBr";
 import { weekdayAbbrev } from "../src/utils/weekdayAbbrev";
+import { feedbackBloqueioCheckin } from "../src/utils/checkinFeedback";
 
 import AppHeader from "@/src/components/ds/AppHeader";
 import AttendeeRow from "@/src/components/ds/AttendeeRow";
@@ -812,24 +813,13 @@ export default function CheckinTurmaScreen() {
             limiteDetalhes,
             "Limite de check-ins",
           );
-        } else if (
-          data?.code === "MATRICULA_PENDENTE" ||
-          data?.codigo === "MATRICULA_PENDENTE"
-        ) {
-          showErrorModal(
-            normalizeUtf8(String(apiMessage)),
-            "warning",
-            null,
-            "Pagamento pendente",
-          );
         } else {
+          const fb = feedbackBloqueioCheckin(data?.code || data?.codigo, apiMessage);
           showErrorModal(
             normalizeUtf8(String(apiMessage)),
-            data?.code === "MATRICULA_CANCELADA" ||
-              data?.codigo === "MATRICULA_CANCELADA"
-              ? "warning"
-              : "error",
+            fb.type,
             limiteDetalhes,
+            fb.title,
           );
         }
         return;
