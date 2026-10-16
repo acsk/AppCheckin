@@ -31,7 +31,7 @@ class MobileCompraPlanoService
      * @param  array<string, mixed>  $data
      * @return array{status: int, body: array<string, mixed>}
      */
-    public function comprar(int $userId, ?int $tenantId, array $data): array
+    public function comprar(int $userId, ?int $tenantId, array $data, bool $podeSandbox = false): array
     {
         if (! $tenantId) {
             return $this->erro(400, 'TENANT_NAO_SELECIONADO', 'Nenhum tenant selecionado');
@@ -469,7 +469,14 @@ class MobileCompraPlanoService
                 'apenas_cartao' => $isRecorrente,
             ];
 
-            $provider = $this->gateways->providerForTenant($tenantId);
+            $escolhaPix = $this->gateways->resolverPix(
+                $tenantId,
+                $podeSandbox,
+                isset($data['gateway']) ? (string) $data['gateway'] : (isset($data['provider']) ? (string) $data['provider'] : null)
+            );
+            $provider = ($escolhaPix['ok'] ?? false)
+                ? (string) $escolhaPix['provider']
+                : $this->gateways->providerForTenant($tenantId);
             $mp = $provider === 'asaas' ? null : new MercadoPagoService($tenantId);
             $paymentUrl = null;
             $preferenceId = null;
@@ -484,12 +491,22 @@ class MobileCompraPlanoService
                     if (strlen($cpfPix) !== 11) {
                         return $this->erro(400, 'CPF_OBRIGATORIO_PIX', 'CPF válido é obrigatório para pagamento PIX');
                     }
-                    $pixData = $this->gateways->pixGateway($tenantId)->criarPagamentoPix($dadosPagamento);
-                    $tipoPagamento = 'pix';
-                    $paymentUrl = $pixData['ticket_url'] ?? null;
-                    $preferenceId = $pixData['id'] ?? null;
-                    $externalReference = $pixData['external_reference'] ?? $externalReference;
-                    $this->salvarPixRegistro($tenantId, $matriculaId, $pixData);
+                    if (! ($escolhaPix['ok'] ?? false)) {
+                        if (($escolhaPix['code'] ?? '') !== 'ESCOLHA_GATEWAY') {
+                            return $this->erro(
+                                (int) ($escolhaPix['status'] ?? 400),
+                                (string) ($escolhaPix['code'] ?? 'SEM_GATEWAY_PIX'),
+                                (string) ($escolhaPix['error'] ?? 'Nenhum provedor de PIX disponível.')
+                            );
+                        }
+                    } else {
+                        $pixData = $escolhaPix['instance']->criarPagamentoPix($dadosPagamento);
+                        $tipoPagamento = 'pix';
+                        $paymentUrl = $pixData['ticket_url'] ?? null;
+                        $preferenceId = $pixData['id'] ?? null;
+                        $externalReference = $pixData['external_reference'] ?? $externalReference;
+                        $this->salvarPixRegistro($tenantId, $matriculaId, $pixData);
+                    }
                 } elseif ($isRecorrente) {
                     if ($provider === 'asaas' || ! $mp) {
                         return $this->erro(400, 'ASAAS_SEM_RECORRENCIA', 'Assinatura recorrente ainda não está disponível no Asaas. Use PIX ou Mercado Pago.');
@@ -564,6 +581,10 @@ class MobileCompraPlanoService
 
             if ($mpError) {
                 $body['mp_error'] = $mpError;
+            }
+            if ($metodoPagamento === 'pix' && ! ($escolhaPix['ok'] ?? false) && ($escolhaPix['code'] ?? '') === 'ESCOLHA_GATEWAY') {
+                $body['code'] = 'ESCOLHA_GATEWAY';
+                $body['gateways'] = $escolhaPix['gateways'] ?? [];
             }
 
             return ['status' => 200, 'body' => $body];

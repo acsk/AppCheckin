@@ -19,7 +19,7 @@ class AdminPaymentCredentialsAsaasTest extends TestCase
     public function test_asaas_sandbox_requires_api_key(): void
     {
         $repo = Mockery::mock(TenantPaymentCredentialsRepository::class);
-        $repo->shouldReceive('obterPorTenant')->once()->with(1)->andReturn(null);
+        $repo->shouldReceive('obterPorTenantProvider')->once()->with(1, 'asaas')->andReturn(null);
         $encryption = Mockery::mock(EncryptionService::class);
 
         $service = new AdminPaymentCredentialsService($repo, $encryption);
@@ -36,7 +36,7 @@ class AdminPaymentCredentialsAsaasTest extends TestCase
     public function test_asaas_rejects_key_without_official_prefix(): void
     {
         $repo = Mockery::mock(TenantPaymentCredentialsRepository::class);
-        $repo->shouldReceive('obterPorTenant')->once()->with(1)->andReturn(null);
+        $repo->shouldReceive('obterPorTenantProvider')->once()->with(1, 'asaas')->andReturn(null);
         $encryption = Mockery::mock(EncryptionService::class);
         $encryption->shouldNotReceive('encrypt');
 
@@ -55,8 +55,8 @@ class AdminPaymentCredentialsAsaasTest extends TestCase
     public function test_asaas_encrypts_and_saves_sandbox_key(): void
     {
         $repo = Mockery::mock(TenantPaymentCredentialsRepository::class);
-        $repo->shouldReceive('obterPorTenant')->once()->with(1)->andReturn(null);
-        $repo->shouldReceive('existePorTenant')->once()->with(1)->andReturn(false);
+        $repo->shouldReceive('obterPorTenantProvider')->once()->with(1, 'asaas')->andReturn(null);
+        $repo->shouldReceive('existePorTenantProvider')->once()->with(1, 'asaas')->andReturn(false);
         $repo->shouldReceive('inserir')->once()->with(1, Mockery::on(function ($dados) {
             return $dados['provider'] === 'asaas'
                 && $dados['environment'] === 'sandbox'

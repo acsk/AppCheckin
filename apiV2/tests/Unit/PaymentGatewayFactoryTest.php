@@ -47,6 +47,39 @@ class PaymentGatewayFactoryTest extends TestCase
 
         $factory = new PaymentGatewayFactory();
         $this->assertSame('asaas', $factory->providerForTenant(2));
-        $this->assertInstanceOf(AsaasService::class, $factory->pixGateway(2));
+        $this->assertInstanceOf(MercadoPagoService::class, $factory->pixGateway(2));
+    }
+
+    public function test_sandbox_hidden_from_non_admin(): void
+    {
+        DB::table('tenant_payment_credentials')->insert([
+            [
+                'tenant_id' => 4,
+                'provider' => 'mercadopago',
+                'environment' => 'production',
+                'access_token_test' => 'mp',
+                'is_active' => 1,
+            ],
+            [
+                'tenant_id' => 4,
+                'provider' => 'asaas',
+                'environment' => 'sandbox',
+                'access_token_test' => '$aact_hmlg_xxxxxxxx',
+                'is_active' => 1,
+            ],
+        ]);
+
+        $factory = new PaymentGatewayFactory();
+        $aluno = $factory->listarDisponiveis(4, false);
+        $admin = $factory->listarDisponiveis(4, true);
+
+        $this->assertSame(['mercadopago'], array_column($aluno, 'id'));
+        $this->assertContains('mercadopago', array_column($admin, 'id'));
+        $this->assertContains('asaas', array_column($admin, 'id'));
+
+        $escolha = $factory->resolverPix(4, true, null);
+        $this->assertFalse($escolha['ok']);
+        $this->assertSame('ESCOLHA_GATEWAY', $escolha['code']);
+        $this->assertSame(409, $escolha['status']);
     }
 }

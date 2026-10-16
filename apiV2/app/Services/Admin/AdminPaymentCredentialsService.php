@@ -9,10 +9,13 @@ use App\Support\AsaasApiKey;
 use Throwable;
 
 /**
- * Credenciais de pagamento do tenant (paridade Slim TenantPaymentCredentialsController).
+ * Credenciais de pagamento do tenant (um registro por provider).
  */
 class AdminPaymentCredentialsService
 {
+    /** @var list<string> */
+    private const PROVIDERS = ['mercadopago', 'asaas'];
+
     public function __construct(
         private readonly TenantPaymentCredentialsRepository $credentials,
         private readonly EncryptionService $encryption,
@@ -24,28 +27,24 @@ class AdminPaymentCredentialsService
     public function obter(int $tenantId): array
     {
         try {
-            $row = $this->credentials->obterPorTenant($tenantId);
-
-            if (! $row) {
-                return [
-                    'status' => 200,
-                    'body' => [
-                        'success' => true,
-                        'data' => null,
-                        'message' => 'Nenhuma credencial configurada',
-                    ],
-                ];
+            $porCodigo = [];
+            foreach ($this->credentials->listarPorTenant($tenantId) as $row) {
+                $codigo = strtolower((string) ($row['provider'] ?? ''));
+                $porCodigo[$codigo] = $this->mascararLinha($row);
             }
 
-            $row['public_key_test_masked'] = $this->mascarar($row['public_key_test'] ?? null);
-            $row['public_key_prod_masked'] = $this->mascarar($row['public_key_prod'] ?? null);
-            unset($row['public_key_test'], $row['public_key_prod']);
+            $providers = [];
+            foreach (self::PROVIDERS as $codigo) {
+                $providers[] = $porCodigo[$codigo] ?? $this->slotVazio($codigo);
+            }
 
             return [
                 'status' => 200,
                 'body' => [
                     'success' => true,
-                    'data' => $row,
+                    'data' => [
+                        'providers' => $providers,
+                    ],
                 ],
             ];
         } catch (Throwable $e) {
@@ -70,7 +69,7 @@ class AdminPaymentCredentialsService
         try {
             $environment = $body['environment'] ?? 'sandbox';
             $provider = strtolower((string) ($body['provider'] ?? 'mercadopago'));
-            if (! in_array($provider, ['mercadopago', 'asaas'], true)) {
+            if (! in_array($provider, self::PROVIDERS, true)) {
                 return [
                     'status' => 400,
                     'body' => [
@@ -80,10 +79,12 @@ class AdminPaymentCredentialsService
                 ];
             }
 
-            if ($provider === 'asaas') {
-                $existente = $this->credentials->obterPorTenant($tenantId);
-                $temTokenSandbox = ! empty($body['access_token_test']) || ! empty($existente['has_token_test']);
-                $temTokenProd = ! empty($body['access_token_prod']) || ! empty($existente['has_token_prod']);
+            $isActive = $this->boolish($body['is_active'] ?? false);
+            $existente = $this->credentials->obterPorTenantProvider($tenantId, $provider);
+            $temTokenSandbox = ! empty($body['access_token_test']) || ! empty($existente['has_token_test']);
+            $temTokenProd = ! empty($body['access_token_prod']) || ! empty($existente['has_token_prod']);
+
+            if ($isActive && $provider === 'asaas') {
                 if ($environment === 'sandbox' && ! $temTokenSandbox) {
                     return [
                         'status' => 400,
@@ -139,20 +140,23 @@ class AdminPaymentCredentialsService
             $dados = [
                 'provider' => $provider,
                 'environment' => $environment,
-                'public_key_test' => $body['public_key_test'] ?? null,
-                'public_key_prod' => $body['public_key_prod'] ?? null,
-                'is_active' => $body['is_active'] ?? true,
+                'public_key_test' => $body['public_key_test'] ?? ($existente['public_key_test'] ?? null),
+                'public_key_prod' => $body['public_key_prod'] ?? ($existente['public_key_prod'] ?? null),
+                'is_active' => $isActive ? 1 : 0,
                 'access_token_test' => $accessTokenTest,
                 'access_token_prod' => $accessTokenProd,
                 'webhook_secret' => $webhookSecret,
             ];
 
-            if ($this->credentials->existePorTenant($tenantId)) {
+            if ($this->credentials->existePorTenantProvider($tenantId, $provider)) {
                 $update = [
-                    'provider' => $dados['provider'],
                     'environment' => $dados['environment'],
-                    'public_key_test' => $dados['public_key_test'],
-                    'public_key_prod' => $dados['public_key_prod'],
+                    'public_key_test' => array_key_exists('public_key_test', $body)
+                        ? $body['public_key_test']
+                        : ($existente['public_key_test'] ?? null),
+                    'public_key_prod' => array_key_exists('public_key_prod', $body)
+                        ? $body['public_key_prod']
+                        : ($existente['public_key_prod'] ?? null),
                     'is_active' => $dados['is_active'],
                 ];
 
@@ -166,7 +170,7 @@ class AdminPaymentCredentialsService
                     $update['webhook_secret'] = $webhookSecret;
                 }
 
-                $this->credentials->atualizar($tenantId, $update);
+                $this->credentials->atualizar($tenantId, $provider, $update);
                 $message = 'Credenciais atualizadas com sucesso';
             } else {
                 $this->credentials->inserir($tenantId, $dados);
@@ -194,13 +198,18 @@ class AdminPaymentCredentialsService
     }
 
     /**
+     * @param  array<string, mixed>  $body
      * @return array{status: int, body: array<string, mixed>}
      */
-    public function testar(int $tenantId): array
+    public function testar(int $tenantId, array $body = []): array
     {
         try {
-            $row = $this->credentials->obterPorTenant($tenantId);
-            $provider = strtolower((string) ($row['provider'] ?? 'mercadopago'));
+            $provider = strtolower((string) ($body['provider'] ?? ''));
+            if ($provider === '') {
+                $row = $this->credentials->obterPorTenantProvider($tenantId, 'asaas')
+                    ?? $this->credentials->obterPorTenantProvider($tenantId, 'mercadopago');
+                $provider = strtolower((string) ($row['provider'] ?? 'mercadopago'));
+            }
 
             if ($provider === 'asaas') {
                 $asaas = new \App\Services\Asaas\AsaasService($tenantId);
@@ -248,6 +257,46 @@ class AdminPaymentCredentialsService
                 ],
             ];
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    private function mascararLinha(array $row): array
+    {
+        $provider = strtolower((string) ($row['provider'] ?? ''));
+        $row['nome'] = $provider === 'asaas' ? 'Asaas' : 'Mercado Pago';
+        $row['is_active'] = $this->boolish($row['is_active'] ?? false);
+        $row['has_token_test'] = $this->boolish($row['has_token_test'] ?? false);
+        $row['has_token_prod'] = $this->boolish($row['has_token_prod'] ?? false);
+        $row['public_key_test_masked'] = $this->mascarar($row['public_key_test'] ?? null);
+        $row['public_key_prod_masked'] = $this->mascarar($row['public_key_prod'] ?? null);
+        unset($row['public_key_test'], $row['public_key_prod']);
+
+        return $row;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function slotVazio(string $provider): array
+    {
+        return [
+            'provider' => $provider,
+            'nome' => $provider === 'asaas' ? 'Asaas' : 'Mercado Pago',
+            'environment' => 'sandbox',
+            'is_active' => false,
+            'has_token_test' => false,
+            'has_token_prod' => false,
+            'public_key_test_masked' => null,
+            'public_key_prod_masked' => null,
+        ];
+    }
+
+    private function boolish(mixed $value): bool
+    {
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN) || $value === 1 || $value === '1';
     }
 
     private function mascarar(?string $value): ?string

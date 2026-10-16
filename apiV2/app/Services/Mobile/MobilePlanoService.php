@@ -3,6 +3,7 @@
 namespace App\Services\Mobile;
 
 use App\Repositories\PlanoRepository;
+use App\Services\Payment\PaymentGatewayFactory;
 use App\Support\MobilePagamentoMetodos;
 use App\Support\PlanoCicloFormatter;
 use Illuminate\Support\Facades\DB;
@@ -12,12 +13,13 @@ class MobilePlanoService
     public function __construct(
         private readonly PlanoRepository $planos,
         private readonly MobileMigracaoPlanoService $migracao,
+        private readonly PaymentGatewayFactory $gateways,
     ) {}
 
     /**
      * @return array{status: int, body: array<string, mixed>}
      */
-    public function planosDisponiveis(int $userId, ?int $tenantId, ?int $modalidadeId): array
+    public function planosDisponiveis(int $userId, ?int $tenantId, ?int $modalidadeId, bool $podeSandbox = false): array
     {
         if (! $tenantId) {
             return [
@@ -68,7 +70,8 @@ class MobilePlanoService
 
         $pagamentoFlags = MobilePagamentoMetodos::flags($tenantId);
         $habilitarCartao = $pagamentoFlags['habilitar_cartao_credito'];
-        $habilitarPix = $pagamentoFlags['habilitar_pix'];
+        $pixGateways = $this->gateways->listarDisponiveis($tenantId, $podeSandbox);
+        $habilitarPix = $pagamentoFlags['habilitar_pix'] && $pixGateways !== [];
 
         $lista = $this->planos->listarPlanosPagos($tenantId, $modalidadeId);
         $planoIds = array_map(fn ($p) => (int) $p['id'], $lista);
@@ -151,6 +154,7 @@ class MobilePlanoService
                     'total' => count($planosFormatados),
                     'plano_atual_id' => $planoAtualId,
                     'matricula_ativa' => $matriculaAtivaResumo,
+                    'pix_gateways' => $pixGateways,
                 ],
             ],
         ];
@@ -159,7 +163,7 @@ class MobilePlanoService
     /**
      * @return array{status: int, body: array<string, mixed>}
      */
-    public function detalhePlano(int $userId, ?int $tenantId, int $planoId): array
+    public function detalhePlano(int $userId, ?int $tenantId, int $planoId, bool $podeSandbox = false): array
     {
         if (! $tenantId) {
             return [
@@ -200,7 +204,8 @@ class MobilePlanoService
 
         $pagamentoFlags = MobilePagamentoMetodos::flags($tenantId);
         $habilitarCartao = $pagamentoFlags['habilitar_cartao_credito'];
-        $habilitarPix = $pagamentoFlags['habilitar_pix'];
+        $pixGateways = $this->gateways->listarDisponiveis($tenantId, $podeSandbox);
+        $habilitarPix = $pagamentoFlags['habilitar_pix'] && $pixGateways !== [];
 
         $matriculaAtiva = null;
         $mat = $this->planos->findMatriculaAtivaNoPlano($userId, $planoId, $tenantId);
@@ -292,6 +297,7 @@ class MobilePlanoService
                     'label' => $podeRenovar
                         ? 'Renovação disponível'
                         : ($matriculaAtiva ? 'Seu plano atual' : ($podeMigrar ? 'Migrar para este plano' : null)),
+                    'pix_gateways' => $pixGateways,
                 ],
             ],
         ];

@@ -5,13 +5,31 @@ namespace App\Repositories;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Credenciais de pagamento por tenant (tenant_payment_credentials).
- *
- * Paridade com api/app/Controllers/TenantPaymentCredentialsController.php (Slim).
+ * Credenciais de pagamento por tenant+provider (tenant_payment_credentials).
  */
 class TenantPaymentCredentialsRepository
 {
-    public function obterPorTenant(int $tenantId): ?array
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function listarPorTenant(int $tenantId): array
+    {
+        $rows = DB::select(
+            'SELECT id, tenant_id, provider, environment,
+                    public_key_test, public_key_prod,
+                    is_active, created_at, updated_at,
+                    CASE WHEN access_token_test IS NOT NULL AND access_token_test != \'\' THEN TRUE ELSE FALSE END as has_token_test,
+                    CASE WHEN access_token_prod IS NOT NULL AND access_token_prod != \'\' THEN TRUE ELSE FALSE END as has_token_prod
+             FROM tenant_payment_credentials
+             WHERE tenant_id = ?
+             ORDER BY provider',
+            [$tenantId]
+        );
+
+        return array_map(fn ($row) => (array) $row, $rows);
+    }
+
+    public function obterPorTenantProvider(int $tenantId, string $provider): ?array
     {
         $row = DB::selectOne(
             'SELECT id, tenant_id, provider, environment,
@@ -20,19 +38,19 @@ class TenantPaymentCredentialsRepository
                     CASE WHEN access_token_test IS NOT NULL AND access_token_test != \'\' THEN TRUE ELSE FALSE END as has_token_test,
                     CASE WHEN access_token_prod IS NOT NULL AND access_token_prod != \'\' THEN TRUE ELSE FALSE END as has_token_prod
              FROM tenant_payment_credentials
-             WHERE tenant_id = ?
+             WHERE tenant_id = ? AND provider = ?
              LIMIT 1',
-            [$tenantId]
+            [$tenantId, $provider]
         );
 
         return $row ? (array) $row : null;
     }
 
-    public function existePorTenant(int $tenantId): bool
+    public function existePorTenantProvider(int $tenantId, string $provider): bool
     {
         return DB::selectOne(
-            'SELECT id FROM tenant_payment_credentials WHERE tenant_id = ?',
-            [$tenantId]
+            'SELECT id FROM tenant_payment_credentials WHERE tenant_id = ? AND provider = ?',
+            [$tenantId, $provider]
         ) !== null;
     }
 
@@ -63,17 +81,15 @@ class TenantPaymentCredentialsRepository
     /**
      * @param  array<string, mixed>  $dados
      */
-    public function atualizar(int $tenantId, array $dados): void
+    public function atualizar(int $tenantId, string $provider, array $dados): void
     {
         $sql = 'UPDATE tenant_payment_credentials SET
-                    provider = ?,
                     environment = ?,
                     public_key_test = ?,
                     public_key_prod = ?,
                     is_active = ?,
                     updated_at = NOW()';
         $params = [
-            $dados['provider'],
             $dados['environment'],
             $dados['public_key_test'],
             $dados['public_key_prod'],
@@ -93,8 +109,9 @@ class TenantPaymentCredentialsRepository
             $params[] = $dados['webhook_secret'];
         }
 
-        $sql .= ' WHERE tenant_id = ?';
+        $sql .= ' WHERE tenant_id = ? AND provider = ?';
         $params[] = $tenantId;
+        $params[] = $provider;
 
         DB::update($sql, $params);
     }

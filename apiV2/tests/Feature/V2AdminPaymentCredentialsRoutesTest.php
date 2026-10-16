@@ -95,7 +95,7 @@ class V2AdminPaymentCredentialsRoutesTest extends TestCase
         $service = Mockery::mock(\App\Services\Admin\AdminPaymentCredentialsService::class);
         $service->shouldReceive('testar')
             ->once()
-            ->with(3)
+            ->with(3, Mockery::any())
             ->andReturn([
                 'status' => 400,
                 'body' => [

@@ -1,5 +1,6 @@
 import { useProtectedRoute } from "@/hooks/useProtectedRoute";
 import { getApiUrlRuntime } from "@/src/utils/apiConfig";
+import { solicitarPix } from "@/src/utils/pagamentoPix";
 import { authService } from "@/src/services/authService";
 import PixPaymentSheet from "@/src/components/ds/PixPaymentSheet";
 import { colors } from "@/src/theme/colors";
@@ -557,22 +558,13 @@ export default function PlanosScreen() {
         if (data.code === "ERRO_PAGAMENTO" && metodo === "pix") {
           const matriculaId = data.matricula_id ?? data.data?.matricula_id;
           if (matriculaId) {
-            const pixResponse = await fetch(`${apiUrl}/mobile/pagamento/pix`, {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({ matricula_id: matriculaId }),
+            const pixResult = await solicitarPix({
+              apiUrl,
+              token,
+              matriculaId: Number(matriculaId),
             });
-            const pixText = await pixResponse.text();
-            let pixJson: any = {};
-            try {
-              pixJson = pixText ? JSON.parse(pixText) : {};
-            } catch {
-              pixJson = {};
-            }
-            if (pixResponse.ok && pixJson.success) {
+            const pixJson = pixResult.json;
+            if (pixResult.ok) {
               const pix = pixJson.data?.pix || {};
               setPixData({
                 matricula_id: Number(pixJson.data?.matricula_id || matriculaId),
@@ -927,25 +919,13 @@ export default function PlanosScreen() {
               errorData.data?.matricula_id
             ) {
               const matriculaIdRenov = Number(errorData.data.matricula_id);
-              const pixResponseRenov = await fetch(
-                `${apiUrl}/mobile/pagamento/pix`,
-                {
-                  method: "POST",
-                  headers: {
-                    Authorization: `Bearer ${token}`,
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({ matricula_id: matriculaIdRenov }),
-                },
-              );
-              const pixTextRenov = await pixResponseRenov.text();
-              let pixJsonRenov: any = {};
-              try {
-                pixJsonRenov = pixTextRenov ? JSON.parse(pixTextRenov) : {};
-              } catch {
-                pixJsonRenov = {};
-              }
-              if (pixResponseRenov.ok && pixJsonRenov.success) {
+              const pixResultRenov = await solicitarPix({
+                apiUrl,
+                token,
+                matriculaId: matriculaIdRenov,
+              });
+              const pixJsonRenov = pixResultRenov.json;
+              if (pixResultRenov.ok) {
                 const pix = pixJsonRenov.data?.pix || {};
                 setPixData({
                   matricula_id: Number(
@@ -1009,25 +989,13 @@ export default function PlanosScreen() {
             setPlanoComprando(null);
             return;
           }
-          const pixResponseRenov = await fetch(
-            `${apiUrl}/mobile/pagamento/pix`,
-            {
-              method: "POST",
-              headers: {
-                Authorization: `Bearer ${token}`,
-                "Content-Type": "application/json",
-              },
-              body: JSON.stringify({ matricula_id: matriculaIdRenov }),
-            },
-          );
-          const pixTextRenov = await pixResponseRenov.text();
-          let pixJsonRenov: any = {};
-          try {
-            pixJsonRenov = pixTextRenov ? JSON.parse(pixTextRenov) : {};
-          } catch {
-            pixJsonRenov = {};
-          }
-          if (!pixResponseRenov.ok || !pixJsonRenov.success) {
+          const pixResultRenov = await solicitarPix({
+            apiUrl,
+            token,
+            matriculaId: matriculaIdRenov,
+          });
+          const pixJsonRenov = pixResultRenov.json;
+          if (!pixResultRenov.ok) {
             showErrorModal(
               "⚠️ Erro ao Gerar PIX",
               pixJsonRenov?.error ||
@@ -1099,28 +1067,17 @@ export default function PlanosScreen() {
           return;
         }
 
-        const pixResponse = await fetch(`${apiUrl}/mobile/pagamento/pix`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ matricula_id: matriculaId }),
+        const pixResult = await solicitarPix({
+          apiUrl,
+          token,
+          matriculaId: Number(matriculaId),
         });
+        const pixJson = pixResult.json;
 
-        const pixText = await pixResponse.text();
-        let pixJson: any = {};
-        try {
-          pixJson = pixText ? JSON.parse(pixText) : {};
-        } catch {
-          pixJson = {};
-        }
-
-        if (!pixResponse.ok || !pixJson.success) {
+        if (!pixResult.ok) {
           const msg =
             pixJson?.message ||
             pixJson?.error ||
-            pixText ||
             "Não foi possível gerar o PIX.";
           showErrorModal("⚠️ Erro ao Gerar PIX", msg, "error");
           setPixLoading(false);

@@ -1,5 +1,6 @@
 import { useProtectedRoute } from "@/hooks/useProtectedRoute";
 import { getApiUrlRuntime } from "@/src/config/urls";
+import { solicitarPix } from "@/src/utils/pagamentoPix";
 import { authService } from "@/src/services/authService";
 import { colors } from "@/src/theme/colors";
 import { handleUnauthorizedResponse } from "@/src/utils/authHelpers";
@@ -208,22 +209,13 @@ export default function MinhasAssinaturasScreen() {
           return;
         }
         const apiUrl = getApiUrlRuntime();
-        const pixResponse = await fetch(`${apiUrl}/mobile/pagamento/pix`, {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ matricula_id: assinatura.matricula_id }),
+        const pixResult = await solicitarPix({
+          apiUrl,
+          token,
+          matriculaId: Number(assinatura.matricula_id),
         });
-        const pixText = await pixResponse.text();
-        let pixJson: any = {};
-        try {
-          pixJson = pixText ? JSON.parse(pixText) : {};
-        } catch {
-          pixJson = {};
-        }
-        if (!pixResponse.ok || !pixJson.success) {
+        const pixJson = pixResult.json;
+        if (!pixResult.ok) {
           showErrorModal(
             "⚠️ Não foi possível gerar o pagamento",
             pixJson.error ||

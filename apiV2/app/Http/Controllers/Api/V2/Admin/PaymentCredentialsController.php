@@ -45,7 +45,7 @@ class PaymentCredentialsController extends Controller
             return $tenantId;
         }
 
-        $result = $this->service->testar($tenantId);
+        $result = $this->service->testar($tenantId, $request->all());
 
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }

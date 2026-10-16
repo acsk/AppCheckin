@@ -9,6 +9,7 @@ use App\Services\Payment\PaymentGatewayFactory;
 use App\Support\AssinaturaGateway;
 use App\Support\MetodoPagamentoResolver;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class MobilePagamentoService
 {
@@ -22,7 +23,7 @@ class MobilePagamentoService
      * @param  array<string, mixed>  $body
      * @return array{status: int, body: array<string, mixed>}
      */
-    public function gerarPix(int $userId, ?int $tenantId, array $body): array
+    public function gerarPix(int $userId, ?int $tenantId, array $body, bool $podeSandbox = false): array
     {
         if (! $tenantId) {
             return ['status' => 400, 'body' => ['success' => false, 'error' => 'Nenhum tenant selecionado']];
@@ -193,6 +194,24 @@ class MobilePagamentoService
                 ];
             }
 
+            $escolha = $this->gateways->resolverPix(
+                $tenantId,
+                $podeSandbox,
+                isset($body['gateway']) ? (string) $body['gateway'] : (isset($body['provider']) ? (string) $body['provider'] : null)
+            );
+            if (! ($escolha['ok'] ?? false)) {
+                return [
+                    'status' => (int) ($escolha['status'] ?? 400),
+                    'body' => [
+                        'success' => false,
+                        'code' => $escolha['code'] ?? 'SEM_GATEWAY_PIX',
+                        'error' => $escolha['error'] ?? 'Nenhum provedor de PIX disponível.',
+                        'gateways' => $escolha['gateways'] ?? [],
+                    ],
+                ];
+            }
+            $provider = (string) $escolha['provider'];
+
             $dataVencParcela = $matricula['proxima_data_vencimento'] ?? date('Y-m-d');
             $this->pagamentosPlano->garantirParcelaPendenteUnica(
                 $tenantId,
@@ -202,7 +221,7 @@ class MobilePagamentoService
                 (float) $matricula['valor'],
                 $dataVencParcela,
                 $userId,
-                $this->gateways->providerForTenant($tenantId) === 'asaas'
+                $provider === 'asaas'
                     ? 'Aguardando pagamento via Asaas'
                     : 'Aguardando pagamento via Mercado Pago'
             );
@@ -224,10 +243,17 @@ class MobilePagamentoService
                 'academia_nome' => $academiaNome,
             ];
 
-            $pixData = $this->gateways->pixGateway($tenantId)->criarPagamentoPix($dadosPagamento);
+            $pixData = $escolha['instance']->criarPagamentoPix($dadosPagamento);
 
-            $this->salvarPix($tenantId, $matriculaId, $pixData);
-            $this->atualizarAssinaturaPix($tenantId, $matricula, $pixData);
+            try {
+                $this->salvarPix($tenantId, $matriculaId, $pixData);
+                $this->atualizarAssinaturaPix($tenantId, $matricula, $pixData, $provider);
+            } catch (\Throwable $persistencia) {
+                Log::error('gerarPix persistência: '.$persistencia->getMessage(), [
+                    'tenant_id' => $tenantId,
+                    'matricula_id' => $matriculaId,
+                ]);
+            }
 
             return [
                 'status' => 200,
@@ -249,9 +275,26 @@ class MobilePagamentoService
                 ],
             ];
         } catch (\Throwable $e) {
+            Log::error('gerarPix: '.$e->getMessage(), [
+                'exception' => $e::class,
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            $mensagem = $e->getMessage();
+            $config = str_contains($mensagem, 'Asaas')
+                || str_contains($mensagem, 'Mercado Pago')
+                || str_contains($mensagem, 'não configurado')
+                || str_contains($mensagem, 'não está disponível')
+                || str_contains($mensagem, 'CPF');
+
             return [
-                'status' => 500,
-                'body' => ['success' => false, 'error' => 'Erro ao gerar PIX', 'message' => $e->getMessage()],
+                'status' => $config ? 400 : 500,
+                'body' => [
+                    'success' => false,
+                    'error' => 'Erro ao gerar PIX',
+                    'message' => $mensagem,
+                ],
             ];
         }
     }
@@ -283,7 +326,7 @@ class MobilePagamentoService
      * @param  array<string, mixed>  $matricula
      * @param  array<string, mixed>  $pixData
      */
-    private function atualizarAssinaturaPix(int $tenantId, array $matricula, array $pixData): void
+    private function atualizarAssinaturaPix(int $tenantId, array $matricula, array $pixData, string $provider): void
     {
         $paymentIdPix = $pixData['id'] ?? null;
         $paymentUrlPix = $pixData['ticket_url'] ?? null;
@@ -310,7 +353,6 @@ class MobilePagamentoService
             return;
         }
 
-        $provider = $this->gateways->providerForTenant($tenantId);
         $gatewayId = AssinaturaGateway::id($provider === 'asaas' ? 'asaas' : 'mercadopago');
         $statusId = DB::table('assinatura_status')->where('codigo', 'pendente')->value('id') ?: 1;
         $metodoPagamentoId = MetodoPagamentoResolver::resolve('pix');

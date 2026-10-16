@@ -18,10 +18,16 @@ final class AssinaturaGateway
             'mercadopago' => 'Mercado Pago',
         ];
 
-        return (int) DB::table('assinatura_gateways')->insertGetId([
-            'codigo' => $codigo,
-            'nome' => $nomes[$codigo] ?? $codigo,
-            'ativo' => 1,
-        ]);
+        try {
+            return (int) DB::table('assinatura_gateways')->insertGetId([
+                'codigo' => $codigo,
+                'nome' => $nomes[$codigo] ?? $codigo,
+                'ativo' => 1,
+            ]);
+        } catch (\Throwable) {
+            $id = DB::table('assinatura_gateways')->where('codigo', $codigo)->value('id');
+
+            return $id ? (int) $id : 1;
+        }
     }
 }

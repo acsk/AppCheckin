@@ -30,9 +30,9 @@ class PaymentCredentialsService {
   /**
    * Testar conexão com Mercado Pago
    */
-  async testarConexao() {
+  async testarConexao(provider) {
     try {
-      const response = await api.post('/admin/payment-credentials/test');
+      const response = await api.post('/admin/payment-credentials/test', provider ? { provider } : {});
       return response.data;
     } catch (error) {
       console.error('Erro ao testar conexão:', error);

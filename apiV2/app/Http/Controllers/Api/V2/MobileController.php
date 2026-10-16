@@ -20,6 +20,7 @@ use App\Services\Mobile\MobileWodService;
 
 use App\Support\AcademyDateTime;
 use App\Support\MobileResponse;
+use App\Support\PaymentSandboxAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -401,6 +402,7 @@ class MobileController extends Controller
                 $this->userId($request),
                 $this->tenantId($request),
                 $modalidade !== null && $modalidade !== '' ? (int) $modalidade : null,
+                PaymentSandboxAccess::fromRequest($request),
             );
 
             return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
@@ -418,6 +420,7 @@ class MobileController extends Controller
                 $this->userId($request),
                 $this->tenantId($request),
                 $planoId,
+                PaymentSandboxAccess::fromRequest($request),
             );
 
             return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
@@ -470,6 +473,7 @@ class MobileController extends Controller
                 $this->userId($request),
                 $this->tenantId($request),
                 $request->all(),
+                PaymentSandboxAccess::fromRequest($request),
             );
 
             return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
@@ -523,6 +527,7 @@ class MobileController extends Controller
                 $this->userId($request),
                 $this->tenantId($request),
                 $request->all(),
+                PaymentSandboxAccess::fromRequest($request),
             );
 
             return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);

@@ -99,6 +99,13 @@ class AsaasService
         ];
     }
 
+    public function credenciaisOficiaisValidas(): bool
+    {
+        $environment = $this->productionMode ? 'production' : 'sandbox';
+
+        return $this->accessToken !== '' && AsaasApiKey::valida($this->accessToken, $environment);
+    }
+
     public function webhookSecret(): ?string
     {
         if (! $this->tenantId) {
@@ -240,10 +247,10 @@ class AsaasService
         if ($method === 'GET') {
             $response = Http::withHeaders($headers)->timeout(30)->get($url, $query);
         } else {
-            $response = Http::withHeaders($headers + ['Content-Type' => 'application/json'])
+            $response = Http::withHeaders($headers)
+                ->asJson()
                 ->timeout(30)
-                ->withBody(json_encode($body ?? new \stdClass(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?: '{}', 'application/json')
-                ->send($method, $url);
+                ->post($url, $body ?? []);
         }
 
         $json = $response->json();
