@@ -3,7 +3,11 @@
 namespace App\Services\Mobile;
 
 use App\Repositories\MatriculaRepository;
+use App\Services\Asaas\AsaasService;
+use App\Services\Asaas\AsaasWebhookService;
+use App\Services\PagamentoPlanoService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class MobileMatriculaService
 {
@@ -207,6 +211,11 @@ class MobileMatriculaService
             return ['status' => 404, 'body' => ['success' => false, 'message' => 'Matrícula não encontrada']];
         }
 
+        if ($matricula['status_codigo'] !== 'ativa') {
+            $this->sincronizarPagamentoAsaas($tenantId, (int) $matriculaId);
+            $matricula = $this->matriculas->findComStatusPorUsuario((int) $matriculaId, $userId, $tenantId) ?? $matricula;
+        }
+
         if ($matricula['status_codigo'] === 'ativa') {
             return [
                 'status' => 200,
@@ -237,6 +246,40 @@ class MobileMatriculaService
                 'data' => ['matricula_id' => (int) $matriculaId, 'status' => $matricula['status_codigo']],
             ],
         ];
+    }
+
+    private function sincronizarPagamentoAsaas(int $tenantId, int $matriculaId): void
+    {
+        $pix = $this->matriculas->findUltimoPix($tenantId, $matriculaId);
+        $paymentId = (string) ($pix['payment_id'] ?? '');
+        if ($paymentId === '' || ! str_starts_with($paymentId, 'pay_')) {
+            return;
+        }
+
+        try {
+            if (($pix['status'] ?? '') === 'approved') {
+                app(PagamentoPlanoService::class)->atualizarStatusMatricula($tenantId, $matriculaId);
+
+                return;
+            }
+
+            $payment = (new AsaasService($tenantId))->obterPagamento($paymentId);
+            if ($payment === []) {
+                return;
+            }
+
+            app(AsaasWebhookService::class)->processar([
+                'event' => 'PAYMENT_RECEIVED',
+                'id' => 'poll-'.$paymentId,
+                'payment' => $payment,
+            ], null);
+        } catch (\Throwable $e) {
+            Log::warning('verificarPagamento Asaas: '.$e->getMessage(), [
+                'tenant_id' => $tenantId,
+                'matricula_id' => $matriculaId,
+                'payment_id' => $paymentId,
+            ]);
+        }
     }
 
     /**

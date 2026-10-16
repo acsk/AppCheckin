@@ -61,6 +61,12 @@ class AsaasService
             throw new \RuntimeException('Asaas não retornou o ID da cobrança PIX');
         }
 
+        try {
+            $this->garantirWebhook();
+        } catch (\Throwable $e) {
+            Log::warning('Asaas: falha ao garantir webhook', ['error' => $e->getMessage()]);
+        }
+
         $qr = $this->request('GET', '/payments/'.$paymentId.'/pixQrCode');
         $encoded = (string) ($qr['encodedImage'] ?? '');
         if ($encoded !== '' && ! str_starts_with($encoded, 'data:')) {
@@ -104,6 +110,81 @@ class AsaasService
         $environment = $this->productionMode ? 'production' : 'sandbox';
 
         return $this->accessToken !== '' && AsaasApiKey::valida($this->accessToken, $environment);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function obterPagamento(string $paymentId): array
+    {
+        $this->validarCredenciais();
+
+        return $this->request('GET', '/payments/'.$paymentId);
+    }
+
+    /**
+     * Garante webhook de cobrança apontando para a API v2.
+     * Baixa manual no painel Asaas dispara PAYMENT_RECEIVED.
+     */
+    public function garantirWebhook(): void
+    {
+        $this->validarCredenciais();
+        $url = rtrim((string) config('app.url'), '/').'/v2/webhooks/asaas';
+        if (! str_starts_with($url, 'https://')) {
+            Log::info('Asaas webhook não registrado: APP_URL precisa ser HTTPS público', ['url' => $url]);
+
+            return;
+        }
+        $lista = $this->request('GET', '/webhooks');
+
+        foreach ($lista['data'] ?? [] as $webhook) {
+            if (! is_array($webhook) || ($webhook['url'] ?? '') !== $url) {
+                continue;
+            }
+            $enabled = (bool) ($webhook['enabled'] ?? false);
+            $interrupted = (bool) ($webhook['interrupted'] ?? false);
+            if ($enabled && ! $interrupted) {
+                return;
+            }
+            $id = (string) ($webhook['id'] ?? '');
+            if ($id !== '') {
+                $this->request('PUT', '/webhooks/'.$id, [
+                    'enabled' => true,
+                    'interrupted' => false,
+                ]);
+            }
+
+            return;
+        }
+
+        $auth = $this->webhookSecret() ?: bin2hex(random_bytes(16));
+        $this->request('POST', '/webhooks', [
+            'name' => 'AppCheckin matrículas',
+            'url' => $url,
+            'email' => (string) config('mail.from.address', 'mail@appcheckin.com.br'),
+            'enabled' => true,
+            'interrupted' => false,
+            'apiVersion' => 3,
+            'authToken' => $auth,
+            'sendType' => 'SEQUENTIALLY',
+            'events' => [
+                'PAYMENT_CONFIRMED',
+                'PAYMENT_RECEIVED',
+                'PAYMENT_RECEIVED_IN_CASH',
+                'PAYMENT_UPDATED',
+            ],
+        ]);
+
+        if ($this->tenantId && $this->webhookSecret() === null) {
+            $encryption = new EncryptionService();
+            DB::table('tenant_payment_credentials')
+                ->where('tenant_id', $this->tenantId)
+                ->where('provider', 'asaas')
+                ->update([
+                    'webhook_secret' => $encryption->encrypt($auth),
+                    'updated_at' => now(),
+                ]);
+        }
     }
 
     public function webhookSecret(): ?string
@@ -246,10 +327,10 @@ class AsaasService
         if ($method === 'GET') {
             $response = Http::withHeaders($headers)->timeout(30)->get($url, $query);
         } else {
-            $response = Http::withHeaders($headers)
-                ->asJson()
-                ->timeout(30)
-                ->post($url, $body ?? []);
+            $pending = Http::withHeaders($headers)->asJson()->timeout(30);
+            $response = $method === 'PUT'
+                ? $pending->put($url, $body ?? [])
+                : $pending->post($url, $body ?? []);
         }
 
         $json = $response->json();

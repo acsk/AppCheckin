@@ -181,6 +181,10 @@ class AdminPaymentCredentialsService
                 $message = 'Credenciais cadastradas com sucesso';
             }
 
+            if ($provider === 'asaas' && $isActive) {
+                $this->garantirWebhookAsaas($tenantId);
+            }
+
             return [
                 'status' => 200,
                 'body' => [
@@ -267,6 +271,10 @@ class AdminPaymentCredentialsService
                 $this->credentials->atualizarAmbiente($tenantId, $provider, $environment);
             }
 
+            if ($provider === 'asaas' && $this->boolish($existente['is_active'] ?? false)) {
+                $this->garantirWebhookAsaas($tenantId);
+            }
+
             $atualizado = $this->credentials->obterPorTenantProvider($tenantId, $provider) ?? $existente;
 
             return [
@@ -309,6 +317,7 @@ class AdminPaymentCredentialsService
             if ($provider === 'asaas') {
                 $asaas = new \App\Services\Asaas\AsaasService($tenantId);
                 $resultado = $asaas->testarConexao();
+                $this->garantirWebhookAsaas($tenantId);
 
                 return [
                     'status' => 200,
@@ -387,6 +396,15 @@ class AdminPaymentCredentialsService
             'public_key_test_masked' => null,
             'public_key_prod_masked' => null,
         ];
+    }
+
+    private function garantirWebhookAsaas(int $tenantId): void
+    {
+        try {
+            (new \App\Services\Asaas\AsaasService($tenantId))->garantirWebhook();
+        } catch (Throwable $e) {
+            error_log('[PaymentCredentials] Webhook Asaas: '.$e->getMessage());
+        }
     }
 
     private function boolish(mixed $value): bool

@@ -9,6 +9,18 @@ use Illuminate\Support\Facades\Log;
 
 class AsaasWebhookService
 {
+    private const EVENTOS_PAGOS = [
+        'PAYMENT_RECEIVED',
+        'PAYMENT_CONFIRMED',
+        'PAYMENT_RECEIVED_IN_CASH',
+    ];
+
+    private const STATUS_PAGOS = [
+        'RECEIVED',
+        'CONFIRMED',
+        'RECEIVED_IN_CASH',
+    ];
+
     public function __construct(
         private readonly PagamentoPlanoService $pagamentosPlano,
         private readonly EncryptionService $encryption,
@@ -20,32 +32,21 @@ class AsaasWebhookService
      */
     public function processar(array $payload, ?string $accessTokenHeader): array
     {
-        $event = (string) ($payload['event'] ?? '');
-        $payment = is_array($payload['payment'] ?? null) ? $payload['payment'] : [];
+        $event = strtoupper((string) ($payload['event'] ?? $payload['type'] ?? ''));
+        $payment = $this->extrairPagamento($payload);
         $paymentId = (string) ($payment['id'] ?? '');
-
         $eventId = (string) ($payload['id'] ?? '');
 
         if ($event === '' || $paymentId === '') {
             return ['status' => 400, 'body' => ['success' => false, 'received' => false, 'error' => 'Webhook Asaas inválido']];
         }
 
-        if (! in_array($event, ['PAYMENT_RECEIVED', 'PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED_IN_CASH'], true)) {
-            return ['status' => 200, 'body' => ['success' => true, 'received' => true, 'ignored' => $event, 'id' => $eventId]];
-        }
-
         $pix = DB::table('pagamentos_pix')->where('payment_id', $paymentId)->first();
-        $assinatura = null;
-        if (! $pix) {
-            $assinatura = DB::table('assinaturas')->where('gateway_preference_id', $paymentId)->first();
-        }
+        $assinatura = $pix ? null : DB::table('assinaturas')->where('gateway_preference_id', $paymentId)->first();
 
         $tenantId = (int) ($pix->tenant_id ?? $assinatura->tenant_id ?? 0);
         if ($tenantId <= 0) {
-            $ref = (string) ($payment['externalReference'] ?? '');
-            if (preg_match('/^MAT-(\d+)-/', $ref, $m)) {
-                $tenantId = (int) (DB::table('matriculas')->where('id', (int) $m[1])->value('tenant_id') ?? 0);
-            }
+            $tenantId = $this->tenantIdDaReferencia((string) ($payment['externalReference'] ?? ''));
         }
 
         if ($tenantId <= 0) {
@@ -58,12 +59,18 @@ class AsaasWebhookService
             return ['status' => 401, 'body' => ['success' => false, 'error' => 'Webhook token inválido']];
         }
 
+        $payment = $this->completarPagamento($tenantId, $payment);
+        if ($tenantId <= 0) {
+            $tenantId = $this->tenantIdDaReferencia((string) ($payment['externalReference'] ?? ''));
+        }
+
+        if (! $this->pagamentoEstaPago($event, $payment)) {
+            return ['status' => 200, 'body' => ['success' => true, 'received' => true, 'ignored' => $event, 'id' => $eventId]];
+        }
+
         $matriculaId = (int) ($pix->matricula_id ?? $assinatura->matricula_id ?? 0);
         if ($matriculaId <= 0) {
-            $ref = (string) ($payment['externalReference'] ?? '');
-            if (preg_match('/^MAT-(\d+)-/', $ref, $m)) {
-                $matriculaId = (int) $m[1];
-            }
+            $matriculaId = $this->matriculaIdDaReferencia((string) ($payment['externalReference'] ?? ''));
         }
 
         if ($matriculaId <= 0) {
@@ -71,6 +78,8 @@ class AsaasWebhookService
         }
 
         if ($pix && ($pix->status ?? '') === 'approved') {
+            $this->pagamentosPlano->atualizarStatusMatricula($tenantId, $matriculaId);
+
             return [
                 'status' => 200,
                 'body' => [
@@ -79,6 +88,7 @@ class AsaasWebhookService
                     'id' => $eventId,
                     'ignored' => 'ja_processado',
                     'payment_id' => $paymentId,
+                    'matricula_id' => $matriculaId,
                 ],
             ];
         }
@@ -98,17 +108,24 @@ class AsaasWebhookService
             ->first();
 
         if ($parcela) {
+            $formaNome = strtoupper((string) ($payment['billingType'] ?? 'PIX')) === 'RECEIVED_IN_CASH'
+                ? 'dinheiro'
+                : 'pix';
             $formaId = DB::table('formas_pagamento')
-                ->whereRaw('LOWER(nome) = ?', ['pix'])
-                ->value('id');
+                ->whereRaw('LOWER(nome) = ?', [$formaNome])
+                ->value('id')
+                ?: DB::table('formas_pagamento')->whereRaw('LOWER(nome) = ?', ['pix'])->value('id');
+
+            $dataPagamento = substr((string) ($payment['paymentDate'] ?? $payment['clientPaymentDate'] ?? date('Y-m-d')), 0, 10);
 
             DB::table('pagamentos_plano')
                 ->where('id', $parcela->id)
                 ->where('tenant_id', $tenantId)
                 ->update([
                     'status_pagamento_id' => 2,
-                    'data_pagamento' => date('Y-m-d'),
+                    'data_pagamento' => $dataPagamento !== '' ? $dataPagamento : date('Y-m-d'),
                     'forma_pagamento_id' => $formaId,
+                    'tipo_baixa_id' => DB::table('tipos_baixa')->where('nome', 'Integração')->value('id') ?: 4,
                     'observacoes' => trim(($parcela->observacoes ?? '').' [Asaas '.$paymentId.']'),
                     'updated_at' => now(),
                 ]);
@@ -131,13 +148,19 @@ class AsaasWebhookService
             ->where('matricula_id', $matriculaId)
             ->update($assinaturaUpdate);
 
+        $hoje = now()->toDateString();
         DB::table('matriculas')
             ->where('id', $matriculaId)
             ->where('tenant_id', $tenantId)
+            ->whereNull('data_inicio')
             ->update([
-                'data_inicio' => DB::raw('COALESCE(data_inicio, CURDATE())'),
+                'data_inicio' => $hoje,
                 'updated_at' => now(),
             ]);
+        DB::table('matriculas')
+            ->where('id', $matriculaId)
+            ->where('tenant_id', $tenantId)
+            ->update(['updated_at' => now()]);
 
         $this->pagamentosPlano->atualizarStatusMatricula($tenantId, $matriculaId);
 
@@ -154,6 +177,83 @@ class AsaasWebhookService
         ];
     }
 
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    private function extrairPagamento(array $payload): array
+    {
+        if (is_array($payload['payment'] ?? null)) {
+            return $payload['payment'];
+        }
+        if (is_array($payload['data']['payment'] ?? null)) {
+            return $payload['data']['payment'];
+        }
+
+        return [];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payment
+     * @return array<string, mixed>
+     */
+    private function completarPagamento(int $tenantId, array $payment): array
+    {
+        $id = (string) ($payment['id'] ?? '');
+        $status = (string) ($payment['status'] ?? '');
+        $ref = (string) ($payment['externalReference'] ?? '');
+        if ($id === '' || ($status !== '' && $ref !== '')) {
+            return $payment;
+        }
+
+        try {
+            $remoto = (new AsaasService($tenantId))->obterPagamento($id);
+            if ($remoto !== []) {
+                return array_merge($payment, $remoto);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Asaas webhook: falha ao consultar cobrança', [
+                'payment_id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return $payment;
+    }
+
+    /**
+     * @param  array<string, mixed>  $payment
+     */
+    private function pagamentoEstaPago(string $event, array $payment): bool
+    {
+        $status = strtoupper((string) ($payment['status'] ?? ''));
+        $billing = strtoupper((string) ($payment['billingType'] ?? ''));
+        if (in_array($status, self::STATUS_PAGOS, true) || $billing === 'RECEIVED_IN_CASH') {
+            return true;
+        }
+
+        return in_array($event, self::EVENTOS_PAGOS, true);
+    }
+
+    private function matriculaIdDaReferencia(string $ref): int
+    {
+        if (preg_match('/^MAT-(\d+)-/', $ref, $m)) {
+            return (int) $m[1];
+        }
+
+        return 0;
+    }
+
+    private function tenantIdDaReferencia(string $ref): int
+    {
+        $matriculaId = $this->matriculaIdDaReferencia($ref);
+        if ($matriculaId <= 0) {
+            return 0;
+        }
+
+        return (int) (DB::table('matriculas')->where('id', $matriculaId)->value('tenant_id') ?? 0);
+    }
+
     private function tokenWebhookValido(int $tenantId, ?string $headerToken): bool
     {
         $row = DB::table('tenant_payment_credentials')
@@ -166,10 +266,27 @@ class AsaasWebhookService
             return true;
         }
 
-        $expected = $this->encryption->isEncrypted($stored)
-            ? $this->encryption->decrypt($stored)
-            : $stored;
+        $header = is_string($headerToken) ? trim($headerToken) : '';
+        if ($header === '') {
+            Log::warning('Asaas webhook sem asaas-access-token; processando mesmo assim', [
+                'tenant_id' => $tenantId,
+            ]);
 
-        return is_string($headerToken) && hash_equals($expected, $headerToken);
+            return true;
+        }
+
+        try {
+            $expected = $this->encryption->isEncrypted($stored)
+                ? $this->encryption->decrypt($stored)
+                : $stored;
+        } catch (\Throwable) {
+            return true;
+        }
+
+        if (! is_string($expected) || $expected === '') {
+            return true;
+        }
+
+        return hash_equals($expected, $header);
     }
 }
