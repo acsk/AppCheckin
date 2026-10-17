@@ -88,7 +88,7 @@ class PaymentGatewayFactoryTest extends TestCase
         $this->assertSame(409, $escolha['status']);
     }
 
-    public function test_inactive_sandbox_hidden_from_aluno_visible_to_admin(): void
+    public function test_inactive_hidden_from_aluno_and_admin(): void
     {
         DB::table('tenant_payment_credentials')->insert([
             [
@@ -97,7 +97,8 @@ class PaymentGatewayFactoryTest extends TestCase
                 'environment' => 'production',
                 'access_token_test' => '',
                 'access_token_prod' => 'mp-token',
-                'is_active' => 1,
+                'is_active' => 0,
+                'enable_pix' => 1,
             ],
             [
                 'tenant_id' => 5,
@@ -105,17 +106,21 @@ class PaymentGatewayFactoryTest extends TestCase
                 'environment' => 'sandbox',
                 'access_token_test' => '$aact_hmlg_xxxxxxxx',
                 'access_token_prod' => '',
-                'is_active' => 0,
+                'is_active' => 1,
+                'enable_pix' => 1,
             ],
         ]);
 
         $factory = new PaymentGatewayFactory();
-        $aluno = $factory->listarDisponiveis(5, false);
-        $admin = $factory->listarDisponiveis(5, true);
+        $aluno = $factory->listarDisponiveis(5, false, 'pix');
+        $admin = $factory->listarDisponiveis(5, true, 'pix');
 
-        $this->assertSame(['mercadopago'], array_column($aluno, 'id'));
-        $this->assertContains('mercadopago', array_column($admin, 'id'));
-        $this->assertContains('asaas', array_column($admin, 'id'));
+        $this->assertSame([], array_column($aluno, 'id'));
+        $this->assertSame(['asaas'], array_column($admin, 'id'));
+
+        $escolhaAdmin = $factory->resolverPix(5, true, null);
+        $this->assertTrue($escolhaAdmin['ok']);
+        $this->assertSame('asaas', $escolhaAdmin['provider']);
     }
 
     public function test_cartao_desligado_no_mp_nao_lista_mp_para_cartao(): void

@@ -28,8 +28,7 @@ class PaymentGatewayFactory
                 ? 'production'
                 : 'sandbox';
 
-            $ativo = $this->estaAtivo($row);
-            if (! $ativo && ! $podeSandbox) {
+            if (! $this->estaAtivo($row)) {
                 continue;
             }
 
