@@ -1468,20 +1468,15 @@ export default function PlanosScreen() {
       maximumFractionDigits: 2,
     }).format(v || 0);
   };
-  const menorMensal = (plano: Plan) => {
-    const mensais = (plano.ciclos || [])
-      .map((c) => Number(c.valor_mensal) || (c.meses ? Number(c.valor) / c.meses : Number(c.valor)))
-      .filter((v) => v > 0);
-    return mensais.length ? Math.min(...mensais) : Number(plano.valor) || 0;
-  };
+  const valorNormal = (plano: Plan) => Number(plano.valor) || 0;
   const isAvulso = (plano: Plan) => !plano.checkins_semanais && Number(plano.duracao_dias) <= 1;
   const precoPorAula = (plano: Plan) =>
-    plano.checkins_semanais > 0 ? menorMensal(plano) / (plano.checkins_semanais * 4) : null;
+    plano.checkins_semanais > 0 ? valorNormal(plano) / (plano.checkins_semanais * 4) : null;
 
   const planosAtuais = planos.filter((p) => p.is_plano_atual);
   const planosSemanais = planos
     .filter((p) => !p.is_plano_atual && !isAvulso(p))
-    .sort((a, b) => (a.checkins_semanais || 0) - (b.checkins_semanais || 0) || menorMensal(a) - menorMensal(b));
+    .sort((a, b) => (a.checkins_semanais || 0) - (b.checkins_semanais || 0) || valorNormal(a) - valorNormal(b));
   const planosAvulsos = planos.filter((p) => !p.is_plano_atual && isAvulso(p));
   // Selo só para um fato verificável: o menor preço por aula entre os planos semanais.
   const idMenorPorAula =
@@ -1495,7 +1490,6 @@ export default function PlanosScreen() {
     const avulso = isAvulso(plano);
     const n = Number(plano.checkins_semanais) || 0;
     const porAula = precoPorAula(plano);
-    const ciclosCount = (plano.ciclos || []).length;
     return (
       <PlanCard
         key={plano.id}
@@ -1505,9 +1499,8 @@ export default function PlanosScreen() {
         detail={plano.is_plano_atual ? plano.label || "Ativo" : avulso ? "Sem mensalidade" : null}
         freq={avulso ? "1" : n > 0 ? `${n}x` : "∞"}
         freqUnit={avulso ? "aula" : n > 0 ? "semana" : "livre"}
-        price={fmtPreco(menorMensal(plano))}
+        price={fmtPreco(valorNormal(plano))}
         unit={avulso ? "/aula" : "/mês"}
-        from={!avulso && ciclosCount > 1}
         perClass={
           porAula
             ? `≈ ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(porAula)}`
@@ -1708,7 +1701,7 @@ export default function PlanosScreen() {
             </Section>
           ) : null}
           {planosSemanais.length > 0 ? (
-            <Section title="Planos por semana" aside="A partir de, por mês" bare>
+            <Section title="Planos por semana" aside="Por mês" bare>
               <View style={styles.planStack}>{planosSemanais.map(renderPlanCardDs)}</View>
             </Section>
           ) : null}

@@ -1187,13 +1187,12 @@ export default function PlanoDetalhesScreen() {
   // Plano ativo sem renovação e sem troca de ciclo: botão estático.
   const bloquearCompraPorAtivo =
     isPlanoAtivo && !podeRenovar && !cicloDiferenteDoAtual;
-  // Preço mensal de cada ciclo: o menor vira "a partir de" e o maior é o preço cheio riscado.
+  // Preço cheio do ciclo mensal riscado quando o ciclo escolhido sai mais barato/mês.
   const mensais = ciclos.map((c) => ({
     id: c.id,
     mensal: Number(c.valor_mensal) || (c.meses ? Number(c.valor) / c.meses : Number(c.valor)),
     desconto: Number(c.desconto_percentual) || 0,
   }));
-  const menorMensal = mensais.length ? Math.min(...mensais.map((m) => m.mensal)) : 0;
   const maiorMensal = mensais.length ? Math.max(...mensais.map((m) => m.mensal)) : 0;
   const cicloMelhorPrecoId =
     mensais.filter((m) => m.desconto > 0).sort((x, y) => x.mensal - y.mensal)[0]?.id ?? null;
@@ -1237,9 +1236,9 @@ export default function PlanoDetalhesScreen() {
             </Text>
           </View>
           <View style={[styles.fact, styles.factDivider]}>
-            <Text style={styles.factK}>A PARTIR DE</Text>
+            <Text style={styles.factK}>MENSAL</Text>
             <Text style={styles.factV} numberOfLines={1}>
-              {menorMensal ? `${formatCurrency(menorMensal)}/mês` : plano.valor_formatado}
+              {plano.valor_formatado || `${formatCurrency(Number(plano.valor) || 0)}/mês`}
             </Text>
           </View>
         </View>
