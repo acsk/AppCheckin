@@ -91,6 +91,15 @@ export default function MigracaoPlanoSheet({
       hint: [provedor, n > 1 ? `${n}x` : "à vista"].filter(Boolean).join(" · "),
       value: taxa.tarifa_formatada,
     });
+    if ((taxa.sobretaxa ?? 0) > 0.001) {
+      rows.push({
+        label: "Sobretaxa de antecipação",
+        hint: taxa.sobretaxa_percentual
+          ? `${String(taxa.sobretaxa_percentual).replace(".", ",")}% ao mês`
+          : "D+2",
+        value: taxa.sobretaxa_formatada || "",
+      });
+    }
   }
 
   const totalHint = semCobranca

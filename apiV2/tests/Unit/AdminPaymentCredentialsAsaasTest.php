@@ -79,6 +79,35 @@ class AdminPaymentCredentialsAsaasTest extends TestCase
         $this->assertTrue($result['body']['success']);
     }
 
+    public function test_asaas_salva_sobretaxa_de_antecipacao(): void
+    {
+        $repo = Mockery::mock(TenantPaymentCredentialsRepository::class);
+        $repo->shouldReceive('obterPorTenantProvider')->once()->with(1, 'asaas')->andReturn(null);
+        $repo->shouldReceive('existePorTenantProvider')->once()->with(1, 'asaas')->andReturn(false);
+        $repo->shouldReceive('listarPorTenant')->andReturn([]);
+        $repo->shouldReceive('inserir')->once()->with(1, Mockery::on(function ($dados) {
+            return ($dados['enable_sobretaxa_antecipacao'] ?? null) === 1
+                && (float) $dados['sobretaxa_antecipacao_avista_percentual'] === 1.15
+                && (float) $dados['sobretaxa_antecipacao_parcelada_percentual'] === 1.6;
+        }));
+
+        $encryption = Mockery::mock(EncryptionService::class);
+        $encryption->shouldReceive('encrypt')->once()->with('$aact_hmlg_xxxxxxxx')->andReturn('cipher');
+
+        $service = new AdminPaymentCredentialsService($repo, $encryption);
+        $result = $service->salvar(1, [
+            'provider' => 'asaas',
+            'environment' => 'sandbox',
+            'access_token_test' => '$aact_hmlg_xxxxxxxx',
+            'is_active' => true,
+            'enable_sobretaxa_antecipacao' => true,
+            'sobretaxa_antecipacao_avista_percentual' => 1.15,
+            'sobretaxa_antecipacao_parcelada_percentual' => 1.6,
+        ]);
+
+        $this->assertSame(200, $result['status']);
+    }
+
     public function test_alterar_ambiente_keeps_encrypted_keys(): void
     {
         $rowSandbox = [

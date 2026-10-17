@@ -108,18 +108,27 @@ class MobilePagamentoService
         $valorPlano = round($valorPlano, 2);
         $cobrar = $repasse !== null ? round((float) ($repasse['valor_cobrar'] ?? $valorPlano), 2) : $valorPlano;
         $tarifa = $repasse !== null ? round((float) ($repasse['tarifa'] ?? max(0, $cobrar - $valorPlano)), 2) : 0.0;
+        $sobretaxa = $repasse !== null ? round((float) ($repasse['sobretaxa'] ?? 0), 2) : 0.0;
         $n = max(1, (int) (is_array($repasse) ? ($repasse['parcela_count'] ?? 1) : 1));
         $valorParcela = is_array($repasse) && isset($repasse['valor_parcela'])
             ? round((float) $repasse['valor_parcela'], 2)
             : AsaasTarifaCartao::valorParcela($cobrar, $n);
+        $aplica = $provider === 'asaas' && ($tarifa > 0.001 || $sobretaxa > 0.001);
 
         return [
             'provider' => $provider,
-            'aplica_repasse' => $provider === 'asaas' && $tarifa > 0.001,
+            'aplica_repasse' => $aplica,
             'valor_plano' => $valorPlano,
             'valor_plano_formatado' => 'R$ '.number_format($valorPlano, 2, ',', '.'),
             'tarifa' => $tarifa,
             'tarifa_formatada' => 'R$ '.number_format($tarifa, 2, ',', '.'),
+            'sobretaxa' => $sobretaxa,
+            'sobretaxa_formatada' => 'R$ '.number_format($sobretaxa, 2, ',', '.'),
+            'sobretaxa_percentual' => is_array($repasse) ? ($repasse['sobretaxa_percentual'] ?? null) : null,
+            'antecipacao_estimada' => is_array($repasse) ? round((float) ($repasse['antecipacao_estimada'] ?? 0), 2) : 0.0,
+            'liquido_estimado' => is_array($repasse) && isset($repasse['liquido_estimado'])
+                ? round((float) $repasse['liquido_estimado'], 2)
+                : null,
             'valor_cobrar' => $cobrar,
             'valor_cobrar_formatado' => 'R$ '.number_format($cobrar, 2, ',', '.'),
             'parcela_count' => $n,

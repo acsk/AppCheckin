@@ -5,6 +5,7 @@ namespace App\Services\Asaas;
 use App\Services\EncryptionService;
 use App\Support\AcademyDateTime;
 use App\Support\AsaasApiKey;
+use App\Support\AsaasSobretaxaAntecipacao;
 use App\Support\AsaasTarifaCartao;
 use App\Support\ReferenciaExterna;
 use Illuminate\Support\Facades\DB;
@@ -20,6 +21,11 @@ class AsaasService
     private bool $enablePix = true;
     private bool $enableBoleto = true;
     private bool $enableCreditCard = true;
+    private bool $enableSobretaxaAntecipacao = false;
+    private float $sobretaxaAvistaPercentual = AsaasSobretaxaAntecipacao::AVISTA_PADRAO;
+    private float $sobretaxaParceladaPercentual = AsaasSobretaxaAntecipacao::PARCELADA_PADRAO;
+    /** @var array<string, mixed>|null */
+    private ?array $taxasContaCache = null;
 
     public function __construct(?int $tenantId = null)
     {
@@ -155,12 +161,19 @@ class AsaasService
                 $tarifaCartao = $this->valorComTaxaCartaoRepassada($valorPlano, $parcelas);
                 $valorCobranca = $tarifaCartao['valor_cobrar'];
                 $parcelas = (int) ($tarifaCartao['parcela_count'] ?? $parcelas);
-                if ($tarifaCartao['tarifa'] > 0) {
-                    $descricao .= sprintf(
-                        ' (inclui taxa cartão Asaas R$ %s%s)',
-                        number_format($tarifaCartao['tarifa'], 2, ',', '.'),
-                        $parcelas > 1 ? ', '.$parcelas.'x' : ''
-                    );
+                if ($tarifaCartao['tarifa'] > 0 || ($tarifaCartao['sobretaxa'] ?? 0) > 0) {
+                    $partes = [];
+                    if ($tarifaCartao['tarifa'] > 0) {
+                        $partes[] = 'taxa cartão Asaas R$ '.number_format((float) $tarifaCartao['tarifa'], 2, ',', '.');
+                    }
+                    if (($tarifaCartao['sobretaxa'] ?? 0) > 0.001) {
+                        $partes[] = 'antecipação R$ '.number_format((float) $tarifaCartao['sobretaxa'], 2, ',', '.');
+                    }
+                    $descricao .= ' (inclui '.implode(', ', $partes);
+                    if ($parcelas > 1) {
+                        $descricao .= ', '.$parcelas.'x';
+                    }
+                    $descricao .= ')';
                 }
             } catch (\Throwable $e) {
                 Log::warning('Asaas: simulação de taxa de cartão falhou; cobrando valor do plano', [
@@ -226,25 +239,32 @@ class AsaasService
         $sim = $this->simularVenda($valorLiquidoDesejado, ['CREDIT_CARD'], $parcelas);
         $creditCard = is_array($sim['creditCard'] ?? null) ? $sim['creditCard'] : [];
         $repasse = AsaasTarifaCartao::aPartirDaSimulacao($valorLiquidoDesejado, $creditCard);
-        if ($repasse['tarifa'] <= 0 || ! $refinar) {
-            return $this->anexarParcela($repasse, $parcelas);
+        if ($repasse['tarifa'] > 0 && $refinar) {
+            $sim2 = $this->simularVenda($repasse['valor_cobrar'], ['CREDIT_CARD'], $parcelas);
+            $cc2 = is_array($sim2['creditCard'] ?? null) ? $sim2['creditCard'] : [];
+            $net2 = isset($cc2['netValue']) ? round((float) $cc2['netValue'], 2) : null;
+            if ($net2 !== null) {
+                $repasse['valor_cobrar'] = AsaasTarifaCartao::ajustarPeloLiquidoSimulado(
+                    $repasse['valor_cobrar'],
+                    $valorLiquidoDesejado,
+                    $net2,
+                    (float) ($cc2['feePercentage'] ?? $repasse['fee_percentage'])
+                );
+                $repasse['tarifa'] = round($repasse['valor_cobrar'] - $valorLiquidoDesejado, 2);
+                $repasse['net_value_simulado'] = $net2;
+                $repasse['fee_percentage'] = (float) ($cc2['feePercentage'] ?? $repasse['fee_percentage']);
+                $repasse['operation_fee'] = (float) ($cc2['operationFee'] ?? $repasse['operation_fee']);
+            }
+            $creditCard = $cc2 !== [] ? $cc2 : $creditCard;
         }
 
-        $sim2 = $this->simularVenda($repasse['valor_cobrar'], ['CREDIT_CARD'], $parcelas);
-        $cc2 = is_array($sim2['creditCard'] ?? null) ? $sim2['creditCard'] : [];
-        $net2 = isset($cc2['netValue']) ? round((float) $cc2['netValue'], 2) : null;
-        if ($net2 !== null) {
-            $repasse['valor_cobrar'] = AsaasTarifaCartao::ajustarPeloLiquidoSimulado(
-                $repasse['valor_cobrar'],
-                $valorLiquidoDesejado,
-                $net2,
-                (float) ($cc2['feePercentage'] ?? $repasse['fee_percentage'])
-            );
-            $repasse['tarifa'] = round($repasse['valor_cobrar'] - $valorLiquidoDesejado, 2);
-            $repasse['net_value_simulado'] = $net2;
-            $repasse['fee_percentage'] = (float) ($cc2['feePercentage'] ?? $repasse['fee_percentage']);
-            $repasse['operation_fee'] = (float) ($cc2['operationFee'] ?? $repasse['operation_fee']);
-        }
+        $repasse = AsaasSobretaxaAntecipacao::aplicar(
+            $repasse,
+            $this->configSobretaxa(),
+            $parcelas,
+            $creditCard,
+            $this->taxasDaConta(),
+        );
 
         return $this->anexarParcela($repasse, $parcelas);
     }
@@ -501,6 +521,61 @@ class AsaasService
         $this->enablePix = $this->flagCredencial($flags['enable_pix'] ?? true);
         $this->enableBoleto = $this->flagCredencial($flags['enable_boleto'] ?? true);
         $this->enableCreditCard = $this->flagCredencial($flags['enable_credit_card'] ?? true);
+        $this->enableSobretaxaAntecipacao = $this->boolCredencial($flags['enable_sobretaxa_antecipacao'] ?? false);
+        if (isset($flags['sobretaxa_antecipacao_avista_percentual']) && is_numeric($flags['sobretaxa_antecipacao_avista_percentual'])) {
+            $v = round((float) $flags['sobretaxa_antecipacao_avista_percentual'], 2);
+            if ($v >= 0 && $v <= 30) {
+                $this->sobretaxaAvistaPercentual = $v;
+            }
+        }
+        if (isset($flags['sobretaxa_antecipacao_parcelada_percentual']) && is_numeric($flags['sobretaxa_antecipacao_parcelada_percentual'])) {
+            $v = round((float) $flags['sobretaxa_antecipacao_parcelada_percentual'], 2);
+            if ($v >= 0 && $v <= 30) {
+                $this->sobretaxaParceladaPercentual = $v;
+            }
+        }
+    }
+
+    /**
+     * @return array{habilitada: bool, avista: float, parcelada: float}
+     */
+    private function configSobretaxa(): array
+    {
+        return [
+            'habilitada' => $this->enableSobretaxaAntecipacao,
+            'avista' => $this->sobretaxaAvistaPercentual,
+            'parcelada' => $this->sobretaxaParceladaPercentual,
+        ];
+    }
+
+    /**
+     * GET /myAccount/fees — taxas oficiais da conta (antecipação). Falha silenciosa.
+     *
+     * @return array<string, mixed>
+     */
+    public function taxasDaConta(): array
+    {
+        if ($this->taxasContaCache !== null) {
+            return $this->taxasContaCache;
+        }
+        if ($this->accessToken === '' || ! $this->enableSobretaxaAntecipacao) {
+            $this->taxasContaCache = [];
+
+            return $this->taxasContaCache;
+        }
+        try {
+            $this->taxasContaCache = $this->request('GET', '/myAccount/fees');
+        } catch (\Throwable $e) {
+            Log::info('Asaas: taxas da conta indisponíveis', ['error' => $e->getMessage()]);
+            $this->taxasContaCache = [];
+        }
+
+        return $this->taxasContaCache;
+    }
+
+    private function boolCredencial(mixed $value): bool
+    {
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN) || $value === 1 || $value === '1';
     }
 
     /**

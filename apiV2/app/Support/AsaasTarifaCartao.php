@@ -11,6 +11,16 @@ final class AsaasTarifaCartao
     /**
      * Valor a cobrar para que o líquido fique em $liquidoDesejado.
      */
+    /** Arredonda para cima em centavos (evita líquido abaixo do plano por truncar). */
+    public static function paraCima(float $valor): float
+    {
+        if ($valor <= 0) {
+            return 0.0;
+        }
+
+        return round(ceil($valor * 100 - 1e-9) / 100, 2);
+    }
+
     public static function valorParaLiquido(float $liquidoDesejado, float $feePercentage, float $operationFee): float
     {
         $liquidoDesejado = round(max(0, $liquidoDesejado), 2);

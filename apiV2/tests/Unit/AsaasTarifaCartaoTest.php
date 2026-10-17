@@ -42,6 +42,12 @@ class AsaasTarifaCartaoTest extends TestCase
         $this->assertSame(103.06, AsaasTarifaCartao::ajustarPeloLiquidoSimulado(103.06, 100.0, 100.05, 2.49));
     }
 
+    public function test_para_cima_em_centavos(): void
+    {
+        $this->assertSame(0.84, AsaasTarifaCartao::paraCima(0.83559));
+        $this->assertSame(0.0, AsaasTarifaCartao::paraCima(0.0));
+    }
+
     public function test_valor_parcela_e_rotulo(): void
     {
         $this->assertSame(20.78, AsaasTarifaCartao::valorParcela(62.35, 3));

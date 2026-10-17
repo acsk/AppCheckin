@@ -3,6 +3,7 @@
 namespace App\Repositories;
 
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Credenciais de pagamento por tenant+provider (tenant_payment_credentials).
@@ -17,7 +18,7 @@ class TenantPaymentCredentialsRepository
         $rows = DB::select(
             'SELECT id, tenant_id, provider, environment,
                     public_key_test, public_key_prod,
-                    is_active, enable_pix, enable_boleto, enable_credit_card,
+                    is_active, enable_pix, enable_boleto, enable_credit_card'.$this->sqlSelectAntecipacao().',
                     created_at, updated_at,
                     CASE WHEN CHAR_LENGTH(TRIM(IFNULL(access_token_test, \'\'))) > 0 THEN 1 ELSE 0 END as has_token_test,
                     CASE WHEN CHAR_LENGTH(TRIM(IFNULL(access_token_prod, \'\'))) > 0 THEN 1 ELSE 0 END as has_token_prod
@@ -35,7 +36,7 @@ class TenantPaymentCredentialsRepository
         $row = DB::selectOne(
             'SELECT id, tenant_id, provider, environment,
                     public_key_test, public_key_prod,
-                    is_active, enable_pix, enable_boleto, enable_credit_card,
+                    is_active, enable_pix, enable_boleto, enable_credit_card'.$this->sqlSelectAntecipacao().',
                     created_at, updated_at,
                     CASE WHEN CHAR_LENGTH(TRIM(IFNULL(access_token_test, \'\'))) > 0 THEN 1 ELSE 0 END as has_token_test,
                     CASE WHEN CHAR_LENGTH(TRIM(IFNULL(access_token_prod, \'\'))) > 0 THEN 1 ELSE 0 END as has_token_prod
@@ -68,6 +69,18 @@ class TenantPaymentCredentialsRepository
         return (int) $tamanho > 0;
     }
 
+    private function temColunasAntecipacao(): bool
+    {
+        return Schema::hasColumn('tenant_payment_credentials', 'enable_sobretaxa_antecipacao');
+    }
+
+    private function sqlSelectAntecipacao(): string
+    {
+        return $this->temColunasAntecipacao()
+            ? ', enable_sobretaxa_antecipacao, sobretaxa_antecipacao_avista_percentual, sobretaxa_antecipacao_parcelada_percentual'
+            : '';
+    }
+
     public function existePorTenantProvider(int $tenantId, string $provider): bool
     {
         return DB::selectOne(
@@ -81,27 +94,31 @@ class TenantPaymentCredentialsRepository
      */
     public function inserir(int $tenantId, array $dados): void
     {
-        DB::insert(
-            'INSERT INTO tenant_payment_credentials
-                (tenant_id, provider, environment, access_token_test, access_token_prod,
+        $cols = 'tenant_id, provider, environment, access_token_test, access_token_prod,
                  public_key_test, public_key_prod, webhook_secret, is_active,
-                 enable_pix, enable_boleto, enable_credit_card)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-            [
-                $tenantId,
-                $dados['provider'],
-                $dados['environment'],
-                $dados['access_token_test'],
-                $dados['access_token_prod'],
-                $dados['public_key_test'],
-                $dados['public_key_prod'],
-                $dados['webhook_secret'],
-                $dados['is_active'],
-                $dados['enable_pix'] ?? 1,
-                $dados['enable_boleto'] ?? 1,
-                $dados['enable_credit_card'] ?? 1,
-            ]
-        );
+                 enable_pix, enable_boleto, enable_credit_card';
+        $params = [
+            $tenantId,
+            $dados['provider'],
+            $dados['environment'],
+            $dados['access_token_test'],
+            $dados['access_token_prod'],
+            $dados['public_key_test'],
+            $dados['public_key_prod'],
+            $dados['webhook_secret'],
+            $dados['is_active'],
+            $dados['enable_pix'] ?? 1,
+            $dados['enable_boleto'] ?? 1,
+            $dados['enable_credit_card'] ?? 1,
+        ];
+        if ($this->temColunasAntecipacao()) {
+            $cols .= ', enable_sobretaxa_antecipacao, sobretaxa_antecipacao_avista_percentual, sobretaxa_antecipacao_parcelada_percentual';
+            $params[] = $dados['enable_sobretaxa_antecipacao'] ?? 0;
+            $params[] = $dados['sobretaxa_antecipacao_avista_percentual'] ?? 1.15;
+            $params[] = $dados['sobretaxa_antecipacao_parcelada_percentual'] ?? 1.60;
+        }
+        $placeholders = implode(', ', array_fill(0, count($params), '?'));
+        DB::insert("INSERT INTO tenant_payment_credentials ({$cols}) VALUES ({$placeholders})", $params);
     }
 
     /**
@@ -116,8 +133,7 @@ class TenantPaymentCredentialsRepository
                     is_active = ?,
                     enable_pix = ?,
                     enable_boleto = ?,
-                    enable_credit_card = ?,
-                    updated_at = NOW()';
+                    enable_credit_card = ?';
         $params = [
             $dados['environment'],
             $dados['public_key_test'],
@@ -127,6 +143,15 @@ class TenantPaymentCredentialsRepository
             $dados['enable_boleto'] ?? 1,
             $dados['enable_credit_card'] ?? 1,
         ];
+        if ($this->temColunasAntecipacao()) {
+            $sql .= ', enable_sobretaxa_antecipacao = ?,
+                    sobretaxa_antecipacao_avista_percentual = ?,
+                    sobretaxa_antecipacao_parcelada_percentual = ?';
+            $params[] = $dados['enable_sobretaxa_antecipacao'] ?? 0;
+            $params[] = $dados['sobretaxa_antecipacao_avista_percentual'] ?? 1.15;
+            $params[] = $dados['sobretaxa_antecipacao_parcelada_percentual'] ?? 1.60;
+        }
+        $sql .= ', updated_at = NOW()';
 
         if (array_key_exists('access_token_test', $dados)) {
             $sql .= ', access_token_test = ?';

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Support\AcademyDateTime;
 use App\Support\StatusPagamentoPlano;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Regras de pagamentos_plano e status da matrícula (paridade com api Slim).
@@ -110,7 +111,10 @@ class PagamentoPlanoService
         ]);
     }
 
-    public function atualizarValorParcelaAberta(int $tenantId, int $matriculaId, float $valor, ?string $observacaoExtra = null): int
+    /**
+     * @param  array<string, mixed>  $extras  tarifa_cartao, sobretaxa_antecipacao
+     */
+    public function atualizarValorParcelaAberta(int $tenantId, int $matriculaId, float $valor, ?string $observacaoExtra = null, array $extras = []): int
     {
         $id = DB::table('pagamentos_plano')
             ->where('tenant_id', $tenantId)
@@ -127,6 +131,12 @@ class PagamentoPlanoService
             'valor' => round($valor, 2),
             'updated_at' => now(),
         ];
+        if (array_key_exists('tarifa_cartao', $extras) && Schema::hasColumn('pagamentos_plano', 'tarifa_cartao')) {
+            $campos['tarifa_cartao'] = round((float) $extras['tarifa_cartao'], 2);
+        }
+        if (array_key_exists('sobretaxa_antecipacao', $extras) && Schema::hasColumn('pagamentos_plano', 'sobretaxa_antecipacao')) {
+            $campos['sobretaxa_antecipacao'] = round((float) $extras['sobretaxa_antecipacao'], 2);
+        }
         if ($observacaoExtra) {
             $obs = (string) (DB::table('pagamentos_plano')->where('id', $id)->value('observacoes') ?? '');
             if (! str_contains($obs, $observacaoExtra)) {

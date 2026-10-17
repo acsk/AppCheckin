@@ -12,6 +12,7 @@ import {
   SecretField,
   Switch,
   Tabs,
+  TextField,
 } from '../../components/ck';
 import { LOGO_ASAAS, LOGO_MERCADO_PAGO } from '../../components/ck/providerLogos';
 import paymentCredentialsService from '../../services/paymentCredentialsService';
@@ -40,6 +41,9 @@ function formDe(provider, row) {
     enable_pix: row ? row.enable_pix !== false && row.enable_pix !== 0 : true,
     enable_boleto: row ? row.enable_boleto !== false && row.enable_boleto !== 0 : true,
     enable_credit_card: row ? row.enable_credit_card !== false && row.enable_credit_card !== 0 : true,
+    enable_sobretaxa_antecipacao: row ? !!row.enable_sobretaxa_antecipacao : false,
+    sobretaxa_antecipacao_avista_percentual: row?.sobretaxa_antecipacao_avista_percentual ?? 1.15,
+    sobretaxa_antecipacao_parcelada_percentual: row?.sobretaxa_antecipacao_parcelada_percentual ?? 1.6,
     access_token_test: '',
     public_key_test: '',
     access_token_prod: '',
@@ -146,6 +150,9 @@ export default function PaymentCredentialsScreen() {
       enable_pix: !!f.enable_pix,
       enable_boleto: !!f.enable_boleto,
       enable_credit_card: !!f.enable_credit_card,
+      enable_sobretaxa_antecipacao: !!f.enable_sobretaxa_antecipacao,
+      sobretaxa_antecipacao_avista_percentual: Number(f.sobretaxa_antecipacao_avista_percentual) || 1.15,
+      sobretaxa_antecipacao_parcelada_percentual: Number(f.sobretaxa_antecipacao_parcelada_percentual) || 1.6,
     };
     ['access_token_test', 'public_key_test', 'access_token_prod', 'public_key_prod', 'webhook_secret'].forEach((k) => {
       if (f[k].trim()) dados[k] = f[k].trim();
@@ -355,6 +362,48 @@ export default function PaymentCredentialsScreen() {
                 ))}
               </div>
             </div>
+
+            {selecionado === 'asaas' && form.enable_credit_card ? (
+              <div className="ck-section">
+                <h3 className="ck-section__title">Antecipação automática (cartão)</h3>
+                <p className="ck-section__desc">
+                  Com a antecipação automática, o Asaas credita o cartão em até 2 dias úteis.
+                  As taxas comerciais atuais são 1,15% ao mês à vista e 1,6% ao mês no parcelado.
+                  O app soma essa sobretaxa à tarifa de cartão que o Asaas já calcula, para o líquido
+                  da academia não ficar abaixo do valor do plano.
+                </p>
+                <Switch
+                  label="Repassar sobretaxa de antecipação"
+                  description="Liga o acréscimo complementar no checkout de cartão. A tarifa do Asaas continua a da simulação oficial."
+                  checked={!!form.enable_sobretaxa_antecipacao}
+                  onChange={(v) => atualizar(selecionado, { enable_sobretaxa_antecipacao: v })}
+                />
+                {form.enable_sobretaxa_antecipacao ? (
+                  <div style={{ display: 'grid', gap: 'var(--space-4)', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', marginTop: 'var(--space-4)' }}>
+                    <TextField
+                      label="À vista (% ao mês)"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="30"
+                      value={form.sobretaxa_antecipacao_avista_percentual}
+                      onChange={(e) => atualizar(selecionado, { sobretaxa_antecipacao_avista_percentual: e.target.value })}
+                      hint="Padrão Asaas: 1,15%"
+                    />
+                    <TextField
+                      label="Parcelado (% ao mês)"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="30"
+                      value={form.sobretaxa_antecipacao_parcelada_percentual}
+                      onChange={(e) => atualizar(selecionado, { sobretaxa_antecipacao_parcelada_percentual: e.target.value })}
+                      hint="Padrão Asaas: 1,6%"
+                    />
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             {/* Credenciais por ambiente */}
             <div className="ck-section">

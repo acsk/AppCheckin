@@ -144,6 +144,7 @@ class AdminPaymentCredentialsService
                 : null;
 
             $metodos = $this->metodosDoBody($body, $existente);
+            $sobretaxa = $this->sobretaxaDoBody($provider, $body, $existente);
             $dados = [
                 'provider' => $provider,
                 'environment' => $environment,
@@ -156,6 +157,9 @@ class AdminPaymentCredentialsService
                 'enable_pix' => $metodos['enable_pix'],
                 'enable_boleto' => $metodos['enable_boleto'],
                 'enable_credit_card' => $metodos['enable_credit_card'],
+                'enable_sobretaxa_antecipacao' => $sobretaxa['enable_sobretaxa_antecipacao'],
+                'sobretaxa_antecipacao_avista_percentual' => $sobretaxa['sobretaxa_antecipacao_avista_percentual'],
+                'sobretaxa_antecipacao_parcelada_percentual' => $sobretaxa['sobretaxa_antecipacao_parcelada_percentual'],
             ];
 
             if ($this->credentials->existePorTenantProvider($tenantId, $provider)) {
@@ -183,6 +187,9 @@ class AdminPaymentCredentialsService
                 $update['enable_pix'] = $metodos['enable_pix'];
                 $update['enable_boleto'] = $metodos['enable_boleto'];
                 $update['enable_credit_card'] = $metodos['enable_credit_card'];
+                $update['enable_sobretaxa_antecipacao'] = $sobretaxa['enable_sobretaxa_antecipacao'];
+                $update['sobretaxa_antecipacao_avista_percentual'] = $sobretaxa['sobretaxa_antecipacao_avista_percentual'];
+                $update['sobretaxa_antecipacao_parcelada_percentual'] = $sobretaxa['sobretaxa_antecipacao_parcelada_percentual'];
 
                 $this->credentials->atualizar($tenantId, $provider, $update);
                 $message = 'Credenciais atualizadas com sucesso';
@@ -387,6 +394,9 @@ class AdminPaymentCredentialsService
         $row['enable_pix'] = $this->boolish($row['enable_pix'] ?? true);
         $row['enable_boleto'] = $this->boolish($row['enable_boleto'] ?? true);
         $row['enable_credit_card'] = $this->boolish($row['enable_credit_card'] ?? true);
+        $row['enable_sobretaxa_antecipacao'] = $this->boolish($row['enable_sobretaxa_antecipacao'] ?? false);
+        $row['sobretaxa_antecipacao_avista_percentual'] = round((float) ($row['sobretaxa_antecipacao_avista_percentual'] ?? 1.15), 2);
+        $row['sobretaxa_antecipacao_parcelada_percentual'] = round((float) ($row['sobretaxa_antecipacao_parcelada_percentual'] ?? 1.60), 2);
         $row['has_token_test'] = $this->boolish($row['has_token_test'] ?? false);
         $row['has_token_prod'] = $this->boolish($row['has_token_prod'] ?? false);
         $row['public_key_test_masked'] = $this->mascarar($row['public_key_test'] ?? null);
@@ -409,11 +419,52 @@ class AdminPaymentCredentialsService
             'enable_pix' => true,
             'enable_boleto' => true,
             'enable_credit_card' => true,
+            'enable_sobretaxa_antecipacao' => false,
+            'sobretaxa_antecipacao_avista_percentual' => 1.15,
+            'sobretaxa_antecipacao_parcelada_percentual' => 1.60,
             'has_token_test' => false,
             'has_token_prod' => false,
             'public_key_test_masked' => null,
             'public_key_prod_masked' => null,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $body
+     * @param  array<string, mixed>|null  $existente
+     * @return array{enable_sobretaxa_antecipacao: int, sobretaxa_antecipacao_avista_percentual: float, sobretaxa_antecipacao_parcelada_percentual: float}
+     */
+    private function sobretaxaDoBody(string $provider, array $body, ?array $existente): array
+    {
+        $avista = $this->percentualOuPadrao(
+            $body['sobretaxa_antecipacao_avista_percentual'] ?? $existente['sobretaxa_antecipacao_avista_percentual'] ?? 1.15,
+            1.15
+        );
+        $parcelada = $this->percentualOuPadrao(
+            $body['sobretaxa_antecipacao_parcelada_percentual'] ?? $existente['sobretaxa_antecipacao_parcelada_percentual'] ?? 1.60,
+            1.60
+        );
+        $habilitada = $provider === 'asaas'
+            && $this->boolish($body['enable_sobretaxa_antecipacao'] ?? $existente['enable_sobretaxa_antecipacao'] ?? false);
+
+        return [
+            'enable_sobretaxa_antecipacao' => $habilitada ? 1 : 0,
+            'sobretaxa_antecipacao_avista_percentual' => $avista,
+            'sobretaxa_antecipacao_parcelada_percentual' => $parcelada,
+        ];
+    }
+
+    private function percentualOuPadrao(mixed $valor, float $padrao): float
+    {
+        if (! is_numeric($valor)) {
+            return $padrao;
+        }
+        $v = round((float) $valor, 2);
+        if ($v < 0 || $v > 30) {
+            return $padrao;
+        }
+
+        return $v;
     }
 
     /**

@@ -548,11 +548,20 @@ class MobileCompraPlanoService
                         }
                         if ($valorCobranca > $valorCompra + 0.001) {
                             $tarifa = (float) ($preferencia['tarifa_cartao']['tarifa'] ?? ($valorCobranca - $valorCompra));
+                            $sobretaxa = (float) ($preferencia['tarifa_cartao']['sobretaxa'] ?? 0);
+                            $obs = sprintf('[Taxa cartão Asaas R$ %s embutida no valor]', number_format($tarifa, 2, ',', '.'));
+                            if ($sobretaxa > 0.001) {
+                                $obs .= sprintf(' [Sobretaxa antecipação R$ %s]', number_format($sobretaxa, 2, ',', '.'));
+                            }
                             $this->pagamentosPlano->atualizarValorParcelaAberta(
                                 $tenantId,
                                 $matriculaId,
                                 $valorCobranca,
-                                sprintf('[Taxa cartão Asaas R$ %s embutida no valor]', number_format($tarifa, 2, ',', '.'))
+                                $obs,
+                                [
+                                    'tarifa_cartao' => $tarifa,
+                                    'sobretaxa_antecipacao' => $sobretaxa,
+                                ]
                             );
                             $valorCompra = $valorCobranca;
                         }

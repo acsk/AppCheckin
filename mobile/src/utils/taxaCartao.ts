@@ -7,6 +7,10 @@ export type TaxaCartaoParcela = {
   valor_plano_formatado: string;
   tarifa: number;
   tarifa_formatada: string;
+  sobretaxa?: number;
+  sobretaxa_formatada?: string;
+  sobretaxa_percentual?: number | null;
+  liquido_estimado?: number | null;
   valor_cobrar: number;
   valor_cobrar_formatado: string;
   parcela_count: number;
@@ -43,6 +47,15 @@ export function linhasTaxaCartao(sim: TaxaCartaoSimulacao) {
     { label: "Valor do plano", valor: sim.valor_plano_formatado },
     { label: "Taxa do cartão (Asaas)", valor: sim.tarifa_formatada },
   ];
+  if ((sim.sobretaxa ?? 0) > 0.001) {
+    const pct = sim.sobretaxa_percentual
+      ? ` (${String(sim.sobretaxa_percentual).replace(".", ",")}%)`
+      : "";
+    linhas.push({
+      label: `Sobretaxa de antecipação${pct}`,
+      valor: sim.sobretaxa_formatada || "",
+    });
+  }
   if (n > 1) {
     linhas.push({ label: "Total", valor: sim.valor_cobrar_formatado });
     linhas.push({
