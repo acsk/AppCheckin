@@ -533,6 +533,7 @@ export default function PlanoDetalhesScreen() {
   const executarMigracao = async (
     metodo: MetodoPagamentoOpcao,
     installmentCount?: number,
+    tarifaConfirmada?: TaxaCartaoSimulacao | null,
   ) => {
     if (!plano || !selectedCicloId) return;
     const token = await AsyncStorage.getItem("@appcheckin:token");
@@ -646,7 +647,7 @@ export default function PlanoDetalhesScreen() {
       paymentUrl,
       data.data?.gateway || data.data?.provider || migrarResult.gateway,
       metodo,
-      data.data?.tarifa_cartao || migracaoSimulacao?.taxa_cartao || null,
+      tarifaConfirmada || data.data?.tarifa_cartao || null,
     );
   };
 
@@ -716,6 +717,7 @@ export default function PlanoDetalhesScreen() {
   const executarMigracaoConfirmada = async () => {
     const metodo = migracaoMetodoPendente;
     const installmentCount = migracaoSimulacao?.taxa_cartao?.parcela_count;
+    const tarifaConfirmada = migracaoSimulacao?.taxa_cartao ?? null;
     if (!metodo) {
       showErrorModal(
         "⚠️ Sessão expirada",
@@ -732,7 +734,7 @@ export default function PlanoDetalhesScreen() {
       setMigracaoModalVisible(false);
       setMigracaoSimulacao(null);
       setMigracaoMetodoPendente(null);
-      await executarMigracao(metodo, installmentCount);
+      await executarMigracao(metodo, installmentCount, tarifaConfirmada);
     } catch (err) {
       const errorMsg =
         err instanceof Error ? err.message : "Erro ao migrar plano";
@@ -745,7 +747,12 @@ export default function PlanoDetalhesScreen() {
 
   const handleContratar = async (
     metodo: MetodoPagamentoOpcao = "cartao",
-    opcoes?: { jaSimulouTaxa?: boolean; gateway?: string; installment_count?: number },
+    opcoes?: {
+      jaSimulouTaxa?: boolean;
+      gateway?: string;
+      installment_count?: number;
+      tarifaConfirmada?: TaxaCartaoSimulacao | null;
+    },
   ) => {
     if (!plano || !selectedCicloId) return;
 
@@ -912,7 +919,7 @@ export default function PlanoDetalhesScreen() {
         paymentUrl,
         data.data?.gateway || data.data?.provider || compraResult.gateway,
         metodo,
-        data.data?.tarifa_cartao || null,
+        opcoes?.tarifaConfirmada || data.data?.tarifa_cartao || null,
       );
     } catch (err) {
       const errorMsg =
@@ -1528,6 +1535,7 @@ export default function PlanoDetalhesScreen() {
                 jaSimulouTaxa: true,
                 gateway: taxaCartaoGateway,
                 installment_count: sim.parcela_count ?? 1,
+                tarifaConfirmada: sim,
               });
             } finally {
               setTaxaCartaoConfirmando(false);

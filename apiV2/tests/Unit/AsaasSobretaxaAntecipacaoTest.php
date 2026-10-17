@@ -58,6 +58,20 @@ class AsaasSobretaxaAntecipacaoTest extends TestCase
         $this->assertEqualsWithDelta($r['valor_cobrar'] - 72.66, $r['sobretaxa'], 0.001);
     }
 
+    public function test_furo_igual_a_tarifa_nao_duplica_percentual(): void
+    {
+        $base = $this->repasse70();
+        $base['net_value_simulado'] = 67.34;
+        $r = AsaasSobretaxaAntecipacao::aplicar($base, [
+            'habilitada' => true,
+            'avista' => 1.15,
+        ], 1, []);
+
+        $this->assertEqualsWithDelta(2.66, $r['tarifa'], 0.001);
+        $this->assertEqualsWithDelta(1.15, $r['sobretaxa_percentual'], 0.001);
+        $this->assertLessThan($r['tarifa'], $r['sobretaxa']);
+    }
+
     public function test_usa_furo_da_simulacao_sem_somar_percentual_de_novo(): void
     {
         $base = $this->repasse70();
@@ -93,10 +107,13 @@ class AsaasSobretaxaAntecipacaoTest extends TestCase
         $this->assertSame(1.6, AsaasSobretaxaAntecipacao::taxaOficialConta(3, [
             'anticipation' => ['creditCard' => ['installmentMonthlyFeeValue' => 1.6]],
         ]));
-        $this->assertSame(1.15, AsaasSobretaxaAntecipacao::taxaMensal(1, [
+        $this->assertSame(9.0, AsaasSobretaxaAntecipacao::taxaMensal(1, [
             'avista' => 9.0,
             'parcelada' => 9.0,
         ], [
+            'anticipation' => ['creditCard' => ['detachedMonthlyFeeValue' => 1.15]],
+        ]));
+        $this->assertSame(1.15, AsaasSobretaxaAntecipacao::taxaMensal(1, [], [
             'anticipation' => ['creditCard' => ['detachedMonthlyFeeValue' => 1.15]],
         ]));
     }

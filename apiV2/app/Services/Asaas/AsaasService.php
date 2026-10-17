@@ -158,7 +158,8 @@ class AsaasService
         $descricao = (string) ($data['descricao'] ?? $data['plano_nome'] ?? 'Pagamento');
         if ($billingType === 'CREDIT_CARD') {
             try {
-                $tarifaCartao = $this->valorComTaxaCartaoRepassada($valorPlano, $parcelas);
+                // Mesma simulação do app (sem 2ª chamada): o que o aluno confirmou é o que cobra.
+                $tarifaCartao = $this->valorComTaxaCartaoRepassada($valorPlano, $parcelas, false);
                 $valorCobranca = $tarifaCartao['valor_cobrar'];
                 $parcelas = (int) ($tarifaCartao['parcela_count'] ?? $parcelas);
                 if ($tarifaCartao['tarifa'] > 0 || ($tarifaCartao['sobretaxa'] ?? 0) > 0) {

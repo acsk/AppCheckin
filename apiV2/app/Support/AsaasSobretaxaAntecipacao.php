@@ -57,15 +57,21 @@ final class AsaasSobretaxaAntecipacao
             ? round((float) $repasse['net_value_simulado'], 2)
             : null;
 
-        // Se o líquido da simulação Asaas já ficou abaixo do plano, esse furo já é a taxa extra.
-        // Não soma de novo o percentual em cima (evita duplicar).
+        // Furo só conta como antecipação quando a simulação foi do valor a cobrar (já com tarifa).
+        // Simular o valor do plano faz (plano − líquido) ≈ tarifa do cartão — não somar de novo.
         $buracoSimulado = $netSimulado !== null
             ? AsaasTarifaCartao::paraCima($valorPlano - $netSimulado)
             : 0.0;
+        $buracoEhTarifaCartao = $buracoSimulado > 0.001
+            && abs($buracoSimulado - $tarifaAsaas) < 0.05;
 
-        $antecipacao = $buracoSimulado > 0.001
-            ? max($buracoSimulado, $antecipacaoOficial ?? 0.0)
-            : $antecipacaoEstimada;
+        if ($antecipacaoOficial !== null) {
+            $antecipacao = $antecipacaoOficial;
+        } elseif ($buracoSimulado > 0.001 && ! $buracoEhTarifaCartao) {
+            $antecipacao = $buracoSimulado;
+        } else {
+            $antecipacao = $antecipacaoEstimada;
+        }
 
         $repasse['antecipacao_habilitada'] = true;
         $repasse['antecipacao_estimada'] = $antecipacao;
@@ -102,15 +108,18 @@ final class AsaasSobretaxaAntecipacao
      */
     public static function taxaMensal(int $parcelas, array $config, array $taxasConta = []): float
     {
+        $chave = $parcelas > 1 ? 'parcelada' : 'avista';
+        $padrao = $parcelas > 1 ? self::PARCELADA_PADRAO : self::AVISTA_PADRAO;
+        if (array_key_exists($chave, $config) && is_numeric($config[$chave])) {
+            return self::percentualValido($config[$chave], $padrao);
+        }
+
         $oficial = self::taxaOficialConta($parcelas, $taxasConta);
         if ($oficial !== null) {
             return $oficial;
         }
 
-        $avista = self::percentualValido($config['avista'] ?? null, self::AVISTA_PADRAO);
-        $parcelada = self::percentualValido($config['parcelada'] ?? null, self::PARCELADA_PADRAO);
-
-        return $parcelas > 1 ? $parcelada : $avista;
+        return $padrao;
     }
 
     /**

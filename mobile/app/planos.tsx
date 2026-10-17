@@ -565,6 +565,7 @@ export default function PlanosScreen() {
 
     const pendente = migracaoPendente;
     const installmentCount = migracaoSimulacao?.taxa_cartao?.parcela_count;
+    const tarifaConfirmada = migracaoSimulacao?.taxa_cartao ?? null;
     try {
       setConfirmandoMigracao(true);
       // Fecha confirmação antes da API para o feedback ficar visível
@@ -690,7 +691,7 @@ export default function PlanosScreen() {
         paymentUrl,
         data.data?.gateway || data.data?.provider || migrarResult.gateway,
         metodo,
-        data.data?.tarifa_cartao || null,
+        tarifaConfirmada || data.data?.tarifa_cartao || null,
       );
     } catch (err) {
       const errorMsg =
@@ -709,7 +710,12 @@ export default function PlanosScreen() {
     async (
       plano: Plan,
       metodo: MetodoPagamentoOpcao = "cartao",
-      opcoes?: { jaSimulouTaxa?: boolean; gateway?: string; installment_count?: number },
+      opcoes?: {
+        jaSimulouTaxa?: boolean;
+        gateway?: string;
+        installment_count?: number;
+        tarifaConfirmada?: TaxaCartaoSimulacao | null;
+      },
     ) => {
       try {
         setComprando(true);
@@ -923,7 +929,7 @@ export default function PlanosScreen() {
             matriculaData.data?.provider ||
             compraResult.gateway,
           metodo,
-          matriculaData.data?.tarifa_cartao || null,
+          opcoes?.tarifaConfirmada || matriculaData.data?.tarifa_cartao || null,
         );
       } catch (err) {
         const errorMsg =
@@ -1813,6 +1819,18 @@ export default function PlanosScreen() {
         metodo={paymentMetodo}
         tarifaCartao={paymentTarifa}
         detalharTaxas={podeSandboxPix}
+        resumo={
+          taxaCartaoPlano
+            ? {
+                titulo: (() => {
+                  const cicloId = selectedCicloByPlano[taxaCartaoPlano.id];
+                  const ciclo = taxaCartaoPlano.ciclos?.find((c) => c.id === cicloId);
+                  return [taxaCartaoPlano.nome, ciclo?.nome].filter(Boolean).join(" · ") || null;
+                })(),
+                subtitulo: taxaCartaoPlano.modalidade?.nome || null,
+              }
+            : undefined
+        }
         onRedirect={() => {
           void irParaCheckout();
         }}
@@ -1843,6 +1861,7 @@ export default function PlanosScreen() {
                 jaSimulouTaxa: true,
                 gateway: taxaCartaoGateway,
                 installment_count: sim.parcela_count ?? 1,
+                tarifaConfirmada: sim,
               });
             } finally {
               setTaxaCartaoConfirmando(false);
