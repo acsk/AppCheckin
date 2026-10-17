@@ -344,25 +344,23 @@ class MatriculaMigracaoRegrasTest extends TestCase
         $result = $this->service()->migrar(self::USER, self::TENANT, ['plano_id' => 2, 'metodo_pagamento' => 'checkout']);
 
         $this->assertSame(200, $result['status'], json_encode($result['body']));
-        $this->assertSame('pendente', $result['body']['data']['status']);
+        $this->assertSame('ativa', $result['body']['data']['status']);
+        $this->assertTrue($result['body']['data']['plano_atual_mantido']);
         $this->assertSame('https://mp/checkout', $result['body']['data']['payment_url']);
         $this->assertSame('pagamento_unico', $result['body']['data']['tipo_pagamento']);
 
         $matricula = $this->row('matriculas', self::MATRICULA);
-        $this->assertSame(12, (int) $matricula['status_id']); // pendente
-        // Pendente mantém a vigência atual até o pagamento confirmar.
+        $this->assertSame(11, (int) $matricula['status_id']);
+        $this->assertSame(1, (int) $matricula['plano_id']);
         $this->assertSame($this->dia(-10), $matricula['data_inicio']);
 
-        // Valor cheio do plano atual vira crédito e é todo aplicado; o pagamento já feito permanece pago.
-        $credito = DB::table('creditos_aluno')->first();
-        $this->assertEquals(300.0, $credito->valor);
-        $this->assertSame(2, (int) $credito->status_credito_id);
+        $this->assertSame(0, DB::table('creditos_aluno')->count());
+        $this->assertSame(0, DB::table('historico_planos')->count());
         $this->assertSame(2, (int) DB::table('pagamentos_plano')->where('id', 501)->value('status_pagamento_id'));
 
         $novo = DB::table('pagamentos_plano')->where('status_pagamento_id', 1)->first();
         $this->assertEquals(200.0, $novo->valor);
-        $this->assertEquals(200.0, DB::table('historico_planos')->value('valor_pago'));
-        $this->assertEquals(300.0, $novo->credito_aplicado);
+        $this->assertStringContainsString('[MIGRACAO_SIMULADA', (string) $novo->observacoes);
 
         $assinatura = DB::table('assinaturas')->first();
         $this->assertSame('avulso', $assinatura->tipo_cobranca);
@@ -516,7 +514,7 @@ class MatriculaMigracaoRegrasTest extends TestCase
         $this->assertSame('2026-05-21 12:00:00', $assinatura['criado_em']);
         $this->assertSame($pagamentoAnterior, $this->row('pagamentos_plano', 501));
         $this->assertSame(2, DB::table('pagamentos_plano')->count());
-        $this->assertSame(1, DB::table('historico_planos')->count());
+        $this->assertSame(0, DB::table('historico_planos')->count());
     }
 
     public function test_migrar_ciclo_sem_frequencia_vinculada_usa_nome_pela_duracao(): void
@@ -763,9 +761,10 @@ class MatriculaMigracaoRegrasTest extends TestCase
         $this->assertStringNotContainsString($mensagemExcecao, json_encode($result['body']));
         $this->assertStringNotContainsString('APP_USR', json_encode($result['body']));
         $this->assertSame(self::MATRICULA, $result['body']['matricula_id']);
-        $this->assertSame('pendente', $result['body']['data']['status']);
-        // A migração em si já foi gravada; o aluno reabre o pagamento pendente.
-        $this->assertSame(2, (int) $this->row('matriculas', self::MATRICULA)['plano_id']);
+        $this->assertSame('ativa', $result['body']['data']['status']);
+        $this->assertTrue($result['body']['data']['plano_atual_mantido']);
+        $this->assertSame(1, (int) $this->row('matriculas', self::MATRICULA)['plano_id']);
+        $this->assertSame(11, (int) $this->row('matriculas', self::MATRICULA)['status_id']);
         $this->assertSame(0, DB::table('assinaturas')->count());
     }
 
@@ -795,17 +794,18 @@ class MatriculaMigracaoRegrasTest extends TestCase
         $this->assertSame('MATRICULA-30-abcd1234', $result['body']['external_reference']);
         // PIX e assinatura compartilham a transação: nada fica gravado pela metade.
         $this->assertSame(0, DB::table('pagamentos_pix')->count());
-        // A migração em si (commitada antes) permanece.
-        $this->assertSame(2, (int) $this->row('matriculas', self::MATRICULA)['plano_id']);
+        $this->assertSame(1, (int) $this->row('matriculas', self::MATRICULA)['plano_id']);
     }
 
-    public function test_migrar_pendente_regrava_vigencia_atual_normalizada(): void
+    public function test_migrar_com_diferenca_nao_mexe_na_vigencia_atual(): void
     {
         $this->inserirMatricula();
+        $inicio = $this->dia(-10).' 00:00:00';
+        $venc = $this->dia(20).' 00:00:00';
         DB::table('matriculas')->where('id', self::MATRICULA)->update([
-            'data_inicio' => $this->dia(-10).' 00:00:00',
-            'data_vencimento' => $this->dia(20).' 00:00:00',
-            'proxima_data_vencimento' => $this->dia(20).' 00:00:00',
+            'data_inicio' => $inicio,
+            'data_vencimento' => $venc,
+            'proxima_data_vencimento' => $venc,
         ]);
         $this->inserirPlano(2, 500.0);
         $mp = $this->mercadoPago();
@@ -815,34 +815,27 @@ class MatriculaMigracaoRegrasTest extends TestCase
 
         $this->assertSame(200, $result['status'], json_encode($result['body']));
         $matricula = $this->row('matriculas', self::MATRICULA);
-        $this->assertSame($this->dia(-10), $matricula['data_inicio']);
-        $this->assertSame($this->dia(20), $matricula['data_vencimento']);
-        $this->assertSame($this->dia(20), $matricula['proxima_data_vencimento']);
+        $this->assertSame($inicio, $matricula['data_inicio']);
+        $this->assertSame($venc, $matricula['data_vencimento']);
+        $this->assertSame($venc, $matricula['proxima_data_vencimento']);
+        $this->assertSame(1, (int) $matricula['plano_id']);
     }
 
-    public function test_migrar_aborta_sem_gravar_se_update_nao_encontrar_matricula_no_tenant(): void
+    public function test_migrar_com_diferenca_nao_altera_plano_se_desistir_do_checkout(): void
     {
         $this->inserirMatricula();
         $this->inserirPlano(2, 500.0);
-        config(['app.debug' => true]);
-        // Simula a matrícula mudando de tenant entre a leitura e a atualização.
-        DB::statement("
-            CREATE TRIGGER muda_tenant_antes_update BEFORE UPDATE ON matriculas
-            BEGIN
-                UPDATE matriculas SET tenant_id = 999 WHERE id = OLD.id;
-                SELECT RAISE(IGNORE);
-            END
-        ");
-        $this->mercadoPagoNaoUsado();
+        $mp = $this->mercadoPago();
+        $mp->shouldReceive('criarPreferenciaPagamento')->once()
+            ->andReturn(['id' => 'pref-sim', 'init_point' => 'https://mp/checkout']);
 
         $result = $this->service()->migrar(self::USER, self::TENANT, ['plano_id' => 2, 'metodo_pagamento' => 'checkout']);
 
-        $this->assertSame(500, $result['status']);
-        $this->assertSame('ERRO_INTERNO', $result['body']['code']);
-        $this->assertArrayNotHasKey('error', $result['body']);
+        $this->assertSame(200, $result['status'], json_encode($result['body']));
+        $this->assertSame(1, (int) $this->row('matriculas', self::MATRICULA)['plano_id']);
+        $this->assertSame(11, (int) $this->row('matriculas', self::MATRICULA)['status_id']);
         $this->assertSame(0, DB::table('historico_planos')->count());
         $this->assertSame(0, DB::table('creditos_aluno')->count());
-        $this->assertSame(0, DB::table('pagamentos_plano')->count());
     }
 
     public function test_migrar_nao_aborta_quando_row_count_zero_mas_matricula_existe_no_tenant(): void
@@ -861,20 +854,49 @@ class MatriculaMigracaoRegrasTest extends TestCase
         $this->assertSame(1, DB::table('matriculas')->where('id', self::MATRICULA)->where('tenant_id', self::TENANT)->count());
     }
 
-    public function test_migrar_sem_status_pendente_configurado_nao_grava_nada(): void
+    public function test_migrar_sem_status_pendente_configurado_ainda_gera_checkout_sem_trocar_plano(): void
     {
         $this->inserirMatricula();
         $this->inserirPlano(2, 500.0);
         DB::table('status_matricula')->where('codigo', 'pendente')->delete();
-        $this->mercadoPagoNaoUsado();
+        $mp = $this->mercadoPago();
+        $mp->shouldReceive('criarPreferenciaPagamento')->once()
+            ->andReturn(['id' => 'pref-sem-pendente', 'init_point' => 'https://mp/checkout']);
         $this->pagamentosPlano->shouldNotReceive('cancelarParcelasAbertas');
 
         $result = $this->service()->migrar(self::USER, self::TENANT, ['plano_id' => 2, 'metodo_pagamento' => 'checkout']);
 
-        $this->assertSame(500, $result['status']);
-        $this->assertSame('ERRO_INTERNO', $result['body']['code']);
+        $this->assertSame(200, $result['status'], json_encode($result['body']));
         $this->assertSame(1, (int) $this->row('matriculas', self::MATRICULA)['plano_id']);
         $this->assertSame(0, DB::table('creditos_aluno')->count());
+    }
+
+    public function test_confirmar_simulacao_paga_aplica_a_troca_de_plano(): void
+    {
+        $this->inserirMatricula();
+        $this->inserirPlano(2, 500.0);
+        $this->pagamentoPago(501);
+        $mp = $this->mercadoPago();
+        $mp->shouldReceive('criarPreferenciaPagamento')->once()
+            ->andReturn(['id' => 'pref-ok', 'init_point' => 'https://mp/checkout']);
+
+        $this->service()->migrar(self::USER, self::TENANT, ['plano_id' => 2, 'metodo_pagamento' => 'checkout']);
+        $parcela = DB::table('pagamentos_plano')->where('status_pagamento_id', 1)->first();
+        DB::table('pagamentos_plano')->where('id', $parcela->id)->update([
+            'status_pagamento_id' => 2,
+            'data_pagamento' => AcademyDateTime::today(),
+        ]);
+
+        $this->service()->confirmarSeHouverSimulacaoPaga(self::TENANT, self::MATRICULA);
+
+        $matricula = $this->row('matriculas', self::MATRICULA);
+        $this->assertSame(2, (int) $matricula['plano_id']);
+        $this->assertSame(11, (int) $matricula['status_id']);
+        $this->assertSame(1, DB::table('historico_planos')->count());
+        $this->assertNotFalse(str_contains(
+            (string) DB::table('pagamentos_plano')->where('id', $parcela->id)->value('observacoes'),
+            '[MIGRACAO_CONFIRMADA]'
+        ));
     }
 
     // ---------------------------------------------------------------- helpers

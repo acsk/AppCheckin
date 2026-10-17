@@ -25,8 +25,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import AppHeader from "@/src/components/ds/AppHeader";
 import CheckoutRedirectModal from "@/src/components/ds/CheckoutRedirectModal";
+import MigracaoPlanoSheet, { type MigracaoSimulacao } from "@/src/components/ds/MigracaoPlanoSheet";
 import PaymentMethodOptions from "@/src/components/ds/PaymentMethodOptions";
-import ParcelasCartaoPicker from "@/src/components/ds/ParcelasCartaoPicker";
 import TaxaCartaoConfirmSheet from "@/src/components/ds/TaxaCartaoConfirmSheet";
 import PlanCard from "@/src/components/ds/PlanCard";
 import Section from "@/src/components/ds/Section";
@@ -86,33 +86,6 @@ interface Plan {
   ciclos?: Ciclo[];
 }
 
-interface MigracaoSimulacao {
-  plano_atual?: {
-    nome: string;
-    valor_formatado: string;
-    ciclo_nome?: string | null;
-  };
-  plano_novo?: {
-    nome?: string;
-    valor_formatado: string;
-    ciclo_nome?: string | null;
-  };
-  ciclo?: {
-    atual?: string | null;
-    novo?: string | null;
-    texto?: string | null;
-  };
-  credito?: {
-    valor_formatado: string;
-    valor_consumido_formatado?: string;
-    dias_restantes?: number;
-    tipo?: string;
-    motivo?: string;
-  };
-  valor_parcela_formatado?: string;
-  valor_parcela?: number;
-  taxa_cartao?: TaxaCartaoSimulacao | null;
-}
 
 interface ApiResponse {
   success: boolean;
@@ -678,9 +651,9 @@ export default function PlanosScreen() {
 
       const valorParcela = Number(data.data?.valor_parcela ?? 0);
       const paymentUrl = data.data?.payment_url;
-      const status = String(data.data?.status || "").toLowerCase();
+      const aguardandoPagamento = !!data.data?.aguardando_pagamento || !!data.data?.plano_atual_mantido;
 
-      if (status === "ativa" || valorParcela <= 0) {
+      if (!aguardandoPagamento && valorParcela <= 0 && !paymentUrl && !data.data?.pix) {
         showErrorModal(
           "✅ Plano migrado",
           data.message ||
@@ -1753,159 +1726,25 @@ export default function PlanosScreen() {
         </ScrollView>
       )}
 
-      {/* Confirmação de migração de plano */}
-      <Modal
+      {/* Confirmação da troca de plano (design system · TelasPagamento) */}
+      <MigracaoPlanoSheet
         visible={migracaoModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          if (!confirmandoMigracao) {
-            setMigracaoModalVisible(false);
-            setMigracaoPendente(null);
-            setMigracaoSimulacao(null);
-          }
+        simulacao={migracaoSimulacao}
+        metodo={migracaoPendente?.metodo ?? null}
+        planoNovoNome={migracaoPendente?.plano?.nome}
+        cicloNovoNome={migracaoPendente?.plano?.ciclos?.find((c) => c.id === migracaoPendente?.cicloId)?.nome}
+        loading={confirmandoMigracao}
+        onChangeTaxa={(next) =>
+          setMigracaoSimulacao((prev) => (prev ? { ...prev, taxa_cartao: next } : prev))
+        }
+        onConfirm={() => void executarMigracao()}
+        onClose={() => {
+          if (confirmandoMigracao) return;
+          setMigracaoModalVisible(false);
+          setMigracaoPendente(null);
+          setMigracaoSimulacao(null);
         }}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, styles.modalWarning]}>
-            <View style={[styles.iconCircle, styles.iconCircleWarning]}>
-              <Feather name="repeat" size={36} color="#b26a00" />
-            </View>
-            <Text style={styles.modalTitle}>Migrar plano</Text>
-            <View style={styles.migracaoResumo}>
-              <Text style={styles.migracaoLinha}>
-                {migracaoSimulacao?.plano_atual?.nome
-                  ? `De: ${migracaoSimulacao.plano_atual.nome}${
-                      migracaoSimulacao.plano_atual.ciclo_nome ||
-                      migracaoSimulacao.ciclo?.atual
-                        ? ` · ${
-                            migracaoSimulacao.plano_atual.ciclo_nome ||
-                            migracaoSimulacao.ciclo?.atual
-                          }`
-                        : ""
-                    } (${migracaoSimulacao.plano_atual.valor_formatado})`
-                  : "Troca na mesma modalidade"}
-              </Text>
-              <Text style={styles.migracaoLinha}>
-                {migracaoSimulacao?.plano_novo?.nome ||
-                migracaoPendente?.plano?.nome
-                  ? `Para: ${
-                      migracaoSimulacao?.plano_novo?.nome ||
-                      migracaoPendente?.plano?.nome
-                    }${
-                      migracaoSimulacao?.plano_novo?.ciclo_nome ||
-                      migracaoSimulacao?.ciclo?.novo
-                        ? ` · ${
-                            migracaoSimulacao?.plano_novo?.ciclo_nome ||
-                            migracaoSimulacao?.ciclo?.novo
-                          }`
-                        : ""
-                    }${
-                      migracaoSimulacao?.plano_novo?.valor_formatado
-                        ? ` (${migracaoSimulacao.plano_novo.valor_formatado})`
-                        : ""
-                    }`
-                  : "Novo plano"}
-              </Text>
-              {(migracaoSimulacao?.ciclo?.texto ||
-                (migracaoSimulacao?.ciclo?.atual &&
-                  migracaoSimulacao?.ciclo?.novo)) && (
-                <View style={styles.migracaoCicloBox}>
-                  <Text style={styles.migracaoCicloLabel}>Ciclo</Text>
-                  <Text style={styles.migracaoCicloTexto}>
-                    {migracaoSimulacao?.ciclo?.texto ||
-                      `${migracaoSimulacao?.ciclo?.atual} → ${migracaoSimulacao?.ciclo?.novo}`}
-                  </Text>
-                </View>
-              )}
-              {!!migracaoSimulacao?.credito?.valor_formatado && (
-                <Text style={styles.migracaoLinha}>
-                  Crédito: {migracaoSimulacao.credito.valor_formatado}
-                  {migracaoSimulacao.credito.dias_restantes
-                    ? ` · ${migracaoSimulacao.credito.dias_restantes} dias`
-                    : ""}
-                </Text>
-              )}
-              {!!migracaoSimulacao?.credito?.motivo &&
-                migracaoSimulacao.credito.tipo === "sem_credito" && (
-                  <Text style={[styles.migracaoLinha, { color: "#6b7280", fontSize: 13 }]}>
-                    {migracaoSimulacao.credito.motivo}
-                  </Text>
-                )}
-              {migracaoSimulacao?.taxa_cartao?.aplica_repasse ? (
-                <>
-                  <Text style={styles.migracaoLinha}>
-                    Plano / diferença: {migracaoSimulacao.taxa_cartao.valor_plano_formatado}
-                  </Text>
-                  <Text style={styles.migracaoLinha}>
-                    Taxa do cartão (Asaas): {migracaoSimulacao.taxa_cartao.tarifa_formatada}
-                  </Text>
-                  <ParcelasCartaoPicker
-                    simulacao={migracaoSimulacao.taxa_cartao}
-                    onChange={(next) =>
-                      setMigracaoSimulacao((prev) =>
-                        prev ? { ...prev, taxa_cartao: next } : prev,
-                      )
-                    }
-                  />
-                </>
-              ) : null}
-              <View style={styles.migracaoPagarBox}>
-                <Text style={styles.migracaoPagarLabel}>Você paga agora</Text>
-                <Text style={styles.migracaoPagarValor}>
-                  {migracaoSimulacao?.taxa_cartao?.aplica_repasse
-                    ? (migracaoSimulacao.taxa_cartao.parcela_count ?? 1) > 1
-                      ? migracaoSimulacao.taxa_cartao.rotulo_parcela
-                      : migracaoSimulacao.taxa_cartao.valor_cobrar_formatado
-                    : migracaoSimulacao?.valor_parcela_formatado || "R$ 0,00"}
-                </Text>
-              </View>
-            </View>
-            <View style={{ flexDirection: "row", gap: 10, width: "100%" }}>
-              <TouchableOpacity
-                style={[styles.modalButton, { flex: 1, backgroundColor: "#e5e7eb" }]}
-                disabled={confirmandoMigracao}
-                onPress={() => {
-                  setMigracaoModalVisible(false);
-                  setMigracaoPendente(null);
-                  setMigracaoSimulacao(null);
-                }}
-              >
-                <Text style={[styles.modalButtonText, { color: "#374151" }]}>
-                  Cancelar
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.modalButton,
-                  styles.buttonWarning,
-                  { flex: 1.35 },
-                ]}
-                disabled={confirmandoMigracao}
-                onPress={() => void executarMigracao()}
-              >
-                {confirmandoMigracao ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <Text style={styles.modalButtonText} numberOfLines={1}>
-                    {Number(migracaoSimulacao?.valor_parcela ?? 0) <= 0
-                      ? "Confirmar migração"
-                      : migracaoSimulacao?.taxa_cartao?.aplica_repasse
-                        ? `Pagar ${
-                            (migracaoSimulacao.taxa_cartao.parcela_count ?? 1) > 1
-                              ? migracaoSimulacao.taxa_cartao.rotulo_parcela
-                              : migracaoSimulacao.taxa_cartao.valor_cobrar_formatado
-                          }`
-                        : migracaoSimulacao?.valor_parcela_formatado
-                          ? `Pagar ${migracaoSimulacao.valor_parcela_formatado}`
-                          : "Confirmar"}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      />
 
       {/* Error Modal */}
       <Modal
@@ -2688,65 +2527,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 28,
     lineHeight: 24,
-  },
-  migracaoResumo: {
-    width: "100%",
-    alignItems: "center",
-    marginBottom: 22,
-    gap: 8,
-  },
-  migracaoLinha: {
-    fontSize: 16,
-    color: ds.inkMuted,
-    textAlign: "center",
-    lineHeight: 22,
-    fontWeight: "500",
-  },
-  migracaoCicloBox: {
-    marginTop: 4,
-    width: "100%",
-    backgroundColor: "#f3f4f6",
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    alignItems: "center",
-  },
-  migracaoCicloLabel: {
-    fontSize: 12,
-    fontWeight: "700",
-    color: ds.inkMuted,
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
-    marginBottom: 2,
-  },
-  migracaoCicloTexto: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: ds.ink,
-    textAlign: "center",
-  },
-  migracaoPagarBox: {
-    marginTop: 10,
-    width: "100%",
-    backgroundColor: "rgba(178, 106, 0, 0.1)",
-    borderRadius: 14,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    alignItems: "center",
-  },
-  migracaoPagarLabel: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#9a6700",
-    textTransform: "uppercase",
-    letterSpacing: 0.4,
-    marginBottom: 4,
-  },
-  migracaoPagarValor: {
-    fontSize: 32,
-    fontWeight: "800",
-    color: "#b26a00",
-    letterSpacing: -0.5,
   },
   modalButton: {
     width: "100%",

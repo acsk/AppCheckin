@@ -314,6 +314,7 @@ try {
                     SELECT 1 FROM pagamentos_plano pp
                     WHERE pp.matricula_id = m.id
                     AND pp.status_pagamento_id IN (1, 3)
+                    AND (pp.observacoes IS NULL OR pp.observacoes NOT LIKE '%[MIGRACAO_SIMULADA%')
                     AND pp.data_vencimento < CURDATE()
                     AND DATEDIFF(CURDATE(), pp.data_vencimento) >= 1
                     AND DATEDIFF(CURDATE(), pp.data_vencimento) < 5
@@ -338,6 +339,7 @@ try {
                     SELECT 1 FROM pagamentos_plano pp
                     WHERE pp.matricula_id = m.id
                     AND pp.status_pagamento_id IN (1, 3)
+                    AND (pp.observacoes IS NULL OR pp.observacoes NOT LIKE '%[MIGRACAO_SIMULADA%')
                     AND pp.data_vencimento < CURDATE()
                     AND DATEDIFF(CURDATE(), pp.data_vencimento) >= 5
                 )

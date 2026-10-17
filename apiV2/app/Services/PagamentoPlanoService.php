@@ -139,6 +139,8 @@ class PagamentoPlanoService
 
     public function atualizarStatusMatricula(int $tenantId, int $matriculaId): void
     {
+        app(MatriculaMigracaoService::class)->confirmarSeHouverSimulacaoPaga($tenantId, $matriculaId);
+
         $matriculaMeta = DB::table('matriculas as m')
             ->leftJoin('status_matricula as sm', 'sm.id', '=', 'm.status_id')
             ->leftJoin('planos as p', 'p.id', '=', 'm.plano_id')
@@ -197,6 +199,10 @@ class PagamentoPlanoService
         $row = DB::table('pagamentos_plano')
             ->where('tenant_id', $tenantId)
             ->where('matricula_id', $matriculaId)
+            ->where(function ($q) {
+                $q->whereNull('observacoes')
+                    ->orWhere('observacoes', 'not like', '%'.MatriculaMigracaoService::TAG_MIGRACAO_SIMULADA.'%');
+            })
             ->selectRaw('
                 MAX(CASE WHEN status_pagamento_id IN (1, 3) AND data_vencimento < CURDATE()
                     THEN DATEDIFF(CURDATE(), data_vencimento) ELSE 0 END) as dias_atraso,
@@ -214,7 +220,12 @@ class PagamentoPlanoService
         // Parcela futura "Aguardando" é só cobrança — não estende vigência.
         // Semestral ex. #288: pago 27/03, venc 27/04, ciclo 6m → fim = 27/10.
         $acessoAte = null;
-        if ($ehAvulso) {
+        $migracaoConfirmada = DB::table('pagamentos_plano')
+            ->where('tenant_id', $tenantId)
+            ->where('matricula_id', $matriculaId)
+            ->where('observacoes', 'like', '%'.MatriculaMigracaoService::TAG_MIGRACAO_CONFIRMADA.'%')
+            ->exists();
+        if ($ehAvulso && ! $migracaoConfirmada) {
             $fimRow = DB::selectOne(
                 'SELECT '.self::sqlFimPeriodoPago('?', '?').' AS fim_periodo',
                 [$tenantId, $matriculaId]
@@ -264,7 +275,7 @@ class PagamentoPlanoService
                 ->whereNull('data_pagamento')
                 ->min('data_vencimento');
 
-            if ($proximaCobranca && $novoStatus === 'ativa') {
+            if ($proximaCobranca && $novoStatus === 'ativa' && ! $migracaoConfirmada) {
                 DB::table('matriculas')
                     ->where('id', $matriculaId)
                     ->where('tenant_id', $tenantId)

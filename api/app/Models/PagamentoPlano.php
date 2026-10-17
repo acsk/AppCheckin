@@ -462,6 +462,7 @@ class PagamentoPlano
                 SUM(CASE WHEN status_pagamento_id IN (1, 3) THEN 1 ELSE 0 END) as pendentes
             FROM pagamentos_plano
             WHERE tenant_id = :tenant_id AND matricula_id = :matricula_id
+              AND (observacoes IS NULL OR observacoes NOT LIKE '%[MIGRACAO_SIMULADA%')
         ";
         
         $stmtVerifica = $this->pdo->prepare($sqlVerifica);

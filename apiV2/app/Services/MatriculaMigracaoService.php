@@ -31,6 +31,11 @@ class MatriculaMigracaoService
     /** Tolerância em reais para comparar valores arredondados a centavos. */
     private const FLOAT_EPSILON = 0.001;
 
+    /** Cobrança da diferença sem trocar o plano até o pagamento confirmar. */
+    public const TAG_MIGRACAO_SIMULADA = '[MIGRACAO_SIMULADA';
+
+    public const TAG_MIGRACAO_CONFIRMADA = '[MIGRACAO_CONFIRMADA]';
+
     public function __construct(
         private readonly UsuarioRepository $usuarios,
         private readonly MatriculaMigracaoAptidaoService $aptidao,
@@ -137,6 +142,70 @@ class MatriculaMigracaoService
                 'success' => true,
                 'data' => $this->montarResumoSimulacao($ctx),
             ],
+        ];
+    }
+
+    /**
+     * Aplica a troca de plano só depois que a diferença da simulação foi paga.
+     */
+    public function confirmarSeHouverSimulacaoPaga(int $tenantId, int $matriculaId): void
+    {
+        $pago = DB::table('pagamentos_plano')
+            ->where('tenant_id', $tenantId)
+            ->where('matricula_id', $matriculaId)
+            ->where('status_pagamento_id', StatusPagamentoPlano::PAGO)
+            ->where('observacoes', 'like', '%'.self::TAG_MIGRACAO_SIMULADA.'%')
+            ->where('observacoes', 'not like', '%'.self::TAG_MIGRACAO_CONFIRMADA.'%')
+            ->orderByDesc('id')
+            ->first();
+        if (! $pago) {
+            return;
+        }
+
+        $meta = self::parseTagMigracaoSimulada((string) ($pago->observacoes ?? ''));
+        if ($meta === null) {
+            return;
+        }
+
+        $alunoId = (int) (DB::table('matriculas')->where('id', $matriculaId)->where('tenant_id', $tenantId)->value('aluno_id') ?? 0);
+        $userId = (int) (DB::table('alunos')->where('id', $alunoId)->value('usuario_id') ?? ($pago->criado_por ?? 0));
+        if ($userId <= 0) {
+            Log::warning('Migração simulada paga sem usuario_id', [
+                'tenant_id' => $tenantId,
+                'matricula_id' => $matriculaId,
+                'pagamento_id' => $pago->id,
+            ]);
+
+            return;
+        }
+
+        $ctx = $this->resolverContexto($userId, $tenantId, $meta['plano_id'], $meta['plano_ciclo_id']);
+        if (isset($ctx['erro'])) {
+            Log::warning('Migração simulada paga sem contexto para aplicar', [
+                'tenant_id' => $tenantId,
+                'matricula_id' => $matriculaId,
+                'pagamento_id' => $pago->id,
+                'erro' => $ctx['erro']['body']['code'] ?? null,
+            ]);
+
+            return;
+        }
+
+        $this->aplicarTrocaAposPagamento($userId, $tenantId, $ctx, (array) $pago);
+    }
+
+    /**
+     * @return array{plano_id: int, plano_ciclo_id: ?int}|null
+     */
+    public static function parseTagMigracaoSimulada(string $observacoes): ?array
+    {
+        if (! preg_match('/\[MIGRACAO_SIMULADA plano_id=(\d+) plano_ciclo_id=(null|\d+)\]/', $observacoes, $m)) {
+            return null;
+        }
+
+        return [
+            'plano_id' => (int) $m[1],
+            'plano_ciclo_id' => $m[2] === 'null' ? null : (int) $m[2],
         ];
     }
 
@@ -257,6 +326,19 @@ class MatriculaMigracaoService
                     ],
                 ];
             }
+
+            return $this->iniciarCobrancaMantendoPlanoAtual(
+                $userId,
+                $tenantId,
+                $data,
+                $ctx,
+                $valorParcela,
+                $metodoPagamento,
+                $escolhaGateway,
+                $isRecorrente,
+                $duracaoMeses,
+                $dataVencimento,
+            );
         }
 
         $motivoId = (int) $this->lookupId('motivo_matricula', $motivo, 1);
@@ -967,6 +1049,309 @@ class MatriculaMigracaoService
     }
 
     /**
+     * Gera a cobrança da diferença sem alterar plano/status. O aluno pode desistir.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array<string, mixed>  $ctx
+     * @param  array<string, mixed>  $escolhaGateway
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    private function iniciarCobrancaMantendoPlanoAtual(
+        int $userId,
+        int $tenantId,
+        array $data,
+        array $ctx,
+        float $valorParcela,
+        string $metodoPagamento,
+        array $escolhaGateway,
+        bool $isRecorrente,
+        int $duracaoMeses,
+        string $dataVencimento,
+    ): array {
+        $matricula = $ctx['matricula'];
+        $matriculaId = (int) $matricula['id'];
+        $alunoId = (int) $ctx['aluno_id'];
+        $novoPlano = $ctx['novo_plano'];
+        $novoCiclo = $ctx['novo_ciclo'];
+        $novoPlanoId = (int) $novoPlano['id'];
+        $novoCicloId = $novoCiclo ? (int) $novoCiclo['id'] : null;
+        $tag = sprintf(
+            '%s plano_id=%d plano_ciclo_id=%s]',
+            self::TAG_MIGRACAO_SIMULADA,
+            $novoPlanoId,
+            $novoCicloId === null ? 'null' : (string) $novoCicloId
+        );
+
+        try {
+            DB::beginTransaction();
+            $this->cancelarMigracoesSimuladasAbertas($tenantId, $matriculaId);
+            $stmtPagamento = $this->db()->prepare('
+                INSERT INTO pagamentos_plano
+                (tenant_id, aluno_id, matricula_id, plano_id, valor, data_vencimento,
+                 status_pagamento_id, observacoes, criado_por, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+            ');
+            $stmtPagamento->execute([
+                $tenantId,
+                $alunoId,
+                $matriculaId,
+                $novoPlanoId,
+                $valorParcela,
+                AcademyDateTime::today(),
+                StatusPagamentoPlano::AGUARDANDO,
+                'Simulação de migração — o plano atual continua ativo até o pagamento. '.$tag,
+                $userId,
+            ]);
+            $novoPagamentoId = (int) $this->db()->lastInsertId();
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('MatriculaMigracaoService::iniciarCobrancaMantendoPlanoAtual falhou', [
+                'tenant_id' => $tenantId,
+                'matricula_id' => $matriculaId,
+                'exception' => $e,
+            ]);
+
+            return $this->erro(500, 'ERRO_INTERNO', 'Não foi possível iniciar o pagamento da migração. Tente novamente.');
+        }
+
+        $usuario = $ctx['usuario'];
+        $mpResult = $this->gerarPagamentoMercadoPago(
+            $tenantId,
+            $userId,
+            $alunoId,
+            $matriculaId,
+            $novoPlano,
+            $novoCiclo,
+            $ctx['ciclo_nome'],
+            $ctx['frequencia_id'] ?? null,
+            $valorParcela,
+            $isRecorrente,
+            $duracaoMeses,
+            $metodoPagamento,
+            $usuario,
+            $dataVencimento,
+            $escolhaGateway,
+            (int) ($data['installment_count'] ?? $data['parcelas'] ?? 1),
+        );
+
+        if (isset($mpResult['erro'])) {
+            $this->cancelarMigracoesSimuladasAbertas($tenantId, $matriculaId);
+            $erro = $mpResult['erro'];
+            if (($erro['body']['code'] ?? '') === 'ERRO_PAGAMENTO') {
+                $erro['body']['matricula_id'] = $matriculaId;
+                $erro['body']['data'] = [
+                    'matricula_id' => $matriculaId,
+                    'status' => (string) ($matricula['status_codigo'] ?? 'ativa'),
+                    'valor_parcela' => $valorParcela,
+                    'metodo_pagamento' => $metodoPagamento,
+                    'plano_atual_mantido' => true,
+                ];
+            }
+
+            return $erro;
+        }
+
+        $simulacao = $this->montarResumoSimulacao($ctx);
+        $body = [
+            'success' => true,
+            'message' => 'Seu plano atual continua ativo. Conclua o pagamento para migrar — se desistir, nada muda.',
+            'data' => array_merge($simulacao, [
+                'matricula_id' => $matriculaId,
+                'novo_pagamento_id' => $novoPagamentoId,
+                'status' => (string) ($matricula['status_codigo'] ?? 'ativa'),
+                'aguardando_pagamento' => true,
+                'plano_atual_mantido' => true,
+                'plano_anterior_nome' => $matricula['plano_nome'],
+                'plano_novo_nome' => $novoPlano['nome'],
+            ], $mpResult['pagamento']),
+        ];
+
+        return ['status' => 200, 'body' => $body];
+    }
+
+    private function cancelarMigracoesSimuladasAbertas(int $tenantId, int $matriculaId): void
+    {
+        DB::update(
+            "UPDATE pagamentos_plano
+             SET status_pagamento_id = 4,
+                 observacoes = CONCAT(COALESCE(observacoes, ''), ' [Simulação de migração cancelada]'),
+                 updated_at = NOW()
+             WHERE tenant_id = ? AND matricula_id = ?
+               AND status_pagamento_id IN (1, 3) AND data_pagamento IS NULL
+               AND observacoes LIKE ?",
+            [$tenantId, $matriculaId, '%'.self::TAG_MIGRACAO_SIMULADA.'%']
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $ctx
+     * @param  array<string, mixed>  $pagamentoPago
+     */
+    private function aplicarTrocaAposPagamento(int $userId, int $tenantId, array $ctx, array $pagamentoPago): void
+    {
+        $matricula = $ctx['matricula'];
+        $matriculaId = (int) $matricula['id'];
+        $alunoId = (int) $ctx['aluno_id'];
+        $novoPlano = $ctx['novo_plano'];
+        $novoCiclo = $ctx['novo_ciclo'];
+        $valorNovo = (float) $ctx['valor_novo'];
+        $creditoInfo = $ctx['credito'];
+        $creditoValor = (float) $creditoInfo['credito'];
+        $creditoAplicado = $creditoValor > 0 ? round(min($creditoValor, $valorNovo), 2) : 0.0;
+        $motivo = $ctx['motivo'];
+        $agora = AcademyDateTime::now();
+        $dataInicioObj = AcademyDateTime::todayStart();
+        $dataInicio = $dataInicioObj->format('Y-m-d');
+        $proximaDataVencimento = clone $dataInicioObj;
+        $duracaoMeses = (int) $ctx['duracao_meses'];
+        $duracaoDias = (int) $ctx['duracao_dias'];
+        if ($duracaoMeses > 1) {
+            $proximaDataVencimento->modify("+{$duracaoMeses} months");
+        } else {
+            $proximaDataVencimento->modify("+{$duracaoDias} days");
+        }
+        $dataVencimento = $proximaDataVencimento->format('Y-m-d');
+        $diaVencimento = (int) ($matricula['dia_vencimento'] ?? $agora->format('d'));
+        $planoAnteriorId = (int) $matricula['plano_id'];
+        $novoPlanoId = (int) $novoPlano['id'];
+        $novoCicloId = $novoCiclo ? (int) $novoCiclo['id'] : null;
+        $statusAtivaId = $this->resolverStatusMatriculaId(true);
+        if ($statusAtivaId === null) {
+            return;
+        }
+        $motivoId = (int) $this->lookupId('motivo_matricula', $motivo, 1);
+        $pagamentoId = (int) ($pagamentoPago['id'] ?? 0);
+
+        DB::transaction(function () use (
+            $tenantId,
+            $matriculaId,
+            $alunoId,
+            $userId,
+            $novoPlanoId,
+            $novoCicloId,
+            $planoAnteriorId,
+            $valorNovo,
+            $dataInicio,
+            $dataVencimento,
+            $diaVencimento,
+            $statusAtivaId,
+            $motivoId,
+            $creditoValor,
+            $creditoAplicado,
+            $creditoInfo,
+            $motivo,
+            $pagamentoId,
+        ): void {
+            $this->pagamentosPlano->cancelarParcelasAbertas(
+                $tenantId,
+                $matriculaId,
+                'Cancelado por migração de plano confirmada'
+            );
+
+            $pdo = $this->db();
+            $pdo->prepare('
+                UPDATE matriculas
+                SET plano_id = ?,
+                    plano_ciclo_id = ?,
+                    plano_anterior_id = ?,
+                    valor = ?,
+                    data_inicio = ?,
+                    data_vencimento = ?,
+                    proxima_data_vencimento = ?,
+                    dia_vencimento = ?,
+                    status_id = ?,
+                    motivo_id = ?,
+                    observacoes = ?,
+                    cancelado_por = NULL,
+                    data_cancelamento = NULL,
+                    motivo_cancelamento = NULL,
+                    updated_at = NOW()
+                WHERE id = ? AND tenant_id = ?
+            ')->execute([
+                $novoPlanoId,
+                $novoCicloId,
+                $planoAnteriorId,
+                $valorNovo,
+                $dataInicio,
+                $dataVencimento,
+                $dataVencimento,
+                $diaVencimento,
+                $statusAtivaId,
+                $motivoId,
+                'Migração de plano via app mobile (confirmada no pagamento)',
+                $matriculaId,
+                $tenantId,
+            ]);
+
+            $pdo->prepare('
+                INSERT INTO historico_planos
+                (usuario_id, plano_anterior_id, plano_novo_id, data_inicio, data_vencimento, valor_pago, motivo, observacoes, criado_por)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ')->execute([
+                $userId,
+                $planoAnteriorId,
+                $novoPlanoId,
+                $dataInicio,
+                $dataVencimento,
+                (float) (DB::table('pagamentos_plano')->where('id', $pagamentoId)->value('valor') ?? 0),
+                $motivo,
+                $creditoAplicado > 0
+                    ? sprintf(
+                        'Migração de plano via app mobile (plano R$ %s, crédito aplicado R$ %s)',
+                        number_format($valorNovo, 2, ',', '.'),
+                        number_format($creditoAplicado, 2, ',', '.')
+                    )
+                    : 'Migração de plano via app mobile',
+                $userId,
+            ]);
+
+            $creditoId = null;
+            if ($creditoValor > 0) {
+                $pdo->prepare('
+                    INSERT INTO creditos_aluno
+                    (tenant_id, aluno_id, matricula_origem_id, pagamento_origem_id, valor, motivo, criado_por)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ')->execute([
+                    $tenantId,
+                    $alunoId,
+                    $matriculaId,
+                    $creditoInfo['pagamento_origem_id'] ?? null,
+                    $creditoValor,
+                    $creditoInfo['motivo'],
+                    $userId,
+                ]);
+                $creditoId = (int) $pdo->lastInsertId();
+                if ($creditoAplicado > 0) {
+                    $saldoCredito = $creditoValor - $creditoAplicado;
+                    $statusCreditoId = $saldoCredito <= self::FLOAT_EPSILON ? self::CREDITO_STATUS_UTILIZADO : self::CREDITO_STATUS_ATIVO;
+                    $pdo->prepare('
+                        UPDATE creditos_aluno SET valor_utilizado = ?, status_credito_id = ?, updated_at = NOW()
+                        WHERE id = ? AND tenant_id = ?
+                    ')->execute([$creditoAplicado, $statusCreditoId, $creditoId, $tenantId]);
+                }
+            }
+
+            if ($pagamentoId > 0) {
+                $obs = (string) (DB::table('pagamentos_plano')->where('id', $pagamentoId)->value('observacoes') ?? '');
+                if (! str_contains($obs, self::TAG_MIGRACAO_CONFIRMADA)) {
+                    $obs = trim($obs.' '.self::TAG_MIGRACAO_CONFIRMADA);
+                }
+                $campos = [
+                    'plano_id' => $novoPlanoId,
+                    'observacoes' => $obs,
+                    'updated_at' => now(),
+                ];
+                if ($creditoId) {
+                    $campos['credito_id'] = $creditoId;
+                    $campos['credito_aplicado'] = $creditoAplicado > 0 ? $creditoAplicado : null;
+                }
+                DB::table('pagamentos_plano')->where('id', $pagamentoId)->where('tenant_id', $tenantId)->update($campos);
+            }
+        });
+    }
+
+    /**
      * @param  array<string, mixed>  $novoPlano
      * @param  array<string, mixed>|null  $novoCiclo
      * @param  array<string, mixed>  $usuario
@@ -1157,7 +1542,7 @@ class MatriculaMigracaoService
             return ['erro' => $this->erro(
                 500,
                 'ERRO_PAGAMENTO',
-                'Plano alterado e pagamento gerado, mas não foi possível registrá-lo. Contate a academia informando a referência.',
+                'Pagamento gerado, mas não foi possível registrá-lo. Contate a academia informando a referência.',
                 [
                     'matricula_id' => $matriculaId,
                     'external_reference' => $externalReference,
