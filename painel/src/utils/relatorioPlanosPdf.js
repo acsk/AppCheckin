@@ -100,7 +100,7 @@ export function gerarPdfPlanos(data) {
         const desconto = Number(c.desconto_percentual) > 0 ? `\n${Number(c.desconto_percentual).toLocaleString('pt-BR')}% off` : '';
         const cobranca = `${Number(c.permite_recorrencia) ? 'Recorrente' : 'Avulso'}${Number(c.permite_reposicao) ? ' · Reposição' : ''}`;
         const row = [
-          { content: `${c.frequencia_nome}\n${period(c)}${Number(c.ativo) ? '' : ' · indisponível'}`, styles: Number(c.ativo) ? {} : { textColor: C.subtle } },
+          { content: `${c.frequencia_nome}\n${period(c)}${Number(c.ativo) ? '' : ' · bloqueado'}`, styles: Number(c.ativo) ? {} : { textColor: C.subtle } },
           { content: money(c.valor), styles: { halign: 'right' } },
           { content: `${money(c.valor_mensal_equivalente)}${desconto}`, styles: { halign: 'right' } },
           cobranca,

@@ -34,6 +34,15 @@ export interface PlanosVencendo {
   novos_este_mes: number;
 }
 
+export interface MatriculasCards {
+  /** Alunos distintos com matrícula ativa (status_id = 1) */
+  alunos_com_matricula_ativa: number;
+  ativas: number;
+  vencidas: number;
+  pendentes: number;
+  bloqueadas: number;
+}
+
 export interface DashboardCardsData {
   /** Dados de total de alunos */
   total_alunos: TotalAlunos;
@@ -43,6 +52,8 @@ export interface DashboardCardsData {
   checkins_hoje: CheckinsHoje;
   /** Dados de planos vencendo */
   planos_vencendo: PlanosVencendo;
+  /** Matrículas por status (só na API v2) */
+  matriculas?: MatriculasCards;
 }
 
 export interface DashboardCardsResponse {

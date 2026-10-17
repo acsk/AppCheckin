@@ -125,6 +125,34 @@ class DashboardRepository
     }
 
     /**
+     * Matrículas por status: o que vale para "aluno ativo" é ter matrícula ativa (status_id = 1),
+     * não o vínculo em tenant_usuario_papel.
+     *
+     * @return array{alunos_com_matricula_ativa: int, ativas: int, vencidas: int, pendentes: int, bloqueadas: int}
+     */
+    public function matriculasCards(int $tenantId): array
+    {
+        $row = DB::selectOne('
+            SELECT
+                COUNT(DISTINCT CASE WHEN status_id = 1 THEN aluno_id END) as alunos_ativos,
+                COALESCE(SUM(status_id = 1), 0) as ativas,
+                COALESCE(SUM(status_id = 2), 0) as vencidas,
+                COALESCE(SUM(status_id = 5), 0) as pendentes,
+                COALESCE(SUM(status_id = 6), 0) as bloqueadas
+            FROM matriculas
+            WHERE tenant_id = ?
+        ', [$tenantId]);
+
+        return [
+            'alunos_com_matricula_ativa' => (int) ($row->alunos_ativos ?? 0),
+            'ativas' => (int) ($row->ativas ?? 0),
+            'vencidas' => (int) ($row->vencidas ?? 0),
+            'pendentes' => (int) ($row->pendentes ?? 0),
+            'bloqueadas' => (int) ($row->bloqueadas ?? 0),
+        ];
+    }
+
+    /**
      * @return array{valor: float, valor_formatado: string, contas_pendentes: int}
      */
     public function receitaMensalCards(int $tenantId): array

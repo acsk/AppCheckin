@@ -237,7 +237,7 @@ function OptionChips({ label, options, value, onChange, disabled }) {
   );
 }
 
-export function CycleRow({ cycle, monthly, onEdit, onRemove, readOnly }) {
+export function CycleRow({ cycle, monthly, onEdit, onRemove, onToggleBlock, readOnly, busy }) {
   const daily = isDaily(cycle);
   const months = Number(cycle.months) || 1;
   const perMonth = daily ? null : cycle.amount / months;
@@ -253,14 +253,18 @@ export function CycleRow({ cycle, monthly, onEdit, onRemove, readOnly }) {
         {pct > 0 ? <Badge tone="success">{pct}% de desconto</Badge> : null}
         <Badge tone={cycle.recurring ? 'info' : 'neutral'} icon={cycle.recurring ? 'repeat' : undefined}>{cycle.recurring ? 'Recorrente' : 'Avulso'}</Badge>
         {cycle.makeup ? <Badge tone="outline">Reposição</Badge> : null}
-        {cycle.active ? null : <Badge>Indisponível</Badge>}
+        {cycle.active ? null : <Badge tone="danger" icon="lock">Bloqueado</Badge>}
       </span>
       <span className="ck-pf__cycleprice">{money(cycle.amount)}</span>
       {readOnly ? null : (
         <ActionMenu
           label={`Ações do ciclo ${cycle.label}`}
           items={[
-            { label: 'Editar ciclo', icon: 'pencil', onClick: () => onEdit?.(cycle) }, '-',
+            { label: 'Editar ciclo', icon: 'pencil', onClick: () => onEdit?.(cycle) },
+            ...(onToggleBlock ? [cycle.active
+              ? { label: 'Bloquear ciclo', icon: 'lock', disabled: busy, onClick: () => onToggleBlock(cycle) }
+              : { label: 'Desbloquear ciclo', icon: 'unlock', disabled: busy, onClick: () => onToggleBlock(cycle) }] : []),
+            '-',
             { label: 'Excluir ciclo', icon: 'trash', danger: true, onClick: () => onRemove?.(cycle) },
           ]}
         />
@@ -271,7 +275,7 @@ export function CycleRow({ cycle, monthly, onEdit, onRemove, readOnly }) {
 
 export function PlanoForm({
   values, onChange, errors = {}, modalities = [], isEdit, readOnly, saving, onSave, onCancel, onBack,
-  cycles = [], cyclesLoading, onAddCycle, onEditCycle, onRemoveCycle, onGenerateCycles, generating, missingCount = 0,
+  cycles = [], cyclesLoading, onAddCycle, onEditCycle, onRemoveCycle, onToggleCycleBlock, blockingCycleId, onGenerateCycles, generating, missingCount = 0,
 }) {
   const set = (k) => (v) => onChange({ ...values, [k]: v });
   const monthly = parseMoney(values.valor);
@@ -350,7 +354,7 @@ export function PlanoForm({
             ) : cyclesLoading ? <p role="status" className="ck-nm__wait">Carregando ciclos…</p>
               : cycles.length ? (
                 <ul className="ck-pf__cyclelist">
-                  {cycles.map((c) => <CycleRow key={c.id} cycle={c} monthly={monthly} onEdit={onEditCycle} onRemove={onRemoveCycle} readOnly={readOnly} />)}
+                  {cycles.map((c) => <CycleRow key={c.id} cycle={c} monthly={monthly} onEdit={onEditCycle} onRemove={onRemoveCycle} onToggleBlock={onToggleCycleBlock} busy={blockingCycleId === c.id} readOnly={readOnly} />)}
                 </ul>
               ) : (
                 <div className="ck-mt-empty">
@@ -515,7 +519,7 @@ export function CicloModal({ open, cycle, types = [], cycles = [], monthly = 0, 
         <div className="ck-cm__switches">
           <Switch label="Cobrança recorrente" description={recurring ? 'Renova sozinho no fim do período, no cartão do aluno.' : 'Pagamento único; o aluno renova manualmente.'} checked={recurring} onChange={setRecurring} />
           <Switch label="Permite reposição" description={makeup ? 'O limite de check-ins conta por mês, então o aluno compensa aulas perdidas.' : 'O limite de check-ins conta por semana.'} checked={makeup} onChange={setMakeup} />
-          <Switch label="Disponível" description={active ? 'O aluno pode escolher este ciclo.' : 'Fica oculto para novas compras.'} checked={active} onChange={setActive} />
+          <Switch label="Bloquear ciclo" description={!active ? 'Ninguém contrata este ciclo, nem pelo app nem por nova matrícula. Quem já tem matrícula nele continua normalmente.' : 'O aluno pode escolher este ciclo no app e na nova matrícula.'} checked={!active} onChange={(v) => setActive(!v)} />
         </div>
       </div>
     </Modal>
@@ -646,7 +650,7 @@ export function GerarCiclosModal({ open, types = [], cycles = [], monthly = 0, s
           </p>
           <Switch label="Cobrança recorrente" description={recurring ? 'Renova sozinho no fim do período, no cartão do aluno.' : 'Pagamento único; o aluno renova manualmente.'} checked={recurring} onChange={setRecurring} />
           <Switch label="Permite reposição" description={makeup ? 'O limite de check-ins conta por mês, então o aluno compensa aulas perdidas.' : 'O limite de check-ins conta por semana.'} checked={makeup} onChange={setMakeup} />
-          <Switch label="Disponível" description={active ? 'O aluno pode escolher estes ciclos.' : 'Ficam ocultos para novas compras.'} checked={active} onChange={setActive} />
+          <Switch label="Criar bloqueados" description={!active ? 'Os ciclos novos ficam bloqueados: ninguém contrata até você desbloquear.' : 'Os ciclos novos já ficam disponíveis para contratar.'} checked={!active} onChange={(v) => setActive(!v)} />
         </div>
       </div>
     </Modal>

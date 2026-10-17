@@ -73,6 +73,7 @@ class AdminDashboardService
                         'receita_mensal' => $this->dashboard->receitaMensalCards($tenantId),
                         'checkins_hoje' => $this->dashboard->checkinsCards($tenantId),
                         'planos_vencendo' => $this->dashboard->planosVencendoCards($tenantId),
+                        'matriculas' => $this->dashboard->matriculasCards($tenantId),
                     ],
                 ],
             ];
@@ -121,6 +122,7 @@ class AdminDashboardService
             'receita_mensal' => ['valor' => 0, 'valor_formatado' => 'R$ 0,00', 'contas_pendentes' => 0],
             'checkins_hoje' => ['hoje' => 0, 'no_mes' => 0],
             'planos_vencendo' => ['vencendo' => 0, 'novos_este_mes' => 0],
+            'matriculas' => ['alunos_com_matricula_ativa' => 0, 'ativas' => 0, 'vencidas' => 0, 'pendentes' => 0, 'bloqueadas' => 0],
         ];
     }
 }

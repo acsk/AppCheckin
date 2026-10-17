@@ -49,6 +49,8 @@ export default function FormPlanoScreen() {
   const [savingCycle, setSavingCycle] = useState(false);
   const [removeCycle, setRemoveCycle] = useState(null);
   const [removing, setRemoving] = useState(false);
+  const [blockCycle, setBlockCycle] = useState(null);
+  const [blockingId, setBlockingId] = useState(null);
   const [confirmGenerate, setConfirmGenerate] = useState(false);
   const [generating, setGenerating] = useState(false);
 
@@ -188,6 +190,25 @@ export default function FormPlanoScreen() {
     }
   };
 
+  const setCycleBlocked = async (cycle, blocked) => {
+    setBlockingId(cycle.id);
+    try {
+      await planoService.atualizarCiclo(planoId, cycle.id, { ativo: blocked ? 0 : 1 });
+      showSuccess(`Ciclo ${cycle.label} ${blocked ? 'bloqueado' : 'desbloqueado'}`);
+      setBlockCycle(null);
+      await loadCycles();
+    } catch (err) {
+      showError(err?.error || `Não foi possível ${blocked ? 'bloquear' : 'desbloquear'} o ciclo`);
+    } finally {
+      setBlockingId(null);
+    }
+  };
+
+  const toggleCycleBlock = (cycle) => {
+    if (cycle.active) setBlockCycle(cycle);
+    else setCycleBlocked(cycle, false);
+  };
+
   const generate = async (list) => {
     setGenerating(true);
     const failed = [];
@@ -233,6 +254,8 @@ export default function FormPlanoScreen() {
           onAddCycle={() => setCycleModal({ open: true, cycle: null })}
           onEditCycle={(cycle) => setCycleModal({ open: true, cycle })}
           onRemoveCycle={setRemoveCycle}
+          onToggleCycleBlock={toggleCycleBlock}
+          blockingCycleId={blockingId}
           onGenerateCycles={() => setConfirmGenerate(true)}
           generating={generating}
           missingCount={missingTypes(types, cycles).length}
@@ -265,7 +288,25 @@ export default function FormPlanoScreen() {
           </>
         )}
       >
-        <p className="ck-pl__confirm">Se preferir só esconder o ciclo, edite e desligue "Disponível".</p>
+        <p className="ck-pl__confirm">Se quiser só parar de vender este ciclo, use "Bloquear ciclo" no menu dele.</p>
+      </Modal>
+
+      <Modal
+        open={!!blockCycle}
+        size="sm"
+        title={`Bloquear o ciclo ${blockCycle?.label || ''}?`.trim()}
+        description="Ninguém contrata este ciclo, nem pelo app nem por nova matrícula, até você desbloquear."
+        dismissable={!blockingId}
+        onClose={() => setBlockCycle(null)}
+        footer={(
+          <>
+            <span style={{ flex: 1 }} />
+            <Button variant="ghost" disabled={!!blockingId} onClick={() => setBlockCycle(null)}>Cancelar</Button>
+            <Button variant="danger" icon="lock" loading={!!blockingId} onClick={() => setCycleBlocked(blockCycle, true)}>Bloquear ciclo</Button>
+          </>
+        )}
+      >
+        <p className="ck-pl__confirm">Quem já tem matrícula neste ciclo continua normalmente. O valor e as opções do ciclo ficam guardados.</p>
       </Modal>
 
       <GerarCiclosModal

@@ -91,7 +91,7 @@ export function abrirRelatorioPlanos(data) {
             }
             return ciclos.map((c, i) => `<tr>
               ${i === 0 ? `<td rowspan="${ciclos.length}">${planoCell}</td><td class="num" rowspan="${ciclos.length}">${p.valor > 0 ? money(p.valor) : 'Sem custo'}</td>` : ''}
-              <td><strong>${esc(c.frequencia_nome)}</strong><div class="muted">${period(c)}${c.ativo ? '' : ' · indisponível'}</div></td>
+              <td><strong>${esc(c.frequencia_nome)}</strong><div class="muted">${period(c)}${c.ativo ? '' : ' · bloqueado'}</div></td>
               <td class="num">${money(c.valor)}</td>
               <td class="num">${money(c.valor_mensal_equivalente)}${c.desconto_percentual > 0 ? `<div class="muted">${Number(c.desconto_percentual).toLocaleString('pt-BR')}% off</div>` : ''}</td>
               <td><span class="badge ${c.permite_recorrencia ? 'b-info' : ''}">${c.permite_recorrencia ? 'Recorrente' : 'Avulso'}</span>${c.permite_reposicao ? ' <span class="badge">Reposição</span>' : ''}</td>

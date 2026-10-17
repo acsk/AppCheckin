@@ -96,9 +96,10 @@ export default function Dashboard() {
     })()
     : null;
 
-  const alunos = c.total_alunos || {};
-  const ativos = Number(alunos.ativos) || 0;
-  const totalAlunos = Number(alunos.total) || 0;
+  const cadastrados = Number(c.total_alunos?.ativos) || 0;
+  const mats = c.matriculas || null;
+  const ativos = mats ? Number(mats.alunos_com_matricula_ativa) || 0 : cadastrados;
+  const semMatricula = Math.max(0, cadastrados - ativos);
   const firstName = titleCase(user?.nome || '').split(' ')[0];
   const dateLabel = now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
 
@@ -132,7 +133,7 @@ export default function Dashboard() {
           <KpiCard emphasis icon="wallet" label="Recebido no mês" value={loading ? '—' : money(received)} trend={trend} hint={trend ? null : 'Pagamentos registrados neste mês'} onClick={() => router.push('/financeiro/relatorio')} />
           <KpiCard tone="warning" icon="clock" label="A receber no mês" value={loading ? '—' : money(derived.month.aguardando)} hint={`${derived.month.count.aguardando} ${derived.month.count.aguardando === 1 ? 'parcela aguardando' : 'parcelas aguardando'}`} />
           <KpiCard tone="danger" icon="alert-triangle" label="Em atraso" value={loading ? '—' : money(derived.lateValue)} hint={`${derived.lateCount} ${derived.lateCount === 1 ? 'parcela' : 'parcelas'} nos últimos 6 meses`} onClick={derived.lateCount ? () => router.push('/financeiro/relatorio?status=atrasado&periodo=6m') : undefined} />
-          <KpiCard tone="info" icon="users" label="Alunos ativos" value={loading ? '—' : ativos.toLocaleString('pt-BR')} hint={`${Number(c.planos_vencendo?.novos_este_mes) || 0} matrículas novas este mês`} onClick={() => router.push('/alunos')} />
+          <KpiCard tone="info" icon="users" label="Alunos com matrícula ativa" value={loading ? '—' : ativos.toLocaleString('pt-BR')} hint={`${Number(c.planos_vencendo?.novos_este_mes) || 0} matrículas novas este mês`} onClick={() => router.push('/matriculas')} />
         </div>
 
         <div className="ck-dash__row">
@@ -208,12 +209,20 @@ export default function Dashboard() {
             </header>
             <div className="ck-dash__students">
               <div className="ck-dash__studentsrow">
-                <span><strong>{ativos}</strong> ativos</span>
-                <span>{Number(alunos.inativos ?? Math.max(0, totalAlunos - ativos)) || 0} inativos</span>
+                <span><strong>{ativos.toLocaleString('pt-BR')}</strong> com matrícula ativa</span>
+                <span>de {cadastrados.toLocaleString('pt-BR')} cadastrados</span>
               </div>
-              <span className="ck-mt-plan__track ck-dash__track" role="progressbar" aria-label="Alunos ativos" aria-valuenow={pct(ativos, totalAlunos)} aria-valuemin={0} aria-valuemax={100}>
-                <span className="ck-mt-plan__fill" style={{ width: `${Math.max(pct(ativos, totalAlunos), 2)}%` }} />
+              <span className="ck-mt-plan__track ck-dash__track" role="progressbar" aria-label="Alunos cadastrados com matrícula ativa" aria-valuenow={pct(ativos, cadastrados)} aria-valuemin={0} aria-valuemax={100}>
+                <span className="ck-mt-plan__fill" style={{ width: `${Math.max(pct(ativos, cadastrados), 2)}%` }} />
               </span>
+              {mats ? (
+                <ul className="ck-dash__mats">
+                  <li><button type="button" onClick={() => router.push('/alunos')}><strong>{semMatricula.toLocaleString('pt-BR')}</strong> sem matrícula ativa</button></li>
+                  {Number(mats.vencidas) ? <li className="is-danger"><button type="button" onClick={() => router.push('/matriculas')}><strong>{mats.vencidas}</strong> {Number(mats.vencidas) === 1 ? 'vencida' : 'vencidas'}</button></li> : null}
+                  {Number(mats.pendentes) ? <li className="is-warning"><button type="button" onClick={() => router.push('/matriculas')}><strong>{mats.pendentes}</strong> {Number(mats.pendentes) === 1 ? 'pendente' : 'pendentes'}</button></li> : null}
+                  {Number(mats.bloqueadas) ? <li><button type="button" onClick={() => router.push('/matriculas')}><strong>{mats.bloqueadas}</strong> {Number(mats.bloqueadas) === 1 ? 'bloqueada' : 'bloqueadas'}</button></li> : null}
+                </ul>
+              ) : null}
             </div>
             <dl className="ck-dash__facts">
               <div><dt><Icon name="check-circle" size={15} />Check-ins hoje</dt><dd>{Number(c.checkins_hoje?.hoje) || 0}</dd></div>
