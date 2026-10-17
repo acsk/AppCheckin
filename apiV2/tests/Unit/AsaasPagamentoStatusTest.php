@@ -45,6 +45,30 @@ class AsaasPagamentoStatusTest extends TestCase
         $this->assertSame(1.99, $tarifa['desconto_provedor']);
     }
 
+    public function test_antecipacao_em_analise_substitui_liquido_da_cobranca(): void
+    {
+        $payment = AsaasPagamentoStatus::aplicarAntecipacao(
+            ['value' => 54.18, 'netValue' => 52.08],
+            ['status' => 'PENDING', 'netValue' => 51.39, 'fee' => 0.69],
+        );
+        $tarifa = AsaasPagamentoStatus::tarifaProvedor($payment);
+
+        $this->assertSame(51.39, $tarifa['valor_liquido']);
+        $this->assertEqualsWithDelta(2.79, $tarifa['desconto_provedor'], 0.001);
+    }
+
+    public function test_antecipacao_negada_mantem_liquido_da_cobranca(): void
+    {
+        $payment = AsaasPagamentoStatus::aplicarAntecipacao(
+            ['value' => 54.18, 'netValue' => 52.08],
+            ['status' => 'DENIED', 'netValue' => 51.39],
+        );
+        $tarifa = AsaasPagamentoStatus::tarifaProvedor($payment);
+
+        $this->assertSame(52.08, $tarifa['valor_liquido']);
+        $this->assertSame(2.10, $tarifa['desconto_provedor']);
+    }
+
     public function test_pix_recebido(): void
     {
         $snap = AsaasPagamentoStatus::snapshot([

@@ -129,6 +129,35 @@ class AsaasPagamentoStatus
         ];
     }
 
+    /**
+     * Antecipação em análise/creditada: o líquido a receber (já com taxa de antecipação)
+     * substitui o netValue da cobrança (que só desconta a tarifa do cartão).
+     *
+     * @param  array<string, mixed>  $payment
+     * @param  array<string, mixed>|null  $antecipacao
+     * @return array<string, mixed>
+     */
+    public static function aplicarAntecipacao(array $payment, ?array $antecipacao): array
+    {
+        if ($antecipacao === null || $antecipacao === []) {
+            return $payment;
+        }
+
+        $status = strtoupper((string) ($antecipacao['status'] ?? ''));
+        if (in_array($status, ['CANCELLED', 'DENIED', 'DEBITED'], true)) {
+            return $payment;
+        }
+
+        if (! array_key_exists('netValue', $antecipacao) || $antecipacao['netValue'] === null || $antecipacao['netValue'] === '') {
+            return $payment;
+        }
+
+        $payment['netValue'] = round((float) $antecipacao['netValue'], 2);
+        $payment['anticipation'] = $antecipacao;
+
+        return $payment;
+    }
+
     public static function formaPagamentoBusca(string $billingType): array
     {
         return match (strtoupper(trim($billingType))) {

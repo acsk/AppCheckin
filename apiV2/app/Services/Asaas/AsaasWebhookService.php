@@ -16,6 +16,9 @@ class AsaasWebhookService
         'PAYMENT_CONFIRMED',
         'PAYMENT_RECEIVED_IN_CASH',
         'PAYMENT_ANTICIPATED',
+        'ANTICIPATION_PENDING',
+        'ANTICIPATION_SCHEDULED',
+        'ANTICIPATION_CREDITED',
     ];
 
     private const STATUS_PAGOS = [
@@ -72,7 +75,7 @@ class AsaasWebhookService
         $payment = $this->completarPagamento(
             $tenantId,
             $payment,
-            in_array($event, ['PAYMENT_ANTICIPATED'], true),
+            str_starts_with($event, 'ANTICIPATION_') || $event === 'PAYMENT_ANTICIPATED',
         );
         if ($tenantId <= 0) {
             $tenantId = $this->tenantIdDaReferencia((string) ($payment['externalReference'] ?? ''));
@@ -170,6 +173,13 @@ class AsaasWebhookService
         }
         if (is_array($payload['data']['payment'] ?? null)) {
             return $payload['data']['payment'];
+        }
+        $antecipacao = $payload['anticipation'] ?? $payload['data']['anticipation'] ?? null;
+        if (is_array($antecipacao)) {
+            $payId = (string) ($antecipacao['payment'] ?? '');
+            if ($payId !== '') {
+                return AsaasPagamentoStatus::aplicarAntecipacao(['id' => $payId], $antecipacao);
+            }
         }
 
         return [];

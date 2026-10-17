@@ -5,6 +5,7 @@ namespace App\Services\Asaas;
 use App\Support\AsaasPagamentoStatus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class AsaasPagamentoSync
 {
@@ -45,6 +46,10 @@ class AsaasPagamentoSync
             if (str_starts_with($pixId, 'pay_') && ! in_array($pixId, $ids, true)) {
                 $ids[] = $pixId;
             }
+        }
+
+        if (! Schema::hasTable('pagamentos_plano')) {
+            return $ids;
         }
 
         $obs = DB::table('pagamentos_plano')

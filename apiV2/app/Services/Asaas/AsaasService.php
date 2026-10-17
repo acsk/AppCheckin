@@ -5,6 +5,7 @@ namespace App\Services\Asaas;
 use App\Services\EncryptionService;
 use App\Support\AcademyDateTime;
 use App\Support\AsaasApiKey;
+use App\Support\AsaasPagamentoStatus;
 use App\Support\AsaasSobretaxaAntecipacao;
 use App\Support\AsaasTarifaCartao;
 use App\Support\ReferenciaExterna;
@@ -348,8 +349,49 @@ class AsaasService
     public function obterPagamento(string $paymentId): array
     {
         $this->validarCredenciais();
+        $payment = $this->request('GET', '/payments/'.$paymentId);
+        try {
+            $payment = AsaasPagamentoStatus::aplicarAntecipacao(
+                $payment,
+                $this->obterAntecipacaoAtiva($paymentId),
+            );
+        } catch (\Throwable $e) {
+            Log::info('Asaas: antecipação da cobrança indisponível', [
+                'payment_id' => $paymentId,
+                'error' => $e->getMessage(),
+            ]);
+        }
 
-        return $this->request('GET', '/payments/'.$paymentId);
+        return $payment;
+    }
+
+    /**
+     * Antecipação ativa (em análise, agendada ou creditada) da cobrança.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function obterAntecipacaoAtiva(string $paymentId): ?array
+    {
+        $this->validarCredenciais();
+        $lista = $this->request('GET', '/anticipations', null, [
+            'payment' => $paymentId,
+            'limit' => 20,
+        ]);
+        $itens = is_array($lista['data'] ?? null) ? $lista['data'] : [];
+        foreach ($itens as $item) {
+            if (! is_array($item)) {
+                continue;
+            }
+            $status = strtoupper((string) ($item['status'] ?? ''));
+            if (in_array($status, ['CANCELLED', 'DENIED', 'DEBITED'], true)) {
+                continue;
+            }
+            if (array_key_exists('netValue', $item) && $item['netValue'] !== null && $item['netValue'] !== '') {
+                return $item;
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -426,6 +468,11 @@ class AsaasService
             'PAYMENT_RECEIVED_IN_CASH',
             'PAYMENT_UPDATED',
             'PAYMENT_ANTICIPATED',
+            'ANTICIPATION_PENDING',
+            'ANTICIPATION_SCHEDULED',
+            'ANTICIPATION_CREDITED',
+            'ANTICIPATION_DENIED',
+            'ANTICIPATION_CANCELLED',
         ];
     }
 
