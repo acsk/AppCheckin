@@ -1416,6 +1416,7 @@ export default function PlanoDetalhesScreen() {
         planoNovoNome={plano?.nome}
         cicloNovoNome={selectedCiclo?.nome}
         loading={confirmandoMigracao}
+        detalharTaxas={podeSandboxPix}
         onChangeTaxa={(next) =>
           setMigracaoSimulacao((prev) => (prev ? { ...prev, taxa_cartao: next } : prev))
         }
@@ -1491,6 +1492,7 @@ export default function PlanoDetalhesScreen() {
         provider={paymentProvider}
         metodo={paymentMetodo}
         tarifaCartao={paymentTarifa}
+        detalharTaxas={podeSandboxPix}
         resumo={(() => {
           const c = plano?.ciclos?.find((item) => item.id === selectedCicloId);
           return {
@@ -1510,6 +1512,7 @@ export default function PlanoDetalhesScreen() {
         simulacao={taxaCartaoSimulacao}
         tituloPlano={[plano?.nome, selectedCiclo?.nome].filter(Boolean).join(" · ") || null}
         loading={taxaCartaoConfirmando}
+        detalharTaxas={podeSandboxPix}
         onClose={() => {
           if (!taxaCartaoConfirmando) {
             setTaxaCartaoVisible(false);

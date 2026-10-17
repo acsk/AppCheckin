@@ -1,6 +1,6 @@
 ---
 name: api-v2
-description: Migra e mantém a API Laravel em apiV2 (prefixo /v2, porta 9090), compatível com JWT e banco da API Slim. Use ao trabalhar em apiV2, migrar rotas da Slim, auth JWT, multi-tenant, ou quando o usuário mencionar API v2, Laravel migration ou localhost:9090.
+description: Migra e mantém a API Laravel em apiV2 (prefixo /v2, porta 9090), compatível com JWT e banco da API Slim. Use ao trabalhar em apiV2, migrar rotas da Slim, auth JWT, multi-tenant, schema/migrations Laravel, ou quando o usuário mencionar API v2, Laravel migration ou localhost:9090.
 ---
 
 # AppCheckin API v2 (Laravel)
@@ -23,7 +23,7 @@ Migração **strangler**: `api/` (Slim) continua em produção; novas rotas vão
 ## Regras obrigatórias
 
 1. **JWT compatível** — Mesmo `JWT_SECRET` e claims da Slim: `user_id`, `email`, `tenant_id`, `aluno_id`, `is_super_admin`. Pacote: `firebase/php-jwt` v7, HS256. Serviço: `App\Services\JwtService`.
-2. **Não criar tabelas Laravel no banco compartilhado** — `SESSION_DRIVER=file`, `CACHE_STORE=file`, `QUEUE_CONNECTION=sync`. Não rodar `php artisan migrate` em `appcheckin` sem aprovação explícita.
+2. **Schema pelo Laravel** — Alterações de banco (colunas, índices, tabelas novas do produto) vão em `apiV2/database/migrations/` e sobem com `php artisan migrate` no container `php-v2`. **Não** criar `.sql` em `api/database/migrations/` (API Slim). **Não** criar as tabelas padrão do Laravel no banco compartilhado (`users`, `sessions`, `cache`, `jobs`): `SESSION_DRIVER=file`, `CACHE_STORE=file`, `QUEUE_CONNECTION=sync`. Não commitar nem executar `0001_01_01_000000` / `000001` / `000002`.
 3. **Contrato JSON igual à Slim** — Auth/admin: `App\Support\ApiError` (`type`, `code`, `message`). **Mobile:** `{ "success": true/false, "error"?, "data"? }` via `App\Support\MobileResponse` / controllers mobile.
 4. **Multi-tenant** — Resolver `tenant_id` do JWT (middleware `jwt.auth`). Atributos no request: `userId`, `tenantId`, `tenant_id`, `aluno_id`, `jwt_payload`, `usuario`.
 5. **Escopo mínimo** — Uma rota/módulo por vez; não refatorar Slim nem mobile até a v2 estar paridade.
@@ -38,7 +38,27 @@ apiV2/
 ├── app/Services/               # JwtService, AuthService, ...
 ├── app/Repositories/           # Queries ao schema existente (preferir a Eloquent novo)
 ├── app/Support/ApiError.php
+├── database/migrations/        # Schema do produto (artisan migrate)
 └── config/appcheckin.php       # jwt_secret, jwt_expiration, api_version
+```
+
+## Migrations (Laravel, não Slim)
+
+A partir de agora o schema do AppCheckin é responsabilidade da v2. Os `.sql` em `api/database/migrations/` são legado: não incluir arquivos novos lá e não pedir para o operador aplicá-los manualmente.
+
+1. Criar no container: `docker exec appcheckin_php_v2 php artisan make:migration nome_descritivo --table=tabela` (ou sem `--table` para tabela nova).
+2. Arquivo em `apiV2/database/migrations/`. Idempotente: `Schema::hasTable` / `hasColumn` no `up`/`down` (o banco já existe e é compartilhado).
+3. Preferir `Schema`/`Blueprint`; SQL cru só se o builder não cobrir.
+4. Rodar local: `docker exec appcheckin_php_v2 php artisan migrate`. Produção: o mesmo `artisan migrate` no deploy da v2 (não colar SQL no Hostinger).
+5. `migrate:fresh` / `migrate:refresh` / `db:wipe` **proibidos** no MySQL `appcheckin` (apaga dados da Slim).
+
+Checklist por migration:
+
+```
+- [ ] PHP em apiV2/database/migrations/ (não api/database/migrations/*.sql)
+- [ ] Não cria users/sessions/cache/jobs
+- [ ] hasColumn/hasTable antes de ADD/DROP
+- [ ] artisan migrate no php-v2 (local); produção via artisan, não SQL avulso
 ```
 
 ## Workflow: portar uma rota da Slim
@@ -56,7 +76,7 @@ Checklist por endpoint:
 - [ ] Path: /v2/... (não quebrar path Slim)
 - [ ] Status codes e body iguais à Slim
 - [ ] tenant_id / aluno_id do JWT respeitados
-- [ ] Sem migrations Laravel no appcheckin
+- [ ] Schema novo via migration Laravel (`apiV2/database/migrations`), não SQL Slim
 ```
 
 ## Rotas já migradas
@@ -189,6 +209,9 @@ Auth/`me` já estão na v2. Paths Slim `/admin/*` → Laravel `/v2/admin/*` + mi
 docker compose up -d mysql php-v2
 docker exec appcheckin_php_v2 php artisan route:list --path=v2
 docker exec appcheckin_php_v2 php artisan config:clear
+docker exec appcheckin_php_v2 php artisan make:migration add_foo_to_bar --table=bar
+docker exec appcheckin_php_v2 php artisan migrate
+docker exec appcheckin_php_v2 php artisan migrate:status
 curl http://localhost:9090/v2/ping
 ```
 

@@ -3,6 +3,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { idProvedorPagamento, nomeProvedorPagamento } from "@/src/utils/metodosPagamento";
 import {
   aplicarParcelaSelecionada,
+  linhasSomenteTaxa,
   opcoesParcelasCartao,
   type TaxaCartaoSimulacao,
 } from "@/src/utils/taxaCartao";
@@ -37,6 +38,7 @@ type Props = {
   planoNovoNome?: string | null;
   cicloNovoNome?: string | null;
   loading?: boolean;
+  detalharTaxas?: boolean;
   onChangeTaxa: (next: TaxaCartaoSimulacao) => void;
   onConfirm: () => void;
   onClose: () => void;
@@ -51,6 +53,7 @@ export default function MigracaoPlanoSheet({
   planoNovoNome,
   cicloNovoNome,
   loading,
+  detalharTaxas = false,
   onChangeTaxa,
   onConfirm,
   onClose,
@@ -86,18 +89,11 @@ export default function MigracaoPlanoSheet({
     });
   }
   if (taxa) {
-    rows.push({
-      label: "Taxa do cartão",
-      hint: [provedor, n > 1 ? `${n}x` : "à vista"].filter(Boolean).join(" · "),
-      value: taxa.tarifa_formatada,
-    });
-    if ((taxa.sobretaxa ?? 0) > 0.001) {
+    for (const linha of linhasSomenteTaxa(taxa, detalharTaxas)) {
       rows.push({
-        label: "Sobretaxa de antecipação",
-        hint: taxa.sobretaxa_percentual
-          ? `${String(taxa.sobretaxa_percentual).replace(".", ",")}% ao mês`
-          : "D+2",
-        value: taxa.sobretaxa_formatada || "",
+        label: linha.label,
+        hint: linha.hint ?? null,
+        value: linha.valor,
       });
     }
   }

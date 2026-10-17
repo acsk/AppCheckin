@@ -19,7 +19,7 @@ import { ds, space } from "./tokens";
 
 type FeatherName = React.ComponentProps<typeof Feather>["name"];
 
-export type PayResumoLinha = { label: string; valor: string; destaque?: boolean };
+export type PayResumoLinha = { label: string; valor: string; hint?: string | null; destaque?: boolean };
 export type PayResumo = {
   titulo?: string | null;
   subtitulo?: string | null;
@@ -135,9 +135,12 @@ export default function PaySheet({
                 <View style={styles.paysumLines}>
                   {resumo.linhas.map((linha) => (
                     <View key={linha.label} style={styles.paysumLine}>
-                      <Text style={linha.destaque ? styles.paysumLineLabelStrong : styles.paysumLineLabel}>
-                        {linha.label}
-                      </Text>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Text style={linha.destaque ? styles.paysumLineLabelStrong : styles.paysumLineLabel}>
+                          {linha.label}
+                        </Text>
+                        {linha.hint ? <Text style={styles.paysumLineHint}>{linha.hint}</Text> : null}
+                      </View>
                       <Text style={linha.destaque ? styles.paysumValue : styles.paysumLineValor}>
                         {linha.valor}
                       </Text>
@@ -277,8 +280,9 @@ const styles = StyleSheet.create({
   paysumSub: { fontSize: 13, lineHeight: 18, fontWeight: "600", color: ds.inkMuted },
   paysumStacked: { flexDirection: "column", alignItems: "stretch", gap: space[3] },
   paysumLines: { gap: 8, width: "100%" },
-  paysumLine: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: space[3] },
-  paysumLineLabel: { fontSize: 13, lineHeight: 18, fontWeight: "600", color: ds.inkMuted, flex: 1 },
+  paysumLine: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: space[3] },
+  paysumLineHint: { fontSize: 12, lineHeight: 16, fontWeight: "600", color: ds.inkMuted, marginTop: 1 },
+  paysumLineLabel: { fontSize: 13, lineHeight: 18, fontWeight: "600", color: ds.inkMuted },
   paysumLineLabelStrong: { fontSize: 14, lineHeight: 18, fontWeight: "800", color: ds.ink, flex: 1 },
   paysumLineValor: { fontSize: 14, lineHeight: 18, fontWeight: "700", color: ds.ink, fontVariant: ["tabular-nums"] },
   paysumValue: { fontSize: 20, lineHeight: 24, fontWeight: "900", letterSpacing: -0.4, color: ds.ink, fontVariant: ["tabular-nums"] },

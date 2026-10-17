@@ -13,6 +13,7 @@ type Props = {
   /** Plano · ciclo e valor, mostrados no resumo da folha. */
   resumo?: PayResumo | null;
   tarifaCartao?: TaxaCartaoSimulacao | null;
+  detalharTaxas?: boolean;
   onRedirect: () => void;
   onClose: () => void;
 };
@@ -26,7 +27,7 @@ function rotuloMetodo(metodo?: string | null): string {
 
 // Folha "Continuar no {provedor}" (design system · TelasPagamento, um só provedor):
 // resumo do valor + 3 passos do checkout externo + nota de segurança.
-export default function CheckoutRedirectModal({ visible, url, provider, metodo, resumo, tarifaCartao, onRedirect, onClose }: Props) {
+export default function CheckoutRedirectModal({ visible, url, provider, metodo, resumo, tarifaCartao, detalharTaxas = false, onRedirect, onClose }: Props) {
   const nome = nomeProvedorPagamento(provider, url);
   const metodoLabel = rotuloMetodo(metodo);
   const boleto = metodoLabel === "boleto";
@@ -41,7 +42,7 @@ export default function CheckoutRedirectModal({ visible, url, provider, metodo, 
       description={`O pagamento com ${metodoLabel} é concluído no site seguro do ${nome}.`}
       resumo={
         tarifaCartao?.aplica_repasse
-          ? { ...resumo, valor: undefined, linhas: linhasTaxaCartao(tarifaCartao) }
+          ? { ...resumo, valor: undefined, linhas: linhasTaxaCartao(tarifaCartao, detalharTaxas) }
           : resumo
       }
       secureNote={

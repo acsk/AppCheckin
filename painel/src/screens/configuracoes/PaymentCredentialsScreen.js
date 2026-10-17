@@ -41,9 +41,13 @@ function formDe(provider, row) {
     enable_pix: row ? row.enable_pix !== false && row.enable_pix !== 0 : true,
     enable_boleto: row ? row.enable_boleto !== false && row.enable_boleto !== 0 : true,
     enable_credit_card: row ? row.enable_credit_card !== false && row.enable_credit_card !== 0 : true,
-    enable_sobretaxa_antecipacao: row ? !!row.enable_sobretaxa_antecipacao : false,
-    sobretaxa_antecipacao_avista_percentual: row?.sobretaxa_antecipacao_avista_percentual ?? 1.15,
-    sobretaxa_antecipacao_parcelada_percentual: row?.sobretaxa_antecipacao_parcelada_percentual ?? 1.6,
+    enable_sobretaxa_antecipacao: row
+      ? row.enable_sobretaxa_antecipacao === true
+        || row.enable_sobretaxa_antecipacao === 1
+        || row.enable_sobretaxa_antecipacao === '1'
+      : false,
+    sobretaxa_antecipacao_avista_percentual: Number(row?.sobretaxa_antecipacao_avista_percentual ?? 1.15),
+    sobretaxa_antecipacao_parcelada_percentual: Number(row?.sobretaxa_antecipacao_parcelada_percentual ?? 1.6),
     access_token_test: '',
     public_key_test: '',
     access_token_prod: '',
@@ -378,30 +382,34 @@ export default function PaymentCredentialsScreen() {
                   checked={!!form.enable_sobretaxa_antecipacao}
                   onChange={(v) => atualizar(selecionado, { enable_sobretaxa_antecipacao: v })}
                 />
-                {form.enable_sobretaxa_antecipacao ? (
-                  <div style={{ display: 'grid', gap: 'var(--space-4)', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', marginTop: 'var(--space-4)' }}>
-                    <TextField
-                      label="À vista (% ao mês)"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="30"
-                      value={form.sobretaxa_antecipacao_avista_percentual}
-                      onChange={(e) => atualizar(selecionado, { sobretaxa_antecipacao_avista_percentual: e.target.value })}
-                      hint="Padrão Asaas: 1,15%"
-                    />
-                    <TextField
-                      label="Parcelado (% ao mês)"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="30"
-                      value={form.sobretaxa_antecipacao_parcelada_percentual}
-                      onChange={(e) => atualizar(selecionado, { sobretaxa_antecipacao_parcelada_percentual: e.target.value })}
-                      hint="Padrão Asaas: 1,6%"
-                    />
-                  </div>
-                ) : null}
+                <div style={{ display: 'grid', gap: 'var(--space-4)', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', marginTop: 'var(--space-4)' }}>
+                  <TextField
+                    label="Taxa à vista (% ao mês)"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="30"
+                    inputMode="decimal"
+                    value={String(form.sobretaxa_antecipacao_avista_percentual ?? 1.15)}
+                    onChange={(e) => atualizar(selecionado, {
+                      sobretaxa_antecipacao_avista_percentual: e?.target ? e.target.value : e,
+                    })}
+                    hint="Asaas: 1,15% ao mês nas cobranças à vista (D+2)."
+                  />
+                  <TextField
+                    label="Taxa parcelada (% ao mês)"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max="30"
+                    inputMode="decimal"
+                    value={String(form.sobretaxa_antecipacao_parcelada_percentual ?? 1.6)}
+                    onChange={(e) => atualizar(selecionado, {
+                      sobretaxa_antecipacao_parcelada_percentual: e?.target ? e.target.value : e,
+                    })}
+                    hint="Asaas: 1,6% ao mês nas cobranças parceladas (D+2)."
+                  />
+                </div>
               </div>
             ) : null}
 

@@ -11,6 +11,8 @@ type Props = {
   simulacao: TaxaCartaoSimulacao | null;
   tituloPlano?: string | null;
   loading?: boolean;
+  /** Admin/sandbox: desdobra taxa Asaas e sobretaxa. */
+  detalharTaxas?: boolean;
   onConfirm: (simulacao: TaxaCartaoSimulacao) => void;
   onClose: () => void;
 };
@@ -20,6 +22,7 @@ export default function TaxaCartaoConfirmSheet({
   simulacao,
   tituloPlano,
   loading,
+  detalharTaxas = false,
   onConfirm,
   onClose,
 }: Props) {
@@ -48,7 +51,7 @@ export default function TaxaCartaoConfirmSheet({
         atual
           ? {
               titulo: tituloPlano || "Plano",
-              linhas: linhasTaxaCartao(atual),
+              linhas: linhasTaxaCartao(atual, detalharTaxas),
             }
           : null
       }

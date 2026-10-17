@@ -41,21 +41,62 @@ export function aplicarParcelaSelecionada(
   return { ...sim, ...escolhida, parcelas: lista };
 }
 
-export function linhasTaxaCartao(sim: TaxaCartaoSimulacao) {
+export type LinhaTaxaCartao = {
+  label: string;
+  valor: string;
+  hint?: string | null;
+  destaque?: boolean;
+};
+
+function formatBrl(valor: number): string {
+  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(valor);
+}
+
+function rotuloPctMes(pct?: number | null): string | null {
+  if (pct == null || !Number.isFinite(Number(pct))) return null;
+  return `${Number(pct).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 2 })}% ao mês`;
+}
+
+/** Taxa Asaas + sobretaxa: aluno vê uma linha; admin/sandbox vê o detalhe. */
+export function linhasSomenteTaxa(
+  sim: TaxaCartaoParcela,
+  detalhar: boolean,
+): LinhaTaxaCartao[] {
+  const tarifa = Number(sim.tarifa) || 0;
+  const sobre = Number(sim.sobretaxa) || 0;
+  const total = tarifa + sobre;
+  if (total <= 0.001) return [];
+
+  if (!detalhar) {
+    return [{ label: "Taxa", valor: formatBrl(total) }];
+  }
+
   const n = sim.parcela_count ?? 1;
-  const linhas = [
-    { label: "Valor do plano", valor: sim.valor_plano_formatado },
-    { label: "Taxa do cartão (Asaas)", valor: sim.tarifa_formatada },
-  ];
-  if ((sim.sobretaxa ?? 0) > 0.001) {
-    const pct = sim.sobretaxa_percentual
-      ? ` (${String(sim.sobretaxa_percentual).replace(".", ",")}%)`
-      : "";
+  const provedor = String(sim.provider || "").toLowerCase() === "mercadopago" ? "Mercado Pago" : "Asaas";
+  const linhas: LinhaTaxaCartao[] = [];
+  if (tarifa > 0.001) {
     linhas.push({
-      label: `Sobretaxa de antecipação${pct}`,
-      valor: sim.sobretaxa_formatada || "",
+      label: "Taxa do cartão",
+      hint: [provedor, n > 1 ? `${n}x` : "à vista"].join(" · "),
+      valor: sim.tarifa_formatada || formatBrl(tarifa),
     });
   }
+  if (sobre > 0.001) {
+    linhas.push({
+      label: "Sobretaxa de antecipação",
+      hint: rotuloPctMes(sim.sobretaxa_percentual),
+      valor: sim.sobretaxa_formatada || formatBrl(sobre),
+    });
+  }
+  return linhas;
+}
+
+export function linhasTaxaCartao(sim: TaxaCartaoSimulacao, detalhar = false): LinhaTaxaCartao[] {
+  const n = sim.parcela_count ?? 1;
+  const linhas: LinhaTaxaCartao[] = [
+    { label: "Valor do plano", valor: sim.valor_plano_formatado },
+    ...linhasSomenteTaxa(sim, detalhar),
+  ];
   if (n > 1) {
     linhas.push({ label: "Total", valor: sim.valor_cobrar_formatado });
     linhas.push({

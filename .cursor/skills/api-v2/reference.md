@@ -56,8 +56,10 @@ Ver seção **Limitações vs Slim (Fase 4)** em [SKILL.md](SKILL.md). Resumo: `
 
 ## Não fazer
 
-- `php artisan migrate` no banco `appcheckin` para users/sessions/cache/jobs
-- `composer setup` / scripts do `composer.json` não devem rodar migrate (banco compartilhado com Slim)
+- Novos `.sql` em `api/database/migrations/` (legado Slim). Schema novo = `apiV2/database/migrations` + `php artisan migrate`
+- `php artisan migrate` das stubs `0001_01_01_000000` users / `000001` cache / `000002` jobs no banco `appcheckin`
+- `migrate:fresh`, `migrate:refresh`, `db:wipe` no MySQL compartilhado
+- `composer setup` que rode esses stubs padrão do Laravel
 - Alterar `JWT_SECRET` só na v2
 - Mudar formato de erro (`type`/`code`/`message`) sem alinhar clientes
 - Cutover mobile de planos/PIX para v2 sem fechar os gaps da Fase 4 acima
