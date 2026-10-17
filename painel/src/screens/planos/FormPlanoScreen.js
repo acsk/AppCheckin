@@ -1,1438 +1,282 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
-  ActivityIndicator,
-  Switch,
-  ScrollView,
-  Modal,
-  Pressable,
-} from 'react-native';
-import { Feather } from '@expo/vector-icons';
-import { Picker } from '@react-native-picker/picker';
+import React, { useEffect, useState } from 'react';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import planoService from '../../services/planoService';
 import modalidadeService from '../../services/modalidadeService';
+import { authService } from '../../services/authService';
 import LayoutBase from '../../components/LayoutBase';
-import LoadingOverlay from '../../components/LoadingOverlay';
-import ConfirmModal from '../../components/ConfirmModal';
+import { Button, Modal } from '../../components/ck';
+import { PlanoForm, CicloModal, parseMoney, UNLIMITED } from '../../components/ck/planos';
 import { showSuccess, showError } from '../../utils/toast';
-import { colors } from '../../styles/globalStyles';
+
+const bool = (v) => v === true || v === 1 || v === '1';
+const toMoneyText = (v) => (v != null && v !== '' ? Number(v).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
+
+const EMPTY = { modalidade_id: '', nome: '', descricao: '', valor: '', checkins_semanais: '', duracao_dias: '30', ativo: true, atual: true };
+
+const toCycle = (c, types) => {
+  const type = types.find((t) => t.codigo === c.codigo || t.id === c.assinatura_frequencia_id || t.id === c.tipo_ciclo_id);
+  return {
+    id: c.id,
+    typeId: c.assinatura_frequencia_id || type?.id,
+    label: c.nome || type?.nome,
+    codigo: c.codigo || type?.codigo,
+    nome: c.nome || type?.nome,
+    months: Number(c.meses) || 1,
+    meses: Number(c.meses) || 1,
+    amount: Number(c.valor) || 0,
+    recurring: bool(c.permite_recorrencia),
+    makeup: bool(c.permite_reposicao),
+    active: bool(c.ativo),
+  };
+};
 
 export default function FormPlanoScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
-  const isEdit = !!id;
-  const planoId = id ? parseInt(id) : null;
+  const planoId = id ? parseInt(id, 10) : null;
+  const isEdit = !!planoId;
 
   const [loading, setLoading] = useState(true);
+  const [readOnly, setReadOnly] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
   const [modalidades, setModalidades] = useState([]);
-  const [formData, setFormData] = useState({
-    modalidade_id: '',
-    nome: '',
-    descricao: '',
-    valor: '',
-    checkins_semanais: '',
-    duracao_dias: '30',
-    ativo: true,
-    atual: true,
-  });
-  const [tiposCiclo, setTiposCiclo] = useState([]);
-  const [ciclos, setCiclos] = useState([]);
-  const [loadingCiclos, setLoadingCiclos] = useState(false);
-  const [savingCiclo, setSavingCiclo] = useState(false);
-  const [gerandoCiclos, setGerandoCiclos] = useState(false);
-  const [editingCicloId, setEditingCicloId] = useState(null);
-  const [confirmDeleteCiclo, setConfirmDeleteCiclo] = useState({ visible: false, ciclo: null });
-  const [modalCicloVisible, setModalCicloVisible] = useState(false);
-  const [cicloForm, setCicloForm] = useState({
-    tipo_ciclo_id: '',
-    valor: '',
-    permite_recorrencia: true,
-    permite_reposicao: false,
-    ativo: true,
-  });
+  const [values, setValues] = useState(EMPTY);
+  const [types, setTypes] = useState([]);
+  const [cycles, setCycles] = useState([]);
+  const [loadingCycles, setLoadingCycles] = useState(false);
+  const [cycleModal, setCycleModal] = useState({ open: false, cycle: null });
+  const [savingCycle, setSavingCycle] = useState(false);
+  const [removeCycle, setRemoveCycle] = useState(null);
+  const [removing, setRemoving] = useState(false);
+  const [confirmGenerate, setConfirmGenerate] = useState(false);
+  const [generating, setGenerating] = useState(false);
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadTiposCiclo = async () => {
-    try {
-      const response = await planoService.listarTiposCiclo();
-      setTiposCiclo(response.data || []);
-    } catch (error) {
-      console.error('❌ Erro ao carregar tipos de ciclo:', error);
-      showError('Não foi possível carregar os tipos de ciclo');
-    }
-  };
-
-  const loadCiclos = async () => {
+  const loadCycles = async (tipos = types) => {
     if (!planoId) return;
+    setLoadingCycles(true);
     try {
-      setLoadingCiclos(true);
       const response = await planoService.listarCiclos(planoId);
-      const ciclosOrdenados = (response.ciclos || []).sort((a, b) => a.meses - b.meses);
-      setCiclos(ciclosOrdenados);
-    } catch (error) {
-      console.error('❌ Erro ao carregar ciclos:', error);
+      setCycles((response.ciclos || []).map((c) => toCycle(c, tipos)).sort((a, b) => a.months - b.months));
+    } catch {
       showError('Não foi possível carregar os ciclos do plano');
     } finally {
-      setLoadingCiclos(false);
+      setLoadingCycles(false);
     }
   };
 
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      
-      // Buscar modalidades ativas
-      const modalidadesResponse = await modalidadeService.listar(true);
-      const modalidadesArray = Array.isArray(modalidadesResponse) ? modalidadesResponse : [];
-      setModalidades(modalidadesArray);
-
-      // Se for edição, buscar dados do plano
-      if (isEdit) {
-        console.log('🔍 Buscando plano ID:', planoId);
-        const plano = await planoService.buscar(planoId);
-        console.log('✅ Plano recebido:', plano);
-        
-        setFormData({
-          modalidade_id: plano.modalidade_id?.toString() || '',
-          nome: plano.nome || '',
-          descricao: plano.descricao || '',
-          valor: plano.valor ? parseFloat(plano.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '',
-          checkins_semanais: plano.checkins_semanais?.toString() || '',
-          duracao_dias: plano.duracao_dias ? plano.duracao_dias.toString() : '30',
-          ativo: plano.ativo === 1 || plano.ativo === true,
-          atual: plano.atual === 1 || plano.atual === true,
-        });
-
-        await Promise.all([loadTiposCiclo(), loadCiclos()]);
-      } else {
-        await loadTiposCiclo();
+  useEffect(() => {
+    (async () => {
+      try {
+        const user = await authService.getCurrentUser();
+        setReadOnly(user?.papel_id === 4);
+        const [mods, tiposResp] = await Promise.all([
+          modalidadeService.listar(true).catch(() => []),
+          planoService.listarTiposCiclo().catch(() => ({ data: [] })),
+        ]);
+        setModalidades(Array.isArray(mods) ? mods : []);
+        const tipos = tiposResp?.data || [];
+        setTypes(tipos);
+        if (isEdit) {
+          const plano = await planoService.buscar(planoId);
+          setValues({
+            modalidade_id: plano.modalidade_id?.toString() || '',
+            nome: plano.nome || '',
+            descricao: plano.descricao || '',
+            valor: toMoneyText(plano.valor),
+            checkins_semanais: plano.checkins_semanais?.toString() || '',
+            duracao_dias: plano.duracao_dias ? String(plano.duracao_dias) : '30',
+            ativo: bool(plano.ativo),
+            atual: bool(plano.atual),
+          });
+          await loadCycles(tipos);
+        }
+      } catch {
+        showError(isEdit ? 'Não foi possível carregar o plano' : 'Não foi possível carregar as modalidades');
+        if (isEdit) router.replace('/planos');
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error('❌ Erro ao carregar dados:', error);
-      showError(isEdit ? 'Não foi possível carregar os dados do plano' : 'Não foi possível carregar as modalidades');
-      setModalidades([]); // Garante que sempre seja array
-      if (isEdit) {
-        router.back();
-      }
-    } finally {
-      setLoading(false);
-    }
+    })();
+  }, []);
+
+  const onChange = (next) => {
+    const changed = Object.keys(next).filter((k) => next[k] !== values[k]);
+    if (changed.includes('ativo') && !next.ativo) next.atual = false;
+    setValues(next);
+    if (changed.some((k) => errors[k])) setErrors((e) => { const c = { ...e }; changed.forEach((k) => delete c[k]); return c; });
   };
 
-  const handleChange = (field, value) => {
-    setFormData({ ...formData, [field]: value });
-    if (errors[field]) {
-      setErrors({ ...errors, [field]: null });
-    }
+  const validate = () => {
+    const e = {};
+    if (!values.modalidade_id) e.modalidade_id = 'Escolha a modalidade.';
+    if (!values.nome.trim()) e.nome = 'Dê um nome ao plano.';
+    if (values.valor === '' || parseMoney(values.valor) < 0) e.valor = 'Informe o valor mensal (use 0,00 para sem custo).';
+    const ck = parseInt(values.checkins_semanais, 10);
+    if (!ck || ck < 1) e.checkins_semanais = 'Escolha quantos check-ins por semana.';
+    setErrors(e);
+    return !Object.keys(e).length;
   };
 
-  const formatValorMonetario = (value) => {
-    // Remove tudo que não é dígito
-    const cleaned = value.replace(/\D/g, '');
-    
-    if (cleaned === '') return '';
-    
-    // Converte para número e formata
-    const number = parseFloat(cleaned) / 100;
-    return number.toLocaleString('pt-BR', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  };
-
-  const formatCurrency = (value) => {
-    return new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL'
-    }).format(Number(value) || 0);
-  };
-
-  const validateForm = () => {
-    const newErrors = {};
-
-    if (!formData.modalidade_id) {
-      newErrors.modalidade_id = 'Selecione uma modalidade';
-    }
-
-    if (!formData.nome.trim()) {
-      newErrors.nome = 'Nome do plano é obrigatório';
-    }
-
-    if (!formData.valor || parseFloat(formData.valor) < 0) {
-      newErrors.valor = 'Valor deve ser maior ou igual a zero';
-    }
-
-    if (!formData.checkins_semanais || parseInt(formData.checkins_semanais) < 1) {
-      newErrors.checkins_semanais = 'Informe os checkins semanais (mínimo 1)';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-
-  const parseValorMonetario = (valorFormatado) => {
-    if (!valorFormatado) return 0;
-    // Se já for número, retorna direto
-    if (typeof valorFormatado === 'number') return valorFormatado;
-    // Formato brasileiro: 1.234,56 → remove pontos de milhar, troca vírgula por ponto
-    const valorLimpo = valorFormatado.toString().replace(/\./g, '').replace(',', '.');
-    return parseFloat(valorLimpo) || 0;
-  };
-
-  const handleSubmit = async () => {
-    if (!validateForm()) {
-      return;
-    }
-
+  const save = async () => {
+    if (!validate()) return;
     setSaving(true);
-
     try {
-      const dataToSend = {
-        modalidade_id: parseInt(formData.modalidade_id),
-        nome: formData.nome,
-        descricao: formData.descricao,
-        valor: parseValorMonetario(formData.valor),
-        checkins_semanais: parseInt(formData.checkins_semanais),
-        duracao_dias: parseInt(formData.duracao_dias),
-        ativo: formData.ativo ? 1 : 0,
-        atual: formData.atual ? 1 : 0,
+      const payload = {
+        modalidade_id: parseInt(values.modalidade_id, 10),
+        nome: values.nome.trim(),
+        descricao: values.descricao,
+        valor: parseMoney(values.valor),
+        checkins_semanais: parseInt(values.checkins_semanais, 10) || UNLIMITED,
+        duracao_dias: parseInt(values.duracao_dias, 10) || 30,
+        ativo: values.ativo ? 1 : 0,
+        atual: values.atual ? 1 : 0,
       };
-
-      let result;
       if (isEdit) {
-        result = await planoService.atualizar(planoId, dataToSend);
-        showSuccess(result.message || 'Plano atualizado com sucesso');
+        const result = await planoService.atualizar(planoId, payload);
+        showSuccess(result.message || 'Plano atualizado');
+        router.push('/planos');
       } else {
-        result = await planoService.criar(dataToSend);
-        showSuccess(result.message || 'Plano criado com sucesso');
+        const result = await planoService.criar(payload);
+        showSuccess('Plano criado. Agora adicione os ciclos de cobrança.');
+        const novoId = result?.plano?.id;
+        router.replace(novoId ? `/planos/${novoId}` : '/planos');
       }
-      
-      router.push('/planos');
-    } catch (error) {
-      showError(error.errors?.join('\n') || error.error || `Não foi possível ${isEdit ? 'atualizar' : 'criar'} o plano`);
+    } catch (err) {
+      showError(err?.errors?.join('\n') || err?.error || `Não foi possível ${isEdit ? 'salvar' : 'criar'} o plano`);
     } finally {
       setSaving(false);
     }
   };
 
-  const resetCicloForm = () => {
-    setCicloForm({
-      tipo_ciclo_id: '',
-      valor: '',
-      permite_recorrencia: true,
-      permite_reposicao: false,
-      ativo: true,
-    });
-    setEditingCicloId(null);
-    setModalCicloVisible(false);
-  };
-
-  const handleNovoCiclo = () => {
-    resetCicloForm();
-    setModalCicloVisible(true);
-  };
-
-  const handleEditarCiclo = (ciclo) => {
-    // Encontrar o tipo de ciclo correspondente pelo código ou pelo id
-    const tipoEncontrado = tiposCiclo.find(t => 
-      t.codigo === ciclo.codigo || 
-      t.id === ciclo.tipo_ciclo_id || 
-      t.id === ciclo.frequencia_id
-    );
-    
-    const tipoCicloId = tipoEncontrado?.id?.toString() || ciclo.tipo_ciclo_id?.toString() || ciclo.frequencia_id?.toString() || '';
-    
-    setCicloForm({
-      tipo_ciclo_id: tipoCicloId,
-      valor: ciclo.valor ? parseFloat(ciclo.valor).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '',
-      permite_recorrencia: ciclo.permite_recorrencia === 1 || ciclo.permite_recorrencia === true,
-      permite_reposicao: ciclo.permite_reposicao === 1 || ciclo.permite_reposicao === true,
-      ativo: ciclo.ativo === 1 || ciclo.ativo === true,
-    });
-    setEditingCicloId(ciclo.id);
-    setModalCicloVisible(true);
-  };
-
-  const handleSalvarCiclo = async () => {
-    if (!planoId) return;
-
-    if (!editingCicloId && !cicloForm.tipo_ciclo_id) {
-      showError('Selecione um tipo de ciclo');
-      return;
-    }
-
-    const valorConvertido = parseValorMonetario(cicloForm.valor);
-    // Permite valor 0 para ciclos não recorrentes (cortesia)
-    if (cicloForm.valor === '' || cicloForm.valor === undefined || cicloForm.valor === null) {
-      showError('Informe um valor para o ciclo');
-      return;
-    }
-    if (valorConvertido < 0) {
-      showError('O valor não pode ser negativo');
-      return;
-    }
-    if (valorConvertido === 0 && cicloForm.permite_recorrencia) {
-      showError('Para ciclos recorrentes, o valor deve ser maior que zero');
-      return;
-    }
-
+  const saveCycle = async (data) => {
+    setSavingCycle(true);
     try {
-      setSavingCiclo(true);
       const payload = {
-        valor: valorConvertido,
-        permite_recorrencia: cicloForm.permite_recorrencia ? 1 : 0,
-        permite_reposicao: cicloForm.permite_reposicao ? 1 : 0,
-        ativo: cicloForm.ativo ? 1 : 0,
+        valor: data.amount,
+        permite_recorrencia: data.recurring ? 1 : 0,
+        permite_reposicao: data.makeup ? 1 : 0,
+        ativo: data.active ? 1 : 0,
       };
-
-      if (editingCicloId) {
-        await planoService.atualizarCiclo(planoId, editingCicloId, payload);
-        showSuccess('Ciclo atualizado com sucesso');
+      if (data.id) {
+        await planoService.atualizarCiclo(planoId, data.id, payload);
+        showSuccess('Ciclo atualizado');
       } else {
-        await planoService.criarCiclo(planoId, {
-          ...payload,
-          assinatura_frequencia_id: parseInt(cicloForm.tipo_ciclo_id),
-        });
-        showSuccess('Ciclo criado com sucesso');
+        await planoService.criarCiclo(planoId, { ...payload, assinatura_frequencia_id: data.typeId });
+        showSuccess('Ciclo adicionado');
       }
-
-      resetCicloForm();
-      await loadCiclos();
-    } catch (error) {
-      showError(error.error || 'Não foi possível salvar o ciclo');
+      setCycleModal({ open: false, cycle: null });
+      await loadCycles();
+    } catch (err) {
+      showError(err?.error || err?.errors?.join('\n') || 'Não foi possível salvar o ciclo');
     } finally {
-      setSavingCiclo(false);
+      setSavingCycle(false);
     }
   };
 
-  const getTipoCicloSelecionado = () => {
-    return tiposCiclo.find(t => t.id.toString() === cicloForm.tipo_ciclo_id);
+  const confirmRemoveCycle = async () => {
+    setRemoving(true);
+    try {
+      await planoService.excluirCiclo(planoId, removeCycle.id);
+      showSuccess('Ciclo excluído');
+      setRemoveCycle(null);
+      await loadCycles();
+    } catch (err) {
+      showError(err?.error || 'Não foi possível excluir o ciclo');
+    } finally {
+      setRemoving(false);
+    }
   };
 
-  const handleGerarCiclos = async () => {
-    if (!planoId) return;
+  const generate = async () => {
+    setGenerating(true);
     try {
-      setGerandoCiclos(true);
       const response = await planoService.gerarCiclos(planoId);
-      showSuccess(response.message || 'Ciclos gerados com sucesso');
-      await loadCiclos();
-    } catch (error) {
-      showError(error.error || 'Não foi possível gerar os ciclos');
+      showSuccess(response.message || 'Ciclos gerados');
+      setConfirmGenerate(false);
+      await loadCycles();
+    } catch (err) {
+      showError(err?.error || 'Não foi possível gerar os ciclos');
     } finally {
-      setGerandoCiclos(false);
+      setGenerating(false);
     }
   };
 
-  const handleConfirmDeleteCiclo = async () => {
-    if (!confirmDeleteCiclo.ciclo || !planoId) return;
-    try {
-      await planoService.excluirCiclo(planoId, confirmDeleteCiclo.ciclo.id);
-      showSuccess('Ciclo excluído com sucesso');
-      setConfirmDeleteCiclo({ visible: false, ciclo: null });
-      await loadCiclos();
-    } catch (error) {
-      showError(error.error || 'Não foi possível excluir o ciclo');
-    }
-  };
-
-  if (loading) {
-    return (
-      <LayoutBase title={isEdit ? "Editar Plano" : "Novo Plano"}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#f97316" />
-          <Text style={styles.loadingText}>Carregando...</Text>
-        </View>
-      </LayoutBase>
-    );
-  }
+  const title = isEdit ? (readOnly ? 'Ver plano' : 'Editar plano') : 'Novo plano';
 
   return (
-    <LayoutBase 
-      title={isEdit ? "Editar Plano" : "Novo Plano"} 
-      subtitle="Preencha os campos obrigatórios"
-    >
-      <ConfirmModal
-        visible={confirmDeleteCiclo.visible}
-        title="Excluir ciclo"
-        message={`Deseja excluir o ciclo ${confirmDeleteCiclo.ciclo?.nome || ''}?`}
-        onConfirm={handleConfirmDeleteCiclo}
-        onCancel={() => setConfirmDeleteCiclo({ visible: false, ciclo: null })}
-        confirmText="Excluir"
-        type="danger"
+    <LayoutBase title={title} pageHeader={false}>
+      {loading ? <p role="status" className="ck-enrollment-state">Carregando plano…</p> : (
+        <PlanoForm
+          values={values}
+          onChange={onChange}
+          errors={errors}
+          modalities={modalidades}
+          isEdit={isEdit}
+          readOnly={readOnly}
+          saving={saving}
+          onSave={save}
+          onCancel={() => router.push('/planos')}
+          onBack={() => router.push('/planos')}
+          cycles={cycles}
+          cyclesLoading={loadingCycles}
+          onAddCycle={() => setCycleModal({ open: true, cycle: null })}
+          onEditCycle={(cycle) => setCycleModal({ open: true, cycle })}
+          onRemoveCycle={setRemoveCycle}
+          onGenerateCycles={() => setConfirmGenerate(true)}
+          generating={generating}
+        />
+      )}
+
+      <CicloModal
+        open={cycleModal.open}
+        cycle={cycleModal.cycle}
+        types={types}
+        cycles={cycles}
+        monthly={parseMoney(values.valor)}
+        saving={savingCycle}
+        onSave={saveCycle}
+        onCancel={() => setCycleModal({ open: false, cycle: null })}
       />
 
-      {/* Modal de Ciclo */}
       <Modal
-        visible={modalCicloVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={resetCicloForm}
+        open={!!removeCycle}
+        size="sm"
+        title={`Excluir ciclo ${removeCycle?.label || ''}?`.trim()}
+        description="O ciclo deixa de ser oferecido para novas matrículas."
+        dismissable={!removing}
+        onClose={() => setRemoveCycle(null)}
+        footer={(
+          <>
+            <span style={{ flex: 1 }} />
+            <Button variant="ghost" disabled={removing} onClick={() => setRemoveCycle(null)}>Cancelar</Button>
+            <Button variant="danger" icon="trash" loading={removing} onClick={confirmRemoveCycle}>Excluir ciclo</Button>
+          </>
+        )}
       >
-        <Pressable style={styles.modalOverlay} onPress={resetCicloForm}>
-          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {editingCicloId ? 'Editar Ciclo' : 'Novo Ciclo'}
-              </Text>
-              <TouchableOpacity onPress={resetCicloForm} style={styles.modalCloseButton}>
-                <Feather name="x" size={24} color="#6b7280" />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-              {/* Seleção de Tipo de Ciclo */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Tipo de Ciclo <Text style={styles.required}>*</Text></Text>
-                {editingCicloId ? (
-                  <View style={styles.tipoCicloSelected}>
-                    <Feather name="clock" size={18} color="#f97316" />
-                    <Text style={styles.tipoCicloSelectedText}>{getTipoCicloSelecionado()?.nome || 'Tipo selecionado'}</Text>
-                    <Text style={styles.tipoCicloSelectedMeta}>
-                      ({getTipoCicloSelecionado()?.meses || 0} {getTipoCicloSelecionado()?.meses > 1 ? 'meses' : 'mês'})
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={styles.tipoCicloGrid}>
-                    {tiposCiclo.map((tipo) => (
-                      <TouchableOpacity
-                        key={tipo.id}
-                        style={[
-                          styles.tipoCicloCard,
-                          cicloForm.tipo_ciclo_id === tipo.id.toString() && styles.tipoCicloCardSelected
-                        ]}
-                        onPress={() => setCicloForm(prev => ({ ...prev, tipo_ciclo_id: tipo.id.toString() }))}
-                        disabled={savingCiclo}
-                      >
-                        <Text style={[
-                          styles.tipoCicloCardTitle,
-                          cicloForm.tipo_ciclo_id === tipo.id.toString() && styles.tipoCicloCardTitleSelected
-                        ]}>
-                          {tipo.nome}
-                        </Text>
-                        <Text style={[
-                          styles.tipoCicloCardMeta,
-                          cicloForm.tipo_ciclo_id === tipo.id.toString() && styles.tipoCicloCardMetaSelected
-                        ]}>
-                          {tipo.meses} {tipo.meses > 1 ? 'meses' : 'mês'}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
-                {editingCicloId && (
-                  <Text style={styles.helperTextBlock}>Para mudar o tipo, exclua e crie um novo ciclo.</Text>
-                )}
-              </View>
-
-              {/* Valor do Ciclo */}
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Valor do Ciclo <Text style={styles.required}>*</Text></Text>
-                <View style={styles.inputWithPrefix}>
-                  <Text style={styles.prefix}>R$</Text>
-                  <TextInput
-                    style={[styles.input, styles.inputWithPrefixField]}
-                    placeholder="0,00"
-                    placeholderTextColor={colors.placeholder}
-                    value={cicloForm.valor}
-                    onChangeText={(value) => {
-                      const formatted = formatValorMonetario(value);
-                      setCicloForm(prev => ({ ...prev, valor: formatted }));
-                    }}
-                    keyboardType="numeric"
-                    editable={!savingCiclo}
-                  />
-                </View>
-              </View>
-
-              {/* Switches */}
-              <View style={styles.modalSwitchesRow}>
-                <View style={styles.switchRow}>
-                  <View style={styles.switchInfo}>
-                    <Text style={styles.switchLabel}>Recorrência</Text>
-                    <Text style={styles.switchDescription}>
-                      {cicloForm.permite_recorrencia ? 'Permite assinatura' : 'Sem assinatura'}
-                    </Text>
-                  </View>
-                  <Switch
-                    value={cicloForm.permite_recorrencia}
-                    onValueChange={(value) => setCicloForm(prev => ({ ...prev, permite_recorrencia: value }))}
-                    disabled={savingCiclo}
-                    trackColor={{ false: '#d1d5db', true: '#10b981' }}
-                    thumbColor={cicloForm.permite_recorrencia ? '#22c55e' : '#9ca3af'}
-                  />
-                </View>
-
-                <View style={styles.switchRow}>
-                  <View style={styles.switchInfo}>
-                    <Text style={styles.switchLabel}>Ativo</Text>
-                    <Text style={styles.switchDescription}>
-                      {cicloForm.ativo ? 'Disponível' : 'Indisponível'}
-                    </Text>
-                  </View>
-                  <Switch
-                    value={cicloForm.ativo}
-                    onValueChange={(value) => setCicloForm(prev => ({ ...prev, ativo: value }))}
-                    disabled={savingCiclo}
-                    trackColor={{ false: '#d1d5db', true: '#3b82f6' }}
-                    thumbColor={cicloForm.ativo ? '#3b82f6' : '#9ca3af'}
-                  />
-                </View>
-                <View style={styles.switchRow}>
-                  <View style={styles.switchInfo}>
-                    <Text style={styles.switchLabel}>Permite Reposição</Text>
-                    <Text style={styles.switchDescription}>
-                      {cicloForm.permite_reposicao ? 'Reposição liberada' : 'Reposição não permitida'}
-                    </Text>
-                  </View>
-                  <Switch
-                    value={cicloForm.permite_reposicao}
-                    onValueChange={(value) => setCicloForm(prev => ({ ...prev, permite_reposicao: value }))}
-                    disabled={savingCiclo}
-                    trackColor={{ false: '#d1d5db', true: '#f97316' }}
-                    thumbColor={cicloForm.permite_reposicao ? '#f97316' : '#9ca3af'}
-                  />
-                </View>
-              </View>
-            </ScrollView>
-
-            {/* Ações do Modal */}
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.modalCancelButton}
-                onPress={resetCicloForm}
-                disabled={savingCiclo}
-              >
-                <Text style={styles.modalCancelText}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalSaveButton, savingCiclo && styles.modalSaveButtonDisabled]}
-                onPress={handleSalvarCiclo}
-                disabled={savingCiclo}
-              >
-                {savingCiclo ? (
-                  <ActivityIndicator color="#fff" size="small" />
-                ) : (
-                  <>
-                    <Feather name="check" size={16} color="#fff" />
-                    <Text style={styles.modalSaveText}>
-                      {editingCicloId ? 'Atualizar' : 'Adicionar'}
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
+        <p className="ck-pl__confirm">Se preferir só esconder o ciclo, edite e desligue "Disponível".</p>
       </Modal>
 
-      {saving && <LoadingOverlay message={isEdit ? "Atualizando plano..." : "Criando plano..."} />}
-
-      <ScrollView style={styles.scrollView}>
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => router.back()}
-            disabled={saving}
-          >
-            <Feather name="arrow-left" size={18} color="#fff" />
-            <Text style={styles.backButtonText}>Voltar</Text>
-          </TouchableOpacity>
-
-          <View style={[styles.statusIndicator, formData.ativo ? styles.statusActive : styles.statusInactive]}>
-            <View style={[styles.statusDot, formData.ativo ? styles.statusDotActive : styles.statusDotInactive]} />
-            <Text style={[styles.statusIndicatorText, formData.ativo ? styles.statusTextActive : styles.statusTextInactive]}>
-              {formData.ativo ? 'Plano Ativo' : 'Plano Inativo'}
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.formContainer}>
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View style={styles.cardHeaderIcon}>
-                <Feather name="clipboard" size={20} color="#f97316" />
-              </View>
-              <Text style={styles.cardTitle}>Dados do Plano</Text>
-            </View>
-            <View style={styles.cardBody}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Modalidade <Text style={styles.required}>*</Text></Text>
-                <View style={[styles.pickerContainer, errors.modalidade_id && styles.inputError]}>
-                  <Picker
-                    selectedValue={formData.modalidade_id}
-                    onValueChange={(value) => handleChange('modalidade_id', value)}
-                    enabled={!saving}
-                    style={styles.picker}
-                  >
-                    <Picker.Item label="Selecione uma modalidade" value="" />
-                    {modalidades.map((mod) => (
-                      <Picker.Item key={mod.id} label={mod.nome} value={mod.id.toString()} />
-                    ))}
-                  </Picker>
-                </View>
-                {errors.modalidade_id && <Text style={styles.errorText}>{errors.modalidade_id}</Text>}
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Nome do Plano <Text style={styles.required}>*</Text></Text>
-                <TextInput
-                  style={[styles.input, errors.nome && styles.inputError]}
-                  placeholder="Ex: 2x por semana"
-                  placeholderTextColor={colors.placeholder}
-                  value={formData.nome}
-                  onChangeText={(value) => handleChange('nome', value)}
-                  editable={!saving}
-                />
-                {errors.nome && <Text style={styles.errorText}>{errors.nome}</Text>}
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Descrição</Text>
-                <TextInput
-                  style={[styles.input, styles.textArea]}
-                  placeholder="Descrição do plano"
-                  placeholderTextColor={colors.placeholder}
-                  value={formData.descricao}
-                  onChangeText={(value) => handleChange('descricao', value)}
-                  multiline
-                  numberOfLines={3}
-                  editable={!saving}
-                />
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View style={styles.cardHeaderIcon}>
-                <Feather name="dollar-sign" size={20} color="#f97316" />
-              </View>
-              <Text style={styles.cardTitle}>Condições do Plano</Text>
-            </View>
-            <View style={styles.cardBody}>
-              <View style={styles.row}>
-                <View style={[styles.inputGroup, styles.flex1, styles.marginRight]}>
-                  <Text style={styles.label}>Valor Mensal <Text style={styles.required}>*</Text></Text>
-                  <View style={styles.inputWithPrefix}>
-                    <Text style={styles.prefix}>R$</Text>
-                    <TextInput
-                      style={[styles.input, styles.inputWithPrefixField, errors.valor && styles.inputError]}
-                      placeholder="0,00"
-                      placeholderTextColor={colors.placeholder}
-                      value={formData.valor}
-                      onChangeText={(value) => {
-                        const formatted = formatValorMonetario(value);
-                        handleChange('valor', formatted);
-                      }}
-                      keyboardType="numeric"
-                      editable={!saving}
-                    />
-                  </View>
-                  {errors.valor && <Text style={styles.errorText}>{errors.valor}</Text>}
-                </View>
-
-                <View style={[styles.inputGroup, styles.flex1]}>
-                  <Text style={styles.label}>Checkins/Semana <Text style={styles.required}>*</Text></Text>
-                  <TextInput
-                    style={[styles.input, errors.checkins_semanais && styles.inputError]}
-                    placeholder="Ex: 2, 3, 4"
-                    placeholderTextColor={colors.placeholder}
-                    value={formData.checkins_semanais}
-                    onChangeText={(value) => handleChange('checkins_semanais', value)}
-                    keyboardType="number-pad"
-                    editable={!saving}
-                  />
-                  {errors.checkins_semanais && <Text style={styles.errorText}>{errors.checkins_semanais}</Text>}
-                </View>
-              </View>
-              <Text style={styles.helperText}>Use 999 para checkins ilimitados</Text>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Duração do Plano</Text>
-                <View style={styles.pickerContainer}>
-                  <Picker
-                    selectedValue={formData.duracao_dias}
-                    onValueChange={(value) => handleChange('duracao_dias', value)}
-                    enabled={!saving}
-                    style={styles.picker}
-                  >
-                    <Picker.Item label="1 dia" value="1" />
-                    <Picker.Item label="30 dias (Mensal)" value="30" />
-                    <Picker.Item label="90 dias (Trimestral)" value="90" />
-                    <Picker.Item label="180 dias (Semestral)" value="180" />
-                    <Picker.Item label="365 dias (Anual)" value="365" />
-                  </Picker>
-                </View>
-              </View>
-            </View>
-          </View>
-
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View style={styles.cardHeaderIcon}>
-                <Feather name="toggle-right" size={20} color="#f97316" />
-              </View>
-              <Text style={styles.cardTitle}>Status do Plano</Text>
-            </View>
-            <View style={styles.cardBody}>
-              <View style={styles.switchRow}>
-                <View style={styles.switchInfo}>
-                  <Text style={styles.switchLabel}>Plano Ativo</Text>
-                  <Text style={styles.switchDescription}>
-                    {formData.ativo ? 'O plano está ativo.' : 'O plano está inativo.'}
-                  </Text>
-                </View>
-                <Switch
-                  value={formData.ativo}
-                  onValueChange={(value) => handleChange('ativo', value)}
-                  disabled={saving}
-                  trackColor={{ false: '#d1d5db', true: '#10b981' }}
-                  thumbColor={formData.ativo ? '#22c55e' : '#9ca3af'}
-                />
-              </View>
-
-              <View style={styles.switchRow}>
-                <View style={styles.switchInfo}>
-                  <Text style={styles.switchLabel}>Disponível para Novos Contratos</Text>
-                  <Text style={styles.switchDescription}>
-                    {formData.atual
-                      ? 'Pode ser usado em novos contratos.'
-                      : 'Apenas contratos existentes (histórico).'}
-                  </Text>
-                </View>
-                <Switch
-                  value={formData.atual}
-                  onValueChange={(value) => handleChange('atual', value)}
-                  disabled={saving}
-                  trackColor={{ false: '#d1d5db', true: '#3b82f6' }}
-                  thumbColor={formData.atual ? '#3b82f6' : '#9ca3af'}
-                />
-              </View>
-            </View>
-          </View>
-
-          {isEdit && (
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <View style={styles.cardHeaderIcon}>
-                  <Feather name="repeat" size={20} color="#f97316" />
-                </View>
-                <Text style={styles.cardTitle}>Ciclos do Plano</Text>
-              </View>
-              <View style={styles.cardBody}>
-                <View style={styles.ciclosHeaderRow}>
-                  <Text style={styles.ciclosSubtitle}>Configure os valores por período</Text>
-                  <View style={styles.ciclosActionsRow}>
-                    <TouchableOpacity
-                      style={[styles.ciclosActionButton, (gerandoCiclos || savingCiclo) && styles.ciclosActionButtonDisabled]}
-                      onPress={handleGerarCiclos}
-                      disabled={gerandoCiclos || savingCiclo}
-                    >
-                      {gerandoCiclos ? (
-                        <ActivityIndicator size="small" color="#f97316" />
-                      ) : (
-                        <>
-                          <Feather name="zap" size={14} color="#f97316" />
-                          <Text style={styles.ciclosActionText}>Gerar Automático</Text>
-                        </>
-                      )}
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.addCicloButton}
-                      onPress={handleNovoCiclo}
-                      disabled={savingCiclo}
-                    >
-                      <Feather name="plus" size={16} color="#fff" />
-                      <Text style={styles.addCicloText}>Adicionar Ciclo</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-
-                <View style={styles.ciclosList}>
-                  {loadingCiclos ? (
-                    <View style={styles.loadingInline}>
-                      <ActivityIndicator size="small" color="#f97316" />
-                      <Text style={styles.loadingInlineText}>Carregando ciclos...</Text>
-                    </View>
-                  ) : ciclos.length === 0 ? (
-                    <Text style={styles.emptyText}>Nenhum ciclo cadastrado ainda.</Text>
-                  ) : (
-                    ciclos.map((ciclo) => (
-                      <View key={ciclo.id} style={styles.cicloItem}>
-                        <View style={styles.cicloInfo}>
-                          <Text style={styles.cicloTitle}>{ciclo.nome}</Text>
-                          <Text style={styles.cicloMeta}>
-                            {formatCurrency(ciclo.valor)} • {ciclo.meses} {ciclo.meses > 1 ? 'meses' : 'mês'}
-                          </Text>
-                          <Text style={styles.cicloMetaMuted}>
-                            Mensal equivalente: {ciclo.valor_mensal_formatado || formatCurrency(ciclo.valor_mensal_equivalente)}
-                          </Text>
-                          <View style={styles.cicloTags}>
-                            <View style={[styles.cicloTag, ciclo.permite_recorrencia ? styles.cicloTagActive : styles.cicloTagInactive]}>
-                              <Text style={styles.cicloTagText}>{ciclo.permite_recorrencia ? 'Recorrente' : 'Avulso'}</Text>
-                            </View>
-                            <View style={[styles.cicloTag, (ciclo.permite_reposicao === 1 || ciclo.permite_reposicao === true) ? styles.cicloTagActive : styles.cicloTagInactive]}>
-                              <Text style={styles.cicloTagText}>
-                                {(ciclo.permite_reposicao === 1 || ciclo.permite_reposicao === true) ? 'Reposição' : 'Sem reposição'}
-                              </Text>
-                            </View>
-                            <View style={[styles.cicloTag, ciclo.ativo ? styles.cicloTagActive : styles.cicloTagInactive]}>
-                              <Text style={styles.cicloTagText}>{ciclo.ativo ? 'Ativo' : 'Inativo'}</Text>
-                            </View>
-                            {ciclo.desconto_percentual > 0 && (
-                              <View style={styles.cicloTagDiscount}>
-                                <Text style={styles.cicloTagDiscountText}>-{ciclo.desconto_percentual}%</Text>
-                              </View>
-                            )}
-                          </View>
-                        </View>
-                        <View style={styles.cicloActions}>
-                          <TouchableOpacity
-                            style={styles.cicloActionButton}
-                            onPress={() => handleEditarCiclo(ciclo)}
-                          >
-                            <Feather name="edit-2" size={16} color="#3b82f6" />
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={styles.cicloActionButton}
-                            onPress={() => setConfirmDeleteCiclo({ visible: true, ciclo })}
-                          >
-                            <Feather name="trash-2" size={16} color="#ef4444" />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    ))
-                  )}
-                </View>
-              </View>
-            </View>
-          )}
-        </View>
-
-        <View style={styles.actionButtons}>
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={() => router.back()}
-            disabled={saving}
-          >
-            <Text style={styles.cancelButtonText}>Cancelar</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.submitButton, saving && styles.submitButtonDisabled]}
-            onPress={handleSubmit}
-            disabled={saving}
-            activeOpacity={0.7}
-          >
-            {saving ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <>
-                <Feather name="check" size={18} color="#fff" />
-                <Text style={styles.submitButtonText}>
-                  {isEdit ? 'Salvar Alterações' : 'Criar Plano'}
-                </Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+      <Modal
+        open={confirmGenerate}
+        size="sm"
+        title="Gerar ciclos padrão?"
+        description={`Cria um ciclo para cada período a partir do valor mensal (${values.valor ? `R$ ${values.valor}` : 'R$ 0,00'}).`}
+        dismissable={!generating}
+        onClose={() => setConfirmGenerate(false)}
+        footer={(
+          <>
+            <span style={{ flex: 1 }} />
+            <Button variant="ghost" disabled={generating} onClick={() => setConfirmGenerate(false)}>Cancelar</Button>
+            <Button variant="primary" icon="zap" loading={generating} onClick={generate}>Gerar ciclos</Button>
+          </>
+        )}
+      >
+        <div className="ck-stack ck-pl__confirm">
+          <p>Os descontos padrão são aplicados por período: 10% no bimestral, 15% no trimestral, 20% no quadrimestral, 25% no semestral e 30% no anual. O mensal fica sem desconto.</p>
+          <p><strong>Ciclos que já existem e não têm matrícula são recalculados.</strong> Ciclos com matrícula vinculada ficam como estão.</p>
+        </div>
+      </Modal>
     </LayoutBase>
   );
 }
-
-const styles = StyleSheet.create({
-  scrollView: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'transparent',
-    paddingVertical: 100,
-  },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#666',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-  },
-  backButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    backgroundColor: '#f97316',
-    borderRadius: 8,
-  },
-  backButtonText: {
-    fontSize: 14,
-    color: '#fff',
-    fontWeight: '600',
-  },
-  statusIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-  },
-  statusActive: {
-    backgroundColor: '#dcfce7',
-  },
-  statusInactive: {
-    backgroundColor: '#fee2e2',
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  statusDotActive: {
-    backgroundColor: '#22c55e',
-  },
-  statusDotInactive: {
-    backgroundColor: '#ef4444',
-  },
-  statusIndicatorText: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  statusTextActive: {
-    color: '#166534',
-  },
-  statusTextInactive: {
-    color: '#991b1b',
-  },
-  formContainer: {
-    paddingHorizontal: 24,
-    paddingBottom: 24,
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-    overflow: 'hidden',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f1f5f9',
-    backgroundColor: '#fff7ed',
-  },
-  cardHeaderIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#fed7aa',
-  },
-  cardTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1f2937',
-  },
-  cardBody: {
-    padding: 16,
-  },
-  row: {
-    flexDirection: 'row',
-  },
-  flex1: {
-    flex: 1,
-  },
-  marginRight: {
-    marginRight: 12,
-  },
-  inputGroup: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  required: {
-    color: '#ef4444',
-  },
-  input: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 14,
-    color: '#111827',
-  },
-  inputError: {
-    borderColor: '#ef4444',
-    borderWidth: 2,
-  },
-  errorText: {
-    color: '#ef4444',
-    fontSize: 12,
-    marginTop: 4,
-    marginLeft: 4,
-  },
-  textArea: {
-    minHeight: 80,
-    textAlignVertical: 'top',
-  },
-  pickerContainer: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 10,
-    overflow: 'hidden',
-  },
-  picker: {
-    height: 50,
-    color: '#111827',
-  },
-  helperText: {
-    fontSize: 12,
-    color: '#6b7280',
-    marginTop: -12,
-    marginBottom: 16,
-    marginLeft: 4,
-  },
-  helperTextBlock: {
-    fontSize: 12,
-    color: '#6b7280',
-    marginTop: 8,
-    marginBottom: 0,
-    marginLeft: 4,
-  },
-  inputWithPrefix: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 10,
-    overflow: 'hidden',
-  },
-  prefix: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#111827',
-    paddingLeft: 12,
-    paddingRight: 8,
-  },
-  inputWithPrefixField: {
-    flex: 1,
-    borderWidth: 0,
-    paddingLeft: 0,
-  },
-  switchRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  switchInfo: {
-    flex: 1,
-  },
-  switchLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  switchDescription: {
-    fontSize: 12,
-    color: '#6b7280',
-    marginTop: 4,
-  },
-  ciclosHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  ciclosSubtitle: {
-    fontSize: 12,
-    color: '#6b7280',
-  },
-  ciclosActionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    backgroundColor: '#fff7ed',
-    borderWidth: 1,
-    borderColor: '#fed7aa',
-  },
-  ciclosActionButtonDisabled: {
-    opacity: 0.6,
-  },
-  ciclosActionText: {
-    fontSize: 12,
-    color: '#f97316',
-    fontWeight: '600',
-  },
-  cicloFormContainer: {
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 10,
-    backgroundColor: '#f9fafb',
-    marginBottom: 16,
-  },
-  cicloFormActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-    marginTop: 4,
-  },
-  cicloSaveButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    backgroundColor: '#f97316',
-    borderRadius: 8,
-  },
-  cicloSaveButtonDisabled: {
-    opacity: 0.7,
-  },
-  cicloSaveText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  cicloCancelButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: '#e5e7eb',
-  },
-  cicloCancelText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  ciclosList: {
-    gap: 12,
-  },
-  cicloItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    backgroundColor: '#fff',
-  },
-  cicloInfo: {
-    flex: 1,
-  },
-  cicloTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#111827',
-    marginBottom: 4,
-  },
-  cicloMeta: {
-    fontSize: 12,
-    color: '#374151',
-  },
-  cicloMetaMuted: {
-    fontSize: 12,
-    color: '#6b7280',
-    marginTop: 2,
-  },
-  cicloTags: {
-    flexDirection: 'row',
-    gap: 6,
-    marginTop: 8,
-    flexWrap: 'wrap',
-  },
-  cicloTag: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 999,
-  },
-  cicloTagActive: {
-    backgroundColor: '#dcfce7',
-  },
-  cicloTagInactive: {
-    backgroundColor: '#fee2e2',
-  },
-  cicloTagText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#166534',
-  },
-  cicloTagDiscount: {
-    backgroundColor: '#dbeafe',
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 999,
-  },
-  cicloTagDiscountText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: '#1d4ed8',
-  },
-  cicloActions: {
-    justifyContent: 'space-between',
-  },
-  cicloActionButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#fff',
-  },
-  loadingInline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  loadingInlineText: {
-    fontSize: 12,
-    color: '#6b7280',
-  },
-  emptyText: {
-    fontSize: 12,
-    color: '#6b7280',
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    paddingHorizontal: 24,
-    paddingBottom: 40,
-  },
-  cancelButton: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: '#f3f4f6',
-  },
-  cancelButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6b7280',
-  },
-  submitButton: {
-    backgroundColor: '#f97316',
-    padding: 12,
-    borderRadius: 10,
-    alignItems: 'center',
-    flex: 1,
-  },
-  submitButtonDisabled: {
-    backgroundColor: '#fbbf24',
-    opacity: 0.6,
-  },
-  submitButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-
-  // Modal styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    width: '100%',
-    maxWidth: 500,
-    maxHeight: '90%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#111827',
-  },
-  modalCloseButton: {
-    padding: 4,
-  },
-  modalBody: {
-    padding: 20,
-    maxHeight: 400,
-  },
-  modalSwitchesRow: {
-    flexDirection: 'column',
-    gap: 12,
-    marginTop: 8,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
-  },
-  modalCancelButton: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: '#f3f4f6',
-  },
-  modalCancelText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6b7280',
-  },
-  modalSaveButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: 10,
-    backgroundColor: '#f97316',
-  },
-  modalSaveButtonDisabled: {
-    opacity: 0.6,
-  },
-  modalSaveText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#fff',
-  },
-
-  // Tipo Ciclo Grid (substituindo Picker)
-  tipoCicloGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 8,
-  },
-  tipoCicloCard: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: '#e5e7eb',
-    backgroundColor: '#fff',
-    minWidth: 100,
-    alignItems: 'center',
-  },
-  tipoCicloCardSelected: {
-    borderColor: '#f97316',
-    backgroundColor: '#fff7ed',
-  },
-  tipoCicloCardTitle: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#374151',
-  },
-  tipoCicloCardTitleSelected: {
-    color: '#f97316',
-  },
-  tipoCicloCardMeta: {
-    fontSize: 11,
-    color: '#9ca3af',
-    marginTop: 2,
-  },
-  tipoCicloCardMetaSelected: {
-    color: '#ea580c',
-  },
-  tipoCicloSelected: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    backgroundColor: '#fff7ed',
-    borderWidth: 1,
-    borderColor: '#fed7aa',
-  },
-  tipoCicloSelectedText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#f97316',
-  },
-  tipoCicloSelectedMeta: {
-    fontSize: 12,
-    color: '#ea580c',
-  },
-
-  // Botão Adicionar Ciclo
-  ciclosActionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  addCicloButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: '#f97316',
-  },
-  addCicloText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#fff',
-  },
-});

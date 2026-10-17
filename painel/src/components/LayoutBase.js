@@ -37,6 +37,7 @@ const SECTIONS = [
         label: 'Financeiro',
         icon: 'wallet',
         children: [
+          { id: 'relatorio-financeiro', label: 'Relatório financeiro', path: '/financeiro/relatorio', roles: [3, 4] },
           { id: 'vencimentos', label: 'Vencimentos', path: '/matriculas/vencimentos', roles: [3, 4] },
           { id: 'formas-pagamento', label: 'Formas de pagamento', path: '/formas-pagamento', roles: [3, 4] },
         ],

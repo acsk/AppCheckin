@@ -16,6 +16,35 @@ Permite que administradores criem matrículas de alunos com assinaturas vinculad
 
 ---
 
+## Componentes de matrícula no painel
+
+As telas usam `MatriculasLista`, `NovaMatricula` e `BaixaModal` do
+[design system CK](../src/components/ck/index.js), com estilos em
+[ck-enrollments.css](../src/theme/ck-enrollments.css).
+
+- **Lista:** busca sem distinção de acentos por aluno, e-mail, plano, modalidade
+  ou código, filtros de status, paginação visual de 20 registros e atualização.
+  A consulta continua percorrendo as páginas da API. A exclusão mantém a
+  permissão existente (usuário de ID 3), a prévia dos registros relacionados e
+  a confirmação explícita; matrículas de pacote devem ser tratadas pelo pacote.
+- **Nova matrícula:** etapas para aluno, tipo, modalidade, plano e ciclo, com
+  resumo da primeira cobrança. Pacotes mantêm a seleção e o limite de
+  dependentes. A criação exige revisão final e preserva os payloads de
+  `matriculaService.criar`. O início do acesso é informativo: a API atual o
+  define automaticamente, portanto o campo não permite uma data personalizada.
+- **Baixa:** resumo da fatura, formas de pagamento carregadas da API, data do
+  pagamento e observação opcional. O mesmo visual atende matrículas e contratos,
+  sem unificar seus endpoints ou regras. Matrículas permitem editar o vencimento
+  respeitando o primeiro dia do mês atual e exigem confirmação final; contratos
+  mantêm o vencimento somente para consulta.
+
+[BaixaPagamentoForm](../src/components/BaixaPagamentoForm.js) faz a adaptação dos
+serviços e impede envio/fechamento durante a gravação. O comprovante do protótipo
+não é exibido nas integrações atuais, pois esses endpoints não o persistem.
+Erros permanecem visíveis no formulário e os dados são mantidos para nova tentativa.
+
+---
+
 ## 🚀 COMEÇAR RÁPIDO
 
 ### 1️⃣ Gerenciador/Product Owner
