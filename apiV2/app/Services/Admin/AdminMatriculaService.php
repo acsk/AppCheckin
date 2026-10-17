@@ -1934,6 +1934,31 @@ class AdminMatriculaService
     }
 
     /**
+     * Consulta as cobranças Asaas da matrícula e atualiza valor_liquido / desconto_provedor.
+     *
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function sincronizarAsaasMatricula(int $matriculaId, int $tenantId): array
+    {
+        if (! $this->matriculas->exists($matriculaId, $tenantId)) {
+            return $this->error('Matrícula não encontrada', 404);
+        }
+
+        $snapshot = app(\App\Services\Asaas\AsaasPagamentoSync::class)->sincronizar($tenantId, $matriculaId);
+
+        return [
+            'status' => 200,
+            'body' => [
+                'success' => true,
+                'message' => $snapshot === []
+                    ? 'Nenhuma cobrança Asaas encontrada nesta matrícula'
+                    : 'Líquido atualizado com o Asaas',
+                'asaas' => $snapshot !== [] ? $snapshot : null,
+            ],
+        ];
+    }
+
+    /**
      * Paridade Slim MatriculaController::buscar (motivo_status / limite_ciclo pendente).
      *
      * @param  array<string, mixed>  $matricula

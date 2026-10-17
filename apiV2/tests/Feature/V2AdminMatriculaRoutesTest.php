@@ -188,5 +188,9 @@ class V2AdminMatriculaRoutesTest extends TestCase
         $this->postJson('/v2/admin/matriculas/1/sincronizar-assinatura', [])
             ->assertUnauthorized()
             ->assertJsonPath('code', 'MISSING_TOKEN');
+
+        $this->postJson('/v2/admin/matriculas/1/sincronizar-asaas', [])
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'MISSING_TOKEN');
     }
 }

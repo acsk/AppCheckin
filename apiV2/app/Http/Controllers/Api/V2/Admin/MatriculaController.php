@@ -326,6 +326,18 @@ class MatriculaController extends Controller
         return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
     }
 
+    public function sincronizarAsaas(Request $request, int $id): JsonResponse
+    {
+        $tenantId = $this->requireTenant($request);
+        if ($tenantId instanceof JsonResponse) {
+            return $tenantId;
+        }
+
+        $result = $this->service->sincronizarAsaasMatricula($id, $tenantId);
+
+        return response()->json($result['body'], $result['status'], [], JSON_UNESCAPED_UNICODE);
+    }
+
     private function requireTenant(Request $request): int|JsonResponse
     {
         $tenantId = $request->attributes->get('tenantId');

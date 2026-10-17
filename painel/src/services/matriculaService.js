@@ -273,6 +273,13 @@ export const matriculaService = {
       console.error('Erro ao sincronizar assinatura:', error);
       throw prepararErro(error.response?.data || error);
     }
-  }
+  },
+
+  async sincronizarAsaas(matriculaId) {
+    const response = await api.post(
+      `/admin/matriculas/${matriculaId}/sincronizar-asaas`
+    );
+    return response.data;
+  },
 
 };

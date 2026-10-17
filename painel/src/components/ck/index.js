@@ -460,7 +460,7 @@ import React from 'react';
         h(SegmentedControl, { label: 'Filtrar faturas', value: filter, onChange: f[1], options: [
           { value: 'ativas', label: 'Ativas ' + (counts.active != null ? counts.active : '') },
           { value: 'canceladas', label: 'Canceladas ' + (counts.cancelled != null ? counts.cancelled : '') }] }),
-        h(IconButton, { icon: 'refresh-cw', label: 'Recarregar faturas', variant: 'secondary', onClick: p.onReload })),
+        h(IconButton, { icon: 'refresh-cw', label: 'Atualizar líquido no Asaas', variant: 'secondary', onClick: p.onReload })),
       h('div', { className: 'ck-mt-table-wrap' },
         h('table', { className: 'ck-mt-table' },
           h('thead', null, h('tr', null,
@@ -474,6 +474,7 @@ import React from 'react';
               h('td', null, h('span', { className: 'ck-mt-cell__main' }, 'Parcela ' + i.number), h('span', { className: 'ck-mt-cell__sub' }, 'Fatura ' + i.id)),
               h('td', null, h('span', { className: 'ck-mt-cell__main' }, fdate(i.dueDate)), dueNote ? h('span', { className: cx('ck-mt-cell__sub', i.status === 'atrasado' && 'is-late') }, dueNote) : null),
               h('td', { className: 'is-num' }, h('span', { className: 'ck-mt-cell__main ck-mt-money' }, money(i.amount)),
+                i.net != null && !Number.isNaN(i.net) ? h('span', { className: 'ck-mt-cell__sub' }, 'Líquido ' + money(i.net)) : null,
                 i.credit ? h('span', { className: 'ck-mt-cell__sub' }, 'Crédito de ' + money(i.credit)) : null,
                 i.discount ? h('span', { className: 'ck-mt-cell__sub ck-mt-cell__sub--discount' }, '− ' + money(i.discount) + (i.discountNote ? ' (' + i.discountNote + ')' : ' de desconto')) : null),
               h('td', null, i.paidDate ? h('div', { className: 'ck-mt-paid' },

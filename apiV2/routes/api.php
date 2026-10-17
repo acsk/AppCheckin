@@ -160,6 +160,7 @@ Route::prefix('v2')->group(function () {
             Route::get('/matriculas/{id}/assinatura', [AdminMatriculaController::class, 'obterAssinatura']);
             Route::post('/matriculas/{id}/assinatura', [AdminMatriculaController::class, 'criarAssinatura']);
             Route::post('/matriculas/{id}/sincronizar-assinatura', [AdminMatriculaController::class, 'sincronizarAssinatura']);
+            Route::post('/matriculas/{id}/sincronizar-asaas', [AdminMatriculaController::class, 'sincronizarAsaas']);
             Route::get('/matriculas/{id}', [AdminMatriculaController::class, 'show']);
             Route::get('/matriculas/{id}/pagamentos', [AdminMatriculaController::class, 'pagamentos']);
             Route::post('/matriculas/{id}/bloquear', [AdminMatriculaController::class, 'bloquear']);

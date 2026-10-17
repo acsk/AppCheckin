@@ -213,6 +213,15 @@ export default function MatriculaDetalheScreen() {
     }
   };
 
+  const recarregarFaturas = async () => {
+    try {
+      await matriculaService.sincronizarAsaas(id);
+    } catch (error) {
+      console.log('Sincronização Asaas:', error);
+    }
+    await carregarDados();
+  };
+
   const handleBaixaPagamento = (pagamento) => {
     if (pagamento?.pacote_contrato_id) {
       showAlert(
@@ -1275,6 +1284,10 @@ export default function MatriculaDetalheScreen() {
         method: pg.forma_pagamento_nome || undefined,
         channel: pg.tipo_baixa_nome ? String(pg.tipo_baixa_nome).toLowerCase() : undefined,
         amount: parseFloat(pg.valor || 0),
+        net:
+          pg.valor_liquido != null && pg.valor_liquido !== ''
+            ? Number(pg.valor_liquido)
+            : undefined,
         credit: Number(pg.credito_aplicado) > 0 ? Number(pg.credito_aplicado) : undefined,
         discount: Number(pg.desconto) > 0 ? Number(pg.desconto) : undefined,
         discountNote: pg.motivo_desconto || undefined,
@@ -1415,7 +1428,7 @@ export default function MatriculaDetalheScreen() {
             onAddDiscount={abrirNovoDesconto}
             onEditDiscount={(d) => abrirEditarDesconto(d.raw)}
             onRemoveDiscount={(d) => handleDesativarDesconto(d.id)}
-            onReload={carregarDados}
+            onReload={recarregarFaturas}
             actions={acoesCabecalho}
             notices={avisosMatricula}
           >
