@@ -1488,6 +1488,8 @@ export default function MatriculaDetalheScreen() {
         visible={modalVisible}
         onClose={() => { setModalVisible(false); setBaixaConfirmando(false); }}
         pagamento={pagamentoSelecionado}
+        student={matricula?.usuario_nome || matricula?.aluno_nome}
+        plan={matricula?.plano_nome}
         onSuccess={handleBaixaSuccess}
       />
 

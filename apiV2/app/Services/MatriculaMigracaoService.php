@@ -1133,6 +1133,7 @@ class MatriculaMigracaoService
             $dataVencimento,
             $escolhaGateway,
             (int) ($data['installment_count'] ?? $data['parcelas'] ?? 1),
+            false,
         );
 
         if (isset($mpResult['erro'])) {
@@ -1150,6 +1151,19 @@ class MatriculaMigracaoService
             }
 
             return $erro;
+        }
+
+        $preferenceId = $mpResult['pagamento']['preference_id'] ?? null;
+        if (is_string($preferenceId) && $preferenceId !== '' && $novoPagamentoId > 0) {
+            $obs = (string) (DB::table('pagamentos_plano')->where('id', $novoPagamentoId)->value('observacoes') ?? '');
+            DB::table('pagamentos_plano')->where('id', $novoPagamentoId)->where('tenant_id', $tenantId)->update([
+                'observacoes' => trim($obs.' '.sprintf(
+                    '[%s %s]',
+                    str_starts_with($preferenceId, 'pay_') ? 'Asaas' : 'Checkout',
+                    $preferenceId
+                )),
+                'updated_at' => AcademyDateTime::nowFormatted(),
+            ]);
         }
 
         $simulacao = $this->montarResumoSimulacao($ctx);
@@ -1374,6 +1388,7 @@ class MatriculaMigracaoService
         string $dataVencimento,
         ?array $escolhaGateway = null,
         int $installmentCount = 1,
+        bool $atualizarAssinatura = true,
     ): array {
         $descricaoCompra = $novoCiclo
             ? "{$novoPlano['nome']} ({$cicloNome}) - {$novoPlano['modalidade_nome']}"
@@ -1509,9 +1524,22 @@ class MatriculaMigracaoService
                 $dataVencimento,
                 $duracaoMeses,
                 $pixData,
+                $atualizarAssinatura,
             ): void {
                 if ($pixData !== null) {
                     $this->salvarPixRegistro($tenantId, $matriculaId, $pixData);
+                }
+
+                if (! $atualizarAssinatura) {
+                    $this->anexarCheckoutPendenteMantendoPlano(
+                        $tenantId,
+                        $matriculaId,
+                        is_string($preferenceId) ? $preferenceId : null,
+                        is_string($paymentUrl) ? $paymentUrl : null,
+                        $externalReference,
+                    );
+
+                    return;
                 }
 
                 $this->salvarAssinatura(
@@ -1576,6 +1604,42 @@ class MatriculaMigracaoService
                 ] : null,
             ],
         ];
+    }
+
+    private function anexarCheckoutPendenteMantendoPlano(
+        int $tenantId,
+        int $matriculaId,
+        ?string $preferenceId,
+        ?string $paymentUrl,
+        string $externalReference,
+    ): void {
+        if (($preferenceId === null || $preferenceId === '') && ($paymentUrl === null || $paymentUrl === '')) {
+            return;
+        }
+
+        $assinatura = DB::table('assinaturas')
+            ->where('tenant_id', $tenantId)
+            ->where('matricula_id', $matriculaId)
+            ->first(['id']);
+        if (! $assinatura) {
+            return;
+        }
+
+        $payload = ['atualizado_em' => AcademyDateTime::nowFormatted()];
+        if (is_string($preferenceId) && $preferenceId !== '') {
+            $payload['gateway_preference_id'] = $preferenceId;
+        }
+        if (is_string($paymentUrl) && $paymentUrl !== '') {
+            $payload['payment_url'] = $paymentUrl;
+        }
+        if ($externalReference !== '') {
+            $payload['external_reference'] = $externalReference;
+        }
+
+        DB::table('assinaturas')
+            ->where('id', (int) $assinatura->id)
+            ->where('tenant_id', $tenantId)
+            ->update($payload);
     }
 
     private function salvarAssinatura(

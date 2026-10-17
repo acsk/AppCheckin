@@ -4,6 +4,7 @@ import './global.css';
 // Design system do painel (Sidebar, AppHeader, telas de configuração): variáveis + componentes
 import './src/theme/ck-tokens.css';
 import './src/theme/ck.css';
+import './src/theme/ck-enrollments.css';
 import './src/theme/ck-painel.css';
 
 import 'expo-router/entry';

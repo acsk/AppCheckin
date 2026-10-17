@@ -361,11 +361,9 @@ class MatriculaMigracaoRegrasTest extends TestCase
         $novo = DB::table('pagamentos_plano')->where('status_pagamento_id', 1)->first();
         $this->assertEquals(200.0, $novo->valor);
         $this->assertStringContainsString('[MIGRACAO_SIMULADA', (string) $novo->observacoes);
+        $this->assertStringContainsString('pref-1', (string) $novo->observacoes);
 
-        $assinatura = DB::table('assinaturas')->first();
-        $this->assertSame('avulso', $assinatura->tipo_cobranca);
-        $this->assertSame('pref-1', $assinatura->gateway_preference_id);
-        $this->assertNull($assinatura->proxima_cobranca);
+        $this->assertSame(0, DB::table('assinaturas')->count());
     }
 
     public function test_migrar_recorrente_trimestral_agenda_proxima_cobranca_pelo_ciclo(): void
@@ -397,15 +395,11 @@ class MatriculaMigracaoRegrasTest extends TestCase
         $assinatura = DB::table('assinaturas')->first();
         $this->assertSame(1, DB::table('assinaturas')->count());
         $this->assertSame(72, (int) $assinatura->id);
-        $this->assertSame('recorrente', $assinatura->tipo_cobranca);
-        $this->assertSame('sub-1', $assinatura->gateway_assinatura_id);
-        $this->assertNull($assinatura->gateway_preference_id);
-        $this->assertSame(1, (int) $assinatura->metodo_pagamento_id);
-        $this->assertSame(3, (int) $assinatura->frequencia_id);
-        $this->assertSame(
-            AcademyDateTime::now()->modify('+3 months')->format('Y-m-d'),
-            $assinatura->proxima_cobranca,
-        );
+        $this->assertSame(2, (int) $assinatura->status_id);
+        $this->assertSame('sub-1', $assinatura->gateway_preference_id);
+        $this->assertSame('https://mp/assinatura', $assinatura->payment_url);
+        $this->assertNull($assinatura->gateway_assinatura_id);
+        $this->assertNull($assinatura->tipo_cobranca);
     }
 
     public function test_migrar_reaproveita_assinatura_pendente_sem_alterar_outro_tenant(): void
@@ -453,8 +447,8 @@ class MatriculaMigracaoRegrasTest extends TestCase
 
         $this->assertSame(200, $result['status'], json_encode($result['body']));
         $this->assertSame(1, DB::table('assinaturas')->count());
-        $this->assertSame(1, (int) DB::table('assinaturas')->where('id', 72)->value('status_id'));
-        $this->assertSame('pending', DB::table('assinaturas')->where('id', 72)->value('status_gateway'));
+        $this->assertSame(3, (int) DB::table('assinaturas')->where('id', 72)->value('status_id'));
+        $this->assertSame('approved', DB::table('assinaturas')->where('id', 72)->value('status_gateway'));
         $this->assertSame('pref-status-final', DB::table('assinaturas')->where('id', 72)->value('gateway_preference_id'));
     }
 
@@ -500,17 +494,17 @@ class MatriculaMigracaoRegrasTest extends TestCase
         $this->assertSame(200, $result['status'], json_encode($result['body']));
         $this->assertSame(1, DB::table('assinaturas')->count());
         $assinatura = $this->row('assinaturas', 72);
-        $this->assertSame(1, (int) $assinatura['status_id']);
-        $this->assertSame('pending', $assinatura['status_gateway']);
+        $this->assertSame($statusId, (int) $assinatura['status_id']);
+        $this->assertSame('approved', $assinatura['status_gateway']);
         $this->assertSame('pref-migracao', $assinatura['gateway_preference_id']);
         $this->assertSame('MAT-30-nova', $assinatura['external_reference']);
         $this->assertSame('https://mp/nova', $assinatura['payment_url']);
-        $this->assertEquals(500.0, $assinatura['valor']);
-        $this->assertSame(2, (int) $assinatura['plano_id']);
-        $this->assertNull($assinatura['gateway_assinatura_id']);
-        $this->assertNull($assinatura['metodo_pagamento_id']);
-        $this->assertNull($assinatura['cancelado_por_id']);
-        $this->assertNull($assinatura['motivo_cancelamento']);
+        $this->assertEquals(300.0, $assinatura['valor']);
+        $this->assertNull($assinatura['plano_id']);
+        $this->assertSame('recorrencia-anterior', $assinatura['gateway_assinatura_id']);
+        $this->assertSame(1, (int) $assinatura['metodo_pagamento_id']);
+        $this->assertSame($codigo === 'cancelada' ? 1 : null, $assinatura['cancelado_por_id'] ? (int) $assinatura['cancelado_por_id'] : null);
+        $this->assertSame($codigo === 'cancelada' ? 'Cancelamento anterior' : null, $assinatura['motivo_cancelamento']);
         $this->assertSame('2026-05-21 12:00:00', $assinatura['criado_em']);
         $this->assertSame($pagamentoAnterior, $this->row('pagamentos_plano', 501));
         $this->assertSame(2, DB::table('pagamentos_plano')->count());
@@ -538,8 +532,7 @@ class MatriculaMigracaoRegrasTest extends TestCase
 
         $this->assertSame(200, $result['status'], json_encode($result['body']));
         $this->assertSame('Trimestral', $result['body']['data']['plano_novo']['ciclo_nome']);
-        // Sem frequência vinculada e sem código 'trimestral' cadastrado: fallback legado (4 = mensal).
-        $this->assertSame(4, (int) DB::table('assinaturas')->value('frequencia_id'));
+        $this->assertSame(0, DB::table('assinaturas')->count());
     }
 
     /**
@@ -577,7 +570,7 @@ class MatriculaMigracaoRegrasTest extends TestCase
         ]);
 
         $this->assertSame(200, $result['status'], json_encode($result['body']));
-        $this->assertSame($esperado, (int) DB::table('assinaturas')->value('frequencia_id'));
+        $this->assertSame(0, DB::table('assinaturas')->count());
     }
 
     public function test_migrar_pix_salva_registro_pix(): void

@@ -24,13 +24,33 @@ class AsaasPagamentoSync
     public function paymentIdsDaMatricula(int $tenantId, int $matriculaId): array
     {
         $ids = [];
+        if (Schema::hasTable('pagamentos_plano')) {
+            $simObs = DB::table('pagamentos_plano')
+                ->where('tenant_id', $tenantId)
+                ->where('matricula_id', $matriculaId)
+                ->whereIn('status_pagamento_id', [1, 3])
+                ->whereNull('data_pagamento')
+                ->where('observacoes', 'like', '%[MIGRACAO_SIMULADA%')
+                ->orderByDesc('id')
+                ->pluck('observacoes');
+            foreach ($simObs as $texto) {
+                if (preg_match_all('/pay_[a-zA-Z0-9]+/', (string) $texto, $m) < 1) {
+                    continue;
+                }
+                foreach ($m[0] as $payId) {
+                    if (! in_array($payId, $ids, true)) {
+                        $ids[] = $payId;
+                    }
+                }
+            }
+        }
         $pref = (string) (DB::table('assinaturas')
             ->where('tenant_id', $tenantId)
             ->where('matricula_id', $matriculaId)
             ->where('gateway_preference_id', 'like', 'pay_%')
             ->orderByDesc('id')
             ->value('gateway_preference_id') ?? '');
-        if (str_starts_with($pref, 'pay_')) {
+        if (str_starts_with($pref, 'pay_') && ! in_array($pref, $ids, true)) {
             $ids[] = $pref;
         }
 

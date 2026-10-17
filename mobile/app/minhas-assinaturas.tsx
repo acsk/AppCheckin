@@ -771,14 +771,16 @@ export default function MinhasAssinaturasScreen() {
     const isPagamentoPendente =
       !isCancelada &&
       !aguardandoAsaas &&
-      (temPagamentoAberto || (isPendente && !temPagamentoPago));
+      ((isPendente && !temPagamentoPago) || (!isAtiva && temPagamentoAberto));
+    const temPagamentoAguardandoComPlanoAtivo =
+      isAtiva && temPagamentoAberto && !aguardandoAsaas;
     const podeAtualizarPagamento =
       !isCancelada && (isPendente || isPagamentoPendente || aguardandoAsaas);
 
     const statusCodigo = assinatura.status.codigo.toLowerCase();
     const statusTone = aguardandoAsaas
       ? "success"
-      : isPagamentoPendente
+      : isPagamentoPendente || temPagamentoAguardandoComPlanoAtivo
       ? "warning"
       : statusCodigo === "ativa"
         ? "success"
@@ -818,6 +820,13 @@ export default function MinhasAssinaturasScreen() {
               Pagamento pendente. Regularize para manter o acesso.
             </Text>
           </View>
+        ) : temPagamentoAguardandoComPlanoAtivo ? (
+          <View style={styles.pendenteBanner}>
+            <Feather name="clock" size={16} color={ds.warning} />
+            <Text style={styles.pendenteBannerText}>
+              Há um pagamento aguardando. Seu plano atual continua ativo.
+            </Text>
+          </View>
         ) : null}
 
         <View style={styles.subHead}>
@@ -826,7 +835,13 @@ export default function MinhasAssinaturasScreen() {
               <Text style={styles.subName} numberOfLines={2}>
                 {assinatura.plano.nome}
               </Text>
-              <Badge tone={statusTone}>{isPagamentoPendente ? "Pendente" : statusBadgeLabel}</Badge>
+              <Badge tone={statusTone}>
+                {isPagamentoPendente
+                  ? "Pendente"
+                  : temPagamentoAguardandoComPlanoAtivo
+                    ? "Ativa · aguardando"
+                    : statusBadgeLabel}
+              </Badge>
             </View>
             <Text style={styles.subMeta} numberOfLines={2}>
               {[
@@ -908,7 +923,7 @@ export default function MinhasAssinaturasScreen() {
                     </Text>
                   </View>
                   <Badge tone={pago ? "success" : "warning"} icon={pago ? "check" : "clock"}>
-                    {pago ? "Pago" : pagamento.status || "Pendente"}
+                    {pago ? "Pago" : pagamento.status || "Aguardando"}
                   </Badge>
                 </View>
               );

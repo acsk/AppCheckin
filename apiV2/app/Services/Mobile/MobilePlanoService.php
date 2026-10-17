@@ -50,6 +50,10 @@ class MobilePlanoService
                 ->where('matricula_id', (int) $mat['id'])
                 ->whereIn('status_pagamento_id', [1, 3])
                 ->whereNull('data_pagamento')
+                ->where(function ($q) {
+                    $q->whereNull('observacoes')
+                        ->orWhere('observacoes', 'not like', '%[MIGRACAO_SIMULADA%');
+                })
                 ->orderBy('data_vencimento')
                 ->orderBy('id')
                 ->value('data_vencimento');
@@ -228,7 +232,7 @@ class MobilePlanoService
             if (in_array($assinaturaGateway, ['approved', 'authorized'], true)) {
                 $statusCodigoExibicao = 'ativa';
                 $statusExibicao = 'Ativa';
-            } elseif ($assinaturaGateway === 'pending') {
+            } elseif ($assinaturaGateway === 'pending' && ($mat['status_codigo'] ?? '') !== 'ativa') {
                 $statusCodigoExibicao = 'pendente';
                 $statusExibicao = 'Pendente';
             }
@@ -253,6 +257,10 @@ class MobilePlanoService
                 ->where('matricula_id', (int) $matriculaAtiva['id'])
                 ->whereIn('status_pagamento_id', [1, 3])
                 ->whereNull('data_pagamento')
+                ->where(function ($q) {
+                    $q->whereNull('observacoes')
+                        ->orWhere('observacoes', 'not like', '%[MIGRACAO_SIMULADA%');
+                })
                 ->orderBy('data_vencimento')
                 ->orderBy('id')
                 ->value('data_vencimento');

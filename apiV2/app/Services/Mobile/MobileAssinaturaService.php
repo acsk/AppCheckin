@@ -41,12 +41,14 @@ class MobileAssinaturaService
             ->leftJoin('assinatura_cancelamento_tipos as ct', 'ct.id', '=', 'a.cancelado_por_id')
             ->leftJoin('assinatura_frequencias as f', 'f.id', '=', 'a.frequencia_id')
             ->leftJoin('assinatura_gateways as g', 'g.id', '=', 'a.gateway_id')
-            ->leftJoin('planos as p', 'p.id', '=', 'a.plano_id')
-            ->leftJoin('modalidades as mo', 'mo.id', '=', 'p.modalidade_id')
             ->leftJoin('matriculas as m', function ($join) {
                 $join->on('m.id', '=', 'a.matricula_id')
                     ->on('m.tenant_id', '=', 'a.tenant_id');
             })
+            ->leftJoin('planos as p', 'p.id', '=', 'a.plano_id')
+            ->leftJoin('modalidades as mo', 'mo.id', '=', 'p.modalidade_id')
+            ->leftJoin('planos as mp', 'mp.id', '=', 'm.plano_id')
+            ->leftJoin('modalidades as mmo', 'mmo.id', '=', 'mp.modalidade_id')
             ->leftJoin('status_matricula as sm', 'sm.id', '=', 'm.status_id')
             ->where('a.aluno_id', $alunoId)
             ->where('a.tenant_id', $tenantId)
@@ -61,6 +63,7 @@ class MobileAssinaturaService
                 'f.nome as ciclo_nome', 'f.meses as ciclo_meses', 'g.nome as gateway_nome',
                 'p.nome as plano_nome', 'p.modalidade_id', 'p.checkins_semanais',
                 'mo.nome as modalidade_nome',
+                'mp.nome as matricula_plano_nome', 'mmo.nome as matricula_modalidade_nome',
                 DB::raw('CASE WHEN m.plano_ciclo_id IS NOT NULL THEN COALESCE((SELECT pc.permite_reposicao FROM plano_ciclos pc WHERE pc.id = m.plano_ciclo_id AND pc.tenant_id = m.tenant_id LIMIT 1), 0) ELSE 1 END as permite_reposicao'),
                 'm.data_inicio as matricula_data_inicio',
                 'm.proxima_data_vencimento as matricula_proxima_vencimento',
@@ -71,6 +74,7 @@ class MobileAssinaturaService
                     WHERE pp.matricula_id = a.matricula_id
                       AND pp.tenant_id = a.tenant_id
                       AND pp.status_pagamento_id IN (1, 3)
+                      AND (pp.observacoes IS NULL OR pp.observacoes NOT LIKE \'%[MIGRACAO_SIMULADA%\')
                 ) as proxima_parcela_vencimento'),
                 DB::raw('(
                     SELECT MAX(pp.data_vencimento)
@@ -183,8 +187,12 @@ class MobileAssinaturaService
                 ],
                 'gateway' => ['nome' => $this->nomeGatewayAssinatura($row)],
                 'plano' => [
-                    'nome' => $row['plano_nome'] ?? '',
-                    'modalidade' => $row['modalidade_nome'] ?? '',
+                    'nome' => $matriculaAtiva
+                        ? (string) ($row['matricula_plano_nome'] ?? $row['plano_nome'] ?? '')
+                        : (string) ($row['plano_nome'] ?? ''),
+                    'modalidade' => $matriculaAtiva
+                        ? (string) ($row['matricula_modalidade_nome'] ?? $row['modalidade_nome'] ?? '')
+                        : (string) ($row['modalidade_nome'] ?? ''),
                 ],
                 'pode_pagar' => false,
                 'pagamento_gateway' => $pagamentoGateway,
@@ -192,12 +200,7 @@ class MobileAssinaturaService
 
             $asaasJaPago = is_array($pagamentoGateway)
                 && AsaasPagamentoStatus::pago((string) ($pagamentoGateway['status'] ?? ''));
-            $parcelaAindaAberta = $matriculaId > 0 && DB::table('pagamentos_plano')
-                ->where('tenant_id', $tenantId)
-                ->where('matricula_id', $matriculaId)
-                ->whereIn('status_pagamento_id', [1, 3])
-                ->whereNull('data_pagamento')
-                ->exists();
+            $parcelaAindaAberta = $matriculaId > 0 && $this->temParcelaDoPlanoAberta($tenantId, $matriculaId);
 
             if ($isPendente && ! empty($row['payment_url']) && ! $asaasJaPago) {
                 $item['payment_url'] = $row['payment_url'];
@@ -249,6 +252,24 @@ class MobileAssinaturaService
                     $item['pode_renovar'] = true;
                     if (! empty($row['payment_url'])) {
                         $item['payment_url'] = $row['payment_url'];
+                    }
+                }
+            }
+
+            if ($matriculaAtiva && $matriculaId > 0 && $this->temMigracaoSimuladaAberta($tenantId, $matriculaId)) {
+                $item['pode_pagar'] = true;
+                if (empty($item['payment_url']) && ! empty($row['payment_url'])) {
+                    $item['payment_url'] = $row['payment_url'];
+                }
+                if (empty($item['payment_url'])) {
+                    $pixUrl = DB::table('pagamentos_pix')
+                        ->where('tenant_id', $tenantId)
+                        ->where('matricula_id', $matriculaId)
+                        ->where('payment_id', 'like', 'pay_%')
+                        ->orderByDesc('id')
+                        ->value('ticket_url');
+                    if (is_string($pixUrl) && $pixUrl !== '') {
+                        $item['payment_url'] = $pixUrl;
                     }
                 }
             }
@@ -761,12 +782,8 @@ class MobileAssinaturaService
             return null;
         }
 
-        $temParcelaAberta = DB::table('pagamentos_plano')
-            ->where('tenant_id', $tenantId)
-            ->where('matricula_id', $matriculaId)
-            ->whereIn('status_pagamento_id', [1, 3])
-            ->whereNull('data_pagamento')
-            ->exists();
+        $temParcelaAberta = $this->temParcelaDoPlanoAberta($tenantId, $matriculaId);
+        $temSimulacaoAberta = $this->temMigracaoSimuladaAberta($tenantId, $matriculaId);
         $cobrancaNova = str_starts_with($preferenceId, 'pay_')
             && ! DB::table('pagamentos_plano')
                 ->where('tenant_id', $tenantId)
@@ -774,8 +791,11 @@ class MobileAssinaturaService
                 ->where('status_pagamento_id', 2)
                 ->where('observacoes', 'like', '%'.$preferenceId.'%')
                 ->exists();
+        if ($temSimulacaoAberta) {
+            $cobrancaNova = false;
+        }
 
-        if (! $isPendente && $matriculaAtiva && ! $temParcelaAberta && ! $cobrancaNova) {
+        if (! $isPendente && $matriculaAtiva && ! $temParcelaAberta && ! $cobrancaNova && ! $temSimulacaoAberta) {
             return null;
         }
 
@@ -797,6 +817,31 @@ class MobileAssinaturaService
             'mensagem' => AsaasPagamentoStatus::mensagem($snap, $ativa),
             'matricula_ativa' => $ativa,
         ]);
+    }
+
+    private function temParcelaDoPlanoAberta(int $tenantId, int $matriculaId): bool
+    {
+        return DB::table('pagamentos_plano')
+            ->where('tenant_id', $tenantId)
+            ->where('matricula_id', $matriculaId)
+            ->whereIn('status_pagamento_id', [1, 3])
+            ->whereNull('data_pagamento')
+            ->where(function ($q) {
+                $q->whereNull('observacoes')
+                    ->orWhere('observacoes', 'not like', '%[MIGRACAO_SIMULADA%');
+            })
+            ->exists();
+    }
+
+    private function temMigracaoSimuladaAberta(int $tenantId, int $matriculaId): bool
+    {
+        return DB::table('pagamentos_plano')
+            ->where('tenant_id', $tenantId)
+            ->where('matricula_id', $matriculaId)
+            ->whereIn('status_pagamento_id', [1, 3])
+            ->whereNull('data_pagamento')
+            ->where('observacoes', 'like', '%[MIGRACAO_SIMULADA%')
+            ->exists();
     }
 
     /**

@@ -78,6 +78,15 @@ import React from 'react';
     'arrow-right': [P('M5 12h14'), P('m12 5 7 7-7 7')]
   };
 
+  Object.assign(ICONS, {
+    'chevron-left': [P('m15 18-6-6 6-6')],
+    'banknote': [R(2, 6, 20, 12, 2), Ci(12, 12, 2), P('M6 12h.01M18 12h.01')],
+    'qr-code': [R(3, 3, 5, 5, 1), R(16, 3, 5, 5, 1), R(3, 16, 5, 5, 1), P('M21 16h-3a2 2 0 0 0-2 2v3'), P('M21 21v.01'), P('M12 7v3a2 2 0 0 1-2 2H7'), P('M3 12h.01'), P('M12 3h.01'), P('M12 16v.01'), P('M16 12h1'), P('M21 12v.01'), P('M12 21v-1')],
+    'landmark': [P('M3 22h18'), P('M6 18v-7'), P('M10 18v-7'), P('M14 18v-7'), P('M18 18v-7'), P('m12 2 8 5H4z')],
+    'paperclip': [P('m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48')],
+    'clipboard': [R(8, 2, 8, 4, 1), P('M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2')]
+  });
+
   function Icon(p) {
     var parts = ICONS[p.name] || [];
     var size = p.size || 18;
@@ -536,7 +545,8 @@ import React from 'react';
 
   /* ---------- Modal ---------- */
   function Modal(p) {
-    var ref = useRef(null), id = useId();
+    var ref = useRef(null), id = useId(), close = useRef(null);
+    close.current = p.dismissable === false ? null : p.onClose;
     useEffect(function () {
       if (!p.open) return;
       var prev = document.activeElement;
@@ -544,7 +554,7 @@ import React from 'react';
       var first = el && el.querySelector(p.initialFocus || 'input:not([type="date"]), select, textarea');
       if (first && p.autoFocus !== false) first.focus(); else if (el) el.focus();
       function key(e) {
-        if (e.key === 'Escape' && p.onClose) { e.preventDefault(); p.onClose(); }
+        if (e.key === 'Escape' && close.current) { e.preventDefault(); close.current(); }
         if (e.key === 'Tab' && el) {
           var f = el.querySelectorAll('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea, [href], [tabindex]:not([tabindex="-1"])');
           if (!f.length) return;
@@ -557,13 +567,14 @@ import React from 'react';
       return function () { document.removeEventListener('keydown', key); if (prev && prev.focus) prev.focus(); };
     }, [p.open]);
     if (!p.open) return null;
-    return h('div', { className: cx('ck-modal', p.inline && 'ck-modal--inline'), onMouseDown: function (e) { if (e.target === e.currentTarget && p.onClose && p.dismissable !== false) p.onClose(); } },
+    return h('div', { className: cx('ck-modal', p.inline && 'ck-modal--inline', p.sheet && 'ck-modal--sheet'), onMouseDown: function (e) { if (e.target === e.currentTarget && close.current) close.current(); } },
       h('div', { className: cx('ck-modal__dialog', 'ck-modal__dialog--' + (p.size || 'md')), role: 'dialog', 'aria-modal': true, 'aria-labelledby': id, tabIndex: -1, ref: ref },
         h('header', { className: 'ck-modal__head' },
+          p.leading || null,
           h('div', { style: { flex: 1, minWidth: 0 } },
             h('h2', { className: 'ck-modal__title', id: id }, p.title),
             p.description ? h('p', { className: 'ck-modal__desc' }, p.description) : null),
-          h(IconButton, { icon: 'x', label: 'Fechar', className: 'ck-modal__close', onClick: p.onClose })),
+          h(IconButton, { icon: 'x', label: 'Fechar', className: 'ck-modal__close', disabled: p.dismissable === false, onClick: p.onClose })),
         h('div', { className: 'ck-modal__body' }, p.children),
         p.footer ? h('footer', { className: 'ck-modal__foot' }, p.footer) : null));
   }
@@ -799,5 +810,287 @@ import React from 'react';
 
   var api = { AppShell: AppShell, Sidebar: Sidebar, AppHeader: AppHeader, PageHeader: PageHeader, Button: Button, IconButton: IconButton, Switch: Switch, SegmentedControl: SegmentedControl, TextField: TextField, SecretField: SecretField, Fieldset: Fieldset, Card: Card, ProviderCard: ProviderCard, ProviderTile: ProviderTile, ProviderLogo: ProviderLogo, ChoiceCard: ChoiceCard, ChoiceGroup: ChoiceGroup, Tabs: Tabs, SaveBar: SaveBar, ActionMenu: ActionMenu, Matricula: Matricula, Modal: Modal, SelectField: SelectField, PacoteMatricula: PacoteMatricula, DescontoModal: DescontoModal, Badge: Badge, Callout: Callout, Avatar: Avatar, Icon: Icon };
 
-export { AppShell, Sidebar, AppHeader, PageHeader, Button, IconButton, Switch, SegmentedControl, TextField, SecretField, Fieldset, Card, ProviderCard, ProviderTile, ProviderLogo, ChoiceCard, ChoiceGroup, Tabs, SaveBar, ActionMenu, Matricula, Modal, SelectField, PacoteMatricula, DescontoModal, Badge, Callout, Avatar, Icon };
+  function titleCase(n) {
+    if (!n) return n;
+    var low = ['da', 'de', 'do', 'das', 'dos', 'e'];
+    return String(n).toLowerCase().split(/\s+/).map(function (w, i) { return i > 0 && low.indexOf(w) >= 0 ? w : w.charAt(0).toUpperCase() + w.slice(1); }).join(' ');
+  }
+  function addMonths(iso, m) { var d = pd(iso); d.setMonth(d.getMonth() + m); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function addDays(iso, n) { var d = pd(iso); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+
+  function TextAreaField(p) {
+    var auto = useId(), id = p.id || auto;
+    var rest = omit(p, ['label', 'hint', 'error', 'className', 'id', 'labelAside']);
+    return FieldShell(p, id, h('div', { className: cx('ck-control ck-textarea', p.error && 'is-invalid') },
+      h('textarea', Object.assign({ id: id, rows: 3, className: 'ck-control__input', 'aria-describedby': (p.hint || p.error) ? id + '-m' : undefined }, rest))));
+  }
+
+  /* ---------- BaixaModal ---------- */
+  var PAY_METHODS = [
+    { value: 'pix', label: 'Pix', icon: 'qr-code' },
+    { value: 'dinheiro', label: 'Dinheiro', icon: 'banknote' },
+    { value: 'credito', label: 'Cartão de crédito', icon: 'credit-card' },
+    { value: 'debito', label: 'Cartão de débito', icon: 'credit-card' },
+    { value: 'transferencia', label: 'Transferência', icon: 'landmark' },
+    { value: 'boleto', label: 'Boleto', icon: 'receipt' }
+  ];
+  function BaixaModal(p) {
+    var inv = p.invoice || {};
+    var method = useState(p.defaultMethod || ''), paid = useState(p.today || ''), due = useState(inv.dueDate || '');
+    var editDue = useState(false), more = useState(false), receipt = useState(''), notes = useState(p.defaultNotes || ''), tried = useState(false);
+    var methods = p.methods || PAY_METHODS;
+    var errs = {};
+    if (!methods.some(function (m) { return m.value === method[0]; })) errs.method = 'Escolha a forma de pagamento.';
+    if (!paid[0]) errs.paid = 'Informe a data do pagamento.';
+    if (p.canEditDue !== false && !due[0]) errs.due = 'Informe a data de vencimento.';
+    else if (p.minDueDate && due[0] < p.minDueDate) errs.due = 'O vencimento não pode ser anterior ao mês atual.';
+    var late = paid[0] && due[0] ? dayDiff(due[0], paid[0]) : 0;
+    function confirm() {
+      tried[1](true);
+      if (Object.keys(errs).length || p.confirming || p.disabled) return;
+      p.onConfirm && p.onConfirm({ invoiceId: inv.id, method: method[0], paidDate: paid[0], dueDate: due[0], receipt: receipt[0] || null, notes: notes[0] || null });
+    }
+    return h(Modal, { open: p.open, onClose: p.onCancel, dismissable: !p.confirming, inline: p.inline, sheet: true, size: 'md', autoFocus: false,
+      leading: h('span', { className: 'ck-bx__icon', 'aria-hidden': true }, h(Icon, { name: 'check-circle', size: 20, strokeWidth: 2 })),
+      title: 'Dar baixa' + (inv.number != null ? ' na parcela ' + inv.number : ''),
+      description: [inv.id ? 'Fatura ' + inv.id : null, p.student ? 'de ' + titleCase(p.student) : null].filter(Boolean).join(' '),
+      footer: h(React.Fragment, null,
+        h('span', { style: { flex: 1 } }),
+        h(Button, { variant: 'ghost', disabled: p.confirming, onClick: p.onCancel }, 'Cancelar'),
+        h(Button, { variant: 'primary', icon: 'check', disabled: p.disabled, loading: p.confirming, onClick: confirm }, p.confirming ? 'Registrando…' : 'Confirmar baixa de ' + money(inv.amount)))
+    },
+      h('fieldset', { className: 'ck-bx ck-enrollment-fields', disabled: p.confirming },
+        p.error ? h('p', { role: 'alert', className: 'ck-field__error' }, p.error) : null,
+        p.errorAction || null,
+        h('div', { className: 'ck-bx__summary' },
+          h('div', { className: 'ck-bx__amount' }, h('span', null, 'Valor'), h('strong', null, money(inv.amount))),
+          h('dl', { className: 'ck-bx__facts' },
+            h('div', null, h('dt', null, 'Vencimento'), h('dd', null, editDue[0] ? h('input', { type: 'date', min: p.minDueDate, className: 'ck-bx__dateinline', value: due[0], 'aria-label': 'Data de vencimento', onChange: function (e) { due[1](e.target.value); } }) : fdate(due[0]),
+              !editDue[0] && p.canEditDue !== false ? h('button', { type: 'button', className: 'ck-linkbtn', onClick: function () { editDue[1](true); } }, 'Alterar') : null)),
+            p.student ? h('div', null, h('dt', null, 'Aluno'), h('dd', null, titleCase(p.student))) : null,
+            p.plan ? h('div', null, h('dt', null, 'Plano'), h('dd', null, p.plan)) : null)),
+        tried[0] && errs.due ? h('p', { role: 'alert', className: 'ck-field__error' }, errs.due) : null,
+        h('div', { className: 'ck-section' },
+          h('span', { className: 'ck-field__label', id: 'bx-m' }, 'Forma de pagamento'),
+          h('div', { className: 'ck-bx__methods', role: 'radiogroup', 'aria-labelledby': 'bx-m' }, methods.map(function (m) {
+            var on = method[0] === m.value;
+            return h('button', { key: m.value, type: 'button', role: 'radio', 'aria-checked': on, className: 'ck-bx__method', onClick: function () { method[1](m.value); } },
+              h(Icon, { name: m.icon || 'wallet', size: 18 }), h('span', null, m.label));
+          })),
+          tried[0] && errs.method ? h('span', { className: 'ck-field__error' }, h(Icon, { name: 'alert-triangle', size: 13 }), errs.method) : null),
+        h(TextField, { label: 'Data do pagamento', type: 'date', value: paid[0], onChange: function (e) { paid[1](e.target.value); }, error: tried[0] ? errs.paid : null,
+          hint: late > 0 ? 'Pago ' + late + (late === 1 ? ' dia' : ' dias') + ' depois do vencimento.' : late < 0 ? 'Pago ' + (-late) + (late === -1 ? ' dia' : ' dias') + ' antes do vencimento.' : 'Pago no dia do vencimento.' }),
+        more[0] ? h(React.Fragment, null,
+          p.allowReceipt !== false ? h(TextField, { label: 'Comprovante', icon: 'paperclip', value: receipt[0], onChange: function (e) { receipt[1](e.target.value); }, placeholder: 'Link ou código do comprovante', labelAside: h('span', { className: 'ck-field__hint' }, 'Opcional') }) : null,
+          h(TextAreaField, { label: 'Observação', value: notes[0], onChange: function (e) { notes[1](e.target.value); }, placeholder: 'Aparece no histórico da fatura', labelAside: h('span', { className: 'ck-field__hint' }, 'Opcional') }))
+          : h('button', { type: 'button', className: 'ck-bx__more', onClick: function () { more[1](true); } }, h(Icon, { name: 'plus', size: 16 }), p.allowReceipt === false ? 'Adicionar observação' : 'Adicionar comprovante ou observação'),
+        p.nextNote !== false ? h('p', { className: 'ck-bx__note' }, h(Icon, { name: 'info', size: 15 }), p.nextNote || 'Ao confirmar, a próxima parcela é gerada automaticamente.') : null));
+  }
+
+  /* ---------- MatriculasLista ---------- */
+  var LIST_STATUS = {
+    ativa: ['success', 'Ativa', 'Ativas'], pendente: ['warning', 'Pendente', 'Pendentes'], vencida: ['danger', 'Vencida', 'Vencidas'],
+    cancelada: ['neutral', 'Cancelada', 'Canceladas'], finalizada: ['outline', 'Finalizada', 'Finalizadas'], bloqueada: ['outline', 'Bloqueada', 'Bloqueadas']
+  };
+  function MatriculasLista(p) {
+    var qs = useControlled(p.query, '', p.onQueryChange), q = qs[0];
+    var fs = useControlled(p.status, 'todas', p.onStatusChange), f = fs[0];
+    var counts = p.counts || {};
+    var rows = (p.rows || []).filter(function (r) {
+      if (p.onStatusChange == null && f !== 'todas' && r.status !== f) return false;
+      if (p.onQueryChange == null && q) {
+        var t = (r.student.name + ' ' + (r.student.email || '') + ' ' + r.plan + ' ' + r.modality + ' ' + r.code).toLowerCase();
+        return t.indexOf(q.toLowerCase()) >= 0;
+      }
+      return true;
+    });
+    var page = p.page || 1, size = p.pageSize || rows.length || 1;
+    var total = p.total != null ? p.total : rows.length;
+    var pages = Math.max(1, Math.ceil(total / size));
+    var from = total ? (page - 1) * size + 1 : 0, to = Math.min(total, (page - 1) * size + rows.length);
+    var filters = [['todas', 'Todas']].concat(Object.keys(LIST_STATUS).map(function (k) { return [k, LIST_STATUS[k][2]]; }));
+    return h('div', { className: 'ck-ml' },
+      h(PageHeader, { title: 'Matrículas', description: 'Acompanhe quem está matriculado, em qual plano e até quando tem acesso.',
+        actions: h(Button, { variant: 'primary', icon: 'plus', onClick: p.onNew }, 'Nova matrícula') }),
+      h('section', { className: 'ck-card ck-ml__panel', 'aria-label': 'Lista de matrículas' },
+        h('div', { className: 'ck-ml__toolbar' },
+          h('div', { className: 'ck-control ck-ml__search' },
+            h(Icon, { name: 'search', size: 18, className: 'ck-control__icon' }),
+            h('input', { type: 'search', className: 'ck-control__input', value: q, placeholder: 'Buscar por aluno, e-mail, plano ou código', 'aria-label': 'Buscar matrículas', onChange: function (e) { qs[1](e.target.value); } }),
+            q ? h(IconButton, { icon: 'x', label: 'Limpar busca', size: 'sm', onClick: function () { qs[1](''); } }) : null),
+          p.toolbarActions || null,
+          h('div', { className: 'ck-ml__filters', role: 'radiogroup', 'aria-label': 'Filtrar por status' }, filters.map(function (x) {
+            var on = f === x[0];
+            return h('button', { key: x[0], type: 'button', role: 'radio', 'aria-checked': on, className: 'ck-ml__chip', onClick: function () { fs[1](x[0]); } },
+              x[0] !== 'todas' ? h('span', { className: 'ck-ml__chipdot ck-ml__chipdot--' + LIST_STATUS[x[0]][0], 'aria-hidden': true }) : null,
+              x[1], counts[x[0]] != null ? h('span', { className: 'ck-ml__count' }, counts[x[0]]) : null);
+          }))),
+        p.error ? h('p', { role: 'alert', className: 'ck-enrollment-state' }, p.error) :
+        p.loading ? h('p', { role: 'status', className: 'ck-enrollment-state' }, 'Carregando matrículas…') :
+        rows.length ? h('div', { className: 'ck-mt-table-wrap' },
+          h('table', { className: 'ck-mt-table ck-ml__table' },
+            h('thead', null, h('tr', null,
+              h('th', { scope: 'col' }, 'Nº'), h('th', { scope: 'col' }, 'Aluno'), h('th', { scope: 'col' }, 'Plano'), h('th', { scope: 'col', className: 'is-num' }, 'Valor'),
+              h('th', { scope: 'col' }, 'Acesso'), h('th', { scope: 'col' }, 'Status'), h('th', { scope: 'col' }, h('span', { className: 'ck-sr' }, 'Ações')))),
+            h('tbody', null, rows.map(function (r) {
+              var st = LIST_STATUS[r.status] || ['neutral', 'Desconhecido'];
+              var left = p.today && r.accessUntil ? dayDiff(p.today, r.accessUntil) : null;
+              var leftTxt = left == null ? null : left > 0 ? 'Termina em ' + left + (left === 1 ? ' dia' : ' dias') : left === 0 ? 'Termina hoje' : 'Terminou há ' + (-left) + (left === -1 ? ' dia' : ' dias');
+              return h('tr', { key: r.id, className: 'ck-ml__row', onClick: function (e) { if (!e.target.closest('button, a')) p.onOpen && p.onOpen(r); } },
+                h('td', { className: 'ck-ml__code' }, r.code),
+                h('td', null, h('div', { className: 'ck-ml__who' },
+                  h(Avatar, { name: titleCase(r.student.name), size: 'sm', decorative: true }),
+                  h('span', { style: { minWidth: 0 } },
+                    h('a', { href: r.href || '#', className: 'ck-ml__name', onClick: function (e) { if (p.onOpen) { e.preventDefault(); p.onOpen(r); } } }, titleCase(r.student.name)),
+                    h('span', { className: 'ck-mt-cell__sub' }, r.student.email)))),
+                h('td', null, h('div', { className: 'ck-ml__plan' },
+                  h('span', { className: 'ck-ml__mod', 'aria-hidden': true }, h(Icon, { name: r.modalityIcon || 'dumbbell', size: 16 })),
+                  h('span', null, h('span', { className: 'ck-mt-cell__main' }, r.modality), h('span', { className: 'ck-mt-cell__sub' }, r.plan)))),
+                h('td', { className: 'is-num' }, h('span', { className: 'ck-mt-cell__main' }, money(r.amount)), r.cycle ? h('span', { className: 'ck-mt-cell__sub' }, r.cycle) : null),
+                h('td', { title: 'De ' + fdate(r.startDate) + ' a ' + fdate(r.accessUntil) }, h('span', { className: 'ck-mt-cell__main' }, 'Até ' + fdate(r.accessUntil)),
+                  leftTxt ? h('span', { className: cx('ck-mt-cell__sub', left < 0 && 'is-late') }, leftTxt) : null),
+                h('td', null, h(Badge, { tone: st[0], dot: st[0] !== 'outline', icon: r.status === 'bloqueada' ? 'lock' : undefined }, st[1])),
+                h('td', { className: 'ck-mt-actions' },
+                  h(ActionMenu, { label: 'Ações da matrícula ' + r.code, items: [
+                    { label: 'Abrir matrícula', icon: 'arrow-right', onClick: function () { p.onOpen && p.onOpen(r); } }].concat(p.onDelete ? ['-',
+                    { label: 'Excluir matrícula', icon: 'trash', danger: true, onClick: function () { p.onDelete(r); } }] : []) })));
+            })))) :
+          h('div', { className: 'ck-ml__empty' },
+            h('span', { className: 'ck-mt-empty__icon', 'aria-hidden': true }, h(Icon, { name: 'search', size: 20 })),
+            h('strong', null, q ? 'Nenhuma matrícula encontrada para "' + q + '"' : 'Nenhuma matrícula neste filtro'),
+            h('p', null, q ? 'Confira a grafia ou busque pelo e-mail do aluno.' : 'Escolha outro status ou crie uma nova matrícula.'),
+            q ? h(Button, { size: 'sm', onClick: function () { qs[1](''); } }, 'Limpar busca') : h(Button, { size: 'sm', icon: 'plus', onClick: p.onNew }, 'Nova matrícula')),
+        h('footer', { className: 'ck-ml__foot' },
+          h('span', null, total ? 'Mostrando ' + from + ' a ' + to + ' de ' + total : 'Nenhum resultado'),
+          pages > 1 ? h('nav', { className: 'ck-ml__pager', 'aria-label': 'Páginas' },
+            h(IconButton, { icon: 'chevron-left', label: 'Página anterior', size: 'sm', variant: 'secondary', disabled: page <= 1, onClick: function () { p.onPageChange && p.onPageChange(page - 1); } }),
+            h('span', { className: 'ck-ml__pageinfo' }, 'Página ' + page + ' de ' + pages),
+            h(IconButton, { icon: 'chevron-right', label: 'Próxima página', size: 'sm', variant: 'secondary', disabled: page >= pages, onClick: function () { p.onPageChange && p.onPageChange(page + 1); } })) : null)));
+  }
+
+  /* ---------- NovaMatricula ---------- */
+  function NovaMatricula(p) {
+    var students = p.students || [], mods = p.modalities || [], plans = p.plans || [], cycles = p.cycles || [], pkgs = p.packages || [];
+    var stu = useControlled(p.studentId, p.defaultStudentId || null, p.onStudentChange), q = useState(''), openList = useState(false);
+    var dfl = p.defaults || {};
+    var kind = useControlled(p.type, dfl.type || 'plano', p.onTypeChange);
+    var mod = useControlled(p.modalityId, dfl.modalityId || null, p.onModalityChange);
+    var plan = useControlled(p.planId, dfl.planId || null, p.onPlanChange);
+    var cyc = useControlled(p.cycleId, dfl.cycleId || null, p.onCycleChange);
+    var pk = useControlled(p.packageId, dfl.packageId || null, p.onPackageChange);
+    var start = useState(p.today || ''), tried = useState(false);
+    var student = students.filter(function (s) { return s.id === stu[0]; })[0];
+    var modPlans = plans.filter(function (x) { return x.modalityId === mod[0]; });
+    var planObj = plans.filter(function (x) { return x.id === plan[0]; })[0];
+    var planCycles = cycles.filter(function (c) { return c.planId === plan[0]; });
+    var cycObj = cycles.filter(function (c) { return c.id === cyc[0]; })[0];
+    var pkgObj = pkgs.filter(function (x) { return x.id === pk[0]; })[0];
+    var modObj = mods.filter(function (m) { return m.id === mod[0]; })[0];
+    var results = q[0] ? students.filter(function (s) { return (s.name + ' ' + s.email).toLowerCase().indexOf(q[0].toLowerCase()) >= 0; }).slice(0, 6) : [];
+    var missing = [];
+    if (!student) missing.push('aluno');
+    if (kind[0] === 'plano') { if (!modObj) missing.push('modalidade'); if (!planObj) missing.push('plano'); if (!cycObj) missing.push('ciclo'); }
+    else if (!pkgObj) missing.push('pacote');
+    var total = kind[0] === 'plano' ? (cycObj ? cycObj.price : null) : (pkgObj ? pkgObj.price : null);
+    var until = p.showAccessEstimate !== false && start[0] ? (kind[0] === 'plano' && cycObj ? addMonths(start[0], cycObj.months) : (pkgObj && pkgObj.durationDays ? addDays(start[0], pkgObj.durationDays) : null)) : null;
+    function submit() {
+      tried[1](true);
+      if (missing.length || p.submitting) return;
+      p.onSubmit && p.onSubmit({ studentId: student.id, type: kind[0], modalityId: mod[0], planId: plan[0], cycleId: cyc[0], packageId: pk[0], startDate: start[0], total: total });
+    }
+    function step(n, title, done, body, aside) {
+      return h('section', { className: cx('ck-nm__step', done && 'is-done') },
+        h('header', { className: 'ck-nm__stephead' },
+          h('span', { className: 'ck-nm__num', 'aria-hidden': true }, done ? h(Icon, { name: 'check', size: 14, strokeWidth: 3 }) : n),
+          h('h2', null, title), aside || null),
+        h('div', { className: 'ck-nm__stepbody' }, body));
+    }
+    var n = 1;
+    return h('div', { className: 'ck-nm' },
+      p.onBack ? h('button', { type: 'button', className: 'ck-mt-back', onClick: p.onBack }, h(Icon, { name: 'arrow-left', size: 16 }), 'Matrículas') : null,
+      h(PageHeader, { title: 'Nova matrícula', description: 'Escolha o aluno e o plano. O resumo ao lado mostra o que será cobrado.' }),
+      h('div', { className: 'ck-nm__grid' },
+        h('fieldset', { className: 'ck-card ck-nm__form ck-enrollment-fields', disabled: p.submitting },
+          step(n++, 'Aluno', !!student, student
+            ? h('div', { className: 'ck-nm__student' },
+                h(Avatar, { name: titleCase(student.name), size: 'md', decorative: true }),
+                h('span', { style: { flex: 1, minWidth: 0 } }, h('strong', null, titleCase(student.name)), h('span', null, student.email)),
+                h(Button, { size: 'sm', variant: 'ghost', icon: 'repeat', onClick: function () { stu[1](null); q[1](''); } }, 'Trocar'))
+            : h('div', { className: 'ck-nm__combo' },
+                h('div', { className: cx('ck-control', tried[0] && 'is-invalid') },
+                  h(Icon, { name: 'search', size: 18, className: 'ck-control__icon' }),
+                  h('input', { className: 'ck-control__input', placeholder: 'Buscar aluno por nome ou e-mail', value: q[0], 'aria-label': 'Buscar aluno', role: 'combobox', 'aria-expanded': results.length > 0,
+                    onChange: function (e) { q[1](e.target.value); openList[1](true); }, onFocus: function () { openList[1](true); } })),
+                openList[0] && q[0] ? h('ul', { className: 'ck-nm__results', role: 'listbox' }, results.length ? results.map(function (s) {
+                  return h('li', { key: s.id }, h('button', { type: 'button', role: 'option', onClick: function () { stu[1](s.id); openList[1](false); } },
+                    h(Avatar, { name: titleCase(s.name), size: 'sm', decorative: true }),
+                    h('span', null, h('strong', null, titleCase(s.name)), h('span', null, s.email))));
+                }) : h('li', { className: 'ck-nm__noresult' }, 'Nenhum aluno com esse nome. ', p.onCreateStudent ? h('button', { type: 'button', className: 'ck-linkbtn', onClick: p.onCreateStudent }, 'Cadastrar aluno') : null)) : null,
+                tried[0] ? h('span', { className: 'ck-field__error' }, h(Icon, { name: 'alert-triangle', size: 13 }), 'Escolha o aluno.') : null)),
+          step(n++, 'Tipo de matrícula', true,
+            h(ChoiceGroup, { label: 'Tipo de matrícula', className: 'ck-nm__two' },
+              h(ChoiceCard, { checked: kind[0] === 'plano', onSelect: function () { kind[1]('plano'); }, title: 'Plano', description: 'Uma modalidade, cobrada por ciclo.' }),
+              h(ChoiceCard, { checked: kind[0] === 'pacote', onSelect: function () { kind[1]('pacote'); }, title: 'Pacote', description: 'Grupo ou família com valor rateado.' }))),
+          kind[0] === 'plano' ? h(React.Fragment, null,
+            step(n++, 'Modalidade', !!modObj,
+              h('div', { className: 'ck-nm__mods', role: 'radiogroup', 'aria-label': 'Modalidade' }, mods.map(function (m) {
+                var on = m.id === mod[0];
+                return h('button', { key: m.id, type: 'button', role: 'radio', 'aria-checked': on, className: 'ck-nm__mod', onClick: function () { mod[1](m.id); plan[1](null); cyc[1](null); } },
+                  h('span', { className: 'ck-ml__mod', 'aria-hidden': true }, h(Icon, { name: m.icon || 'dumbbell', size: 16 })), m.name);
+              }))),
+            step(n++, 'Plano', !!planObj, modObj ? h('div', { className: 'ck-nm__plans', role: 'radiogroup', 'aria-label': 'Plano' }, modPlans.map(function (x) {
+                var on = x.id === plan[0];
+                return h('button', { key: x.id, type: 'button', role: 'radio', 'aria-checked': on, className: 'ck-nm__plan', onClick: function () { plan[1](x.id); var c = cycles.filter(function (c) { return c.planId === x.id; }); cyc[1](c.length === 1 ? c[0].id : null); } },
+                  h('span', { className: 'ck-nm__planname' }, x.name, x.tag ? h(Badge, { tone: 'outline' }, x.tag) : null),
+                  h('span', { className: 'ck-nm__planprice' }, x.price ? money(x.price) : 'Sem custo', x.price ? h('span', null, '/mês') : null),
+                  x.frequency && x.frequency !== x.name ? h('span', { className: 'ck-nm__planmeta' }, h(Icon, { name: 'calendar', size: 14 }), x.frequency) : null,
+                  x.durationDays != null ? h('span', { className: 'ck-nm__planmeta' }, h(Icon, { name: 'clock', size: 14 }), x.durationDays + (x.durationDays === 1 ? ' dia de acesso' : ' dias de acesso')) : null,
+                  h('span', { className: 'ck-tile__check', 'aria-hidden': true }, h(Icon, { name: 'check', size: 14, strokeWidth: 3 })));
+              })) : h('p', { className: 'ck-nm__wait' }, 'Escolha a modalidade para ver os planos.')),
+            step(n++, 'Ciclo de pagamento', !!cycObj, p.loadingCycles ? h('p', { role: 'status' }, 'Carregando ciclos…') : planObj ? h('div', { className: 'ck-nm__cycles', role: 'radiogroup', 'aria-label': 'Ciclo de pagamento' }, planCycles.length ? planCycles.map(function (c) {
+                var on = c.id === cyc[0];
+                var monthly = c.months ? c.price / c.months : c.price;
+                return h('button', { key: c.id, type: 'button', role: 'radio', 'aria-checked': on, className: 'ck-nm__cycle', onClick: function () { cyc[1](c.id); } },
+                  h('span', { className: 'ck-nm__cyclehead' }, h('strong', null, c.label), c.discountPct ? h(Badge, { tone: 'success' }, Math.round(c.discountPct) + '% de desconto') : null),
+                  h('span', { className: 'ck-nm__planprice' }, money(c.price)),
+                  h('span', { className: 'ck-nm__cyclesub' }, c.months > 1 ? 'Equivale a ' + money(monthly) + ' por mês, cobrado a cada ' + c.months + ' meses' : 'Cobrado todo mês'),
+                  c.note ? h('span', { className: 'ck-nm__cyclesub' }, c.note) : null,
+                  h('span', { className: 'ck-tile__check', 'aria-hidden': true }, h(Icon, { name: 'check', size: 14, strokeWidth: 3 })));
+              }) : h('p', { className: 'ck-nm__wait' }, 'Nenhum ciclo disponível para este plano.')) : h('p', { className: 'ck-nm__wait' }, 'Escolha o plano para ver os ciclos.'))) :
+            step(n++, 'Pacote', !!pkgObj, pkgs.length ? h('div', { className: 'ck-nm__cycles', role: 'radiogroup', 'aria-label': 'Pacote' }, pkgs.map(function (x) {
+              var on = x.id === pk[0];
+              return h('button', { key: x.id, type: 'button', role: 'radio', 'aria-checked': on, className: 'ck-nm__cycle', onClick: function () { pk[1](x.id); } },
+                h('span', { className: 'ck-nm__cyclehead' }, h('strong', null, x.name), h(Badge, { icon: 'users' }, x.people + ' pessoas')),
+                h('span', { className: 'ck-nm__planprice' }, money(x.price)),
+                h('span', { className: 'ck-nm__cyclesub' }, x.people + ' beneficiários', x.durationDays ? ', ' + x.durationDays + ' dias' : ''),
+                h('span', { className: 'ck-tile__check', 'aria-hidden': true }, h(Icon, { name: 'check', size: 14, strokeWidth: 3 })));
+            })) : h('p', { className: 'ck-nm__wait' }, 'Nenhum pacote cadastrado.')),
+          p.children || null),
+        h('aside', { className: 'ck-nm__summary', 'aria-label': 'Resumo da matrícula' },
+          h('h2', null, 'Resumo'),
+          h('dl', null,
+            h('div', null, h('dt', null, 'Aluno'), h('dd', { className: student ? null : 'is-empty' }, student ? titleCase(student.name) : 'Não escolhido')),
+            kind[0] === 'plano' ? h(React.Fragment, null,
+              h('div', null, h('dt', null, 'Modalidade'), h('dd', { className: modObj ? null : 'is-empty' }, modObj ? modObj.name : 'Não escolhida')),
+              h('div', null, h('dt', null, 'Plano'), h('dd', { className: planObj ? null : 'is-empty' }, planObj ? planObj.name : 'Não escolhido')),
+              h('div', null, h('dt', null, 'Ciclo'), h('dd', { className: cycObj ? null : 'is-empty' }, cycObj ? cycObj.label : 'Não escolhido'))) :
+              h('div', null, h('dt', null, 'Pacote'), h('dd', { className: pkgObj ? null : 'is-empty' }, pkgObj ? pkgObj.name : 'Não escolhido'))),
+          h('div', { className: 'ck-nm__start' },
+            h('label', { htmlFor: 'nm-start' }, 'Início do acesso'),
+            h('input', { id: 'nm-start', type: 'date', value: start[0], readOnly: p.startDateEditable === false, onChange: function (e) { start[1](e.target.value); } }),
+            p.startDateEditable === false ? h('span', null, 'Definido automaticamente ao confirmar a matrícula.') : null,
+            until ? h('span', null, 'Acesso até ' + fdate(until)) : null),
+          h('div', { className: 'ck-nm__total' },
+            h('span', null, 'Primeira cobrança'),
+            h('strong', null, total != null ? money(total) : 'R$ —'),
+            cycObj && cycObj.discountPct ? h('span', { className: 'ck-nm__save' }, 'Economia de ' + Math.round(cycObj.discountPct) + '% sobre o mensal') : null),
+          tried[0] && missing.length ? h('p', { className: 'ck-field__error' }, h(Icon, { name: 'alert-triangle', size: 13 }), 'Falta escolher: ' + missing.join(', ') + '.') :
+            (missing.length ? h('p', { className: 'ck-nm__missing' }, 'Falta escolher: ' + missing.join(', ') + '.') : null),
+          h(Button, { variant: 'primary', size: 'lg', block: true, icon: 'check', loading: p.submitting, onClick: submit }, p.submitting ? 'Matriculando…' : 'Matricular' + (student ? ' ' + titleCase(student.name).split(' ')[0] : '')),
+          p.error ? h('p', { role: 'alert', className: 'ck-field__error' }, p.error) : null,
+          h(Button, { variant: 'ghost', block: true, disabled: p.submitting, onClick: p.onCancel }, 'Cancelar'))));
+  }
+
+
+export { BaixaModal, MatriculasLista, NovaMatricula, TextAreaField, AppShell, Sidebar, AppHeader, PageHeader, Button, IconButton, Switch, SegmentedControl, TextField, SecretField, Fieldset, Card, ProviderCard, ProviderTile, ProviderLogo, ChoiceCard, ChoiceGroup, Tabs, SaveBar, ActionMenu, Matricula, Modal, SelectField, PacoteMatricula, DescontoModal, Badge, Callout, Avatar, Icon };
 export default api;
