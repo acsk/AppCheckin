@@ -196,7 +196,7 @@ export default function FormMatriculaScreen() {
           {selectionError ? <div role="alert"><p>{selectionError}</p><Button onClick={() => setReload((v) => v + 1)}>Tentar novamente</Button></div> : null}
           <NovaMatricula
             students={alunos.map((a) => ({ id: String(a.id), name: a.nome, email: a.email || '' }))}
-            modalities={modalidades.map((m) => ({ id: String(m.id), name: m.nome }))}
+            modalities={modalidades.map((m) => ({ id: String(m.id), name: m.nome, icon: m.icone, color: m.cor }))}
             plans={planos.map((p) => ({ id: String(p.id), modalityId: String(p.modalidade_id), name: p.nome, price: Number(p.valor), frequency: `${p.checkins_semanais}x por semana`, durationDays: p.duracao_dias }))}
             cycles={ciclos.map((c) => ({ id: String(c.id), planId: form.plano_id, label: c.frequencia_nome || c.nome || 'Ciclo', months: Number(c.meses), price: Number(c.valor), discountPct: Number(c.desconto_percentual), note: c.permite_recorrencia ? 'Permite recorrência' : 'Pagamento avulso' }))}
             packages={pacotes.map((p) => ({ id: String(p.id), name: p.nome, people: Number(p.qtd_beneficiarios || 0), price: Number(p.valor_total), durationDays: p.duracao_dias }))}

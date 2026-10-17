@@ -18,7 +18,11 @@ const toPlan = (p) => ({
   durationDays: Number(p.duracao_dias) || 0,
   active: bool(p.ativo),
   open: bool(p.atual),
-  modality: { name: p.modalidade_nome, color: p.modalidade_cor },
+  modality: {
+    name: p.modalidade_nome || p.modalidade?.nome,
+    color: p.modalidade_cor || p.modalidade?.cor,
+    icon: p.modalidade_icone || p.modalidade?.icone,
+  },
   tenantName: p.academia_nome || p.tenant_nome,
   cycles: Array.isArray(p.ciclos)
     ? [...p.ciclos].sort((a, b) => (a.meses || 0) - (b.meses || 0)).map((c) => ({ id: c.id, label: c.frequencia_nome || c.nome, months: c.meses }))

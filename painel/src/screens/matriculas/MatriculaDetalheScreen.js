@@ -1225,9 +1225,8 @@ export default function MatriculaDetalheScreen() {
   const statusDs = STATUS_DS[Number(matricula.status_id)] || ['ativa', 'neutral', getStatusLabel(matricula.status_id)];
   const limiteEsgotado = Number(matricula.status_id) === 5 && matricula.motivo_status === 'limite_checkins';
   const mesesCiclo = cicloInfo?.meses || 0;
-  const iconeModalidade = /swim|pool|wave|nata/i.test(`${matricula.modalidade_icone || ''} ${matricula.modalidade_nome || ''}`)
-    ? 'waves'
-    : 'dumbbell';
+  const iconeModalidade = matricula.modalidade_icone || matricula.modalidade?.icone || matricula.plano?.modalidade?.icone || 'dumbbell';
+  const corModalidade = matricula.modalidade_cor || matricula.modalidade?.cor || matricula.plano?.modalidade?.cor;
 
   const enrollmentDs = {
     id: `#${matricula.id}`,
@@ -1237,6 +1236,7 @@ export default function MatriculaDetalheScreen() {
     student: { name: matricula.usuario_nome || matricula.aluno_nome || 'Aluno' },
     modality: matricula.modalidade_nome || matricula.plano_nome || 'Plano',
     modalityIcon: iconeModalidade,
+    modalityColor: corModalidade,
     frequency:
       matricula.plano_nome ||
       (matricula.checkins_semanais ? `${matricula.checkins_semanais}x por semana` : ''),

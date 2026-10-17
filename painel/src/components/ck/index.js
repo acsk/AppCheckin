@@ -6,6 +6,7 @@
    fatura com `canSettle: false` + `settleNote`, e `invoiceMenu={false}` (sem editar/excluir). */
 /* @ds-bundle: {"format":4,"namespace":"AppCheckin","components":[{"name":"AppShell"},{"name":"Sidebar"},{"name":"AppHeader"},{"name":"PageHeader"},{"name":"Button"},{"name":"IconButton"},{"name":"Switch"},{"name":"SegmentedControl"},{"name":"TextField"},{"name":"SecretField"},{"name":"Fieldset"},{"name":"Tabs"},{"name":"ChoiceCard"},{"name":"Card"},{"name":"ProviderTile"},{"name":"ProviderCard"},{"name":"ProviderLogo"},{"name":"SaveBar"},{"name":"ActionMenu"},{"name":"Modal"},{"name":"SelectField"},{"name":"Matricula"},{"name":"PacoteMatricula"},{"name":"DescontoModal"},{"name":"Badge"},{"name":"Callout"},{"name":"Avatar"},{"name":"Icon"}]} */
 import React from 'react';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 
   var h = React.createElement;
@@ -98,6 +99,13 @@ import React from 'react';
   function Icon(p) {
     var parts = ICONS[p.name] || [];
     var size = p.size || 18;
+    if (!ICONS[p.name] && p.name && MaterialCommunityIcons.glyphMap && MaterialCommunityIcons.glyphMap[p.name] != null) {
+      return h('span', {
+        className: cx('ck-icon ck-icon--glyph', p.className), role: p.label ? 'img' : undefined,
+        'aria-label': p.label, 'aria-hidden': p.label ? undefined : true,
+        style: { display: 'inline-flex', width: size, height: size, alignItems: 'center', justifyContent: 'center', flex: 'none', lineHeight: 0 }
+      }, h(MaterialCommunityIcons, { name: p.name, size: size, color: 'currentColor' }));
+    }
     return h('svg', {
       width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor',
       strokeWidth: p.strokeWidth || 1.75, strokeLinecap: 'round', strokeLinejoin: 'round',
@@ -389,7 +397,7 @@ import React from 'react';
     var c = e.cycle || {};
     return h('section', { className: 'ck-mt-plan', 'aria-label': 'Plano' },
       h('div', { className: 'ck-mt-plan__top' },
-        h('span', { className: 'ck-mt-plan__icon', 'aria-hidden': true }, h(Icon, { name: e.modalityIcon || 'dumbbell', size: 20, strokeWidth: 2 })),
+        h('span', { className: 'ck-mt-plan__icon', 'aria-hidden': true, style: e.modalityColor ? { background: e.modalityColor, color: '#fff' } : undefined }, h(Icon, { name: e.modalityIcon || 'dumbbell', size: 20, strokeWidth: 2 })),
         h('div', { style: { flex: 1, minWidth: 0 } },
           h('h2', { className: 'ck-mt-plan__name' }, e.modality),
           h('span', { className: 'ck-mt-plan__freq' }, e.frequency)),
@@ -952,7 +960,7 @@ import React from 'react';
                     h('a', { href: r.href || '#', className: 'ck-ml__name', onClick: function (e) { if (p.onOpen) { e.preventDefault(); p.onOpen(r); } } }, titleCase(r.student.name)),
                     h('span', { className: 'ck-mt-cell__sub' }, r.student.email)))),
                 h('td', null, h('div', { className: 'ck-ml__plan' },
-                  h('span', { className: 'ck-ml__mod', 'aria-hidden': true }, h(Icon, { name: r.modalityIcon || 'dumbbell', size: 16 })),
+                  h('span', { className: 'ck-ml__mod', 'aria-hidden': true, style: r.modalityColor ? { background: r.modalityColor, color: '#fff' } : undefined }, h(Icon, { name: r.modalityIcon || 'dumbbell', size: 16 })),
                   h('span', null, h('span', { className: 'ck-mt-cell__main' }, r.modality), h('span', { className: 'ck-mt-cell__sub' }, r.plan)))),
                 h('td', { className: 'is-num' }, h('span', { className: 'ck-mt-cell__main' }, money(r.amount)), r.cycle ? h('span', { className: 'ck-mt-cell__sub' }, r.cycle) : null),
                 h('td', { title: 'De ' + fdate(r.startDate) + ' a ' + fdate(r.accessUntil) }, h('span', { className: 'ck-mt-cell__main' }, 'Até ' + fdate(r.accessUntil)),
@@ -1044,7 +1052,7 @@ import React from 'react';
               h('div', { className: 'ck-nm__mods', role: 'radiogroup', 'aria-label': 'Modalidade' }, mods.map(function (m) {
                 var on = m.id === mod[0];
                 return h('button', { key: m.id, type: 'button', role: 'radio', 'aria-checked': on, className: 'ck-nm__mod', onClick: function () { mod[1](m.id); plan[1](null); cyc[1](null); } },
-                  h('span', { className: 'ck-ml__mod', 'aria-hidden': true }, h(Icon, { name: m.icon || 'dumbbell', size: 16 })), m.name);
+                  h('span', { className: 'ck-ml__mod', 'aria-hidden': true, style: m.color ? { background: m.color, color: '#fff' } : undefined }, h(Icon, { name: m.icon || 'dumbbell', size: 16 })), m.name);
               }))),
             step(n++, 'Plano', !!planObj, modObj ? h('div', { className: 'ck-nm__plans', role: 'radiogroup', 'aria-label': 'Plano' }, modPlans.map(function (x) {
                 var on = x.id === plan[0];

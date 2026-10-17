@@ -100,7 +100,8 @@ export default function MatriculasScreen() {
   const currentPage = Math.min(page, Math.max(1, Math.ceil(filtered.length / pageSize)));
   const rows = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((row) => ({
     id: row.id, code: `#${row.id}`, student: { name: row.usuario_nome || 'Aluno', email: row.usuario_email || '' },
-    modality: row.modalidade_nome, plan: row.plano_nome, amount: Number(row.valor),
+    modality: row.modalidade_nome || row.modalidade?.nome, plan: row.plano_nome, amount: Number(row.valor),
+    modalityIcon: row.modalidade_icone || row.modalidade?.icone, modalityColor: row.modalidade_cor || row.modalidade?.cor,
     cycle: row.ciclo_nome || row.frequencia_nome,
     startDate: row.data_inicio?.slice(0, 10),
     accessUntil: (row.proxima_data_vencimento || row.data_vencimento)?.slice(0, 10),

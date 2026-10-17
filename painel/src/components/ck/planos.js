@@ -72,7 +72,7 @@ export function PlanosLista({
     const map = new Map();
     visible.forEach((p) => {
       const key = p.modality?.name || 'Sem modalidade';
-      if (!map.has(key)) map.set(key, { name: key, color: p.modality?.color, plans: [] });
+      if (!map.has(key)) map.set(key, { name: key, color: p.modality?.color, icon: p.modality?.icon, plans: [] });
       map.get(key).plans.push(p);
     });
     return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
@@ -133,7 +133,7 @@ export function PlanosLista({
                   <tbody key={g.name}>
                     <tr className="ck-pl__group">
                       <th colSpan={showTenant ? 6 : 5} scope="rowgroup">
-                        <span className="ck-pl__dot" style={g.color ? { background: g.color } : undefined} aria-hidden />
+                        <ModalityBadge icon={g.icon} color={g.color} size="sm" />
                         {g.name}<span className="ck-pl__groupcount">{g.plans.length === 1 ? '1 plano' : `${g.plans.length} planos`}</span>
                       </th>
                     </tr>
@@ -185,6 +185,14 @@ export function PlanosLista({
         </footer>
       </section>
     </div>
+  );
+}
+
+function ModalityBadge({ icon, color, size = 'md' }) {
+  return (
+    <span className={`ck-pl__modicon ck-pl__modicon--${size}`} style={color ? { background: color, color: '#fff' } : undefined} aria-hidden>
+      <Icon name={icon || 'dumbbell'} size={size === 'sm' ? 14 : 16} strokeWidth={2} />
+    </span>
   );
 }
 
@@ -263,7 +271,7 @@ export function CycleRow({ cycle, monthly, onEdit, onRemove, readOnly }) {
 
 export function PlanoForm({
   values, onChange, errors = {}, modalities = [], isEdit, readOnly, saving, onSave, onCancel, onBack,
-  cycles = [], cyclesLoading, onAddCycle, onEditCycle, onRemoveCycle, onGenerateCycles, generating,
+  cycles = [], cyclesLoading, onAddCycle, onEditCycle, onRemoveCycle, onGenerateCycles, generating, missingCount = 0,
 }) {
   const set = (k) => (v) => onChange({ ...values, [k]: v });
   const monthly = parseMoney(values.valor);
@@ -296,7 +304,7 @@ export function PlanoForm({
               <div className="ck-nm__mods" role="radiogroup" aria-label="Modalidade">
                 {modalities.map((m) => (
                   <button key={m.id} type="button" role="radio" aria-checked={String(m.id) === String(values.modalidade_id)} className="ck-nm__mod" onClick={() => set('modalidade_id')(String(m.id))}>
-                    <span className="ck-pl__dot ck-pl__dot--lg" style={m.cor ? { background: m.cor } : undefined} aria-hidden />{m.nome}
+                    <ModalityBadge icon={m.icone} color={m.cor} />{m.nome}
                   </button>
                 ))}
                 {!modalities.length ? <p className="ck-nm__wait">Nenhuma modalidade ativa. Cadastre uma modalidade antes de criar planos.</p> : null}
@@ -332,7 +340,7 @@ export function PlanoForm({
             description="Em quais períodos o aluno pode pagar este plano."
             aside={isEdit && !readOnly ? (
               <div className="ck-pf__cycleactions">
-                {onGenerateCycles ? <Button size="sm" variant="ghost" icon="zap" loading={generating} onClick={onGenerateCycles}>Gerar ciclos padrão</Button> : null}
+                {onGenerateCycles && missingCount > 0 ? <Button size="sm" variant="ghost" icon="zap" loading={generating} onClick={onGenerateCycles}>{`Gerar ${missingCount === 1 ? 'ciclo que falta' : `${missingCount} ciclos que faltam`}`}</Button> : null}
                 <Button size="sm" icon="plus" onClick={onAddCycle}>Novo ciclo</Button>
               </div>
             ) : null}
@@ -359,7 +367,7 @@ export function PlanoForm({
           <section className="ck-mt-plan ck-pf__preview" aria-label="Como o aluno vê">
             <span className="ck-pf__eyebrow">Como o aluno vê</span>
             <div className="ck-mt-plan__top">
-              <span className="ck-mt-plan__icon" style={modality?.cor ? { background: modality.cor } : undefined} aria-hidden><Icon name="dumbbell" size={20} strokeWidth={2} /></span>
+              <span className="ck-mt-plan__icon" style={modality?.cor ? { background: modality.cor, color: '#fff' } : undefined} aria-hidden><Icon name={modality?.icone || 'dumbbell'} size={20} strokeWidth={2} /></span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <h2 className="ck-mt-plan__name">{values.nome || 'Nome do plano'}</h2>
                 <span className="ck-mt-plan__freq">{modality?.nome || 'Modalidade'}</span>
@@ -508,6 +516,137 @@ export function CicloModal({ open, cycle, types = [], cycles = [], monthly = 0, 
           <Switch label="Cobrança recorrente" description={recurring ? 'Renova sozinho no fim do período, no cartão do aluno.' : 'Pagamento único; o aluno renova manualmente.'} checked={recurring} onChange={setRecurring} />
           <Switch label="Permite reposição" description={makeup ? 'O limite de check-ins conta por mês, então o aluno compensa aulas perdidas.' : 'O limite de check-ins conta por semana.'} checked={makeup} onChange={setMakeup} />
           <Switch label="Disponível" description={active ? 'O aluno pode escolher este ciclo.' : 'Fica oculto para novas compras.'} checked={active} onChange={setActive} />
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/* ---------- GerarCiclosModal ---------- */
+const MARGINS = [0, 5, 10];
+const round2 = (n) => Math.round(n * 100) / 100;
+const typeMonths = (t) => Number(t?.meses) || 1;
+
+export const missingTypes = (types = [], cycles = []) => types
+  .filter((t) => !isDaily(t) && !cycles.some((c) => String(c.typeId) === String(t.id)))
+  .sort((a, b) => typeMonths(a) - typeMonths(b));
+
+export const baseCycle = (cycles = []) => {
+  const regular = cycles.filter((c) => !isDaily(c)).sort((a, b) => (a.months - b.months) || (Number(b.active) - Number(a.active)));
+  return regular.find((c) => c.months === 1) || regular[0] || null;
+};
+
+export function GerarCiclosModal({ open, types = [], cycles = [], monthly = 0, saving, onConfirm, onCancel }) {
+  const base = baseCycle(cycles);
+  const [margin, setMargin] = useState('5');
+  const [recurring, setRecurring] = useState(false);
+  const [makeup, setMakeup] = useState(false);
+  const [active, setActive] = useState(true);
+
+  useEffect(() => {
+    if (!open) return;
+    setMargin('5');
+    setRecurring(base ? !!base.recurring : false);
+    setMakeup(base ? !!base.makeup : false);
+    setActive(base ? base.active !== false : true);
+  }, [open]);
+
+  const step = Math.min(Math.max(parseFloat(String(margin).replace(',', '.')) || 0, 0), 50);
+
+  const rows = useMemo(() => {
+    let prev = null;
+    return types
+      .filter((t) => !isDaily(t))
+      .sort((a, b) => typeMonths(a) - typeMonths(b))
+      .map((t) => {
+        const months = typeMonths(t);
+        const full = monthly * months;
+        const existing = cycles.filter((c) => String(c.typeId) === String(t.id));
+        if (existing.length) {
+          const ref = existing.find((c) => !!c.recurring === recurring) || existing[0];
+          const discount = full > 0 ? Math.max(0, (1 - ref.amount / full) * 100) : 0;
+          prev = discount;
+          return { type: t, months, existing: true, discount, amount: ref.amount };
+        }
+        const discount = prev == null ? 0 : Math.min(prev + step, 90);
+        prev = discount;
+        return { type: t, months, existing: false, discount, amount: round2(full * (1 - discount / 100)) };
+      });
+  }, [types, cycles, monthly, step, recurring]);
+
+  const toCreate = rows.filter((r) => !r.existing);
+  const blocked = recurring && monthly <= 0;
+
+  const confirm = () => {
+    if (!toCreate.length || blocked || saving) return;
+    onConfirm?.(toCreate.map((r) => ({ typeId: r.type.id, label: r.type.nome, amount: r.amount, recurring, makeup, active })));
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={onCancel}
+      dismissable={!saving}
+      size="md"
+      title={toCreate.length === 1 ? 'Gerar o ciclo que falta' : `Gerar ${toCreate.length} ciclos que faltam`}
+      description={monthly > 0 ? `Valor mensal do plano: ${money(monthly)}. Os ciclos que já existem não mudam.` : 'Plano sem valor mensal definido. Os ciclos que já existem não mudam.'}
+      footer={(
+        <>
+          <span style={{ flex: 1 }} />
+          <Button variant="ghost" disabled={saving} onClick={onCancel}>Cancelar</Button>
+          <Button variant="primary" icon="zap" loading={saving} disabled={!toCreate.length || blocked} onClick={confirm}>
+            {saving ? 'Gerando…' : toCreate.length === 1 ? 'Gerar ciclo' : `Gerar ${toCreate.length} ciclos`}
+          </Button>
+        </>
+      )}
+    >
+      <div className="ck-cm">
+        <div className="ck-section">
+          <span className="ck-field__label" id="gc-margin">Margem de desconto em relação ao ciclo anterior</span>
+          <div className="ck-gc__margin">
+            <div className="ck-pf__chips" role="radiogroup" aria-labelledby="gc-margin">
+              {MARGINS.map((m) => (
+                <button key={m} type="button" role="radio" aria-checked={step === m} className="ck-pf__chip" onClick={() => setMargin(String(m))}>
+                  {m === 0 ? 'Sem margem' : `+${m}%`}
+                </button>
+              ))}
+            </div>
+            <TextField aria-label="Margem personalizada" inputMode="decimal" className="ck-gc__custom" value={margin} suffix={<span className="ck-gc__pct">%</span>} onChange={(e) => setMargin(e.target.value.replace(/[^\d,.]/g, '').slice(0, 5))} />
+          </div>
+          <span className="ck-field__hint">Cada ciclo novo recebe o desconto do período anterior mais a margem. Ex.: mensal 0%, bimestral {step}%, trimestral {round2(step * 2)}%.</span>
+        </div>
+
+        <div className="ck-gc__table" role="table" aria-label="Prévia dos ciclos">
+          <div className="ck-gc__row ck-gc__row--head" role="row">
+            <span role="columnheader">Período</span>
+            <span role="columnheader" className="is-num">Desconto</span>
+            <span role="columnheader" className="is-num">Valor</span>
+            <span role="columnheader" className="is-num">Por mês</span>
+          </div>
+          {rows.map((r) => (
+            <div key={r.type.id} role="row" className={`ck-gc__row${r.existing ? ' is-existing' : ''}`}>
+              <span role="cell">
+                <strong>{r.type.nome}</strong>
+                {r.existing ? <Badge tone="neutral">Já existe</Badge> : <Badge tone="success" icon="plus">Novo</Badge>}
+              </span>
+              <span role="cell" className="is-num">{r.discount < 0.5 ? '—' : `${Math.round(r.discount * 10) / 10}%`}</span>
+              <span role="cell" className="is-num">{money(r.amount)}</span>
+              <span role="cell" className="is-num">{money(r.amount / r.months)}</span>
+            </div>
+          ))}
+        </div>
+
+        {!toCreate.length ? <Callout tone="success" title="Todos os períodos já têm ciclo">Não há nada para gerar neste plano.</Callout> : null}
+        {blocked ? <Callout tone="warning" title="Defina o valor mensal do plano">Ciclo recorrente precisa ter valor maior que zero. Salve um valor mensal ou desligue a cobrança recorrente.</Callout> : null}
+
+        <div className="ck-cm__switches">
+          <p className="ck-gc__from">
+            <Icon name="layers" size={15} />
+            {base ? <>Opções copiadas do ciclo <strong>{base.label}</strong>{base.recurring ? ' recorrente' : ''}. Ajuste se quiser.</> : 'Nenhum ciclo existente para copiar as opções. Ajuste abaixo.'}
+          </p>
+          <Switch label="Cobrança recorrente" description={recurring ? 'Renova sozinho no fim do período, no cartão do aluno.' : 'Pagamento único; o aluno renova manualmente.'} checked={recurring} onChange={setRecurring} />
+          <Switch label="Permite reposição" description={makeup ? 'O limite de check-ins conta por mês, então o aluno compensa aulas perdidas.' : 'O limite de check-ins conta por semana.'} checked={makeup} onChange={setMakeup} />
+          <Switch label="Disponível" description={active ? 'O aluno pode escolher estes ciclos.' : 'Ficam ocultos para novas compras.'} checked={active} onChange={setActive} />
         </div>
       </div>
     </Modal>

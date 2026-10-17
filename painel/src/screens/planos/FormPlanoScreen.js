@@ -5,7 +5,7 @@ import modalidadeService from '../../services/modalidadeService';
 import { authService } from '../../services/authService';
 import LayoutBase from '../../components/LayoutBase';
 import { Button, Modal } from '../../components/ck';
-import { PlanoForm, CicloModal, parseMoney, UNLIMITED } from '../../components/ck/planos';
+import { PlanoForm, CicloModal, GerarCiclosModal, missingTypes, parseMoney, UNLIMITED } from '../../components/ck/planos';
 import { showSuccess, showError } from '../../utils/toast';
 
 const bool = (v) => v === true || v === 1 || v === '1';
@@ -188,18 +188,28 @@ export default function FormPlanoScreen() {
     }
   };
 
-  const generate = async () => {
+  const generate = async (list) => {
     setGenerating(true);
-    try {
-      const response = await planoService.gerarCiclos(planoId);
-      showSuccess(response.message || 'Ciclos gerados');
-      setConfirmGenerate(false);
-      await loadCycles();
-    } catch (err) {
-      showError(err?.error || 'Não foi possível gerar os ciclos');
-    } finally {
-      setGenerating(false);
+    const failed = [];
+    for (const c of list) {
+      try {
+        await planoService.criarCiclo(planoId, {
+          assinatura_frequencia_id: c.typeId,
+          valor: c.amount,
+          permite_recorrencia: c.recurring ? 1 : 0,
+          permite_reposicao: c.makeup ? 1 : 0,
+          ativo: c.active ? 1 : 0,
+        });
+      } catch (err) {
+        failed.push(`${c.label}: ${err?.error || err?.errors?.join(', ') || 'erro ao criar'}`);
+      }
     }
+    const created = list.length - failed.length;
+    if (created) showSuccess(created === 1 ? '1 ciclo criado' : `${created} ciclos criados`);
+    if (failed.length) showError(`Não foi possível criar:\n${failed.join('\n')}`);
+    if (!failed.length) setConfirmGenerate(false);
+    await loadCycles();
+    setGenerating(false);
   };
 
   const title = isEdit ? (readOnly ? 'Ver plano' : 'Editar plano') : 'Novo plano';
@@ -225,6 +235,7 @@ export default function FormPlanoScreen() {
           onRemoveCycle={setRemoveCycle}
           onGenerateCycles={() => setConfirmGenerate(true)}
           generating={generating}
+          missingCount={missingTypes(types, cycles).length}
         />
       )}
 
@@ -257,26 +268,15 @@ export default function FormPlanoScreen() {
         <p className="ck-pl__confirm">Se preferir só esconder o ciclo, edite e desligue "Disponível".</p>
       </Modal>
 
-      <Modal
+      <GerarCiclosModal
         open={confirmGenerate}
-        size="sm"
-        title="Gerar ciclos padrão?"
-        description={`Cria um ciclo para cada período a partir do valor mensal (${values.valor ? `R$ ${values.valor}` : 'R$ 0,00'}).`}
-        dismissable={!generating}
-        onClose={() => setConfirmGenerate(false)}
-        footer={(
-          <>
-            <span style={{ flex: 1 }} />
-            <Button variant="ghost" disabled={generating} onClick={() => setConfirmGenerate(false)}>Cancelar</Button>
-            <Button variant="primary" icon="zap" loading={generating} onClick={generate}>Gerar ciclos</Button>
-          </>
-        )}
-      >
-        <div className="ck-stack ck-pl__confirm">
-          <p>Os descontos padrão são aplicados por período: 10% no bimestral, 15% no trimestral, 20% no quadrimestral, 25% no semestral e 30% no anual. O mensal fica sem desconto.</p>
-          <p><strong>Ciclos que já existem e não têm matrícula são recalculados.</strong> Ciclos com matrícula vinculada ficam como estão.</p>
-        </div>
-      </Modal>
+        types={types}
+        cycles={cycles}
+        monthly={parseMoney(values.valor)}
+        saving={generating}
+        onConfirm={generate}
+        onCancel={() => setConfirmGenerate(false)}
+      />
     </LayoutBase>
   );
 }
