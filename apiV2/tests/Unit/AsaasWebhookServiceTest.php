@@ -319,6 +319,43 @@ class AsaasWebhookServiceTest extends TestCase
         $this->assertSame('approved', DB::table('assinaturas')->value('status_gateway'));
     }
 
+    public function test_antecipacao_atualiza_liquido_da_parcela_ja_paga(): void
+    {
+        DB::table('pagamentos_plano')->where('matricula_id', 189)->update([
+            'status_pagamento_id' => 2,
+            'valor' => 54.18,
+            'valor_liquido' => 52.08,
+            'desconto_provedor' => 2.10,
+            'data_pagamento' => '2026-10-16',
+            'observacoes' => '[Asaas pay_xlm9exz869gjx520] valor R$ 54,18 líquido R$ 52,08 desconto_provedor R$ 2,10',
+        ]);
+
+        $pagamentos = Mockery::mock(PagamentoPlanoService::class);
+        $pagamentos->shouldReceive('atualizarStatusMatricula')->once()->with(3, 189);
+
+        $service = new AsaasWebhookService($pagamentos, new EncryptionService());
+        $result = $service->processar([
+            'event' => 'PAYMENT_ANTICIPATED',
+            'payment' => [
+                'id' => 'pay_xlm9exz869gjx520',
+                'status' => 'RECEIVED',
+                'billingType' => 'CREDIT_CARD',
+                'externalReference' => 'MAT-189-abc',
+                'paymentDate' => '2026-10-16',
+                'value' => 54.18,
+                'netValue' => 50.00,
+            ],
+        ], null);
+
+        $this->assertSame(200, $result['status']);
+        $parcela = DB::table('pagamentos_plano')->first();
+        $this->assertEquals(50.0, (float) $parcela->valor_liquido);
+        $this->assertEquals(4.18, (float) $parcela->desconto_provedor);
+        $this->assertStringContainsString('líquido R$ 50,00', (string) $parcela->observacoes);
+        $this->assertStringContainsString('desconto_provedor R$ 4,18', (string) $parcela->observacoes);
+        $this->assertSame(2, (int) $parcela->status_pagamento_id);
+    }
+
     public function test_payload_invalido_retorna_400(): void
     {
         $service = new AsaasWebhookService(

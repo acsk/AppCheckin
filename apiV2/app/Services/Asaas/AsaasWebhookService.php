@@ -15,6 +15,7 @@ class AsaasWebhookService
         'PAYMENT_RECEIVED',
         'PAYMENT_CONFIRMED',
         'PAYMENT_RECEIVED_IN_CASH',
+        'PAYMENT_ANTICIPATED',
     ];
 
     private const STATUS_PAGOS = [
@@ -68,7 +69,11 @@ class AsaasWebhookService
             return ['status' => 401, 'body' => ['success' => false, 'error' => 'Webhook token inválido']];
         }
 
-        $payment = $this->completarPagamento($tenantId, $payment);
+        $payment = $this->completarPagamento(
+            $tenantId,
+            $payment,
+            in_array($event, ['PAYMENT_ANTICIPATED'], true),
+        );
         if ($tenantId <= 0) {
             $tenantId = $this->tenantIdDaReferencia((string) ($payment['externalReference'] ?? ''));
         }
@@ -174,7 +179,7 @@ class AsaasWebhookService
      * @param  array<string, mixed>  $payment
      * @return array<string, mixed>
      */
-    private function completarPagamento(int $tenantId, array $payment): array
+    private function completarPagamento(int $tenantId, array $payment, bool $forcarRemoto = false): array
     {
         $id = (string) ($payment['id'] ?? '');
         $status = (string) ($payment['status'] ?? '');
@@ -182,7 +187,7 @@ class AsaasWebhookService
         $temLiquido = array_key_exists('netValue', $payment)
             && $payment['netValue'] !== null
             && $payment['netValue'] !== '';
-        if ($id === '' || ($status !== '' && $ref !== '' && $temLiquido)) {
+        if ($id === '' || (! $forcarRemoto && $status !== '' && $ref !== '' && $temLiquido)) {
             return $payment;
         }
 
@@ -328,14 +333,23 @@ class AsaasWebhookService
         $tarifa = AsaasPagamentoStatus::tarifaProvedor($payment);
         $campos = [];
 
-        if ($anexarObs && ($tarifa['desconto_provedor'] ?? null) !== null && (float) $tarifa['desconto_provedor'] > 0
-            && ! str_contains($observacoes, 'desconto_provedor')) {
-            $campos['observacoes'] = trim($observacoes.' '.sprintf(
+        if ($anexarObs && ($tarifa['desconto_provedor'] ?? null) !== null && (float) $tarifa['desconto_provedor'] > 0) {
+            $linha = sprintf(
                 'valor R$ %s líquido R$ %s desconto_provedor R$ %s',
                 number_format($tarifa['valor'], 2, ',', '.'),
                 number_format((float) $tarifa['valor_liquido'], 2, ',', '.'),
                 number_format((float) $tarifa['desconto_provedor'], 2, ',', '.'),
-            ));
+            );
+            if (preg_match('/valor R\$ [\d.,]+ líquido R\$ [\d.,]+ desconto_provedor R\$ [\d.,]+/u', $observacoes) === 1) {
+                $campos['observacoes'] = preg_replace(
+                    '/valor R\$ [\d.,]+ líquido R\$ [\d.,]+ desconto_provedor R\$ [\d.,]+/u',
+                    $linha,
+                    $observacoes,
+                    1
+                );
+            } else {
+                $campos['observacoes'] = trim($observacoes.' '.$linha);
+            }
         }
 
         if (($tarifa['valor_liquido'] ?? null) === null) {

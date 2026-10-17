@@ -1249,7 +1249,11 @@ export default function MatriculaDetalheScreen() {
 
   const numeroParcelaMap = buildNumeroParcelaMap(pagamentos);
   const invoicesDs = [...pagamentos]
-    .sort((a, b) => String(b.data_vencimento || '').localeCompare(String(a.data_vencimento || '')))
+    .sort((a, b) => {
+      const idDiff = Number(getPagamentoId(b) || 0) - Number(getPagamentoId(a) || 0);
+      if (idDiff !== 0) return idDiff;
+      return String(b.data_vencimento || '').localeCompare(String(a.data_vencimento || ''));
+    })
     .map((pg) => {
       const statusId = Number(pg.status_pagamento_id);
       const status =

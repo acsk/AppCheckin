@@ -162,20 +162,7 @@ class AsaasService
                 $tarifaCartao = $this->valorComTaxaCartaoRepassada($valorPlano, $parcelas, false);
                 $valorCobranca = $tarifaCartao['valor_cobrar'];
                 $parcelas = (int) ($tarifaCartao['parcela_count'] ?? $parcelas);
-                if ($tarifaCartao['tarifa'] > 0 || ($tarifaCartao['sobretaxa'] ?? 0) > 0) {
-                    $partes = [];
-                    if ($tarifaCartao['tarifa'] > 0) {
-                        $partes[] = 'taxa cartão Asaas R$ '.number_format((float) $tarifaCartao['tarifa'], 2, ',', '.');
-                    }
-                    if (($tarifaCartao['sobretaxa'] ?? 0) > 0.001) {
-                        $partes[] = 'antecipação R$ '.number_format((float) $tarifaCartao['sobretaxa'], 2, ',', '.');
-                    }
-                    $descricao .= ' (inclui '.implode(', ', $partes);
-                    if ($parcelas > 1) {
-                        $descricao .= ', '.$parcelas.'x';
-                    }
-                    $descricao .= ')';
-                }
+                $descricao .= ' — R$ '.number_format((float) $valorCobranca, 2, ',', '.');
             } catch (\Throwable $e) {
                 Log::warning('Asaas: simulação de taxa de cartão falhou; cobrando valor do plano', [
                     'tenant_id' => $this->tenantId,
@@ -386,14 +373,17 @@ class AsaasService
             }
             $enabled = (bool) ($webhook['enabled'] ?? false);
             $interrupted = (bool) ($webhook['interrupted'] ?? false);
-            if ($enabled && ! $interrupted) {
+            $id = (string) ($webhook['id'] ?? '');
+            $atuais = is_array($webhook['events'] ?? null) ? $webhook['events'] : [];
+            $faltando = array_values(array_diff($this->eventosWebhook(), $atuais));
+            if ($enabled && ! $interrupted && $faltando === []) {
                 return;
             }
-            $id = (string) ($webhook['id'] ?? '');
             if ($id !== '') {
                 $this->request('PUT', '/webhooks/'.$id, [
                     'enabled' => true,
                     'interrupted' => false,
+                    'events' => $this->eventosWebhook(),
                 ]);
             }
 
@@ -410,12 +400,7 @@ class AsaasService
             'apiVersion' => 3,
             'authToken' => $auth,
             'sendType' => 'SEQUENTIALLY',
-            'events' => [
-                'PAYMENT_CONFIRMED',
-                'PAYMENT_RECEIVED',
-                'PAYMENT_RECEIVED_IN_CASH',
-                'PAYMENT_UPDATED',
-            ],
+            'events' => $this->eventosWebhook(),
         ]);
 
         if ($this->tenantId && $this->webhookSecret() === null) {
@@ -428,6 +413,20 @@ class AsaasService
                     'updated_at' => now(),
                 ]);
         }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function eventosWebhook(): array
+    {
+        return [
+            'PAYMENT_CONFIRMED',
+            'PAYMENT_RECEIVED',
+            'PAYMENT_RECEIVED_IN_CASH',
+            'PAYMENT_UPDATED',
+            'PAYMENT_ANTICIPATED',
+        ];
     }
 
     public function webhookSecret(): ?string

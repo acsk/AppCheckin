@@ -47,6 +47,22 @@ class AsaasPagamentoSync
             }
         }
 
+        $obs = DB::table('pagamentos_plano')
+            ->where('tenant_id', $tenantId)
+            ->where('matricula_id', $matriculaId)
+            ->whereNotNull('observacoes')
+            ->pluck('observacoes');
+        foreach ($obs as $texto) {
+            if (preg_match_all('/pay_[a-zA-Z0-9]+/', (string) $texto, $m) < 1) {
+                continue;
+            }
+            foreach ($m[0] as $payId) {
+                if (! in_array($payId, $ids, true)) {
+                    $ids[] = $payId;
+                }
+            }
+        }
+
         return $ids;
     }
 
