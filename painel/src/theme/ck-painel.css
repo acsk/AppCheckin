@@ -20,6 +20,9 @@
 @media (max-width: 767px) {
   .ck-painel .ck-shell__content { padding: var(--space-5) var(--space-4) var(--space-8); }
   .ck-painel .ck-header { padding-left: var(--space-3); padding-right: var(--space-3); gap: var(--space-2); }
+  .ck-painel .ck-header > nav { flex: 1; min-width: 0; }
+  .ck-painel .ck-crumbs li:last-child { min-width: 0; }
+  .ck-painel .ck-crumbs li:last-child span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ck-painel .ck-userbtn__name, .ck-painel .ck-userbtn__role { display: none; }
 }
 

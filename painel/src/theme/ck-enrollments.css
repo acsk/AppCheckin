@@ -109,8 +109,8 @@
 .ck-nm__mod { display: inline-flex; align-items: center; gap: 10px; height: 48px; padding: 0 16px 0 8px; border-radius: var(--radius-md); border: 1px solid var(--line-strong); background: var(--surface); color: var(--ink); font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; }
 .ck-nm__mod[aria-checked="true"] { border-color: var(--primary); background: var(--primary-soft); box-shadow: 0 0 0 1px var(--primary); }
 .ck-nm__mod:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
-.ck-nm__plans { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--space-3); }
-.ck-nm__cycles { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: var(--space-3); }
+.ck-nm__plans { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 180px), 1fr)); gap: var(--space-3); }
+.ck-nm__cycles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: var(--space-3); }
 .ck-nm__plan, .ck-nm__cycle { position: relative; display: grid; gap: 4px; align-content: start; padding: var(--space-4); text-align: left; border-radius: var(--radius-lg); border: 1px solid var(--line-strong); background: var(--surface); cursor: pointer; transition: border-color .15s, background-color .15s; }
 .ck-nm__plan:hover, .ck-nm__cycle:hover { border-color: var(--ink-subtle); }
 .ck-nm__plan[aria-checked="true"], .ck-nm__cycle[aria-checked="true"] { border-color: var(--primary); background: var(--primary-soft); box-shadow: 0 0 0 1px var(--primary); }

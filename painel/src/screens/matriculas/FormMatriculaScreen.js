@@ -225,7 +225,7 @@ export default function FormMatriculaScreen() {
           >
             {tipo === 'pacote' && pacote ? (
               <section className="ck-nm__step">
-                <header className="ck-nm__stephead"><h2>Dependentes ({form.dependentes.length}{maxDependentes > 0 ? `/${maxDependentes}` : ''})</h2></header>
+                <header className="ck-nm__stephead"><span className="ck-nm__num" aria-hidden="true">4</span><h2>Dependentes ({form.dependentes.length}{maxDependentes > 0 ? `/${maxDependentes}` : ''})</h2></header>
                 <div className="ck-nm__stepbody">
                   <p>{maxDependentes > 0 ? 'Selecione ao menos um dependente, respeitando o limite do pacote.' : 'Selecione os dependentes, se houver.'}</p>
                   <TextField label="Buscar dependente" value={searchDependentes} onChange={(e) => setSearchDependentes(e.target.value)} />
