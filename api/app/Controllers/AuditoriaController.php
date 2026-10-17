@@ -250,6 +250,7 @@ class AuditoriaController
                 INNER JOIN planos p ON p.id = m.plano_id
                 INNER JOIN pagamentos_plano pp ON pp.matricula_id = m.id
                     AND pp.status_pagamento_id IN (1, 3)
+                    AND (pp.observacoes IS NULL OR pp.observacoes NOT LIKE '%[MIGRACAO_SIMULADA%')
                 WHERE m.tenant_id = :tid
                   AND sm.codigo = 'ativa'
                   AND m.proxima_data_vencimento IS NOT NULL
@@ -264,7 +265,7 @@ class AuditoriaController
             if ($rows) {
                 $anomalias[] = [
                     'tipo' => 'proxima_data_vencimento_desatualizada',
-                    'descricao' => 'Matrículas ativas (fora de pacote) onde proxima_data_vencimento diverge da próxima parcela pendente em mais de 3 dias (tolera atraso de pagamento vs ciclo)',
+                    'descricao' => 'Matrículas ativas (fora de pacote) onde proxima_data_vencimento diverge da próxima parcela pendente em mais de 3 dias. Ignora PIX de simulação de migração.',
                     'severidade' => 'media',
                     'total' => count($rows),
                     'registros' => $rows,
@@ -272,10 +273,11 @@ class AuditoriaController
             }
 
             // 3. Matrículas ativas com vencimento expirado (> 5 dias)
+            // Avulso comercial: maior entre data_vencimento e proxima (acesso, não parcela duplicada).
             $sql = "
                 SELECT m.id AS matricula_id, a.nome AS aluno_nome, p.nome AS plano_nome,
-                       COALESCE(m.proxima_data_vencimento, m.data_vencimento) AS vencimento_efetivo,
-                       DATEDIFF(CURDATE(), COALESCE(m.proxima_data_vencimento, m.data_vencimento)) AS dias_vencido,
+                       {$this->sqlVencimentoEfetivoAuditoria()} AS vencimento_efetivo,
+                       DATEDIFF(CURDATE(), {$this->sqlVencimentoEfetivoAuditoria()}) AS dias_vencido,
                        sm.codigo AS status
                 FROM matriculas m
                 INNER JOIN status_matricula sm ON sm.id = m.status_id
@@ -283,7 +285,7 @@ class AuditoriaController
                 INNER JOIN planos p ON p.id = m.plano_id
                 WHERE m.tenant_id = :tid
                   AND sm.codigo = 'ativa'
-                  AND COALESCE(m.proxima_data_vencimento, m.data_vencimento) < DATE_SUB(CURDATE(), INTERVAL 5 DAY)
+                  AND {$this->sqlVencimentoEfetivoAuditoria()} < DATE_SUB(CURDATE(), INTERVAL 5 DAY)
                 ORDER BY dias_vencido DESC
             ";
             $stmt = $db->prepare($sql);
@@ -292,7 +294,7 @@ class AuditoriaController
             if ($rows) {
                 $anomalias[] = [
                     'tipo' => 'ativa_vencimento_expirado',
-                    'descricao' => 'Matrículas ativas com vencimento expirado há mais de 5 dias',
+                    'descricao' => 'Matrículas ativas com acesso efetivo expirado há mais de 5 dias (avulso: período pago, não parcela aberta)',
                     'severidade' => 'alta',
                     'total' => count($rows),
                     'registros' => $rows,
@@ -373,6 +375,7 @@ class AuditoriaController
                 LEFT JOIN pagamentos_plano pp ON pp.matricula_id = m.id AND pp.status_pagamento_id != 4
                 WHERE m.tenant_id = :tid
                   AND sm.codigo = 'ativa'
+                  AND CAST(COALESCE(m.valor, 0) AS DECIMAL(10,2)) > 0
                   AND pp.id IS NULL
                 ORDER BY a.nome
             ";
@@ -382,7 +385,7 @@ class AuditoriaController
             if ($rows) {
                 $anomalias[] = [
                     'tipo' => 'ativa_sem_parcelas',
-                    'descricao' => 'Matrículas ativas sem nenhuma parcela (não-cancelada)',
+                    'descricao' => 'Matrículas ativas comerciais (valor > 0) sem nenhuma parcela (não-cancelada). Cortesia/temp não entra.',
                     'severidade' => 'media',
                     'total' => count($rows),
                     'registros' => $rows,
@@ -437,6 +440,7 @@ class AuditoriaController
                 INNER JOIN alunos a ON a.id = m.aluno_id
                 INNER JOIN pagamentos_plano pp ON pp.matricula_id = m.id
                     AND pp.status_pagamento_id IN (1, 3)
+                    AND (pp.observacoes IS NULL OR pp.observacoes NOT LIKE '%[MIGRACAO_SIMULADA%')
                 WHERE m.tenant_id = :tid
                   AND m.pacote_contrato_id IS NULL
                 GROUP BY m.id, a.nome, m.proxima_data_vencimento
@@ -835,5 +839,23 @@ class AuditoriaController
 
             return $response->withHeader('Content-Type', 'application/json')->withStatus(500);
         }
+    }
+
+    /**
+     * Avulso comercial: acesso = a data mais tarde entre vencimento e próxima
+     * (não a parcela aberta duplicada no dia do boleto pago).
+     */
+    private function sqlVencimentoEfetivoAuditoria(): string
+    {
+        return "(CASE
+            WHEN m.tipo_cobranca = 'avulso' AND CAST(COALESCE(m.valor, 0) AS DECIMAL(10,2)) > 0 THEN
+                CASE
+                    WHEN m.data_vencimento IS NULL THEN m.proxima_data_vencimento
+                    WHEN m.proxima_data_vencimento IS NULL THEN m.data_vencimento
+                    WHEN m.data_vencimento >= m.proxima_data_vencimento THEN m.data_vencimento
+                    ELSE m.proxima_data_vencimento
+                END
+            ELSE COALESCE(m.proxima_data_vencimento, m.data_vencimento)
+        END)";
     }
 }
