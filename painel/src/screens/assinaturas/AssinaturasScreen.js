@@ -11,7 +11,6 @@ import {
 import { Feather } from '@expo/vector-icons';
 import LayoutBase from '../../components/LayoutBase';
 import assinaturaService from '../../services/assinaturaService';
-import mercadoPagoService from '../../services/mercadoPagoService';
 import { showError, showSuccess } from '../../utils/toast';
 import { authService } from '../../services/authService';
 import { superAdminService } from '../../services/superAdminService';
@@ -96,6 +95,16 @@ const getStatusInfo = (assinatura) => {
   const cor = status.cor || getStatusColor(codigo);
   return { codigo, nome, cor };
 };
+
+const nomeGateway = (assinatura) => {
+  const gw = assinatura?.gateway;
+  if (gw && typeof gw === 'object') return gw.nome || gw.codigo || '-';
+  if (typeof gw === 'string' && gw.trim()) return gw;
+  return '-';
+};
+
+const idProvedor = (assinatura) =>
+  assinatura?.provedor_id || assinatura?.preference_id || assinatura?.mp_preapproval_id || '-';
 
 export default function AssinaturasScreen() {
   const [assinaturas, setAssinaturas] = useState([]);
@@ -237,10 +246,11 @@ export default function AssinaturasScreen() {
   };
 
   const fetchCobrancas = async (assinatura) => {
-    if (!assinatura?.external_reference) return;
+    if (!assinatura?.id) return;
     try {
       setLoadingCobrancas(true);
-      const response = await mercadoPagoService.consultarCobrancas(assinatura.external_reference);
+      const tenantId = isSuperAdmin ? selectedTenant?.id : null;
+      const response = await assinaturaService.consultarCobrancas(assinatura.id, tenantId);
       setCobrancasAssinatura(assinatura);
       setCobrancas(response);
       setShowCobrancasModal(true);
@@ -253,8 +263,8 @@ export default function AssinaturasScreen() {
     }
   };
 
-  const cobrancasMercadoPago = useMemo(() => {
-    const lista = cobrancas?.mercadopago?.pagamentos;
+  const cobrancasProvedor = useMemo(() => {
+    const lista = cobrancas?.provedor?.pagamentos || cobrancas?.mercadopago?.pagamentos;
     return Array.isArray(lista) ? lista : [];
   }, [cobrancas]);
 
@@ -274,7 +284,7 @@ export default function AssinaturasScreen() {
   }, [cobrancas]);
 
   return (
-    <LayoutBase title="Assinaturas" subtitle="Lista de assinaturas do tenant">
+    <LayoutBase title="Assinaturas" subtitle="Cobranças de planos (Asaas, Mercado Pago e demais provedores)">
       <ScrollView className="flex-1">
         <View className="px-5 pb-4">
           {isSuperAdmin && (
@@ -415,9 +425,10 @@ export default function AssinaturasScreen() {
                             {statusInfo.nome}
                           </Text>
                         </View>
-                        {assinatura.status_gateway ? (
-                          <Text className="text-[11px] text-slate-400">Gateway: {assinatura.status_gateway}</Text>
-                        ) : null}
+                        <Text className="text-[11px] text-slate-400">
+                          {nomeGateway(assinatura)}
+                          {assinatura.status_gateway ? ` · ${assinatura.status_gateway}` : ''}
+                        </Text>
                       </View>
                       <Text className="text-[11px] text-slate-400">
                         Próx. cobrança: {getProximaCobrancaLabel(assinatura)}
@@ -448,27 +459,27 @@ export default function AssinaturasScreen() {
                           <Text className="text-xs font-semibold text-slate-700">{assinatura.external_reference || '-'}</Text>
                         </View>
                         <View className="min-w-[180px] flex-1 rounded-md bg-white px-2 py-1.5">
-                          <Text className="text-[11px] text-slate-400">MP preapproval</Text>
-                          <Text className="text-xs font-semibold text-slate-700">{assinatura.mp_preapproval_id || '-'}</Text>
+                          <Text className="text-[11px] text-slate-400">ID no provedor</Text>
+                          <Text className="text-xs font-semibold text-slate-700">{idProvedor(assinatura)}</Text>
                         </View>
                         <View className="min-w-[140px] flex-1 rounded-md bg-white px-2 py-1.5">
-                          <Text className="text-[11px] text-slate-400">Status gateway</Text>
-                          <Text className="text-xs font-semibold text-slate-700">{assinatura.status_gateway || '-'}</Text>
+                          <Text className="text-[11px] text-slate-400">Provedor</Text>
+                          <Text className="text-xs font-semibold text-slate-700">{nomeGateway(assinatura)}</Text>
                         </View>
                       </View>
 
                       <View className="mt-2 flex-row items-center justify-end">
                         <TouchableOpacity
-                          className={`flex-row items-center gap-2 rounded-lg px-3 py-1.5 ${assinatura.external_reference ? 'bg-orange-500' : 'bg-slate-200'}`}
+                          className="flex-row items-center gap-2 rounded-lg px-3 py-1.5 bg-orange-500"
                           onPress={() => fetchCobrancas(assinatura)}
-                          disabled={!assinatura.external_reference || loadingCobrancas}
+                          disabled={loadingCobrancas}
                         >
                           {loadingCobrancas ? (
                             <ActivityIndicator size="small" color="#fff" />
                           ) : (
                             <>
-                              <Feather name="search" size={12} color={assinatura.external_reference ? '#fff' : '#94a3b8'} />
-                              <Text className={`text-xs font-semibold ${assinatura.external_reference ? 'text-white' : 'text-slate-500'}`}>
+                              <Feather name="search" size={12} color="#fff" />
+                              <Text className="text-xs font-semibold text-white">
                                 Cobranças
                               </Text>
                             </>
@@ -519,7 +530,9 @@ export default function AssinaturasScreen() {
             <View>
               <Text className="text-lg font-semibold text-slate-800">Cobranças</Text>
               <Text className="text-xs text-slate-500">
-                {cobrancasAssinatura?.aluno_nome || '-'} • {cobrancasAssinatura?.external_reference || '-'}
+                {cobrancasAssinatura?.aluno_nome || '-'}
+                {cobrancas?.gateway?.nome ? ` • ${cobrancas.gateway.nome}` : ''}
+                {cobrancasAssinatura?.external_reference ? ` • ${cobrancasAssinatura.external_reference}` : ''}
               </Text>
             </View>
             <TouchableOpacity
@@ -538,15 +551,22 @@ export default function AssinaturasScreen() {
             ) : (
               <View className="gap-4">
                 <View className="rounded-xl border border-slate-200 bg-white p-4">
-                  <Text className="text-xs font-semibold text-slate-500 mb-2">Mercado Pago</Text>
-                  {cobrancasMercadoPago.length === 0 ? (
-                    <Text className="text-xs text-slate-400">Nenhum pagamento encontrado.</Text>
+                  <Text className="text-xs font-semibold text-slate-500 mb-2">
+                    {cobrancas?.provedor?.nome || cobrancas?.gateway?.nome || 'Provedor'}
+                  </Text>
+                  {cobrancas?.provedor?.erro ? (
+                    <Text className="text-xs text-amber-600 mb-2">{cobrancas.provedor.erro}</Text>
+                  ) : null}
+                  {cobrancasProvedor.length === 0 ? (
+                    <Text className="text-xs text-slate-400">Nenhuma cobrança no provedor.</Text>
                   ) : (
-                    cobrancasMercadoPago.map((pagamento) => (
+                    cobrancasProvedor.map((pagamento) => (
                       <View key={pagamento.id} className="rounded-lg border border-slate-100 bg-slate-50 p-3 mb-2">
                         <Text className="text-xs text-slate-500">ID: {pagamento.id}</Text>
                         <Text className="text-xs text-slate-500">Status: {pagamento.status}</Text>
-                        <Text className="text-xs text-slate-500">Detalhe: {pagamento.status_detail || '-'}</Text>
+                        {pagamento.status_detail ? (
+                          <Text className="text-xs text-slate-500">Detalhe: {pagamento.status_detail}</Text>
+                        ) : null}
                         <Text className="text-xs text-slate-500">Valor: {formatCurrency(pagamento.transaction_amount)}</Text>
                         <Text className="text-xs text-slate-500">Método: {pagamento.payment_method_id || '-'}</Text>
                         <Text className="text-xs text-slate-500">Criado: {formatDateTime(pagamento.date_created)}</Text>
@@ -565,7 +585,7 @@ export default function AssinaturasScreen() {
                         <Text className="text-xs text-slate-500">ID: {pagamento.id}</Text>
                         <Text className="text-xs text-slate-500">Matrícula: {pagamento.matricula_id}</Text>
                         <Text className="text-xs text-slate-500">Valor: {formatCurrency(pagamento.valor)}</Text>
-                        <Text className="text-xs text-slate-500">Status: {pagamento.status_pagamento_id}</Text>
+                        <Text className="text-xs text-slate-500">Status: {pagamento.status || pagamento.status_pagamento_id}</Text>
                         <Text className="text-xs text-slate-500">Forma: {pagamento.forma_pagamento_nome || '-'}</Text>
                         <Text className="text-xs text-slate-500">
                           Baixado por: {pagamento.baixado_por_nome || pagamento.criado_por_nome || '-'}
@@ -577,7 +597,7 @@ export default function AssinaturasScreen() {
                 </View>
 
                 <View className="rounded-xl border border-slate-200 bg-white p-4">
-                  <Text className="text-xs font-semibold text-slate-500 mb-2">Espelho MP (local)</Text>
+                  <Text className="text-xs font-semibold text-slate-500 mb-2">Espelho local do provedor</Text>
                   {pagamentosMpLocal.length === 0 ? (
                     <Text className="text-xs text-slate-400">Nenhum espelho local encontrado.</Text>
                   ) : (

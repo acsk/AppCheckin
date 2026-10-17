@@ -4,6 +4,11 @@ namespace App\Services\Admin;
 
 use App\Repositories\AdminAssinaturaRepository;
 use App\Repositories\AdminMatriculaRepository;
+use App\Services\Asaas\AsaasPagamentoSync;
+use App\Services\Asaas\AsaasService;
+use App\Services\MercadoPagoService;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 /**
@@ -23,6 +28,75 @@ class AdminAssinaturaService
     public function listar(int $tenantId, array $params): array
     {
         return $this->listarPaginado($tenantId, $params);
+    }
+
+    /**
+     * Cobranças da assinatura no provedor (Asaas ou Mercado Pago) + parcelas locais.
+     *
+     * @return array{status: int, body: array<string, mixed>}
+     */
+    public function cobrancas(int $tenantId, int $assinaturaId): array
+    {
+        $row = $this->assinaturas->findById($assinaturaId, $tenantId);
+        if (! $row) {
+            return $this->erro('Assinatura não encontrada', 404);
+        }
+
+        $matriculaId = (int) ($row['matricula_id'] ?? 0);
+        $externalReference = trim((string) ($row['external_reference'] ?? ''));
+        $preferenceId = trim((string) ($row['gateway_preference_id'] ?? ''));
+        $gatewayCodigo = strtolower((string) ($row['gateway_codigo'] ?? ''));
+        $gatewayNome = trim((string) ($row['gateway_nome'] ?? ''));
+        $ehAsaas = str_contains($gatewayCodigo, 'asaas')
+            || str_starts_with($preferenceId, 'pay_')
+            || str_contains(strtolower($gatewayNome), 'asaas');
+        if ($gatewayNome === '') {
+            $gatewayNome = $ehAsaas ? 'Asaas' : 'Mercado Pago';
+        }
+
+        $provedorPagamentos = [];
+        $erroProvedor = null;
+        try {
+            if ($ehAsaas) {
+                $provedorPagamentos = $this->cobrancasAsaas($tenantId, $matriculaId, $externalReference, $preferenceId);
+            } elseif ($externalReference !== '') {
+                $mp = new MercadoPagoService($tenantId);
+                $busca = $mp->buscarPagamentosPorExternalReference($externalReference);
+                $provedorPagamentos = is_array($busca['pagamentos'] ?? null) ? $busca['pagamentos'] : [];
+            }
+        } catch (Throwable $e) {
+            $erroProvedor = $e->getMessage();
+        }
+
+        $pagamentosPlano = $matriculaId > 0 ? $this->pagamentosPlanoDaMatricula($tenantId, $matriculaId) : [];
+        $pagamentosMp = $externalReference !== '' ? $this->pagamentosMercadoPagoLocais($tenantId, $externalReference, $matriculaId) : [];
+        $pagamentosPix = $matriculaId > 0 ? $this->pagamentosPixLocais($tenantId, $matriculaId) : [];
+
+        return [
+            'status' => 200,
+            'body' => [
+                'success' => true,
+                'external_reference' => $externalReference !== '' ? $externalReference : null,
+                'gateway' => [
+                    'codigo' => $ehAsaas ? 'asaas' : ($gatewayCodigo !== '' ? $gatewayCodigo : 'mercadopago'),
+                    'nome' => $gatewayNome,
+                ],
+                'provedor' => [
+                    'nome' => $gatewayNome,
+                    'pagamentos' => $provedorPagamentos,
+                    'erro' => $erroProvedor,
+                ],
+                'mercadopago' => [
+                    'total' => $ehAsaas ? 0 : count($provedorPagamentos),
+                    'pagamentos' => $ehAsaas ? [] : $provedorPagamentos,
+                ],
+                'local' => [
+                    'pagamentos_plano' => $pagamentosPlano,
+                    'pagamentos_mercadopago' => $pagamentosMp,
+                    'pagamentos_pix' => $pagamentosPix,
+                ],
+            ],
+        ];
     }
 
     /**
@@ -515,6 +589,121 @@ class AdminAssinaturaService
     private function mapearLinha(array $row): array
     {
         return $this->assinaturas->mapearDetalhe($row);
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function cobrancasAsaas(int $tenantId, int $matriculaId, string $externalReference, string $preferenceId): array
+    {
+        $asaas = new AsaasService($tenantId);
+        $porId = [];
+        if ($externalReference !== '') {
+            foreach ($asaas->listarPagamentosPorReferenciaExterna($externalReference) as $pagamento) {
+                $id = (string) ($pagamento['id'] ?? '');
+                if ($id !== '') {
+                    $porId[$id] = $this->mapearCobrancaAsaas($pagamento);
+                }
+            }
+        }
+        $ids = $matriculaId > 0
+            ? app(AsaasPagamentoSync::class)->paymentIdsDaMatricula($tenantId, $matriculaId)
+            : [];
+        if ($preferenceId !== '' && str_starts_with($preferenceId, 'pay_')) {
+            array_unshift($ids, $preferenceId);
+        }
+        foreach (array_unique($ids) as $paymentId) {
+            if (isset($porId[$paymentId])) {
+                continue;
+            }
+            try {
+                $pagamento = $asaas->obterPagamento($paymentId);
+            } catch (Throwable) {
+                continue;
+            }
+            if ($pagamento !== []) {
+                $porId[$paymentId] = $this->mapearCobrancaAsaas($pagamento);
+            }
+        }
+
+        return array_values($porId);
+    }
+
+    /**
+     * @param  array<string, mixed>  $pagamento
+     * @return array<string, mixed>
+     */
+    private function mapearCobrancaAsaas(array $pagamento): array
+    {
+        return [
+            'id' => $pagamento['id'] ?? null,
+            'status' => $pagamento['status'] ?? null,
+            'status_detail' => $pagamento['status'] ?? null,
+            'external_reference' => $pagamento['externalReference'] ?? null,
+            'transaction_amount' => $pagamento['value'] ?? null,
+            'payment_method_id' => $pagamento['billingType'] ?? null,
+            'date_created' => $pagamento['dateCreated'] ?? null,
+            'date_approved' => $pagamento['confirmedDate'] ?? $pagamento['paymentDate'] ?? null,
+            'invoice_url' => $pagamento['invoiceUrl'] ?? $pagamento['bankSlipUrl'] ?? null,
+        ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function pagamentosPlanoDaMatricula(int $tenantId, int $matriculaId): array
+    {
+        return array_map(static fn ($row) => (array) $row, DB::select(
+            'SELECT pp.id, pp.matricula_id, pp.valor, pp.status_pagamento_id, sp.nome as status,
+                    pp.data_pagamento, pp.data_vencimento, fp.nome as forma_pagamento_nome,
+                    pp.observacoes, pp.created_at
+             FROM pagamentos_plano pp
+             LEFT JOIN status_pagamento sp ON sp.id = pp.status_pagamento_id
+             LEFT JOIN formas_pagamento fp ON fp.id = pp.forma_pagamento_id
+             WHERE pp.tenant_id = ? AND pp.matricula_id = ?
+             ORDER BY pp.id DESC',
+            [$tenantId, $matriculaId]
+        ));
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function pagamentosMercadoPagoLocais(int $tenantId, string $externalReference, int $matriculaId): array
+    {
+        if (! Schema::hasTable('pagamentos_mercadopago')) {
+            return [];
+        }
+        $q = DB::table('pagamentos_mercadopago')->where('tenant_id', $tenantId);
+        $q->where(function ($inner) use ($externalReference, $matriculaId) {
+            $inner->where('external_reference', $externalReference);
+            if ($matriculaId > 0) {
+                $inner->orWhere('matricula_id', $matriculaId);
+            }
+        });
+
+        return array_map(static fn ($row) => (array) $row, $q->orderByDesc('id')->limit(50)->get()->all());
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function pagamentosPixLocais(int $tenantId, int $matriculaId): array
+    {
+        if (! Schema::hasTable('pagamentos_pix')) {
+            return [];
+        }
+
+        return array_map(
+            static fn ($row) => (array) $row,
+            DB::table('pagamentos_pix')
+                ->where('tenant_id', $tenantId)
+                ->where('matricula_id', $matriculaId)
+                ->orderByDesc('id')
+                ->limit(20)
+                ->get()
+                ->all()
+        );
     }
 
     /**

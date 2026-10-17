@@ -346,6 +346,21 @@ class AsaasService
     /**
      * @return array<string, mixed>
      */
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function listarPagamentosPorReferenciaExterna(string $externalReference): array
+    {
+        $this->validarCredenciais();
+        $lista = $this->request('GET', '/payments', null, [
+            'externalReference' => $externalReference,
+            'limit' => 50,
+        ]);
+        $itens = is_array($lista['data'] ?? null) ? $lista['data'] : [];
+
+        return array_values(array_filter($itens, 'is_array'));
+    }
+
     public function obterPagamento(string $paymentId): array
     {
         $this->validarCredenciais();

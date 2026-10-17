@@ -5,6 +5,22 @@ const assinaturaService = {
   /**
    * Listar assinaturas do tenant (Admin)
    */
+  async consultarCobrancas(assinaturaId, tenantId = null) {
+    try {
+      if (tenantId) {
+        const response = await api.get(`/superadmin/assinaturas/${assinaturaId}/cobrancas`, {
+          params: { tenant_id: tenantId },
+        });
+        return response.data;
+      }
+      const response = await api.get(`/admin/assinaturas/${assinaturaId}/cobrancas`);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Erro ao consultar cobranças:', error.response?.data || error.message);
+      throw prepararErro(error.response?.data || error);
+    }
+  },
+
   async listar(filtros = {}) {
     try {
       const params = {};

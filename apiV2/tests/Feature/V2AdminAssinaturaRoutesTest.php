@@ -163,6 +163,33 @@ class V2AdminAssinaturaRoutesTest extends TestCase
             ->assertJsonPath('assinatura.id', 7);
     }
 
+    public function test_cobrancas_consulta_provedor_da_assinatura(): void
+    {
+        $token = $this->tokenParaPapel(3);
+
+        $service = Mockery::mock(\App\Services\Admin\AdminAssinaturaService::class);
+        $service->shouldReceive('cobrancas')
+            ->once()
+            ->with(3, 12)
+            ->andReturn([
+                'status' => 200,
+                'body' => [
+                    'success' => true,
+                    'gateway' => ['codigo' => 'asaas', 'nome' => 'Asaas'],
+                    'provedor' => ['nome' => 'Asaas', 'pagamentos' => [['id' => 'pay_1']], 'erro' => null],
+                    'local' => ['pagamentos_plano' => []],
+                ],
+            ]);
+        $this->app->instance(\App\Services\Admin\AdminAssinaturaService::class, $service);
+
+        $this->getJson('/v2/admin/assinaturas/12/cobrancas', [
+            'Authorization' => 'Bearer '.$token,
+        ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('gateway.codigo', 'asaas');
+    }
+
     private function tokenParaPapel(int $papelId): string
     {
         config(['appcheckin.jwt_secret' => 'test-secret-key-with-enough-length-for-hs256-algorithm']);

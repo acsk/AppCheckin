@@ -38,6 +38,7 @@ const SECTIONS = [
         icon: 'wallet',
         children: [
           { id: 'relatorio-financeiro', label: 'Relatório financeiro', path: '/financeiro/relatorio', roles: [3, 4] },
+          { id: 'assinaturas', label: 'Assinaturas', path: '/assinaturas', roles: [3, 4] },
           { id: 'vencimentos', label: 'Vencimentos', path: '/matriculas/vencimentos', roles: [3, 4] },
           { id: 'formas-pagamento', label: 'Formas de pagamento', path: '/formas-pagamento', roles: [3, 4] },
         ],
@@ -57,7 +58,6 @@ const SECTIONS = [
         label: 'Mercado Pago',
         icon: 'credit-card',
         children: [
-          { id: 'assinaturas', label: 'Assinaturas', path: '/assinaturas', roles: [3, 4] },
           { id: 'pagamentos-mp', label: 'Pagamentos', path: '/pagamentos-mp', roles: [3, 4] },
         ],
       },
