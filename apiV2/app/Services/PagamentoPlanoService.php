@@ -169,6 +169,8 @@ class PagamentoPlanoService
             return;
         }
 
+        $this->corrigirCobrancaDuplicadaNoCicloPago($tenantId, $matriculaId);
+
         $ehAvulso = ($matriculaMeta->tipo_cobranca ?? '') === 'avulso';
         $ehDiariaAvulsa = $ehAvulso && (int) ($matriculaMeta->duracao_dias ?? 0) === 1;
         $statusAtual = (string) ($matriculaMeta->status_codigo ?? '');
@@ -286,6 +288,9 @@ class PagamentoPlanoService
                 ->min('data_vencimento');
 
             if ($proximaCobranca && $novoStatus === 'ativa' && ! $migracaoConfirmada) {
+                if ($acessoAte && $proximaCobranca < $acessoAte) {
+                    $proximaCobranca = $acessoAte;
+                }
                 DB::table('matriculas')
                     ->where('id', $matriculaId)
                     ->where('tenant_id', $tenantId)
@@ -331,6 +336,98 @@ class PagamentoPlanoService
     }
 
     /**
+     * Avulso: parcela aberta no mesmo vencimento da última paga (gerada após MP)
+     * avança para o fim do ciclo — não fica atrasada dentro do período já pago.
+     */
+    public function corrigirCobrancaDuplicadaNoCicloPago(int $tenantId, ?int $matriculaId = null): int
+    {
+        $hoje = AcademyDateTime::today();
+        $q = DB::table('pagamentos_plano as pp')
+            ->join('matriculas as m', function ($join) {
+                $join->on('m.id', '=', 'pp.matricula_id')
+                    ->on('m.tenant_id', '=', 'pp.tenant_id');
+            })
+            ->leftJoin('plano_ciclos as pc', 'pc.id', '=', 'm.plano_ciclo_id')
+            ->leftJoin('planos as p', 'p.id', '=', 'm.plano_id')
+            ->where('pp.tenant_id', $tenantId)
+            ->where('m.tipo_cobranca', 'avulso')
+            ->whereIn('pp.status_pagamento_id', [1, 3])
+            ->whereNull('pp.data_pagamento')
+            ->where('pp.observacoes', 'like', '%após confirmação%')
+            ->where('pp.observacoes', 'not like', '%'.MatriculaMigracaoService::TAG_MIGRACAO_SIMULADA.'%');
+        if ($matriculaId !== null) {
+            $q->where('pp.matricula_id', $matriculaId);
+        }
+
+        $abertas = $q->get([
+            'pp.id',
+            'pp.matricula_id',
+            'pp.data_vencimento',
+            'pp.observacoes',
+            'pc.meses as ciclo_meses',
+            'p.duracao_dias',
+        ]);
+
+        $corrigidos = 0;
+        foreach ($abertas as $aberta) {
+            $pago = DB::table('pagamentos_plano')
+                ->where('tenant_id', $tenantId)
+                ->where('matricula_id', (int) $aberta->matricula_id)
+                ->where('status_pagamento_id', 2)
+                ->where('valor', '>', 0)
+                ->orderByDesc('data_pagamento')
+                ->orderByDesc('id')
+                ->first(['data_vencimento', 'data_pagamento']);
+            if (! $pago) {
+                continue;
+            }
+
+            $vencAberta = substr((string) $aberta->data_vencimento, 0, 10);
+            $vencPago = substr((string) ($pago->data_vencimento ?? ''), 0, 10);
+            $emPago = substr((string) ($pago->data_pagamento ?? ''), 0, 10);
+            if ($vencPago === '' || $vencAberta === '') {
+                continue;
+            }
+            $diffVenc = (int) (new \DateTime($vencPago))->diff(new \DateTime($vencAberta))->format('%a');
+            if ($diffVenc > 2) {
+                continue;
+            }
+
+            $ancora = $emPago !== '' && $emPago > $vencPago ? $emPago : $vencPago;
+            $dt = new \DateTime($ancora);
+            $meses = (int) ($aberta->ciclo_meses ?? 0);
+            if ($meses > 1) {
+                $dt->modify("+{$meses} months");
+            } else {
+                $dias = max(1, (int) ($aberta->duracao_dias ?? 30));
+                $dt->add(new \DateInterval("P{$dias}D"));
+            }
+            $nova = $dt->format('Y-m-d');
+            if ((int) (new \DateTime($vencAberta))->diff($dt)->format('%r%a') < 20) {
+                continue;
+            }
+
+            $obs = trim((string) ($aberta->observacoes ?? ''));
+            if (! str_contains($obs, '[Corrigido: renovação')) {
+                $obs = trim($obs.' [Corrigido: renovação '.$nova.']');
+            }
+
+            DB::table('pagamentos_plano')
+                ->where('id', (int) $aberta->id)
+                ->where('tenant_id', $tenantId)
+                ->update([
+                    'data_vencimento' => $nova,
+                    'status_pagamento_id' => $nova >= $hoje ? 1 : 3,
+                    'observacoes' => $obs,
+                    'updated_at' => now(),
+                ]);
+            $corrigidos++;
+        }
+
+        return $corrigidos;
+    }
+
+    /**
      * Marca parcelas pendentes vencidas como atrasado (status 3).
      * Paridade com Slim PagamentoPlano::marcarAtrasados.
      *
@@ -339,6 +436,7 @@ class PagamentoPlanoService
      */
     public function marcarAtrasados(int $tenantId): int
     {
+        $this->corrigirCobrancaDuplicadaNoCicloPago($tenantId);
         $this->corrigirParcelasFuturasMarcadasAtrasadas($tenantId);
 
         $marcados = DB::update(

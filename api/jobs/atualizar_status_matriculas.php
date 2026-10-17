@@ -243,6 +243,70 @@ try {
             $pagamentosAtualizados = $stmt->rowCount();
             logMessage("  ✓ Pagamentos Atrasados: {$pagamentosAtualizados}\n", $quiet);
 
+            // 1a. Avulso: cobrança gerada no mesmo venc da última paga (duplicata #350)
+            // avança para o fim do ciclo e deixa de aparecer como atrasada no período pago.
+            $sqlDup = "
+                SELECT pp.id,
+                       pp.observacoes,
+                       pp.data_vencimento AS venc_aberta,
+                       GREATEST(COALESCE(pago.data_pagamento, pago.data_vencimento), pago.data_vencimento) AS ancora,
+                       COALESCE(pc.meses, 1) AS meses
+                FROM pagamentos_plano pp
+                INNER JOIN matriculas m ON m.id = pp.matricula_id AND m.tenant_id = pp.tenant_id
+                LEFT JOIN plano_ciclos pc ON pc.id = m.plano_ciclo_id
+                INNER JOIN pagamentos_plano pago
+                    ON pago.id = (
+                        SELECT p2.id FROM pagamentos_plano p2
+                        WHERE p2.tenant_id = pp.tenant_id
+                          AND p2.matricula_id = pp.matricula_id
+                          AND p2.status_pagamento_id = 2
+                          AND p2.valor > 0
+                        ORDER BY p2.data_pagamento DESC, p2.id DESC
+                        LIMIT 1
+                    )
+                WHERE pp.tenant_id = :tenant_id
+                  AND m.tipo_cobranca = 'avulso'
+                  AND pp.status_pagamento_id IN (1, 3)
+                  AND pp.data_pagamento IS NULL
+                  AND pp.observacoes LIKE '%após confirmação%'
+                  AND (pp.observacoes IS NULL OR pp.observacoes NOT LIKE '%[MIGRACAO_SIMULADA%')
+                  AND ABS(DATEDIFF(pp.data_vencimento, pago.data_vencimento)) <= 2
+                  AND DATEDIFF(
+                        DATE_ADD(
+                            GREATEST(COALESCE(pago.data_pagamento, pago.data_vencimento), pago.data_vencimento),
+                            INTERVAL COALESCE(pc.meses, 1) MONTH
+                        ),
+                        pp.data_vencimento
+                      ) >= 20
+                LIMIT 500
+            ";
+            $stmt = $db->prepare($sqlDup);
+            $stmt->execute(['tenant_id' => $tenant['id']]);
+            $dups = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $corrigidasDup = 0;
+            foreach ($dups as $dup) {
+                $ancora = (string) $dup['ancora'];
+                $meses = max(1, (int) $dup['meses']);
+                $dt = new DateTime($ancora);
+                $dt->modify("+{$meses} months");
+                $nova = $dt->format('Y-m-d');
+                $obs = (string) ($dup['observacoes'] ?? '');
+                if (!str_contains($obs, '[Corrigido: renovação')) {
+                    $obs .= " [Corrigido: renovação {$nova}]";
+                }
+                $statusNovo = $nova >= date('Y-m-d') ? 1 : 3;
+                $upd = $db->prepare(
+                    "UPDATE pagamentos_plano
+                     SET data_vencimento = ?, status_pagamento_id = ?, observacoes = ?, updated_at = NOW()
+                     WHERE id = ? AND tenant_id = ?"
+                );
+                $upd->execute([$nova, $statusNovo, $obs, $dup['id'], $tenant['id']]);
+                $corrigidasDup += $upd->rowCount();
+            }
+            if ($corrigidasDup > 0) {
+                logMessage("  ✓ Cobranças duplicadas no ciclo pago corrigidas: {$corrigidasDup}\n", $quiet);
+            }
+
             // 1b. Avulso: renovação em aberto fica atrasada quando período pago atual expirou
             $sqlAvulsoAtrasado = "
                 SELECT pp.id
