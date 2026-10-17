@@ -4,7 +4,7 @@ import planoService from '../../services/planoService';
 import LayoutBase from '../../components/LayoutBase';
 import { Button, Icon, IconButton, Modal } from '../../components/ck';
 import { PlanosLista } from '../../components/ck/planos';
-import { abrirRelatorioPlanos } from '../../utils/relatorioPlanos';
+import { gerarPdfPlanos } from '../../utils/relatorioPlanosPdf';
 import { showSuccess, showError } from '../../utils/toast';
 import { authService } from '../../services/authService';
 
@@ -103,7 +103,8 @@ export default function PlanosScreen() {
   const gerarRelatorio = async () => {
     setGerandoRelatorio(true);
     try {
-      abrirRelatorioPlanos(await planoService.relatorioPlanosECiclos());
+      gerarPdfPlanos(await planoService.relatorioPlanosECiclos());
+      showSuccess('PDF dos planos gerado');
     } catch (err) {
       showError(err?.error || 'Não foi possível gerar o relatório');
     } finally {

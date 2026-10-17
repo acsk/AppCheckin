@@ -87,7 +87,7 @@ export function PlanosLista({
         description={readOnly ? 'Planos criados pelas academias, com os ciclos de cobrança de cada um.' : 'Defina quanto custa cada modalidade e em quais ciclos o aluno pode pagar.'}
         actions={readOnly ? null : (
           <>
-            {onReport ? <Button icon="file-text" loading={reportLoading} onClick={onReport}>Relatório</Button> : null}
+            {onReport ? <Button icon="download" loading={reportLoading} onClick={onReport}>Relatório PDF</Button> : null}
             <Button variant="primary" icon="plus" onClick={onNew}>Novo plano</Button>
           </>
         )}
